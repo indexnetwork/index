@@ -245,7 +245,7 @@ export interface AssistantMessageContentProps {
  * Renders assistant message content by parsing fenced blocks and rendering
  * the appropriate card component for each segment type.
  *
- * Shared between ChatContent.tsx (full chat view) and onboarding/page.tsx.
+ * Shared with ChatContent.tsx (full chat view).
  */
 export default function AssistantMessageContent({
   content,

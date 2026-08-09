@@ -105,6 +105,53 @@ export function createIndexApiClient(options = {}) {
     return /** @type {T} */ (payload || {});
   }
 
+  /**
+   * Multipart upload. PicturePicker hands us a data URL; turn it into a File
+   * and POST without forcing Content-Type so the runtime sets the boundary.
+   * @param {string} endpoint
+   * @param {string} dataUrl
+   * @param {string} fieldName
+   * @param {string} basename
+   * @param {RequestOptions} [requestOptions]
+   */
+  async function uploadDataUrl(endpoint, dataUrl, fieldName, basename, requestOptions = {}) {
+    const { auth = true, signal } = requestOptions;
+    const blob = await (await fetchImpl(dataUrl)).blob();
+    const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const file = new File([blob], `${basename}.${ext}`, { type: blob.type || 'image/jpeg' });
+    const form = new FormData();
+    form.append(fieldName, file);
+
+    /** @type {Record<string, string>} */
+    const headers = {};
+    if (auth && options.getApiKey) {
+      const apiKey = await options.getApiKey();
+      if (apiKey) headers['x-api-key'] = apiKey;
+    }
+    if (auth && options.getToken) {
+      const token = await options.getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetchImpl(`${apiBaseUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      signal,
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => '');
+    if (!response.ok) {
+      const message = payload && typeof payload === 'object' && 'error' in payload
+        ? String(payload.error)
+        : `HTTP ${response.status}: ${response.statusText}`;
+      throw new IndexApiError(message, response.status, payload);
+    }
+    return /** @type {Record<string, unknown>} */ (payload || {});
+  }
+
   return {
     request,
 
@@ -117,11 +164,65 @@ export function createIndexApiClient(options = {}) {
       ),
     },
 
+    storage: {
+      /** @param {string} dataUrl data:image/... from PicturePicker */
+      uploadAvatar: async (dataUrl, options = {}) => {
+        const r = await uploadDataUrl('/storage/avatars', dataUrl, 'avatar', 'avatar', options);
+        return /** @type {string} */ (r.avatarUrl);
+      },
+      /** @param {string} dataUrl data:image/... from PicturePicker */
+      uploadIndexImage: async (dataUrl, options = {}) => {
+        const r = await uploadDataUrl('/storage/index-images', dataUrl, 'image', 'network', options);
+        return /** @type {string} */ (r.imageUrl);
+      },
+    },
+
     networks: {
       list: (options = {}) => request('/networks', options),
       overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
       myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
       create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
+      update: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'PUT', body },
+      ),
+      delete: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      // Owner Access-tab visibility toggle (public / invite-only).
+      updatePermissions: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/permissions`,
+        { ...options, method: 'PATCH', body },
+      ),
+      regenerateInvitationLink: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/regenerate-invitation`,
+        { ...options, method: 'PATCH', body: {} },
+      ),
+      getMembers: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        options,
+      ),
+      addMember: (networkId, userId, permissions = ['member'], options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        { ...options, method: 'POST', body: { userId, permissions } },
+      ),
+      removeMember: (networkId, userId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      updateMemberPermissions: (networkId, userId, permissions, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'PATCH', body: { permissions } },
+      ),
+      inviteMember: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/invite`,
+        { ...options, method: 'POST', body },
+      ),
+      searchUsers: (query, networkId, options = {}) => request(
+        `/networks/search-users${toQueryString({ q: query, networkId })}`,
+        options,
+      ),
       join: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/join`, { ...options, method: 'POST', body: {} }),
       leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
     },
@@ -262,6 +363,14 @@ export function createIndexApiClient(options = {}) {
         `/tools/${encodeURIComponent(toolName)}`,
         { ...options, method: 'POST', body: { query } },
       ),
+    },
+
+    enrichment: {
+      // Run the full public-research enrichment inline for the authenticated
+      // user and resolve { enriched: true, profile: { name, intro, location,
+      // socials } } so the caller can show discovered socials immediately.
+      // Every other enrichment path is automatic (profile save, signup, imports).
+      trigger: (options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: {} }),
     },
 
     conversations: {

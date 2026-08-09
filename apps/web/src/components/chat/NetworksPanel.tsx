@@ -49,7 +49,7 @@ function NetworkRow({ network, action }: { network: PanelNetwork; action: React.
 /**
  * Inline network join panel rendered by the agent's networks_panel block.
  * Shows already-joined networks with a badge and public networks with a Join button.
- * Works in any chat context — onboarding or regular chat.
+ * Works in any chat context.
  */
 export default function NetworksPanel({ onJoin, pendingJoinIds = new Set(), orderedNetworkIds }: NetworksPanelProps) {
   const indexesService = useNetworks();

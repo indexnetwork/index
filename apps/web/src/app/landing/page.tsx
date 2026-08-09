@@ -1,7 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { apiUrl } from "@/lib/api";
-import { useAuthContext } from "@/contexts/AuthContext";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
 import Nav, { GithubStar, ensureLandingFonts } from "./Nav";
 import Footer from "./Footer";
@@ -132,103 +130,11 @@ const STEPS: Step[] = [
   },
 ];
 
-type SurfaceTab = {
-  id: string;
-  kind: string;
-  label: string;
-  blurb: string;
-  steps: { num?: string; title?: string; cmd?: string | string[]; soon?: boolean }[];
-  docs?: { href: string; label: string };
-  cta?: { href?: string; label: string; login?: boolean; waitlist?: boolean };
-};
-
-const SURFACE_TABS: SurfaceTab[] = [
-  {
-    id: "cli",
-    kind: "CLI",
-    label: "cli",
-    blurb: "Command-line interface for the Index Network social discovery protocol. Chat with your agent, manage signals, and discover opportunities.",
-    steps: [
-      { num: "1", title: "install", cmd: "npm install -g @indexnetwork/cli" },
-    ],
-    docs: {
-      href: "https://www.npmjs.com/package/@indexnetwork/cli",
-      label: "Read the documentation →",
-    },
-  },
-  {
-    id: "skill",
-    kind: "SKILL",
-    label: "agent skill",
-    blurb: "Ships as a Hermes plugin and an OpenClaw plugin — your intents, available to your agent natively.",
-    steps: [
-      {
-        num: "1",
-        title: "install (openclaw)",
-        cmd: [
-          "openclaw plugins install @indexnetwork/openclaw-plugin",
-          "openclaw index connect",
-        ],
-      },
-      {
-        num: "2",
-        title: "install (hermes)",
-        soon: true,
-      },
-    ],
-  },
-  {
-    id: "web",
-    kind: "WEB",
-    label: "web app",
-    blurb: "Sign in, write what you want, and let the network bring people to you.",
-    steps: [],
-    cta: {
-      label: "Join the waitlist",
-      waitlist: true,
-    },
-  },
-  {
-    id: "mcp",
-    kind: "MCP",
-    label: "mcp",
-    blurb: "Plug the MCP server into Claude, Cursor, or any host. Your agent speaks the protocol natively.",
-    steps: [
-      {
-        title: "server url",
-        cmd: "https://protocol.index.network/mcp",
-      },
-    ],
-  },
-];
+function openAccessModal() {
+  window.dispatchEvent(new CustomEvent("openAccessModal"));
+}
 
 function Hero() {
-  const { openLoginModal } = useAuthContext();
-  const [activeId, setActiveId] = useState<string>(SURFACE_TABS[0].id);
-  const [copied, setCopied] = useState<string | null>(null);
-  const [isAlpha, setIsAlpha] = useState(false);
-  const active = SURFACE_TABS.find((t) => t.id === activeId) ?? SURFACE_TABS[0];
-
-  useEffect(() => {
-    const alphaParam = new URLSearchParams(window.location.search).get("alpha");
-    if (alphaParam !== null) {
-      localStorage.setItem("alpha", alphaParam);
-      setIsAlpha(alphaParam === "true");
-    } else {
-      setIsAlpha(localStorage.getItem("alpha") === "true");
-    }
-  }, []);
-
-  const copy = async (key: string, text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(key);
-      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1400);
-    } catch {
-      /* clipboard unavailable */
-    }
-  };
-
   return (
     <div className="hero h1">
       <div className="canvas-area">
@@ -245,116 +151,18 @@ function Hero() {
               even think to look.
             </p>
 
-            <div className="hero-surf">
-              <div className="surf-tabs" role="tablist" aria-label="surfaces">
-                {SURFACE_TABS.map((t) => {
-                  const isActive = t.id === activeId;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      className={"surf-tab" + (isActive ? " is-active" : "")}
-                      onClick={() => setActiveId(t.id)}
-                    >
-                      <span className="surf-tab-label">{t.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <p className="surf-blurb">{active.blurb}</p>
-
-              <div className="hero-cli">
-                {active.steps.map((s) => {
-                  const key = `${active.id}-${s.num}`;
-                  const lines = Array.isArray(s.cmd) ? s.cmd : s.cmd ? [s.cmd] : [];
-                  const showNum = active.steps.length > 1;
-                  return (
-                    <div className="hero-cli-step" key={key}>
-                      {s.title ? (
-                        <div className="hero-cli-head">
-                          <span className="hero-cli-title">
-                            {showNum ? `${s.num}. ` : ""}{s.title}
-                            {s.soon ? (
-                              <span className="hero-cli-soon">soon</span>
-                            ) : null}
-                          </span>
-                          {s.soon ? null : (
-                            <button
-                              type="button"
-                              className="hero-cli-copy"
-                              onClick={() => copy(key, lines.join("\n"))}
-                            >
-                              {copied === key ? "copied" : "copy"}
-                            </button>
-                          )}
-                        </div>
-                      ) : null}
-                      {s.soon ? null : (
-                        <div className="hero-cli-box">
-                          {lines.map((line, i) => (
-                            <div className="hero-cli-line" key={i}>
-                              <span className="hero-cli-cmd">{line}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {active.cta ? (
-                  active.cta.waitlist ? (
-                    isAlpha ? (
-                      <button
-                        type="button"
-                        className="cta hero-cli-cta"
-                        onClick={() => openLoginModal()}
-                      >
-                        Sign in
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="cta hero-cli-cta"
-                        onClick={() =>
-                          window.dispatchEvent(new CustomEvent("openWaitlistModal"))
-                        }
-                      >
-                        {active.cta.label}
-                      </button>
-                    )
-                  ) : active.cta.login ? (
-                    <button
-                      type="button"
-                      className="cta hero-cli-cta"
-                      onClick={() => openLoginModal()}
-                    >
-                      {active.cta.label}
-                    </button>
-                  ) : (
-                    <a
-                      className="cta hero-cli-cta"
-                      href={active.cta.href}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {active.cta.label}
-                    </a>
-                  )
-                ) : null}
-                {active.docs ? (
-                  <a
-                    className="hero-cli-docs"
-                    href={active.docs.href}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {active.docs.label}
-                  </a>
-                ) : null}
-              </div>
+            <div className="hero-access">
+              <button
+                type="button"
+                className="cta primary hero-access-btn"
+                onClick={openAccessModal}
+              >
+                Request Access
+              </button>
+              <p className="hero-lede">
+                Index is opening in cycles. Get early access, find your networks,
+                or start your own.
+              </p>
             </div>
           </div>
           <div className="hero-image">
@@ -619,129 +427,7 @@ function OpenSource() {
   );
 }
 
-function SubscribeModal() {
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
-    "idle",
-  );
-
-  useEffect(() => {
-    const onOpen = () => {
-      setStatus("idle");
-      setEmail("");
-      setOpen(true);
-    };
-    window.addEventListener("openSubscribeModal", onOpen);
-    return () => window.removeEventListener("openSubscribeModal", onOpen);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && status !== "loading") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, status]);
-
-  if (!open) return null;
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setStatus("loading");
-    try {
-      const res = await fetch(apiUrl("/api/subscribe"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "newsletter" }),
-      });
-      setStatus(res.ok ? "success" : "error");
-    } catch {
-      setStatus("error");
-    }
-  };
-
-  return (
-    <div
-      className="landing-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="landing-subscribe-title"
-      onClick={() => status !== "loading" && setOpen(false)}
-    >
-      <div className="landing-modal-backdrop" aria-hidden="true" />
-      <div className="landing-modal-card" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          className="landing-modal-close"
-          onClick={() => setOpen(false)}
-          disabled={status === "loading"}
-          aria-label="Close"
-        >
-          ×
-        </button>
-
-        {status === "success" ? (
-          <div className="landing-modal-success">
-            <h3 id="landing-subscribe-title" className="landing-modal-title">
-              subscribed
-            </h3>
-            <p className="landing-modal-lede">
-              You&rsquo;re in — we&rsquo;ll keep you posted on what&rsquo;s new.
-            </p>
-            <button
-              type="button"
-              className="cta"
-              onClick={() => setOpen(false)}
-            >
-              Close
-            </button>
-          </div>
-        ) : (
-          <>
-            <h3 id="landing-subscribe-title" className="landing-modal-title">
-              subscribe
-            </h3>
-            <p className="landing-modal-lede">
-              Drop your email — we&rsquo;ll keep you posted on updates.
-            </p>
-            <form onSubmit={submit} className="landing-modal-form">
-              <label htmlFor="landing-subscribe-email" className="landing-modal-label">
-                Email <span className="landing-modal-req">*</span>
-              </label>
-              <input
-                id="landing-subscribe-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="landing-modal-input"
-                required
-                disabled={status === "loading"}
-                autoFocus
-              />
-              {status === "error" && (
-                <p className="landing-modal-error">
-                  Something went wrong. Please try again.
-                </p>
-              )}
-              <button
-                type="submit"
-                className="landing-modal-submit"
-                disabled={status === "loading"}
-              >
-                {status === "loading" ? "Submitting…" : "Subscribe"}
-              </button>
-            </form>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function WaitlistModal() {
+function AccessModal() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -750,8 +436,14 @@ function WaitlistModal() {
       setLoading(false);
       setOpen(true);
     };
+    window.addEventListener("openAccessModal", onOpen);
     window.addEventListener("openWaitlistModal", onOpen);
-    return () => window.removeEventListener("openWaitlistModal", onOpen);
+    window.addEventListener("openSubscribeModal", onOpen);
+    return () => {
+      window.removeEventListener("openAccessModal", onOpen);
+      window.removeEventListener("openWaitlistModal", onOpen);
+      window.removeEventListener("openSubscribeModal", onOpen);
+    };
   }, []);
 
   useEffect(() => {
@@ -770,7 +462,7 @@ function WaitlistModal() {
       className="landing-modal"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="landing-waitlist-title"
+      aria-labelledby="landing-access-title"
       onClick={() => !loading && setOpen(false)}
     >
       <div className="landing-modal-backdrop" aria-hidden="true" />
@@ -786,23 +478,23 @@ function WaitlistModal() {
         </button>
 
         <WaitlistForm
-          idPrefix="landing-waitlist"
+          idPrefix="landing-access"
           onStatusChange={(s) => setLoading(s === "loading")}
           header={
             <>
-              <h3 id="landing-waitlist-title" className="landing-modal-title">
-                join the waitlist
+              <h3 id="landing-access-title" className="landing-modal-title">
+                request access
               </h3>
               <p className="landing-modal-lede">
-                Leave your email — we&rsquo;ll let you know when
-                we&rsquo;re live and keep you posted on updates.
+                Index is opening in cycles. Leave your email and we&rsquo;ll
+                let you know when the next one opens.
               </p>
             </>
           }
           successAction={
             <button
               type="button"
-              className="landing-modal-submit"
+              className="landing-modal-submit is-primary"
               onClick={() => setOpen(false)}
             >
               Close
@@ -826,8 +518,7 @@ function LandingPage() {
       <LatestPosts />
       <OpenSource />
       <Footer />
-      <SubscribeModal />
-      <WaitlistModal />
+      <AccessModal />
     </div>
   );
 }

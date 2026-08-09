@@ -471,31 +471,45 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   };
   // Accepting means "I want to talk to this person", so go straight into the
-  // chat instead of letting the card silently jump to the accepted tab.
+  // chat instead of letting the card silently jump to the accepted tab. Match
+  // the web (useOpportunityActions): in live mode the card only moves to
+  // "accepted" once the server confirms, so a failed accept can't leave a
+  // phantom in the accepted tab. On failure, refresh from the server so the
+  // radar reflects the real state instead of the optimistic one.
   const acceptPerson = (personId) => {
-    setPeople(prev => prev.map(p =>
-      p.id === personId ? { ...p, status: "accepted" } : p));
     if (live && client) {
-      // Open the chat only after the accept lands; startChatForIntent expects
-      // an accepted opportunity.
       client.opportunities.updateStatusForIntent(personId, "accepted", intentId)
-        .then(() => { openChat(personId); setTimeout(refreshRadar, 1500); })
-        .catch(() => {});
+        .then(() => {
+          setPeople(prev => prev.map(p =>
+            p.id === personId ? { ...p, status: "accepted" } : p));
+          openChat(personId);
+          setTimeout(refreshRadar, 1500);
+        })
+        .catch(() => refreshRadar());
       return;
     }
+    setPeople(prev => prev.map(p =>
+      p.id === personId ? { ...p, status: "accepted" } : p));
     openChat(personId);
   };
   // Pass is the other half of the ready-stage decision, decline the intro
-  // instead of accepting it. They drop out of the radar into "passed".
+  // instead of accepting it. They drop out of the radar into "passed". Like
+  // accept, only commit the local status once the server confirms so a failed
+  // reject can't hide a still-pending opportunity; refresh on failure.
   const passPerson = (personId) => {
     if (chatId === personId) closeChats();
-    setPeople(prev => prev.map(p =>
-      p.id === personId ? { ...p, status: "passed" } : p));
     if (live && client) {
       client.opportunities.updateStatusForIntent(personId, "rejected", intentId)
-        .then(() => setTimeout(refreshRadar, 1500))
-        .catch(() => {});
+        .then(() => {
+          setPeople(prev => prev.map(p =>
+            p.id === personId ? { ...p, status: "passed" } : p));
+          setTimeout(refreshRadar, 1500);
+        })
+        .catch(() => refreshRadar());
+      return;
     }
+    setPeople(prev => prev.map(p =>
+      p.id === personId ? { ...p, status: "passed" } : p));
   };
   const sendChat = () => {
     const text = chatDraft.trim();
@@ -1763,7 +1777,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         transition:"all .12s ease",
       }}>
       <span onClick={openProfile} title="view profile" style={{ cursor:"pointer", lineHeight:0 }}>
-        <Avatar name={person.name} size={36} ring={accepted}/>
+        <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={36} ring={accepted}/>
       </span>
       <div style={{ display:"grid", gap:3, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", minWidth:0 }}>
@@ -1935,7 +1949,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
                 ? "inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 1px 1px 0 rgba(0,0,0,0.2)"
                 : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
             }}>
-              <Avatar name={c.name} size={32}/>
+              <Avatar id={c.userId || c.id} name={c.name} photo={c.person ? c.person.photo : null} size={32}/>
               <div style={{ display:"grid", gap:3, minWidth:0 }}>
                 <div style={{ fontFamily:"var(--amiga-title)", fontSize:14, fontWeight:600, color:"#000" }}>
                   {c.name}
@@ -2009,7 +2023,7 @@ function SummaryWindow({ person, onClose }) {
           padding:"12px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} size={34}/>
+          <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
           <div style={{ display:"grid", gap:2, minWidth:0 }}>
             <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
               {person.name}
@@ -2198,6 +2212,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
     ? {
         ...person,
         bio: person.bio || fetched.bio,
+        photo: person.photo || fetched.photo,
         socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
       }
     : person;
@@ -2212,7 +2227,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
           padding:"14px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} size={42} ring={isAccepted}/>
+          <Avatar id={person.userId || person.id} name={person.name} photo={merged.photo} size={42} ring={isAccepted}/>
           <div style={{
             fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000",
             minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
@@ -2312,7 +2327,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
             padding:"12px 16px", borderBottom:"1px solid #000",
             display:"flex", gap:12, alignItems:"center", background:"#fff",
           }}>
-            <Avatar name={person.name} size={34}/>
+            <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
             <div style={{ display:"grid", gap:2, minWidth:0 }}>
               <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
                 {person.name}

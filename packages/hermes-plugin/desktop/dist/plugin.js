@@ -241,6 +241,23 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  // Web frontend's index-network wordmark (same paths as apps/mac and the
+  // /cli-auth callback page), recolored to currentColor so it follows the theme.
+  const INDEX_WORDMARK_SVG = '<svg viewBox="0 0 522 44" fill="currentColor" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="index network">'
+    + '<path d="M184.51 21.66C184.51 18.33 187.42 15.73 191.23 15.73C195.04 15.73 197.95 18.33 197.95 21.66C197.95 24.99 195.1 27.54 191.23 27.54C187.36 27.54 184.51 25 184.51 21.66Z"/>'
+    + '<path d="M0 0.72998H7.47V42.61H0V0.72998Z"/>'
+    + '<path d="M16.6301 0.72998H25.0701L44.3701 27.26H45.4001V0.72998H52.9301V42.61H44.4301L25.1901 16.08H24.1001V42.61H16.6301V0.72998Z"/>'
+    + '<path d="M99.91 21.67C99.91 33.63 90.74 42.61 78.54 42.61H62.03V0.72998H78.54C90.74 0.72998 99.91 9.70995 99.91 21.67ZM92.2 21.67C92.2 14.93 86.25 9.88998 78.3 9.88998H69.5V33.44H78.3C86.25 33.44 92.2 28.4 92.2 21.66V21.67Z"/>'
+    + '<path d="M137.61 33.45V42.62H107.08V0.73999H137.31V9.91H114.55V17.13H135.31V25.99H114.55V33.46H137.62L137.61 33.45Z"/>'
+    + '<path d="M167.53 21.7899L181.49 42.61H172.75L162.43 27.86H160.97L150.71 42.61H141.3L155.56 21.37L141.84 0.72998H150.58L160.66 15.36H162.06L172.14 0.72998H181.55L167.53 21.7899Z"/>'
+    + '<path d="M209.87 0.72998H218.31L237.61 27.26H238.64V0.72998H246.17V42.61H237.67L218.43 16.08H217.34V42.61H209.87V0.72998Z"/>'
+    + '<path d="M285.8 33.45V42.62H255.27V0.73999H285.5V9.91H262.74V17.13H283.5V25.99H262.74V33.46H285.81L285.8 33.45Z"/>'
+    + '<path d="M324.77 9.88998H311.48V42.61H304.01V9.88998H290.72V0.719971H324.77V9.88998Z"/>'
+    + '<path d="M328.96 0.72998H336.91L346.14 28.35H347.41L356.09 0.72998H362.71L371.45 28.35H372.79L381.89 0.72998H390.33L376.92 42.61H368.42L360.59 17.24H358.71L350.88 42.61H342.38L328.97 0.72998H328.96Z"/>'
+    + '<path d="M391.54 21.67C391.54 9.34998 401.07 0 413.7 0C426.33 0 435.86 9.34998 435.86 21.67C435.86 33.99 426.33 43.34 413.7 43.34C401.07 43.34 391.54 33.99 391.54 21.67ZM428.14 21.67C428.14 14.63 421.89 9.35004 413.69 9.35004C405.49 9.35004 399.24 14.63 399.24 21.67C399.24 28.71 405.49 33.99 413.69 33.99C421.89 33.99 428.14 28.71 428.14 21.67Z"/>'
+    + '<path d="M459.46 29.5H450.42V42.61H442.95V0.72998H462.13C470.57 0.72998 477 6.91996 477 15.12C477 21.31 473.36 26.35 467.9 28.47L477.55 42.61H468.45L459.47 29.5H459.46ZM450.42 20.33H461.95C466.44 20.33 469.23 18.27 469.23 15.11C469.23 11.95 466.44 9.88998 461.95 9.88998H450.42V20.33Z"/>'
+    + '<path d="M497.83 25.56L491.4 30.96V42.61H483.93V0.72998H491.4V17.67H492.92L509.07 0.72998H521.03L503.31 20.21L521.46 42.61H512.11L497.85 25.55L497.83 25.56Z"/>'
+    + '</svg>';
   const SOCIAL_FIELDS = [["twitter", "x.com/"], ["linkedin", "linkedin.com/in/"], ["github", "github.com/"], ["telegram", "t.me/"]];
   const FIXED_SOCIAL_LABELS = ["twitter", "linkedin", "github", "telegram"];
 
@@ -406,8 +423,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       const key = idx >= 0 ? pair.slice(0, idx) : pair;
       params[key] = idx >= 0 ? decodeURIComponent(pair.slice(idx + 1)) : "";
     });
-    if (params.intent) return { intentId: params.intent };
-    return { intentId: null };
+    return {
+      intentId: params.intent || null,
+    };
   }
 
   function writeHash(intentId) {
@@ -659,11 +677,101 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
 
   const OPP_RESOLVED_LABEL = { accepted: "Connected", expired: "Missed" };
 
-  function initialsFor(name) {
-    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "?";
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
+  // palette, so dashboard avatars match the Index web app exactly.
+  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+  function baHash(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = (hash << 5) - hash + name.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  }
+
+  function baDigit(num, ntn) {
+    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  }
+
+  function baBool(num, ntn) {
+    return !(baDigit(num, ntn) % 2);
+  }
+
+  function baUnit(num, range, index) {
+    const value = num % range;
+    if (index && baDigit(num, index) % 2 === 0) return -value;
+    return value;
+  }
+
+  function baColor(num) {
+    return BORING_PALETTE[num % BORING_PALETTE.length];
+  }
+
+  function BoringAvatar(props) {
+    const SIZE = 80;
+    const ELEMENTS = 4;
+    const seed = String(props.seed || "default");
+    const num = baHash(seed);
+    const props_ = [];
+    for (let t = 0; t < ELEMENTS; t++) {
+      props_.push({
+        color: baColor(num + t),
+        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+        rotate: baUnit(num * (t + 1), 360),
+        isSquare: baBool(num, 2),
+      });
+    }
+    const maskId = "ba-mask-" + num;
+    return React.createElement("svg", {
+      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
+      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
+    },
+      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
+        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+      ),
+      React.createElement("g", { mask: "url(#" + maskId + ")" },
+        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
+        React.createElement("rect", {
+          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
+          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
+          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+        React.createElement("circle", {
+          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
+          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+        }),
+        React.createElement("line", {
+          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
+          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+      ),
+    );
+  }
+
+  function UserAvatar(props) {
+    const seed = props.id || props.name || "default";
+    const size = props.size;
+    const className = (props.className || "index-dashboard__avatar")
+      + (props.ghost ? " index-dashboard__net-member-avatar--ghost" : "");
+    const style = size ? { width: size, height: size } : undefined;
+    const children = [React.createElement(BoringAvatar, { key: "fallback", seed: seed })];
+    if (props.avatar) {
+      children.push(React.createElement("img", {
+        key: "img",
+        className: "index-dashboard__avatar-img",
+        src: props.avatar,
+        alt: "",
+        loading: "lazy",
+        onError: function (e) { if (e && e.currentTarget) e.currentTarget.style.display = "none"; },
+      }));
+    }
+    return React.createElement("span", {
+      className: className,
+      style: style,
+      "aria-hidden": props.ariaHidden !== false ? "true" : undefined,
+    }, children);
   }
 
   function OpportunityCard(props) {
@@ -713,18 +821,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     return React.createElement("article", { className: "index-dashboard__opp" },
       React.createElement("div", { className: "index-dashboard__opp-head" },
         React.createElement("div", idProps,
-          React.createElement("span", { className: "index-dashboard__avatar", "aria-hidden": "true" },
-            initialsFor(opportunity.name),
-            opportunity.avatar
-              ? React.createElement("img", {
-                className: "index-dashboard__avatar-img",
-                src: opportunity.avatar,
-                alt: "",
-                loading: "lazy",
-                onError: function (e) { e.target.style.display = "none"; },
-              })
-              : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: opportunity.counterpartUserId,
+            name: opportunity.name,
+            avatar: opportunity.avatar,
+          }),
           React.createElement("div", { className: "index-dashboard__opp-meta" },
             React.createElement("strong", { className: "index-dashboard__opp-name" }, opportunity.name || "New match"),
             React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
@@ -833,75 +934,809 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     ]);
   }
 
-  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
-  // palette, so dashboard network avatars match the Index web app exactly.
-  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+  function ICON_LOCK() {
+    return svgIcon("index-dashboard__net-tab-icon", [
+      React.createElement("rect", { key: "a", x: 3, y: 11, width: 18, height: 11, rx: 2, ry: 2 }),
+      svgPath("M7 11V7a5 5 0 0 1 10 0v4"),
+    ]);
+  }
 
-  function baHash(name) {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = (hash << 5) - hash + name.charCodeAt(i);
-      hash = hash & hash;
+  function resolveShareBase(webUrl, apiUrl) {
+    if (webUrl) return String(webUrl).replace(/\/+$/, "");
+    // Derive from the API the summary reported — never invent production.
+    if (apiUrl) {
+      try {
+        const u = new URL(apiUrl);
+        let host = u.hostname;
+        if (host === "localhost" || host === "127.0.0.1") {
+          return u.protocol + "//" + host + ":3000";
+        }
+        if (host.indexOf("protocol.") === 0) host = host.slice("protocol.".length);
+        return "https://" + host;
+      } catch (e) { /* ignore */ }
     }
-    return Math.abs(hash);
+    return null;
   }
 
-  function baDigit(num, ntn) {
-    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  function networkShareUrl(network, webUrl, apiUrl) {
+    if (!network || network.isPersonal || network.hasMasterKey) return null;
+    if (network.role !== "owner") return null;
+    const base = resolveShareBase(webUrl, apiUrl);
+    if (!base) return null;
+    const code = network.invitationLink && network.invitationLink.code;
+    if (code) return base + "/l/" + encodeURIComponent(code);
+    return null;
   }
 
-  function baBool(num, ntn) {
-    return !(baDigit(num, ntn) % 2);
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        resolve();
+      } catch (e) { reject(e); }
+    });
   }
 
-  function baUnit(num, range, index) {
-    const value = num % range;
-    if (index && baDigit(num, index) % 2 === 0) return -value;
-    return value;
+  function ICON_COPY() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("rect", { key: "a", x: 9, y: 9, width: 13, height: 13, rx: 2, ry: 2 }),
+      svgPath("M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"),
+    ]);
   }
 
-  function baColor(num) {
-    return BORING_PALETTE[num % BORING_PALETTE.length];
+  function ICON_CHECK() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("polyline", { key: "a", points: "20 6 9 17 4 12" }),
+    ]);
   }
 
-  function BoringAvatar(props) {
-    const SIZE = 80;
-    const ELEMENTS = 4;
-    const seed = String(props.seed || "default");
-    const num = baHash(seed);
-    const props_ = [];
-    for (let t = 0; t < ELEMENTS; t++) {
-      props_.push({
-        color: baColor(num + t),
-        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
-        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
-        rotate: baUnit(num * (t + 1), 360),
-        isSquare: baBool(num, 2),
+  function ICON_REFRESH() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      svgPath("M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"),
+      svgPath("M21 3v5h-5"),
+      svgPath("M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"),
+      svgPath("M8 16H3v5"),
+    ]);
+  }
+
+  // Owner network detail — web overview / settings / access parity (no integrations).
+  function NetworkDetailModal(props) {
+    const network = props.network || {};
+    const isOwner = network.role === "owner";
+    const showOwnerTabs = isOwner && !network.isPersonal;
+    const meId = props.currentUserId || "";
+    const tabState = React.useState("overview");
+    const tab = tabState[0];
+    const setTab = tabState[1];
+    const localState = React.useState(network);
+    const local = localState[0];
+    const setLocal = localState[1];
+    React.useEffect(function () { setLocal(network); }, [network]);
+    const copiedState = React.useState(false);
+    const copied = copiedState[0];
+    const setCopied = copiedState[1];
+    const busyState = React.useState(false);
+    const busy = busyState[0];
+    const setBusy = busyState[1];
+    const errState = React.useState(null);
+    const err = errState[0];
+    const setErr = errState[1];
+    const signalsState = React.useState([]);
+    const signals = signalsState[0];
+    const setSignals = signalsState[1];
+    const signalsLoadingState = React.useState(false);
+    const signalsLoading = signalsLoadingState[0];
+    const setSignalsLoading = signalsLoadingState[1];
+    const membersState = React.useState([]);
+    const members = membersState[0];
+    const setMembers = membersState[1];
+    const membersLoadingState = React.useState(false);
+    const membersLoading = membersLoadingState[0];
+    const setMembersLoading = membersLoadingState[1];
+    const queryState = React.useState("");
+    const query = queryState[0];
+    const setQuery = queryState[1];
+    const suggestionsState = React.useState([]);
+    const suggestions = suggestionsState[0];
+    const setSuggestions = suggestionsState[1];
+    const showSugState = React.useState(false);
+    const showSug = showSugState[0];
+    const setShowSug = showSugState[1];
+    const pageState = React.useState(1);
+    const page = pageState[0];
+    const setPage = pageState[1];
+    const titleState = React.useState(network.title || "");
+    const title = titleState[0];
+    const setTitle = titleState[1];
+    const promptState = React.useState(network.detail || "");
+    const prompt = promptState[0];
+    const setPrompt = promptState[1];
+    const imageState = React.useState(network.imageUrl || null);
+    const imagePreview = imageState[0];
+    const setImagePreview = imageState[1];
+    const imageDataState = React.useState(null);
+    const imageData = imageDataState[0];
+    const setImageData = imageDataState[1];
+    const removeImageState = React.useState(false);
+    const removeImage = removeImageState[0];
+    const setRemoveImage = removeImageState[1];
+    const deleteTextState = React.useState("");
+    const deleteText = deleteTextState[0];
+    const setDeleteText = deleteTextState[1];
+    const showDeleteState = React.useState(false);
+    const showDelete = showDeleteState[0];
+    const setShowDelete = showDeleteState[1];
+    const showRegenerateConfirmState = React.useState(false);
+    const showRegenerateConfirm = showRegenerateConfirmState[0];
+    const setShowRegenerateConfirm = showRegenerateConfirmState[1];
+    const PAGE_SIZE = 10;
+    const shareUrl = networkShareUrl(local, props.webUrl, props.apiUrl);
+    const count = typeof local.memberCount === "number" ? local.memberCount : members.length || null;
+    const isPublic = local.joinPolicy === "anyone";
+    const label = "Invitation link";
+    const settingsDirty = title !== (local.title || "")
+      || prompt !== (local.detail || "")
+      || !!imageData
+      || removeImage;
+
+    React.useEffect(function () {
+      setTitle(network.title || "");
+      setPrompt(network.detail || "");
+      setImagePreview(network.imageUrl || null);
+      setImageData(null);
+      setRemoveImage(false);
+    }, [network.id, network.title, network.detail, network.imageUrl]);
+
+    React.useEffect(function () {
+      if (!local.id) return;
+      let cancelled = false;
+      setSignalsLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/overview")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load signals.");
+          setSignals(Array.isArray(payload.intents) ? payload.intents : []);
+        })
+        .catch(function () { if (!cancelled) setSignals([]); })
+        .finally(function () { if (!cancelled) setSignalsLoading(false); });
+      return function () { cancelled = true; };
+    }, [local.id]);
+
+    React.useEffect(function () {
+      if (!showOwnerTabs || !local.id || tab !== "access") return;
+      let cancelled = false;
+      setMembersLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load members.");
+          setMembers(Array.isArray(payload.members) ? payload.members : []);
+        })
+        .catch(function () { if (!cancelled) setMembers([]); })
+        .finally(function () { if (!cancelled) setMembersLoading(false); });
+      return function () { cancelled = true; };
+    }, [showOwnerTabs, local.id, tab]);
+
+    React.useEffect(function () {
+      if (!query.trim()) { setSuggestions([]); return; }
+      const handle = setTimeout(function () {
+        fetchPluginJSON(API + "/networks/search-users?q=" + encodeURIComponent(query.trim()) + "&networkId=" + encodeURIComponent(local.id || ""))
+          .then(function (payload) {
+            const users = (payload && Array.isArray(payload.users)) ? payload.users : [];
+            const ids = {};
+            members.forEach(function (m) { if (m && m.id) ids[m.id] = true; });
+            setSuggestions(users.filter(function (u) { return u && u.id && !ids[u.id]; }));
+            setShowSug(true);
+          })
+          .catch(function () { setSuggestions([]); });
+      }, 220);
+      return function () { clearTimeout(handle); };
+    }, [query, local.id, members]);
+
+    function patchLocal(patch) {
+      const merged = Object.assign({}, local, patch);
+      setLocal(merged);
+      if (props.onUpdated) props.onUpdated(merged);
+    }
+
+    function onCopy() {
+      if (!shareUrl) return;
+      copyText(shareUrl).then(function () {
+        setCopied(true);
+        setTimeout(function () { setCopied(false); }, 2000);
+      }).catch(function () { /* leave idle */ });
+    }
+
+    function regenerateLink() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/regenerate-invitation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not regenerate invitation link.");
+          }
+          patchLocal({
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+          setShowRegenerateConfirm(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function setJoinPolicy(anyone) {
+      if (!local.id || busy) return;
+      const next = anyone ? "anyone" : "invite_only";
+      if (local.joinPolicy === next) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/permissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ joinPolicy: next }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update visibility.");
+          }
+          patchLocal({
+            joinPolicy: payload.joinPolicy || next,
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function onPickImage(event) {
+      const file = event.target && event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function () {
+        setImageData(String(reader.result || ""));
+        setImagePreview(String(reader.result || ""));
+        setRemoveImage(false);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function saveSettings() {
+      if (!local.id || busy || !title.trim()) return;
+      setBusy(true);
+      setErr(null);
+      const finish = function (imageUrl) {
+        const body = { title: title.trim(), prompt: prompt.trim() || null };
+        if (imageUrl !== undefined) body.imageUrl = imageUrl;
+        return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not save settings.");
+          }
+          const patch = {
+            title: payload.title || title.trim(),
+            detail: payload.detail != null ? payload.detail : (prompt.trim() || ""),
+          };
+          if (payload.imageUrl !== undefined) patch.imageUrl = payload.imageUrl;
+          else if (removeImage) patch.imageUrl = null;
+          patchLocal(patch);
+          setImageData(null);
+          setRemoveImage(false);
+        });
+      };
+      const upload = imageData
+        ? fetchPluginJSON(API + "/network-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataUrl: imageData }),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Image upload failed.");
+          }
+          return payload.imageUrl;
+        })
+        : Promise.resolve(removeImage ? null : undefined);
+      upload.then(finish)
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function deleteNetwork() {
+      if (!local.id || busy || deleteText !== local.title) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not delete network.");
+          }
+          if (props.onDeleted) props.onDeleted(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); setBusy(false); });
+    }
+
+    function leaveNetwork() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/leave", { method: "POST" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not leave network.");
+          }
+          if (props.onLeft) props.onLeft(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function addMember(user) {
+      if (!local.id || busy || !user || !user.id) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, permissions: ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not add member.");
+          }
+          if (payload.member) setMembers(function (prev) { return prev.concat([payload.member]); });
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function inviteEmail(email) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not invite.");
+          }
+          return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members");
+        })
+        .then(function (payload) {
+          setMembers((payload && Array.isArray(payload.members)) ? payload.members : []);
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function removeMember(id) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not remove member.");
+          }
+          setMembers(function (prev) { return prev.filter(function (m) { return m.id !== id; }); });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function setMemberRole(id, role) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: role === "owner" ? ["owner"] : ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update role.");
+          }
+          const updated = payload.member;
+          if (updated) {
+            setMembers(function (prev) {
+              return prev.map(function (m) {
+                return m.id === id ? Object.assign({}, m, { permissions: updated.permissions || m.permissions }) : m;
+              });
+            });
+          }
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function tabButton(id, labelText) {
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__profile-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
+        onClick: function () { setTab(id); },
+      }, labelText);
+    }
+
+    function memberAvatar(member, size) {
+      const sz = size || 28;
+      const avatar = member.avatar;
+      const looksAbsolute = avatar && /^(https?:|data:)/i.test(String(avatar));
+      return React.createElement(UserAvatar, {
+        id: member.id,
+        name: member.name,
+        avatar: looksAbsolute ? avatar : null,
+        size: sz,
+        ghost: !!member.isGhost,
+        className: "index-dashboard__net-member-avatar"
+          + (looksAbsolute ? "" : " index-dashboard__net-member-avatar--fallback"),
       });
     }
-    const maskId = "ba-mask-" + num;
-    return React.createElement("svg", {
-      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
-      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
-    },
-      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
-        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+
+    const head = React.createElement("div", { className: "index-dashboard__net-detail-head" },
+      React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-avatar--lg", "aria-hidden": "true" },
+        local.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: local.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: local.id || local.title }),
       ),
-      React.createElement("g", { mask: "url(#" + maskId + ")" },
-        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
-        React.createElement("rect", {
-          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
-          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
-          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+      React.createElement("div", { className: "index-dashboard__net-detail-head-text" },
+        React.createElement("h3", { className: "index-dashboard__net-detail-title" }, local.title || "Untitled network"),
+        React.createElement("div", { className: "index-dashboard__net-detail-bits" },
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            isPublic ? ICON_GLOBE() : ICON_LOCK(),
+            isPublic ? "Public" : "Private",
+          ),
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            ICON_USERS(),
+            (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
+          ),
+          isOwner
+            ? React.createElement("span", { className: "index-dashboard__net-detail-owner" }, "Owner")
+            : null,
+        ),
+      ),
+      !isOwner
+        ? React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-leave-btn",
+          disabled: busy,
+          onClick: leaveNetwork,
+        }, "Leave")
+        : null,
+    );
+
+    const totalPages = Math.max(1, Math.ceil(members.length / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const pageMembers = members.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const noResults = showSug && query.trim() && suggestions.length === 0;
+
+    const accessBody = React.createElement("div", { className: "index-dashboard__net-access-panel" },
+      !local.hasMasterKey
+        ? React.createElement("div", null,
+          React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Visibility"),
+          React.createElement("div", { className: "index-dashboard__net-visibility" },
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(true); },
+            }, ICON_GLOBE(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Public"),
+              React.createElement("span", null, "Anyone can join"),
+            )),
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (!isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(false); },
+            }, ICON_LOCK(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Private"),
+              React.createElement("span", null, "Invite only"),
+            )),
+          ),
+        )
+        : null,
+      !local.hasMasterKey
+        ? (shareUrl
+          ? React.createElement("div", { className: "index-dashboard__net-invite" },
+            React.createElement("p", { className: "index-dashboard__net-invite-label" }, label),
+            React.createElement("div", { className: "index-dashboard__net-invite-row" },
+              React.createElement("code", { className: "index-dashboard__net-invite-url" }, shareUrl),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__net-invite-copy" + (showRegenerateConfirm ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": "Regenerate invitation link",
+                title: "Regenerate invitation link",
+                disabled: busy,
+                onClick: function () { setShowRegenerateConfirm(!showRegenerateConfirm); },
+              }, ICON_REFRESH()),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__net-invite-copy" + (copied ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": copied ? "Copied" : "Copy link",
+                title: copied ? "Copied" : "Copy link",
+                onClick: onCopy,
+              }, copied ? ICON_CHECK() : ICON_COPY()),
+            ),
+            showRegenerateConfirm
+              ? React.createElement("div", { className: "index-dashboard__net-regenerate" },
+                React.createElement("p", null, "The current link stops working immediately. Regenerate?"),
+                React.createElement("div", { className: "index-dashboard__net-regenerate-actions" },
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: function () { setShowRegenerateConfirm(false); },
+                  }, "Cancel"),
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: regenerateLink,
+                  }, busy ? "Regenerating…" : "Regenerate"),
+                ),
+              )
+              : null,
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet."))
+        : null,
+      React.createElement("div", { className: "index-dashboard__net-members" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" },
+          "Members (", String(members.length), ")"),
+        React.createElement("div", { className: "index-dashboard__net-member-search" },
+          React.createElement("input", {
+            className: "index-dashboard__net-member-input",
+            value: query,
+            placeholder: "Search by name or add by email…",
+            onChange: function (e) { setQuery(e.target.value); setShowSug(true); },
+            onFocus: function () { setShowSug(true); },
+          }),
+          showSug && query.trim() && suggestions.length > 0
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              suggestions.map(function (u) {
+                return React.createElement("button", {
+                  key: u.id,
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  onClick: function () { addMember(u); },
+                }, memberAvatar(u, 24), React.createElement("span", null, u.name || u.email || "User"), React.createElement("em", null, "Add"));
+              }),
+            )
+            : null,
+          noResults
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              query.indexOf("@") >= 0
+                ? React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  disabled: busy,
+                  onClick: function () { inviteEmail(query.trim()); },
+                }, "Invite \"" + query.trim() + "\"")
+                : React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "No results found"),
+            )
+            : null,
+        ),
+        membersLoading
+          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading members…")
+          : React.createElement("div", { className: "index-dashboard__net-member-list" },
+            pageMembers.map(function (m) {
+              const perms = Array.isArray(m.permissions) ? m.permissions : [];
+              const owner = perms.indexOf("owner") >= 0;
+              const isSelf = meId && m.id === meId;
+              return React.createElement("div", { key: m.id, className: "index-dashboard__net-member-row" },
+                React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-main",
+                  onClick: function () { if (props.onOpenUser) props.onOpenUser(m.id); },
+                },
+                  memberAvatar(m),
+                  React.createElement("span", { className: "index-dashboard__net-member-name" },
+                    m.name || "Unknown",
+                    m.isGhost ? React.createElement("em", { className: "index-dashboard__net-member-ghost" }, "ghost") : null,
+                  ),
+                ),
+                React.createElement("span", {
+                  className: "index-dashboard__net-member-role" + (owner ? " index-dashboard__net-member-role--owner" : ""),
+                }, owner ? "Owner" : (perms.indexOf("member") >= 0 ? "Member" : "Contact")),
+                !owner && perms.indexOf("member") >= 0 && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Promote to owner", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "owner"); },
+                  }, "↑")
+                  : null,
+                owner && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Demote to member", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "member"); },
+                  }, "↓")
+                  : null,
+                !owner
+                  ? React.createElement("button", {
+                    type: "button", title: "Remove member", disabled: busy,
+                    className: "index-dashboard__net-member-act index-dashboard__net-member-act--danger",
+                    onClick: function () { removeMember(m.id); },
+                  }, "×")
+                  : null,
+              );
+            }),
+          ),
+        totalPages > 1
+          ? React.createElement("div", { className: "index-dashboard__net-member-pager" },
+            React.createElement("span", null,
+              String((safePage - 1) * PAGE_SIZE + 1) + "–" + String(Math.min(safePage * PAGE_SIZE, members.length)) + " of " + String(members.length)),
+            React.createElement("span", null,
+              React.createElement("button", { type: "button", disabled: safePage <= 1, onClick: function () { setPage(safePage - 1); } }, "prev"),
+              React.createElement("button", { type: "button", disabled: safePage >= totalPages, onClick: function () { setPage(safePage + 1); } }, "next"),
+            ),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const settingsBody = React.createElement("div", { className: "index-dashboard__net-settings-panel" },
+      React.createElement("div", { className: "index-dashboard__net-settings-photo" },
+        React.createElement("label", { className: "index-dashboard__net-settings-photo-btn" },
+          (imagePreview && !removeImage)
+            ? React.createElement("img", { src: imagePreview, alt: "", className: "index-dashboard__net-settings-photo-img" })
+            : React.createElement(BoringAvatar, { seed: local.id || title }),
+          React.createElement("input", { type: "file", accept: "image/*", onChange: onPickImage, hidden: true }),
+        ),
+        imagePreview && !removeImage
+          ? React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__net-settings-remove",
+            onClick: function () { setRemoveImage(true); setImageData(null); },
+          }, "Remove image")
+          : null,
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Title"),
+        React.createElement("input", {
+          value: title,
+          onChange: function (e) { setTitle(e.target.value); },
         }),
-        React.createElement("circle", {
-          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
-          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Prompt"),
+        React.createElement("textarea", {
+          rows: 4,
+          value: prompt,
+          onChange: function (e) { setPrompt(e.target.value); },
+          placeholder: "What people can share in this network…",
         }),
-        React.createElement("line", {
-          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
-          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
-        }),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-settings-actions" },
+        React.createElement("button", {
+          type: "button",
+          disabled: !settingsDirty || busy,
+          onClick: function () {
+            setTitle(local.title || "");
+            setPrompt(local.detail || "");
+            setImagePreview(local.imageUrl || null);
+            setImageData(null);
+            setRemoveImage(false);
+          },
+        }, "Cancel"),
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-settings-save",
+          disabled: !settingsDirty || !title.trim() || busy,
+          onClick: saveSettings,
+        }, busy ? "Saving…" : "Save"),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-danger" },
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-danger-toggle",
+          "aria-expanded": showDelete,
+          onClick: function () { setShowDelete(!showDelete); },
+        },
+          React.createElement("span", {
+            className: "index-dashboard__net-danger-chevron",
+            "aria-hidden": "true",
+          }, showDelete ? "▲" : "▼"),
+          "Danger Zone"),
+        showDelete
+          ? React.createElement("div", { className: "index-dashboard__net-danger-box" },
+            React.createElement("p", null, "Delete this network. Type the name to confirm."),
+            React.createElement("input", {
+              value: deleteText,
+              placeholder: local.title || "",
+              onChange: function (e) { setDeleteText(e.target.value); },
+            }),
+            React.createElement("button", {
+              type: "button",
+              disabled: deleteText !== local.title || busy,
+              onClick: deleteNetwork,
+            }, "Delete"),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const overviewBody = React.createElement("div", { className: "index-dashboard__net-overview" },
+      React.createElement("div", { className: "index-dashboard__net-overview-head" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Your Signals"),
+        React.createElement("span", { className: "index-dashboard__net-overview-count" },
+          signalsLoading ? "…" : (String(signals.length) + (signals.length === 1 ? " signal" : " signals"))),
+      ),
+      signalsLoading
+        ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading signals…")
+        : (signals.length
+          ? React.createElement("div", { className: "index-dashboard__net-signal-list" },
+            signals.map(function (sig) {
+              const text = (sig.summary && String(sig.summary).trim()) || sig.payload || "Untitled signal";
+              return React.createElement("button", {
+                key: sig.id,
+                type: "button",
+                className: "index-dashboard__net-signal-row",
+                onClick: function () {
+                  if (props.onSelectIntent) props.onSelectIntent(sig.id);
+                  if (props.onClose) props.onClose();
+                },
+              }, React.createElement("span", null, text));
+            }),
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" },
+            "You haven't shared any signals in this network yet")),
+    );
+
+    const body = (showOwnerTabs && tab === "access")
+      ? accessBody
+      : (showOwnerTabs && tab === "settings")
+        ? settingsBody
+        : overviewBody;
+
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", {
+        className: "index-dashboard__profile-panel index-dashboard__net-detail-modal",
+        onClick: function (e) { e.stopPropagation(); },
+      },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Network"),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        React.createElement("div", { className: "index-dashboard__net-detail-body" },
+          head,
+          showOwnerTabs
+            ? React.createElement("div", { className: "index-dashboard__profile-tabs" },
+              tabButton("overview", "overview"),
+              tabButton("settings", "settings"),
+              tabButton("access", "access"),
+            )
+            : null,
+          body,
+        ),
       ),
     );
   }
@@ -910,7 +1745,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
     const isOwner = network.role === "owner";
-    return React.createElement("div", { className: "index-dashboard__net-row" },
+    return React.createElement("button", {
+      type: "button",
+      className: "index-dashboard__net-row index-dashboard__net-row--button",
+      onClick: props.onOpen ? function () { props.onOpen(network); } : undefined,
+    },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -965,7 +1804,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       items.map(function (network, index) {
         return props.discover
           ? React.createElement(NetworkDiscoverRow, { key: network.id || String(index), network: network, onJoin: props.onJoin, joiningId: props.joiningId })
-          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
       }),
     );
   }
@@ -988,7 +1827,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const needsChanges = req.status === "needs_changes";
     return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-request-row" },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        React.createElement(BoringAvatar, { seed: req.id || req.title }),
+        req.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: req.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: req.id || req.title }),
       ),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, req.title || "Untitled network"),
@@ -1006,21 +1847,24 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
-  // Early-access "request a network" form body (no chrome of its own — it lives
-  // inside the Manage modal's Request tab). Submits to /network-requests
-  // (reviewed) rather than creating a live network, and ends on a confirmation.
-  // `initial` (a needs-changes request) switches it into resubmit mode.
+  // Early-access "request a network" form. Same fields as Mac create-network
+  // (picture, name, description, access) plus expected size. Submits to
+  // /network-requests. `initial` (needs_changes) switches into resubmit mode.
   function RequestNetworkForm(props) {
     const useState = React.useState;
+    const useRef = React.useRef;
     const initial = props.initial || null;
     const nameState = useState(initial ? (initial.title || "") : "");
     const name = nameState[0]; const setName = nameState[1];
-    const purposeState = useState(initial ? (initial.purpose || "") : "");
-    const purpose = purposeState[0]; const setPurpose = purposeState[1];
+    const descState = useState(initial ? (initial.purpose || "") : "");
+    const desc = descState[0]; const setDesc = descState[1];
+    const photoState = useState(initial && initial.imageUrl ? initial.imageUrl : null);
+    const photo = photoState[0]; const setPhoto = photoState[1];
+    const photoFileRef = useRef(null);
+    const accessState = useState(initial && initial.joinPolicy === "anyone" ? "public" : "private");
+    const access = accessState[0]; const setAccess = accessState[1];
     const sizeState = useState(initial ? (initial.expectedSize || "") : "");
     const size = sizeState[0]; const setSize = sizeState[1];
-    const notesState = useState(initial ? (initial.notes || "") : "");
-    const notes = notesState[0]; const setNotes = notesState[1];
     const sendingState = useState(false);
     const sending = sendingState[0]; const setSending = sendingState[1];
     const errState = useState(null);
@@ -1032,16 +1876,54 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const canSend = trimmed.length > 0 && !sending;
     const isEdit = !!initial;
 
+    function onPhotoFile(e) {
+      const file = e.target && e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!String(file.type || "").startsWith("image/")) {
+        setErr("That isn’t an image.");
+        return;
+      }
+      if (file.size > 4 * 1024 * 1024) {
+        setErr("That image is over 4mb. Pick a smaller one.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        setPhoto(ev.target ? ev.target.result : null);
+        setErr(null);
+      };
+      reader.onerror = function () { setErr("Couldn’t read that file."); };
+      reader.readAsDataURL(file);
+    }
+
     function submit() {
       if (!canSend) return;
       setSending(true);
       setErr(null);
-      Promise.resolve(props.onSubmit({
-        name: trimmed,
-        purpose: (purpose || "").trim() || undefined,
-        expectedSize: size || undefined,
-        notes: (notes || "").trim() || undefined,
-      }))
+
+      const uploadStep = photo && String(photo).indexOf("data:") === 0
+        ? fetchPluginJSON(API + "/network-images", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataUrl: photo }),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Network picture could not be uploaded.");
+            }
+            return payload.imageUrl || undefined;
+          })
+        : Promise.resolve(undefined);
+
+      uploadStep
+        .then(function (imageUrl) {
+          return props.onSubmit({
+            name: trimmed,
+            purpose: (desc || "").trim() || undefined,
+            expectedSize: size || undefined,
+            joinPolicy: access === "public" ? "anyone" : "invite_only",
+            ...(imageUrl ? { imageUrl: imageUrl } : {}),
+          });
+        })
         .then(function (req) { setDone(req || { title: trimmed }); })
         .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
         .finally(function () { setSending(false); });
@@ -1058,14 +1940,49 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       );
     }
 
+    function accessCard(id, title, sub) {
+      const on = access === id;
+      return React.createElement("button", {
+        key: id, type: "button",
+        className: "index-dashboard__net-size index-dashboard__net-access" + (on ? " index-dashboard__net-size--on" : ""),
+        onClick: function () { setAccess(id); },
+      },
+        React.createElement("strong", null, title),
+        React.createElement("span", null, sub),
+      );
+    }
+
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       React.createElement("p", { className: "index-dashboard__net-request-intro" },
-        "Network creation is still early. Tell us what you’re hoping to build and we’ll get back to you."),
-      React.createElement(ProfileField, { label: "Network name" },
-        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "e.g. Edge City", onChange: function (e) { setName(e.target.value); } }),
+        "Network creation is still early. Fill this in and we’ll review it before it goes live."),
+      React.createElement("div", { className: "index-dashboard__net-request-identity" },
+        React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
+          React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-request-photo-mark", "aria-hidden": "true" },
+            photo
+              ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: photo, alt: "" })
+              : React.createElement(BoringAvatar, { seed: trimmed || "network" }),
+          ),
+          React.createElement("input", {
+            ref: photoFileRef,
+            type: "file",
+            accept: "image/*",
+            className: "index-dashboard__profile-avatar-input",
+            onChange: onPhotoFile,
+          }),
+        ),
+        React.createElement("span", { className: "index-dashboard__net-request-photo-hint" }, "Picture optional"),
       ),
-      React.createElement(ProfileField, { label: "What are you hoping to build?" },
-        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: purpose, placeholder: "Who is it for, who do you expect to join, and what should people or agents be able to discover through it?", onChange: function (e) { setPurpose(e.target.value); } }),
+      React.createElement(ProfileField, { label: "Name" },
+        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "Network name", onChange: function (e) { setName(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "Description", hint: "Optional" },
+        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: desc, placeholder: "What people can share in this network…", onChange: function (e) { setDesc(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "Access" },
+        React.createElement("div", { className: "index-dashboard__net-size-grid" },
+          accessCard("public", "Public", "Anyone can discover and join"),
+          accessCard("private", "Private", "Only people with an invitation link"),
+        ),
       ),
       React.createElement(ProfileField, { label: "How many people are you hoping to bring together?" },
         React.createElement("div", { className: "index-dashboard__net-size-grid" },
@@ -1079,13 +1996,10 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           }),
         ),
       ),
-      React.createElement(ProfileField, { label: "Anything else we should know?", hint: "Optional" },
-        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 2, value: notes, placeholder: "Links, timing, context, or what you’d like to experiment with.", onChange: function (e) { setNotes(e.target.value); } }),
-      ),
       err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
       React.createElement("div", { className: "index-dashboard__net-request-actions" },
         React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
-        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Create network")),
+        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Request network")),
       ),
     );
   }
@@ -1108,7 +2022,8 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   }
 
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
-  // on the right. Create opens the (reviewed) request form as a modal.
+  // on the right. Create opens the (reviewed) request form as a modal. Owner
+  // rows open a detail modal with Access-tab invite links (web parity).
   function NetworksMini(props) {
     const networks = props.networks || { items: [], count: 0, discover: [] };
     const items = Array.isArray(networks.items) ? networks.items : [];
@@ -1117,12 +2032,23 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const tabState = React.useState("mine");
     const tab = tabState[0];
     const setTab = tabState[1];
+    const openState = React.useState(null);
+    const openNet = openState[0];
+    const setOpenNet = openState[1];
     function tabButton(id, label, icon) {
       return React.createElement("button", {
         type: "button",
         className: "index-dashboard__profile-tab index-dashboard__net-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
         onClick: function () { setTab(id); },
       }, icon || null, React.createElement("span", null, label));
+    }
+    function onUpdated(merged) {
+      setOpenNet(merged);
+      if (props.onNetworkUpdated) props.onNetworkUpdated(merged);
+    }
+    function onRemoved(net) {
+      setOpenNet(null);
+      if (props.onNetworkRemoved) props.onNetworkRemoved(net);
     }
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
@@ -1150,10 +2076,28 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
               ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
               : React.createElement("div", { className: "index-dashboard__net-list" },
                 items.map(function (network, index) {
-                  return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+                  return React.createElement(NetworkMiniRow, {
+                    key: network.id || String(index),
+                    network: network,
+                    onOpen: setOpenNet,
+                  });
                 }),
               ),
         ),
+      openNet
+        ? React.createElement(NetworkDetailModal, {
+          network: openNet,
+          webUrl: props.webUrl,
+          apiUrl: props.apiUrl,
+          currentUserId: props.currentUserId,
+          onClose: function () { setOpenNet(null); },
+          onUpdated: onUpdated,
+          onDeleted: onRemoved,
+          onLeft: onRemoved,
+          onOpenUser: props.onOpenUser,
+          onSelectIntent: props.onSelectIntent,
+        })
+        : null,
     );
   }
 
@@ -1297,9 +2241,141 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
+  function SettingUpScreen() {
+    // Indeterminate bar + staggered status lines while enrichment runs.
+    // No brand mark, loading gif, or live-dot — keep the Hermes card quiet.
+    const lines = [
+      "Getting a sense of you…",
+      "Working out what you're into…",
+      "Almost there.",
+    ];
+    return React.createElement("div", { className: "index-dashboard__setting-up" },
+      React.createElement("div", { className: "index-dashboard__setting-up-card" },
+        React.createElement("div", { className: "index-dashboard__setting-up-bar", "aria-hidden": "true" },
+          React.createElement("div", { className: "index-dashboard__setting-up-bar-fill" }),
+        ),
+        React.createElement("div", { className: "index-dashboard__setting-up-lines" },
+          lines.map(function (line, i) {
+            return React.createElement("p", {
+              key: line,
+              className: "index-dashboard__setting-up-line" + (i === lines.length - 1 ? " index-dashboard__setting-up-line--final" : ""),
+              style: { animationDelay: (i * 350) + "ms" },
+            },
+              React.createElement("span", { className: "index-dashboard__setting-up-caret" }, "›"),
+              line,
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  // Mac/CLI-parity browser sign-in gate. "Log in with browser" runs the same
+  // /cli-auth handshake (loopback callback) the Index Mac app and CLI use; the
+  // backend mints + persists the key, so we only poll status here.
+  function LoginScreen(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+    const waitingState = useState(false);
+    const waiting = waitingState[0];
+    const setWaiting = waitingState[1];
+    const errorState = useState(null);
+    const loginError = errorState[0];
+    const setLoginError = errorState[1];
+    const linkState = useState(null);
+    const manualLink = linkState[0];
+    const setManualLink = linkState[1];
+    const pollRef = useRef(null);
+
+    function stopPolling() {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+
+    useEffect(function () { return stopPolling; }, []);
+
+    function poll() {
+      fetchPluginJSON(API + "/auth/login/status")
+        .then(function (payload) {
+          const status = payload && payload.status;
+          if (status === "success") {
+            stopPolling();
+            setWaiting(false);
+            if (props.onAuthed) props.onAuthed();
+          } else if (status === "failed") {
+            stopPolling();
+            setWaiting(false);
+            setLoginError((payload && payload.error) || "Login failed. Please try again.");
+          } else if (status === "idle") {
+            stopPolling();
+            setWaiting(false);
+          }
+        })
+        .catch(function () { /* keep polling; transient host hiccup */ });
+    }
+
+    function start() {
+      setLoginError(null);
+      setManualLink(null);
+      setWaiting(true);
+      fetchPluginJSON(API + "/auth/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not start login.");
+          }
+          // Headless/remote agent host: no browser to open, so surface the link.
+          if (!payload.opened && payload.authUrl) setManualLink(payload.authUrl);
+          stopPolling();
+          pollRef.current = setInterval(poll, 1500);
+        })
+        .catch(function (err) {
+          setWaiting(false);
+          setLoginError(err && err.message ? err.message : String(err));
+        });
+    }
+
+    return React.createElement("div", { className: "index-dashboard__login" },
+      React.createElement("div", { className: "index-dashboard__login-card" },
+        React.createElement("h1", {
+          className: "index-dashboard__login-brand",
+          dangerouslySetInnerHTML: { __html: INDEX_WORDMARK_SVG },
+        }),
+        React.createElement("p", { className: "index-dashboard__login-copy" },
+          "index finds the right people for you, before you even think to look."),
+        React.createElement(Button, {
+          type: "button",
+          className: "index-dashboard__login-btn",
+          disabled: waiting,
+          onClick: start,
+        }, waiting ? "waiting for browser…" : "log in with browser"),
+        manualLink
+          ? React.createElement("p", { className: "index-dashboard__login-manual" },
+            "No browser opened here — ",
+            React.createElement("a", { href: manualLink, target: "_blank", rel: "noopener noreferrer" }, "open this link to continue"),
+            ".")
+          : null,
+        loginError
+          ? React.createElement("p", { className: "index-dashboard__login-error" }, loginError)
+          : null,
+        React.createElement("p", { className: "index-dashboard__login-foot" },
+          "index only acts on what you tell it. you can stop any signal at any time."),
+      ),
+    );
+  }
+
+  function usableEnriched(res) {
+    const p = res && res.profile;
+    return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
+  }
+
   function ProfilePanel(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
+    const useRef = React.useRef;
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -1321,43 +2397,91 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const noteState = useState(null);
     const note = noteState[0];
     const setNote = noteState[1];
-    const generatingState = useState(false);
-    const generating = generatingState[0];
-    const setGenerating = generatingState[1];
     const avatarPreviewState = useState(null);
     const avatarPreview = avatarPreviewState[0];
     const setAvatarPreview = avatarPreviewState[1];
+    const draftingState = useState(!!props.gettingStarted);
+    const drafting = draftingState[0];
+    const setDrafting = draftingState[1];
+    const assembledRef = useRef(null);
 
     const readOnly = !!props.readOnly;
+    const gettingStarted = !!props.gettingStarted;
+
+    function applyProfile(p) {
+      const next = {
+        id: p.id || "",
+        name: p.name || "",
+        intro: p.intro || "",
+        location: p.location || "",
+        email: p.email || "",
+        avatar: p.avatar || "",
+        context: p.context || "",
+        timezone: p.timezone || defaultTimezone(),
+        socials: Array.isArray(p.socials) ? p.socials.slice() : [],
+        notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
+      };
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
+
+    function adoptEnrichment(enriched, base) {
+      const p = (enriched && enriched.profile) || {};
+      const next = Object.assign({}, base || assembledRef.current || {}, {
+        name: (base && base.name) || p.name || "",
+        intro: (base && base.intro) || p.intro || "",
+        location: (base && base.location) || p.location || "",
+        avatar: (base && base.avatar) || p.avatar || "",
+        socials: (p.socials && p.socials.length)
+          ? p.socials.slice()
+          : ((base && base.socials) || []),
+        context: (base && base.context) || p.intro || "",
+      });
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
 
     function load() {
       setLoading(true);
       setPanelError(null);
-      fetchPluginJSON(props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile")
+      const profileUrl = props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile";
+      fetchPluginJSON(profileUrl)
         .then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Profile could not be loaded.");
           }
-          const p = payload.profile || {};
-          setForm({
-            id: p.id || "",
-            name: p.name || "",
-            intro: p.intro || "",
-            location: p.location || "",
-            email: p.email || "",
-            avatar: p.avatar || "",
-            context: p.context || "",
-            timezone: p.timezone || defaultTimezone(),
-            socials: Array.isArray(p.socials) ? p.socials.slice() : [],
-            notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
-          });
-          setDirty(false);
+          applyProfile(payload.profile || {});
+          if (!gettingStarted) return null;
+          setDrafting(true);
+          return fetchPluginJSON(API + "/onboarding/enrich", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }).then(function (enriched) {
+            if (enriched && enriched.success !== false && usableEnriched(enriched)) {
+              adoptEnrichment(enriched, {
+                name: assembledRef.current.name,
+                intro: assembledRef.current.intro,
+                location: assembledRef.current.location,
+                avatar: assembledRef.current.avatar,
+                context: assembledRef.current.context,
+                socials: assembledRef.current.socials,
+                email: assembledRef.current.email,
+                id: assembledRef.current.id,
+                timezone: assembledRef.current.timezone,
+                notificationPreferences: assembledRef.current.notificationPreferences,
+              });
+            }
+          }).catch(function () { /* keep the baseline profile */ });
         })
         .catch(function (err) {
           setPanelError(err && err.message ? err.message : String(err));
         })
         .finally(function () {
           setLoading(false);
+          setDrafting(false);
         });
     }
 
@@ -1453,8 +2577,28 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           timezone: form.timezone,
           socials: (form.socials || []).filter(function (s) { return s.value && s.value.trim(); }),
           notificationPreferences: form.notificationPreferences,
+          context: form.context || "",
         };
         if (avatarUrl) body.avatar = avatarUrl;
+        if (gettingStarted) {
+          body.draft = {
+            identity: { name: (form.name || "").trim(), bio: (form.intro || "").trim(), location: (form.location || "").trim() },
+            narrative: { context: (form.context || form.intro || "").trim() },
+            attributes: { skills: [], interests: [] },
+          };
+          return fetchPluginJSON(API + "/onboarding/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Profile could not be confirmed.");
+            }
+            setDirty(false);
+            setNote("Confirmed.");
+            if (typeof props.onConfirmed === "function") props.onConfirmed();
+          });
+        }
         return fetchPluginJSON(API + "/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -1495,32 +2639,12 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         });
     }
 
-    function generate() {
-      setGenerating(true);
+    function resetAssembled() {
+      if (!assembledRef.current) return;
+      setForm(Object.assign({}, assembledRef.current));
+      setAvatarPreview(null);
+      setDirty(false);
       setNote(null);
-      setPanelError(null);
-      fetchPluginJSON(API + "/profile/intro", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Intro could not be generated.");
-          }
-          if (typeof payload.intro === "string" && payload.intro) {
-            patchForm({ intro: payload.intro });
-            setNote("Intro regenerated from your Index profile.");
-          } else {
-            setNote("No intro was generated — add more about yourself first.");
-          }
-        })
-        .catch(function (err) {
-          setPanelError(err && err.message ? err.message : String(err));
-        })
-        .finally(function () {
-          setGenerating(false);
-        });
     }
 
     function tabButton(id, label) {
@@ -1567,15 +2691,16 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }
 
     function profileTab() {
-      const initials = initialsFor(form.name);
       const avatarSrc = avatarPreview || form.avatar;
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
           React.createElement("label", { className: "index-dashboard__profile-avatar" },
-            React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-              initials,
-              avatarSrc ? React.createElement("img", { className: "index-dashboard__avatar-img", src: avatarSrc, alt: "", loading: "lazy" }) : null,
-            ),
+            React.createElement(UserAvatar, {
+              id: form.id,
+              name: form.name,
+              avatar: avatarSrc,
+              className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+            }),
             React.createElement("input", { type: "file", accept: "image/*", className: "index-dashboard__profile-avatar-input", onChange: onAvatarFile }),
           ),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
@@ -1591,13 +2716,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
             React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "Brooklyn, NY", onChange: function (e) { patchForm({ location: e.target.value }); } }),
           ),
         ),
-        React.createElement(ProfileField, {
-          label: "Introduction",
-          hint: form.context ? "Index context: " + form.context : null,
-        },
-          React.createElement("div", { className: "index-dashboard__profile-intro-head" },
-            React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
-          ),
+        React.createElement(ProfileField, { label: "Introduction" },
           React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
         ),
         React.createElement(ProfileField, { label: "Socials" },
@@ -1637,14 +2756,15 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }
 
     function readOnlyView() {
-      const initials = initialsFor(form.name);
       const socials = (form.socials || []).filter(function (s) { return s.value && s.value.trim(); });
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
-          React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-            initials,
-            form.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: form.avatar, alt: "", loading: "lazy" }) : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: form.id,
+            name: form.name,
+            avatar: form.avatar,
+            className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+          }),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
             React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Profile"),
             form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
@@ -1671,35 +2791,77 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       );
     }
 
-    const title = readOnly ? ((form && form.name) || "Profile") : "Settings";
+    const title = gettingStarted
+      ? "Getting started"
+      : (readOnly ? ((form && form.name) || "Profile") : "Settings");
 
-    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
-      React.createElement("div", { className: "index-dashboard__profile-panel", onClick: function (e) { e.stopPropagation(); } },
-        React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
-          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+    const panel = React.createElement("div", {
+      className: "index-dashboard__profile-panel" + (gettingStarted ? " index-dashboard__profile-panel--getting-started" : ""),
+      onClick: gettingStarted ? undefined : function (e) { e.stopPropagation(); },
+    },
+      React.createElement("div", { className: "index-dashboard__profile-header" },
+        React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
+        React.createElement("div", { className: "index-dashboard__profile-header-actions" },
+          (!gettingStarted && !readOnly && props.onSignOut)
+            ? React.createElement("button", { type: "button", className: "index-dashboard__profile-signout", onClick: props.onSignOut }, "Sign out")
+            : null,
+          gettingStarted
+            ? null
+            : React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
-        readOnly ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
-          tabButton("profile", "Profile Settings"),
-          tabButton("notifications", "Notification Settings"),
-        ),
-        panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
-        loading || !form
-          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
-          : React.createElement("div", { className: "index-dashboard__profile-body" },
-            readOnly ? readOnlyView() : (tab === "notifications" ? notificationsTab() : profileTab()),
-          ),
-        (!readOnly && form)
-          ? React.createElement("div", { className: "index-dashboard__profile-bar" },
-            React.createElement("span", { className: "index-dashboard__profile-note" }, note || (dirty ? "You have unsaved changes" : "")),
-            React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
-              React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
-              React.createElement(Button, { type: "button", disabled: saving || !dirty, onClick: save }, saving ? "Saving…" : "Save Changes"),
-            ),
-          )
-          : null,
       ),
+      gettingStarted
+        ? React.createElement("p", { className: "index-dashboard__getting-started-copy" },
+          "Here's what I pulled together. Make sure it's right.")
+        : null,
+      (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
+        tabButton("profile", "Profile Settings"),
+        tabButton("notifications", "Notification Settings"),
+      ),
+      panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
+      loading || !form
+        ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
+        : React.createElement("div", { className: "index-dashboard__profile-body" },
+          readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
+        ),
+      (!readOnly && form)
+        ? React.createElement("div", { className: "index-dashboard__profile-bar" },
+          React.createElement("span", { className: "index-dashboard__profile-note" },
+            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),
+          React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
+            gettingStarted
+              ? React.createElement(Button, {
+                type: "button",
+                outlined: true,
+                className: "index-dashboard__getting-started-btn",
+                disabled: saving || !dirty,
+                onClick: resetAssembled,
+              }, "Reset")
+              : React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
+            React.createElement(Button, {
+              type: "button",
+              className: gettingStarted ? "index-dashboard__getting-started-btn" : undefined,
+              disabled: saving || (gettingStarted ? drafting : !dirty),
+              onClick: save,
+            }, saving
+              ? (gettingStarted ? "Confirming…" : "Saving…")
+              : (gettingStarted ? "Looks good" : "Save Changes")),
+          ),
+        )
+        : null,
     );
+
+    // Mac parity: keep the review form hidden until enrichment finishes, and show
+    // the setting-up screen (brand + motion + status lines) in the meantime.
+    if (gettingStarted && (loading || drafting || !form)) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" },
+        React.createElement(SettingUpScreen),
+      );
+    }
+    if (gettingStarted) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" }, panel);
+    }
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose }, panel);
   }
 
   function extractContent(parts) {
@@ -2093,10 +3255,12 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
                       className: "index-dashboard__msg-conv" + (active ? " index-dashboard__msg-conv--active" : "") + (unread ? " index-dashboard__msg-conv--unread" : ""),
                       onClick: function () { loadThread(c.id); },
                     },
-                      React.createElement("span", { className: "index-dashboard__avatar index-dashboard__msg-conv-avatar", "aria-hidden": "true" },
-                        initialsFor(c.counterpartName || c.title),
-                        c.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: c.avatar, alt: "", loading: "lazy" }) : null,
-                      ),
+                      React.createElement(UserAvatar, {
+                        id: c.counterpartUserId,
+                        name: c.counterpartName || c.title,
+                        avatar: c.avatar,
+                        className: "index-dashboard__avatar index-dashboard__msg-conv-avatar",
+                      }),
                       React.createElement("span", { className: "index-dashboard__msg-conv-main" },
                         React.createElement("span", { className: "index-dashboard__msg-conv-name" },
                           unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
@@ -2164,6 +3328,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
+    const needsOnboardingState = useState(false);
+    const needsOnboarding = needsOnboardingState[0];
+    const setNeedsOnboarding = needsOnboardingState[1];
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -2220,6 +3387,11 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const inlineHdrState = useState(false);
     const inlineHdr = inlineHdrState[0];
     const setInlineHdr = inlineHdrState[1];
+    // Auth gate: "checking" until /auth/status resolves, then "needsLogin"
+    // (browser sign-in) or "authed" (load the dashboard).
+    const authState = useState("checking");
+    const auth = authState[0];
+    const setAuth = authState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
@@ -2239,6 +3411,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
           }
           setSummary(payload);
+          setNeedsOnboarding(!!(payload.onboarding && payload.onboarding.needsProfileConfirm));
         })
         .catch(function (err) {
           setError(err && err.message ? err.message : String(err));
@@ -2265,15 +3438,16 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }
 
     useEffect(function () {
+      if (auth !== "authed") return undefined;
       refreshUnread();
       const id = setInterval(refreshUnread, 30000);
       return function () { clearInterval(id); };
-    }, []);
+    }, [auth]);
 
     // Re-check when the messages panel closes (reading there updates the map).
     useEffect(function () {
-      if (!messagesOpen) refreshUnread();
-    }, [messagesOpen]);
+      if (auth === "authed" && !messagesOpen) refreshUnread();
+    }, [messagesOpen, auth]);
 
     useEffect(function () {
       const ctl = headerCtlRef.current;
@@ -2557,9 +3731,44 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
 
     loadRef.current = load;
 
-    useEffect(function () {
+    function enterDashboard() {
+      setAuth("authed");
       load();
       loadNetworkRequests();
+    }
+
+    function checkAuth() {
+      fetchPluginJSON(API + "/auth/status")
+        .then(function (payload) {
+          if (payload && payload.needsLogin) {
+            setAuth("needsLogin");
+            setLoading(false);
+          } else {
+            enterDashboard();
+          }
+        })
+        .catch(function () {
+          // Host fetch failed entirely: fall back to trying the dashboard so a
+          // manual INDEX_API_KEY still works even if /auth/status is unreachable.
+          enterDashboard();
+        });
+    }
+
+    function signOut() {
+      setProfileOpen(false);
+      fetchPluginJSON(API + "/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).finally(function () {
+        setSummary(null);
+        setNeedsOnboarding(false);
+        setAuth("needsLogin");
+      });
+    }
+
+    useEffect(function () {
+      checkAuth();
     }, []);
 
     useEffect(function () {
@@ -2651,12 +3860,15 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }, [autoRefresh, loading]);
 
     useEffect(function () {
-      if (!autoRefresh) return undefined;
+      // Only poll once signed in: firing /summary while the login gate (or the
+      // initial auth check) is showing produces 401s that can land after the
+      // login transition and clobber the fresh state, forcing a manual reload.
+      if (!autoRefresh || auth !== "authed") return undefined;
       const id = setInterval(function () {
         if (loadRef.current) loadRef.current();
       }, 5000);
       return function () { clearInterval(id); };
-    }, [autoRefresh]);
+    }, [autoRefresh, auth]);
 
     useEffect(function () {
       if (DESKTOP_ENV) return undefined;
@@ -2722,7 +3934,46 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
             React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, requests: networkRequests, onCreate: openCreate, onJoin: joinNetwork, joiningId: joiningId, onEditRequest: editNetworkRequest, onDismissRequest: dismissNetworkRequest }),
+            React.createElement(NetworksMini, {
+              networks: summary && summary.networks,
+              requests: networkRequests,
+              webUrl: summary && summary.webUrl,
+              apiUrl: summary && summary.apiUrl,
+              currentUserId: summary && summary.currentUserId,
+              onCreate: openCreate,
+              onJoin: joinNetwork,
+              joiningId: joiningId,
+              onEditRequest: editNetworkRequest,
+              onDismissRequest: dismissNetworkRequest,
+              onOpenUser: openUser,
+              onSelectIntent: selectIntent,
+              onNetworkUpdated: function (merged) {
+                if (!merged || !merged.id) return;
+                setSummary(function (prev) {
+                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                  return Object.assign({}, prev, {
+                    networks: Object.assign({}, prev.networks, {
+                      items: prev.networks.items.map(function (n) {
+                        return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
+                      }),
+                    }),
+                  });
+                });
+              },
+              onNetworkRemoved: function (net) {
+                if (!net || !net.id) return;
+                setSummary(function (prev) {
+                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                  const items = prev.networks.items.filter(function (n) { return !n || n.id !== net.id; });
+                  return Object.assign({}, prev, {
+                    networks: Object.assign({}, prev.networks, {
+                      items: items,
+                      count: items.length,
+                    }),
+                  });
+                });
+              },
+            }),
           ),
         ),
       );
@@ -2741,7 +3992,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         : null,
       viewUserId
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
-        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
+        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
         : null,
@@ -2752,13 +4003,29 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
 
-      loading && !summary
-        ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-          LOADING_IMAGE()
-            ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
-            : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
-        )
-        : React.createElement("div", { className: "index-dashboard__body" }, intentsView),
+      auth === "needsLogin"
+        ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
+        : (auth === "checking"
+          ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+            LOADING_IMAGE()
+              ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+              : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+          )
+          : (needsOnboarding
+            ? React.createElement(ProfilePanel, {
+              gettingStarted: true,
+              onConfirmed: function () {
+                setNeedsOnboarding(false);
+                load();
+              },
+            })
+            : (loading && !summary
+              ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+                LOADING_IMAGE()
+                  ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+                  : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+              )
+              : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
     );
   }
 
@@ -2776,7 +4043,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
  */
 delete window.__INDEX_NETWORK_DESKTOP_ENV__
 
-const PLUGIN_CSS = "/* Desktop host adapter: map the web-dashboard theme variables the shared\n   stylesheet consumes onto the desktop app's --ui-* theme variables, so the\n   page follows every desktop theme. The shared stylesheet's own hex fallbacks\n   still apply if a variable is missing. */\n.index-network-desktop-page {\n  --color-background: var(--ui-bg-editor);\n  --background-base: var(--ui-bg-editor);\n  --color-card: var(--ui-bg-elevated);\n  --color-card-foreground: var(--ui-text-primary);\n  --color-foreground: var(--ui-text-primary);\n  --color-muted-foreground: var(--ui-text-tertiary);\n  --color-border: var(--ui-stroke-secondary);\n  --color-primary: var(--ui-accent);\n  --color-destructive: var(--ui-red);\n  --color-success: var(--ui-green);\n  --midground: var(--ui-text-secondary);\n  --midground-base: var(--ui-bg-tertiary);\n  --radius: 6px;\n  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;\n\n  height: 100%;\n  overflow-y: auto;\n  padding-top: 1rem;\n  padding-bottom: 2rem;\n}\n\n/* The pitch art's 1.25x scale bleeds over the card border — clip it. */\n.index-network-desktop-page .index-dashboard__pitch {\n  overflow: hidden;\n}\n\n/* The animated assets need no desktop-specific override: the shared\n   stylesheet now carries a light and a dark treatment, keyed off the\n   `data-scheme` the dashboard resolves from this app's theme (it stamps\n   data-hermes-mode / .dark / color-scheme on <html>). */\n\n/* The desktop host has no Badge component (head.js provides components: {}),\n   so BadgeText renders a bare <span> — recreate the web dashboard's badge\n   pill here. React forwards the unknown `tone` prop as a DOM attribute,\n   which lets tones (success/warning/destructive) be styled from CSS. */\n.index-network-desktop-page .index-dashboard__badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 0.1rem 0.5rem;\n  border: 1px solid var(--color-border, #d4d4d8);\n  border-radius: var(--radius);\n  font-family: var(--font-mono);\n  font-size: 0.68rem;\n  line-height: 1.5;\n  color: var(--color-muted-foreground, #6b7280);\n  background: transparent;\n}\n\n/* Pending-count badges (the number on each intent row) read in the accent\n   color so they stand out from plain outline tags. */\n.index-network-desktop-page .index-dashboard__intent-counts .index-dashboard__badge {\n  color: var(--color-primary, #4fd1c5);\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 45%, transparent);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"success\"] {\n  color: var(--color-success, #16a34a);\n  border-color: color-mix(in srgb, var(--color-success, #16a34a) 45%, transparent);\n  background: color-mix(in srgb, var(--color-success, #16a34a) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"warning\"] {\n  color: var(--ui-yellow, #d97706);\n  border-color: color-mix(in srgb, var(--ui-yellow, #d97706) 45%, transparent);\n  background: color-mix(in srgb, var(--ui-yellow, #d97706) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"destructive\"] {\n  color: var(--color-destructive, #ef4444);\n  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 45%, transparent);\n  background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"secondary\"] {\n  background: var(--midground-base, rgba(127, 127, 127, 0.15));\n  border-color: transparent;\n  color: var(--color-foreground, inherit);\n}\n\n/* SDK Button adapter (see DesktopButton in head.js): recreate the dashboard's\n   button variants from the desktop theme variables, in the same accent-tinted\n   language as the badges above so they read correctly on every theme. */\n.index-network-desktop-page .idx-btn {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 0.35rem;\n  padding: 0.4rem 0.9rem;\n  border: 1px solid transparent;\n  border-radius: var(--radius);\n  font: inherit;\n  font-size: 0.8rem;\n  line-height: 1.2;\n  color: var(--ui-text-primary, inherit);\n  background: transparent;\n  cursor: pointer;\n  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;\n}\n\n.index-network-desktop-page .idx-btn:disabled {\n  opacity: 0.55;\n  cursor: default;\n}\n\n.index-network-desktop-page .idx-btn--solid {\n  color: var(--ui-accent, #4fd1c5);\n  border-color: color-mix(in srgb, var(--ui-accent, #4fd1c5) 50%, transparent);\n  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 14%, transparent);\n}\n\n.index-network-desktop-page .idx-btn--solid:hover:not(:disabled) {\n  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 26%, transparent);\n}\n\n.index-network-desktop-page .idx-btn--outlined {\n  border-color: var(--ui-stroke-secondary, #d4d4d8);\n}\n\n.index-network-desktop-page .idx-btn--outlined:hover:not(:disabled) {\n  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));\n}\n\n.index-network-desktop-page .idx-btn--ghost {\n  color: var(--ui-text-secondary, inherit);\n}\n\n.index-network-desktop-page .idx-btn--ghost:hover:not(:disabled) {\n  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));\n  color: var(--ui-text-primary, inherit);\n}\n\n.index-network-desktop-page .idx-btn--icon {\n  width: 1.9rem;\n  height: 1.9rem;\n  padding: 0;\n}\n\n.index-network-desktop-page .idx-btn--destructive {\n  color: var(--ui-red, #ef4444);\n}\n\n/* The desktop app keeps the header pause/archive pill a step larger than the\n   web dashboard's base sizing. */\n.index-network-desktop-page .index-dashboard__action-seg {\n  padding: 0.5rem 0.9rem;\n  font-size: 0.78rem;\n}\n\n.index-network-desktop-page .index-dashboard__action-seg svg {\n  width: 1.2rem;\n  height: 1.2rem;\n}\n\n/* Gadget-style actions on opportunity cards and question cards: square mono\n   buttons in ink color (Mac-app flavored), primary inverted to an ink fill. */\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn,\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn {\n  border-radius: 0;\n  border: 1px solid var(--ui-text-primary, #000);\n  background: transparent;\n  color: var(--ui-text-primary, #000);\n  font-family: var(--font-mono);\n  font-size: 0.72rem;\n  letter-spacing: 0.06em;\n  padding: 0.25rem 0.75rem;\n}\n\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid,\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid {\n  background: var(--ui-text-primary, #000);\n  color: var(--ui-bg-editor, #fff);\n}\n\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn:hover:not(:disabled),\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn:hover:not(:disabled) {\n  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));\n}\n\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid:hover:not(:disabled),\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid:hover:not(:disabled) {\n  background: var(--ui-text-secondary, #333);\n}\n\n.index-dashboard {\n  display: flex;\n  flex-direction: column;\n  gap: 1.25rem;\n  padding-left: 1.5rem;\n  padding-right: 1.5rem;\n}\n\n.index-dashboard__radar-strip {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.55rem;\n  margin-top: 0;\n}\n\n.index-dashboard__opps {\n  display: grid;\n  gap: 0.65rem;\n}\n\n.index-dashboard__opp {\n  display: grid;\n  gap: 0.6rem;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__opp-head {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__opp-id {\n  display: flex;\n  align-items: center;\n  gap: 0.6rem;\n  min-width: 0;\n}\n\n.index-dashboard__avatar {\n  position: relative;\n  display: inline-flex;\n  flex-shrink: 0;\n  align-items: center;\n  justify-content: center;\n  width: 32px;\n  height: 32px;\n  border-radius: 999px;\n  overflow: hidden;\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 22%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.72rem;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n}\n\n.index-dashboard__avatar-img {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n  border-radius: inherit;\n}\n\n.index-dashboard__opp-meta {\n  display: grid;\n  gap: 0.1rem;\n  min-width: 0;\n}\n\n.index-dashboard__opp-name {\n  overflow: hidden;\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.92rem;\n  line-height: 1.25;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.index-dashboard__opp-sub {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.74rem;\n}\n\n.index-dashboard__opp-text {\n  margin: 0;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.88rem;\n  line-height: 1.55;\n}\n\n.index-dashboard__opp-status {\n  flex-shrink: 0;\n}\n\n.index-dashboard__badge.index-dashboard__opp-status--accepted {\n  color: #16a34a !important;\n  border-color: color-mix(in srgb, #16a34a 45%, transparent) !important;\n  background: color-mix(in srgb, #16a34a 12%, transparent) !important;\n}\n\n.index-dashboard__badge.index-dashboard__opp-status--rejected {\n  color: var(--color-destructive, #ef4444) !important;\n  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 45%, transparent) !important;\n  background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent) !important;\n}\n\n.index-dashboard__badge.index-dashboard__opp-status--expired {\n  color: #d97706 !important;\n  border-color: color-mix(in srgb, #d97706 45%, transparent) !important;\n  background: color-mix(in srgb, #d97706 12%, transparent) !important;\n}\n\n.index-dashboard__stat {\n  display: inline-flex;\n  align-items: baseline;\n  gap: 0.45rem;\n  padding: 0.45rem 0.65rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__stat--selectable {\n  cursor: pointer;\n  font: inherit;\n  transition: border-color 0.15s ease, background 0.15s ease;\n}\n\n.index-dashboard__stat--selectable:hover {\n  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 30%, transparent);\n}\n\n.index-dashboard__stat--selectable:focus-visible {\n  outline: none;\n  border-color: var(--color-primary, #6366f1);\n}\n\n.index-dashboard__stat--active {\n  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 45%, transparent);\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 12%, var(--background-base, #041c1c));\n}\n\n.index-dashboard__stat--active strong,\n.index-dashboard__stat--active span {\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__stat strong {\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.95rem;\n  line-height: 1;\n}\n\n.index-dashboard__stat span {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.74rem;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n}\n\n/* Mac-app parity: actions sit in the head's top-right column, not a footer. */\n.index-dashboard__opp-btns {\n  display: flex;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 0.4rem;\n  flex-shrink: 0;\n}\n\n/* Medium footprint for the SDK action buttons (no native `md` size). Used by\n   both the opportunity actions and the question Skip/Submit row. Two-class\n   selector outranks the SDK's single utility classes. */\n.index-dashboard .index-dashboard__btn-md {\n  padding: 0.5rem 1rem;\n  font-size: 0.8rem;\n  letter-spacing: 0.12em;\n}\n\n.index-dashboard__opp-openchat {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.3rem;\n  padding: 0.4rem 0.75rem;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  border: 1px solid color-mix(in srgb, var(--color-primary, #6366f1) 55%, transparent);\n  color: var(--color-card-foreground, inherit);\n  text-decoration: none;\n  font-size: 0.8rem;\n  transition: background 0.15s ease;\n}\n\n.index-dashboard__opp-openchat:hover {\n  background: color-mix(in srgb, var(--color-primary, #6366f1) 16%, transparent);\n}\n\n.index-dashboard__card {\n  border: none;\n  border-radius: 0;\n  background: transparent;\n}\n\n.index-dashboard__card p {\n  margin: 0;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  line-height: 1.55;\n}\n\n.index-dashboard__hdr {\n  margin-left: auto;\n  display: inline-flex;\n  align-items: center;\n  gap: 0.5rem;\n  flex-shrink: 0;\n}\n\n/* Rendered inside the page when the host has no banner header (desktop app). */\n.index-dashboard__hdr--inline {\n  align-self: flex-end;\n  margin-bottom: -0.5rem;\n}\n\n.index-dashboard__loading-text {\n  color: var(--color-muted-foreground, inherit);\n  font-size: 0.85rem;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n\n.index-dashboard__hdr-label {\n  font-size: 0.72rem;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--color-foreground, var(--midground, #ffe6cb));\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n/* Mirrors @nous-research/ui Switch: square, h-5 w-9, cream (midground) knob. */\n.index-dashboard__switch {\n  position: relative;\n  display: inline-flex;\n  align-items: center;\n  width: 2.25rem;\n  height: 1.25rem;\n  padding: 0;\n  border: 1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 20%, transparent);\n  border-radius: 0;\n  background: var(--color-background, var(--background-base, #0b1411));\n  cursor: pointer;\n  transition: background 0.15s ease, border-color 0.15s ease;\n  flex-shrink: 0;\n}\n\n.index-dashboard__switch--on {\n  background: color-mix(in srgb, var(--midground-base, #ffe6cb) 15%, transparent);\n  border-color: color-mix(in srgb, var(--midground-base, #ffe6cb) 30%, transparent);\n}\n\n.index-dashboard__switch-knob {\n  position: absolute;\n  top: 50%;\n  left: 0;\n  width: 0.875rem;\n  height: 0.875rem;\n  border-radius: 0;\n  background: color-mix(in srgb, var(--midground-base, #ffe6cb) 40%, transparent);\n  transform: translate(0.125rem, -50%);\n  transition: transform 0.15s ease, background 0.15s ease;\n}\n\n.index-dashboard__switch--on .index-dashboard__switch-knob {\n  background: var(--midground, #ffe6cb);\n  transform: translate(1rem, -50%);\n}\n\n/* Mirrors @nous-research/ui Badge tone=\"success\". */\n.index-dashboard__live {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.25rem 0.5rem;\n  border: 1px solid color-mix(in srgb, var(--color-success, #4ade80) 30%, transparent);\n  background: color-mix(in srgb, var(--color-success, #4ade80) 15%, transparent);\n  color: var(--color-success, #4ade80);\n  font-size: 0.72rem;\n  line-height: 1;\n  letter-spacing: 0.1em;\n}\n\n/* Mirrors the mac app's LiveDot beacon: fixed accent-orange square with a\n   hard stepped blink (mac-blink), regardless of the surrounding badge tone. */\n.index-dashboard__live-dot {\n  display: inline-block;\n  width: 0.375rem;\n  height: 0.375rem;\n  flex: 0 0 auto;\n  background: #ff8a00;\n  border: 1px solid rgba(0, 0, 0, 0.85);\n  animation: index-dashboard-blink 1.2s steps(2) infinite;\n}\n\n/* Beacon inside a status badge (intent rows): space it off the label. */\n.index-dashboard__badge .index-dashboard__live-dot {\n  margin-right: 0.35rem;\n}\n\n/* Paused signal: same badge in the warning tone (--ui-yellow on desktop\n   themes, amber on the web dashboard), dot held steady — nothing is pulsing\n   while the agent is on hold. */\n.index-dashboard__live--paused {\n  border-color: color-mix(in srgb, var(--ui-yellow, #fbbf24) 30%, transparent);\n  background: color-mix(in srgb, var(--ui-yellow, #fbbf24) 15%, transparent);\n  color: var(--ui-yellow, #fbbf24);\n}\n\n.index-dashboard__live--paused .index-dashboard__live-dot {\n  animation: none;\n}\n\n@keyframes index-dashboard-blink {\n  50% { opacity: 0.15; }\n}\n\n.index-dashboard__header-refresh {\n  margin-left: 0;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 2rem;\n  height: 2rem;\n  padding: 0;\n  flex-shrink: 0;\n  border: none;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  cursor: pointer;\n}\n\n.index-dashboard__header-refresh:hover:not(:disabled) {\n  color: var(--color-foreground, #f8fafc);\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n.index-dashboard__header-refresh:disabled {\n  cursor: default;\n  opacity: 0.55;\n}\n\n.index-dashboard__header-refresh[data-busy=\"true\"] svg {\n  animation: index-dashboard-spin 0.8s linear infinite;\n}\n\n@keyframes index-dashboard-spin {\n  to { transform: rotate(360deg); }\n}\n\n.index-dashboard__loading,\n.index-dashboard__empty,\n.index-dashboard__error {\n  padding: 0.85rem;\n  border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.75);\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.9rem;\n}\n\n.index-dashboard__error {\n  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 50%, transparent);\n  color: var(--color-destructive, #ef4444);\n}\n\n/* Hero loading state: the eye animation, color-reversed for the dark theme. */\n.index-dashboard__loading--hero {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  gap: 0.75rem;\n  padding: 3.5rem 1rem;\n  border: none;\n  border-radius: 0;\n  text-align: center;\n}\n\n.index-dashboard__loading-anim {\n  width: 340px;\n  max-width: 80%;\n  height: auto;\n}\n\n/* The animated art needs no CSS treatment: each role ships a dark file and a\n   light file, and index.js picks between them from the host theme (the root\n   carries the resolved one as `data-scheme` for reference). */\n\n.index-dashboard__body {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n}\n\n.index-dashboard__segmented {\n  display: inline-flex;\n  gap: 0.35rem;\n  align-self: flex-start;\n  padding: 0.25rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 999px;\n  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);\n}\n\n.index-dashboard__list-page,\n.index-dashboard__detail {\n  display: grid;\n  gap: 1rem;\n  min-width: 0;\n}\n\n.index-dashboard__detail-cols {\n  display: grid;\n  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);\n  gap: 1rem;\n  align-items: start;\n}\n\n.index-dashboard__list-cols {\n  display: grid;\n  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);\n  gap: 1rem;\n  align-items: start;\n}\n\n.index-dashboard__pitch {\n  display: flex;\n  flex-direction: row-reverse;\n  align-items: center;\n  gap: 1rem;\n  padding: 1.5rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: var(--radius, 0.75rem);\n  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);\n}\n\n.index-dashboard__pitch-body {\n  flex: 1 1 auto;\n  min-width: 0;\n}\n\n.index-dashboard__pitch-media {\n  flex: 0 0 auto;\n  width: 84px;\n  height: 84px;\n  object-fit: cover;\n  transform: scale(1.25);\n  align-self: center;\n}\n\n.index-dashboard__pitch-title {\n  margin: 0;\n  font-family: var(--font-mono, ui-monospace, \"SFMono-Regular\", Menlo, monospace);\n  font-size: 1.65rem;\n  font-weight: 700;\n  line-height: 1.3;\n  letter-spacing: -0.01em;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__pitch-mark {\n  padding: 0.04em 0.28em;\n  border: 2px solid #1f2937;\n  background: #e8943a;\n  color: #111;\n  -webkit-box-decoration-break: clone;\n  box-decoration-break: clone;\n}\n\n.index-dashboard__pitch-text {\n  margin: 0;\n  font-size: 0.92rem;\n  line-height: 1.6;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__list-side {\n  display: grid;\n  gap: 1rem;\n  align-content: start;\n  /* Right breathing room so the Networks column doesn't sit against the\n     content edge / scrollbar — mirrors the Intents column's left inset. */\n  padding-right: 1rem;\n}\n\n.index-dashboard__net-card {\n  border: none;\n  border-radius: 0;\n  background: transparent;\n}\n\n.index-dashboard__net-head {\n  display: flex;\n  align-items: flex-end;\n  justify-content: space-between;\n  gap: 0.75rem;\n  min-height: 2.75rem;\n  padding: 0 0 0.75rem 0;\n  border-bottom: none;\n}\n\n.index-dashboard__net-heading {\n  margin: 0;\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  font-size: 0.9375rem;\n  font-weight: 700;\n  letter-spacing: 0.1875rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-head-actions {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-discover-btn {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.3rem 0.7rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.78rem;\n  cursor: pointer;\n  transition: background 0.15s ease, border-color 0.15s ease;\n}\n\n.index-dashboard__net-discover-btn:hover {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 10%, transparent);\n}\n\n.index-dashboard__net-discover-icon {\n  width: 0.9rem;\n  height: 0.9rem;\n  flex-shrink: 0;\n}\n\n.index-dashboard__net-modal {\n  max-width: 32rem;\n}\n\n.index-dashboard__net-modal-body {\n  padding-top: 0.85rem;\n  min-width: 0;\n}\n\n.index-dashboard__net-list {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-tabs {\n  flex: 1 1 auto;\n  min-width: 0;\n  gap: 0.15rem;\n  overflow-x: auto;\n}\n\n.index-dashboard__net-tabs .index-dashboard__profile-tab {\n  padding: 0.4rem 0.45rem;\n  font-size: 0.82rem;\n  white-space: nowrap;\n}\n\n.index-dashboard__net-tab {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.3rem;\n}\n\n.index-dashboard__net-tab-icon {\n  width: 14px;\n  height: 14px;\n  flex-shrink: 0;\n}\n\n.index-dashboard__net-request-list {\n  margin-bottom: 0.65rem;\n  padding-bottom: 0.65rem;\n  border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__net-request-review {\n  font-size: 0.78rem;\n  opacity: 0.75;\n  font-style: italic;\n}\n\n.index-dashboard__net-request-btns {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.4rem;\n  flex-shrink: 0;\n}\n\n.index-dashboard__net-request-dismiss {\n  border: none;\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  opacity: 0.6;\n  font: inherit;\n  font-size: 0.78rem;\n  cursor: pointer;\n  padding: 0.2rem 0.3rem;\n}\n\n.index-dashboard__net-request-dismiss:hover {\n  opacity: 1;\n}\n\n.index-dashboard__net-request-note {\n  margin: 0;\n  font-size: 0.85rem;\n  line-height: 1.5;\n  opacity: 0.85;\n}\n\n.index-dashboard__net-request-intro {\n  margin: 0;\n  padding: 0.7rem 0.85rem;\n  border: 1px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 30%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  border-left: 3px solid var(--color-primary, #4fd1c5);\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 12%, transparent);\n  font-size: 0.82rem;\n  line-height: 1.5;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__net-request-actions {\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n  margin-top: 0.25rem;\n}\n\n.index-dashboard__net-size-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);\n  gap: 0.5rem;\n  min-width: 0;\n}\n\n.index-dashboard__net-size {\n  padding: 0.5rem 0.7rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.82rem;\n  cursor: pointer;\n  text-align: center;\n}\n\n.index-dashboard__net-size:hover {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.24)));\n}\n\n.index-dashboard__net-size--on {\n  border-color: var(--color-primary, #4fd1c5);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 16%, transparent);\n}\n\n.index-dashboard__net-row {\n  display: flex;\n  align-items: center;\n  gap: 0.75rem;\n  width: 100%;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  text-align: left;\n}\n\n.index-dashboard__net-avatar {\n  display: inline-flex;\n  width: 40px;\n  height: 40px;\n  flex-shrink: 0;\n  border-radius: 999px;\n  overflow: hidden;\n}\n\n.index-dashboard__net-avatar svg,\n.index-dashboard__net-avatar-img {\n  width: 100%;\n  height: 100%;\n  display: block;\n  object-fit: cover;\n}\n\n.index-dashboard__net-meta {\n  display: grid;\n  gap: 0.15rem;\n  min-width: 0;\n  flex: 1;\n}\n\n.index-dashboard__net-role {\n  flex-shrink: 0;\n  padding: 0.2rem 0.55rem;\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  font-size: 0.72rem;\n  font-weight: 600;\n  letter-spacing: 0.02em;\n}\n\n.index-dashboard__net-role--owner {\n  background: var(--color-card-foreground, #f8fafc);\n  color: var(--color-card, #0f172a);\n}\n\n.index-dashboard__net-role--member {\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 22%, transparent);\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-title {\n  overflow: hidden;\n  font-size: 0.875rem;\n  font-weight: 500;\n  line-height: 1.3;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__net-sub {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.3rem;\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-sub-icon {\n  width: 0.75rem;\n  height: 0.75rem;\n  flex-shrink: 0;\n}\n\n@media (max-width: 980px) {\n  .index-dashboard__list-cols {\n    grid-template-columns: 1fr;\n  }\n}\n\n.index-dashboard__intent-list {\n  display: grid;\n  gap: 0.5rem;\n}\n\n.index-dashboard__intent-row {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.6rem;\n  width: 100%;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n  color: var(--color-card-foreground, inherit);\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__intent-row--selected {\n  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 45%, transparent);\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 8%, var(--background-base, #041c1c));\n}\n\n.index-dashboard__intent-main {\n  display: grid;\n  gap: 0.25rem;\n  min-width: 0;\n}\n\n/* Keep the status tag compact (like a cron badge) instead of stretching to the\n   grid column width. */\n.index-dashboard__intent-main .index-dashboard__badge {\n  justify-self: start;\n}\n\n.index-dashboard__intent-title {\n  overflow: hidden;\n  font-size: 0.9rem;\n  line-height: 1.3;\n  text-overflow: ellipsis;\n}\n\n.index-dashboard__intent-sub {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.74rem;\n}\n\n.index-dashboard__intent-counts {\n  display: flex;\n  flex-shrink: 0;\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 0.3rem;\n}\n\n.index-dashboard__detail-head {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 0.6rem;\n}\n\n.index-dashboard__back-pill {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.3rem 0.75rem 0.3rem 0.55rem;\n  border-radius: 999px;\n  border: none;\n  cursor: pointer;\n  font-size: 0.85rem;\n  color: var(--color-card-foreground, inherit);\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 10%, transparent);\n}\n\n.index-dashboard__back-pill svg {\n  width: 0.9rem;\n  height: 0.9rem;\n}\n\n.index-dashboard__back-pill:hover {\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 18%, transparent);\n}\n\n.index-dashboard__tip {\n  position: relative;\n  display: inline-flex;\n}\n\n.index-dashboard__tip::after {\n  content: attr(data-tip);\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 0.25rem 0.5rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  background: var(--background-base, #041c1c);\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.7rem;\n  letter-spacing: 0.05em;\n  white-space: nowrap;\n  opacity: 0;\n  pointer-events: none;\n  transition: opacity 0.12s ease;\n  z-index: 30;\n}\n\n.index-dashboard__tip:hover::after,\n.index-dashboard__tip:focus-within::after {\n  opacity: 1;\n}\n\n/* Grouped pause/archive control in the detail header: one bordered pill with\n   two segments. The icon tints live here so both hosts color them the same\n   (the desktop host has no `text-warning` utility class): amber pause, green\n   resume, red trash. State fills the segment behind the icon — green while\n   paused/resumable, red while the archive is armed (\"sure?\"). */\n.index-dashboard__action-group {\n  display: inline-flex;\n  align-items: stretch;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 999px;\n}\n\n.index-dashboard__action-sep {\n  width: 1px;\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n}\n\n.index-dashboard__action-seg {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.42rem 0.75rem;\n  border: none;\n  background: transparent;\n  cursor: pointer;\n  font-family: var(--font-mono);\n  font-size: 0.72rem;\n}\n\n.index-dashboard__action-seg svg {\n  width: 1.05rem;\n  height: 1.05rem;\n}\n\n.index-dashboard__action-seg:disabled {\n  opacity: 0.55;\n  cursor: default;\n}\n\n.index-dashboard__action-seg:hover:not(:disabled),\n.index-dashboard__action-seg--filled {\n  background: color-mix(in srgb, currentColor 15%, transparent);\n}\n\n.index-dashboard__action-seg--pause {\n  color: var(--ui-yellow, #fbbf24);\n  border-radius: 999px 0 0 999px;\n}\n\n.index-dashboard__action-seg--resume {\n  color: var(--color-success, #4ade80);\n  border-radius: 999px 0 0 999px;\n}\n\n.index-dashboard__action-seg--archive {\n  color: var(--color-destructive, #ef4444);\n  border-radius: 0 999px 999px 0;\n}\n\n.index-dashboard__detail-title {\n  margin: 0;\n  font-size: 1.1rem;\n  line-height: 1.25;\n}\n\n.index-dashboard__detail-card {\n  display: grid;\n  gap: 0.6rem;\n  width: 100%;\n  box-sizing: border-box;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__detail-title-row {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__back {\n  display: inline-flex;\n  align-items: center;\n  padding: 0.5rem 1rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 999px;\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.95rem;\n  cursor: pointer;\n}\n\n.index-dashboard__card--primary {\n  background: transparent;\n}\n\n.index-dashboard__card-header {\n  display: flex;\n  flex-direction: column;\n  justify-content: flex-end;\n  min-height: 2.75rem;\n  padding-top: 0;\n  padding-bottom: 0.75rem;\n  border-bottom: none;\n  text-align: left;\n}\n\n.index-dashboard__card-title-row {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__card-title {\n  margin: 0;\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  font-size: 0.9375rem;\n  font-weight: 700;\n  letter-spacing: 0.1875rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__card-title-media {\n  flex: 0 0 auto;\n  height: 2.6rem;\n  width: auto;\n}\n\n.index-dashboard__radar-eye {\n  flex: 0 0 auto;\n  height: 2.1rem;\n  width: auto;\n  object-fit: contain;\n}\n\n.index-dashboard__card-description {\n  margin-top: 0.25rem !important;\n  font-size: 0.82rem;\n}\n\n.index-dashboard__card-content {\n  display: flex;\n  flex-direction: column;\n  gap: 0.75rem;\n  padding-top: 0;\n}\n\n.index-dashboard__badge {\n  white-space: nowrap;\n  text-transform: capitalize;\n}\n\n.index-dashboard__items,\n.index-dashboard__stack {\n  display: grid;\n  gap: 0.65rem;\n}\n\n.index-dashboard__items--compact {\n  gap: 0.5rem;\n}\n\n.index-dashboard__item {\n  display: grid;\n  gap: 0.35rem;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__card--primary .index-dashboard__item:first-child {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 48%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 8%, transparent);\n}\n\n.index-dashboard__items--compact .index-dashboard__item {\n  padding: 0.7rem;\n}\n\n.index-dashboard__item-head {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__item-title {\n  margin: 0;\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.95rem;\n  line-height: 1.35;\n}\n\n.index-dashboard__items--compact .index-dashboard__item-title {\n  font-size: 0.88rem;\n}\n\n.index-dashboard__item-detail {\n  font-size: 0.88rem;\n}\n\n.index-dashboard__items--compact .index-dashboard__item-detail {\n  display: -webkit-box;\n  overflow: hidden;\n  -webkit-box-orient: vertical;\n  -webkit-line-clamp: 2;\n  font-size: 0.8rem;\n}\n\n.index-dashboard__item-meta {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.78rem;\n}\n\n.index-dashboard__detail-live {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n\n.index-dashboard__detail-live-text {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.76rem;\n}\n\n.index-dashboard__question {\n  display: grid;\n  gap: 0.75rem;\n  padding: 0.95rem;\n  border: 1px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 34%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  border-radius: calc(var(--radius, 0.75rem) * 0.75);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 7%, transparent);\n}\n\n.index-dashboard__question-prompt {\n  color: var(--color-card-foreground, inherit) !important;\n  font-size: 0.94rem;\n}\n\n.index-dashboard__question-options {\n  display: grid;\n  gap: 0.4rem;\n}\n\n.index-dashboard__qopt {\n  display: flex;\n  align-items: flex-start;\n  gap: 0.6rem;\n  width: 100%;\n  padding: 0.55rem 0.65rem;\n  border: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 72%, transparent);\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-background, #020617) 34%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__qopt--selected {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 68%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 13%, transparent);\n}\n\n.index-dashboard__qletter {\n  display: inline-flex;\n  flex-shrink: 0;\n  align-items: center;\n  justify-content: center;\n  width: 1.4rem;\n  height: 1.4rem;\n  border-radius: calc(var(--radius, 0.75rem) * 0.45);\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 18%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.72rem;\n  font-weight: 700;\n  line-height: 1;\n}\n\n.index-dashboard__qopt--selected .index-dashboard__qletter {\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 70%, transparent);\n}\n\n.index-dashboard__qopt-text {\n  font-size: 0.88rem;\n  line-height: 1.45;\n}\n\n.index-dashboard__qopt-label {\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__qopt-desc {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__textarea {\n  min-width: 0;\n  width: 100%;\n  box-sizing: border-box;\n  padding: 0.65rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.65);\n  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  resize: vertical;\n}\n\n.index-dashboard__question-actions {\n  display: flex;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 0.75rem;\n}\n\n/* Settled (answered/skipped) question record — Mac-app parity: the frame drops\n   to a hairline so settled cards recede behind live questions, the prompt\n   steps back to secondary ink, and the given answer is quoted under a strong\n   rule as the one emphasized thing left. */\n.index-dashboard__question--done {\n  gap: 0.5rem;\n  border-color: var(--color-border, rgba(148, 163, 184, 0.24));\n  background: transparent;\n}\n\n.index-dashboard__question--dismissed {\n  opacity: 0.55;\n}\n\n.index-dashboard__question--done .index-dashboard__question-prompt {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) !important;\n}\n\n.index-dashboard__qdone-status {\n  display: flex;\n  justify-content: flex-end;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.72rem;\n  letter-spacing: 0.03em;\n}\n\n.index-dashboard__qdone-answer {\n  display: grid;\n  gap: 0.2rem;\n  border-left: 2px solid var(--color-card-foreground, currentColor);\n  padding-left: 0.65rem;\n}\n\n.index-dashboard__qdone-label {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.72rem;\n  letter-spacing: 0.03em;\n}\n\n.index-dashboard__qdone-text {\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.9rem;\n  line-height: 1.4;\n}\n\n@media (max-width: 980px) {\n  .index-dashboard__detail-cols {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* Header account button (opens the profile/settings panel). */\n.index-dashboard__hdr-account {\n  position: relative;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 2rem;\n  height: 2rem;\n  padding: 0;\n  flex-shrink: 0;\n  border: 1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 18%, transparent);\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  cursor: pointer;\n}\n\n/* Unread-message notification dot on the header messages icon. */\n.index-dashboard__hdr-account--dot::after {\n  content: \"\";\n  position: absolute;\n  top: 3px;\n  right: 3px;\n  width: 0.5rem;\n  height: 0.5rem;\n  border-radius: 50%;\n  background: var(--color-primary, #4fd1c5);\n  border: 1px solid var(--background-base, #041c1c);\n}\n\n.index-dashboard__hdr-account:hover {\n  color: var(--color-foreground, #f8fafc);\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n/* Profile / settings overlay panel. */\n.index-dashboard__profile-overlay {\n  position: fixed;\n  inset: 0;\n  z-index: 60;\n  display: flex;\n  align-items: flex-start;\n  justify-content: center;\n  padding: 4.5rem 1rem 1rem;\n  overflow-y: auto;\n  background: color-mix(in srgb, #000 55%, transparent);\n}\n\n.index-dashboard__profile-panel {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n  width: 100%;\n  max-width: 40rem;\n  padding: 1.25rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: var(--radius, 0.75rem);\n  background: var(--color-card, #0f172a);\n  box-shadow: 0 20px 60px color-mix(in srgb, #000 45%, transparent);\n}\n\n.index-dashboard__profile-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__profile-title {\n  margin: 0;\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  font-size: 0.9375rem;\n  font-weight: 700;\n  letter-spacing: 0.1875rem;\n  line-height: 1.2;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-close {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 1.9rem;\n  height: 1.9rem;\n  border: none;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 1.25rem;\n  line-height: 1;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-close:hover {\n  color: var(--color-foreground, #f8fafc);\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n.index-dashboard__profile-tabs {\n  display: flex;\n  gap: 0.25rem;\n  border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__profile-tab {\n  padding: 0.5rem 0.85rem;\n  border: none;\n  border-bottom: 2px solid transparent;\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font: inherit;\n  font-size: 0.85rem;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-tab--active {\n  border-bottom-color: var(--color-primary, #4fd1c5);\n  color: var(--color-card-foreground, inherit);\n  font-weight: 700;\n}\n\n.index-dashboard__profile-body {\n  display: flex;\n  flex-direction: column;\n}\n\n.index-dashboard__profile-section {\n  display: grid;\n  gap: 1rem;\n}\n\n.index-dashboard__profile-identity {\n  display: flex;\n  align-items: center;\n  gap: 1rem;\n}\n\n.index-dashboard__profile-avatar {\n  position: relative;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-avatar-circle {\n  width: 64px;\n  height: 64px;\n  font-size: 1.1rem;\n}\n\n.index-dashboard__profile-avatar-input {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n  opacity: 0;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-identity-main {\n  display: grid;\n  gap: 0.2rem;\n  min-width: 0;\n}\n\n.index-dashboard__profile-identity-name {\n  font-size: 1rem;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__profile-identity-sub {\n  font-size: 0.8rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-grid {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 0.85rem;\n}\n\n.index-dashboard__profile-field {\n  display: grid;\n  gap: 0.35rem;\n}\n\n.index-dashboard__profile-label {\n  font-size: 0.78rem;\n  font-weight: 600;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__profile-hint {\n  font-size: 0.74rem;\n  line-height: 1.45;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-input {\n  min-width: 0;\n  width: 100%;\n  box-sizing: border-box;\n  padding: 0.55rem 0.65rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.88rem;\n}\n\n.index-dashboard__profile-select {\n  cursor: pointer;\n}\n\n.index-dashboard__profile-intro-head {\n  display: flex;\n  justify-content: flex-end;\n}\n\n.index-dashboard__profile-generate {\n  border: none;\n  background: transparent;\n  padding: 0.1rem 0.25rem;\n  font: inherit;\n  font-size: 0.78rem;\n  color: var(--color-primary, #4fd1c5);\n  cursor: pointer;\n}\n\n.index-dashboard__profile-generate:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n\n.index-dashboard__profile-socials {\n  display: grid;\n  gap: 0.4rem;\n}\n\n.index-dashboard__profile-social {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n\n.index-dashboard__profile-social-prefix {\n  flex-shrink: 0;\n  font-size: 0.76rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  min-width: 6.5rem;\n}\n\n.index-dashboard__profile-social-input {\n  flex: 1;\n}\n\n.index-dashboard__profile-social-remove {\n  flex-shrink: 0;\n  width: 1.8rem;\n  height: 1.8rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 1.05rem;\n  line-height: 1;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-add {\n  padding: 0.5rem;\n  border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font: inherit;\n  font-size: 0.82rem;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-checks {\n  display: grid;\n  gap: 0.5rem;\n}\n\n.index-dashboard__profile-check {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n  padding: 0.65rem 0.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  cursor: pointer;\n}\n\n.index-dashboard__profile-check-label {\n  margin: 0;\n  font-size: 0.85rem;\n  color: var(--color-card-foreground, inherit) !important;\n}\n\n.index-dashboard__profile-check-desc {\n  margin: 0.15rem 0 0 !important;\n  font-size: 0.76rem;\n}\n\n.index-dashboard__profile-bar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n  padding-top: 0.85rem;\n  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__profile-note {\n  font-size: 0.78rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-bar-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n}\n\n.index-dashboard__profile-discard {\n  padding: 0.4rem 0.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.82rem;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-discard:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n\n.index-dashboard__opp-id--clickable {\n  cursor: pointer;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  transition: opacity 0.15s ease;\n}\n\n.index-dashboard__opp-id--clickable:hover .index-dashboard__opp-name {\n  text-decoration: underline;\n}\n\n.index-dashboard__opp-id--clickable:hover {\n  opacity: 0.85;\n}\n\n.index-dashboard__opp-id--clickable:focus-visible {\n  outline: 2px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 60%, transparent);\n  outline-offset: 2px;\n}\n\n.index-dashboard__profile-read-text {\n  margin: 0;\n  font-size: 0.88rem;\n  line-height: 1.55;\n  white-space: pre-wrap;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__profile-read-socials {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.4rem;\n}\n\n.index-dashboard__profile-read-social {\n  padding: 0.25rem 0.55rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 999px;\n  font-size: 0.78rem;\n  color: var(--color-card-foreground, inherit);\n  text-decoration: none;\n}\n\n.index-dashboard__profile-read-social:hover {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.24)));\n}\n\n@media (max-width: 980px) {\n  .index-dashboard__profile-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* Messages / conversations */\n.index-dashboard__msg-panel {\n  max-width: 52rem;\n  height: min(80vh, 44rem);\n}\n\n.index-dashboard__msg-body {\n  display: grid;\n  grid-template-columns: 16rem 1fr;\n  gap: 0.75rem;\n  flex: 1;\n  min-height: 0;\n}\n\n.index-dashboard__msg-list {\n  display: flex;\n  flex-direction: column;\n  gap: 0.25rem;\n  overflow-y: auto;\n  padding-right: 0.25rem;\n  border-right: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__msg-conv {\n  display: flex;\n  align-items: center;\n  gap: 0.6rem;\n  padding: 0.5rem 0.6rem;\n  border: none;\n  border-radius: calc(var(--radius, 0.75rem) * 0.7);\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__msg-conv:hover {\n  background: color-mix(in srgb, currentColor 8%, transparent);\n}\n\n.index-dashboard__msg-conv--active {\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 16%, transparent);\n}\n\n.index-dashboard__msg-conv-avatar {\n  flex-shrink: 0;\n}\n\n.index-dashboard__msg-conv-main {\n  display: flex;\n  flex-direction: column;\n  gap: 0.1rem;\n  min-width: 0;\n}\n\n.index-dashboard__msg-conv-name {\n  display: flex;\n  align-items: center;\n  gap: 0.35rem;\n  font-size: 0.85rem;\n  font-weight: 600;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.index-dashboard__msg-conv--unread .index-dashboard__msg-conv-name {\n  font-weight: 700;\n}\n\n.index-dashboard__msg-conv-dot {\n  flex-shrink: 0;\n  width: 0.5rem;\n  height: 0.5rem;\n  border-radius: 50%;\n  background: var(--color-primary, #4fd1c5);\n}\n\n.index-dashboard__msg-conv-badge {\n  flex-shrink: 0;\n  padding: 0.05rem 0.4rem;\n  border-radius: 999px;\n  font-size: 0.6rem;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n.index-dashboard__msg-search {\n  width: 100%;\n  box-sizing: border-box;\n  margin-bottom: 0.4rem;\n  padding: 0.4rem 0.6rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.8rem;\n}\n\n.index-dashboard__msg-conv-preview {\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.index-dashboard__msg-thread-col {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  min-width: 0;\n}\n\n.index-dashboard__msg-thread {\n  display: flex;\n  flex-direction: column;\n  gap: 0.4rem;\n  flex: 1;\n  overflow-y: auto;\n  padding: 0.25rem 0.5rem;\n}\n\n.index-dashboard__msg-bubble {\n  max-width: 80%;\n  align-self: flex-start;\n  padding: 0.45rem 0.7rem;\n  border-radius: 0.9rem;\n  background: color-mix(in srgb, currentColor 10%, transparent);\n  font-size: 0.85rem;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  word-break: break-word;\n}\n\n.index-dashboard__msg-bubble--mine {\n  align-self: flex-end;\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 22%, transparent);\n}\n\n.index-dashboard__msg-bubble--internal {\n  align-self: stretch;\n  background: transparent;\n  border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.4));\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-style: italic;\n}\n\n.index-dashboard__msg-internal-label {\n  display: block;\n  margin-bottom: 0.15rem;\n  font-style: normal;\n  font-size: 0.6rem;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n  opacity: 0.7;\n}\n\n.index-dashboard__msg-composer {\n  display: flex;\n  align-items: flex-end;\n  gap: 0.5rem;\n  padding-top: 0.5rem;\n  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__msg-input {\n  flex: 1;\n  resize: none;\n  max-height: 8rem;\n}\n\n@media (max-width: 720px) {\n  .index-dashboard__msg-body {\n    grid-template-columns: 1fr;\n  }\n\n  .index-dashboard__msg-list {\n    max-height: 12rem;\n    border-right: none;\n    border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  }\n}\n"
+const PLUGIN_CSS = "/* Desktop host adapter: map the web-dashboard theme variables the shared\n   stylesheet consumes onto the desktop app's --ui-* theme variables, so the\n   page follows every desktop theme. The shared stylesheet's own hex fallbacks\n   still apply if a variable is missing. */\n.index-network-desktop-page {\n  --color-background: var(--ui-bg-editor);\n  --background-base: var(--ui-bg-editor);\n  --color-card: var(--ui-bg-elevated);\n  --color-card-foreground: var(--ui-text-primary);\n  --color-foreground: var(--ui-text-primary);\n  --color-muted-foreground: var(--ui-text-tertiary);\n  --color-border: var(--ui-stroke-secondary);\n  --color-primary: var(--ui-accent);\n  --color-destructive: var(--ui-red);\n  --color-success: var(--ui-green);\n  --midground: var(--ui-text-secondary);\n  --midground-base: var(--ui-bg-tertiary);\n  --radius: 6px;\n  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;\n\n  height: 100%;\n  overflow-y: auto;\n  padding-top: 1rem;\n  padding-bottom: 2rem;\n}\n\n/* The pitch art's 1.25x scale bleeds over the card border — clip it. */\n.index-network-desktop-page .index-dashboard__pitch {\n  overflow: hidden;\n}\n\n/* Getting started fills the desktop page (Mac profileConfirmedAt parity). */\n.index-network-desktop-page .index-dashboard__getting-started {\n  min-height: calc(100% - 1rem);\n  padding: 1.5rem 1.25rem 2rem;\n  box-sizing: border-box;\n}\n\n.index-network-desktop-page .index-dashboard__profile-panel--getting-started {\n  width: 100%;\n  max-width: 42rem;\n}\n\n.index-network-desktop-page .index-dashboard__setting-up {\n  min-height: calc(100% - 1rem);\n}\n\n/* Browser sign-in gate fills the desktop page; button matches Getting started. */\n.index-network-desktop-page .index-dashboard__login {\n  min-height: calc(100% - 1rem);\n}\n\n.index-network-desktop-page .index-dashboard__login-btn.idx-btn {\n  padding: 0.75rem 1.45rem;\n  font-size: 0.95rem;\n  min-height: 2.75rem;\n}\n\n/* Getting started actions: Mac-ink black, intentionally larger. */\n.index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn {\n  padding: 0.75rem 1.45rem;\n  font-size: 0.95rem;\n  min-height: 2.75rem;\n}\n\n.index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn--solid {\n  color: #fff;\n  border-color: #000;\n  background: #000;\n}\n\n.index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn--outlined {\n  border-color: #000;\n  color: #000;\n  background: transparent;\n}\n\n/* The animated assets need no desktop-specific override: the shared\n   stylesheet now carries a light and a dark treatment, keyed off the\n   `data-scheme` the dashboard resolves from this app's theme (it stamps\n   data-hermes-mode / .dark / color-scheme on <html>). */\n\n/* The desktop host has no Badge component (head.js provides components: {}),\n   so BadgeText renders a bare <span> — recreate the web dashboard's badge\n   pill here. React forwards the unknown `tone` prop as a DOM attribute,\n   which lets tones (success/warning/destructive) be styled from CSS. */\n.index-network-desktop-page .index-dashboard__badge {\n  display: inline-flex;\n  align-items: center;\n  padding: 0.1rem 0.5rem;\n  border: 1px solid var(--color-border, #d4d4d8);\n  border-radius: var(--radius);\n  font-family: var(--font-mono);\n  font-size: 0.68rem;\n  line-height: 1.5;\n  color: var(--color-muted-foreground, #6b7280);\n  background: transparent;\n}\n\n/* Pending-count badges (the number on each intent row) read in the accent\n   color so they stand out from plain outline tags. */\n.index-network-desktop-page .index-dashboard__intent-counts .index-dashboard__badge {\n  color: var(--color-primary, #4fd1c5);\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 45%, transparent);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"success\"] {\n  color: var(--color-success, #16a34a);\n  border-color: color-mix(in srgb, var(--color-success, #16a34a) 45%, transparent);\n  background: color-mix(in srgb, var(--color-success, #16a34a) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"warning\"] {\n  color: var(--ui-yellow, #d97706);\n  border-color: color-mix(in srgb, var(--ui-yellow, #d97706) 45%, transparent);\n  background: color-mix(in srgb, var(--ui-yellow, #d97706) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"destructive\"] {\n  color: var(--color-destructive, #ef4444);\n  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 45%, transparent);\n  background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent);\n}\n\n.index-network-desktop-page .index-dashboard__badge[tone=\"secondary\"] {\n  background: var(--midground-base, rgba(127, 127, 127, 0.15));\n  border-color: transparent;\n  color: var(--color-foreground, inherit);\n}\n\n/* SDK Button adapter (see DesktopButton in head.js): Mac-ink black buttons,\n   kept a step larger than the web dashboard. */\n.index-network-desktop-page .idx-btn {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 0.35rem;\n  padding: 0.55rem 1.15rem;\n  min-height: 2.35rem;\n  border: 1px solid #000;\n  border-radius: 0;\n  font-family: var(--font-mono);\n  font-size: 0.88rem;\n  line-height: 1.2;\n  letter-spacing: 0.04em;\n  color: #000;\n  background: transparent;\n  cursor: pointer;\n  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;\n}\n\n.index-network-desktop-page .idx-btn:disabled {\n  opacity: 0.55;\n  cursor: default;\n}\n\n.index-network-desktop-page .idx-btn--solid {\n  color: #fff;\n  border-color: #000;\n  background: #000;\n}\n\n.index-network-desktop-page .idx-btn--solid:hover:not(:disabled) {\n  background: #222;\n  border-color: #000;\n  color: #fff;\n}\n\n.index-network-desktop-page .idx-btn--outlined {\n  color: #000;\n  border-color: #000;\n  background: transparent;\n}\n\n.index-network-desktop-page .idx-btn--outlined:hover:not(:disabled) {\n  background: rgba(0, 0, 0, 0.06);\n  color: #000;\n}\n\n.index-network-desktop-page .idx-btn--ghost {\n  border-color: transparent;\n  color: #000;\n}\n\n.index-network-desktop-page .idx-btn--ghost:hover:not(:disabled) {\n  background: rgba(0, 0, 0, 0.06);\n  color: #000;\n}\n\n.index-network-desktop-page .idx-btn--icon {\n  width: 2.35rem;\n  height: 2.35rem;\n  min-height: 2.35rem;\n  padding: 0;\n}\n\n.index-network-desktop-page .idx-btn--destructive {\n  color: #fff;\n  border-color: #000;\n  background: #000;\n}\n\n/* The desktop app keeps the header pause/archive pill a step larger than the\n   web dashboard's base sizing. */\n.index-network-desktop-page .index-dashboard__action-seg {\n  padding: 0.5rem 0.9rem;\n  font-size: 0.78rem;\n}\n\n.index-network-desktop-page .index-dashboard__action-seg svg {\n  width: 1.2rem;\n  height: 1.2rem;\n}\n\n/* Gadget-style actions on opportunity cards and question cards: square mono\n   buttons in ink color (Mac-app flavored), primary inverted to an ink fill. */\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn,\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn {\n  border-radius: 0;\n  border: 1px solid var(--ui-text-primary, #000);\n  background: transparent;\n  color: var(--ui-text-primary, #000);\n  font-family: var(--font-mono);\n  font-size: 0.72rem;\n  letter-spacing: 0.06em;\n  padding: 0.25rem 0.75rem;\n}\n\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid,\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid {\n  background: var(--ui-text-primary, #000);\n  color: var(--ui-bg-editor, #fff);\n}\n\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn:hover:not(:disabled),\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn:hover:not(:disabled) {\n  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));\n}\n\n.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid:hover:not(:disabled),\n.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid:hover:not(:disabled) {\n  background: var(--ui-text-secondary, #333);\n}\n\n.index-dashboard {\n  display: flex;\n  flex-direction: column;\n  gap: 1.25rem;\n  padding-left: 1.5rem;\n  padding-right: 1.5rem;\n}\n\n.index-dashboard__radar-strip {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.55rem;\n  margin-top: 0;\n}\n\n.index-dashboard__opps {\n  display: grid;\n  gap: 0.65rem;\n}\n\n.index-dashboard__opp {\n  display: grid;\n  gap: 0.6rem;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__opp-head {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__opp-id {\n  display: flex;\n  align-items: center;\n  gap: 0.6rem;\n  min-width: 0;\n}\n\n.index-dashboard__avatar {\n  position: relative;\n  display: inline-flex;\n  flex-shrink: 0;\n  align-items: center;\n  justify-content: center;\n  width: 32px;\n  height: 32px;\n  border-radius: 999px;\n  overflow: hidden;\n}\n\n.index-dashboard__avatar svg {\n  width: 100%;\n  height: 100%;\n  display: block;\n}\n\n.index-dashboard__avatar-img {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n  border-radius: inherit;\n}\n\n.index-dashboard__opp-meta {\n  display: grid;\n  gap: 0.1rem;\n  min-width: 0;\n}\n\n.index-dashboard__opp-name {\n  overflow: hidden;\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.92rem;\n  line-height: 1.25;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.index-dashboard__opp-sub {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.74rem;\n}\n\n.index-dashboard__opp-text {\n  margin: 0;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.88rem;\n  line-height: 1.55;\n}\n\n.index-dashboard__opp-status {\n  flex-shrink: 0;\n}\n\n.index-dashboard__badge.index-dashboard__opp-status--accepted {\n  color: #16a34a !important;\n  border-color: color-mix(in srgb, #16a34a 45%, transparent) !important;\n  background: color-mix(in srgb, #16a34a 12%, transparent) !important;\n}\n\n.index-dashboard__badge.index-dashboard__opp-status--rejected {\n  color: var(--color-destructive, #ef4444) !important;\n  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 45%, transparent) !important;\n  background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent) !important;\n}\n\n.index-dashboard__badge.index-dashboard__opp-status--expired {\n  color: #d97706 !important;\n  border-color: color-mix(in srgb, #d97706 45%, transparent) !important;\n  background: color-mix(in srgb, #d97706 12%, transparent) !important;\n}\n\n.index-dashboard__stat {\n  display: inline-flex;\n  align-items: baseline;\n  gap: 0.45rem;\n  padding: 0.45rem 0.65rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__stat--selectable {\n  cursor: pointer;\n  font: inherit;\n  transition: border-color 0.15s ease, background 0.15s ease;\n}\n\n.index-dashboard__stat--selectable:hover {\n  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 30%, transparent);\n}\n\n.index-dashboard__stat--selectable:focus-visible {\n  outline: none;\n  border-color: var(--color-primary, #6366f1);\n}\n\n.index-dashboard__stat--active {\n  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 45%, transparent);\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 12%, var(--background-base, #041c1c));\n}\n\n.index-dashboard__stat--active strong,\n.index-dashboard__stat--active span {\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__stat strong {\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.95rem;\n  line-height: 1;\n}\n\n.index-dashboard__stat span {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.74rem;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n}\n\n/* Mac-app parity: actions sit in the head's top-right column, not a footer. */\n.index-dashboard__opp-btns {\n  display: flex;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 0.4rem;\n  flex-shrink: 0;\n}\n\n/* Medium footprint for the SDK action buttons (no native `md` size). Used by\n   both the opportunity actions and the question Skip/Submit row. Two-class\n   selector outranks the SDK's single utility classes. */\n.index-dashboard .index-dashboard__btn-md {\n  padding: 0.5rem 1rem;\n  font-size: 0.8rem;\n  letter-spacing: 0.12em;\n}\n\n.index-dashboard__opp-openchat {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.3rem;\n  padding: 0.4rem 0.75rem;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  border: 1px solid color-mix(in srgb, var(--color-primary, #6366f1) 55%, transparent);\n  color: var(--color-card-foreground, inherit);\n  text-decoration: none;\n  font-size: 0.8rem;\n  transition: background 0.15s ease;\n}\n\n.index-dashboard__opp-openchat:hover {\n  background: color-mix(in srgb, var(--color-primary, #6366f1) 16%, transparent);\n}\n\n.index-dashboard__card {\n  border: none;\n  border-radius: 0;\n  background: transparent;\n}\n\n.index-dashboard__card p {\n  margin: 0;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  line-height: 1.55;\n}\n\n.index-dashboard__hdr {\n  margin-left: auto;\n  display: inline-flex;\n  align-items: center;\n  gap: 0.5rem;\n  flex-shrink: 0;\n}\n\n/* Rendered inside the page when the host has no banner header (desktop app). */\n.index-dashboard__hdr--inline {\n  align-self: flex-end;\n  margin-bottom: -0.5rem;\n}\n\n.index-dashboard__loading-text {\n  color: var(--color-muted-foreground, inherit);\n  font-size: 0.85rem;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n\n.index-dashboard__hdr-label {\n  font-size: 0.72rem;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--color-foreground, var(--midground, #ffe6cb));\n  white-space: nowrap;\n  cursor: pointer;\n}\n\n/* Mirrors @nous-research/ui Switch: square, h-5 w-9, cream (midground) knob. */\n.index-dashboard__switch {\n  position: relative;\n  display: inline-flex;\n  align-items: center;\n  width: 2.25rem;\n  height: 1.25rem;\n  padding: 0;\n  border: 1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 20%, transparent);\n  border-radius: 0;\n  background: var(--color-background, var(--background-base, #0b1411));\n  cursor: pointer;\n  transition: background 0.15s ease, border-color 0.15s ease;\n  flex-shrink: 0;\n}\n\n.index-dashboard__switch--on {\n  background: color-mix(in srgb, var(--midground-base, #ffe6cb) 15%, transparent);\n  border-color: color-mix(in srgb, var(--midground-base, #ffe6cb) 30%, transparent);\n}\n\n.index-dashboard__switch-knob {\n  position: absolute;\n  top: 50%;\n  left: 0;\n  width: 0.875rem;\n  height: 0.875rem;\n  border-radius: 0;\n  background: color-mix(in srgb, var(--midground-base, #ffe6cb) 40%, transparent);\n  transform: translate(0.125rem, -50%);\n  transition: transform 0.15s ease, background 0.15s ease;\n}\n\n.index-dashboard__switch--on .index-dashboard__switch-knob {\n  background: var(--midground, #ffe6cb);\n  transform: translate(1rem, -50%);\n}\n\n/* Mirrors @nous-research/ui Badge tone=\"success\". */\n.index-dashboard__live {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.25rem 0.5rem;\n  border: 1px solid color-mix(in srgb, var(--color-success, #4ade80) 30%, transparent);\n  background: color-mix(in srgb, var(--color-success, #4ade80) 15%, transparent);\n  color: var(--color-success, #4ade80);\n  font-size: 0.72rem;\n  line-height: 1;\n  letter-spacing: 0.1em;\n}\n\n/* Mirrors the mac app's LiveDot beacon: fixed accent-orange square with a\n   hard stepped blink (mac-blink), regardless of the surrounding badge tone. */\n.index-dashboard__live-dot {\n  display: inline-block;\n  width: 0.375rem;\n  height: 0.375rem;\n  flex: 0 0 auto;\n  background: #ff8a00;\n  border: 1px solid rgba(0, 0, 0, 0.85);\n  animation: index-dashboard-blink 1.2s steps(2) infinite;\n}\n\n/* Beacon inside a status badge (intent rows): space it off the label. */\n.index-dashboard__badge .index-dashboard__live-dot {\n  margin-right: 0.35rem;\n}\n\n/* Paused signal: same badge in the warning tone (--ui-yellow on desktop\n   themes, amber on the web dashboard), dot held steady — nothing is pulsing\n   while the agent is on hold. */\n.index-dashboard__live--paused {\n  border-color: color-mix(in srgb, var(--ui-yellow, #fbbf24) 30%, transparent);\n  background: color-mix(in srgb, var(--ui-yellow, #fbbf24) 15%, transparent);\n  color: var(--ui-yellow, #fbbf24);\n}\n\n.index-dashboard__live--paused .index-dashboard__live-dot {\n  animation: none;\n}\n\n@keyframes index-dashboard-blink {\n  50% { opacity: 0.15; }\n}\n\n.index-dashboard__header-refresh {\n  margin-left: 0;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 2rem;\n  height: 2rem;\n  padding: 0;\n  flex-shrink: 0;\n  border: none;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  cursor: pointer;\n}\n\n.index-dashboard__header-refresh:hover:not(:disabled) {\n  color: var(--color-foreground, #f8fafc);\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n.index-dashboard__header-refresh:disabled {\n  cursor: default;\n  opacity: 0.55;\n}\n\n.index-dashboard__header-refresh[data-busy=\"true\"] svg {\n  animation: index-dashboard-spin 0.8s linear infinite;\n}\n\n@keyframes index-dashboard-spin {\n  to { transform: rotate(360deg); }\n}\n\n.index-dashboard__loading,\n.index-dashboard__empty,\n.index-dashboard__error {\n  padding: 0.85rem;\n  border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.75);\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.9rem;\n}\n\n.index-dashboard__error {\n  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 50%, transparent);\n  color: var(--color-destructive, #ef4444);\n}\n\n/* Hero loading state: the eye animation, color-reversed for the dark theme. */\n.index-dashboard__loading--hero {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  gap: 0.75rem;\n  padding: 3.5rem 1rem;\n  border: none;\n  border-radius: 0;\n  text-align: center;\n}\n\n.index-dashboard__loading-anim {\n  width: 340px;\n  max-width: 80%;\n  height: auto;\n}\n\n/* The animated art needs no CSS treatment: each role ships a dark file and a\n   light file, and index.js picks between them from the host theme (the root\n   carries the resolved one as `data-scheme` for reference). */\n\n.index-dashboard__body {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n}\n\n.index-dashboard__segmented {\n  display: inline-flex;\n  gap: 0.35rem;\n  align-self: flex-start;\n  padding: 0.25rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 999px;\n  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);\n}\n\n.index-dashboard__list-page,\n.index-dashboard__detail {\n  display: grid;\n  gap: 1rem;\n  min-width: 0;\n}\n\n.index-dashboard__detail-cols {\n  display: grid;\n  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);\n  gap: 1rem;\n  align-items: start;\n}\n\n.index-dashboard__list-cols {\n  display: grid;\n  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);\n  gap: 1rem;\n  align-items: start;\n}\n\n.index-dashboard__pitch {\n  display: flex;\n  flex-direction: row-reverse;\n  align-items: center;\n  gap: 1rem;\n  padding: 1.5rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: var(--radius, 0.75rem);\n  background: color-mix(in srgb, var(--color-card, #0f172a) 88%, transparent);\n}\n\n.index-dashboard__pitch-body {\n  flex: 1 1 auto;\n  min-width: 0;\n}\n\n.index-dashboard__pitch-media {\n  flex: 0 0 auto;\n  width: 84px;\n  height: 84px;\n  object-fit: cover;\n  transform: scale(1.25);\n  align-self: center;\n}\n\n.index-dashboard__pitch-title {\n  margin: 0;\n  font-family: var(--font-mono, ui-monospace, \"SFMono-Regular\", Menlo, monospace);\n  font-size: 1.65rem;\n  font-weight: 700;\n  line-height: 1.3;\n  letter-spacing: -0.01em;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__pitch-mark {\n  padding: 0.04em 0.28em;\n  border: 2px solid #1f2937;\n  background: #e8943a;\n  color: #111;\n  -webkit-box-decoration-break: clone;\n  box-decoration-break: clone;\n}\n\n.index-dashboard__pitch-text {\n  margin: 0;\n  font-size: 0.92rem;\n  line-height: 1.6;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__list-side {\n  display: grid;\n  gap: 1rem;\n  align-content: start;\n  /* Right breathing room so the Networks column doesn't sit against the\n     content edge / scrollbar — mirrors the Intents column's left inset. */\n  padding-right: 1rem;\n}\n\n.index-dashboard__net-card {\n  border: none;\n  border-radius: 0;\n  background: transparent;\n}\n\n.index-dashboard__net-head {\n  display: flex;\n  align-items: flex-end;\n  justify-content: space-between;\n  gap: 0.75rem;\n  min-height: 2.75rem;\n  padding: 0 0 0.75rem 0;\n  border-bottom: none;\n}\n\n.index-dashboard__net-heading {\n  margin: 0;\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  font-size: 0.9375rem;\n  font-weight: 700;\n  letter-spacing: 0.1875rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-head-actions {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-discover-btn {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.3rem 0.7rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.78rem;\n  cursor: pointer;\n  transition: background 0.15s ease, border-color 0.15s ease;\n}\n\n.index-dashboard__net-discover-btn:hover {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 10%, transparent);\n}\n\n.index-dashboard__net-discover-icon {\n  width: 0.9rem;\n  height: 0.9rem;\n  flex-shrink: 0;\n}\n\n.index-dashboard__net-modal {\n  max-width: 32rem;\n}\n\n.index-dashboard__net-modal-body {\n  padding-top: 0.85rem;\n  min-width: 0;\n}\n\n.index-dashboard__net-list {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-tabs {\n  flex: 1 1 auto;\n  min-width: 0;\n  gap: 0.15rem;\n  overflow-x: auto;\n}\n\n.index-dashboard__net-tabs .index-dashboard__profile-tab {\n  padding: 0.4rem 0.45rem;\n  font-size: 0.82rem;\n  white-space: nowrap;\n}\n\n.index-dashboard__net-tab {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.3rem;\n}\n\n.index-dashboard__net-tab-icon {\n  width: 14px;\n  height: 14px;\n  flex-shrink: 0;\n}\n\n.index-dashboard__net-request-list {\n  margin-bottom: 0.65rem;\n  padding-bottom: 0.65rem;\n  border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__net-request-review {\n  font-size: 0.78rem;\n  opacity: 0.75;\n  font-style: italic;\n}\n\n.index-dashboard__net-request-btns {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.4rem;\n  flex-shrink: 0;\n}\n\n.index-dashboard__net-request-dismiss {\n  border: none;\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  opacity: 0.6;\n  font: inherit;\n  font-size: 0.78rem;\n  cursor: pointer;\n  padding: 0.2rem 0.3rem;\n}\n\n.index-dashboard__net-request-dismiss:hover {\n  opacity: 1;\n}\n\n.index-dashboard__net-request-note {\n  margin: 0;\n  font-size: 0.85rem;\n  line-height: 1.5;\n  opacity: 0.85;\n}\n\n.index-dashboard__net-request-intro {\n  margin: 0;\n  padding: 0.7rem 0.85rem;\n  border: 1px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 30%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  border-left: 3px solid var(--color-primary, #4fd1c5);\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 12%, transparent);\n  font-size: 0.82rem;\n  line-height: 1.5;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__net-request-actions {\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n  margin-top: 0.25rem;\n}\n\n.index-dashboard__net-size-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);\n  gap: 0.5rem;\n  min-width: 0;\n}\n\n.index-dashboard__net-size {\n  padding: 0.5rem 0.7rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.82rem;\n  cursor: pointer;\n  text-align: center;\n}\n\n.index-dashboard__net-size:hover {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.24)));\n}\n\n.index-dashboard__net-size--on {\n  border-color: var(--color-primary, #4fd1c5);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 16%, transparent);\n}\n\n.index-dashboard__net-request-identity {\n  display: flex;\n  align-items: center;\n  gap: 0.85rem;\n  margin-bottom: 0.35rem;\n}\n\n.index-dashboard__net-request-photo {\n  position: relative;\n  flex: 0 0 auto;\n  cursor: pointer;\n}\n\n.index-dashboard__net-request-photo-mark {\n  width: 42px;\n  height: 42px;\n  display: block;\n}\n\n.index-dashboard__net-request-identity-main {\n  display: grid;\n  gap: 0.15rem;\n  min-width: 0;\n}\n\n.index-dashboard__net-request-identity-name {\n  font-size: 0.95rem;\n  color: var(--color-card-foreground, inherit);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.index-dashboard__net-request-photo-hint {\n  font-size: 0.72rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-access {\n  display: grid;\n  gap: 0.2rem;\n  text-align: left;\n}\n\n.index-dashboard__net-access strong {\n  font-size: 0.85rem;\n}\n\n.index-dashboard__net-access span {\n  font-size: 0.72rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-weight: 400;\n}\n\n.index-dashboard__net-row {\n  display: flex;\n  align-items: center;\n  gap: 0.75rem;\n  width: 100%;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  text-align: left;\n}\n\n.index-dashboard__net-row--button {\n  cursor: pointer;\n}\n\n.index-dashboard__net-row--button:hover {\n  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 35%, transparent);\n}\n\n.index-dashboard__net-detail-modal {\n  max-width: 32rem;\n}\n\n.index-dashboard__net-detail-body {\n  display: grid;\n  gap: 1.25rem;\n}\n\n.index-dashboard__net-detail-head {\n  display: flex;\n  align-items: flex-start;\n  gap: 1rem;\n}\n\n.index-dashboard__net-avatar--lg {\n  width: 64px;\n  height: 64px;\n}\n\n.index-dashboard__net-detail-head-text {\n  display: grid;\n  gap: 0.65rem;\n  min-width: 0;\n}\n\n.index-dashboard__net-detail-title {\n  margin: 0;\n  font-size: 1.25rem;\n  font-weight: 700;\n  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);\n  color: var(--color-card-foreground, inherit);\n  line-height: 1.2;\n}\n\n.index-dashboard__net-detail-bits {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 0.75rem;\n}\n\n.index-dashboard__net-detail-bit {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-detail-bit .index-dashboard__net-tab-icon,\n.index-dashboard__net-detail-bit .index-dashboard__net-sub-icon {\n  width: 0.875rem;\n  height: 0.875rem;\n}\n\n.index-dashboard__net-detail-owner {\n  font-size: 0.72rem;\n  font-weight: 600;\n  padding: 0.15rem 0.4rem;\n  border-radius: 2px;\n  background: var(--color-card-foreground, #f8fafc);\n  color: var(--color-card, #0f172a);\n}\n\n.index-dashboard__net-access-panel,\n.index-dashboard__net-overview {\n  display: grid;\n  gap: 1.5rem;\n}\n\n.index-dashboard__net-overview-detail {\n  margin: 0;\n  font-size: 0.88rem;\n  line-height: 1.5;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-overview-head {\n  display: flex;\n  align-items: baseline;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__net-overview-count {\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);\n}\n\n.index-dashboard__net-signal-list {\n  display: grid;\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-signal-row {\n  display: block;\n  width: 100%;\n  text-align: left;\n  padding: 0.75rem 0.85rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  cursor: pointer;\n}\n\n.index-dashboard__net-signal-row:hover {\n  border-color: color-mix(in srgb, var(--color-card-foreground, #f8fafc) 45%, var(--color-border, rgba(148, 163, 184, 0.24)));\n}\n\n.index-dashboard__net-leave-btn {\n  flex-shrink: 0;\n  align-self: flex-start;\n  margin-left: auto;\n  padding: 0.4rem 0.75rem;\n  border: 1px solid color-mix(in srgb, var(--color-destructive, #ef4444) 70%, transparent);\n  border-radius: 2px;\n  background: transparent;\n  color: var(--color-destructive, #ef4444);\n  font: inherit;\n  font-size: 0.8rem;\n  cursor: pointer;\n}\n\n.index-dashboard__net-directory-toggle {\n  display: grid;\n  gap: 0.2rem;\n  width: 100%;\n  text-align: left;\n  padding: 0.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  cursor: pointer;\n}\n\n.index-dashboard__net-directory-toggle--on {\n  border-color: var(--color-card-foreground, #f8fafc);\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 8%, transparent);\n}\n\n.index-dashboard__net-directory-toggle strong {\n  font-size: 0.88rem;\n}\n\n.index-dashboard__net-directory-toggle span {\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-members {\n  display: grid;\n  gap: 0.75rem;\n}\n\n.index-dashboard__net-member-search {\n  position: relative;\n}\n\n.index-dashboard__net-member-input,\n.index-dashboard__net-settings-field input,\n.index-dashboard__net-settings-field textarea,\n.index-dashboard__net-danger-box input {\n  width: 100%;\n  box-sizing: border-box;\n  padding: 0.55rem 0.7rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  font-size: 0.85rem;\n}\n\n.index-dashboard__net-member-suggestions {\n  position: absolute;\n  left: 0;\n  right: 0;\n  top: calc(100% + 2px);\n  z-index: 5;\n  max-height: 10rem;\n  overflow: auto;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: var(--color-card, #0f172a);\n  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);\n}\n\n.index-dashboard__net-member-suggestion {\n  display: flex;\n  align-items: center;\n  gap: 0.55rem;\n  width: 100%;\n  padding: 0.55rem 0.7rem;\n  border: none;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__net-member-suggestion:hover {\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 10%, transparent);\n}\n\n.index-dashboard__net-member-suggestion em {\n  margin-left: auto;\n  font-style: normal;\n  font-size: 0.72rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-member-list {\n  display: grid;\n  gap: 0.15rem;\n}\n\n.index-dashboard__net-member-row {\n  display: flex;\n  align-items: center;\n  gap: 0.45rem;\n  padding: 0.35rem 0.25rem;\n}\n\n.index-dashboard__net-member-main {\n  flex: 1;\n  min-width: 0;\n  display: flex;\n  align-items: center;\n  gap: 0.55rem;\n  border: none;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  padding: 0;\n}\n\n.index-dashboard__net-member-avatar {\n  flex-shrink: 0;\n  width: 1.75rem;\n  height: 1.75rem;\n  border-radius: 999px;\n  object-fit: cover;\n}\n\n.index-dashboard__net-member-avatar--fallback {\n  display: inline-flex;\n  overflow: hidden;\n}\n\n.index-dashboard__net-member-avatar--ghost {\n  filter: grayscale(1) blur(1px);\n  opacity: 0.75;\n}\n\n.index-dashboard__net-member-name {\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 0.85rem;\n}\n\n.index-dashboard__net-member-ghost {\n  margin-left: 0.35rem;\n  font-style: normal;\n  font-size: 0.7rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-member-role {\n  flex-shrink: 0;\n  font-size: 0.7rem;\n  padding: 0.1rem 0.35rem;\n  border-radius: 2px;\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 16%, transparent);\n}\n\n.index-dashboard__net-member-role--owner {\n  background: var(--color-card-foreground, #f8fafc);\n  color: var(--color-card, #0f172a);\n}\n\n.index-dashboard__net-member-act {\n  flex-shrink: 0;\n  padding: 0.15rem 0.4rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  font-size: 0.75rem;\n  cursor: pointer;\n}\n\n.index-dashboard__net-member-act--danger {\n  color: var(--color-destructive, #ef4444);\n}\n\n.index-dashboard__net-member-pager {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n  padding-top: 0.5rem;\n  border-top: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 80%, transparent);\n  font-size: 0.72rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-member-pager button {\n  margin-left: 0.35rem;\n  padding: 0.15rem 0.45rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  cursor: pointer;\n}\n\n.index-dashboard__net-settings-panel {\n  display: grid;\n  gap: 1rem;\n}\n\n.index-dashboard__net-settings-photo {\n  display: flex;\n  align-items: center;\n  gap: 0.75rem;\n}\n\n.index-dashboard__net-settings-photo-btn {\n  display: block;\n  width: 4.5rem;\n  height: 4.5rem;\n  border-radius: 999px;\n  overflow: hidden;\n  cursor: pointer;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__net-settings-photo-img {\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n}\n\n.index-dashboard__net-settings-remove {\n  border: none;\n  background: transparent;\n  color: var(--color-destructive, #ef4444);\n  font: inherit;\n  font-size: 0.8rem;\n  cursor: pointer;\n}\n\n.index-dashboard__net-settings-field {\n  display: grid;\n  gap: 0.35rem;\n  font-size: 0.8rem;\n}\n\n.index-dashboard__net-settings-actions {\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-settings-actions button,\n.index-dashboard__net-danger-box button {\n  padding: 0.4rem 0.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  font-size: 0.8rem;\n  cursor: pointer;\n}\n\n.index-dashboard__net-settings-save {\n  background: var(--color-card-foreground, #f8fafc) !important;\n  color: var(--color-card, #0f172a) !important;\n}\n\n.index-dashboard__net-danger-toggle {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.4rem;\n  border: none;\n  background: transparent;\n  color: var(--color-destructive, #ef4444);\n  font: inherit;\n  font-size: 0.8rem;\n  cursor: pointer;\n  padding: 0;\n}\n\n.index-dashboard__net-danger-chevron {\n  font-size: 0.65rem;\n  line-height: 1;\n}\n\n.index-dashboard__net-danger-box {\n  margin-top: 0.65rem;\n  display: grid;\n  gap: 0.55rem;\n  padding: 0.75rem;\n  border: 1px solid color-mix(in srgb, var(--color-destructive, #ef4444) 45%, transparent);\n  border-radius: 2px;\n}\n\n.index-dashboard__net-danger-box p {\n  margin: 0;\n  font-size: 0.8rem;\n  color: var(--color-destructive, #ef4444);\n}\n\n.index-dashboard__net-visibility {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-visibility-card {\n  display: flex;\n  align-items: flex-start;\n  gap: 0.65rem;\n  padding: 0.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 2px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__net-visibility-card:hover:not(:disabled) {\n  border-color: color-mix(in srgb, var(--color-card-foreground, #f8fafc) 45%, var(--color-border, rgba(148, 163, 184, 0.24)));\n}\n\n.index-dashboard__net-visibility-card--on {\n  border-color: var(--color-card-foreground, #f8fafc);\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 8%, transparent);\n}\n\n.index-dashboard__net-visibility-card:disabled {\n  opacity: 0.6;\n  cursor: default;\n}\n\n.index-dashboard__net-visibility-card .index-dashboard__net-tab-icon {\n  width: 1rem;\n  height: 1rem;\n  flex-shrink: 0;\n  margin-top: 0.1rem;\n}\n\n.index-dashboard__net-invite-label {\n  margin: 0 0 1rem;\n  font-size: 0.75rem;\n  font-weight: 600;\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);\n}\n\n.index-dashboard__net-invite-row {\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  padding: 0.65rem 0.75rem;\n  border: 1px solid color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 28%, transparent);\n  border-radius: 2px;\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 8%, transparent);\n}\n\n.index-dashboard__net-invite-url {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-invite-copy {\n  flex-shrink: 0;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.25rem;\n  border: none;\n  border-radius: 2px;\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  cursor: pointer;\n}\n\n.index-dashboard__net-invite-copy:hover {\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__net-invite-copy--ok {\n  color: #16a34a;\n}\n\n.index-dashboard__net-regenerate {\n  margin-top: 0.5rem;\n  padding: 0.75rem;\n  border: 1px solid color-mix(in srgb, var(--color-destructive, #dc2626) 35%, transparent);\n  border-radius: 2px;\n  background: color-mix(in srgb, var(--color-destructive, #dc2626) 8%, transparent);\n}\n\n.index-dashboard__net-regenerate p {\n  margin: 0 0 0.75rem;\n  font-size: 0.8125rem;\n  color: var(--color-destructive, #dc2626);\n}\n\n.index-dashboard__net-regenerate-actions {\n  display: flex;\n  justify-content: flex-end;\n  gap: 0.5rem;\n}\n\n.index-dashboard__net-regenerate-actions button {\n  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);\n  font-size: 0.75rem;\n  padding: 0.4rem 0.75rem;\n  border: 1px solid color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 35%, transparent);\n  border-radius: 2px;\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  cursor: pointer;\n}\n\n.index-dashboard__net-regenerate-actions button:last-child {\n  border-color: var(--color-card-foreground, inherit);\n  background: var(--color-card-foreground, inherit);\n  color: var(--color-card, #fff);\n}\n\n.index-dashboard__net-invite-icon {\n  width: 0.875rem;\n  height: 0.875rem;\n}\n\n.index-dashboard__net-invite-empty {\n  margin: 0;\n  font-size: 0.85rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-avatar {\n  display: inline-flex;\n  width: 40px;\n  height: 40px;\n  flex-shrink: 0;\n  border-radius: 999px;\n  overflow: hidden;\n}\n\n.index-dashboard__net-avatar svg,\n.index-dashboard__net-avatar-img {\n  width: 100%;\n  height: 100%;\n  display: block;\n  object-fit: cover;\n}\n\n.index-dashboard__net-meta {\n  display: grid;\n  gap: 0.15rem;\n  min-width: 0;\n  flex: 1;\n}\n\n.index-dashboard__net-role {\n  flex-shrink: 0;\n  padding: 0.2rem 0.55rem;\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  font-size: 0.72rem;\n  font-weight: 600;\n  letter-spacing: 0.02em;\n}\n\n.index-dashboard__net-role--owner {\n  background: var(--color-card-foreground, #f8fafc);\n  color: var(--color-card, #0f172a);\n}\n\n.index-dashboard__net-role--member {\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 22%, transparent);\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-title {\n  overflow: hidden;\n  font-size: 0.875rem;\n  font-weight: 500;\n  line-height: 1.3;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__net-sub {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.3rem;\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__net-sub-icon {\n  width: 0.75rem;\n  height: 0.75rem;\n  flex-shrink: 0;\n}\n\n@media (max-width: 980px) {\n  .index-dashboard__list-cols {\n    grid-template-columns: 1fr;\n  }\n}\n\n.index-dashboard__intent-list {\n  display: grid;\n  gap: 0.5rem;\n}\n\n.index-dashboard__intent-row {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.6rem;\n  width: 100%;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n  color: var(--color-card-foreground, inherit);\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__intent-row--selected {\n  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 45%, transparent);\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 8%, var(--background-base, #041c1c));\n}\n\n.index-dashboard__intent-main {\n  display: grid;\n  gap: 0.25rem;\n  min-width: 0;\n}\n\n/* Keep the status tag compact (like a cron badge) instead of stretching to the\n   grid column width. */\n.index-dashboard__intent-main .index-dashboard__badge {\n  justify-self: start;\n}\n\n.index-dashboard__intent-title {\n  overflow: hidden;\n  font-size: 0.9rem;\n  line-height: 1.3;\n  text-overflow: ellipsis;\n}\n\n.index-dashboard__intent-sub {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.74rem;\n}\n\n.index-dashboard__intent-counts {\n  display: flex;\n  flex-shrink: 0;\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 0.3rem;\n}\n\n.index-dashboard__detail-head {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 0.6rem;\n}\n\n.index-dashboard__back-pill {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.3rem 0.75rem 0.3rem 0.55rem;\n  border-radius: 999px;\n  border: none;\n  cursor: pointer;\n  font-size: 0.85rem;\n  color: var(--color-card-foreground, inherit);\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 10%, transparent);\n}\n\n.index-dashboard__back-pill svg {\n  width: 0.9rem;\n  height: 0.9rem;\n}\n\n.index-dashboard__back-pill:hover {\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 18%, transparent);\n}\n\n.index-dashboard__tip {\n  position: relative;\n  display: inline-flex;\n}\n\n.index-dashboard__tip::after {\n  content: attr(data-tip);\n  position: absolute;\n  top: calc(100% + 6px);\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 0.25rem 0.5rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  background: var(--background-base, #041c1c);\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.7rem;\n  letter-spacing: 0.05em;\n  white-space: nowrap;\n  opacity: 0;\n  pointer-events: none;\n  transition: opacity 0.12s ease;\n  z-index: 30;\n}\n\n.index-dashboard__tip:hover::after,\n.index-dashboard__tip:focus-within::after {\n  opacity: 1;\n}\n\n/* Grouped pause/archive control in the detail header: one bordered pill with\n   two segments. The icon tints live here so both hosts color them the same\n   (the desktop host has no `text-warning` utility class): amber pause, green\n   resume, red trash. State fills the segment behind the icon — green while\n   paused/resumable, red while the archive is armed (\"sure?\"). */\n.index-dashboard__action-group {\n  display: inline-flex;\n  align-items: stretch;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 999px;\n}\n\n.index-dashboard__action-sep {\n  width: 1px;\n  background: color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n}\n\n.index-dashboard__action-seg {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.35rem;\n  padding: 0.42rem 0.75rem;\n  border: none;\n  background: transparent;\n  cursor: pointer;\n  font-family: var(--font-mono);\n  font-size: 0.72rem;\n}\n\n.index-dashboard__action-seg svg {\n  width: 1.05rem;\n  height: 1.05rem;\n}\n\n.index-dashboard__action-seg:disabled {\n  opacity: 0.55;\n  cursor: default;\n}\n\n.index-dashboard__action-seg:hover:not(:disabled),\n.index-dashboard__action-seg--filled {\n  background: color-mix(in srgb, currentColor 15%, transparent);\n}\n\n.index-dashboard__action-seg--pause {\n  color: var(--ui-yellow, #fbbf24);\n  border-radius: 999px 0 0 999px;\n}\n\n.index-dashboard__action-seg--resume {\n  color: var(--color-success, #4ade80);\n  border-radius: 999px 0 0 999px;\n}\n\n.index-dashboard__action-seg--archive {\n  color: var(--color-destructive, #ef4444);\n  border-radius: 0 999px 999px 0;\n}\n\n.index-dashboard__detail-title {\n  margin: 0;\n  font-size: 1.1rem;\n  line-height: 1.25;\n}\n\n.index-dashboard__detail-card {\n  display: grid;\n  gap: 0.6rem;\n  width: 100%;\n  box-sizing: border-box;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__detail-title-row {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__back {\n  display: inline-flex;\n  align-items: center;\n  padding: 0.5rem 1rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 999px;\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.95rem;\n  cursor: pointer;\n}\n\n.index-dashboard__card--primary {\n  background: transparent;\n}\n\n.index-dashboard__card-header {\n  display: flex;\n  flex-direction: column;\n  justify-content: flex-end;\n  min-height: 2.75rem;\n  padding-top: 0;\n  padding-bottom: 0.75rem;\n  border-bottom: none;\n  text-align: left;\n}\n\n.index-dashboard__card-title-row {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__card-title {\n  margin: 0;\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  font-size: 0.9375rem;\n  font-weight: 700;\n  letter-spacing: 0.1875rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__card-title-media {\n  flex: 0 0 auto;\n  height: 2.6rem;\n  width: auto;\n}\n\n.index-dashboard__radar-eye {\n  flex: 0 0 auto;\n  height: 2.1rem;\n  width: auto;\n  object-fit: contain;\n}\n\n.index-dashboard__card-description {\n  margin-top: 0.25rem !important;\n  font-size: 0.82rem;\n}\n\n.index-dashboard__card-content {\n  display: flex;\n  flex-direction: column;\n  gap: 0.75rem;\n  padding-top: 0;\n}\n\n.index-dashboard__badge {\n  white-space: nowrap;\n  text-transform: capitalize;\n}\n\n.index-dashboard__items,\n.index-dashboard__stack {\n  display: grid;\n  gap: 0.65rem;\n}\n\n.index-dashboard__items--compact {\n  gap: 0.5rem;\n}\n\n.index-dashboard__item {\n  display: grid;\n  gap: 0.35rem;\n  padding: 1rem;\n  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);\n  border-radius: 0;\n  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);\n}\n\n.index-dashboard__card--primary .index-dashboard__item:first-child {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 48%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 8%, transparent);\n}\n\n.index-dashboard__items--compact .index-dashboard__item {\n  padding: 0.7rem;\n}\n\n.index-dashboard__item-head {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__item-title {\n  margin: 0;\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.95rem;\n  line-height: 1.35;\n}\n\n.index-dashboard__items--compact .index-dashboard__item-title {\n  font-size: 0.88rem;\n}\n\n.index-dashboard__item-detail {\n  font-size: 0.88rem;\n}\n\n.index-dashboard__items--compact .index-dashboard__item-detail {\n  display: -webkit-box;\n  overflow: hidden;\n  -webkit-box-orient: vertical;\n  -webkit-line-clamp: 2;\n  font-size: 0.8rem;\n}\n\n.index-dashboard__item-meta {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.78rem;\n}\n\n.index-dashboard__detail-live {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n\n.index-dashboard__detail-live-text {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.76rem;\n}\n\n.index-dashboard__question {\n  display: grid;\n  gap: 0.75rem;\n  padding: 0.95rem;\n  border: 1px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 34%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  border-radius: calc(var(--radius, 0.75rem) * 0.75);\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 7%, transparent);\n}\n\n.index-dashboard__question-prompt {\n  color: var(--color-card-foreground, inherit) !important;\n  font-size: 0.94rem;\n}\n\n.index-dashboard__question-options {\n  display: grid;\n  gap: 0.4rem;\n}\n\n.index-dashboard__qopt {\n  display: flex;\n  align-items: flex-start;\n  gap: 0.6rem;\n  width: 100%;\n  padding: 0.55rem 0.65rem;\n  border: 1px solid color-mix(in srgb, var(--color-border, rgba(148, 163, 184, 0.24)) 72%, transparent);\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-background, #020617) 34%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__qopt--selected {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 68%, var(--color-border, rgba(148, 163, 184, 0.24)));\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 13%, transparent);\n}\n\n.index-dashboard__qletter {\n  display: inline-flex;\n  flex-shrink: 0;\n  align-items: center;\n  justify-content: center;\n  width: 1.4rem;\n  height: 1.4rem;\n  border-radius: calc(var(--radius, 0.75rem) * 0.45);\n  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 18%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.72rem;\n  font-weight: 700;\n  line-height: 1;\n}\n\n.index-dashboard__qopt--selected .index-dashboard__qletter {\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 70%, transparent);\n}\n\n.index-dashboard__qopt-text {\n  font-size: 0.88rem;\n  line-height: 1.45;\n}\n\n.index-dashboard__qopt-label {\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__qopt-desc {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__textarea {\n  min-width: 0;\n  width: 100%;\n  box-sizing: border-box;\n  padding: 0.65rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.65);\n  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  resize: vertical;\n}\n\n.index-dashboard__question-actions {\n  display: flex;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 0.75rem;\n}\n\n/* Settled (answered/skipped) question record — Mac-app parity: the frame drops\n   to a hairline so settled cards recede behind live questions, the prompt\n   steps back to secondary ink, and the given answer is quoted under a strong\n   rule as the one emphasized thing left. */\n.index-dashboard__question--done {\n  gap: 0.5rem;\n  border-color: var(--color-border, rgba(148, 163, 184, 0.24));\n  background: transparent;\n}\n\n.index-dashboard__question--dismissed {\n  opacity: 0.55;\n}\n\n.index-dashboard__question--done .index-dashboard__question-prompt {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) !important;\n}\n\n.index-dashboard__qdone-status {\n  display: flex;\n  justify-content: flex-end;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.72rem;\n  letter-spacing: 0.03em;\n}\n\n.index-dashboard__qdone-answer {\n  display: grid;\n  gap: 0.2rem;\n  border-left: 2px solid var(--color-card-foreground, currentColor);\n  padding-left: 0.65rem;\n}\n\n.index-dashboard__qdone-label {\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.72rem;\n  letter-spacing: 0.03em;\n}\n\n.index-dashboard__qdone-text {\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.9rem;\n  line-height: 1.4;\n}\n\n@media (max-width: 980px) {\n  .index-dashboard__detail-cols {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* Header account button (opens the profile/settings panel). */\n.index-dashboard__hdr-account {\n  position: relative;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 2rem;\n  height: 2rem;\n  padding: 0;\n  flex-shrink: 0;\n  border: 1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 18%, transparent);\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  cursor: pointer;\n}\n\n/* Unread-message notification dot on the header messages icon. */\n.index-dashboard__hdr-account--dot::after {\n  content: \"\";\n  position: absolute;\n  top: 3px;\n  right: 3px;\n  width: 0.5rem;\n  height: 0.5rem;\n  border-radius: 50%;\n  background: var(--color-primary, #4fd1c5);\n  border: 1px solid var(--background-base, #041c1c);\n}\n\n.index-dashboard__hdr-account:hover {\n  color: var(--color-foreground, #f8fafc);\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n/* First-run getting-started gate (Mac profileConfirmedAt parity). */\n.index-dashboard__getting-started {\n  display: flex;\n  align-items: flex-start;\n  justify-content: center;\n  width: 100%;\n  min-height: 100%;\n  padding: 2rem 1rem 1.5rem;\n  box-sizing: border-box;\n}\n\n.index-dashboard__profile-panel--getting-started {\n  max-width: 42rem;\n  margin: 0 auto;\n}\n\n.index-dashboard__getting-started-copy {\n  margin: 0;\n  color: var(--color-card-foreground, inherit);\n  font-size: 0.95rem;\n  line-height: 1.45;\n}\n\n/* Mac BuildingProfile parity — setting-up screen before the review form. */\n.index-dashboard__setting-up {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 100%;\n  min-height: min(70vh, 36rem);\n  padding: 1rem;\n  box-sizing: border-box;\n}\n\n.index-dashboard__setting-up-card {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 1.1rem;\n  width: 100%;\n  max-width: 26rem;\n  padding: 1.75rem 1.5rem 1.5rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: var(--radius, 0.75rem);\n  background: var(--color-card, #0f172a);\n  text-align: center;\n}\n\n.index-dashboard__setting-up-bar {\n  width: 100%;\n  height: 0.55rem;\n  overflow: hidden;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  background: color-mix(in srgb, var(--color-background, #020617) 55%, transparent);\n}\n\n.index-dashboard__setting-up-bar-fill {\n  height: 100%;\n  width: 100%;\n  background-image: repeating-linear-gradient(\n    -45deg,\n    color-mix(in srgb, var(--color-primary, #4fd1c5) 70%, transparent) 0,\n    color-mix(in srgb, var(--color-primary, #4fd1c5) 70%, transparent) 6px,\n    transparent 6px,\n    transparent 12px\n  );\n  background-size: 24px 24px;\n  animation: index-dashboard-setting-stripes 0.8s linear infinite;\n}\n\n@keyframes index-dashboard-setting-stripes {\n  to { background-position: 24px 0; }\n}\n\n.index-dashboard__setting-up-lines {\n  display: grid;\n  gap: 0.35rem;\n  width: 100%;\n  text-align: left;\n}\n\n.index-dashboard__setting-up-line {\n  margin: 0;\n  opacity: 0;\n  transform: translateY(6px);\n  animation: index-dashboard-setting-fade-up 0.45s ease forwards;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.95rem;\n  line-height: 1.4;\n}\n\n.index-dashboard__setting-up-line--final {\n  color: var(--color-card-foreground, inherit);\n  font-weight: 700;\n}\n\n.index-dashboard__setting-up-caret {\n  display: inline-block;\n  margin-right: 0.45rem;\n  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);\n  opacity: 0.7;\n}\n\n@keyframes index-dashboard-setting-fade-up {\n  to {\n    opacity: 1;\n    transform: translateY(0);\n  }\n}\n\n/* Hermes-styled actions on Getting started — same accent language, larger hit targets. */\n.index-dashboard__getting-started-btn {\n  padding: 0.7rem 1.35rem !important;\n  font-size: 0.95rem !important;\n  letter-spacing: 0.02em;\n  min-height: 2.6rem;\n}\n\n/* Browser sign-in gate (Mac/CLI parity). */\n.index-dashboard__login {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 100%;\n  min-height: min(70vh, 36rem);\n  padding: 1rem;\n  box-sizing: border-box;\n}\n\n.index-dashboard__login-card {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 1rem;\n  width: 100%;\n  max-width: 26rem;\n  padding: 2rem 1.75rem 1.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: var(--radius, 0.75rem);\n  background: var(--color-card, #0f172a);\n  text-align: center;\n}\n\n.index-dashboard__login-brand {\n  margin: 0;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__login-brand svg {\n  display: block;\n  height: 14px;\n  width: auto;\n}\n\n.index-dashboard__login-copy {\n  margin: 0;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.95rem;\n  line-height: 1.45;\n}\n\n.index-dashboard__login-btn {\n  padding: 0.7rem 1.35rem !important;\n  font-size: 0.95rem !important;\n  letter-spacing: 0.02em;\n  min-height: 2.6rem;\n  align-self: stretch;\n}\n\n.index-dashboard__login-manual {\n  margin: 0;\n  font-size: 0.85rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__login-error {\n  margin: 0;\n  font-size: 0.85rem;\n  color: var(--color-destructive, #f87171);\n}\n\n.index-dashboard__login-foot {\n  margin: 0.25rem 0 0;\n  font-size: 0.78rem;\n  line-height: 1.4;\n  color: color-mix(in srgb, var(--color-muted-foreground, #94a3b8) 85%, transparent);\n}\n\n.index-dashboard__profile-header-actions {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.5rem;\n}\n\n.index-dashboard__profile-signout {\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 0.8rem;\n  font-weight: 600;\n  padding: 0.35rem 0.7rem;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-signout:hover {\n  color: var(--color-foreground, #f8fafc);\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n/* Profile / settings overlay panel. */\n.index-dashboard__profile-overlay {\n  position: fixed;\n  inset: 0;\n  z-index: 60;\n  display: flex;\n  align-items: flex-start;\n  justify-content: center;\n  padding: 4.5rem 1rem 1rem;\n  overflow-y: auto;\n  background: color-mix(in srgb, #000 55%, transparent);\n}\n\n.index-dashboard__profile-panel {\n  display: flex;\n  flex-direction: column;\n  gap: 1rem;\n  width: 100%;\n  max-width: 40rem;\n  padding: 1.25rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: var(--radius, 0.75rem);\n  background: var(--color-card, #0f172a);\n  box-shadow: 0 20px 60px color-mix(in srgb, #000 45%, transparent);\n}\n\n.index-dashboard__profile-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n}\n\n.index-dashboard__profile-title {\n  margin: 0;\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  font-size: 0.9375rem;\n  font-weight: 700;\n  letter-spacing: 0.1875rem;\n  line-height: 1.2;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-close {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 1.9rem;\n  height: 1.9rem;\n  border: none;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 1.25rem;\n  line-height: 1;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-close:hover {\n  color: var(--color-foreground, #f8fafc);\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n.index-dashboard__profile-tabs {\n  display: flex;\n  gap: 0.25rem;\n  border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__profile-tab {\n  padding: 0.5rem 0.85rem;\n  border: none;\n  border-bottom: 2px solid transparent;\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font: inherit;\n  font-size: 0.85rem;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-tab--active {\n  border-bottom-color: var(--color-primary, #4fd1c5);\n  color: var(--color-card-foreground, inherit);\n  font-weight: 700;\n}\n\n.index-dashboard__profile-body {\n  display: flex;\n  flex-direction: column;\n}\n\n.index-dashboard__profile-section {\n  display: grid;\n  gap: 1rem;\n}\n\n.index-dashboard__profile-identity {\n  display: flex;\n  align-items: center;\n  gap: 1rem;\n}\n\n.index-dashboard__profile-avatar {\n  position: relative;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-avatar-circle {\n  width: 64px;\n  height: 64px;\n  font-size: 1.1rem;\n}\n\n.index-dashboard__profile-avatar-input {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n  opacity: 0;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-identity-main {\n  display: grid;\n  gap: 0.2rem;\n  min-width: 0;\n}\n\n.index-dashboard__profile-identity-name {\n  font-size: 1rem;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__profile-identity-sub {\n  font-size: 0.8rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-grid {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 0.85rem;\n}\n\n.index-dashboard__profile-field {\n  display: grid;\n  gap: 0.35rem;\n}\n\n.index-dashboard__profile-label {\n  font-size: 0.78rem;\n  font-weight: 600;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__profile-hint {\n  font-size: 0.74rem;\n  line-height: 1.45;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-input {\n  min-width: 0;\n  width: 100%;\n  box-sizing: border-box;\n  padding: 0.55rem 0.65rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.88rem;\n}\n\n.index-dashboard__profile-select {\n  cursor: pointer;\n}\n\n.index-dashboard__profile-socials {\n  display: grid;\n  gap: 0.4rem;\n}\n\n.index-dashboard__profile-social {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n\n.index-dashboard__profile-social-prefix {\n  flex-shrink: 0;\n  font-size: 0.76rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  min-width: 6.5rem;\n}\n\n.index-dashboard__profile-social-input {\n  flex: 1;\n}\n\n.index-dashboard__profile-social-remove {\n  flex-shrink: 0;\n  width: 1.8rem;\n  height: 1.8rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.5);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-size: 1.05rem;\n  line-height: 1;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-add {\n  padding: 0.5rem;\n  border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font: inherit;\n  font-size: 0.82rem;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-checks {\n  display: grid;\n  gap: 0.5rem;\n}\n\n.index-dashboard__profile-check {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n  padding: 0.65rem 0.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  cursor: pointer;\n}\n\n.index-dashboard__profile-check-label {\n  margin: 0;\n  font-size: 0.85rem;\n  color: var(--color-card-foreground, inherit) !important;\n}\n\n.index-dashboard__profile-check-desc {\n  margin: 0.15rem 0 0 !important;\n  font-size: 0.76rem;\n}\n\n.index-dashboard__profile-bar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 0.75rem;\n  padding-top: 0.85rem;\n  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__profile-note {\n  font-size: 0.78rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n}\n\n.index-dashboard__profile-bar-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n}\n\n.index-dashboard__profile-discard {\n  padding: 0.4rem 0.75rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: transparent;\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.82rem;\n  cursor: pointer;\n}\n\n.index-dashboard__profile-discard:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n\n.index-dashboard__opp-id--clickable {\n  cursor: pointer;\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  transition: opacity 0.15s ease;\n}\n\n.index-dashboard__opp-id--clickable:hover .index-dashboard__opp-name {\n  text-decoration: underline;\n}\n\n.index-dashboard__opp-id--clickable:hover {\n  opacity: 0.85;\n}\n\n.index-dashboard__opp-id--clickable:focus-visible {\n  outline: 2px solid color-mix(in srgb, var(--color-primary, #4fd1c5) 60%, transparent);\n  outline-offset: 2px;\n}\n\n.index-dashboard__profile-read-text {\n  margin: 0;\n  font-size: 0.88rem;\n  line-height: 1.55;\n  white-space: pre-wrap;\n  color: var(--color-card-foreground, inherit);\n}\n\n.index-dashboard__profile-read-socials {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.4rem;\n}\n\n.index-dashboard__profile-read-social {\n  padding: 0.25rem 0.55rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: 999px;\n  font-size: 0.78rem;\n  color: var(--color-card-foreground, inherit);\n  text-decoration: none;\n}\n\n.index-dashboard__profile-read-social:hover {\n  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.24)));\n}\n\n@media (max-width: 980px) {\n  .index-dashboard__profile-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* Messages / conversations */\n.index-dashboard__msg-panel {\n  max-width: 52rem;\n  height: min(80vh, 44rem);\n}\n\n.index-dashboard__msg-body {\n  display: grid;\n  grid-template-columns: 16rem 1fr;\n  gap: 0.75rem;\n  flex: 1;\n  min-height: 0;\n}\n\n.index-dashboard__msg-list {\n  display: flex;\n  flex-direction: column;\n  gap: 0.25rem;\n  overflow-y: auto;\n  padding-right: 0.25rem;\n  border-right: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__msg-conv {\n  display: flex;\n  align-items: center;\n  gap: 0.6rem;\n  padding: 0.5rem 0.6rem;\n  border: none;\n  border-radius: calc(var(--radius, 0.75rem) * 0.7);\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n.index-dashboard__msg-conv:hover {\n  background: color-mix(in srgb, currentColor 8%, transparent);\n}\n\n.index-dashboard__msg-conv--active {\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 16%, transparent);\n}\n\n.index-dashboard__msg-conv-avatar {\n  flex-shrink: 0;\n}\n\n.index-dashboard__msg-conv-main {\n  display: flex;\n  flex-direction: column;\n  gap: 0.1rem;\n  min-width: 0;\n}\n\n.index-dashboard__msg-conv-name {\n  display: flex;\n  align-items: center;\n  gap: 0.35rem;\n  font-size: 0.85rem;\n  font-weight: 600;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.index-dashboard__msg-conv--unread .index-dashboard__msg-conv-name {\n  font-weight: 700;\n}\n\n.index-dashboard__msg-conv-dot {\n  flex-shrink: 0;\n  width: 0.5rem;\n  height: 0.5rem;\n  border-radius: 50%;\n  background: var(--color-primary, #4fd1c5);\n}\n\n.index-dashboard__msg-conv-badge {\n  flex-shrink: 0;\n  padding: 0.05rem 0.4rem;\n  border-radius: 999px;\n  font-size: 0.6rem;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  background: color-mix(in srgb, currentColor 12%, transparent);\n}\n\n.index-dashboard__msg-search {\n  width: 100%;\n  box-sizing: border-box;\n  margin-bottom: 0.4rem;\n  padding: 0.4rem 0.6rem;\n  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  border-radius: calc(var(--radius, 0.75rem) * 0.6);\n  background: color-mix(in srgb, var(--color-background, #020617) 52%, transparent);\n  color: var(--color-card-foreground, inherit);\n  font: inherit;\n  font-size: 0.8rem;\n}\n\n.index-dashboard__msg-conv-preview {\n  font-size: 0.75rem;\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.index-dashboard__msg-thread-col {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  min-width: 0;\n}\n\n.index-dashboard__msg-thread {\n  display: flex;\n  flex-direction: column;\n  gap: 0.4rem;\n  flex: 1;\n  overflow-y: auto;\n  padding: 0.25rem 0.5rem;\n}\n\n.index-dashboard__msg-bubble {\n  max-width: 80%;\n  align-self: flex-start;\n  padding: 0.45rem 0.7rem;\n  border-radius: 0.9rem;\n  background: color-mix(in srgb, currentColor 10%, transparent);\n  font-size: 0.85rem;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  word-break: break-word;\n}\n\n.index-dashboard__msg-bubble--mine {\n  align-self: flex-end;\n  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 22%, transparent);\n}\n\n.index-dashboard__msg-bubble--internal {\n  align-self: stretch;\n  background: transparent;\n  border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.4));\n  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));\n  font-style: italic;\n}\n\n.index-dashboard__msg-internal-label {\n  display: block;\n  margin-bottom: 0.15rem;\n  font-style: normal;\n  font-size: 0.6rem;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n  opacity: 0.7;\n}\n\n.index-dashboard__msg-composer {\n  display: flex;\n  align-items: flex-end;\n  gap: 0.5rem;\n  padding-top: 0.5rem;\n  border-top: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n}\n\n.index-dashboard__msg-input {\n  flex: 1;\n  resize: none;\n  max-height: 8rem;\n}\n\n@media (max-width: 720px) {\n  .index-dashboard__msg-body {\n    grid-template-columns: 1fr;\n  }\n\n  .index-dashboard__msg-list {\n    max-height: 12rem;\n    border-right: none;\n    border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));\n  }\n}\n\n/* Private-network invite join (hermes://l/<code> / #invite=). */\n.index-dashboard__invite-modal {\n  max-width: 26rem;\n}\n\n.index-dashboard__invite-body {\n  display: flex;\n  flex-direction: column;\n  gap: 0.75rem;\n}\n\n.index-dashboard__invite-kicker {\n  margin: 0;\n  font-size: 0.7rem;\n  font-weight: 600;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--color-muted-foreground, #94a3b8);\n}\n\n.index-dashboard__invite-title {\n  margin: 0;\n  font-size: 1.35rem;\n  font-weight: 600;\n  line-height: 1.2;\n  color: var(--color-foreground, #f8fafc);\n}\n\n.index-dashboard__invite-meta,\n.index-dashboard__invite-copy {\n  margin: 0;\n  font-size: 0.875rem;\n  line-height: 1.45;\n  color: var(--color-muted-foreground, #94a3b8);\n}\n\n.index-dashboard__invite-actions {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.5rem;\n  margin-top: 0.5rem;\n}\n"
 
 // Dark and light file per role — must match ASSET_FILES in dashboard/dist/index.js,
 // which resolves these keys, and the allow-list in dashboard/plugin_api.py.
@@ -2813,6 +4080,52 @@ function ensureAssets() {
   return assetsPromise
 }
 
+// Native OS alerts for newly actionable opportunities, via the ctx.os door
+// (hermes-agent#78685). Fires only while the user is away from Hermes and is
+// gated by Settings ▸ Notifications ▸ "Plugin notifications"; on older desktop
+// shells without ctx.os it silently no-ops.
+const SEEN_OPPORTUNITIES_KEY = 'notifiedOpportunityIds'
+const OPPORTUNITY_POLL_MS = 30 * 1000
+
+function collectPendingOpportunities(data) {
+  const lists = [(data.general && data.general.opportunities) || []]
+  ;(data.intents || []).forEach(function (intent) { lists.push(intent.opportunities || []) })
+  const pending = []
+  lists.forEach(function (list) {
+    list.forEach(function (item) {
+      if (item.opportunityId && (item.status === 'pending' || item.status === 'latent')) pending.push(item)
+    })
+  })
+  return pending
+}
+
+function checkOpportunities(ctx) {
+  restCall('/summary', { method: 'GET' })
+    .then(function (data) {
+      if (!data || data.success === false) return
+      const pending = collectPendingOpportunities(data)
+      const seen = ctx.storage.get(SEEN_OPPORTUNITIES_KEY, null)
+      const ids = pending.map(function (item) { return item.opportunityId })
+      if (seen === null) {
+        ctx.storage.set(SEEN_OPPORTUNITIES_KEY, ids) // first run — baseline silently
+        return
+      }
+      const fresh = pending.filter(function (item) { return seen.indexOf(item.opportunityId) === -1 })
+      if (!fresh.length) return
+      ctx.storage.set(SEEN_OPPORTUNITIES_KEY, seen.concat(ids).filter(function (id, i, all) {
+        return all.indexOf(id) === i
+      }).slice(-200))
+      if (!ctx.os || !ctx.os.notify) return
+      ctx.os.notify({
+        title: 'Index Network',
+        body: fresh.length === 1
+          ? 'New opportunity: ' + fresh[0].name
+          : fresh.length + ' new opportunities are waiting'
+      })
+    })
+    .catch(function () { /* backend not reachable — the next poll retries */ })
+}
+
 function DesktopPage() {
   const tick = React.useState(0)
   React.useEffect(function () {
@@ -2831,7 +4144,6 @@ export default {
   id: 'index-network',
   name: 'Index Network',
   register: function (ctx) {
-    console.info('[index-network] desktop plugin registered (dashboard component: ' + (DashboardComponent ? 'ok' : 'MISSING') + ')')
     restCall = function (path, opts) { return ctx.rest(path, opts) }
 
     const style = document.createElement('style')
@@ -2839,6 +4151,10 @@ export default {
     style.textContent = PLUGIN_CSS
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
+
+    const opportunityTimer = window.setInterval(function () { checkOpportunities(ctx) }, OPPORTUNITY_POLL_MS)
+    checkOpportunities(ctx)
+    ctx.onDispose(function () { window.clearInterval(opportunityTimer) })
 
     ctx.registerMany([
       {
@@ -2859,7 +4175,7 @@ export default {
         data: {
           id: 'index-network.open',
           label: 'Open Index Network',
-          keywords: ['index', 'network', 'intents', 'opportunities'],
+          keywords: ['index', 'network', 'intents', 'opportunities', 'onboarding', 'getting started', 'profile'],
           run: function () { host.navigate('/index-network') }
         }
       }

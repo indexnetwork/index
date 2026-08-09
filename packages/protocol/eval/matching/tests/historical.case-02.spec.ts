@@ -87,8 +87,13 @@ describe("historical case 02", () => {
 
   it("uses the approved pre-connection profiles and October 1951 boundary", () => {
     expect(HISTORICAL_CASE_02.historicalQuality.cutoff).toEqual({
-      date: "1951-10",
-      precision: "month",
+      event: {
+        id: "h2-first-substantive-collaboration",
+        description: "Immediately before James Watson and Francis Crick began substantive collaboration in October 1951.",
+      },
+      calendarProxy: { date: "1951-10", precision: "month" },
+      confidence: "high",
+      uncertaintyRationale: "Independent histories place collaboration in October 1951, while the exact first working day is not established.",
       exclusive: true,
       orderingCitationIds: ["nobel-watson-biographical", "asu-1953-paper-history"],
     });

@@ -13,12 +13,23 @@ enum AppConfig {
     static var appURL: String { value(for: "APP_URL", default: "http://localhost:3000") }
 
     static var deepLinkHosts: [String] {
-        let host = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
-        let configuredHost = host?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Associated-domains host from the bundle (set by link-host.sh at build),
+        // plus the configured APP_URL host so https links from the web
+        // origin the app is pointed at (e.g. dev.index.network) also route.
+        var hosts: [String] = []
+        let bundleHost = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
+        let configuredHost = bundleHost?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let configuredHost, !configuredHost.isEmpty {
-            return [configuredHost]
+            hosts.append(configuredHost)
+        } else {
+            hosts.append("index.network")
         }
-        return ["index.network"]
+        if let appHost = URL(string: appURL)?.host?.lowercased(),
+           !appHost.isEmpty,
+           !hosts.contains(where: { $0.lowercased() == appHost }) {
+            hosts.append(appHost)
+        }
+        return hosts
     }
 
     /// The REST base including the `/api` prefix applied in services/api main.ts.
@@ -317,7 +328,7 @@ final class LoopbackAuthServer {
         <style>
         body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:#14241f;color:#F4FBF6;\
         font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-        .nav{display:flex;align-items:center;padding:22px 56px;border-bottom:1px solid rgba(244,251,246,0.22)}
+        .nav{display:flex;align-items:center;padding:22px 56px}
         .nav svg{height:14px;width:auto;display:block}
         main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
         .c{text-align:center;max-width:420px}
@@ -630,7 +641,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             backing: .buffered,
             defer: false
         )
-        window.title = "index, Workbench 1.3"
+        window.title = "Index, Workbench 1.3"
         // Float the traffic lights directly over the content, no title bar
         // strip. The web content fills the full window height.
         window.titleVisibility = .hidden
@@ -684,7 +695,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func presentError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "index, Workbench 1.3"
+        alert.messageText = "Index, Workbench 1.3"
         alert.informativeText = message
         alert.alertStyle = .critical
         alert.runModal()
@@ -904,6 +915,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let cred = CredentialStore.load()
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
+            // Share / invitation links must use the configured web origin
+            // (APP_URL), not the associated-domains host list (prod first).
+            "appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL),
             "apiKey": cred?.key ?? NSNull(),
             "deepLinkHosts": AppConfig.deepLinkHosts,
         ]
@@ -976,7 +990,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func notifyAuthChanged(apiKey: String?) {
         let key = jsonValue(apiKey)
         let js = """
-        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { apiBaseUrl: \(jsonValue(AppConfig.apiBaseURL)), apiKey: \(key) });
+        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { apiBaseUrl: \(jsonValue(AppConfig.apiBaseURL)), appUrl: \(jsonValue(AppConfig.trimTrailingSlash(AppConfig.appURL))), apiKey: \(key) });
         if (typeof window.__indexAuthChanged === 'function') { window.__indexAuthChanged(\(key)); }
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
@@ -1000,7 +1014,7 @@ func buildMainMenu() -> NSMenu {
     mainMenu.addItem(appMenuItem)
     let appMenu = NSMenu()
     appMenuItem.submenu = appMenu
-    let appName = "index"
+    let appName = "Index"
     appMenu.addItem(withTitle: "About \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
     appMenu.addItem(NSMenuItem.separator())
     appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")

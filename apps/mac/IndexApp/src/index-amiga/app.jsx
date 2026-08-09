@@ -54,6 +54,7 @@ async function resolveDeepLinkPerson(route, people) {
       if (person && other) {
         person.userId = person.userId || other.id || null;
         person.name = other.name || person.name;
+        person.photo = person.photo || other.avatar || null;
       }
       return person;
     }
@@ -77,6 +78,9 @@ function App() {
   // True until the user creates their first signal, the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
+  // Public-research enrichment result, fetched on the "setting up" screen and
+  // handed to the first-run review so it opens pre-filled without a second load.
+  const [enriched, setEnriched] = useState(null);
   // Live snapshot state; null until loadSnapshot() resolves (or in demo mode).
   const [snapshot, setSnapshot] = useState(null);
   const [me, setMe] = useState(null);
@@ -89,9 +93,6 @@ function App() {
   const [conversation, setConversation] = useState([]);
   const [field, setField] = useState([]);
   const [simRate, setSimRate] = useState(1);
-  // A fresh sign-in (vs an already-authed relaunch) goes through the original
-  // profile-review gate after the building screen.
-  const freshLoginRef = useRef(false);
 
   // ---- deep links (index:// and universal links) --------------------------
   // Swift forwards the raw URL it was handed and decides nothing about it;
@@ -196,13 +197,24 @@ function App() {
         loaded = snap;
       }
       if (cancelled) return;
+      let needsProfile = false;
       if (loaded) {
         applyLoaded(loaded);
         setFreshUser((loaded.snapshot.INTENTS || []).length === 0);
+        // Durable gate: a user who hasn't confirmed their profile yet reviews it
+        // now, whether this is a fresh sign-in or a relaunch mid-onboarding.
+        const ob = loaded.raw && loaded.raw.user && loaded.raw.user.onboarding;
+        needsProfile = !(ob && ob.profileConfirmedAt);
       }
-      // First run after a sign-in reviews the assembled profile, exactly like
-      // the original flow; an already-signed-in relaunch goes straight in.
-      setScreen(freshLoginRef.current ? "profile" : "intents");
+      // First run only: run the public-research enrichment behind this same
+      // "setting up" loader so the review opens filled and the animation shows
+      // once. Gated on needsProfile so returning users are never re-enriched.
+      if (needsProfile && nativeAuthed() && window.IndexApp && window.IndexApp.triggerEnrichment) {
+        const res = await window.IndexApp.triggerEnrichment().catch(() => null);
+        if (cancelled) return;
+        setEnriched(res);
+      }
+      setScreen(needsProfile ? "onboarding" : "intents");
     })();
     return () => { cancelled = true; };
   }, [screen]);
@@ -343,7 +355,6 @@ function App() {
   };
 
   const startLogin = () => {
-    freshLoginRef.current = true;
     if (window.IndexApp && window.IndexApp.login()) {
       // Native bridge present: wait for __indexAuthChanged; Login shows waiting.
       return true;
@@ -362,25 +373,26 @@ function App() {
         {screen === "login"       && <Login onSignIn={startLogin}/>}
         {/* Boot loader: assembles the live snapshot, then opens the hub. */}
         {screen === "building"    && <BuildingProfile/>}
-        {/* First run: review the profile we assembled, then into the hub.
-            Declining returns to sign-in with nothing written, so the review
-            replays on the next sign-in rather than being silently approved. */}
-        {screen === "profile"     && <Settings
-                                       initialTab="profile"
-                                       profileOnly
-                                       onClose={() => { freshLoginRef.current = false; signOut(); }}
-                                       onDone={() => {
-                                         freshLoginRef.current = false;
-                                         if (!nativeAuthed()) setFreshUser(true);
-                                         setScreen("intents");
-                                       }}/>}
         {screen === "intents"     && <Intents
                                        fresh={freshUser}
                                        onPickExisting={pickExistingIntent}
                                        onNew={goNewIntent}
                                        onSignOut={signOut}/>}
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
-        {screen === "onboarding"  && <Onboarding onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
+        {/* First run: the getting-started profile review, now backed by real
+            enrichment. Settings drafts via preview_user_context, saves the
+            approved profile through confirm_user_context (which records
+            onboarding.profileConfirmedAt so this screen doesn't reappear), and
+            the profile save enqueues the full enrich.user pipeline. Declining
+            (sign out) leaves the profile unconfirmed, so the review replays on
+            the next sign-in rather than being silently approved. */}
+        {screen === "onboarding"  && <Settings
+                                       initialTab="profile"
+                                       profileOnly
+                                       enrich
+                                       enriched={enriched}
+                                       onClose={signOut}
+                                       onDone={() => { setFreshUser((INTENTS || []).length === 0); setScreen("new-intent"); }}/>}
         {/* A deep-linked card floats over whatever screen is showing: the link
             can land on the hub, where the radar's selection state doesn't
             exist. */}

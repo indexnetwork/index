@@ -95,42 +95,126 @@ function Tag({ children, inverted = false, style }) {
   );
 }
 
-/* ---------- Avatar: Workbench raised square with initials ---------- */
-function photoUrl(seed, px = 150) {
-  return `https://i.pravatar.cc/${px}?u=${encodeURIComponent(seed || "x")}`;
+/* ---------- Avatar: circular, web-parity boring-avatars bauhaus fallback ---------- */
+const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+function baHash(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
 }
 
-function Avatar({ name, size = 28, ring = false, seed }) {
-  const initials = (name || "")
-    .split(/\s+/).slice(0,2).map(p => p[0]).join("").toUpperCase();
-  const [broken, setBroken] = useState(false);
+function baDigit(num, ntn) {
+  return Math.floor((num / Math.pow(10, ntn)) % 10);
+}
+
+function baBool(num, ntn) {
+  return !(baDigit(num, ntn) % 2);
+}
+
+function baUnit(num, range, index) {
+  const value = num % range;
+  if (index && baDigit(num, index) % 2 === 0) return -value;
+  return value;
+}
+
+function baColor(num) {
+  return BORING_PALETTE[num % BORING_PALETTE.length];
+}
+
+function BoringAvatar({ seed, size = 28 }) {
+  const SIZE = 80;
+  const ELEMENTS = 4;
+  const s = String(seed || "default");
+  const num = baHash(s);
+  const props_ = [];
+  for (let t = 0; t < ELEMENTS; t++) {
+    props_.push({
+      color: baColor(num + t),
+      translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+      translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+      rotate: baUnit(num * (t + 1), 360),
+      isSquare: baBool(num, 2),
+    });
+  }
+  const maskId = "ba-mask-" + num;
   return (
-    <div style={{
-      width:size, height:size, display:"grid", placeItems:"center",
-      overflow:"hidden",
-      background: ring ? A.accent : A.paper,
-      border:`1px solid ${A.fg}`,
-      boxShadow: ring
-        ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}`
-        : `1px 1px 0 rgba(0,0,0,0.2)`,
-      color: A.fg,
-      fontFamily:"var(--mac-mono)",
-      fontSize: size * 0.38, letterSpacing:0.5,
-      fontWeight: 700,
-      flex:"0 0 auto",
-    }}>
-      {broken ? initials : (
-        <img
-          src={photoUrl(seed || name)}
-          alt={name}
-          onError={() => setBroken(true)}
-          style={{
-            width:"100%", height:"100%", objectFit:"cover", display:"block",
-            // grayscale keeps the monochrome Workbench look
-            filter:"grayscale(1) contrast(1.05)",
-          }}
+    <svg
+      viewBox={`0 0 ${SIZE} ${SIZE}`}
+      fill="none"
+      role="img"
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      style={{ display:"block" }}
+    >
+      <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={SIZE} height={SIZE}>
+        <rect width={SIZE} height={SIZE} rx={SIZE * 2} fill="#FFFFFF"/>
+      </mask>
+      <g mask={`url(#${maskId})`}>
+        <rect width={SIZE} height={SIZE} fill={props_[0].color}/>
+        <rect
+          x={(SIZE - 60) / 2}
+          y={(SIZE - 20) / 2}
+          width={SIZE}
+          height={props_[1].isSquare ? SIZE : SIZE / 8}
+          fill={props_[1].color}
+          transform={`translate(${props_[1].translateX} ${props_[1].translateY}) rotate(${props_[1].rotate} ${SIZE / 2} ${SIZE / 2})`}
         />
-      )}
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          fill={props_[2].color}
+          r={SIZE / 5}
+          transform={`translate(${props_[2].translateX} ${props_[2].translateY})`}
+        />
+        <line
+          x1={0}
+          y1={SIZE / 2}
+          x2={SIZE}
+          y2={SIZE / 2}
+          strokeWidth={2}
+          stroke={props_[3].color}
+          transform={`translate(${props_[3].translateX} ${props_[3].translateY}) rotate(${props_[3].rotate} ${SIZE / 2} ${SIZE / 2})`}
+        />
+      </g>
+    </svg>
+  );
+}
+
+function Avatar({ id, name, photo, size = 28, ring = false, blur = false }) {
+  const seed = id || name || "default";
+  const src = photo
+    ? (window.IndexApp && window.IndexApp.avatarUrl ? window.IndexApp.avatarUrl(photo) : photo)
+    : null;
+  const [broken, setBroken] = useState(null);
+  const frameStyle = {
+    width: size,
+    height: size,
+    borderRadius: "50%",
+    overflow: "hidden",
+    flex: "0 0 auto",
+    boxShadow: ring ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}` : undefined,
+    filter: blur ? "blur(3px)" : undefined,
+  };
+  if (!src || broken === src) {
+    return (
+      <div style={frameStyle}>
+        <BoringAvatar seed={seed} size={size}/>
+      </div>
+    );
+  }
+  return (
+    <div style={frameStyle}>
+      <img
+        src={src}
+        alt={name}
+        onError={() => setBroken(src)}
+        style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}
+      />
     </div>
   );
 }
@@ -321,57 +405,16 @@ function currentMe() {
   return (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || {};
 }
 
-/* Where a shuffled face is kept.
-
-   The page is loaded from a file:// URL, so WebKit hands the document an
-   opaque origin and localStorage is not persisted between launches. The native
-   shell stores it in UserDefaults instead and injects it at document start, so
-   the saved face is already correct on the first paint. localStorage is still
-   written as the fallback for running this bundle in a browser, where there is
-   no shell to ask. */
-const AGENT_FACE_KEY = "index.agentFace";
-let agentFaceCache;
-
-function storedAgentFace() {
-  if (agentFaceCache !== undefined) return agentFaceCache;
-  const native = (typeof window !== "undefined" && window.INDEX_NATIVE && window.INDEX_NATIVE.agentFace) || null;
-  if (native) { agentFaceCache = native; return agentFaceCache; }
-  try {
-    const raw = window.localStorage.getItem(AGENT_FACE_KEY);
-    agentFaceCache = raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    agentFaceCache = null;   // storage disabled; the face falls back to your name
-  }
-  return agentFaceCache;
-}
-
-/** Save the negotiator's avatar so it survives a relaunch. */
-function setMyAgentFace(patch) {
-  const next = { ...(storedAgentFace() || {}), ...patch };
-  agentFaceCache = next;
-  Object.assign(currentMe(), {
-    agentFaceSeed: next.seed || null,
-    agentPhoto: next.photo || null,
-  });
-  try { window.localStorage.setItem(AGENT_FACE_KEY, JSON.stringify(next)); } catch (e) {}
-  const bridge = (typeof window !== "undefined" && window.webkit
-    && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth) || null;
-  if (bridge) {
-    try { bridge.postMessage({ action: "setAgentFace", value: next }); } catch (e) {}
-  }
-  return next;
-}
-
 function myAgent() {
   const me = currentMe();
-  const saved = storedAgentFace() || {};
   const first = String(me.name || "").trim().split(/\s+/)[0] || "your";
   return {
     name: `${first}'s agent`,
-    // a shuffle wins, then whatever was saved on a previous run, and failing
-    // both the face hangs off your name so it is yours from the first launch
-    seed: me.agentFaceSeed || saved.seed || me.name || "index",
-    photo: me.agentPhoto || saved.photo || null,
+    // The face hangs off your account id, so it is the same on every device
+    // and every launch, with nothing stored anywhere. Name is the fallback
+    // until the snapshot loads.
+    seed: me.id || me.name || "index",
+    photo: null,
   };
 }
 
@@ -415,11 +458,10 @@ function MyAgentAvatar({ size = 22, style, title }) {
       {owner.photo ? (
         <img src={owner.photo} alt="" style={{
           width:"100%", height:"100%", objectFit:"cover", display:"block",
-          border:`1px solid ${FACE_INK}`, boxSizing:"border-box",
-          filter:"grayscale(1) contrast(1.05)",
+          borderRadius:"50%",
         }}/>
       ) : (
-        <Avatar name={owner.name} size={size}/>
+        <Avatar id={owner.id} name={owner.name} size={size}/>
       )}
       {/* bottom-right, held inside the footprint so the mark never overlaps
           whatever sits beside it in a tight row */}
@@ -1190,10 +1232,10 @@ function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
 }
 
 Object.assign(window, {
-  LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
+  LiveDot, StreamText, KV, Tag, Avatar, BoringAvatar,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
-  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, setMyAgentFace, currentMe,
+  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval, useNarrow,
   PipelineFunnel, SourceBadge, ModeBadge,

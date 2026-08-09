@@ -56,9 +56,9 @@ This will:
 1. Assemble `src/index-amiga.html` and all JSX modules into a single `Resources/index.html`
 2. Inline all React/Babel libraries and fonts (fully offline)
 3. Compile Swift to a native binary
-4. Package into `dist/index.app`
+4. Package into `dist/Index.app`
 
-The app will be in `dist/index.app`, double-click to launch.
+The app will be in `dist/Index.app`, double-click to launch.
 
 ### Development: Hot-Reload Mode
 
@@ -120,7 +120,7 @@ macOS verifies the resulting signed-app entitlement (for the default profile,
 `applinks:index.network`) against the host's `apple-app-site-association`,
 which lists `<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
 `APPLE_TEAM_ID` set. Inspect the built artifact with
-`codesign -d --entitlements :- dist/index.app`. An ad-hoc dev build has no team,
+`codesign -d --entitlements :- dist/Index.app`. An ad-hoc dev build has no team,
 so macOS never hands it a universal link and `build.sh` says so.
 
 The `index://` scheme (registered via `CFBundleURLTypes` in `Info.plist`) has no
@@ -177,11 +177,11 @@ Prepare and run the handoff in this order:
    after every command succeeds:
 
    ```bash
-   test -f dist/index.app/Contents/embedded.provisionprofile
-   codesign --verify --deep --strict --verbose=2 dist/index.app
-   codesign -d --entitlements :- dist/index.app
+   test -f dist/Index.app/Contents/embedded.provisionprofile
+   codesign --verify --deep --strict --verbose=2 dist/Index.app
+   codesign -d --entitlements :- dist/Index.app
    NOTARYTOOL_PROFILE='<local-keychain-profile>' ./notarize.sh
-   open dist/index.app
+   open dist/Index.app
    ```
 
 7. Treat runtime launch as a separate required check. `codesign`, notary
@@ -213,11 +213,11 @@ not validate or replace them.
 
 ### From Build Output
 ```bash
-open dist/index.app
+open dist/Index.app
 ```
 
 ### Or directly from Finder
-Navigate to `IndexApp/dist/index.app` and double-click.
+Navigate to `IndexApp/dist/Index.app` and double-click.
 
 ## Development Workflow
 

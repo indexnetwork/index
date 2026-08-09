@@ -345,8 +345,13 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
   },
   historicalQuality: {
     cutoff: {
-      date: "1998-08",
-      precision: "month",
+      event: {
+        id: "h4-first-substantive-collaboration",
+        description: "Immediately before Larry Page demonstrated the search prototype to Andreas Bechtolsheim for its first substantive evaluation.",
+      },
+      calendarProxy: { date: "1998-08", precision: "month" },
+      confidence: "medium",
+      uncertaintyRationale: "Institutional accounts support the August 1998 demonstration timing; the later check is excluded subsequent ordering evidence, and the exact demonstration day is not established.",
       exclusive: true,
       orderingCitationIds: ["stanford-otl-uniquely-google", "stanford-engineering-hero-talk"],
     },
@@ -455,7 +460,7 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
       reviewedAt: "2026-08-06",
       recognizability: "medium",
       decision: "approved",
-      rationale: "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; matrix integration remains pending Task 8.",
+      rationale: "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; at that review checkpoint, matrix integration was still pending Task 8.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

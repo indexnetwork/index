@@ -40,6 +40,7 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `question.controller.ts`: `GET /questions` (incl. `scopeType=intent`, `conversationId`, `mode`), `POST /questions/:id/answer`, `POST /questions/:id/dismiss`
 - `conversation.controller.ts`: `GET /conversations`, `GET /conversations/negotiations`, `GET /conversations/:id/messages`, `POST /conversations/:id/messages`, `POST /conversations/dm`, `PATCH /conversations/:id/metadata`, `DELETE /conversations/:id`
 - `agent.controller.ts`: `GET /agents` (read-only; management writes are session-only)
-- `tool.controller.ts`: `POST /tools/:toolName` (`client.tools.invoke`, available for REST tool calls)
+- `tool.controller.ts`: `POST /tools/:toolName` (`client.tools.invoke`; used for the onboarding-allowed `preview_user_context` / `confirm_user_context`)
+- `enrichment.controller.ts`: `POST /enrichment/enrich` (`client.enrichment.trigger`; runs the full public-research enrichment inline and returns the resolved identity + discovered socials)
 
 Onboarding creates a real intent through the `create_intent` MCP tool via a single JSON-RPC `tools/call` to `/mcp` (`api.jsx`'s `mcpCall`), since intent creation has no plain REST POST. SSE endpoints are consumed directly via `fetch` (not through the resource methods): `POST /chat/stream` and `GET /conversations/stream`.

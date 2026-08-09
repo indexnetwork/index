@@ -80,15 +80,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.network;
   },
 
-  // Get public network by ID (public access - only works for public networks)
-  getPublicIndexById: async (id: string): Promise<Network> => {
-    const response = await api.get<APIResponse<Network>>(`/networks/public/${id}`);
-    if (!response.network) {
-      throw new Error('Network not found');
-    }
-    return response.network;
-  },
-
   // Upload network image (returns URL to use in create/update)
   uploadIndexImage: async (file: File): Promise<string> => {
     const result = await api.uploadFile<{ imageUrl?: string }>('/storage/network-images', file, undefined, 'image');
@@ -108,9 +99,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Update network
-  // `hidden` is declared locally: UpdateNetworkRequest resolves through the
-  // pre-broken `@/lib/types` chain, so it cannot carry new fields.
-  updateNetwork: async (id: string, data: UpdateNetworkRequest & { hidden?: boolean }): Promise<Network> => {
+  updateNetwork: async (id: string, data: UpdateNetworkRequest): Promise<Network> => {
     const response = await api.put<APIResponse<Network>>(`/networks/${id}`, data);
     if (!response.network) {
       throw new Error('Failed to update network');
@@ -233,7 +222,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Permissions Management
   // Update network permissions (joinPolicy)
-  updatePermissions: async (networkId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }): Promise<Network> => {
+  updatePermissions: async (networkId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only' }): Promise<Network> => {
     const response = await api.patch<APIResponse<Network>>(`/networks/${networkId}/permissions`, permissions);
     if (!response.network) {
       throw new Error('Failed to update permissions');
@@ -372,15 +361,6 @@ export const indexesService = {
   // Get network by share code (public access, no auth required)
   getIndexByShareCode: async (code: string): Promise<Network> => {
     const response = await apiClient.getPublic<APIResponse<Network>>(`/networks/share/${code}`);
-    if (!response.network) {
-      throw new Error('Network not found');
-    }
-    return response.network;
-  },
-
-  // Get public network by ID (public access, no auth required - only works for public networks)
-  getPublicIndexById: async (id: string): Promise<Network> => {
-    const response = await apiClient.getPublic<APIResponse<Network>>(`/networks/public/${id}`);
     if (!response.network) {
       throw new Error('Network not found');
     }

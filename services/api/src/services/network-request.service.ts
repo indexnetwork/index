@@ -17,6 +17,8 @@ export interface NetworkRequestInput {
   audience?: string;
   expectedSize?: string;
   notes?: string;
+  imageUrl?: string | null;
+  joinPolicy?: 'anyone' | 'invite_only';
 }
 
 export interface NetworkRequestDTO {
@@ -27,6 +29,8 @@ export interface NetworkRequestDTO {
   audience?: string;
   expectedSize?: string;
   notes?: string;
+  imageUrl?: string | null;
+  joinPolicy?: 'anyone' | 'invite_only';
   reviewNote?: string;
   submittedAt: string;
   requestedBy?: { id: string; name: string; email: string | null };
@@ -55,6 +59,7 @@ function readRequest(row: NetworkRow): NetworkRequestDetails | null {
 export class NetworkRequestService {
   private toDTO(row: NetworkRow, requestedBy?: NetworkRequestDTO['requestedBy']): NetworkRequestDTO {
     const req = readRequest(row);
+    const permissions = row.permissions as schema.NetworkPermissionsState | null;
     return {
       id: row.id,
       title: row.title,
@@ -63,6 +68,8 @@ export class NetworkRequestService {
       audience: req?.audience,
       expectedSize: req?.expectedSize,
       notes: req?.notes,
+      imageUrl: row.imageUrl,
+      joinPolicy: req?.joinPolicy ?? permissions?.joinPolicy,
       reviewNote: req?.reviewNote,
       submittedAt: req?.submittedAt ?? row.createdAt.toISOString(),
       ...(requestedBy ? { requestedBy } : {}),
@@ -74,13 +81,19 @@ export class NetworkRequestService {
     requester: { id: string; name: string; email: string | null },
     input: NetworkRequestInput,
   ): Promise<NetworkRequestDTO> {
+    const joinPolicy = input.joinPolicy ?? 'invite_only';
     const request: NetworkRequestDetails = {
       requestedByUserId: requester.id,
       ...(input.purpose ? { purpose: input.purpose } : {}),
       ...(input.audience ? { audience: input.audience } : {}),
       ...(input.expectedSize ? { expectedSize: input.expectedSize } : {}),
       ...(input.notes ? { notes: input.notes } : {}),
+      joinPolicy,
       submittedAt: new Date().toISOString(),
+    };
+    const permissions: schema.NetworkPermissionsState = {
+      joinPolicy,
+      invitationLink: { code: crypto.randomUUID() },
     };
 
     const [row] = await db
@@ -88,6 +101,8 @@ export class NetworkRequestService {
       .values({
         title: input.name,
         prompt: input.purpose ?? null,
+        imageUrl: input.imageUrl ?? null,
+        permissions,
         requestStatus: 'pending',
         metadata: { request },
       })
@@ -152,17 +167,38 @@ export class NetworkRequestService {
     const updated = await db.transaction(async (tx) => {
       const row = await this.lockOwnedRequest(tx, networkId, userId);
       const prev = readRequest(row);
+      const joinPolicy = input.joinPolicy
+        ?? prev?.joinPolicy
+        ?? (row.permissions as schema.NetworkPermissionsState | null)?.joinPolicy
+        ?? 'invite_only';
       const request: NetworkRequestDetails = {
         requestedByUserId: userId,
         ...(input.purpose ? { purpose: input.purpose } : {}),
         ...(input.audience ? { audience: input.audience } : {}),
         ...(input.expectedSize ? { expectedSize: input.expectedSize } : {}),
         ...(input.notes ? { notes: input.notes } : {}),
+        joinPolicy,
         submittedAt: prev?.submittedAt ?? new Date().toISOString(),
+      };
+      const permissions: schema.NetworkPermissionsState = {
+        ...((row.permissions as schema.NetworkPermissionsState | null) ?? {
+          invitationLink: null,
+        }),
+        joinPolicy,
+        invitationLink:
+          (row.permissions as schema.NetworkPermissionsState | null)?.invitationLink
+          ?? { code: crypto.randomUUID() },
       };
       const [next] = await tx
         .update(schema.networks)
-        .set({ title: input.name, prompt: input.purpose ?? null, requestStatus: 'pending', metadata: { request } })
+        .set({
+          title: input.name,
+          prompt: input.purpose ?? null,
+          ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
+          permissions,
+          requestStatus: 'pending',
+          metadata: { request },
+        })
         .where(eq(schema.networks.id, networkId))
         .returning();
       return next;
@@ -281,6 +317,8 @@ export class NetworkRequestService {
       req?.purpose ? `Purpose: ${req.purpose}` : null,
       req?.audience ? `Audience: ${req.audience}` : null,
       req?.expectedSize ? `Expected size: ${req.expectedSize}` : null,
+      req?.joinPolicy ? `Access: ${req.joinPolicy === 'anyone' ? 'public' : 'private'}` : null,
+      row.imageUrl ? `Image: ${row.imageUrl}` : null,
       req?.notes ? `Notes: ${req.notes}` : null,
       `Review at ${webBaseUrl()}/networks`,
     ].filter(Boolean) as string[];

@@ -11,11 +11,13 @@ import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PYTHON_FILES = ["__init__.py", "schemas.py", "tools.py", "dashboard/plugin_api.py"]
+PYTHON_FILES = ["__init__.py", "schemas.py", "tools.py", "dashboard/plugin_api.py", "dashboard/auth_login.py"]
 DASHBOARD_FILES = [
     "dashboard/manifest.json",
     "dashboard/dist/index.js",
@@ -180,6 +182,11 @@ def main() -> None:
     for removed in ("discover_opportunities", "get_discovery_run", "cancel_discovery_run"):
         assert f"index_{removed}" not in manifest_tools
 
+    # Install no longer prompts for a key: browser login is the primary path, so
+    # INDEX_API_KEY must not be a required env (a manual override still works).
+    plugin_yaml_lines = (ROOT / "plugin.yaml").read_text().splitlines()
+    assert not any(line.strip() == "requires_env:" for line in plugin_yaml_lines), "requires_env must be removed"
+
     for relative_path in DASHBOARD_FILES:
         assert (ROOT / relative_path).exists(), f"missing dashboard file: {relative_path}"
 
@@ -226,7 +233,73 @@ def main() -> None:
     assert "ProfilePanel" in dashboard_js
     assert "Notification Settings" in dashboard_js
     assert "/profile" in dashboard_js
+    assert "/onboarding/enrich" in dashboard_js
+    assert "/onboarding/confirm" in dashboard_js
+    assert "needsProfileConfirm" in dashboard_js
+    assert "Getting started" in dashboard_js
+    assert "gettingStarted" in dashboard_js
+    assert "index-dashboard__getting-started" in dashboard_js
+    assert "SettingUpScreen" in dashboard_js
+    assert "index-dashboard__setting-up" in dashboard_js
+    assert "Looks good" in dashboard_js
+    assert "Getting a sense of you" in dashboard_js
+    assert "index-dashboard__getting-started-btn" in dashboard_js
     assert "index-dashboard__opp-id--clickable" in dashboard_js
+    # Mac/CLI-parity browser login gate + sign out.
+    assert "LoginScreen" in dashboard_js
+    assert "Log in with browser" in dashboard_js
+    assert "/auth/status" in dashboard_js
+    assert "/auth/login/start" in dashboard_js
+    assert "/auth/login/status" in dashboard_js
+    assert "/auth/logout" in dashboard_js
+    assert "index-dashboard__login" in dashboard_js
+    assert "needsLogin" in dashboard_js
+    assert "Sign out" in dashboard_js
+    # Background pollers must be gated on the signed-in state so pre-login 401s
+    # cannot race the login transition (else the user must reload the page).
+    assert 'auth !== "authed"' in dashboard_js
+    assert "InviteJoinModal" not in dashboard_js
+    assert "index-network-invite" not in dashboard_js
+    assert "index-network-public-join" not in dashboard_js
+    # Owner network detail: overview / settings / access (web parity, no integrations).
+    assert "NetworkDetailModal" in dashboard_js
+    assert "networkShareUrl" in dashboard_js
+    assert "/regenerate-invitation" in dashboard_js
+    assert "resolveShareBase" in dashboard_js
+    assert "Invitation link" in dashboard_js
+    assert "/permissions" in dashboard_js
+    assert "regenerate_network_invitation" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/networks/search-users" in dashboard_js
+    assert "/members/invite" in dashboard_js
+    assert "Your Signals" in dashboard_js
+    assert "Danger Zone" in dashboard_js
+    assert "index-dashboard__net-invite" in dashboard_js
+    assert "index-dashboard__net-visibility" in dashboard_js
+    assert "index-dashboard__net-members" in dashboard_js
+    assert "index-dashboard__net-settings-panel" in dashboard_js
+
+    # Hermes Desktop ships the same Getting started gate via the built bundle.
+    desktop_js_path = ROOT / "desktop" / "dist" / "plugin.js"
+    assert desktop_js_path.exists(), "desktop/dist/plugin.js missing — run bun run build:desktop"
+    subprocess.run(["node", "--check", str(desktop_js_path)], check=True)
+    desktop_js = desktop_js_path.read_text()
+    assert "/onboarding/enrich" in desktop_js
+    assert "/onboarding/confirm" in desktop_js
+    assert "Getting started" in desktop_js
+    assert "needsProfileConfirm" in desktop_js
+    assert "index-dashboard__getting-started" in desktop_js
+    assert "SettingUpScreen" in desktop_js
+    assert "index-dashboard__setting-up" in desktop_js
+    assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
+    # Hermes Desktop ships the same browser-login gate via the built bundle.
+    assert "Log in with browser" in desktop_js
+    assert "/auth/login/start" in desktop_js
+    assert "index-dashboard__login" in desktop_js
+    assert "InviteJoinModal" not in desktop_js
+    assert "handleIndexDeepLink" not in desktop_js
+    assert "onDeepLink" not in desktop_js
+    assert "NetworkDetailModal" in desktop_js
+    assert "/regenerate-invitation" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js
@@ -277,6 +350,13 @@ def main() -> None:
     assert "index-dashboard__msg-conv-badge" in dashboard_css
     assert "index-dashboard__msg-conv-dot" in dashboard_css
     assert "index-dashboard__msg-search" in dashboard_css
+    assert "index-dashboard__getting-started" in dashboard_css
+    assert "index-dashboard__setting-up" in dashboard_css
+    assert "index-dashboard__getting-started-btn" in dashboard_css
+    assert "index-dashboard-setting-stripes" in dashboard_css
+    assert "index-dashboard__login" in dashboard_css
+    assert "index-dashboard__login-btn" in dashboard_css
+    assert "index-dashboard__profile-signout" in dashboard_css
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
@@ -286,6 +366,9 @@ def main() -> None:
     assert "claim pending negotiation turns" in dashboard_readme
     assert "answering pending Index questions" in package_readme
     assert "dashboard/plugin_api.py" in package_readme
+    assert "Log in with browser" in package_readme
+    assert "Log in with browser" in dashboard_readme
+    assert "/auth/login/start" in dashboard_readme
     assert "tools.py" in package_readme
     assert "### `index_open_app`" in package_readme
     assert "INDEX_APP_BASE_URL" in package_readme
@@ -312,6 +395,15 @@ def main() -> None:
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
+    old_app_base = os.environ.pop("INDEX_APP_BASE_URL", None)
+    old_web_url = os.environ.pop("INDEX_WEB_URL", None)
+    # Isolate tools._hermes_env_get from the developer ~/.hermes/.env so
+    # INDEX_API_URL fallbacks do not leak a personal dev host into assertions.
+    old_hermes_env_path = os.environ.get("HERMES_ENV_PATH")
+    isolated_env = tempfile.NamedTemporaryFile("w", delete=False, suffix=".env", encoding="utf-8")
+    isolated_env.write("")
+    isolated_env.close()
+    os.environ["HERMES_ENV_PATH"] = isolated_env.name
     old_urlopen = urllib.request.urlopen
     try:
         missing_key = json.loads(plugin.tools.index_read_intents({}))
@@ -664,8 +756,13 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                # _resolve_user_id → GET /auth/me (identity, replaces read_network_memberships).
-                FakeResponse({"user": {"id": "user-1"}}),
+                # summary → GET /auth/me (identity + onboarding gate).
+                FakeResponse({
+                    "user": {
+                        "id": "user-1",
+                        "onboarding": {"profileConfirmedAt": "2026-01-01T00:00:00.000Z"},
+                    }
+                }),
                 # _call_read_intents → POST /intents/list (carries lifecycle status; includes PAUSED).
                 FakeResponse(
                     {
@@ -735,7 +832,15 @@ def main() -> None:
                                 "prompt": "People building robotics companies.",
                                 "isPersonal": False,
                                 "type": "community",
-                                "user": {"id": "owner-x", "name": "Owner"},
+                                "hasMasterKey": False,
+                                "role": "owner",
+                                "permissions": {
+                                    "joinPolicy": "invite_only",
+                                    "invitationLink": {"code": "invite-abc"},
+                                },
+                                # Different from current user on purpose: role must
+                                # come from membership `role`, not network.user.id.
+                                "user": {"id": "other-owner", "name": "Owner"},
                                 "_count": {"members": 3},
                             }
                         ],
@@ -820,6 +925,10 @@ def main() -> None:
         )
         summary = dashboard_api.summary()
         assert summary["success"] is True
+        assert summary["onboarding"] == {
+            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
+            "needsProfileConfirm": False,
+        }
         intents = summary["intents"]
         assert len(intents) == 1
         intent = intents[0]
@@ -874,6 +983,9 @@ def main() -> None:
         assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
         assert summary["networks"]["count"] == 1
         assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert summary["networks"]["items"][0]["role"] == "owner"
+        assert summary["networks"]["items"][0]["joinPolicy"] == "invite_only"
+        assert summary["networks"]["items"][0]["invitationLink"] == {"code": "invite-abc"}
         assert summary["totals"] == {
             "intents": 1,
             "questions": 1,
@@ -987,7 +1099,8 @@ def main() -> None:
         assert start_chat_result["success"] is True
         assert start_chat_result["conversationId"] == "conv-9"
         assert start_chat_result["counterpartUserId"] == "other"
-        assert start_chat_result["chatUrl"] == "https://index.network/chat/conv-9"
+        # chatUrl follows the active API env (api.example.test here), not prod.
+        assert start_chat_result["chatUrl"] == "https://api.example.test/chat/conv-9"
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/opportunities/opp-1/start-chat"
         assert captured[-1]["body"] == {"scopeType": "intent", "scopeId": "intent-1"}
@@ -1032,16 +1145,21 @@ def main() -> None:
                         }
                     }
                 ),
-                mcp_text_response(
+                # read_user_contexts now goes through the REST tool surface
+                # (POST /tools/read_user_contexts), which the browser-login CLI
+                # key can call, unlike the MCP surface. Response is the REST
+                # {success, data} envelope.
+                FakeResponse(
                     {
                         "success": True,
-                        "hasProfile": True,
-                        "name": "Ada Lovelace",
-                        "bio": "Builds robots.",
-                        "location": "London",
-                        "context": "Ada is a robotics engineer.",
-                    },
-                    response_id=21,
+                        "data": {
+                            "hasProfile": True,
+                            "name": "Ada Lovelace",
+                            "bio": "Builds robots.",
+                            "location": "London",
+                            "context": "Ada is a robotics engineer.",
+                        },
+                    }
                 ),
                 FakeResponse(
                     {
@@ -1072,13 +1190,85 @@ def main() -> None:
         assert profile_obj["timezone"] == "Europe/London"
         assert profile_obj["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
         assert prof["mockedFields"] == ["email"]
-        profile_mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
-        assert profile_mcp_calls == ["read_user_contexts"]
+        assert prof["onboarding"] == {"profileConfirmedAt": None, "needsProfileConfirm": True}
+        profile_tool_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is not None]
+        assert profile_tool_calls == [("POST", "https://api.example.test/api/tools/read_user_contexts")]
         profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
         assert profile_rest_calls == [
             ("GET", "https://api.example.test/api/auth/me"),
             ("GET", "https://api.example.test/api/users/user-1"),
         ]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "enriched": True,
+                        "profile": {
+                            "name": "Ada Lovelace",
+                            "intro": "Builds robots.",
+                            "location": "London",
+                            "avatar": None,
+                            "socials": [{"label": "twitter", "value": "ada"}],
+                        },
+                    }
+                )
+            ],
+            captured,
+        )
+        enrich_result = dashboard_api.onboarding_enrich({})
+        assert enrich_result["success"] is True
+        assert enrich_result["enriched"] is True
+        assert enrich_result["profile"]["name"] == "Ada Lovelace"
+        assert enrich_result["profile"]["socials"] == [{"label": "twitter", "value": "ada"}]
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/enrichment/enrich"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                # confirm_user_context now goes through the REST tool surface
+                # (POST /tools/confirm_user_context) so the browser-login CLI key
+                # is accepted; the MCP surface denies it as an enrollment key.
+                FakeResponse(
+                    {"success": True, "data": {"created": True, "message": "Profile saved from approved draft."}}
+                ),
+                FakeResponse({"success": True, "user": {"id": "user-1"}}),
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "user-1",
+                            "onboarding": {"profileConfirmedAt": "2026-06-01T00:00:00.000Z"},
+                        }
+                    }
+                ),
+            ],
+            captured,
+        )
+        confirm_result = dashboard_api.onboarding_confirm(
+            {
+                "name": "Ada L.",
+                "intro": "Builds robots.",
+                "location": "London",
+                "socials": [{"label": "twitter", "value": "ada"}],
+            }
+        )
+        assert confirm_result["success"] is True
+        assert confirm_result["onboarding"] == {
+            "profileConfirmedAt": "2026-06-01T00:00:00.000Z",
+            "needsProfileConfirm": False,
+        }
+        assert confirm_result["applied"]["name"] == "Ada L."
+        confirm_tool = [entry for entry in captured if entry["body"] and "/tools/confirm_user_context" in entry["url"]]
+        assert confirm_tool[0]["method"] == "POST"
+        assert confirm_tool[0]["body"]["query"]["draft"]["identity"]["name"] == "Ada L."
+        assert captured[-2]["method"] == "PATCH"
+        assert captured[-2]["url"] == "https://api.example.test/api/auth/profile/update"
+        assert dashboard_api.onboarding_confirm("nope") == {
+            "success": False,
+            "error": "Confirm body must be an object.",
+        }
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True, "user": {"id": "user-1"}})], captured)
@@ -1339,9 +1529,12 @@ def main() -> None:
                         }
                     }
                 ),
-                mcp_text_response(
-                    {"success": True, "hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
-                    response_id=31,
+                # read_user_contexts(userId) via the REST tool surface.
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": {"hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
+                    }
                 ),
             ],
             captured,
@@ -1364,12 +1557,149 @@ def main() -> None:
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
             ("GET", "https://api.example.test/api/users/other"),
         ]
-        public_mcp = [entry["body"]["params"] for entry in captured if entry["body"]]
-        assert public_mcp == [
-            {"name": "read_user_contexts", "arguments": {"userId": "other"}},
+        public_tool = [(entry["method"], entry["url"], entry["body"]) for entry in captured if entry["body"]]
+        assert public_tool == [
+            ("POST", "https://api.example.test/api/tools/read_user_contexts", {"query": {"userId": "other"}}),
         ]
 
         assert dashboard_api.public_profile("") == {"success": False, "error": "A user id is required."}
+
+        # --- Mac/CLI-parity browser login backend -----------------------------
+        auth_login = dashboard_api.auth_login
+        env_dir = tempfile.mkdtemp()
+        env_file = os.path.join(env_dir, ".env")
+        old_env_path = os.environ.pop("HERMES_ENV_PATH", None)
+        old_key_id = os.environ.pop("INDEX_API_KEY_ID", None)
+        os.environ["HERMES_ENV_PATH"] = env_file
+        try:
+            # .env merge: update INDEX_API_KEY in place, keep the other vars.
+            with open(env_file, "w", encoding="utf-8") as handle:
+                handle.write("FOO=1\nINDEX_API_KEY=old\nBAR=2\n")
+            auth_login.persist_api_key("minted-key", "kid-1")
+            merged = open(env_file, encoding="utf-8").read()
+            assert "FOO=1" in merged and "BAR=2" in merged
+            assert "INDEX_API_KEY=minted-key" in merged
+            assert "INDEX_API_KEY_ID=kid-1" in merged
+            assert os.environ["INDEX_API_KEY"] == "minted-key"
+            auth_login.clear_api_key()
+            cleared = open(env_file, encoding="utf-8").read()
+            assert "INDEX_API_KEY" not in cleared
+            assert "FOO=1" in cleared and "BAR=2" in cleared
+            assert "INDEX_API_KEY" not in os.environ
+
+            # Login/invite origin pairs with the active API env: an explicit
+            # INDEX_APP_BASE_URL wins, otherwise it derives from INDEX_API_URL by
+            # dropping the leading `protocol.` label (so dev never mints a prod key).
+            # Also reads INDEX_API_URL from the Hermes .env when not in os.environ.
+            saved_api_url = os.environ.get("INDEX_API_URL")
+            saved_web_url = os.environ.get("INDEX_WEB_URL")
+            os.environ.pop("INDEX_APP_BASE_URL", None)
+            os.environ.pop("INDEX_WEB_URL", None)
+            try:
+                os.environ["INDEX_API_URL"] = "https://protocol.dev.index.network/api"
+                assert dashboard_api._login_app_base_url() == "https://dev.index.network"
+                assert dashboard_api._web_url() == "https://dev.index.network"
+                assert plugin.tools._app_base_url() == "https://dev.index.network"
+                os.environ["INDEX_API_URL"] = "https://protocol.index.network/api"
+                assert dashboard_api._login_app_base_url() == "https://index.network"
+                assert dashboard_api._web_url() == "https://index.network"
+                os.environ["INDEX_APP_BASE_URL"] = "https://staging.index.network"
+                assert dashboard_api._login_app_base_url() == "https://staging.index.network"
+                assert dashboard_api._web_url() == "https://staging.index.network"
+                os.environ["INDEX_WEB_URL"] = "https://custom.example"
+                assert dashboard_api._web_url() == "https://custom.example"
+                # .env fallback when process env lacks INDEX_API_URL
+                os.environ.pop("INDEX_API_URL", None)
+                os.environ.pop("INDEX_APP_BASE_URL", None)
+                os.environ.pop("INDEX_WEB_URL", None)
+                env_path = pathlib.Path(env_file)
+                env_path.write_text(
+                    "FOO=1\nINDEX_API_URL=https://protocol.dev.index.network/api\nBAR=2\n",
+                    encoding="utf-8",
+                )
+                assert plugin.tools._api_url() == "https://protocol.dev.index.network/api"
+                assert dashboard_api._web_url() == "https://dev.index.network"
+            finally:
+                os.environ.pop("INDEX_APP_BASE_URL", None)
+                os.environ.pop("INDEX_WEB_URL", None)
+                if saved_api_url is not None:
+                    os.environ["INDEX_API_URL"] = saved_api_url
+                else:
+                    os.environ.pop("INDEX_API_URL", None)
+                if saved_web_url is not None:
+                    os.environ["INDEX_WEB_URL"] = saved_web_url
+
+            # Loopback handshake drives poll_status to success (real sockets).
+            urllib.request.urlopen = old_urlopen
+            auth_url = auth_login.start_login("https://app.example.test")
+            parsed_auth = urllib.parse.urlsplit(auth_url)
+            assert parsed_auth.path == "/cli-auth"
+            auth_params = urllib.parse.parse_qs(parsed_auth.query)
+            assert auth_params["version"] == ["2"]
+            callback = auth_params["callback"][0]
+            state = auth_params["state"][0]
+            assert auth_login.poll_status()["status"] == "pending"
+            with old_urlopen(
+                callback + "?" + urllib.parse.urlencode({"state": state, "api_key": "loop-key", "key_id": "loop-kid"})
+            ) as resp:
+                assert resp.status == 200
+            success = auth_login.poll_status()
+            assert success["status"] == "success"
+            assert os.environ["INDEX_API_KEY"] == "loop-key"
+            assert os.environ["INDEX_API_KEY_ID"] == "loop-kid"
+            assert auth_login.poll_status()["status"] == "idle"  # terminal + torn down
+
+            # A mismatched callback state fails the attempt.
+            auth_url2 = auth_login.start_login("https://app.example.test")
+            callback2 = urllib.parse.parse_qs(urllib.parse.urlsplit(auth_url2).query)["callback"][0]
+            try:
+                old_urlopen(callback2 + "?" + urllib.parse.urlencode({"state": "wrong", "api_key": "x", "key_id": "y"}))
+                raise AssertionError("mismatched state should return HTTP 400")
+            except urllib.error.HTTPError as exc:
+                assert exc.code == 400
+            # The bad callback did not resolve the session; it is still pending.
+            assert auth_login.poll_status()["status"] == "pending"
+
+            # /auth/status: a working key is authenticated; a missing key needs login.
+            captured = []
+            install_fake_urlopen([FakeResponse({"user": {"id": "user-1", "email": "ada@example.test"}})], captured)
+            status_ok = dashboard_api.auth_status()
+            assert status_ok["authenticated"] is True and status_ok["needsLogin"] is False
+            assert captured[-1]["url"] == "https://api.example.test/api/auth/me"
+            os.environ.pop("INDEX_API_KEY", None)
+            needs = dashboard_api.auth_status()
+            assert needs["authenticated"] is False and needs["needsLogin"] is True
+
+            # /auth/status: an authenticated key that 401s falls back to the gate.
+            os.environ["INDEX_API_KEY"] = "stale-key"
+            captured = []
+            install_fake_urlopen([http_error(401, {"error": "Unauthorized."})], captured)
+            unauthorized = dashboard_api.auth_status()
+            assert unauthorized["needsLogin"] is True
+
+            # /auth/logout: best-effort revoke with the stored id, then clear.
+            os.environ["INDEX_API_KEY"] = "loop-key"
+            os.environ["INDEX_API_KEY_ID"] = "loop-kid"
+            with open(env_file, "w", encoding="utf-8") as handle:
+                handle.write("INDEX_API_KEY=loop-key\nINDEX_API_KEY_ID=loop-kid\nKEEP=yes\n")
+            captured = []
+            install_fake_urlopen([FakeResponse({"success": True})], captured)
+            logout = dashboard_api.auth_logout()
+            assert logout == {"success": True, "needsLogin": True}
+            assert captured[-1]["method"] == "POST"
+            assert captured[-1]["url"] == "https://api.example.test/api/auth/cli-credential/revoke"
+            assert captured[-1]["body"] == {"keyId": "loop-kid", "targetKey": "loop-key"}
+            after_logout = open(env_file, encoding="utf-8").read()
+            assert "INDEX_API_KEY" not in after_logout and "KEEP=yes" in after_logout
+            assert "INDEX_API_KEY" not in os.environ
+        finally:
+            urllib.request.urlopen = old_urlopen
+            os.environ.pop("HERMES_ENV_PATH", None)
+            if old_env_path is not None:
+                os.environ["HERMES_ENV_PATH"] = old_env_path
+            os.environ.pop("INDEX_API_KEY_ID", None)
+            if old_key_id is not None:
+                os.environ["INDEX_API_KEY_ID"] = old_key_id
     finally:
         urllib.request.urlopen = old_urlopen
         if old_api_key is not None:
@@ -1380,6 +1710,21 @@ def main() -> None:
             os.environ["INDEX_API_URL"] = old_api_url
         else:
             os.environ.pop("INDEX_API_URL", None)
+        if old_app_base is not None:
+            os.environ["INDEX_APP_BASE_URL"] = old_app_base
+        else:
+            os.environ.pop("INDEX_APP_BASE_URL", None)
+        if old_web_url is not None:
+            os.environ["INDEX_WEB_URL"] = old_web_url
+        else:
+            os.environ.pop("INDEX_WEB_URL", None)
+        os.environ.pop("HERMES_ENV_PATH", None)
+        if old_hermes_env_path is not None:
+            os.environ["HERMES_ENV_PATH"] = old_hermes_env_path
+        try:
+            os.unlink(isolated_env.name)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

@@ -44,6 +44,52 @@ function ensureAssets() {
   return assetsPromise
 }
 
+// Native OS alerts for newly actionable opportunities, via the ctx.os door
+// (hermes-agent#78685). Fires only while the user is away from Hermes and is
+// gated by Settings ▸ Notifications ▸ "Plugin notifications"; on older desktop
+// shells without ctx.os it silently no-ops.
+const SEEN_OPPORTUNITIES_KEY = 'notifiedOpportunityIds'
+const OPPORTUNITY_POLL_MS = 30 * 1000
+
+function collectPendingOpportunities(data) {
+  const lists = [(data.general && data.general.opportunities) || []]
+  ;(data.intents || []).forEach(function (intent) { lists.push(intent.opportunities || []) })
+  const pending = []
+  lists.forEach(function (list) {
+    list.forEach(function (item) {
+      if (item.opportunityId && (item.status === 'pending' || item.status === 'latent')) pending.push(item)
+    })
+  })
+  return pending
+}
+
+function checkOpportunities(ctx) {
+  restCall('/summary', { method: 'GET' })
+    .then(function (data) {
+      if (!data || data.success === false) return
+      const pending = collectPendingOpportunities(data)
+      const seen = ctx.storage.get(SEEN_OPPORTUNITIES_KEY, null)
+      const ids = pending.map(function (item) { return item.opportunityId })
+      if (seen === null) {
+        ctx.storage.set(SEEN_OPPORTUNITIES_KEY, ids) // first run — baseline silently
+        return
+      }
+      const fresh = pending.filter(function (item) { return seen.indexOf(item.opportunityId) === -1 })
+      if (!fresh.length) return
+      ctx.storage.set(SEEN_OPPORTUNITIES_KEY, seen.concat(ids).filter(function (id, i, all) {
+        return all.indexOf(id) === i
+      }).slice(-200))
+      if (!ctx.os || !ctx.os.notify) return
+      ctx.os.notify({
+        title: 'Index Network',
+        body: fresh.length === 1
+          ? 'New opportunity: ' + fresh[0].name
+          : fresh.length + ' new opportunities are waiting'
+      })
+    })
+    .catch(function () { /* backend not reachable — the next poll retries */ })
+}
+
 function DesktopPage() {
   const tick = React.useState(0)
   React.useEffect(function () {
@@ -62,7 +108,6 @@ export default {
   id: 'index-network',
   name: 'Index Network',
   register: function (ctx) {
-    console.info('[index-network] desktop plugin registered (dashboard component: ' + (DashboardComponent ? 'ok' : 'MISSING') + ')')
     restCall = function (path, opts) { return ctx.rest(path, opts) }
 
     const style = document.createElement('style')
@@ -70,6 +115,10 @@ export default {
     style.textContent = PLUGIN_CSS
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
+
+    const opportunityTimer = window.setInterval(function () { checkOpportunities(ctx) }, OPPORTUNITY_POLL_MS)
+    checkOpportunities(ctx)
+    ctx.onDispose(function () { window.clearInterval(opportunityTimer) })
 
     ctx.registerMany([
       {
@@ -90,7 +139,7 @@ export default {
         data: {
           id: 'index-network.open',
           label: 'Open Index Network',
-          keywords: ['index', 'network', 'intents', 'opportunities'],
+          keywords: ['index', 'network', 'intents', 'opportunities', 'onboarding', 'getting started', 'profile'],
           run: function () { host.navigate('/index-network') }
         }
       }

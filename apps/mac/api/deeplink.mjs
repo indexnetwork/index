@@ -14,12 +14,15 @@
 /** Hosts whose https:// links this app claims (see the web AASA). */
 const DEFAULT_HOSTS = ['index.network'];
 
-/** First path segment -> route name. The web serves the same three paths. */
+/** First path segment -> route name. The web serves the same paths. */
 const ROUTE_BY_SEGMENT = {
   o: 'card',
   u: 'profile',
   c: 'legacy-connect',
 };
+
+/** Routes whose second segment is an opaque code rather than an entity id. */
+const CODE_ROUTES = new Set(['legacy-connect']);
 
 /**
  * @typedef {{ route: 'card', id: string }
@@ -31,10 +34,10 @@ const ROUTE_BY_SEGMENT = {
  * Resolve a deep link into a route, or null when it is not one of ours.
  *
  * Accepts two URL families:
- *   · `https://<allowed host>/o|u|c/<id>` — universal links. Only https, since
- *     that is the only scheme macOS ever hands over as a universal link; extra
- *     hosts (staging, a review app) go through `options.hosts` so adding one
- *     never touches the routing table.
+ *   · `https://<allowed host>/o|u|c/<id>` — universal links. Only https,
+ *     since that is the only scheme macOS ever hands over as a universal link;
+ *     extra hosts (staging, a review app) go through `options.hosts` so adding
+ *     one never touches the routing table.
  *   · `index://o|u|c/<id>` — the internal scheme alias, no host to check.
  *
  * Query strings, fragments and trailing slashes are ignored. Anything else —
@@ -136,7 +139,7 @@ function routeFromPath(path) {
   const value = safeDecode(segments[1]);
   if (!value) return null;
 
-  return route === 'legacy-connect' ? { route, code: value } : { route, id: value };
+  return CODE_ROUTES.has(route) ? { route, code: value } : { route, id: value };
 }
 
 /**

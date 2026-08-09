@@ -3,7 +3,20 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
 import { handleNetwork } from "../src/network.command";
+import { stripAnsi } from "../src/output";
 import { createMockServer } from "./helpers/mock-http";
+
+async function captureTerminal(run: () => Promise<void>): Promise<string> {
+  const logs: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  try {
+    await run();
+  } finally {
+    console.log = original;
+  }
+  return stripAnsi(logs.join("\n"));
+}
 
 describe("parseArgs — network command", () => {
   it("parses 'network' with no subcommand as network-help", () => {
@@ -84,6 +97,12 @@ describe("handleNetwork", () => {
     await mock.stop();
   });
 
+  it("describes direct creation and early-access requests in command help", async () => {
+    const terminal = await captureTerminal(() => handleNetwork(client, undefined, [], {}));
+    expect(terminal).toContain("Create directly or submit an early-access request");
+    expect(terminal).toContain("Create directly or request early access with a description");
+  });
+
   it("lists networks, filtering out personal networks", async () => {
     mock.on("GET", "/api/networks", () =>
       Response.json({
@@ -107,9 +126,82 @@ describe("handleNetwork", () => {
       });
     });
 
-    await handleNetwork(client, "create", ["New Net"], { prompt: "A test" });
+    const logs: string[] = [];
+    const original = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    try {
+      await handleNetwork(client, "create", ["New Net"], { prompt: "A test", json: true });
+    } finally {
+      console.log = original;
+    }
+
     expect(receivedBody.title).toBe("New Net");
     expect(receivedBody.prompt).toBe("A test");
+    expect(JSON.parse(logs.at(-1) ?? "{}")).toEqual({
+      kind: "created",
+      network: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
+    });
+  });
+
+  it("prints the created network terminal result", async () => {
+    mock.on("POST", "/api/networks", () =>
+      Response.json({
+        network: { id: "n1", key: "new-net", title: "New Net", joinPolicy: "invite_only" },
+      }),
+    );
+
+    const terminal = await captureTerminal(() => handleNetwork(client, "create", ["New Net"], {}));
+    expect(terminal).toContain("Network created: New Net");
+    expect(terminal).toContain("Key: new-net");
+    expect(terminal).toContain("ID: n1");
+    expect(terminal).toContain("Join Policy: invite only");
+  });
+
+  it("submits a network request for non-staff users", async () => {
+    mock.on("POST", "/api/networks", () =>
+      Response.json(
+        { error: "Network creation is in early access. Submit a request at POST /network-requests." },
+        { status: 403 },
+      ),
+    );
+    mock.on("POST", "/api/network-requests", () =>
+      Response.json({
+        request: { id: "r1", title: "New Net", status: "pending", submittedAt: "2026-08-07T00:00:00Z" },
+      }, { status: 201 }),
+    );
+
+    const logs: string[] = [];
+    const original = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    try {
+      await handleNetwork(client, "create", ["New Net"], { json: true });
+    } finally {
+      console.log = original;
+    }
+
+    expect(JSON.parse(logs.at(-1) ?? "{}")).toMatchObject({
+      kind: "requested",
+      request: { id: "r1", status: "pending" },
+    });
+  });
+
+  it("prints the submitted network request terminal result", async () => {
+    mock.on("POST", "/api/networks", () =>
+      Response.json(
+        { error: "Network creation is in early access. Submit a request at POST /network-requests." },
+        { status: 403 },
+      ),
+    );
+    mock.on("POST", "/api/network-requests", () =>
+      Response.json({
+        request: { id: "r1", title: "New Net", status: "pending", submittedAt: "2026-08-07T00:00:00Z" },
+      }, { status: 201 }),
+    );
+
+    const terminal = await captureTerminal(() => handleNetwork(client, "create", ["New Net"], {}));
+    expect(terminal).toContain("Network request submitted: New Net");
+    expect(terminal).toContain("Status: pending");
+    expect(terminal).toContain("Request ID: r1");
   });
 
   it("shows network details and members", async () => {
@@ -147,27 +239,49 @@ describe("handleNetwork", () => {
     await handleNetwork(client, "leave", ["n1"], {});
   });
 
-  it("invites a user by email", async () => {
-    mock.on("GET", "/api/networks/search-users", () =>
-      Response.json({
-        users: [{ id: "u1", name: "Alice", email: "alice@test.com" }],
-      }),
-    );
-    mock.on("POST", "/api/networks/n1/members", async (req) => {
-      const body = (await req.json()) as Record<string, unknown>;
-      expect(body.userId).toBe("u1");
-      return Response.json({ member: { userId: "u1" }, message: "Invited" });
+  it("invites a user directly by email", async () => {
+    let receivedBody: Record<string, unknown> = {};
+    mock.on("POST", "/api/networks/n1/members/invite", async (req) => {
+      receivedBody = await req.json() as Record<string, unknown>;
+      return Response.json({
+        user: { id: "u1", email: "alice@test.com" },
+        created: false,
+        alreadyMember: false,
+        agentProvisioned: true,
+      });
     });
 
-    await handleNetwork(client, "invite", ["n1", "alice@test.com"], {});
+    const terminal = await captureTerminal(() => handleNetwork(client, "invite", ["n1", "alice@test.com"], {}));
+    expect(receivedBody).toEqual({ email: "alice@test.com" });
+    expect(terminal).toContain("Invitation sent to alice@test.com.");
   });
 
-  it("handles invite when user not found", async () => {
-    mock.on("GET", "/api/networks/search-users", () =>
-      Response.json({ users: [] }),
+  it("reports when the invitee is already a network member", async () => {
+    mock.on("POST", "/api/networks/n1/members/invite", () =>
+      Response.json({
+        user: { id: "u1", email: "member@test.com" },
+        created: false,
+        alreadyMember: true,
+        agentProvisioned: true,
+      }),
     );
 
-    // Should not throw, just print error
-    await handleNetwork(client, "invite", ["n1", "unknown@test.com"], {});
+    const terminal = await captureTerminal(() => handleNetwork(client, "invite", ["n1", "member@test.com"], {}));
+    expect(terminal).toContain("member@test.com is already a network member.");
+  });
+
+  it("reports when an invitation creates a pending account", async () => {
+    mock.on("POST", "/api/networks/n1/members/invite", () =>
+      Response.json({
+        user: { id: "u2", email: "new@test.com" },
+        created: true,
+        alreadyMember: false,
+        agentProvisioned: true,
+      }, { status: 201 }),
+    );
+
+    const terminal = await captureTerminal(() => handleNetwork(client, "invite", ["n1", "new@test.com"], {}));
+    expect(terminal).toContain("Invitation sent to new@test.com.");
+    expect(terminal).toContain("Created a pending account for this invitee.");
   });
 });

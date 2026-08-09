@@ -306,7 +306,7 @@ function Summary({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Shared live three-question intake used by /i/new and flag-on onboarding. */
+/** Shared live three-question intake used by /i/new. */
 export function GuidedSignalIntake({
   prepareSession,
   sendKickoff,

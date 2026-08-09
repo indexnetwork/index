@@ -7,14 +7,17 @@ test('injects the bundle-owned host into the native bridge', () => {
   expect(swift).toContain('static var deepLinkHosts: [String]');
   expect(swift).toContain('object(forInfoDictionaryKey: "IndexDeepLinkHost")');
   expect(swift).toContain('"deepLinkHosts": AppConfig.deepLinkHosts');
+  // Share links use APP_URL, not deepLinkHosts[0] (prod-associated host).
+  expect(swift).toContain('"appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL)');
 });
 
-test('uses optional binding for a trimmed bundle host and falls back when empty', () => {
-  expect(swift).not.toContain('host?.trimmingCharacters(in: .whitespacesAndNewlines)\n            .flatMap');
-  expect(swift).toContain('let configuredHost = host?.trimmingCharacters(in: .whitespacesAndNewlines)');
+test('claims the bundle host and also the APP_URL host', () => {
+  expect(swift).toContain('let configuredHost = bundleHost?.trimmingCharacters(in: .whitespacesAndNewlines)');
   expect(swift).toContain('if let configuredHost, !configuredHost.isEmpty {');
-  expect(swift).toContain('return [configuredHost]');
-  expect(swift).toContain('return ["index.network"]');
+  expect(swift).toContain('hosts.append(configuredHost)');
+  expect(swift).toContain('hosts.append("index.network")');
+  expect(swift).toContain('URL(string: appURL)?.host');
+  expect(swift).toContain('hosts.append(appHost)');
 });
 
 test('uses native hosts for parsing and unrouteable-link notices', () => {

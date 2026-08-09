@@ -14,7 +14,6 @@ describe('toPublicNetworkPermissions', () => {
     })).toEqual({
       joinPolicy: 'anyone',
       invitationLink: { code: 'invite' },
-      allowGuestVibeCheck: true,
       contextInjection: { discovery: true },
     });
   });
@@ -23,7 +22,6 @@ describe('toPublicNetworkPermissions', () => {
     expect(toPublicNetworkPermissions(null)).toEqual({
       joinPolicy: 'invite_only',
       invitationLink: null,
-      allowGuestVibeCheck: false,
     });
   });
 
@@ -34,7 +32,6 @@ describe('toPublicNetworkPermissions', () => {
     })).toEqual({
       joinPolicy: 'invite_only',
       invitationLink: null,
-      allowGuestVibeCheck: false,
     });
   });
 
@@ -45,7 +42,6 @@ describe('toPublicNetworkPermissions', () => {
     })).toEqual({
       joinPolicy: 'invite_only',
       invitationLink: { code: 'invite' },
-      allowGuestVibeCheck: false,
       contextInjection: { discovery: false },
     });
   });

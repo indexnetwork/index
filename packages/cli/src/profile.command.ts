@@ -56,7 +56,7 @@ export async function handleProfile(
   if (subcommand === "search") {
     const query = positionals.join(" ");
     if (!query) { output.error("Usage: index profile search <query>", 1); return; }
-    const result = await client.callTool("read_user_profiles", { query });
+    const result = await client.readUserContexts({ query });
     if (options.json) { console.log(JSON.stringify(result)); return; }
     if (!result.success) { output.error(result.error ?? "Search failed", 1); return; }
     const data = result.data as { profiles: Array<{ userId: string; name: string; bio?: string; location?: string }> };
@@ -108,33 +108,18 @@ async function profileShow(client: ApiClient, userId: string, json?: boolean): P
   output.profileCard(user);
 }
 
-/**
- * Trigger profile regeneration for the authenticated user.
- *
- * Checks whether a profile exists via `read_user_profiles`, then calls
- * `create_user_profile` or `update_user_profile` accordingly.
- */
+/** Trigger synchronous profile enrichment for the authenticated user. */
 async function profileSync(client: ApiClient, json?: boolean): Promise<void> {
-  if (!json) output.info("Regenerating profile...");
-  // Check if profile exists
-  const check = await client.callTool("read_user_profiles", {});
-  if (!check.success) {
-    if (json) { console.log(JSON.stringify(check)); return; }
-    output.error(check.error ?? "Failed to check profile status", 1);
+  if (!json) output.info("Enriching profile...");
+  const result = await client.enrichProfile();
+  if (json) {
+    console.log(JSON.stringify(result));
     return;
   }
-  const hasProfile = (check.data as Record<string, unknown>)?.hasProfile;
-
-  let result;
-  if (hasProfile) {
-    result = await client.callTool("update_user_profile", { action: "regenerate" });
-  } else {
-    result = await client.callTool("create_user_profile", { confirm: true });
-  }
-
-  if (json) { console.log(JSON.stringify(result)); return; }
-  if (!result.success) { output.error(result.error ?? "Profile regeneration failed", 1); return; }
-  output.success("Profile regeneration triggered. It may take a moment to complete.");
+  output.success("Profile enriched.");
+  if (result.profile.name) output.dim(`  Name: ${result.profile.name}`);
+  if (result.profile.location) output.dim(`  Location: ${result.profile.location}`);
+  output.dim(`  Social links: ${result.profile.socials.length}`);
 }
 
 /**
@@ -149,12 +134,17 @@ async function profileCreate(
   json?: boolean,
 ): Promise<void> {
   if (!json) output.info("Creating profile...");
-  const query: Record<string, unknown> = { confirm: true };
+  const query: {
+    confirm?: boolean;
+    linkedinUrl?: string;
+    githubUrl?: string;
+    twitterUrl?: string;
+  } = { confirm: true };
   if (options.linkedin) query.linkedinUrl = options.linkedin;
   if (options.github) query.githubUrl = options.github;
   if (options.twitter) query.twitterUrl = options.twitter;
 
-  const result = await client.callTool("create_user_profile", query);
+  const result = await client.createUserContext(query);
   if (json) { console.log(JSON.stringify(result)); return; }
   if (!result.success) {
     output.error(result.error ?? "Profile creation failed", 1);
@@ -177,10 +167,10 @@ async function profileUpdate(
   json?: boolean,
 ): Promise<void> {
   if (!json) output.info("Updating profile...");
-  const query: Record<string, unknown> = { action };
+  const query: { action: string; details?: string } = { action };
   if (details) query.details = details;
 
-  const result = await client.callTool("update_user_profile", query);
+  const result = await client.updateUserContext(query);
   if (json) { console.log(JSON.stringify(result)); return; }
   if (!result.success) {
     output.error(result.error ?? "Profile update failed", 1);

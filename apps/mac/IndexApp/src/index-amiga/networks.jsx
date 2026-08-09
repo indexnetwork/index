@@ -1,35 +1,25 @@
 // Networks, the communities you're in, and the ones you could join. Reached
 // from the networks row on the hub's sidebar footer.
 
-// Deterministic 2x2 tile standing in for the generative avatar. Same name
-// always yields the same tile, so a network is recognisable by its colours.
-function NetworkTile({ name, size = 36, photo }) {
+// Deterministic bauhaus avatar matching the web app. Same id/name always
+// yields the same pattern, so a network is recognisable without a photo.
+function NetworkTile({ id, name, size = 36, photo }) {
+  const seed = id || name || "default";
+  const frameStyle = {
+    flex:"0 0 auto", width:size, height:size,
+    borderRadius:"50%", overflow:"hidden",
+  };
   if (photo) {
     return (
       <img
         src={photo}
         alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size,
-          objectFit:"cover", display:"block",
-          border:"1px solid #000",
-          // same treatment as every other photo in the app
-          filter:"grayscale(1) contrast(1.05)",
-        }}/>
+        style={{ ...frameStyle, objectFit:"cover", display:"block" }}/>
     );
   }
-  const PAL = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
-  let h = 0;
-  for (let i = 0; i < (name || "").length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  // unsigned shift, a signed one goes negative on bit 31 and indexes off the end
-  const cells = [0, 1, 2, 3].map(i => PAL[(h >>> (i * 3)) % PAL.length]);
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size,
-      border:"1px solid #000",
-      display:"grid", gridTemplateColumns:"1fr 1fr", gridTemplateRows:"1fr 1fr",
-    }}>
-      {cells.map((c, i) => <span key={i} style={{ background:c }}/>)}
+    <span style={frameStyle}>
+      <BoringAvatar seed={seed} size={size}/>
     </span>
   );
 }
@@ -42,7 +32,7 @@ function NetworkPhoto({ name, photo, onPick, size = 42 }) {
   return (
     <span style={{ display:"flex", alignItems:"center", gap:13, minWidth:0 }}>
       <PicturePicker size={size} label="change network picture" onPick={onPick} onError={setErr}>
-        <NetworkTile name={name || "?"} size={size} photo={photo}/>
+        <NetworkTile id={name} name={name || "?"} size={size} photo={photo}/>
       </PicturePicker>
 
       {err && (
@@ -217,15 +207,20 @@ function CreateNetwork({ onCancel, onCreate }) {
             padding:"20px 24px 22px",
           }}>
 
-            {/* live preview, the tile is derived from the name, so it only
-                becomes meaningful once something is typed */}
+            {/* live preview. picture is optional; without one the tile is
+                derived from the name so the network still has a mark */}
             <div style={{ display:"flex", alignItems:"center", gap:13, marginBottom:20 }}>
               <NetworkPhoto name={named} photo={photo} onPick={setPhoto} size={42}/>
-              <span style={{
-                fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
-                color: named ? "#000" : "var(--ink-4)",
-                minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-              }}>{named || "network name"}</span>
+              <span style={{ display:"grid", gap:2, minWidth:0 }}>
+                <span style={{
+                  fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
+                  color: named ? "#000" : "var(--ink-4)",
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                }}>{named || "network name"}</span>
+                <span style={{
+                  fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                }}>picture optional</span>
+              </span>
             </div>
 
             {/* one column at this width, like name/location on the profile.
@@ -311,15 +306,23 @@ function CreateNetwork({ onCancel, onCreate }) {
 // the same question reads the same on every surface.
 const NET_SIZE_OPTIONS = ["Under 100", "100 – 1K", "1K – 10K", "10K+"];
 
-// Early-access "request a network" screen. Same frame as CreateNetwork, but it
-// submits to /network-requests (reviewed) instead of creating a live network,
-// and ends on a confirmation panel. Also handles resubmitting a "needs changes"
-// request when `initial` is passed.
+// Early-access "request a network" screen. Same fields as CreateNetwork
+// (picture, name, description, access) plus expected size. Submits to
+// /network-requests instead of creating a live network. Also handles
+// resubmitting a "needs changes" request when `initial` is passed.
 function RequestNetwork({ initial, onCancel, onSubmit }) {
-  const [name, setName]       = useState((initial && initial.title) || "");
-  const [purpose, setPurpose] = useState((initial && initial.purpose) || "");
-  const [size, setSize]       = useState((initial && initial.expectedSize) || "");
-  const [notes, setNotes]     = useState((initial && initial.notes) || "");
+  const initialPhoto = initial && initial.imageUrl
+    ? (window.IndexApp && window.IndexApp.avatarUrl
+      ? window.IndexApp.avatarUrl(initial.imageUrl)
+      : initial.imageUrl)
+    : null;
+  const [name, setName]     = useState((initial && initial.title) || "");
+  const [desc, setDesc]     = useState((initial && initial.purpose) || "");
+  const [photo, setPhoto]   = useState(initialPhoto);
+  const [access, setAccess] = useState(
+    initial && initial.joinPolicy === "anyone" ? "public" : "private",
+  );
+  const [size, setSize]     = useState((initial && initial.expectedSize) || "");
   const [sending, setSending] = useState(false);
   const [done, setDone]       = useState(null);
 
@@ -342,9 +345,10 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
     setSending(true);
     Promise.resolve(onSubmit({
       name: named,
-      purpose: purpose.trim() || undefined,
+      purpose: desc.trim() || undefined,
       expectedSize: size || undefined,
-      notes: notes.trim() || undefined,
+      joinPolicy: access === "public" ? "anyone" : "invite_only",
+      photo,
     }))
       .then((req) => setDone(req || { title: named }))
       .catch(() => {})
@@ -360,7 +364,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
     }}>
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 112px))",
+        height:"min(720px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · request a network"
@@ -407,33 +411,70 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                   border:"1px solid #000", borderLeft:"3px solid #FF8A00",
                   background:"#F2EFE6",
                   fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-                }}>network creation is still early. tell us what you&apos;re hoping to build and we&apos;ll get back to you.</div>
+                }}>network creation is still early. fill this in and we&apos;ll review it before it goes live.</div>
               </div>
 
               <div className="mac-scroll" style={{
                 flex:"1 1 auto", minHeight:0, overflowY:"auto",
                 padding:"20px 24px 22px",
               }}>
+                <div style={{ display:"flex", alignItems:"center", gap:13, marginBottom:20 }}>
+                  <NetworkPhoto name={named} photo={photo} onPick={setPhoto} size={42}/>
+                  <span style={{ display:"grid", gap:2, minWidth:0 }}>
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
+                      color: named ? "#000" : "var(--ink-4)",
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                    }}>{named || "network name"}</span>
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>picture optional</span>
+                  </span>
+                </div>
+
                 <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"14px 18px" }}>
                   <TextField
-                    label="network name" required
+                    label="name" required
                     value={name}
                     onChange={setName}
-                    placeholder="e.g. Edge City"
+                    placeholder="network name"
                   />
                 </div>
 
                 <div style={{ marginTop:14 }}>
-                  <FieldLabel>what are you hoping to build?</FieldLabel>
+                  <FieldLabel right={
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>optional</span>
+                  }>description</FieldLabel>
                   <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
                     <textarea
-                      value={purpose}
-                      onChange={e => setPurpose(e.target.value)}
-                      placeholder="who is it for, who do you expect to join, and what should people or agents be able to discover through it?"
+                      value={desc}
+                      onChange={e => setDesc(e.target.value)}
+                      placeholder="what people can share in this network…"
                       rows={3}
                       style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
                     />
                   </div>
+                </div>
+
+                <SectionRule>access</SectionRule>
+                <div style={{
+                  marginTop:12, display:"grid",
+                  gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"8px 14px",
+                }}>
+                  <ChoiceCard
+                    title="public"
+                    sub="anyone can discover and join"
+                    selected={access === "public"}
+                    onClick={() => setAccess("public")}
+                  />
+                  <ChoiceCard
+                    title="private"
+                    sub="only people with an invitation link"
+                    selected={access === "private"}
+                    onClick={() => setAccess("private")}
+                  />
                 </div>
 
                 <SectionRule>how many people are you hoping to bring together?</SectionRule>
@@ -449,23 +490,6 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                       onClick={() => setSize(size === opt ? "" : opt)}
                     />
                   ))}
-                </div>
-
-                <div style={{ marginTop:14 }}>
-                  <FieldLabel right={
-                    <span style={{
-                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
-                    }}>optional</span>
-                  }>anything else we should know?</FieldLabel>
-                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
-                    <textarea
-                      value={notes}
-                      onChange={e => setNotes(e.target.value)}
-                      placeholder="links, timing, context, or what you'd like to experiment with."
-                      rows={2}
-                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
-                    />
-                  </div>
                 </div>
 
                 <div style={{
@@ -497,7 +521,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                     boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
                     cursor: canSend ? "pointer" : "default",
                     fontWeight:700,
-                  }}>{sending ? "sending…" : isEdit ? "resubmit" : "create network"}</button>
+                  }}>{sending ? "sending…" : isEdit ? "resubmit" : "request network"}</button>
               </div>
             </>
           )}
@@ -516,7 +540,11 @@ function RequestStatusRow({ req, onEdit, onDismiss }) {
       display:"flex", alignItems:"flex-start", gap:12,
       padding:"10px 12px", borderBottom:"1px solid #DDD8CC",
     }}>
-      <NetworkTile name={req.title}/>
+      <NetworkTile id={req.id} name={req.title} photo={
+        req.imageUrl && window.IndexApp && window.IndexApp.avatarUrl
+          ? window.IndexApp.avatarUrl(req.imageUrl)
+          : req.imageUrl || undefined
+      }/>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{
@@ -560,7 +588,7 @@ function NetworkRow({ net, onOpen, onJoin }) {
         borderBottom:"1px solid #DDD8CC",
         background: hover ? "#FAF8F3" : "transparent",
       }}>
-      <NetworkTile name={net.name} photo={net.photo}/>
+      <NetworkTile id={net.id} name={net.name} photo={net.photo}/>
 
       <button
         onClick={() => onOpen && onOpen(net)}
@@ -587,6 +615,8 @@ function NetworkRow({ net, onOpen, onJoin }) {
 
 /* ---------- detail ---------- */
 
+const MEMBERS_PAGE_SIZE = 10;
+
 function MetaBit({ glyph, children }) {
   return (
     <span style={{
@@ -598,17 +628,26 @@ function MetaBit({ glyph, children }) {
   );
 }
 
-function Signal({ sig, netName, onRemove }) {
+function formatSignalDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch (e) { return ""; }
+}
+
+function Signal({ sig, netName, onRemove, onOpen }) {
   const [hover, setHover] = useState(false);
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onClick={() => onOpen && onOpen(sig)}
       style={{
         border:"1px solid #000", background:"#fff",
         boxShadow: hover ? "3px 3px 0 rgba(0,0,0,0.22)" : "2px 2px 0 rgba(0,0,0,0.22)",
         padding:"12px 14px",
         display:"flex", alignItems:"flex-start", gap:14,
+        cursor: onOpen ? "pointer" : "default",
       }}>
       <div style={{ flex:1, minWidth:0, display:"grid", gap:9 }}>
         <div style={{
@@ -617,22 +656,365 @@ function Signal({ sig, netName, onRemove }) {
         <MetaBit glyph="▤">{sig.date}</MetaBit>
       </div>
 
-      {/* Same gadget as pause/stop in the conversation pane. Removes it from
-          this network only, the signal keeps running everywhere else. */}
-      <span
-        title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
-        style={{ flex:"0 0 auto" }}>
-        <SignalAction label="− remove" onClick={() => onRemove && onRemove(sig)}/>
-      </span>
+      {onRemove && (
+        <span
+          title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
+          style={{ flex:"0 0 auto" }}
+          onClick={(e) => e.stopPropagation()}>
+          <SignalAction label="− remove" onClick={() => onRemove(sig)}/>
+        </span>
+      )}
     </div>
   );
 }
 
-function NetworkDetail({ net, onBack, onLeave }) {
+function MemberFace({ member, size = 28 }) {
+  return (
+    <Avatar
+      id={member.id}
+      name={member.name}
+      photo={member.avatar}
+      size={size}
+      blur={!!member.isGhost}
+    />
+  );
+}
+
+function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy }) {
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSug, setShowSug] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!live || !networkId) return;
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    let cancelled = false;
+    setLoading(true);
+    c.networks.getMembers(networkId)
+      .then((res) => {
+        if (cancelled) return;
+        setMembers((res && res.members) || []);
+      })
+      .catch(() => { if (!cancelled) setMembers([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [live, networkId]);
+
+  useEffect(() => {
+    if (!live || !query.trim()) { setSuggestions([]); return; }
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    const t = setTimeout(() => {
+      c.networks.searchUsers(query.trim(), networkId)
+        .then((res) => {
+          const users = (res && res.users) || (Array.isArray(res) ? res : []);
+          const ids = new Set(members.map(m => m.id));
+          setSuggestions(users.filter(u => u && u.id && !ids.has(u.id)));
+          setShowSug(true);
+        })
+        .catch(() => setSuggestions([]));
+    }, 220);
+    return () => clearTimeout(t);
+  }, [query, live, networkId, members]);
+
+  const addUser = async (user) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const m = await client.networks.addMember(networkId, user.id, ["member"]);
+      setMembers(prev => [...prev, m.member || m]);
+      setQuery("");
+      setSuggestions([]);
+      setShowSug(false);
+    } catch (e) { /* keep list */ }
+    finally { setBusy(false); }
+  };
+
+  const inviteEmail = async (email) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.inviteMember(networkId, { email });
+      const res = await client.networks.getMembers(networkId);
+      setMembers((res && res.members) || []);
+      setQuery("");
+      setSuggestions([]);
+      setShowSug(false);
+    } catch (e) { /* keep list */ }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (id) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.removeMember(networkId, id);
+      setMembers(prev => prev.filter(m => m.id !== id));
+    } catch (e) { /* keep */ }
+    finally { setBusy(false); }
+  };
+
+  const setRole = async (id, role) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const updated = await client.networks.updateMemberPermissions(
+        networkId, id, role === "owner" ? ["owner"] : ["member"],
+      );
+      const m = updated.member || updated;
+      setMembers(prev => prev.map(x => x.id === id ? { ...x, permissions: m.permissions || x.permissions } : x));
+    } catch (e) { /* keep */ }
+    finally { setBusy(false); }
+  };
+
+  const openProfile = (id) => {
+    const base = (window.IndexApp && window.IndexApp.webBaseUrl
+      ? window.IndexApp.webBaseUrl()
+      : "https://index.network").replace(/\/+$/, "");
+    window.open(`${base}/u/${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const totalPages = Math.max(1, Math.ceil(members.length / MEMBERS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const slice = members.slice((safePage - 1) * MEMBERS_PAGE_SIZE, safePage * MEMBERS_PAGE_SIZE);
+  const noResults = showSug && query.trim() && !suggestions.length;
+
+  return (
+    <div>
+      <RuleLabel>Members ({members.length})</RuleLabel>
+      <div style={{ marginTop:12, position:"relative" }}>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowSug(true); }}
+          onFocus={() => setShowSug(true)}
+          placeholder="Search by name or add by email…"
+          style={{
+            width:"100%", boxSizing:"border-box",
+            padding:"9px 12px", border:"1px solid #000", background:"#fff",
+            fontFamily:"var(--mac-mono)", fontSize:12, color:"#000",
+          }}
+        />
+        {showSug && query.trim() && suggestions.length > 0 && (
+          <div style={{
+            position:"absolute", left:0, right:0, top:"100%", marginTop:2, zIndex:5,
+            border:"1px solid #000", background:"#fff", maxHeight:160, overflowY:"auto",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.2)",
+          }}>
+            {suggestions.map(u => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => addUser(u)}
+                style={{
+                  width:"100%", display:"flex", alignItems:"center", gap:10,
+                  padding:"8px 12px", border:"none", background:"transparent",
+                  cursor:"pointer", textAlign:"left",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                }}>
+                <MemberFace member={u} size={24}/>
+                <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}</span>
+                <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>Add</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {noResults && (
+          <div style={{
+            position:"absolute", left:0, right:0, top:"100%", marginTop:2, zIndex:5,
+            border:"1px solid #000", background:"#fff",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.2)",
+          }}>
+            {query.includes("@") ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => inviteEmail(query.trim())}
+                style={{
+                  width:"100%", padding:"10px 12px", border:"none", background:"transparent",
+                  cursor:"pointer", textAlign:"left",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                }}>Invite &quot;{query.trim()}&quot;</button>
+            ) : (
+              <div style={{
+                padding:"10px 12px", fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+              }}>No results found</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop:12, display:"grid", gap:2 }}>
+        {loading && (
+          <p style={{ fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)" }}>Loading members…</p>
+        )}
+        {!loading && slice.map(m => {
+          const perms = Array.isArray(m.permissions) ? m.permissions : [];
+          const isOwner = perms.includes("owner");
+          const isSelf = meId && m.id === meId;
+          return (
+            <div
+              key={m.id}
+              style={{
+                display:"flex", alignItems:"center", gap:10,
+                padding:"8px 10px",
+              }}>
+              <button
+                type="button"
+                onClick={() => openProfile(m.id)}
+                style={{
+                  flex:1, minWidth:0, display:"flex", alignItems:"center", gap:10,
+                  border:"none", background:"transparent", cursor:"pointer", textAlign:"left", padding:0,
+                }}>
+                <MemberFace member={m}/>
+                <span style={{
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                }}>
+                  {m.name}
+                  {m.isGhost && (
+                    <span style={{
+                      marginLeft:6, fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>ghost</span>
+                  )}
+                </span>
+              </button>
+              <span style={{
+                flex:"0 0 auto",
+                fontFamily:"var(--mac-mono)", fontSize:11,
+                padding:"2px 6px",
+                background: isOwner ? "#000" : "#E8E6E1",
+                color: isOwner ? "#fff" : "var(--ink-2)",
+              }}>{isOwner ? "Owner" : (perms.includes("member") ? "Member" : "Contact")}</span>
+              {!isOwner && perms.includes("member") && !isSelf && (
+                <button type="button" title="Promote to owner" disabled={busy}
+                  onClick={() => setRole(m.id, "owner")}
+                  style={memberActStyle}>↑</button>
+              )}
+              {isOwner && !isSelf && (
+                <button type="button" title="Demote to member" disabled={busy}
+                  onClick={() => setRole(m.id, "member")}
+                  style={memberActStyle}>↓</button>
+              )}
+              {!isOwner && (
+                <button type="button" title="Remove member" disabled={busy}
+                  onClick={() => remove(m.id)}
+                  style={{ ...memberActStyle, color:"var(--ink-warn)" }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {totalPages > 1 && (
+        <div style={{
+          marginTop:12, display:"flex", alignItems:"center", justifyContent:"space-between",
+          borderTop:"1px solid #ddd", paddingTop:10,
+          fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+        }}>
+          <span>
+            {(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, members.length)} of {members.length}
+          </span>
+          <span style={{ display:"flex", gap:6 }}>
+            <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} style={memberActStyle}>prev</button>
+            <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)} style={memberActStyle}>next</button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const memberActStyle = {
+  flex:"0 0 auto", cursor:"pointer",
+  padding:"2px 8px", border:"1px solid #000", background:"#fff",
+  fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
+};
+
+function networkShareUrl(net) {
+  if (!net || net.isPersonal || net.hasMasterKey || !networkIsOwner(net)) return null;
+  const base = (window.IndexApp && window.IndexApp.webBaseUrl
+    ? window.IndexApp.webBaseUrl()
+    : "https://index.network").replace(/\/+$/, "");
+  if (net.invitationCode) return `${base}/l/${encodeURIComponent(net.invitationCode)}`;
+  return null;
+}
+
+function networkIsOwner(net) {
+  if (!net || net.isPersonal) return false;
+  const role = net.role || (net.source && net.source.role);
+  return role === "owner" || role === "admin";
+}
+
+function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSignal }) {
+  const [local, setLocal] = useState(net);
   const [signals, setSignals] = useState(net.signals || []);
-  // Last removal, kept so it can be put back, removing is reversible by
-  // definition here, so the undo is the affordance that says "not deleted".
+  const [signalsLoading, setSignalsLoading] = useState(false);
   const [undo, setUndo] = useState(null);
+  const isOwner = networkIsOwner(local);
+  const [tab, setTab] = useState("overview");
+  const [copied, setCopied] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState([]);
+  // settings draft
+  const [title, setTitle] = useState(local.name || "");
+  const [prompt, setPrompt] = useState(local.blurb || "");
+  const [photo, setPhoto] = useState(local.photo || null);
+  const [photoDirty, setPhotoDirty] = useState(false);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [showDelete, setShowDelete] = useState(false);
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+  const meId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  const shareUrl = networkShareUrl(local);
+  const isPublic = local.joinPolicy === "anyone";
+  const settingsDirty = title !== (local.name || "") || prompt !== (local.blurb || "") || photoDirty || removePhoto;
+
+  useEffect(() => {
+    setLocal(net);
+    setTitle(net.name || "");
+    setPrompt(net.blurb || "");
+    setPhoto(net.photo || null);
+    setPhotoDirty(false);
+    setRemovePhoto(false);
+    if (networkIsOwner(net)) setTab((t) => (t === "overview" || t === "access" || t === "settings" ? t : "overview"));
+  }, [net]);
+
+  useEffect(() => {
+    if (!client || !local.id) return;
+    let cancelled = false;
+    setSignalsLoading(true);
+    client.networks.overview(local.id)
+      .then((res) => {
+        if (cancelled) return;
+        const intents = (res && res.intents) || [];
+        setSignals(intents.map(i => ({
+          id: i.id,
+          text: (i.summary && String(i.summary).trim()) || i.payload || "",
+          date: formatSignalDate(i.createdAt),
+          source: i,
+        })));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setSignalsLoading(false); });
+    return () => { cancelled = true; };
+  }, [client, local.id]);
+
+  useEffect(() => {
+    if (isOwner && typeof members.length === "number" && members.length > 0) {
+      const merged = { ...local, members: members.length };
+      if (local.members !== members.length) {
+        setLocal(merged);
+        if (onUpdated) onUpdated(merged);
+      }
+    }
+  }, [members.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const remove = (sig) => {
     const at = signals.findIndex(s => s.id === sig.id);
@@ -647,6 +1029,123 @@ function NetworkDetail({ net, onBack, onLeave }) {
     setSignals(next);
     setUndo(null);
   };
+
+  const copyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) { /* leave idle */ }
+  };
+
+  const regenerateLink = async () => {
+    if (!client || !local.id || busy) return;
+    setBusy(true);
+    try {
+      const res = await client.networks.regenerateInvitationLink(local.id);
+      const n = (res && res.network) || res || {};
+      const perms = n.permissions || {};
+      const code = (perms.invitationLink && perms.invitationLink.code) || null;
+      const merged = { ...local, invitationCode: code };
+      setLocal(merged);
+      if (onUpdated) onUpdated(merged);
+      setShowRegenerateConfirm(false);
+    } catch (e) { /* leave idle */ }
+    finally { setBusy(false); }
+  };
+
+  const setJoinPolicy = async (anyone) => {
+    const next = anyone ? "anyone" : "invite_only";
+    if (local.joinPolicy === next || busy) return;
+    setBusy(true);
+    const prev = local;
+    const optimistic = {
+      ...local,
+      joinPolicy: next,
+      privacy: anyone ? "public" : "private",
+    };
+    setLocal(optimistic);
+    if (onUpdated) onUpdated(optimistic);
+    try {
+      if (client) {
+        const res = await client.networks.updatePermissions(local.id, { joinPolicy: next });
+        const n = (res && res.network) || res || {};
+        const perms = n.permissions || {};
+        const jp = perms.joinPolicy || next;
+        const code = (perms.invitationLink && perms.invitationLink.code)
+          || prev.invitationCode;
+        const merged = {
+          ...optimistic,
+          joinPolicy: jp,
+          privacy: jp === "anyone" ? "public" : "private",
+          invitationCode: code || null,
+        };
+        setLocal(merged);
+        if (onUpdated) onUpdated(merged);
+      }
+    } catch (e) {
+      setLocal(prev);
+      if (onUpdated) onUpdated(prev);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveSettings = async () => {
+    if (!client || !title.trim() || busy) return;
+    setBusy(true);
+    try {
+      let imageUrl = undefined;
+      if (photoDirty && photo && /^data:/i.test(photo)) {
+        imageUrl = await client.storage.uploadIndexImage(photo);
+      } else if (removePhoto) {
+        imageUrl = null;
+      }
+      const body = {
+        title: title.trim(),
+        prompt: prompt.trim() || null,
+      };
+      if (imageUrl !== undefined) body.imageUrl = imageUrl;
+      const res = await client.networks.update(local.id, body);
+      const n = (res && res.network) || res || {};
+      const merged = {
+        ...local,
+        name: n.title || title.trim(),
+        blurb: n.prompt != null ? n.prompt : (prompt.trim() || ""),
+        photo: window.IndexApp.avatarUrl(n.imageUrl) || (removePhoto ? null : photo),
+      };
+      setLocal(merged);
+      setTitle(merged.name);
+      setPrompt(merged.blurb || "");
+      setPhoto(merged.photo);
+      setPhotoDirty(false);
+      setRemovePhoto(false);
+      if (onUpdated) onUpdated(merged);
+    } catch (e) { /* keep draft */ }
+    finally { setBusy(false); }
+  };
+
+  const deleteNetwork = async () => {
+    if (!client || deleteText !== local.name || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.delete(local.id);
+      if (onDeleted) onDeleted(local);
+      else onBack();
+    } catch (e) { setBusy(false); }
+  };
+
+  const tabStyle = (id) => ({
+    padding:"8px 14px", border:"none", cursor:"pointer",
+    borderBottom: tab === id ? "2px solid #000" : "2px solid transparent",
+    background:"transparent",
+    fontFamily:"var(--mac-mono)", fontSize:13,
+    fontWeight: tab === id ? 700 : 400,
+    color: tab === id ? "#000" : "var(--ink-2)",
+    textTransform:"capitalize",
+  });
+
   return (
     <div style={{
       position:"absolute", inset:0,
@@ -659,11 +1158,11 @@ function NetworkDetail({ net, onBack, onLeave }) {
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title={`index · ${net.name.toLowerCase()}`}
+          title={`index · ${local.name.toLowerCase()}`}
           onClose={onBack}
           style={{ height:"100%", minHeight:0 }}>
 
-          <div style={{ padding:"14px 24px 16px", borderBottom:"2px solid #000" }}>
+          <div style={{ padding:"14px 24px 0", borderBottom:"2px solid #000" }}>
             <button
               onClick={onBack}
               style={{
@@ -672,82 +1171,314 @@ function NetworkDetail({ net, onBack, onLeave }) {
               }}>← back</button>
 
             <div style={{
-              marginTop:12,
+              marginTop:12, marginBottom:14,
               display:"flex", alignItems:"center", gap:14,
             }}>
-              <NetworkTile name={net.name} size={48} photo={net.photo}/>
+              <NetworkTile id={local.id} name={local.name} size={48} photo={local.photo}/>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{
                   fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",
-                }}>{net.name}</div>
+                }}>{local.name}</div>
                 <div style={{
                   marginTop:5, display:"flex", flexWrap:"wrap", gap:"4px 16px",
                 }}>
-                  {net.privacy && <MetaBit glyph="🔒">{net.privacy}</MetaBit>}
-                  <MetaBit glyph="👤">{net.members} members</MetaBit>
+                  {local.privacy && <MetaBit glyph="🔒">{local.privacy}</MetaBit>}
+                  <MetaBit glyph="👤">{local.members} members</MetaBit>
+                  {isOwner && <MetaBit glyph="★">owner</MetaBit>}
                 </div>
               </div>
 
-              {/* leaving is destructive, so it carries the red, but stays outline
-                  only, since it isn't the thing you came here to do */}
-              <button
-                onClick={() => onLeave && onLeave(net)}
-                style={{
-                  flex:"0 0 auto", cursor:"pointer",
-                  fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
-                  border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
-                  boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
-                }}>leave</button>
+              {!isOwner && (
+                <button
+                  onClick={() => onLeave && onLeave(local)}
+                  style={{
+                    flex:"0 0 auto", cursor:"pointer",
+                    fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                    border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
+                    boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
+                  }}>leave</button>
+              )}
             </div>
+
+            {isOwner && (
+              <div style={{ display:"flex", gap:2 }}>
+                <button type="button" style={tabStyle("overview")} onClick={() => setTab("overview")}>overview</button>
+                <button type="button" style={tabStyle("settings")} onClick={() => setTab("settings")}>settings</button>
+                <button type="button" style={tabStyle("access")} onClick={() => setTab("access")}>access</button>
+              </div>
+            )}
           </div>
 
           <div className="mac-scroll" style={{
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"14px 24px 20px",
           }}>
-            <div style={{
-              display:"flex", alignItems:"baseline", justifyContent:"space-between",
-              gap:12, marginBottom:12,
-            }}>
-              <RuleLabel>my signals</RuleLabel>
-              <span style={{
-                flex:"0 0 auto",
-                fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-              }}>{signals.length} signals</span>
-            </div>
-
-            {undo && (
-              <div className="fade-up" style={{
-                marginBottom:10, padding:"8px 12px",
-                border:"1px solid #000", background:"#F2F0EC",
-                display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-              }}>
-                <span style={{
-                  fontFamily:"var(--mac-sans)", fontSize:12, color:"#000",
-                }}>
-                  removed from {net.name}. the signal is still running everywhere else.
-                </span>
-                <button
-                  onClick={putBack}
-                  style={{
-                    flex:"0 0 auto", cursor:"pointer",
-                    padding:"4px 11px", border:"1px solid #000", background:"#fff",
-                    fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
-                    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-                  }}>put it back</button>
+            {isOwner && tab === "settings" ? (
+              <div style={{ display:"grid", gap:16 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:13 }}>
+                  <NetworkPhoto
+                    name={title || local.name}
+                    photo={removePhoto ? null : photo}
+                    onPick={(p) => { setPhoto(p); setPhotoDirty(true); setRemovePhoto(false); }}
+                    size={72}
+                  />
+                  {photo && !removePhoto && (
+                    <button
+                      type="button"
+                      onClick={() => { setRemovePhoto(true); setPhotoDirty(true); }}
+                      style={{
+                        border:"none", background:"transparent", cursor:"pointer",
+                        fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-warn)",
+                      }}>Remove image</button>
+                  )}
+                </div>
+                <TextField label="title" required value={title} onChange={setTitle} placeholder="Network title"/>
+                <div>
+                  <FieldLabel>prompt</FieldLabel>
+                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
+                    <textarea
+                      value={prompt}
+                      onChange={e => setPrompt(e.target.value)}
+                      placeholder="What people can share in this network…"
+                      rows={4}
+                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                  <button
+                    type="button"
+                    disabled={!settingsDirty || busy}
+                    onClick={() => {
+                      setTitle(local.name || "");
+                      setPrompt(local.blurb || "");
+                      setPhoto(local.photo || null);
+                      setPhotoDirty(false);
+                      setRemovePhoto(false);
+                    }}
+                    style={{
+                      fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                      border:"1px solid #000", background:"#fff", cursor:"pointer",
+                    }}>Cancel</button>
+                  <button
+                    type="button"
+                    disabled={!settingsDirty || !title.trim() || busy}
+                    onClick={saveSettings}
+                    style={{
+                      fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                      border:"1px solid #000", background:"#000", color:"#fff", cursor:"pointer",
+                    }}>{busy ? "Saving…" : "Save"}</button>
+                </div>
+                <div style={{ borderTop:"1px solid #ddd", paddingTop:14 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDelete(s => !s)}
+                    aria-expanded={showDelete}
+                    style={{
+                      display:"inline-flex", alignItems:"center", gap:6,
+                      border:"none", background:"transparent", cursor:"pointer",
+                      fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-warn)",
+                    }}>
+                    <span aria-hidden="true" style={{ fontSize:10, lineHeight:1 }}>
+                      {showDelete ? "▲" : "▼"}
+                    </span>
+                    Danger Zone
+                  </button>
+                  {showDelete && (
+                    <div style={{
+                      marginTop:10, padding:12, border:"1px solid var(--ink-warn)", background:"#FFF5F5",
+                      display:"grid", gap:10,
+                    }}>
+                      <p style={{ margin:0, fontFamily:"var(--mac-sans)", fontSize:13, color:"#8A0000" }}>
+                        Delete this network. Type the name to confirm.
+                      </p>
+                      <input
+                        value={deleteText}
+                        onChange={e => setDeleteText(e.target.value)}
+                        placeholder={local.name}
+                        style={{
+                          padding:"8px 10px", border:"1px solid #000",
+                          fontFamily:"var(--mac-mono)", fontSize:12,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={deleteText !== local.name || busy}
+                        onClick={deleteNetwork}
+                        style={{
+                          justifySelf:"end",
+                          fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                          border:"1px solid var(--ink-warn)", background:"#8A0000", color:"#fff",
+                          cursor:"pointer",
+                        }}>Delete</button>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            ) : isOwner && tab === "access" ? (
+              <div style={{ display:"grid", gap:22 }}>
+                {!local.hasMasterKey && (
+                  <div>
+                    <RuleLabel>Visibility</RuleLabel>
+                    <div style={{
+                      marginTop:12, display:"grid",
+                      gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:10,
+                    }}>
+                      <ChoiceCard
+                        title="Public"
+                        sub="Anyone can join"
+                        selected={isPublic}
+                        onClick={() => setJoinPolicy(true)}
+                      />
+                      <ChoiceCard
+                        title="Private"
+                        sub="Invite only"
+                        selected={!isPublic}
+                        onClick={() => setJoinPolicy(false)}
+                      />
+                    </div>
+                  </div>
+                )}
 
-            <div style={{ display:"grid", gap:10 }}>
-              {signals.map(s => (
-                <Signal key={s.id} sig={s} netName={net.name} onRemove={remove}/>
-              ))}
-            </div>
+                {!local.hasMasterKey && (
+                  <div>
+                    <RuleLabel>Invitation link</RuleLabel>
+                    <div style={{
+                      marginTop:12, display:"flex", alignItems:"center", gap:8,
+                      padding:"10px 12px",
+                      border:"1px solid #000", background:"#F2F0EC",
+                    }}>
+                      <code style={{
+                        flex:1, minWidth:0,
+                        fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      }}>{shareUrl || "No invitation link yet."}</code>
+                      {shareUrl && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setShowRegenerateConfirm((v) => !v)}
+                            disabled={busy}
+                            title="Regenerate invitation link"
+                            aria-label="Regenerate invitation link"
+                            style={{
+                              flex:"0 0 auto", cursor: busy ? "default" : "pointer",
+                              padding:"4px 10px", border:"1px solid #000",
+                              background: showRegenerateConfirm ? "#000" : "#fff",
+                              color: showRegenerateConfirm ? "#fff" : "#000",
+                              fontFamily:"var(--mac-mono)", fontSize:11,
+                              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                              opacity: busy ? 0.5 : 1,
+                            }}>↻</button>
+                          <button
+                            type="button"
+                            onClick={copyLink}
+                            title={copied ? "Copied" : "Copy link"}
+                            style={{
+                              flex:"0 0 auto", cursor:"pointer",
+                              padding:"4px 10px", border:"1px solid #000",
+                              background: copied ? "#000" : "#fff",
+                              color: copied ? "#fff" : "#000",
+                              fontFamily:"var(--mac-mono)", fontSize:11,
+                              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                            }}>{copied ? "copied" : "copy"}</button>
+                        </>
+                      )}
+                    </div>
+                    {showRegenerateConfirm && shareUrl && (
+                      <div style={{
+                        marginTop:8, padding:12,
+                        border:"1px solid #000", background:"#FFF5F5",
+                        display:"grid", gap:10,
+                      }}>
+                        <p style={{ margin:0, fontFamily:"var(--mac-sans)", fontSize:13, color:"#8A0000" }}>
+                          The current link stops working immediately. Regenerate?
+                        </p>
+                        <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setShowRegenerateConfirm(false)}
+                            style={{
+                              fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                              border:"1px solid #000", background:"#fff", color:"#000", cursor:"pointer",
+                            }}>Cancel</button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={regenerateLink}
+                            style={{
+                              fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                              border:"1px solid #000", background:"#000", color:"#fff", cursor:"pointer",
+                            }}>{busy ? "Regenerating…" : "Regenerate"}</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-            {!signals.length && (
-              <p style={{
-                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-              }}>you haven't published anything into this network yet.</p>
+                <NetworkMembers
+                  networkId={local.id}
+                  meId={meId}
+                  members={members}
+                  setMembers={setMembers}
+                  busy={busy}
+                  setBusy={setBusy}
+                />
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  display:"flex", alignItems:"baseline", justifyContent:"space-between",
+                  gap:12, marginBottom:12,
+                }}>
+                  <RuleLabel>Your Signals</RuleLabel>
+                  <span style={{
+                    flex:"0 0 auto",
+                    fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                  }}>{signalsLoading ? "…" : `${signals.length} signal${signals.length === 1 ? "" : "s"}`}</span>
+                </div>
+
+                {undo && (
+                  <div className="fade-up" style={{
+                    marginBottom:10, padding:"8px 12px",
+                    border:"1px solid #000", background:"#F2F0EC",
+                    display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+                  }}>
+                    <span style={{
+                      fontFamily:"var(--mac-sans)", fontSize:12, color:"#000",
+                    }}>
+                      removed from {local.name}. the signal is still running everywhere else.
+                    </span>
+                    <button
+                      onClick={putBack}
+                      style={{
+                        flex:"0 0 auto", cursor:"pointer",
+                        padding:"4px 11px", border:"1px solid #000", background:"#fff",
+                        fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
+                        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                      }}>put it back</button>
+                  </div>
+                )}
+
+                <div style={{ display:"grid", gap:10 }}>
+                  {signals.map(s => (
+                    <Signal
+                      key={s.id}
+                      sig={s}
+                      netName={local.name}
+                      onRemove={remove}
+                      onOpen={onOpenSignal ? () => onOpenSignal(s) : undefined}
+                    />
+                  ))}
+                </div>
+
+                {!signalsLoading && !signals.length && (
+                  <p style={{
+                    fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+                  }}>You haven&apos;t shared any signals in this network yet</p>
+                )}
+              </>
             )}
           </div>
         </MacWindow>
@@ -756,7 +1487,7 @@ function NetworkDetail({ net, onBack, onLeave }) {
   );
 }
 
-function Networks({ onClose }) {
+function Networks({ onClose, onOpenSignal }) {
   // Live-only: the mirror holds the signed-in user's networks (set by
   // applyLoaded). Ensure it is an array so the local unshift below still
   // persists a just-created network to the other screens.
@@ -792,38 +1523,96 @@ function Networks({ onClose }) {
   // loop; a single load (refreshed explicitly after mutations) is enough.
   useEffect(() => { loadRequests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // You made it, so you're in it and you run it.
-  const createNetwork = ({ name, desc, access, photo }) => {
-    NETWORKS.unshift({
+  // You made it, so you're in it and you run it. Picture is optional: a data
+  // URL from the picker is uploaded first so imageUrl on the server is a real
+  // storage key, not a discarded local preview. After create (or when a reviewed
+  // request is approved and the network lands in the list), owners open Access
+  // to copy the invitation / network link — same as the web Access tab.
+  const createNetwork = async ({ name, desc, access, photo }) => {
+    let imageUrl = null;
+    let photoOut = photo || undefined;
+    if (client && photo && /^data:/i.test(photo)) {
+      try {
+        imageUrl = await client.storage.uploadIndexImage(photo);
+        photoOut = window.IndexApp.avatarUrl(imageUrl) || imageUrl;
+      } catch (e) { /* keep the local data URL in the mirror */ }
+    }
+    const joinPolicy = access === "public" ? "anyone" : "invite_only";
+    let created = {
       id: `net-${Date.now().toString(36)}`,
       name,
       blurb: desc || undefined,
-      photo: photo || undefined,
+      photo: photoOut,
       members: 1,
       privacy: access,
-      role: "admin",
+      joinPolicy,
+      invitationCode: null,
+      role: "owner",
       joined: true,
+      isPersonal: false,
+      hasMasterKey: false,
       signals: [],
-    });
+    };
+    if (client) {
+      try {
+        const res = await client.networks.create({
+          title: name,
+          prompt: desc || undefined,
+          imageUrl: imageUrl || undefined,
+          joinPolicy,
+        });
+        const n = (res && res.network) || res || {};
+        const perms = n.permissions || {};
+        const jp = perms.joinPolicy || joinPolicy;
+        const code = perms.invitationLink && perms.invitationLink.code;
+        created = {
+          ...created,
+          id: n.id || created.id,
+          name: n.title || created.name,
+          members: (n._count && n._count.members) || n.memberCount || 1,
+          joinPolicy: jp,
+          privacy: jp === "anyone" ? "public" : "private",
+          invitationCode: code || null,
+          hasMasterKey: n.hasMasterKey === true,
+          photo: window.IndexApp.avatarUrl(n.imageUrl) || created.photo,
+          source: n,
+        };
+      } catch (e) { /* keep the optimistic mirror */ }
+    }
+    NETWORKS.unshift(created);
     setNets([...NETWORKS]);
     setCreating(false);
     setTab("mine");
-    if (client) {
-      client.networks.create({
-        title: name,
-        prompt: desc || undefined,
-        joinPolicy: access === "public" ? "anyone" : "invite_only",
-      }).catch(() => {});
-    }
+    setOpenNet(created);
+  };
+
+  const updateOpenNet = (merged) => {
+    setNets(prev => prev.map(n => n.id === merged.id ? { ...n, ...merged } : n));
+    const i = NETWORKS.findIndex(n => n.id === merged.id);
+    if (i >= 0) NETWORKS[i] = { ...NETWORKS[i], ...merged };
   };
 
   // Submit (or resubmit) a network request; resolves the request so the form
-  // can show its confirmation panel.
-  const submitRequest = (input) => {
-    if (!client) return Promise.resolve(null);
+  // can show its confirmation panel. Same upload path as create: a picked
+  // picture becomes a storage key before the request is written.
+  const submitRequest = async (input) => {
+    if (!client) return null;
+    let imageUrl = input.imageUrl;
+    if (input.photo && /^data:/i.test(input.photo)) {
+      try {
+        imageUrl = await client.storage.uploadIndexImage(input.photo);
+      } catch (e) { /* request still goes through without a picture */ }
+    }
+    const body = {
+      name: input.name,
+      purpose: input.purpose,
+      expectedSize: input.expectedSize,
+      joinPolicy: input.joinPolicy,
+      ...(imageUrl !== undefined ? { imageUrl } : {}),
+    };
     const p = editingRequest
-      ? client.networkRequests.update(editingRequest.id, input)
-      : client.networkRequests.create(input);
+      ? client.networkRequests.update(editingRequest.id, body)
+      : client.networkRequests.create(body);
     return p.then((res) => {
       loadRequests();
       return (res && res.request) || res;
@@ -851,13 +1640,31 @@ function Networks({ onClose }) {
   };
 
   const leaveNetwork = (net) => {
-    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: false, role: undefined } : n));
+    setNets(prev => prev.filter(n => n.id !== net.id));
+    const i = NETWORKS.findIndex(n => n.id === net.id);
+    if (i >= 0) NETWORKS.splice(i, 1);
     if (client) client.networks.leave(net.id).catch(() => {});
     setOpenNet(null);
   };
 
+  const deleteNetwork = (net) => {
+    setNets(prev => prev.filter(n => n.id !== net.id));
+    const i = NETWORKS.findIndex(n => n.id === net.id);
+    if (i >= 0) NETWORKS.splice(i, 1);
+    setOpenNet(null);
+  };
+
   if (openNet) {
-    return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)} onLeave={leaveNetwork}/>;
+    return (
+      <NetworkDetail
+        net={openNet}
+        onBack={() => setOpenNet(null)}
+        onLeave={leaveNetwork}
+        onUpdated={updateOpenNet}
+        onDeleted={deleteNetwork}
+        onOpenSignal={onOpenSignal}
+      />
+    );
   }
   // Its own window, like the profile screen, not an overlay on this one.
   if (creating) {

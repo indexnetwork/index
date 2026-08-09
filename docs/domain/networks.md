@@ -40,8 +40,6 @@ Networks have configurable join policies:
 - **invite_only** (default): New members can only be added by existing members with appropriate permissions. An invitation link with a unique code can be generated to allow controlled access.
 - **anyone**: Anyone can join the network without approval.
 
-Additionally, networks can allow **guest vibe checks** (`allowGuestVibeCheck`), which lets non-members preview what the network is about before joining.
-
 ---
 
 ## Permissions Model

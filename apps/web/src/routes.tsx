@@ -101,10 +101,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/i/:intentId", () => import("@/app/i/[intentId]/page")),
       },
       {
-        path: "/index/:indexId",
-        lazy: lazyRoute("/index/:indexId", () => import("@/app/index/[indexId]/page")),
-      },
-      {
         path: "/c/:code",
         lazy: lazyRoute("/c/:code", () => import("@/app/c/[code]/page")),
       },
@@ -175,10 +171,6 @@ export const router = createBrowserRouter([
       {
         path: "/opportunities/:id/skip",
         lazy: lazyRoute("/opportunities/:id/skip", () => import("@/app/opportunities/[id]/skip/page")),
-      },
-      {
-        path: "/onboarding",
-        lazy: lazyRoute("/onboarding", () => import("@/app/onboarding/page")),
       },
       {
         path: "/oauth/callback",

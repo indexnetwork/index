@@ -40,6 +40,7 @@ describe("production web server", () => {
     expect(body).toContain("network.index.system6");
     expect(body).toContain("/c/*");
     expect(body).toContain("/o/*");
+    expect(body).toContain("/l/*");
     expect(body).toContain("/u/*");
   });
 
@@ -67,6 +68,7 @@ describe("production web server", () => {
     expect(components.filter((c) => c.exclude !== true).map((c) => c["/"])).toEqual([
       "/c/*",
       "/o/*",
+      "/l/*",
       "/u/*",
     ]);
   });

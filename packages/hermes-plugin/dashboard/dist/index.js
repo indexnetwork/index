@@ -180,6 +180,23 @@
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  // Web frontend's index-network wordmark (same paths as apps/mac and the
+  // /cli-auth callback page), recolored to currentColor so it follows the theme.
+  const INDEX_WORDMARK_SVG = '<svg viewBox="0 0 522 44" fill="currentColor" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="index network">'
+    + '<path d="M184.51 21.66C184.51 18.33 187.42 15.73 191.23 15.73C195.04 15.73 197.95 18.33 197.95 21.66C197.95 24.99 195.1 27.54 191.23 27.54C187.36 27.54 184.51 25 184.51 21.66Z"/>'
+    + '<path d="M0 0.72998H7.47V42.61H0V0.72998Z"/>'
+    + '<path d="M16.6301 0.72998H25.0701L44.3701 27.26H45.4001V0.72998H52.9301V42.61H44.4301L25.1901 16.08H24.1001V42.61H16.6301V0.72998Z"/>'
+    + '<path d="M99.91 21.67C99.91 33.63 90.74 42.61 78.54 42.61H62.03V0.72998H78.54C90.74 0.72998 99.91 9.70995 99.91 21.67ZM92.2 21.67C92.2 14.93 86.25 9.88998 78.3 9.88998H69.5V33.44H78.3C86.25 33.44 92.2 28.4 92.2 21.66V21.67Z"/>'
+    + '<path d="M137.61 33.45V42.62H107.08V0.73999H137.31V9.91H114.55V17.13H135.31V25.99H114.55V33.46H137.62L137.61 33.45Z"/>'
+    + '<path d="M167.53 21.7899L181.49 42.61H172.75L162.43 27.86H160.97L150.71 42.61H141.3L155.56 21.37L141.84 0.72998H150.58L160.66 15.36H162.06L172.14 0.72998H181.55L167.53 21.7899Z"/>'
+    + '<path d="M209.87 0.72998H218.31L237.61 27.26H238.64V0.72998H246.17V42.61H237.67L218.43 16.08H217.34V42.61H209.87V0.72998Z"/>'
+    + '<path d="M285.8 33.45V42.62H255.27V0.73999H285.5V9.91H262.74V17.13H283.5V25.99H262.74V33.46H285.81L285.8 33.45Z"/>'
+    + '<path d="M324.77 9.88998H311.48V42.61H304.01V9.88998H290.72V0.719971H324.77V9.88998Z"/>'
+    + '<path d="M328.96 0.72998H336.91L346.14 28.35H347.41L356.09 0.72998H362.71L371.45 28.35H372.79L381.89 0.72998H390.33L376.92 42.61H368.42L360.59 17.24H358.71L350.88 42.61H342.38L328.97 0.72998H328.96Z"/>'
+    + '<path d="M391.54 21.67C391.54 9.34998 401.07 0 413.7 0C426.33 0 435.86 9.34998 435.86 21.67C435.86 33.99 426.33 43.34 413.7 43.34C401.07 43.34 391.54 33.99 391.54 21.67ZM428.14 21.67C428.14 14.63 421.89 9.35004 413.69 9.35004C405.49 9.35004 399.24 14.63 399.24 21.67C399.24 28.71 405.49 33.99 413.69 33.99C421.89 33.99 428.14 28.71 428.14 21.67Z"/>'
+    + '<path d="M459.46 29.5H450.42V42.61H442.95V0.72998H462.13C470.57 0.72998 477 6.91996 477 15.12C477 21.31 473.36 26.35 467.9 28.47L477.55 42.61H468.45L459.47 29.5H459.46ZM450.42 20.33H461.95C466.44 20.33 469.23 18.27 469.23 15.11C469.23 11.95 466.44 9.88998 461.95 9.88998H450.42V20.33Z"/>'
+    + '<path d="M497.83 25.56L491.4 30.96V42.61H483.93V0.72998H491.4V17.67H492.92L509.07 0.72998H521.03L503.31 20.21L521.46 42.61H512.11L497.85 25.55L497.83 25.56Z"/>'
+    + '</svg>';
   const SOCIAL_FIELDS = [["twitter", "x.com/"], ["linkedin", "linkedin.com/in/"], ["github", "github.com/"], ["telegram", "t.me/"]];
   const FIXED_SOCIAL_LABELS = ["twitter", "linkedin", "github", "telegram"];
 
@@ -345,8 +362,9 @@
       const key = idx >= 0 ? pair.slice(0, idx) : pair;
       params[key] = idx >= 0 ? decodeURIComponent(pair.slice(idx + 1)) : "";
     });
-    if (params.intent) return { intentId: params.intent };
-    return { intentId: null };
+    return {
+      intentId: params.intent || null,
+    };
   }
 
   function writeHash(intentId) {
@@ -598,11 +616,101 @@
 
   const OPP_RESOLVED_LABEL = { accepted: "Connected", expired: "Missed" };
 
-  function initialsFor(name) {
-    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "?";
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
+  // palette, so dashboard avatars match the Index web app exactly.
+  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+  function baHash(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = (hash << 5) - hash + name.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  }
+
+  function baDigit(num, ntn) {
+    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  }
+
+  function baBool(num, ntn) {
+    return !(baDigit(num, ntn) % 2);
+  }
+
+  function baUnit(num, range, index) {
+    const value = num % range;
+    if (index && baDigit(num, index) % 2 === 0) return -value;
+    return value;
+  }
+
+  function baColor(num) {
+    return BORING_PALETTE[num % BORING_PALETTE.length];
+  }
+
+  function BoringAvatar(props) {
+    const SIZE = 80;
+    const ELEMENTS = 4;
+    const seed = String(props.seed || "default");
+    const num = baHash(seed);
+    const props_ = [];
+    for (let t = 0; t < ELEMENTS; t++) {
+      props_.push({
+        color: baColor(num + t),
+        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+        rotate: baUnit(num * (t + 1), 360),
+        isSquare: baBool(num, 2),
+      });
+    }
+    const maskId = "ba-mask-" + num;
+    return React.createElement("svg", {
+      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
+      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
+    },
+      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
+        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+      ),
+      React.createElement("g", { mask: "url(#" + maskId + ")" },
+        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
+        React.createElement("rect", {
+          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
+          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
+          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+        React.createElement("circle", {
+          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
+          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+        }),
+        React.createElement("line", {
+          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
+          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+      ),
+    );
+  }
+
+  function UserAvatar(props) {
+    const seed = props.id || props.name || "default";
+    const size = props.size;
+    const className = (props.className || "index-dashboard__avatar")
+      + (props.ghost ? " index-dashboard__net-member-avatar--ghost" : "");
+    const style = size ? { width: size, height: size } : undefined;
+    const children = [React.createElement(BoringAvatar, { key: "fallback", seed: seed })];
+    if (props.avatar) {
+      children.push(React.createElement("img", {
+        key: "img",
+        className: "index-dashboard__avatar-img",
+        src: props.avatar,
+        alt: "",
+        loading: "lazy",
+        onError: function (e) { if (e && e.currentTarget) e.currentTarget.style.display = "none"; },
+      }));
+    }
+    return React.createElement("span", {
+      className: className,
+      style: style,
+      "aria-hidden": props.ariaHidden !== false ? "true" : undefined,
+    }, children);
   }
 
   function OpportunityCard(props) {
@@ -652,18 +760,11 @@
     return React.createElement("article", { className: "index-dashboard__opp" },
       React.createElement("div", { className: "index-dashboard__opp-head" },
         React.createElement("div", idProps,
-          React.createElement("span", { className: "index-dashboard__avatar", "aria-hidden": "true" },
-            initialsFor(opportunity.name),
-            opportunity.avatar
-              ? React.createElement("img", {
-                className: "index-dashboard__avatar-img",
-                src: opportunity.avatar,
-                alt: "",
-                loading: "lazy",
-                onError: function (e) { e.target.style.display = "none"; },
-              })
-              : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: opportunity.counterpartUserId,
+            name: opportunity.name,
+            avatar: opportunity.avatar,
+          }),
           React.createElement("div", { className: "index-dashboard__opp-meta" },
             React.createElement("strong", { className: "index-dashboard__opp-name" }, opportunity.name || "New match"),
             React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
@@ -772,75 +873,809 @@
     ]);
   }
 
-  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
-  // palette, so dashboard network avatars match the Index web app exactly.
-  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+  function ICON_LOCK() {
+    return svgIcon("index-dashboard__net-tab-icon", [
+      React.createElement("rect", { key: "a", x: 3, y: 11, width: 18, height: 11, rx: 2, ry: 2 }),
+      svgPath("M7 11V7a5 5 0 0 1 10 0v4"),
+    ]);
+  }
 
-  function baHash(name) {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = (hash << 5) - hash + name.charCodeAt(i);
-      hash = hash & hash;
+  function resolveShareBase(webUrl, apiUrl) {
+    if (webUrl) return String(webUrl).replace(/\/+$/, "");
+    // Derive from the API the summary reported — never invent production.
+    if (apiUrl) {
+      try {
+        const u = new URL(apiUrl);
+        let host = u.hostname;
+        if (host === "localhost" || host === "127.0.0.1") {
+          return u.protocol + "//" + host + ":3000";
+        }
+        if (host.indexOf("protocol.") === 0) host = host.slice("protocol.".length);
+        return "https://" + host;
+      } catch (e) { /* ignore */ }
     }
-    return Math.abs(hash);
+    return null;
   }
 
-  function baDigit(num, ntn) {
-    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  function networkShareUrl(network, webUrl, apiUrl) {
+    if (!network || network.isPersonal || network.hasMasterKey) return null;
+    if (network.role !== "owner") return null;
+    const base = resolveShareBase(webUrl, apiUrl);
+    if (!base) return null;
+    const code = network.invitationLink && network.invitationLink.code;
+    if (code) return base + "/l/" + encodeURIComponent(code);
+    return null;
   }
 
-  function baBool(num, ntn) {
-    return !(baDigit(num, ntn) % 2);
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        resolve();
+      } catch (e) { reject(e); }
+    });
   }
 
-  function baUnit(num, range, index) {
-    const value = num % range;
-    if (index && baDigit(num, index) % 2 === 0) return -value;
-    return value;
+  function ICON_COPY() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("rect", { key: "a", x: 9, y: 9, width: 13, height: 13, rx: 2, ry: 2 }),
+      svgPath("M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"),
+    ]);
   }
 
-  function baColor(num) {
-    return BORING_PALETTE[num % BORING_PALETTE.length];
+  function ICON_CHECK() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("polyline", { key: "a", points: "20 6 9 17 4 12" }),
+    ]);
   }
 
-  function BoringAvatar(props) {
-    const SIZE = 80;
-    const ELEMENTS = 4;
-    const seed = String(props.seed || "default");
-    const num = baHash(seed);
-    const props_ = [];
-    for (let t = 0; t < ELEMENTS; t++) {
-      props_.push({
-        color: baColor(num + t),
-        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
-        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
-        rotate: baUnit(num * (t + 1), 360),
-        isSquare: baBool(num, 2),
+  function ICON_REFRESH() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      svgPath("M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"),
+      svgPath("M21 3v5h-5"),
+      svgPath("M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"),
+      svgPath("M8 16H3v5"),
+    ]);
+  }
+
+  // Owner network detail — web overview / settings / access parity (no integrations).
+  function NetworkDetailModal(props) {
+    const network = props.network || {};
+    const isOwner = network.role === "owner";
+    const showOwnerTabs = isOwner && !network.isPersonal;
+    const meId = props.currentUserId || "";
+    const tabState = React.useState("overview");
+    const tab = tabState[0];
+    const setTab = tabState[1];
+    const localState = React.useState(network);
+    const local = localState[0];
+    const setLocal = localState[1];
+    React.useEffect(function () { setLocal(network); }, [network]);
+    const copiedState = React.useState(false);
+    const copied = copiedState[0];
+    const setCopied = copiedState[1];
+    const busyState = React.useState(false);
+    const busy = busyState[0];
+    const setBusy = busyState[1];
+    const errState = React.useState(null);
+    const err = errState[0];
+    const setErr = errState[1];
+    const signalsState = React.useState([]);
+    const signals = signalsState[0];
+    const setSignals = signalsState[1];
+    const signalsLoadingState = React.useState(false);
+    const signalsLoading = signalsLoadingState[0];
+    const setSignalsLoading = signalsLoadingState[1];
+    const membersState = React.useState([]);
+    const members = membersState[0];
+    const setMembers = membersState[1];
+    const membersLoadingState = React.useState(false);
+    const membersLoading = membersLoadingState[0];
+    const setMembersLoading = membersLoadingState[1];
+    const queryState = React.useState("");
+    const query = queryState[0];
+    const setQuery = queryState[1];
+    const suggestionsState = React.useState([]);
+    const suggestions = suggestionsState[0];
+    const setSuggestions = suggestionsState[1];
+    const showSugState = React.useState(false);
+    const showSug = showSugState[0];
+    const setShowSug = showSugState[1];
+    const pageState = React.useState(1);
+    const page = pageState[0];
+    const setPage = pageState[1];
+    const titleState = React.useState(network.title || "");
+    const title = titleState[0];
+    const setTitle = titleState[1];
+    const promptState = React.useState(network.detail || "");
+    const prompt = promptState[0];
+    const setPrompt = promptState[1];
+    const imageState = React.useState(network.imageUrl || null);
+    const imagePreview = imageState[0];
+    const setImagePreview = imageState[1];
+    const imageDataState = React.useState(null);
+    const imageData = imageDataState[0];
+    const setImageData = imageDataState[1];
+    const removeImageState = React.useState(false);
+    const removeImage = removeImageState[0];
+    const setRemoveImage = removeImageState[1];
+    const deleteTextState = React.useState("");
+    const deleteText = deleteTextState[0];
+    const setDeleteText = deleteTextState[1];
+    const showDeleteState = React.useState(false);
+    const showDelete = showDeleteState[0];
+    const setShowDelete = showDeleteState[1];
+    const showRegenerateConfirmState = React.useState(false);
+    const showRegenerateConfirm = showRegenerateConfirmState[0];
+    const setShowRegenerateConfirm = showRegenerateConfirmState[1];
+    const PAGE_SIZE = 10;
+    const shareUrl = networkShareUrl(local, props.webUrl, props.apiUrl);
+    const count = typeof local.memberCount === "number" ? local.memberCount : members.length || null;
+    const isPublic = local.joinPolicy === "anyone";
+    const label = "Invitation link";
+    const settingsDirty = title !== (local.title || "")
+      || prompt !== (local.detail || "")
+      || !!imageData
+      || removeImage;
+
+    React.useEffect(function () {
+      setTitle(network.title || "");
+      setPrompt(network.detail || "");
+      setImagePreview(network.imageUrl || null);
+      setImageData(null);
+      setRemoveImage(false);
+    }, [network.id, network.title, network.detail, network.imageUrl]);
+
+    React.useEffect(function () {
+      if (!local.id) return;
+      let cancelled = false;
+      setSignalsLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/overview")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load signals.");
+          setSignals(Array.isArray(payload.intents) ? payload.intents : []);
+        })
+        .catch(function () { if (!cancelled) setSignals([]); })
+        .finally(function () { if (!cancelled) setSignalsLoading(false); });
+      return function () { cancelled = true; };
+    }, [local.id]);
+
+    React.useEffect(function () {
+      if (!showOwnerTabs || !local.id || tab !== "access") return;
+      let cancelled = false;
+      setMembersLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load members.");
+          setMembers(Array.isArray(payload.members) ? payload.members : []);
+        })
+        .catch(function () { if (!cancelled) setMembers([]); })
+        .finally(function () { if (!cancelled) setMembersLoading(false); });
+      return function () { cancelled = true; };
+    }, [showOwnerTabs, local.id, tab]);
+
+    React.useEffect(function () {
+      if (!query.trim()) { setSuggestions([]); return; }
+      const handle = setTimeout(function () {
+        fetchPluginJSON(API + "/networks/search-users?q=" + encodeURIComponent(query.trim()) + "&networkId=" + encodeURIComponent(local.id || ""))
+          .then(function (payload) {
+            const users = (payload && Array.isArray(payload.users)) ? payload.users : [];
+            const ids = {};
+            members.forEach(function (m) { if (m && m.id) ids[m.id] = true; });
+            setSuggestions(users.filter(function (u) { return u && u.id && !ids[u.id]; }));
+            setShowSug(true);
+          })
+          .catch(function () { setSuggestions([]); });
+      }, 220);
+      return function () { clearTimeout(handle); };
+    }, [query, local.id, members]);
+
+    function patchLocal(patch) {
+      const merged = Object.assign({}, local, patch);
+      setLocal(merged);
+      if (props.onUpdated) props.onUpdated(merged);
+    }
+
+    function onCopy() {
+      if (!shareUrl) return;
+      copyText(shareUrl).then(function () {
+        setCopied(true);
+        setTimeout(function () { setCopied(false); }, 2000);
+      }).catch(function () { /* leave idle */ });
+    }
+
+    function regenerateLink() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/regenerate-invitation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not regenerate invitation link.");
+          }
+          patchLocal({
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+          setShowRegenerateConfirm(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function setJoinPolicy(anyone) {
+      if (!local.id || busy) return;
+      const next = anyone ? "anyone" : "invite_only";
+      if (local.joinPolicy === next) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/permissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ joinPolicy: next }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update visibility.");
+          }
+          patchLocal({
+            joinPolicy: payload.joinPolicy || next,
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function onPickImage(event) {
+      const file = event.target && event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function () {
+        setImageData(String(reader.result || ""));
+        setImagePreview(String(reader.result || ""));
+        setRemoveImage(false);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function saveSettings() {
+      if (!local.id || busy || !title.trim()) return;
+      setBusy(true);
+      setErr(null);
+      const finish = function (imageUrl) {
+        const body = { title: title.trim(), prompt: prompt.trim() || null };
+        if (imageUrl !== undefined) body.imageUrl = imageUrl;
+        return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not save settings.");
+          }
+          const patch = {
+            title: payload.title || title.trim(),
+            detail: payload.detail != null ? payload.detail : (prompt.trim() || ""),
+          };
+          if (payload.imageUrl !== undefined) patch.imageUrl = payload.imageUrl;
+          else if (removeImage) patch.imageUrl = null;
+          patchLocal(patch);
+          setImageData(null);
+          setRemoveImage(false);
+        });
+      };
+      const upload = imageData
+        ? fetchPluginJSON(API + "/network-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataUrl: imageData }),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Image upload failed.");
+          }
+          return payload.imageUrl;
+        })
+        : Promise.resolve(removeImage ? null : undefined);
+      upload.then(finish)
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function deleteNetwork() {
+      if (!local.id || busy || deleteText !== local.title) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not delete network.");
+          }
+          if (props.onDeleted) props.onDeleted(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); setBusy(false); });
+    }
+
+    function leaveNetwork() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/leave", { method: "POST" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not leave network.");
+          }
+          if (props.onLeft) props.onLeft(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function addMember(user) {
+      if (!local.id || busy || !user || !user.id) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, permissions: ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not add member.");
+          }
+          if (payload.member) setMembers(function (prev) { return prev.concat([payload.member]); });
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function inviteEmail(email) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not invite.");
+          }
+          return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members");
+        })
+        .then(function (payload) {
+          setMembers((payload && Array.isArray(payload.members)) ? payload.members : []);
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function removeMember(id) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not remove member.");
+          }
+          setMembers(function (prev) { return prev.filter(function (m) { return m.id !== id; }); });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function setMemberRole(id, role) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: role === "owner" ? ["owner"] : ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update role.");
+          }
+          const updated = payload.member;
+          if (updated) {
+            setMembers(function (prev) {
+              return prev.map(function (m) {
+                return m.id === id ? Object.assign({}, m, { permissions: updated.permissions || m.permissions }) : m;
+              });
+            });
+          }
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function tabButton(id, labelText) {
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__profile-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
+        onClick: function () { setTab(id); },
+      }, labelText);
+    }
+
+    function memberAvatar(member, size) {
+      const sz = size || 28;
+      const avatar = member.avatar;
+      const looksAbsolute = avatar && /^(https?:|data:)/i.test(String(avatar));
+      return React.createElement(UserAvatar, {
+        id: member.id,
+        name: member.name,
+        avatar: looksAbsolute ? avatar : null,
+        size: sz,
+        ghost: !!member.isGhost,
+        className: "index-dashboard__net-member-avatar"
+          + (looksAbsolute ? "" : " index-dashboard__net-member-avatar--fallback"),
       });
     }
-    const maskId = "ba-mask-" + num;
-    return React.createElement("svg", {
-      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
-      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
-    },
-      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
-        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+
+    const head = React.createElement("div", { className: "index-dashboard__net-detail-head" },
+      React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-avatar--lg", "aria-hidden": "true" },
+        local.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: local.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: local.id || local.title }),
       ),
-      React.createElement("g", { mask: "url(#" + maskId + ")" },
-        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
-        React.createElement("rect", {
-          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
-          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
-          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+      React.createElement("div", { className: "index-dashboard__net-detail-head-text" },
+        React.createElement("h3", { className: "index-dashboard__net-detail-title" }, local.title || "Untitled network"),
+        React.createElement("div", { className: "index-dashboard__net-detail-bits" },
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            isPublic ? ICON_GLOBE() : ICON_LOCK(),
+            isPublic ? "Public" : "Private",
+          ),
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            ICON_USERS(),
+            (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
+          ),
+          isOwner
+            ? React.createElement("span", { className: "index-dashboard__net-detail-owner" }, "Owner")
+            : null,
+        ),
+      ),
+      !isOwner
+        ? React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-leave-btn",
+          disabled: busy,
+          onClick: leaveNetwork,
+        }, "Leave")
+        : null,
+    );
+
+    const totalPages = Math.max(1, Math.ceil(members.length / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const pageMembers = members.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const noResults = showSug && query.trim() && suggestions.length === 0;
+
+    const accessBody = React.createElement("div", { className: "index-dashboard__net-access-panel" },
+      !local.hasMasterKey
+        ? React.createElement("div", null,
+          React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Visibility"),
+          React.createElement("div", { className: "index-dashboard__net-visibility" },
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(true); },
+            }, ICON_GLOBE(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Public"),
+              React.createElement("span", null, "Anyone can join"),
+            )),
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (!isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(false); },
+            }, ICON_LOCK(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Private"),
+              React.createElement("span", null, "Invite only"),
+            )),
+          ),
+        )
+        : null,
+      !local.hasMasterKey
+        ? (shareUrl
+          ? React.createElement("div", { className: "index-dashboard__net-invite" },
+            React.createElement("p", { className: "index-dashboard__net-invite-label" }, label),
+            React.createElement("div", { className: "index-dashboard__net-invite-row" },
+              React.createElement("code", { className: "index-dashboard__net-invite-url" }, shareUrl),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__net-invite-copy" + (showRegenerateConfirm ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": "Regenerate invitation link",
+                title: "Regenerate invitation link",
+                disabled: busy,
+                onClick: function () { setShowRegenerateConfirm(!showRegenerateConfirm); },
+              }, ICON_REFRESH()),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__net-invite-copy" + (copied ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": copied ? "Copied" : "Copy link",
+                title: copied ? "Copied" : "Copy link",
+                onClick: onCopy,
+              }, copied ? ICON_CHECK() : ICON_COPY()),
+            ),
+            showRegenerateConfirm
+              ? React.createElement("div", { className: "index-dashboard__net-regenerate" },
+                React.createElement("p", null, "The current link stops working immediately. Regenerate?"),
+                React.createElement("div", { className: "index-dashboard__net-regenerate-actions" },
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: function () { setShowRegenerateConfirm(false); },
+                  }, "Cancel"),
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: regenerateLink,
+                  }, busy ? "Regenerating…" : "Regenerate"),
+                ),
+              )
+              : null,
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet."))
+        : null,
+      React.createElement("div", { className: "index-dashboard__net-members" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" },
+          "Members (", String(members.length), ")"),
+        React.createElement("div", { className: "index-dashboard__net-member-search" },
+          React.createElement("input", {
+            className: "index-dashboard__net-member-input",
+            value: query,
+            placeholder: "Search by name or add by email…",
+            onChange: function (e) { setQuery(e.target.value); setShowSug(true); },
+            onFocus: function () { setShowSug(true); },
+          }),
+          showSug && query.trim() && suggestions.length > 0
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              suggestions.map(function (u) {
+                return React.createElement("button", {
+                  key: u.id,
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  onClick: function () { addMember(u); },
+                }, memberAvatar(u, 24), React.createElement("span", null, u.name || u.email || "User"), React.createElement("em", null, "Add"));
+              }),
+            )
+            : null,
+          noResults
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              query.indexOf("@") >= 0
+                ? React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  disabled: busy,
+                  onClick: function () { inviteEmail(query.trim()); },
+                }, "Invite \"" + query.trim() + "\"")
+                : React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "No results found"),
+            )
+            : null,
+        ),
+        membersLoading
+          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading members…")
+          : React.createElement("div", { className: "index-dashboard__net-member-list" },
+            pageMembers.map(function (m) {
+              const perms = Array.isArray(m.permissions) ? m.permissions : [];
+              const owner = perms.indexOf("owner") >= 0;
+              const isSelf = meId && m.id === meId;
+              return React.createElement("div", { key: m.id, className: "index-dashboard__net-member-row" },
+                React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-main",
+                  onClick: function () { if (props.onOpenUser) props.onOpenUser(m.id); },
+                },
+                  memberAvatar(m),
+                  React.createElement("span", { className: "index-dashboard__net-member-name" },
+                    m.name || "Unknown",
+                    m.isGhost ? React.createElement("em", { className: "index-dashboard__net-member-ghost" }, "ghost") : null,
+                  ),
+                ),
+                React.createElement("span", {
+                  className: "index-dashboard__net-member-role" + (owner ? " index-dashboard__net-member-role--owner" : ""),
+                }, owner ? "Owner" : (perms.indexOf("member") >= 0 ? "Member" : "Contact")),
+                !owner && perms.indexOf("member") >= 0 && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Promote to owner", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "owner"); },
+                  }, "↑")
+                  : null,
+                owner && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Demote to member", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "member"); },
+                  }, "↓")
+                  : null,
+                !owner
+                  ? React.createElement("button", {
+                    type: "button", title: "Remove member", disabled: busy,
+                    className: "index-dashboard__net-member-act index-dashboard__net-member-act--danger",
+                    onClick: function () { removeMember(m.id); },
+                  }, "×")
+                  : null,
+              );
+            }),
+          ),
+        totalPages > 1
+          ? React.createElement("div", { className: "index-dashboard__net-member-pager" },
+            React.createElement("span", null,
+              String((safePage - 1) * PAGE_SIZE + 1) + "–" + String(Math.min(safePage * PAGE_SIZE, members.length)) + " of " + String(members.length)),
+            React.createElement("span", null,
+              React.createElement("button", { type: "button", disabled: safePage <= 1, onClick: function () { setPage(safePage - 1); } }, "prev"),
+              React.createElement("button", { type: "button", disabled: safePage >= totalPages, onClick: function () { setPage(safePage + 1); } }, "next"),
+            ),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const settingsBody = React.createElement("div", { className: "index-dashboard__net-settings-panel" },
+      React.createElement("div", { className: "index-dashboard__net-settings-photo" },
+        React.createElement("label", { className: "index-dashboard__net-settings-photo-btn" },
+          (imagePreview && !removeImage)
+            ? React.createElement("img", { src: imagePreview, alt: "", className: "index-dashboard__net-settings-photo-img" })
+            : React.createElement(BoringAvatar, { seed: local.id || title }),
+          React.createElement("input", { type: "file", accept: "image/*", onChange: onPickImage, hidden: true }),
+        ),
+        imagePreview && !removeImage
+          ? React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__net-settings-remove",
+            onClick: function () { setRemoveImage(true); setImageData(null); },
+          }, "Remove image")
+          : null,
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Title"),
+        React.createElement("input", {
+          value: title,
+          onChange: function (e) { setTitle(e.target.value); },
         }),
-        React.createElement("circle", {
-          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
-          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Prompt"),
+        React.createElement("textarea", {
+          rows: 4,
+          value: prompt,
+          onChange: function (e) { setPrompt(e.target.value); },
+          placeholder: "What people can share in this network…",
         }),
-        React.createElement("line", {
-          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
-          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
-        }),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-settings-actions" },
+        React.createElement("button", {
+          type: "button",
+          disabled: !settingsDirty || busy,
+          onClick: function () {
+            setTitle(local.title || "");
+            setPrompt(local.detail || "");
+            setImagePreview(local.imageUrl || null);
+            setImageData(null);
+            setRemoveImage(false);
+          },
+        }, "Cancel"),
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-settings-save",
+          disabled: !settingsDirty || !title.trim() || busy,
+          onClick: saveSettings,
+        }, busy ? "Saving…" : "Save"),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-danger" },
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-danger-toggle",
+          "aria-expanded": showDelete,
+          onClick: function () { setShowDelete(!showDelete); },
+        },
+          React.createElement("span", {
+            className: "index-dashboard__net-danger-chevron",
+            "aria-hidden": "true",
+          }, showDelete ? "▲" : "▼"),
+          "Danger Zone"),
+        showDelete
+          ? React.createElement("div", { className: "index-dashboard__net-danger-box" },
+            React.createElement("p", null, "Delete this network. Type the name to confirm."),
+            React.createElement("input", {
+              value: deleteText,
+              placeholder: local.title || "",
+              onChange: function (e) { setDeleteText(e.target.value); },
+            }),
+            React.createElement("button", {
+              type: "button",
+              disabled: deleteText !== local.title || busy,
+              onClick: deleteNetwork,
+            }, "Delete"),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const overviewBody = React.createElement("div", { className: "index-dashboard__net-overview" },
+      React.createElement("div", { className: "index-dashboard__net-overview-head" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Your Signals"),
+        React.createElement("span", { className: "index-dashboard__net-overview-count" },
+          signalsLoading ? "…" : (String(signals.length) + (signals.length === 1 ? " signal" : " signals"))),
+      ),
+      signalsLoading
+        ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading signals…")
+        : (signals.length
+          ? React.createElement("div", { className: "index-dashboard__net-signal-list" },
+            signals.map(function (sig) {
+              const text = (sig.summary && String(sig.summary).trim()) || sig.payload || "Untitled signal";
+              return React.createElement("button", {
+                key: sig.id,
+                type: "button",
+                className: "index-dashboard__net-signal-row",
+                onClick: function () {
+                  if (props.onSelectIntent) props.onSelectIntent(sig.id);
+                  if (props.onClose) props.onClose();
+                },
+              }, React.createElement("span", null, text));
+            }),
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" },
+            "You haven't shared any signals in this network yet")),
+    );
+
+    const body = (showOwnerTabs && tab === "access")
+      ? accessBody
+      : (showOwnerTabs && tab === "settings")
+        ? settingsBody
+        : overviewBody;
+
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", {
+        className: "index-dashboard__profile-panel index-dashboard__net-detail-modal",
+        onClick: function (e) { e.stopPropagation(); },
+      },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Network"),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        React.createElement("div", { className: "index-dashboard__net-detail-body" },
+          head,
+          showOwnerTabs
+            ? React.createElement("div", { className: "index-dashboard__profile-tabs" },
+              tabButton("overview", "overview"),
+              tabButton("settings", "settings"),
+              tabButton("access", "access"),
+            )
+            : null,
+          body,
+        ),
       ),
     );
   }
@@ -849,7 +1684,11 @@
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
     const isOwner = network.role === "owner";
-    return React.createElement("div", { className: "index-dashboard__net-row" },
+    return React.createElement("button", {
+      type: "button",
+      className: "index-dashboard__net-row index-dashboard__net-row--button",
+      onClick: props.onOpen ? function () { props.onOpen(network); } : undefined,
+    },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -904,7 +1743,7 @@
       items.map(function (network, index) {
         return props.discover
           ? React.createElement(NetworkDiscoverRow, { key: network.id || String(index), network: network, onJoin: props.onJoin, joiningId: props.joiningId })
-          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
       }),
     );
   }
@@ -927,7 +1766,9 @@
     const needsChanges = req.status === "needs_changes";
     return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-request-row" },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        React.createElement(BoringAvatar, { seed: req.id || req.title }),
+        req.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: req.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: req.id || req.title }),
       ),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, req.title || "Untitled network"),
@@ -945,21 +1786,24 @@
     );
   }
 
-  // Early-access "request a network" form body (no chrome of its own — it lives
-  // inside the Manage modal's Request tab). Submits to /network-requests
-  // (reviewed) rather than creating a live network, and ends on a confirmation.
-  // `initial` (a needs-changes request) switches it into resubmit mode.
+  // Early-access "request a network" form. Same fields as Mac create-network
+  // (picture, name, description, access) plus expected size. Submits to
+  // /network-requests. `initial` (needs_changes) switches into resubmit mode.
   function RequestNetworkForm(props) {
     const useState = React.useState;
+    const useRef = React.useRef;
     const initial = props.initial || null;
     const nameState = useState(initial ? (initial.title || "") : "");
     const name = nameState[0]; const setName = nameState[1];
-    const purposeState = useState(initial ? (initial.purpose || "") : "");
-    const purpose = purposeState[0]; const setPurpose = purposeState[1];
+    const descState = useState(initial ? (initial.purpose || "") : "");
+    const desc = descState[0]; const setDesc = descState[1];
+    const photoState = useState(initial && initial.imageUrl ? initial.imageUrl : null);
+    const photo = photoState[0]; const setPhoto = photoState[1];
+    const photoFileRef = useRef(null);
+    const accessState = useState(initial && initial.joinPolicy === "anyone" ? "public" : "private");
+    const access = accessState[0]; const setAccess = accessState[1];
     const sizeState = useState(initial ? (initial.expectedSize || "") : "");
     const size = sizeState[0]; const setSize = sizeState[1];
-    const notesState = useState(initial ? (initial.notes || "") : "");
-    const notes = notesState[0]; const setNotes = notesState[1];
     const sendingState = useState(false);
     const sending = sendingState[0]; const setSending = sendingState[1];
     const errState = useState(null);
@@ -971,16 +1815,54 @@
     const canSend = trimmed.length > 0 && !sending;
     const isEdit = !!initial;
 
+    function onPhotoFile(e) {
+      const file = e.target && e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!String(file.type || "").startsWith("image/")) {
+        setErr("That isn’t an image.");
+        return;
+      }
+      if (file.size > 4 * 1024 * 1024) {
+        setErr("That image is over 4mb. Pick a smaller one.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        setPhoto(ev.target ? ev.target.result : null);
+        setErr(null);
+      };
+      reader.onerror = function () { setErr("Couldn’t read that file."); };
+      reader.readAsDataURL(file);
+    }
+
     function submit() {
       if (!canSend) return;
       setSending(true);
       setErr(null);
-      Promise.resolve(props.onSubmit({
-        name: trimmed,
-        purpose: (purpose || "").trim() || undefined,
-        expectedSize: size || undefined,
-        notes: (notes || "").trim() || undefined,
-      }))
+
+      const uploadStep = photo && String(photo).indexOf("data:") === 0
+        ? fetchPluginJSON(API + "/network-images", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataUrl: photo }),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Network picture could not be uploaded.");
+            }
+            return payload.imageUrl || undefined;
+          })
+        : Promise.resolve(undefined);
+
+      uploadStep
+        .then(function (imageUrl) {
+          return props.onSubmit({
+            name: trimmed,
+            purpose: (desc || "").trim() || undefined,
+            expectedSize: size || undefined,
+            joinPolicy: access === "public" ? "anyone" : "invite_only",
+            ...(imageUrl ? { imageUrl: imageUrl } : {}),
+          });
+        })
         .then(function (req) { setDone(req || { title: trimmed }); })
         .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
         .finally(function () { setSending(false); });
@@ -997,14 +1879,49 @@
       );
     }
 
+    function accessCard(id, title, sub) {
+      const on = access === id;
+      return React.createElement("button", {
+        key: id, type: "button",
+        className: "index-dashboard__net-size index-dashboard__net-access" + (on ? " index-dashboard__net-size--on" : ""),
+        onClick: function () { setAccess(id); },
+      },
+        React.createElement("strong", null, title),
+        React.createElement("span", null, sub),
+      );
+    }
+
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       React.createElement("p", { className: "index-dashboard__net-request-intro" },
-        "Network creation is still early. Tell us what you’re hoping to build and we’ll get back to you."),
-      React.createElement(ProfileField, { label: "Network name" },
-        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "e.g. Edge City", onChange: function (e) { setName(e.target.value); } }),
+        "Network creation is still early. Fill this in and we’ll review it before it goes live."),
+      React.createElement("div", { className: "index-dashboard__net-request-identity" },
+        React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
+          React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-request-photo-mark", "aria-hidden": "true" },
+            photo
+              ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: photo, alt: "" })
+              : React.createElement(BoringAvatar, { seed: trimmed || "network" }),
+          ),
+          React.createElement("input", {
+            ref: photoFileRef,
+            type: "file",
+            accept: "image/*",
+            className: "index-dashboard__profile-avatar-input",
+            onChange: onPhotoFile,
+          }),
+        ),
+        React.createElement("span", { className: "index-dashboard__net-request-photo-hint" }, "Picture optional"),
       ),
-      React.createElement(ProfileField, { label: "What are you hoping to build?" },
-        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: purpose, placeholder: "Who is it for, who do you expect to join, and what should people or agents be able to discover through it?", onChange: function (e) { setPurpose(e.target.value); } }),
+      React.createElement(ProfileField, { label: "Name" },
+        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "Network name", onChange: function (e) { setName(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "Description", hint: "Optional" },
+        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: desc, placeholder: "What people can share in this network…", onChange: function (e) { setDesc(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "Access" },
+        React.createElement("div", { className: "index-dashboard__net-size-grid" },
+          accessCard("public", "Public", "Anyone can discover and join"),
+          accessCard("private", "Private", "Only people with an invitation link"),
+        ),
       ),
       React.createElement(ProfileField, { label: "How many people are you hoping to bring together?" },
         React.createElement("div", { className: "index-dashboard__net-size-grid" },
@@ -1018,13 +1935,10 @@
           }),
         ),
       ),
-      React.createElement(ProfileField, { label: "Anything else we should know?", hint: "Optional" },
-        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 2, value: notes, placeholder: "Links, timing, context, or what you’d like to experiment with.", onChange: function (e) { setNotes(e.target.value); } }),
-      ),
       err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
       React.createElement("div", { className: "index-dashboard__net-request-actions" },
         React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
-        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Create network")),
+        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Request network")),
       ),
     );
   }
@@ -1047,7 +1961,8 @@
   }
 
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
-  // on the right. Create opens the (reviewed) request form as a modal.
+  // on the right. Create opens the (reviewed) request form as a modal. Owner
+  // rows open a detail modal with Access-tab invite links (web parity).
   function NetworksMini(props) {
     const networks = props.networks || { items: [], count: 0, discover: [] };
     const items = Array.isArray(networks.items) ? networks.items : [];
@@ -1056,12 +1971,23 @@
     const tabState = React.useState("mine");
     const tab = tabState[0];
     const setTab = tabState[1];
+    const openState = React.useState(null);
+    const openNet = openState[0];
+    const setOpenNet = openState[1];
     function tabButton(id, label, icon) {
       return React.createElement("button", {
         type: "button",
         className: "index-dashboard__profile-tab index-dashboard__net-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
         onClick: function () { setTab(id); },
       }, icon || null, React.createElement("span", null, label));
+    }
+    function onUpdated(merged) {
+      setOpenNet(merged);
+      if (props.onNetworkUpdated) props.onNetworkUpdated(merged);
+    }
+    function onRemoved(net) {
+      setOpenNet(null);
+      if (props.onNetworkRemoved) props.onNetworkRemoved(net);
     }
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
@@ -1089,10 +2015,28 @@
               ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
               : React.createElement("div", { className: "index-dashboard__net-list" },
                 items.map(function (network, index) {
-                  return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+                  return React.createElement(NetworkMiniRow, {
+                    key: network.id || String(index),
+                    network: network,
+                    onOpen: setOpenNet,
+                  });
                 }),
               ),
         ),
+      openNet
+        ? React.createElement(NetworkDetailModal, {
+          network: openNet,
+          webUrl: props.webUrl,
+          apiUrl: props.apiUrl,
+          currentUserId: props.currentUserId,
+          onClose: function () { setOpenNet(null); },
+          onUpdated: onUpdated,
+          onDeleted: onRemoved,
+          onLeft: onRemoved,
+          onOpenUser: props.onOpenUser,
+          onSelectIntent: props.onSelectIntent,
+        })
+        : null,
     );
   }
 
@@ -1236,9 +2180,141 @@
     );
   }
 
+  function SettingUpScreen() {
+    // Indeterminate bar + staggered status lines while enrichment runs.
+    // No brand mark, loading gif, or live-dot — keep the Hermes card quiet.
+    const lines = [
+      "Getting a sense of you…",
+      "Working out what you're into…",
+      "Almost there.",
+    ];
+    return React.createElement("div", { className: "index-dashboard__setting-up" },
+      React.createElement("div", { className: "index-dashboard__setting-up-card" },
+        React.createElement("div", { className: "index-dashboard__setting-up-bar", "aria-hidden": "true" },
+          React.createElement("div", { className: "index-dashboard__setting-up-bar-fill" }),
+        ),
+        React.createElement("div", { className: "index-dashboard__setting-up-lines" },
+          lines.map(function (line, i) {
+            return React.createElement("p", {
+              key: line,
+              className: "index-dashboard__setting-up-line" + (i === lines.length - 1 ? " index-dashboard__setting-up-line--final" : ""),
+              style: { animationDelay: (i * 350) + "ms" },
+            },
+              React.createElement("span", { className: "index-dashboard__setting-up-caret" }, "›"),
+              line,
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  // Mac/CLI-parity browser sign-in gate. "Log in with browser" runs the same
+  // /cli-auth handshake (loopback callback) the Index Mac app and CLI use; the
+  // backend mints + persists the key, so we only poll status here.
+  function LoginScreen(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+    const waitingState = useState(false);
+    const waiting = waitingState[0];
+    const setWaiting = waitingState[1];
+    const errorState = useState(null);
+    const loginError = errorState[0];
+    const setLoginError = errorState[1];
+    const linkState = useState(null);
+    const manualLink = linkState[0];
+    const setManualLink = linkState[1];
+    const pollRef = useRef(null);
+
+    function stopPolling() {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+
+    useEffect(function () { return stopPolling; }, []);
+
+    function poll() {
+      fetchPluginJSON(API + "/auth/login/status")
+        .then(function (payload) {
+          const status = payload && payload.status;
+          if (status === "success") {
+            stopPolling();
+            setWaiting(false);
+            if (props.onAuthed) props.onAuthed();
+          } else if (status === "failed") {
+            stopPolling();
+            setWaiting(false);
+            setLoginError((payload && payload.error) || "Login failed. Please try again.");
+          } else if (status === "idle") {
+            stopPolling();
+            setWaiting(false);
+          }
+        })
+        .catch(function () { /* keep polling; transient host hiccup */ });
+    }
+
+    function start() {
+      setLoginError(null);
+      setManualLink(null);
+      setWaiting(true);
+      fetchPluginJSON(API + "/auth/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not start login.");
+          }
+          // Headless/remote agent host: no browser to open, so surface the link.
+          if (!payload.opened && payload.authUrl) setManualLink(payload.authUrl);
+          stopPolling();
+          pollRef.current = setInterval(poll, 1500);
+        })
+        .catch(function (err) {
+          setWaiting(false);
+          setLoginError(err && err.message ? err.message : String(err));
+        });
+    }
+
+    return React.createElement("div", { className: "index-dashboard__login" },
+      React.createElement("div", { className: "index-dashboard__login-card" },
+        React.createElement("h1", {
+          className: "index-dashboard__login-brand",
+          dangerouslySetInnerHTML: { __html: INDEX_WORDMARK_SVG },
+        }),
+        React.createElement("p", { className: "index-dashboard__login-copy" },
+          "index finds the right people for you, before you even think to look."),
+        React.createElement(Button, {
+          type: "button",
+          className: "index-dashboard__login-btn",
+          disabled: waiting,
+          onClick: start,
+        }, waiting ? "waiting for browser…" : "log in with browser"),
+        manualLink
+          ? React.createElement("p", { className: "index-dashboard__login-manual" },
+            "No browser opened here — ",
+            React.createElement("a", { href: manualLink, target: "_blank", rel: "noopener noreferrer" }, "open this link to continue"),
+            ".")
+          : null,
+        loginError
+          ? React.createElement("p", { className: "index-dashboard__login-error" }, loginError)
+          : null,
+        React.createElement("p", { className: "index-dashboard__login-foot" },
+          "index only acts on what you tell it. you can stop any signal at any time."),
+      ),
+    );
+  }
+
+  function usableEnriched(res) {
+    const p = res && res.profile;
+    return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
+  }
+
   function ProfilePanel(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
+    const useRef = React.useRef;
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -1260,43 +2336,91 @@
     const noteState = useState(null);
     const note = noteState[0];
     const setNote = noteState[1];
-    const generatingState = useState(false);
-    const generating = generatingState[0];
-    const setGenerating = generatingState[1];
     const avatarPreviewState = useState(null);
     const avatarPreview = avatarPreviewState[0];
     const setAvatarPreview = avatarPreviewState[1];
+    const draftingState = useState(!!props.gettingStarted);
+    const drafting = draftingState[0];
+    const setDrafting = draftingState[1];
+    const assembledRef = useRef(null);
 
     const readOnly = !!props.readOnly;
+    const gettingStarted = !!props.gettingStarted;
+
+    function applyProfile(p) {
+      const next = {
+        id: p.id || "",
+        name: p.name || "",
+        intro: p.intro || "",
+        location: p.location || "",
+        email: p.email || "",
+        avatar: p.avatar || "",
+        context: p.context || "",
+        timezone: p.timezone || defaultTimezone(),
+        socials: Array.isArray(p.socials) ? p.socials.slice() : [],
+        notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
+      };
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
+
+    function adoptEnrichment(enriched, base) {
+      const p = (enriched && enriched.profile) || {};
+      const next = Object.assign({}, base || assembledRef.current || {}, {
+        name: (base && base.name) || p.name || "",
+        intro: (base && base.intro) || p.intro || "",
+        location: (base && base.location) || p.location || "",
+        avatar: (base && base.avatar) || p.avatar || "",
+        socials: (p.socials && p.socials.length)
+          ? p.socials.slice()
+          : ((base && base.socials) || []),
+        context: (base && base.context) || p.intro || "",
+      });
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
 
     function load() {
       setLoading(true);
       setPanelError(null);
-      fetchPluginJSON(props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile")
+      const profileUrl = props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile";
+      fetchPluginJSON(profileUrl)
         .then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Profile could not be loaded.");
           }
-          const p = payload.profile || {};
-          setForm({
-            id: p.id || "",
-            name: p.name || "",
-            intro: p.intro || "",
-            location: p.location || "",
-            email: p.email || "",
-            avatar: p.avatar || "",
-            context: p.context || "",
-            timezone: p.timezone || defaultTimezone(),
-            socials: Array.isArray(p.socials) ? p.socials.slice() : [],
-            notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
-          });
-          setDirty(false);
+          applyProfile(payload.profile || {});
+          if (!gettingStarted) return null;
+          setDrafting(true);
+          return fetchPluginJSON(API + "/onboarding/enrich", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }).then(function (enriched) {
+            if (enriched && enriched.success !== false && usableEnriched(enriched)) {
+              adoptEnrichment(enriched, {
+                name: assembledRef.current.name,
+                intro: assembledRef.current.intro,
+                location: assembledRef.current.location,
+                avatar: assembledRef.current.avatar,
+                context: assembledRef.current.context,
+                socials: assembledRef.current.socials,
+                email: assembledRef.current.email,
+                id: assembledRef.current.id,
+                timezone: assembledRef.current.timezone,
+                notificationPreferences: assembledRef.current.notificationPreferences,
+              });
+            }
+          }).catch(function () { /* keep the baseline profile */ });
         })
         .catch(function (err) {
           setPanelError(err && err.message ? err.message : String(err));
         })
         .finally(function () {
           setLoading(false);
+          setDrafting(false);
         });
     }
 
@@ -1392,8 +2516,28 @@
           timezone: form.timezone,
           socials: (form.socials || []).filter(function (s) { return s.value && s.value.trim(); }),
           notificationPreferences: form.notificationPreferences,
+          context: form.context || "",
         };
         if (avatarUrl) body.avatar = avatarUrl;
+        if (gettingStarted) {
+          body.draft = {
+            identity: { name: (form.name || "").trim(), bio: (form.intro || "").trim(), location: (form.location || "").trim() },
+            narrative: { context: (form.context || form.intro || "").trim() },
+            attributes: { skills: [], interests: [] },
+          };
+          return fetchPluginJSON(API + "/onboarding/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Profile could not be confirmed.");
+            }
+            setDirty(false);
+            setNote("Confirmed.");
+            if (typeof props.onConfirmed === "function") props.onConfirmed();
+          });
+        }
         return fetchPluginJSON(API + "/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -1434,32 +2578,12 @@
         });
     }
 
-    function generate() {
-      setGenerating(true);
+    function resetAssembled() {
+      if (!assembledRef.current) return;
+      setForm(Object.assign({}, assembledRef.current));
+      setAvatarPreview(null);
+      setDirty(false);
       setNote(null);
-      setPanelError(null);
-      fetchPluginJSON(API + "/profile/intro", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Intro could not be generated.");
-          }
-          if (typeof payload.intro === "string" && payload.intro) {
-            patchForm({ intro: payload.intro });
-            setNote("Intro regenerated from your Index profile.");
-          } else {
-            setNote("No intro was generated — add more about yourself first.");
-          }
-        })
-        .catch(function (err) {
-          setPanelError(err && err.message ? err.message : String(err));
-        })
-        .finally(function () {
-          setGenerating(false);
-        });
     }
 
     function tabButton(id, label) {
@@ -1506,15 +2630,16 @@
     }
 
     function profileTab() {
-      const initials = initialsFor(form.name);
       const avatarSrc = avatarPreview || form.avatar;
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
           React.createElement("label", { className: "index-dashboard__profile-avatar" },
-            React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-              initials,
-              avatarSrc ? React.createElement("img", { className: "index-dashboard__avatar-img", src: avatarSrc, alt: "", loading: "lazy" }) : null,
-            ),
+            React.createElement(UserAvatar, {
+              id: form.id,
+              name: form.name,
+              avatar: avatarSrc,
+              className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+            }),
             React.createElement("input", { type: "file", accept: "image/*", className: "index-dashboard__profile-avatar-input", onChange: onAvatarFile }),
           ),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
@@ -1530,13 +2655,7 @@
             React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "Brooklyn, NY", onChange: function (e) { patchForm({ location: e.target.value }); } }),
           ),
         ),
-        React.createElement(ProfileField, {
-          label: "Introduction",
-          hint: form.context ? "Index context: " + form.context : null,
-        },
-          React.createElement("div", { className: "index-dashboard__profile-intro-head" },
-            React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
-          ),
+        React.createElement(ProfileField, { label: "Introduction" },
           React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
         ),
         React.createElement(ProfileField, { label: "Socials" },
@@ -1576,14 +2695,15 @@
     }
 
     function readOnlyView() {
-      const initials = initialsFor(form.name);
       const socials = (form.socials || []).filter(function (s) { return s.value && s.value.trim(); });
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
-          React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-            initials,
-            form.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: form.avatar, alt: "", loading: "lazy" }) : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: form.id,
+            name: form.name,
+            avatar: form.avatar,
+            className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+          }),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
             React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Profile"),
             form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
@@ -1610,35 +2730,77 @@
       );
     }
 
-    const title = readOnly ? ((form && form.name) || "Profile") : "Settings";
+    const title = gettingStarted
+      ? "Getting started"
+      : (readOnly ? ((form && form.name) || "Profile") : "Settings");
 
-    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
-      React.createElement("div", { className: "index-dashboard__profile-panel", onClick: function (e) { e.stopPropagation(); } },
-        React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
-          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+    const panel = React.createElement("div", {
+      className: "index-dashboard__profile-panel" + (gettingStarted ? " index-dashboard__profile-panel--getting-started" : ""),
+      onClick: gettingStarted ? undefined : function (e) { e.stopPropagation(); },
+    },
+      React.createElement("div", { className: "index-dashboard__profile-header" },
+        React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
+        React.createElement("div", { className: "index-dashboard__profile-header-actions" },
+          (!gettingStarted && !readOnly && props.onSignOut)
+            ? React.createElement("button", { type: "button", className: "index-dashboard__profile-signout", onClick: props.onSignOut }, "Sign out")
+            : null,
+          gettingStarted
+            ? null
+            : React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
-        readOnly ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
-          tabButton("profile", "Profile Settings"),
-          tabButton("notifications", "Notification Settings"),
-        ),
-        panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
-        loading || !form
-          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
-          : React.createElement("div", { className: "index-dashboard__profile-body" },
-            readOnly ? readOnlyView() : (tab === "notifications" ? notificationsTab() : profileTab()),
-          ),
-        (!readOnly && form)
-          ? React.createElement("div", { className: "index-dashboard__profile-bar" },
-            React.createElement("span", { className: "index-dashboard__profile-note" }, note || (dirty ? "You have unsaved changes" : "")),
-            React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
-              React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
-              React.createElement(Button, { type: "button", disabled: saving || !dirty, onClick: save }, saving ? "Saving…" : "Save Changes"),
-            ),
-          )
-          : null,
       ),
+      gettingStarted
+        ? React.createElement("p", { className: "index-dashboard__getting-started-copy" },
+          "Here's what I pulled together. Make sure it's right.")
+        : null,
+      (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
+        tabButton("profile", "Profile Settings"),
+        tabButton("notifications", "Notification Settings"),
+      ),
+      panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
+      loading || !form
+        ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
+        : React.createElement("div", { className: "index-dashboard__profile-body" },
+          readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
+        ),
+      (!readOnly && form)
+        ? React.createElement("div", { className: "index-dashboard__profile-bar" },
+          React.createElement("span", { className: "index-dashboard__profile-note" },
+            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),
+          React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
+            gettingStarted
+              ? React.createElement(Button, {
+                type: "button",
+                outlined: true,
+                className: "index-dashboard__getting-started-btn",
+                disabled: saving || !dirty,
+                onClick: resetAssembled,
+              }, "Reset")
+              : React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
+            React.createElement(Button, {
+              type: "button",
+              className: gettingStarted ? "index-dashboard__getting-started-btn" : undefined,
+              disabled: saving || (gettingStarted ? drafting : !dirty),
+              onClick: save,
+            }, saving
+              ? (gettingStarted ? "Confirming…" : "Saving…")
+              : (gettingStarted ? "Looks good" : "Save Changes")),
+          ),
+        )
+        : null,
     );
+
+    // Mac parity: keep the review form hidden until enrichment finishes, and show
+    // the setting-up screen (brand + motion + status lines) in the meantime.
+    if (gettingStarted && (loading || drafting || !form)) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" },
+        React.createElement(SettingUpScreen),
+      );
+    }
+    if (gettingStarted) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" }, panel);
+    }
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose }, panel);
   }
 
   function extractContent(parts) {
@@ -2032,10 +3194,12 @@
                       className: "index-dashboard__msg-conv" + (active ? " index-dashboard__msg-conv--active" : "") + (unread ? " index-dashboard__msg-conv--unread" : ""),
                       onClick: function () { loadThread(c.id); },
                     },
-                      React.createElement("span", { className: "index-dashboard__avatar index-dashboard__msg-conv-avatar", "aria-hidden": "true" },
-                        initialsFor(c.counterpartName || c.title),
-                        c.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: c.avatar, alt: "", loading: "lazy" }) : null,
-                      ),
+                      React.createElement(UserAvatar, {
+                        id: c.counterpartUserId,
+                        name: c.counterpartName || c.title,
+                        avatar: c.avatar,
+                        className: "index-dashboard__avatar index-dashboard__msg-conv-avatar",
+                      }),
                       React.createElement("span", { className: "index-dashboard__msg-conv-main" },
                         React.createElement("span", { className: "index-dashboard__msg-conv-name" },
                           unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
@@ -2103,6 +3267,9 @@
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
+    const needsOnboardingState = useState(false);
+    const needsOnboarding = needsOnboardingState[0];
+    const setNeedsOnboarding = needsOnboardingState[1];
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -2159,6 +3326,11 @@
     const inlineHdrState = useState(false);
     const inlineHdr = inlineHdrState[0];
     const setInlineHdr = inlineHdrState[1];
+    // Auth gate: "checking" until /auth/status resolves, then "needsLogin"
+    // (browser sign-in) or "authed" (load the dashboard).
+    const authState = useState("checking");
+    const auth = authState[0];
+    const setAuth = authState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
@@ -2178,6 +3350,7 @@
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
           }
           setSummary(payload);
+          setNeedsOnboarding(!!(payload.onboarding && payload.onboarding.needsProfileConfirm));
         })
         .catch(function (err) {
           setError(err && err.message ? err.message : String(err));
@@ -2204,15 +3377,16 @@
     }
 
     useEffect(function () {
+      if (auth !== "authed") return undefined;
       refreshUnread();
       const id = setInterval(refreshUnread, 30000);
       return function () { clearInterval(id); };
-    }, []);
+    }, [auth]);
 
     // Re-check when the messages panel closes (reading there updates the map).
     useEffect(function () {
-      if (!messagesOpen) refreshUnread();
-    }, [messagesOpen]);
+      if (auth === "authed" && !messagesOpen) refreshUnread();
+    }, [messagesOpen, auth]);
 
     useEffect(function () {
       const ctl = headerCtlRef.current;
@@ -2496,9 +3670,44 @@
 
     loadRef.current = load;
 
-    useEffect(function () {
+    function enterDashboard() {
+      setAuth("authed");
       load();
       loadNetworkRequests();
+    }
+
+    function checkAuth() {
+      fetchPluginJSON(API + "/auth/status")
+        .then(function (payload) {
+          if (payload && payload.needsLogin) {
+            setAuth("needsLogin");
+            setLoading(false);
+          } else {
+            enterDashboard();
+          }
+        })
+        .catch(function () {
+          // Host fetch failed entirely: fall back to trying the dashboard so a
+          // manual INDEX_API_KEY still works even if /auth/status is unreachable.
+          enterDashboard();
+        });
+    }
+
+    function signOut() {
+      setProfileOpen(false);
+      fetchPluginJSON(API + "/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).finally(function () {
+        setSummary(null);
+        setNeedsOnboarding(false);
+        setAuth("needsLogin");
+      });
+    }
+
+    useEffect(function () {
+      checkAuth();
     }, []);
 
     useEffect(function () {
@@ -2590,12 +3799,15 @@
     }, [autoRefresh, loading]);
 
     useEffect(function () {
-      if (!autoRefresh) return undefined;
+      // Only poll once signed in: firing /summary while the login gate (or the
+      // initial auth check) is showing produces 401s that can land after the
+      // login transition and clobber the fresh state, forcing a manual reload.
+      if (!autoRefresh || auth !== "authed") return undefined;
       const id = setInterval(function () {
         if (loadRef.current) loadRef.current();
       }, 5000);
       return function () { clearInterval(id); };
-    }, [autoRefresh]);
+    }, [autoRefresh, auth]);
 
     useEffect(function () {
       if (DESKTOP_ENV) return undefined;
@@ -2661,7 +3873,46 @@
             React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, requests: networkRequests, onCreate: openCreate, onJoin: joinNetwork, joiningId: joiningId, onEditRequest: editNetworkRequest, onDismissRequest: dismissNetworkRequest }),
+            React.createElement(NetworksMini, {
+              networks: summary && summary.networks,
+              requests: networkRequests,
+              webUrl: summary && summary.webUrl,
+              apiUrl: summary && summary.apiUrl,
+              currentUserId: summary && summary.currentUserId,
+              onCreate: openCreate,
+              onJoin: joinNetwork,
+              joiningId: joiningId,
+              onEditRequest: editNetworkRequest,
+              onDismissRequest: dismissNetworkRequest,
+              onOpenUser: openUser,
+              onSelectIntent: selectIntent,
+              onNetworkUpdated: function (merged) {
+                if (!merged || !merged.id) return;
+                setSummary(function (prev) {
+                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                  return Object.assign({}, prev, {
+                    networks: Object.assign({}, prev.networks, {
+                      items: prev.networks.items.map(function (n) {
+                        return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
+                      }),
+                    }),
+                  });
+                });
+              },
+              onNetworkRemoved: function (net) {
+                if (!net || !net.id) return;
+                setSummary(function (prev) {
+                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                  const items = prev.networks.items.filter(function (n) { return !n || n.id !== net.id; });
+                  return Object.assign({}, prev, {
+                    networks: Object.assign({}, prev.networks, {
+                      items: items,
+                      count: items.length,
+                    }),
+                  });
+                });
+              },
+            }),
           ),
         ),
       );
@@ -2680,7 +3931,7 @@
         : null,
       viewUserId
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
-        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
+        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
         : null,
@@ -2691,13 +3942,29 @@
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
 
-      loading && !summary
-        ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-          LOADING_IMAGE()
-            ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
-            : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
-        )
-        : React.createElement("div", { className: "index-dashboard__body" }, intentsView),
+      auth === "needsLogin"
+        ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
+        : (auth === "checking"
+          ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+            LOADING_IMAGE()
+              ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+              : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+          )
+          : (needsOnboarding
+            ? React.createElement(ProfilePanel, {
+              gettingStarted: true,
+              onConfirmed: function () {
+                setNeedsOnboarding(false);
+                load();
+              },
+            })
+            : (loading && !summary
+              ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+                LOADING_IMAGE()
+                  ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+                  : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+              )
+              : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
     );
   }
 

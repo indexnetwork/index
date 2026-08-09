@@ -114,10 +114,7 @@ export async function handleIntent(
         return;
       }
       if (!options.json) output.info("Updating signal...");
-      const result = await client.callTool("update_intent", {
-        intentId: options.intentId,
-        newDescription: options.intentContent,
-      });
+      const result = await client.updateIntent(options.intentId, options.intentContent);
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to update signal", 1); return; }
       output.success("Signal updated.");

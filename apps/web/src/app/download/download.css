@@ -1,0 +1,166 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+.download-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 32px;
+  box-sizing: border-box;
+  background: #071410;
+  color: #e6ede7;
+  font-family: "IBM Plex Sans", "Public Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.download-page__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.download-page__intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.download-page__kicker {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #e08a2e;
+}
+
+.download-page__title {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 38px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: #e6ede7;
+}
+
+.download-page__lede {
+  margin: 0;
+  max-width: 460px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: #b9c9bf;
+  text-wrap: pretty;
+}
+
+.download-page__cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+  max-width: 620px;
+}
+
+.download-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 40px 28px 34px;
+  background: #0c1e17;
+  border: 1px solid rgba(230, 237, 231, 0.12);
+  color: #e6ede7;
+  text-decoration: none;
+  transition: border-color 120ms ease;
+}
+
+a.download-card:hover {
+  border-color: #e08a2e;
+}
+
+.download-card--static {
+  cursor: default;
+}
+
+.download-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border: 1px solid rgba(230, 237, 231, 0.18);
+}
+
+.download-card__icon svg {
+  width: 34px;
+  height: 34px;
+  color: #e6ede7;
+}
+
+.download-card__icon img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.download-card__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.download-card__name {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.download-card__meta {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: #7e9689;
+}
+
+.download-card__action {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 12px 24px;
+}
+
+.download-card__action--primary {
+  color: #071410;
+  background: #e08a2e;
+}
+
+.download-card__action--ghost {
+  color: #d6e2da;
+  border: 1px solid rgba(230, 237, 231, 0.28);
+  padding: 11px 23px;
+}
+
+.download-card__action--disabled {
+  color: #7e9689;
+  background: rgba(230, 237, 231, 0.08);
+}
+
+@media (max-width: 720px) {
+  .download-page {
+    padding: 48px 20px;
+  }
+
+  .download-page__title {
+    font-size: 30px;
+  }
+
+  .download-page__cards {
+    grid-template-columns: 1fr;
+  }
+}

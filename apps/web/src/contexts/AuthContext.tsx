@@ -152,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const isHomePage = pathname === '/';
     const publicPrefixes = [
-      '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
+      '/simulation', '/l', '/blog', '/pages', '/about',
       '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/o/', '/waitlist', '/download',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
@@ -174,12 +174,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         openLoginModal(window.location.href);
       }
       navigate('/');
-      return;
-    }
-
-    // Force redirect to /onboarding only from the authenticated home page.
-    if (authenticated && user && !user.onboarding?.completedAt && isHomePage) {
-      navigate('/onboarding', { replace: true });
       return;
     }
 

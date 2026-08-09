@@ -13,7 +13,7 @@
  */
 
 import { $ } from "bun";
-import { copyFile, mkdir, readFile, writeFile, chmod } from "node:fs/promises";
+import { copyFile, mkdir, readFile, chmod } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const CLI_ROOT = resolve(import.meta.dir, "..");
@@ -106,37 +106,32 @@ async function copyToNpmDir(target: Target): Promise<void> {
 }
 
 /**
- * Sync the version from the main package.json to all platform packages.
+ * Validate that all package versions match the main package.json.
  */
-async function syncVersions(): Promise<void> {
+async function assertVersionsAligned(): Promise<void> {
   const mainPkgPath = join(CLI_ROOT, "package.json");
-  const mainPkg = JSON.parse(await readFile(mainPkgPath, "utf-8"));
-  const version: string = mainPkg.version;
+  const mainPkg = JSON.parse(await readFile(mainPkgPath, "utf-8")) as {
+    version: string;
+    optionalDependencies?: Record<string, string>;
+  };
+  const mismatches: string[] = [];
 
   for (const target of TARGETS) {
+    const depName = `@indexnetwork/cli-${target.npmDir}`;
     const pkgPath = join(CLI_ROOT, "npm", target.npmDir, "package.json");
-    const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
-
-    if (pkg.version !== version) {
-      pkg.version = version;
-      await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-      console.log(`[build] Synced version ${version} → npm/${target.npmDir}/package.json`);
+    const pkg = JSON.parse(await readFile(pkgPath, "utf-8")) as { version: string };
+    if (pkg.version !== mainPkg.version) {
+      mismatches.push(`npm/${target.npmDir}/package.json=${pkg.version}`);
+    }
+    if (mainPkg.optionalDependencies?.[depName] !== mainPkg.version) {
+      mismatches.push(`optionalDependencies.${depName}=${mainPkg.optionalDependencies?.[depName] ?? "missing"}`);
     }
   }
 
-  // Also sync optionalDependencies versions in main package
-  if (mainPkg.optionalDependencies) {
-    let changed = false;
-    for (const [dep, ver] of Object.entries(mainPkg.optionalDependencies)) {
-      if (ver !== version) {
-        mainPkg.optionalDependencies[dep] = version;
-        changed = true;
-      }
-    }
-    if (changed) {
-      await writeFile(mainPkgPath, JSON.stringify(mainPkg, null, 2) + "\n");
-      console.log(`[build] Synced optionalDependencies versions in main package.json`);
-    }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `[build] Package versions must match ${mainPkg.version}: ${mismatches.join(", ")}`,
+    );
   }
 }
 
@@ -149,8 +144,8 @@ console.log(`[build] Root: ${CLI_ROOT}`);
 console.log(`[build] Mode: ${currentOnly ? "current platform only" : "all targets"}`);
 console.log();
 
-// Step 1: Sync versions across all package.json files
-await syncVersions();
+// Step 1: Validate versions across all package.json files
+await assertVersionsAligned();
 
 // Step 2: Build JS fallback bundle
 await buildJsFallback();

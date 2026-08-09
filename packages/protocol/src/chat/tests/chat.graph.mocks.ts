@@ -60,7 +60,6 @@ const defaultOwnedIndex = (): OwnedIndex => ({
   imageUrl: null,
   permissions: {
     joinPolicy: "anyone",
-    allowGuestVibeCheck: false,
     invitationLink: null,
   },
   isPersonal: false,

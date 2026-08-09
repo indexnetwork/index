@@ -33858,6 +33858,53 @@ function createIndexApiClient(options = {}) {
     return /** @type {T} */ (payload || {});
   }
 
+  /**
+   * Multipart upload. PicturePicker hands us a data URL; turn it into a File
+   * and POST without forcing Content-Type so the runtime sets the boundary.
+   * @param {string} endpoint
+   * @param {string} dataUrl
+   * @param {string} fieldName
+   * @param {string} basename
+   * @param {RequestOptions} [requestOptions]
+   */
+  async function uploadDataUrl(endpoint, dataUrl, fieldName, basename, requestOptions = {}) {
+    const { auth = true, signal } = requestOptions;
+    const blob = await (await fetchImpl(dataUrl)).blob();
+    const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const file = new File([blob], `${basename}.${ext}`, { type: blob.type || 'image/jpeg' });
+    const form = new FormData();
+    form.append(fieldName, file);
+
+    /** @type {Record<string, string>} */
+    const headers = {};
+    if (auth && options.getApiKey) {
+      const apiKey = await options.getApiKey();
+      if (apiKey) headers['x-api-key'] = apiKey;
+    }
+    if (auth && options.getToken) {
+      const token = await options.getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetchImpl(`${apiBaseUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      signal,
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => '');
+    if (!response.ok) {
+      const message = payload && typeof payload === 'object' && 'error' in payload
+        ? String(payload.error)
+        : `HTTP ${response.status}: ${response.statusText}`;
+      throw new IndexApiError(message, response.status, payload);
+    }
+    return /** @type {Record<string, unknown>} */ (payload || {});
+  }
+
   return {
     request,
 
@@ -33870,11 +33917,65 @@ function createIndexApiClient(options = {}) {
       ),
     },
 
+    storage: {
+      /** @param {string} dataUrl data:image/... from PicturePicker */
+      uploadAvatar: async (dataUrl, options = {}) => {
+        const r = await uploadDataUrl('/storage/avatars', dataUrl, 'avatar', 'avatar', options);
+        return /** @type {string} */ (r.avatarUrl);
+      },
+      /** @param {string} dataUrl data:image/... from PicturePicker */
+      uploadIndexImage: async (dataUrl, options = {}) => {
+        const r = await uploadDataUrl('/storage/index-images', dataUrl, 'image', 'network', options);
+        return /** @type {string} */ (r.imageUrl);
+      },
+    },
+
     networks: {
       list: (options = {}) => request('/networks', options),
       overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
       myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
       create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
+      update: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'PUT', body },
+      ),
+      delete: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      // Owner Access-tab visibility toggle (public / invite-only).
+      updatePermissions: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/permissions`,
+        { ...options, method: 'PATCH', body },
+      ),
+      regenerateInvitationLink: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/regenerate-invitation`,
+        { ...options, method: 'PATCH', body: {} },
+      ),
+      getMembers: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        options,
+      ),
+      addMember: (networkId, userId, permissions = ['member'], options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        { ...options, method: 'POST', body: { userId, permissions } },
+      ),
+      removeMember: (networkId, userId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      updateMemberPermissions: (networkId, userId, permissions, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'PATCH', body: { permissions } },
+      ),
+      inviteMember: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/invite`,
+        { ...options, method: 'POST', body },
+      ),
+      searchUsers: (query, networkId, options = {}) => request(
+        `/networks/search-users${toQueryString({ q: query, networkId })}`,
+        options,
+      ),
       join: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/join`, { ...options, method: 'POST', body: {} }),
       leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
     },
@@ -34015,6 +34116,14 @@ function createIndexApiClient(options = {}) {
         `/tools/${encodeURIComponent(toolName)}`,
         { ...options, method: 'POST', body: { query } },
       ),
+    },
+
+    enrichment: {
+      // Run the full public-research enrichment inline for the authenticated
+      // user and resolve { enriched: true, profile: { name, intro, location,
+      // socials } } so the caller can show discovered socials immediately.
+      // Every other enrichment path is automatic (profile save, signup, imports).
+      trigger: (options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: {} }),
     },
 
     conversations: {
@@ -34203,12 +34312,16 @@ function mapPersonFromRadarCard(card) {
  * profile window fetches it, so this also accepts that payload's shape, where
  * the intro is `intro` and socials are `{label, value}`.
  * @param {Object} source
- * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
+ * @returns {{bio: string, photo: string | null, socials: Array<{id: string, prefix: string, handle: string}>}}
  */
 function mapCounterpartProfile(source = {}) {
   const profile = source.profile || source.counterpart || source;
   return {
     bio: profile.bio || profile.intro || '',
+    // The person's real picture. Radar cards carry `avatar`, list opportunities
+    // `counterpartAvatar`, GET /users/:id `avatar`. Kept raw (full URL or S3
+    // key); the app absolutizes keys against the API storage base.
+    photo: profile.avatar || source.counterpartAvatar || null,
     socials: mapSocials(profile.socials),
   };
 }
@@ -34401,12 +34514,15 @@ function relativeAge(isoDate) {
 /** Hosts whose https:// links this app claims (see the web AASA). */
 const DEFAULT_HOSTS = ['index.network'];
 
-/** First path segment -> route name. The web serves the same three paths. */
+/** First path segment -> route name. The web serves the same paths. */
 const ROUTE_BY_SEGMENT = {
   o: 'card',
   u: 'profile',
   c: 'legacy-connect',
 };
+
+/** Routes whose second segment is an opaque code rather than an entity id. */
+const CODE_ROUTES = new Set(['legacy-connect']);
 
 /**
  * @typedef {{ route: 'card', id: string }
@@ -34418,10 +34534,10 @@ const ROUTE_BY_SEGMENT = {
  * Resolve a deep link into a route, or null when it is not one of ours.
  *
  * Accepts two URL families:
- *   · `https://<allowed host>/o|u|c/<id>` — universal links. Only https, since
- *     that is the only scheme macOS ever hands over as a universal link; extra
- *     hosts (staging, a review app) go through `options.hosts` so adding one
- *     never touches the routing table.
+ *   · `https://<allowed host>/o|u|c/<id>` — universal links. Only https,
+ *     since that is the only scheme macOS ever hands over as a universal link;
+ *     extra hosts (staging, a review app) go through `options.hosts` so adding
+ *     one never touches the routing table.
  *   · `index://o|u|c/<id>` — the internal scheme alias, no host to check.
  *
  * Query strings, fragments and trailing slashes are ignored. Anything else —
@@ -34523,7 +34639,7 @@ function routeFromPath(path) {
   const value = safeDecode(segments[1]);
   if (!value) return null;
 
-  return route === 'legacy-connect' ? { route, code: value } : { route, id: value };
+  return CODE_ROUTES.has(route) ? { route, code: value } : { route, id: value };
 }
 
 /**
@@ -34642,42 +34758,126 @@ function Tag({ children, inverted = false, style }) {
   );
 }
 
-/* ---------- Avatar: Workbench raised square with initials ---------- */
-function photoUrl(seed, px = 150) {
-  return `https://i.pravatar.cc/${px}?u=${encodeURIComponent(seed || "x")}`;
+/* ---------- Avatar: circular, web-parity boring-avatars bauhaus fallback ---------- */
+const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+function baHash(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
 }
 
-function Avatar({ name, size = 28, ring = false, seed }) {
-  const initials = (name || "")
-    .split(/\s+/).slice(0,2).map(p => p[0]).join("").toUpperCase();
-  const [broken, setBroken] = useState(false);
+function baDigit(num, ntn) {
+  return Math.floor((num / Math.pow(10, ntn)) % 10);
+}
+
+function baBool(num, ntn) {
+  return !(baDigit(num, ntn) % 2);
+}
+
+function baUnit(num, range, index) {
+  const value = num % range;
+  if (index && baDigit(num, index) % 2 === 0) return -value;
+  return value;
+}
+
+function baColor(num) {
+  return BORING_PALETTE[num % BORING_PALETTE.length];
+}
+
+function BoringAvatar({ seed, size = 28 }) {
+  const SIZE = 80;
+  const ELEMENTS = 4;
+  const s = String(seed || "default");
+  const num = baHash(s);
+  const props_ = [];
+  for (let t = 0; t < ELEMENTS; t++) {
+    props_.push({
+      color: baColor(num + t),
+      translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+      translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+      rotate: baUnit(num * (t + 1), 360),
+      isSquare: baBool(num, 2),
+    });
+  }
+  const maskId = "ba-mask-" + num;
   return (
-    <div style={{
-      width:size, height:size, display:"grid", placeItems:"center",
-      overflow:"hidden",
-      background: ring ? A.accent : A.paper,
-      border:`1px solid ${A.fg}`,
-      boxShadow: ring
-        ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}`
-        : `1px 1px 0 rgba(0,0,0,0.2)`,
-      color: A.fg,
-      fontFamily:"var(--mac-mono)",
-      fontSize: size * 0.38, letterSpacing:0.5,
-      fontWeight: 700,
-      flex:"0 0 auto",
-    }}>
-      {broken ? initials : (
-        <img
-          src={photoUrl(seed || name)}
-          alt={name}
-          onError={() => setBroken(true)}
-          style={{
-            width:"100%", height:"100%", objectFit:"cover", display:"block",
-            // grayscale keeps the monochrome Workbench look
-            filter:"grayscale(1) contrast(1.05)",
-          }}
+    <svg
+      viewBox={`0 0 ${SIZE} ${SIZE}`}
+      fill="none"
+      role="img"
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      style={{ display:"block" }}
+    >
+      <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={SIZE} height={SIZE}>
+        <rect width={SIZE} height={SIZE} rx={SIZE * 2} fill="#FFFFFF"/>
+      </mask>
+      <g mask={`url(#${maskId})`}>
+        <rect width={SIZE} height={SIZE} fill={props_[0].color}/>
+        <rect
+          x={(SIZE - 60) / 2}
+          y={(SIZE - 20) / 2}
+          width={SIZE}
+          height={props_[1].isSquare ? SIZE : SIZE / 8}
+          fill={props_[1].color}
+          transform={`translate(${props_[1].translateX} ${props_[1].translateY}) rotate(${props_[1].rotate} ${SIZE / 2} ${SIZE / 2})`}
         />
-      )}
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          fill={props_[2].color}
+          r={SIZE / 5}
+          transform={`translate(${props_[2].translateX} ${props_[2].translateY})`}
+        />
+        <line
+          x1={0}
+          y1={SIZE / 2}
+          x2={SIZE}
+          y2={SIZE / 2}
+          strokeWidth={2}
+          stroke={props_[3].color}
+          transform={`translate(${props_[3].translateX} ${props_[3].translateY}) rotate(${props_[3].rotate} ${SIZE / 2} ${SIZE / 2})`}
+        />
+      </g>
+    </svg>
+  );
+}
+
+function Avatar({ id, name, photo, size = 28, ring = false, blur = false }) {
+  const seed = id || name || "default";
+  const src = photo
+    ? (window.IndexApp && window.IndexApp.avatarUrl ? window.IndexApp.avatarUrl(photo) : photo)
+    : null;
+  const [broken, setBroken] = useState(null);
+  const frameStyle = {
+    width: size,
+    height: size,
+    borderRadius: "50%",
+    overflow: "hidden",
+    flex: "0 0 auto",
+    boxShadow: ring ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}` : undefined,
+    filter: blur ? "blur(3px)" : undefined,
+  };
+  if (!src || broken === src) {
+    return (
+      <div style={frameStyle}>
+        <BoringAvatar seed={seed} size={size}/>
+      </div>
+    );
+  }
+  return (
+    <div style={frameStyle}>
+      <img
+        src={src}
+        alt={name}
+        onError={() => setBroken(src)}
+        style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}
+      />
     </div>
   );
 }
@@ -34868,57 +35068,16 @@ function currentMe() {
   return (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || {};
 }
 
-/* Where a shuffled face is kept.
-
-   The page is loaded from a file:// URL, so WebKit hands the document an
-   opaque origin and localStorage is not persisted between launches. The native
-   shell stores it in UserDefaults instead and injects it at document start, so
-   the saved face is already correct on the first paint. localStorage is still
-   written as the fallback for running this bundle in a browser, where there is
-   no shell to ask. */
-const AGENT_FACE_KEY = "index.agentFace";
-let agentFaceCache;
-
-function storedAgentFace() {
-  if (agentFaceCache !== undefined) return agentFaceCache;
-  const native = (typeof window !== "undefined" && window.INDEX_NATIVE && window.INDEX_NATIVE.agentFace) || null;
-  if (native) { agentFaceCache = native; return agentFaceCache; }
-  try {
-    const raw = window.localStorage.getItem(AGENT_FACE_KEY);
-    agentFaceCache = raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    agentFaceCache = null;   // storage disabled; the face falls back to your name
-  }
-  return agentFaceCache;
-}
-
-/** Save the negotiator's avatar so it survives a relaunch. */
-function setMyAgentFace(patch) {
-  const next = { ...(storedAgentFace() || {}), ...patch };
-  agentFaceCache = next;
-  Object.assign(currentMe(), {
-    agentFaceSeed: next.seed || null,
-    agentPhoto: next.photo || null,
-  });
-  try { window.localStorage.setItem(AGENT_FACE_KEY, JSON.stringify(next)); } catch (e) {}
-  const bridge = (typeof window !== "undefined" && window.webkit
-    && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth) || null;
-  if (bridge) {
-    try { bridge.postMessage({ action: "setAgentFace", value: next }); } catch (e) {}
-  }
-  return next;
-}
-
 function myAgent() {
   const me = currentMe();
-  const saved = storedAgentFace() || {};
   const first = String(me.name || "").trim().split(/\s+/)[0] || "your";
   return {
     name: `${first}'s agent`,
-    // a shuffle wins, then whatever was saved on a previous run, and failing
-    // both the face hangs off your name so it is yours from the first launch
-    seed: me.agentFaceSeed || saved.seed || me.name || "index",
-    photo: me.agentPhoto || saved.photo || null,
+    // The face hangs off your account id, so it is the same on every device
+    // and every launch, with nothing stored anywhere. Name is the fallback
+    // until the snapshot loads.
+    seed: me.id || me.name || "index",
+    photo: null,
   };
 }
 
@@ -34962,11 +35121,10 @@ function MyAgentAvatar({ size = 22, style, title }) {
       {owner.photo ? (
         <img src={owner.photo} alt="" style={{
           width:"100%", height:"100%", objectFit:"cover", display:"block",
-          border:`1px solid ${FACE_INK}`, boxSizing:"border-box",
-          filter:"grayscale(1) contrast(1.05)",
+          borderRadius:"50%",
         }}/>
       ) : (
-        <Avatar name={owner.name} size={size}/>
+        <Avatar id={owner.id} name={owner.name} size={size}/>
       )}
       {/* bottom-right, held inside the footprint so the mark never overlaps
           whatever sits beside it in a tight row */}
@@ -35737,10 +35895,10 @@ function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
 }
 
 Object.assign(window, {
-  LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
+  LiveDot, StreamText, KV, Tag, Avatar, BoringAvatar,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
-  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, setMyAgentFace, currentMe,
+  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval, useNarrow,
   PipelineFunnel, SourceBadge, ModeBadge,
@@ -35774,6 +35932,17 @@ window.IndexApp = (function () {
     return window.IndexApi && window.IndexApi.normalizeApiBaseUrl
       ? window.IndexApi.normalizeApiBaseUrl(raw)
       : raw.replace(/\/+$/, "");
+  }
+
+  // users.avatar is either a full URL (legacy Google/OAuth photos) or an S3
+  // object key like "avatars/<userId>/<uuid>.jpg". Keys are served by the API at
+  // {base}/storage/<key>; in the WebView a bare key would resolve against the app
+  // origin and 404, so absolutize it. Absolute (http/https/data) values pass
+  // through untouched.
+  function avatarUrl(avatar) {
+    if (!avatar) return null;
+    if (/^(https?:|data:)/i.test(avatar)) return avatar;
+    return `${apiBaseUrl()}/storage/${String(avatar).replace(/^\/+/, "")}`;
   }
 
   function getClient() {
@@ -35908,10 +36077,42 @@ window.IndexApp = (function () {
     return {
       snapshot,
       me: mapMe(user),
-      networks: mapNetworks(networks),
+      networks: mapNetworks(networks, user),
       features,
       raw: { user, features, networks, intents, questions, radarItems },
     };
+  }
+
+  // Web origin for share / invitation links. Always pair with the active API
+  // host (drop leading `protocol.`) — never deepLinkHosts[0] (prod AASA host).
+  // Remote APP_URL wins when set; localhost APP_URL is ignored for remote APIs.
+  function webBaseUrl() {
+    try {
+      const u = new URL(apiBaseUrl());
+      let host = u.hostname;
+      if (host === "localhost" || host === "127.0.0.1") {
+        const appUrl = native().appUrl;
+        if (appUrl) return String(appUrl).replace(/\/+$/, "");
+        return `${u.protocol}//${host}:3000`;
+      }
+      if (host.startsWith("protocol.")) host = host.slice("protocol.".length);
+      const appUrl = native().appUrl;
+      if (appUrl) {
+        try {
+          const a = new URL(appUrl);
+          if (a.hostname && a.hostname !== "localhost" && a.hostname !== "127.0.0.1") {
+            return String(appUrl).replace(/\/+$/, "");
+          }
+        } catch (e) { /* ignore bad APP_URL */ }
+      }
+      return `https://${host}`;
+    } catch (e) { /* fall through */ }
+
+    const appUrl = native().appUrl;
+    if (appUrl) return String(appUrl).replace(/\/+$/, "");
+    const hosts = native().deepLinkHosts;
+    const host = Array.isArray(hosts) && hosts.length ? String(hosts[0]) : "index.network";
+    return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
   }
 
   // Map an API user onto the shape the UI's ME expects. Live-only: there is no
@@ -35929,25 +36130,65 @@ window.IndexApp = (function () {
       email: user.email || "",
       location: user.location || "",
       intro: user.intro || user.bio || "",
-      photo: user.avatar || null,
+      photo: avatarUrl(user.avatar),
       socials,
       websites: [],
       source: user,
     };
   }
 
-  function mapNetworks(networks) {
-    return networks.map((n) => ({
-      id: n.id,
-      name: n.title || n.name || "untitled",
-      members: (n._count && n._count.members) || n.memberCount || 0,
-      role: n.isPersonal ? "personal" : (n.role || "member"),
-      joined: true,
-      isPersonal: n.isPersonal === true,
-      privacy: n.joinPolicy === "anyone" ? "public" : "private",
-      signals: [],
-      source: n,
-    }));
+  function mapNetworks(networks, user) {
+    const meId = user && user.id;
+    return networks.map((n) => {
+      const joinPolicy = (n.permissions && n.permissions.joinPolicy) || n.joinPolicy || "invite_only";
+      const invite = (n.permissions && n.permissions.invitationLink) || n.invitationLink || null;
+      // Prefer API `role` (viewer membership). Falling back to user.id ===
+      // network.user.id is wrong for multi-owner networks.
+      const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
+      const ownerId = n.user && n.user.id;
+      const inferredOwner = !!(meId && ownerId && meId === ownerId);
+      const role = n.isPersonal
+        ? "personal"
+        : (apiRole || (inferredOwner ? "owner" : "member"));
+      return {
+        id: n.id,
+        name: n.title || n.name || "untitled",
+        blurb: n.prompt || n.description || "",
+        members: (n._count && n._count.members) || n.memberCount || 0,
+        role,
+        joined: true,
+        isPersonal: n.isPersonal === true,
+        hasMasterKey: n.hasMasterKey === true,
+        hidden: n.hidden === true,
+        privacy: joinPolicy === "anyone" ? "public" : "private",
+        joinPolicy,
+        invitationCode: invite && invite.code ? invite.code : null,
+        // Same key resolution as user avatars: S3 keys need the storage base.
+        photo: avatarUrl(n.imageUrl || n.photo || null),
+        signals: [],
+        source: n,
+      };
+    });
+  }
+
+  // ---- tools + enrichment -------------------------------------------------
+
+  // Invoke a protocol tool over REST (POST /tools/:name). Onboarding-allowed
+  // tools (preview_user_context, confirm_user_context) work with the x-api-key.
+  // Resolves the parsed tool result envelope ({ success, data } | { success:false, ... }).
+  function invokeTool(toolName, query) {
+    const c = getClient();
+    if (!c) return Promise.reject(new Error("no api client"));
+    return c.tools.invoke(toolName, query || {});
+  }
+
+  // Run the full public-research enrichment inline (POST /enrichment/enrich) and
+  // resolve { enriched, profile:{ name, intro, location, socials } } so callers
+  // can display discovered socials immediately. Other enrichment is automatic.
+  function triggerEnrichment() {
+    const c = getClient();
+    if (!c) return Promise.reject(new Error("no api client"));
+    return c.enrichment.trigger();
   }
 
   // ---- fetch-based SSE ----------------------------------------------------
@@ -36110,6 +36351,8 @@ window.IndexApp = (function () {
     apiKey,
     isAuthed,
     apiBaseUrl,
+    avatarUrl,
+    webBaseUrl,
     getClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,
@@ -36127,6 +36370,8 @@ window.IndexApp = (function () {
     streamChat,
     streamInbox,
     mcpCall,
+    invokeTool,
+    triggerEnrichment,
   };
 })();
 
@@ -36295,8 +36540,10 @@ function Login({ onSignIn }) {
 // network sees (profile), how the agent interrupts you (notifications), and
 // the keys other agents authenticate with.
 
-// Longest introduction the profile editor accepts, in characters.
-const INTRO_MAX = 500;
+// Soft length guide for the introduction counter. The API stores intro with no
+// hard cap, and enrichment synthesizes a full narrative paragraph, so this is
+// generous enough that a real enriched profile doesn't render as "over".
+const INTRO_MAX = 2000;
 
 /* ---------- shared field chrome ---------- */
 
@@ -36416,13 +36663,9 @@ function PhotoPicker({ me, name, photo, onPick }) {
               alt=""
               style={{
                 width:54, height:54, objectFit:"cover", display:"block",
-                border:"1px solid #000",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-                // same treatment Avatar gives its photos, so an uploaded one
-                // doesn't arrive in colour and break the monochrome look
-                filter:"grayscale(1) contrast(1.05)",
+                borderRadius:"50%",
               }}/>
-          : <Avatar name={me.name} size={54}/>}
+          : <Avatar id={me.id} name={me.name} size={54}/>}
       </PicturePicker>
 
       <div style={{ minWidth:0 }}>
@@ -36480,17 +36723,11 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
 
       <div style={{ marginTop:14 }}>
         <FieldLabel right={
-          <span style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button style={{
-              border:"none", background:"transparent", padding:0, cursor:"pointer",
-              fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
-            }}>✧ regenerate</button>
-            <span style={{
-              fontFamily:"var(--mac-mono)", fontSize:11,
-              color: over ? "var(--ink-warn)" : "var(--ink-2)",
-              fontWeight: over ? 700 : 400,
-            }}>{form.intro.length}/{INTRO_MAX}</span>
-          </span>
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            color: over ? "var(--ink-warn)" : "var(--ink-2)",
+            fontWeight: over ? 700 : 400,
+          }}>{form.intro.length}/{INTRO_MAX}</span>
         }>introduction</FieldLabel>
         <div style={{ ...wellStyle(false), alignItems:"stretch", padding:"8px 10px" }}>
           <textarea
@@ -36789,7 +37026,15 @@ function ApiKeysPane() {
 //            it back to sign-in. The titlebar gadget uses this too.
 // onDone  , the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
-function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false }) {
+// A public-research enrichment result is "usable" for the review when it filled
+// in a bio or discovered at least one social — otherwise we fall through to the
+// context/preview drafts below.
+function usableEnriched(res) {
+  const p = res && res.profile;
+  return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
+}
+
+function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false, enrich = false, enriched = null }) {
   const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
   // The signed-in user, mirrored onto INDEX_DATA.ME once the snapshot loads.
   // Live-only: empty when nothing has loaded yet, never a demo identity.
@@ -36812,6 +37057,127 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     alignment: true, question: true, accepted: true, digest: false,
   });
 
+  // Enrichment-backed getting-started. Primary path: trigger the public-research
+  // enrichment synchronously (POST /enrichment/enrich). It looks the
+  // person up from name+email and returns the resolved identity + discovered
+  // socials, so the review shows real, filled-in fields (including socials).
+  // Fallbacks, in order: an already-enriched context (read_user_contexts), then a
+  // fresh preview_user_context draft for a brand-new user with nothing yet.
+  // The chosen draft is retained so confirm_user_context saves the approved one.
+  const draftRef = useRef(null);
+  // No loader when enrichment already ran on the "setting up" screen and filled
+  // the review — the form is shown once, pre-populated, with no second spinner.
+  const [drafting, setDrafting] = useState(enrich && live && !usableEnriched(enriched));
+  useEffect(() => {
+    if (!enrich || !live || !window.IndexApp || !window.IndexApp.invokeTool) { setDrafting(false); return; }
+    let cancelled = false;
+    const adopt = (next) => {
+      assembled.current = { ...assembled.current, ...next };
+      setForm(f => ({ ...f, ...next }));
+    };
+    (async () => {
+      // Public research already ran in parallel on the "setting up" screen; adopt
+      // its result here (no second call) and only fall through to the context/
+      // preview drafts when it came back empty.
+      try {
+        const res = enriched;
+        const p = res && res.profile;
+        if (p && (String(p.intro || "").trim() || (p.socials && p.socials.length))) {
+          const list = p.socials || [];
+          const isSite = (s) => /^(custom|website)$/i.test(String(s.label || ""));
+          const known = list.filter((s) => !isSite(s)).map(normalizeSocial);
+          const sites = list
+            .filter(isSite)
+            .map((s) => String(s.value || "").replace(/^https?:\/\//i, "").replace(/\/+$/, ""))
+            .filter(Boolean);
+          const intro = p.intro || "";
+          const location = p.location || "";
+          draftRef.current = {
+            identity: { name: p.name || "", bio: intro, location },
+            narrative: { context: intro },
+            attributes: { skills: [], interests: [] },
+          };
+          adopt({
+            name: assembled.current.name || p.name || "",
+            location: assembled.current.location || location,
+            intro: assembled.current.intro || intro,
+            socials: known.length ? known : assembled.current.socials,
+            websites: sites.length ? sites : assembled.current.websites,
+          });
+          if (!cancelled) setDrafting(false);
+          return;
+        }
+      } catch (e) { /* fall through to reading any prior enriched context */ }
+
+      try {
+        const ctx = await window.IndexApp.invokeTool("read_user_contexts", {});
+        if (cancelled) return;
+        const c = ctx && ctx.success !== false && ctx.data;
+        if (c && c.hasProfile && String(c.context || "").trim()) {
+          const context = c.context;
+          // Enrichment persists only the narrative, so location/skills live in
+          // prose. Run that narrative back through preview_user_context (which
+          // infers a structured identity from text) to recover a location and
+          // interest tags, without discarding the rich narrative itself.
+          let location = c.location || "";
+          let skills = [], interests = [];
+          try {
+            const pv = await window.IndexApp.invokeTool("preview_user_context", { bioOrDescription: context });
+            const pd = pv && pv.success !== false && pv.data && pv.data.draft;
+            if (pd) {
+              const pid = pd.identity || {}, pat = pd.attributes || {};
+              const loc = String(pid.location || "").trim();
+              if (!location && loc && !/^(unknown|undisclosed|remote|n\/a)$/i.test(loc)) location = loc;
+              skills = pat.skills || []; interests = pat.interests || [];
+            }
+          } catch (e) { /* keep the narrative; just leave location/tags unfilled */ }
+          if (cancelled) return;
+          draftRef.current = {
+            identity: { name: c.name || "", bio: c.bio || context, location },
+            narrative: { context },
+            attributes: { skills, interests },
+          };
+          adopt({
+            name: assembled.current.name || c.name || "",
+            location: assembled.current.location || location,
+            // The enriched narrative is the profile index built — show it here
+            // (the intro is what /auth/me reads; enrichment left it empty).
+            intro: assembled.current.intro || c.bio || context || "",
+          });
+          if (!cancelled) setDrafting(false);
+          return;
+        }
+      } catch (e) { /* no enriched context yet — fall through to a fresh preview */ }
+
+      const q = {};
+      for (const s of (ME.socials || [])) {
+        const v = String(s.value || s.handle || "").trim();
+        if (!v) continue;
+        const lbl = String(s.label || s.id || "").toLowerCase();
+        if (lbl.includes("linkedin")) q.linkedinUrl = v;
+        else if (lbl.includes("github")) q.githubUrl = v;
+        else if (lbl.includes("twitter") || lbl === "x") q.twitterUrl = v;
+      }
+      if (ME.intro) q.bioOrDescription = ME.intro;
+      try {
+        const res = await window.IndexApp.invokeTool("preview_user_context", q);
+        if (cancelled) return;
+        if (res && res.success !== false && res.data && res.data.draft) {
+          const d = res.data.draft;
+          draftRef.current = d;
+          const id = d.identity || {};
+          adopt({
+            name: assembled.current.name || id.name || "",
+            location: assembled.current.location || id.location || "",
+            intro: assembled.current.intro || id.bio || "",
+          });
+        }
+      } catch (e) { /* fall back to the plain /auth/me values already in the form */ }
+      finally { if (!cancelled) setDrafting(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggle = (id) => setNotify(n => ({ ...n, [id]: !n[id] }));
 
@@ -36823,14 +37189,24 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // any pane reopened later) sees the edit, then get out of the way. This is
   // the ONLY path that commits, and at first run the only one that counts as
   // finishing onboarding.
-  const save = () => {
+  const save = async () => {
+    let photo = form.photo || null;
+    let avatarKey = null;
+    if (live && client && photo && /^data:/i.test(photo)) {
+      // PicturePicker only yields a data URL; upload it so the face survives a
+      // relaunch (file:// localStorage does not).
+      try {
+        avatarKey = await client.storage.uploadAvatar(photo);
+        photo = window.IndexApp.avatarUrl(avatarKey);
+      } catch (e) { /* keep the local preview; profile text still saves */ }
+    }
     Object.assign(ME, {
       name: form.name,
       location: form.location,
       intro: form.intro,
       socials: form.socials,
       websites: form.websites,
-      photo: form.photo,
+      photo,
       notify,
     });
     if (live && client) {
@@ -36843,11 +37219,29 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       const sites = (form.websites || [])
         .filter((w) => String(w || "").trim())
         .map((w) => ({ label: "custom", value: socialHrefOf({ id: "website", handle: w }) }));
-      client.auth.updateProfile({
+      // First-run enrichment gate: persist the approved profile through
+      // confirm_user_context, which durably records onboarding.profileConfirmedAt
+      // (so this screen doesn't reappear) and decomposes premises. The
+      // updateProfile call below persists socials and, via setSocials, enqueues
+      // the full enrich.user pipeline (Parallel lookup -> premises -> discovery).
+      if (enrich && window.IndexApp && window.IndexApp.invokeTool) {
+        const d = draftRef.current || {};
+        const approved = {
+          identity: { name: form.name.trim(), bio: form.intro.trim(), location: form.location.trim() },
+          narrative: { context: (d.narrative && d.narrative.context) || "" },
+          attributes: {
+            skills: (d.attributes && d.attributes.skills) || [],
+            interests: (d.attributes && d.attributes.interests) || [],
+          },
+        };
+        await window.IndexApp.invokeTool("confirm_user_context", { draft: approved }).catch(() => {});
+      }
+      await client.auth.updateProfile({
         name: form.name,
         intro: form.intro,
         location: form.location,
         socials: [...socials, ...sites],
+        ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch(() => {});
     }
     (onDone || onClose)();
@@ -36869,7 +37263,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         maxHeight: "calc(100vh - 112px)",
       }}>
         <MacWindow
-          title={profileOnly ? "index · getting started" : "index · settings"}
+          title={profileOnly ? "getting started" : "index · settings"}
           onClose={onClose}
           style={{ height: profileOnly ? undefined : "100%", maxHeight:"100%", minHeight:0 }}>
 
@@ -36882,7 +37276,9 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             <div style={{ padding:"14px 24px", borderBottom:"2px solid #000" }}>
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-              }}>here's what i pulled together. make sure it's right.</div>
+              }}>{drafting
+                ? "pulling together your profile…"
+                : "here's what i pulled together. make sure it's right."}</div>
             </div>
           ) : (
             <div style={{
@@ -36938,7 +37334,11 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             )}
             <button
               onClick={onClose}
-              style={{
+              style={profileOnly ? {
+                fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 10px",
+                border:"none", background:"transparent", color:"var(--ink-2)",
+                textDecoration:"underline", cursor:"pointer", opacity:0.7,
+              } : {
                 fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 17px",
                 border:"1px solid #000", background:"#fff", color:"#000",
                 boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
@@ -36962,35 +37362,25 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
 // Networks, the communities you're in, and the ones you could join. Reached
 // from the networks row on the hub's sidebar footer.
 
-// Deterministic 2x2 tile standing in for the generative avatar. Same name
-// always yields the same tile, so a network is recognisable by its colours.
-function NetworkTile({ name, size = 36, photo }) {
+// Deterministic bauhaus avatar matching the web app. Same id/name always
+// yields the same pattern, so a network is recognisable without a photo.
+function NetworkTile({ id, name, size = 36, photo }) {
+  const seed = id || name || "default";
+  const frameStyle = {
+    flex:"0 0 auto", width:size, height:size,
+    borderRadius:"50%", overflow:"hidden",
+  };
   if (photo) {
     return (
       <img
         src={photo}
         alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size,
-          objectFit:"cover", display:"block",
-          border:"1px solid #000",
-          // same treatment as every other photo in the app
-          filter:"grayscale(1) contrast(1.05)",
-        }}/>
+        style={{ ...frameStyle, objectFit:"cover", display:"block" }}/>
     );
   }
-  const PAL = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
-  let h = 0;
-  for (let i = 0; i < (name || "").length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  // unsigned shift, a signed one goes negative on bit 31 and indexes off the end
-  const cells = [0, 1, 2, 3].map(i => PAL[(h >>> (i * 3)) % PAL.length]);
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size,
-      border:"1px solid #000",
-      display:"grid", gridTemplateColumns:"1fr 1fr", gridTemplateRows:"1fr 1fr",
-    }}>
-      {cells.map((c, i) => <span key={i} style={{ background:c }}/>)}
+    <span style={frameStyle}>
+      <BoringAvatar seed={seed} size={size}/>
     </span>
   );
 }
@@ -37003,7 +37393,7 @@ function NetworkPhoto({ name, photo, onPick, size = 42 }) {
   return (
     <span style={{ display:"flex", alignItems:"center", gap:13, minWidth:0 }}>
       <PicturePicker size={size} label="change network picture" onPick={onPick} onError={setErr}>
-        <NetworkTile name={name || "?"} size={size} photo={photo}/>
+        <NetworkTile id={name} name={name || "?"} size={size} photo={photo}/>
       </PicturePicker>
 
       {err && (
@@ -37178,15 +37568,20 @@ function CreateNetwork({ onCancel, onCreate }) {
             padding:"20px 24px 22px",
           }}>
 
-            {/* live preview, the tile is derived from the name, so it only
-                becomes meaningful once something is typed */}
+            {/* live preview. picture is optional; without one the tile is
+                derived from the name so the network still has a mark */}
             <div style={{ display:"flex", alignItems:"center", gap:13, marginBottom:20 }}>
               <NetworkPhoto name={named} photo={photo} onPick={setPhoto} size={42}/>
-              <span style={{
-                fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
-                color: named ? "#000" : "var(--ink-4)",
-                minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-              }}>{named || "network name"}</span>
+              <span style={{ display:"grid", gap:2, minWidth:0 }}>
+                <span style={{
+                  fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
+                  color: named ? "#000" : "var(--ink-4)",
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                }}>{named || "network name"}</span>
+                <span style={{
+                  fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                }}>picture optional</span>
+              </span>
             </div>
 
             {/* one column at this width, like name/location on the profile.
@@ -37272,15 +37667,23 @@ function CreateNetwork({ onCancel, onCreate }) {
 // the same question reads the same on every surface.
 const NET_SIZE_OPTIONS = ["Under 100", "100 – 1K", "1K – 10K", "10K+"];
 
-// Early-access "request a network" screen. Same frame as CreateNetwork, but it
-// submits to /network-requests (reviewed) instead of creating a live network,
-// and ends on a confirmation panel. Also handles resubmitting a "needs changes"
-// request when `initial` is passed.
+// Early-access "request a network" screen. Same fields as CreateNetwork
+// (picture, name, description, access) plus expected size. Submits to
+// /network-requests instead of creating a live network. Also handles
+// resubmitting a "needs changes" request when `initial` is passed.
 function RequestNetwork({ initial, onCancel, onSubmit }) {
-  const [name, setName]       = useState((initial && initial.title) || "");
-  const [purpose, setPurpose] = useState((initial && initial.purpose) || "");
-  const [size, setSize]       = useState((initial && initial.expectedSize) || "");
-  const [notes, setNotes]     = useState((initial && initial.notes) || "");
+  const initialPhoto = initial && initial.imageUrl
+    ? (window.IndexApp && window.IndexApp.avatarUrl
+      ? window.IndexApp.avatarUrl(initial.imageUrl)
+      : initial.imageUrl)
+    : null;
+  const [name, setName]     = useState((initial && initial.title) || "");
+  const [desc, setDesc]     = useState((initial && initial.purpose) || "");
+  const [photo, setPhoto]   = useState(initialPhoto);
+  const [access, setAccess] = useState(
+    initial && initial.joinPolicy === "anyone" ? "public" : "private",
+  );
+  const [size, setSize]     = useState((initial && initial.expectedSize) || "");
   const [sending, setSending] = useState(false);
   const [done, setDone]       = useState(null);
 
@@ -37303,9 +37706,10 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
     setSending(true);
     Promise.resolve(onSubmit({
       name: named,
-      purpose: purpose.trim() || undefined,
+      purpose: desc.trim() || undefined,
       expectedSize: size || undefined,
-      notes: notes.trim() || undefined,
+      joinPolicy: access === "public" ? "anyone" : "invite_only",
+      photo,
     }))
       .then((req) => setDone(req || { title: named }))
       .catch(() => {})
@@ -37321,7 +37725,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
     }}>
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 112px))",
+        height:"min(720px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · request a network"
@@ -37368,33 +37772,70 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                   border:"1px solid #000", borderLeft:"3px solid #FF8A00",
                   background:"#F2EFE6",
                   fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-                }}>network creation is still early. tell us what you&apos;re hoping to build and we&apos;ll get back to you.</div>
+                }}>network creation is still early. fill this in and we&apos;ll review it before it goes live.</div>
               </div>
 
               <div className="mac-scroll" style={{
                 flex:"1 1 auto", minHeight:0, overflowY:"auto",
                 padding:"20px 24px 22px",
               }}>
+                <div style={{ display:"flex", alignItems:"center", gap:13, marginBottom:20 }}>
+                  <NetworkPhoto name={named} photo={photo} onPick={setPhoto} size={42}/>
+                  <span style={{ display:"grid", gap:2, minWidth:0 }}>
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
+                      color: named ? "#000" : "var(--ink-4)",
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                    }}>{named || "network name"}</span>
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>picture optional</span>
+                  </span>
+                </div>
+
                 <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"14px 18px" }}>
                   <TextField
-                    label="network name" required
+                    label="name" required
                     value={name}
                     onChange={setName}
-                    placeholder="e.g. Edge City"
+                    placeholder="network name"
                   />
                 </div>
 
                 <div style={{ marginTop:14 }}>
-                  <FieldLabel>what are you hoping to build?</FieldLabel>
+                  <FieldLabel right={
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>optional</span>
+                  }>description</FieldLabel>
                   <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
                     <textarea
-                      value={purpose}
-                      onChange={e => setPurpose(e.target.value)}
-                      placeholder="who is it for, who do you expect to join, and what should people or agents be able to discover through it?"
+                      value={desc}
+                      onChange={e => setDesc(e.target.value)}
+                      placeholder="what people can share in this network…"
                       rows={3}
                       style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
                     />
                   </div>
+                </div>
+
+                <SectionRule>access</SectionRule>
+                <div style={{
+                  marginTop:12, display:"grid",
+                  gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"8px 14px",
+                }}>
+                  <ChoiceCard
+                    title="public"
+                    sub="anyone can discover and join"
+                    selected={access === "public"}
+                    onClick={() => setAccess("public")}
+                  />
+                  <ChoiceCard
+                    title="private"
+                    sub="only people with an invitation link"
+                    selected={access === "private"}
+                    onClick={() => setAccess("private")}
+                  />
                 </div>
 
                 <SectionRule>how many people are you hoping to bring together?</SectionRule>
@@ -37410,23 +37851,6 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                       onClick={() => setSize(size === opt ? "" : opt)}
                     />
                   ))}
-                </div>
-
-                <div style={{ marginTop:14 }}>
-                  <FieldLabel right={
-                    <span style={{
-                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
-                    }}>optional</span>
-                  }>anything else we should know?</FieldLabel>
-                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
-                    <textarea
-                      value={notes}
-                      onChange={e => setNotes(e.target.value)}
-                      placeholder="links, timing, context, or what you'd like to experiment with."
-                      rows={2}
-                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
-                    />
-                  </div>
                 </div>
 
                 <div style={{
@@ -37458,7 +37882,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                     boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
                     cursor: canSend ? "pointer" : "default",
                     fontWeight:700,
-                  }}>{sending ? "sending…" : isEdit ? "resubmit" : "create network"}</button>
+                  }}>{sending ? "sending…" : isEdit ? "resubmit" : "request network"}</button>
               </div>
             </>
           )}
@@ -37477,7 +37901,11 @@ function RequestStatusRow({ req, onEdit, onDismiss }) {
       display:"flex", alignItems:"flex-start", gap:12,
       padding:"10px 12px", borderBottom:"1px solid #DDD8CC",
     }}>
-      <NetworkTile name={req.title}/>
+      <NetworkTile id={req.id} name={req.title} photo={
+        req.imageUrl && window.IndexApp && window.IndexApp.avatarUrl
+          ? window.IndexApp.avatarUrl(req.imageUrl)
+          : req.imageUrl || undefined
+      }/>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{
@@ -37521,7 +37949,7 @@ function NetworkRow({ net, onOpen, onJoin }) {
         borderBottom:"1px solid #DDD8CC",
         background: hover ? "#FAF8F3" : "transparent",
       }}>
-      <NetworkTile name={net.name} photo={net.photo}/>
+      <NetworkTile id={net.id} name={net.name} photo={net.photo}/>
 
       <button
         onClick={() => onOpen && onOpen(net)}
@@ -37548,6 +37976,8 @@ function NetworkRow({ net, onOpen, onJoin }) {
 
 /* ---------- detail ---------- */
 
+const MEMBERS_PAGE_SIZE = 10;
+
 function MetaBit({ glyph, children }) {
   return (
     <span style={{
@@ -37559,17 +37989,26 @@ function MetaBit({ glyph, children }) {
   );
 }
 
-function Signal({ sig, netName, onRemove }) {
+function formatSignalDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch (e) { return ""; }
+}
+
+function Signal({ sig, netName, onRemove, onOpen }) {
   const [hover, setHover] = useState(false);
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onClick={() => onOpen && onOpen(sig)}
       style={{
         border:"1px solid #000", background:"#fff",
         boxShadow: hover ? "3px 3px 0 rgba(0,0,0,0.22)" : "2px 2px 0 rgba(0,0,0,0.22)",
         padding:"12px 14px",
         display:"flex", alignItems:"flex-start", gap:14,
+        cursor: onOpen ? "pointer" : "default",
       }}>
       <div style={{ flex:1, minWidth:0, display:"grid", gap:9 }}>
         <div style={{
@@ -37578,22 +38017,365 @@ function Signal({ sig, netName, onRemove }) {
         <MetaBit glyph="▤">{sig.date}</MetaBit>
       </div>
 
-      {/* Same gadget as pause/stop in the conversation pane. Removes it from
-          this network only, the signal keeps running everywhere else. */}
-      <span
-        title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
-        style={{ flex:"0 0 auto" }}>
-        <SignalAction label="− remove" onClick={() => onRemove && onRemove(sig)}/>
-      </span>
+      {onRemove && (
+        <span
+          title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
+          style={{ flex:"0 0 auto" }}
+          onClick={(e) => e.stopPropagation()}>
+          <SignalAction label="− remove" onClick={() => onRemove(sig)}/>
+        </span>
+      )}
     </div>
   );
 }
 
-function NetworkDetail({ net, onBack, onLeave }) {
+function MemberFace({ member, size = 28 }) {
+  return (
+    <Avatar
+      id={member.id}
+      name={member.name}
+      photo={member.avatar}
+      size={size}
+      blur={!!member.isGhost}
+    />
+  );
+}
+
+function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy }) {
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSug, setShowSug] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!live || !networkId) return;
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    let cancelled = false;
+    setLoading(true);
+    c.networks.getMembers(networkId)
+      .then((res) => {
+        if (cancelled) return;
+        setMembers((res && res.members) || []);
+      })
+      .catch(() => { if (!cancelled) setMembers([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [live, networkId]);
+
+  useEffect(() => {
+    if (!live || !query.trim()) { setSuggestions([]); return; }
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    const t = setTimeout(() => {
+      c.networks.searchUsers(query.trim(), networkId)
+        .then((res) => {
+          const users = (res && res.users) || (Array.isArray(res) ? res : []);
+          const ids = new Set(members.map(m => m.id));
+          setSuggestions(users.filter(u => u && u.id && !ids.has(u.id)));
+          setShowSug(true);
+        })
+        .catch(() => setSuggestions([]));
+    }, 220);
+    return () => clearTimeout(t);
+  }, [query, live, networkId, members]);
+
+  const addUser = async (user) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const m = await client.networks.addMember(networkId, user.id, ["member"]);
+      setMembers(prev => [...prev, m.member || m]);
+      setQuery("");
+      setSuggestions([]);
+      setShowSug(false);
+    } catch (e) { /* keep list */ }
+    finally { setBusy(false); }
+  };
+
+  const inviteEmail = async (email) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.inviteMember(networkId, { email });
+      const res = await client.networks.getMembers(networkId);
+      setMembers((res && res.members) || []);
+      setQuery("");
+      setSuggestions([]);
+      setShowSug(false);
+    } catch (e) { /* keep list */ }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (id) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.removeMember(networkId, id);
+      setMembers(prev => prev.filter(m => m.id !== id));
+    } catch (e) { /* keep */ }
+    finally { setBusy(false); }
+  };
+
+  const setRole = async (id, role) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const updated = await client.networks.updateMemberPermissions(
+        networkId, id, role === "owner" ? ["owner"] : ["member"],
+      );
+      const m = updated.member || updated;
+      setMembers(prev => prev.map(x => x.id === id ? { ...x, permissions: m.permissions || x.permissions } : x));
+    } catch (e) { /* keep */ }
+    finally { setBusy(false); }
+  };
+
+  const openProfile = (id) => {
+    const base = (window.IndexApp && window.IndexApp.webBaseUrl
+      ? window.IndexApp.webBaseUrl()
+      : "https://index.network").replace(/\/+$/, "");
+    window.open(`${base}/u/${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const totalPages = Math.max(1, Math.ceil(members.length / MEMBERS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const slice = members.slice((safePage - 1) * MEMBERS_PAGE_SIZE, safePage * MEMBERS_PAGE_SIZE);
+  const noResults = showSug && query.trim() && !suggestions.length;
+
+  return (
+    <div>
+      <RuleLabel>Members ({members.length})</RuleLabel>
+      <div style={{ marginTop:12, position:"relative" }}>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowSug(true); }}
+          onFocus={() => setShowSug(true)}
+          placeholder="Search by name or add by email…"
+          style={{
+            width:"100%", boxSizing:"border-box",
+            padding:"9px 12px", border:"1px solid #000", background:"#fff",
+            fontFamily:"var(--mac-mono)", fontSize:12, color:"#000",
+          }}
+        />
+        {showSug && query.trim() && suggestions.length > 0 && (
+          <div style={{
+            position:"absolute", left:0, right:0, top:"100%", marginTop:2, zIndex:5,
+            border:"1px solid #000", background:"#fff", maxHeight:160, overflowY:"auto",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.2)",
+          }}>
+            {suggestions.map(u => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => addUser(u)}
+                style={{
+                  width:"100%", display:"flex", alignItems:"center", gap:10,
+                  padding:"8px 12px", border:"none", background:"transparent",
+                  cursor:"pointer", textAlign:"left",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                }}>
+                <MemberFace member={u} size={24}/>
+                <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}</span>
+                <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>Add</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {noResults && (
+          <div style={{
+            position:"absolute", left:0, right:0, top:"100%", marginTop:2, zIndex:5,
+            border:"1px solid #000", background:"#fff",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.2)",
+          }}>
+            {query.includes("@") ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => inviteEmail(query.trim())}
+                style={{
+                  width:"100%", padding:"10px 12px", border:"none", background:"transparent",
+                  cursor:"pointer", textAlign:"left",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                }}>Invite &quot;{query.trim()}&quot;</button>
+            ) : (
+              <div style={{
+                padding:"10px 12px", fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+              }}>No results found</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop:12, display:"grid", gap:2 }}>
+        {loading && (
+          <p style={{ fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)" }}>Loading members…</p>
+        )}
+        {!loading && slice.map(m => {
+          const perms = Array.isArray(m.permissions) ? m.permissions : [];
+          const isOwner = perms.includes("owner");
+          const isSelf = meId && m.id === meId;
+          return (
+            <div
+              key={m.id}
+              style={{
+                display:"flex", alignItems:"center", gap:10,
+                padding:"8px 10px",
+              }}>
+              <button
+                type="button"
+                onClick={() => openProfile(m.id)}
+                style={{
+                  flex:1, minWidth:0, display:"flex", alignItems:"center", gap:10,
+                  border:"none", background:"transparent", cursor:"pointer", textAlign:"left", padding:0,
+                }}>
+                <MemberFace member={m}/>
+                <span style={{
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                }}>
+                  {m.name}
+                  {m.isGhost && (
+                    <span style={{
+                      marginLeft:6, fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>ghost</span>
+                  )}
+                </span>
+              </button>
+              <span style={{
+                flex:"0 0 auto",
+                fontFamily:"var(--mac-mono)", fontSize:11,
+                padding:"2px 6px",
+                background: isOwner ? "#000" : "#E8E6E1",
+                color: isOwner ? "#fff" : "var(--ink-2)",
+              }}>{isOwner ? "Owner" : (perms.includes("member") ? "Member" : "Contact")}</span>
+              {!isOwner && perms.includes("member") && !isSelf && (
+                <button type="button" title="Promote to owner" disabled={busy}
+                  onClick={() => setRole(m.id, "owner")}
+                  style={memberActStyle}>↑</button>
+              )}
+              {isOwner && !isSelf && (
+                <button type="button" title="Demote to member" disabled={busy}
+                  onClick={() => setRole(m.id, "member")}
+                  style={memberActStyle}>↓</button>
+              )}
+              {!isOwner && (
+                <button type="button" title="Remove member" disabled={busy}
+                  onClick={() => remove(m.id)}
+                  style={{ ...memberActStyle, color:"var(--ink-warn)" }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {totalPages > 1 && (
+        <div style={{
+          marginTop:12, display:"flex", alignItems:"center", justifyContent:"space-between",
+          borderTop:"1px solid #ddd", paddingTop:10,
+          fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+        }}>
+          <span>
+            {(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, members.length)} of {members.length}
+          </span>
+          <span style={{ display:"flex", gap:6 }}>
+            <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} style={memberActStyle}>prev</button>
+            <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)} style={memberActStyle}>next</button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const memberActStyle = {
+  flex:"0 0 auto", cursor:"pointer",
+  padding:"2px 8px", border:"1px solid #000", background:"#fff",
+  fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
+};
+
+function networkShareUrl(net) {
+  if (!net || net.isPersonal || net.hasMasterKey || !networkIsOwner(net)) return null;
+  const base = (window.IndexApp && window.IndexApp.webBaseUrl
+    ? window.IndexApp.webBaseUrl()
+    : "https://index.network").replace(/\/+$/, "");
+  if (net.invitationCode) return `${base}/l/${encodeURIComponent(net.invitationCode)}`;
+  return null;
+}
+
+function networkIsOwner(net) {
+  if (!net || net.isPersonal) return false;
+  const role = net.role || (net.source && net.source.role);
+  return role === "owner" || role === "admin";
+}
+
+function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSignal }) {
+  const [local, setLocal] = useState(net);
   const [signals, setSignals] = useState(net.signals || []);
-  // Last removal, kept so it can be put back, removing is reversible by
-  // definition here, so the undo is the affordance that says "not deleted".
+  const [signalsLoading, setSignalsLoading] = useState(false);
   const [undo, setUndo] = useState(null);
+  const isOwner = networkIsOwner(local);
+  const [tab, setTab] = useState("overview");
+  const [copied, setCopied] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState([]);
+  // settings draft
+  const [title, setTitle] = useState(local.name || "");
+  const [prompt, setPrompt] = useState(local.blurb || "");
+  const [photo, setPhoto] = useState(local.photo || null);
+  const [photoDirty, setPhotoDirty] = useState(false);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [showDelete, setShowDelete] = useState(false);
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+  const meId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  const shareUrl = networkShareUrl(local);
+  const isPublic = local.joinPolicy === "anyone";
+  const settingsDirty = title !== (local.name || "") || prompt !== (local.blurb || "") || photoDirty || removePhoto;
+
+  useEffect(() => {
+    setLocal(net);
+    setTitle(net.name || "");
+    setPrompt(net.blurb || "");
+    setPhoto(net.photo || null);
+    setPhotoDirty(false);
+    setRemovePhoto(false);
+    if (networkIsOwner(net)) setTab((t) => (t === "overview" || t === "access" || t === "settings" ? t : "overview"));
+  }, [net]);
+
+  useEffect(() => {
+    if (!client || !local.id) return;
+    let cancelled = false;
+    setSignalsLoading(true);
+    client.networks.overview(local.id)
+      .then((res) => {
+        if (cancelled) return;
+        const intents = (res && res.intents) || [];
+        setSignals(intents.map(i => ({
+          id: i.id,
+          text: (i.summary && String(i.summary).trim()) || i.payload || "",
+          date: formatSignalDate(i.createdAt),
+          source: i,
+        })));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setSignalsLoading(false); });
+    return () => { cancelled = true; };
+  }, [client, local.id]);
+
+  useEffect(() => {
+    if (isOwner && typeof members.length === "number" && members.length > 0) {
+      const merged = { ...local, members: members.length };
+      if (local.members !== members.length) {
+        setLocal(merged);
+        if (onUpdated) onUpdated(merged);
+      }
+    }
+  }, [members.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const remove = (sig) => {
     const at = signals.findIndex(s => s.id === sig.id);
@@ -37608,6 +38390,123 @@ function NetworkDetail({ net, onBack, onLeave }) {
     setSignals(next);
     setUndo(null);
   };
+
+  const copyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) { /* leave idle */ }
+  };
+
+  const regenerateLink = async () => {
+    if (!client || !local.id || busy) return;
+    setBusy(true);
+    try {
+      const res = await client.networks.regenerateInvitationLink(local.id);
+      const n = (res && res.network) || res || {};
+      const perms = n.permissions || {};
+      const code = (perms.invitationLink && perms.invitationLink.code) || null;
+      const merged = { ...local, invitationCode: code };
+      setLocal(merged);
+      if (onUpdated) onUpdated(merged);
+      setShowRegenerateConfirm(false);
+    } catch (e) { /* leave idle */ }
+    finally { setBusy(false); }
+  };
+
+  const setJoinPolicy = async (anyone) => {
+    const next = anyone ? "anyone" : "invite_only";
+    if (local.joinPolicy === next || busy) return;
+    setBusy(true);
+    const prev = local;
+    const optimistic = {
+      ...local,
+      joinPolicy: next,
+      privacy: anyone ? "public" : "private",
+    };
+    setLocal(optimistic);
+    if (onUpdated) onUpdated(optimistic);
+    try {
+      if (client) {
+        const res = await client.networks.updatePermissions(local.id, { joinPolicy: next });
+        const n = (res && res.network) || res || {};
+        const perms = n.permissions || {};
+        const jp = perms.joinPolicy || next;
+        const code = (perms.invitationLink && perms.invitationLink.code)
+          || prev.invitationCode;
+        const merged = {
+          ...optimistic,
+          joinPolicy: jp,
+          privacy: jp === "anyone" ? "public" : "private",
+          invitationCode: code || null,
+        };
+        setLocal(merged);
+        if (onUpdated) onUpdated(merged);
+      }
+    } catch (e) {
+      setLocal(prev);
+      if (onUpdated) onUpdated(prev);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveSettings = async () => {
+    if (!client || !title.trim() || busy) return;
+    setBusy(true);
+    try {
+      let imageUrl = undefined;
+      if (photoDirty && photo && /^data:/i.test(photo)) {
+        imageUrl = await client.storage.uploadIndexImage(photo);
+      } else if (removePhoto) {
+        imageUrl = null;
+      }
+      const body = {
+        title: title.trim(),
+        prompt: prompt.trim() || null,
+      };
+      if (imageUrl !== undefined) body.imageUrl = imageUrl;
+      const res = await client.networks.update(local.id, body);
+      const n = (res && res.network) || res || {};
+      const merged = {
+        ...local,
+        name: n.title || title.trim(),
+        blurb: n.prompt != null ? n.prompt : (prompt.trim() || ""),
+        photo: window.IndexApp.avatarUrl(n.imageUrl) || (removePhoto ? null : photo),
+      };
+      setLocal(merged);
+      setTitle(merged.name);
+      setPrompt(merged.blurb || "");
+      setPhoto(merged.photo);
+      setPhotoDirty(false);
+      setRemovePhoto(false);
+      if (onUpdated) onUpdated(merged);
+    } catch (e) { /* keep draft */ }
+    finally { setBusy(false); }
+  };
+
+  const deleteNetwork = async () => {
+    if (!client || deleteText !== local.name || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.delete(local.id);
+      if (onDeleted) onDeleted(local);
+      else onBack();
+    } catch (e) { setBusy(false); }
+  };
+
+  const tabStyle = (id) => ({
+    padding:"8px 14px", border:"none", cursor:"pointer",
+    borderBottom: tab === id ? "2px solid #000" : "2px solid transparent",
+    background:"transparent",
+    fontFamily:"var(--mac-mono)", fontSize:13,
+    fontWeight: tab === id ? 700 : 400,
+    color: tab === id ? "#000" : "var(--ink-2)",
+    textTransform:"capitalize",
+  });
+
   return (
     <div style={{
       position:"absolute", inset:0,
@@ -37620,11 +38519,11 @@ function NetworkDetail({ net, onBack, onLeave }) {
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title={`index · ${net.name.toLowerCase()}`}
+          title={`index · ${local.name.toLowerCase()}`}
           onClose={onBack}
           style={{ height:"100%", minHeight:0 }}>
 
-          <div style={{ padding:"14px 24px 16px", borderBottom:"2px solid #000" }}>
+          <div style={{ padding:"14px 24px 0", borderBottom:"2px solid #000" }}>
             <button
               onClick={onBack}
               style={{
@@ -37633,82 +38532,314 @@ function NetworkDetail({ net, onBack, onLeave }) {
               }}>← back</button>
 
             <div style={{
-              marginTop:12,
+              marginTop:12, marginBottom:14,
               display:"flex", alignItems:"center", gap:14,
             }}>
-              <NetworkTile name={net.name} size={48} photo={net.photo}/>
+              <NetworkTile id={local.id} name={local.name} size={48} photo={local.photo}/>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{
                   fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",
-                }}>{net.name}</div>
+                }}>{local.name}</div>
                 <div style={{
                   marginTop:5, display:"flex", flexWrap:"wrap", gap:"4px 16px",
                 }}>
-                  {net.privacy && <MetaBit glyph="🔒">{net.privacy}</MetaBit>}
-                  <MetaBit glyph="👤">{net.members} members</MetaBit>
+                  {local.privacy && <MetaBit glyph="🔒">{local.privacy}</MetaBit>}
+                  <MetaBit glyph="👤">{local.members} members</MetaBit>
+                  {isOwner && <MetaBit glyph="★">owner</MetaBit>}
                 </div>
               </div>
 
-              {/* leaving is destructive, so it carries the red, but stays outline
-                  only, since it isn't the thing you came here to do */}
-              <button
-                onClick={() => onLeave && onLeave(net)}
-                style={{
-                  flex:"0 0 auto", cursor:"pointer",
-                  fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
-                  border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
-                  boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
-                }}>leave</button>
+              {!isOwner && (
+                <button
+                  onClick={() => onLeave && onLeave(local)}
+                  style={{
+                    flex:"0 0 auto", cursor:"pointer",
+                    fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                    border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
+                    boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
+                  }}>leave</button>
+              )}
             </div>
+
+            {isOwner && (
+              <div style={{ display:"flex", gap:2 }}>
+                <button type="button" style={tabStyle("overview")} onClick={() => setTab("overview")}>overview</button>
+                <button type="button" style={tabStyle("settings")} onClick={() => setTab("settings")}>settings</button>
+                <button type="button" style={tabStyle("access")} onClick={() => setTab("access")}>access</button>
+              </div>
+            )}
           </div>
 
           <div className="mac-scroll" style={{
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"14px 24px 20px",
           }}>
-            <div style={{
-              display:"flex", alignItems:"baseline", justifyContent:"space-between",
-              gap:12, marginBottom:12,
-            }}>
-              <RuleLabel>my signals</RuleLabel>
-              <span style={{
-                flex:"0 0 auto",
-                fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-              }}>{signals.length} signals</span>
-            </div>
-
-            {undo && (
-              <div className="fade-up" style={{
-                marginBottom:10, padding:"8px 12px",
-                border:"1px solid #000", background:"#F2F0EC",
-                display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-              }}>
-                <span style={{
-                  fontFamily:"var(--mac-sans)", fontSize:12, color:"#000",
-                }}>
-                  removed from {net.name}. the signal is still running everywhere else.
-                </span>
-                <button
-                  onClick={putBack}
-                  style={{
-                    flex:"0 0 auto", cursor:"pointer",
-                    padding:"4px 11px", border:"1px solid #000", background:"#fff",
-                    fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
-                    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-                  }}>put it back</button>
+            {isOwner && tab === "settings" ? (
+              <div style={{ display:"grid", gap:16 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:13 }}>
+                  <NetworkPhoto
+                    name={title || local.name}
+                    photo={removePhoto ? null : photo}
+                    onPick={(p) => { setPhoto(p); setPhotoDirty(true); setRemovePhoto(false); }}
+                    size={72}
+                  />
+                  {photo && !removePhoto && (
+                    <button
+                      type="button"
+                      onClick={() => { setRemovePhoto(true); setPhotoDirty(true); }}
+                      style={{
+                        border:"none", background:"transparent", cursor:"pointer",
+                        fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-warn)",
+                      }}>Remove image</button>
+                  )}
+                </div>
+                <TextField label="title" required value={title} onChange={setTitle} placeholder="Network title"/>
+                <div>
+                  <FieldLabel>prompt</FieldLabel>
+                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
+                    <textarea
+                      value={prompt}
+                      onChange={e => setPrompt(e.target.value)}
+                      placeholder="What people can share in this network…"
+                      rows={4}
+                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                  <button
+                    type="button"
+                    disabled={!settingsDirty || busy}
+                    onClick={() => {
+                      setTitle(local.name || "");
+                      setPrompt(local.blurb || "");
+                      setPhoto(local.photo || null);
+                      setPhotoDirty(false);
+                      setRemovePhoto(false);
+                    }}
+                    style={{
+                      fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                      border:"1px solid #000", background:"#fff", cursor:"pointer",
+                    }}>Cancel</button>
+                  <button
+                    type="button"
+                    disabled={!settingsDirty || !title.trim() || busy}
+                    onClick={saveSettings}
+                    style={{
+                      fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                      border:"1px solid #000", background:"#000", color:"#fff", cursor:"pointer",
+                    }}>{busy ? "Saving…" : "Save"}</button>
+                </div>
+                <div style={{ borderTop:"1px solid #ddd", paddingTop:14 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDelete(s => !s)}
+                    aria-expanded={showDelete}
+                    style={{
+                      display:"inline-flex", alignItems:"center", gap:6,
+                      border:"none", background:"transparent", cursor:"pointer",
+                      fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-warn)",
+                    }}>
+                    <span aria-hidden="true" style={{ fontSize:10, lineHeight:1 }}>
+                      {showDelete ? "▲" : "▼"}
+                    </span>
+                    Danger Zone
+                  </button>
+                  {showDelete && (
+                    <div style={{
+                      marginTop:10, padding:12, border:"1px solid var(--ink-warn)", background:"#FFF5F5",
+                      display:"grid", gap:10,
+                    }}>
+                      <p style={{ margin:0, fontFamily:"var(--mac-sans)", fontSize:13, color:"#8A0000" }}>
+                        Delete this network. Type the name to confirm.
+                      </p>
+                      <input
+                        value={deleteText}
+                        onChange={e => setDeleteText(e.target.value)}
+                        placeholder={local.name}
+                        style={{
+                          padding:"8px 10px", border:"1px solid #000",
+                          fontFamily:"var(--mac-mono)", fontSize:12,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={deleteText !== local.name || busy}
+                        onClick={deleteNetwork}
+                        style={{
+                          justifySelf:"end",
+                          fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                          border:"1px solid var(--ink-warn)", background:"#8A0000", color:"#fff",
+                          cursor:"pointer",
+                        }}>Delete</button>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            ) : isOwner && tab === "access" ? (
+              <div style={{ display:"grid", gap:22 }}>
+                {!local.hasMasterKey && (
+                  <div>
+                    <RuleLabel>Visibility</RuleLabel>
+                    <div style={{
+                      marginTop:12, display:"grid",
+                      gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:10,
+                    }}>
+                      <ChoiceCard
+                        title="Public"
+                        sub="Anyone can join"
+                        selected={isPublic}
+                        onClick={() => setJoinPolicy(true)}
+                      />
+                      <ChoiceCard
+                        title="Private"
+                        sub="Invite only"
+                        selected={!isPublic}
+                        onClick={() => setJoinPolicy(false)}
+                      />
+                    </div>
+                  </div>
+                )}
 
-            <div style={{ display:"grid", gap:10 }}>
-              {signals.map(s => (
-                <Signal key={s.id} sig={s} netName={net.name} onRemove={remove}/>
-              ))}
-            </div>
+                {!local.hasMasterKey && (
+                  <div>
+                    <RuleLabel>Invitation link</RuleLabel>
+                    <div style={{
+                      marginTop:12, display:"flex", alignItems:"center", gap:8,
+                      padding:"10px 12px",
+                      border:"1px solid #000", background:"#F2F0EC",
+                    }}>
+                      <code style={{
+                        flex:1, minWidth:0,
+                        fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      }}>{shareUrl || "No invitation link yet."}</code>
+                      {shareUrl && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setShowRegenerateConfirm((v) => !v)}
+                            disabled={busy}
+                            title="Regenerate invitation link"
+                            aria-label="Regenerate invitation link"
+                            style={{
+                              flex:"0 0 auto", cursor: busy ? "default" : "pointer",
+                              padding:"4px 10px", border:"1px solid #000",
+                              background: showRegenerateConfirm ? "#000" : "#fff",
+                              color: showRegenerateConfirm ? "#fff" : "#000",
+                              fontFamily:"var(--mac-mono)", fontSize:11,
+                              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                              opacity: busy ? 0.5 : 1,
+                            }}>↻</button>
+                          <button
+                            type="button"
+                            onClick={copyLink}
+                            title={copied ? "Copied" : "Copy link"}
+                            style={{
+                              flex:"0 0 auto", cursor:"pointer",
+                              padding:"4px 10px", border:"1px solid #000",
+                              background: copied ? "#000" : "#fff",
+                              color: copied ? "#fff" : "#000",
+                              fontFamily:"var(--mac-mono)", fontSize:11,
+                              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                            }}>{copied ? "copied" : "copy"}</button>
+                        </>
+                      )}
+                    </div>
+                    {showRegenerateConfirm && shareUrl && (
+                      <div style={{
+                        marginTop:8, padding:12,
+                        border:"1px solid #000", background:"#FFF5F5",
+                        display:"grid", gap:10,
+                      }}>
+                        <p style={{ margin:0, fontFamily:"var(--mac-sans)", fontSize:13, color:"#8A0000" }}>
+                          The current link stops working immediately. Regenerate?
+                        </p>
+                        <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setShowRegenerateConfirm(false)}
+                            style={{
+                              fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                              border:"1px solid #000", background:"#fff", color:"#000", cursor:"pointer",
+                            }}>Cancel</button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={regenerateLink}
+                            style={{
+                              fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                              border:"1px solid #000", background:"#000", color:"#fff", cursor:"pointer",
+                            }}>{busy ? "Regenerating…" : "Regenerate"}</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-            {!signals.length && (
-              <p style={{
-                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-              }}>you haven't published anything into this network yet.</p>
+                <NetworkMembers
+                  networkId={local.id}
+                  meId={meId}
+                  members={members}
+                  setMembers={setMembers}
+                  busy={busy}
+                  setBusy={setBusy}
+                />
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  display:"flex", alignItems:"baseline", justifyContent:"space-between",
+                  gap:12, marginBottom:12,
+                }}>
+                  <RuleLabel>Your Signals</RuleLabel>
+                  <span style={{
+                    flex:"0 0 auto",
+                    fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                  }}>{signalsLoading ? "…" : `${signals.length} signal${signals.length === 1 ? "" : "s"}`}</span>
+                </div>
+
+                {undo && (
+                  <div className="fade-up" style={{
+                    marginBottom:10, padding:"8px 12px",
+                    border:"1px solid #000", background:"#F2F0EC",
+                    display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+                  }}>
+                    <span style={{
+                      fontFamily:"var(--mac-sans)", fontSize:12, color:"#000",
+                    }}>
+                      removed from {local.name}. the signal is still running everywhere else.
+                    </span>
+                    <button
+                      onClick={putBack}
+                      style={{
+                        flex:"0 0 auto", cursor:"pointer",
+                        padding:"4px 11px", border:"1px solid #000", background:"#fff",
+                        fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
+                        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                      }}>put it back</button>
+                  </div>
+                )}
+
+                <div style={{ display:"grid", gap:10 }}>
+                  {signals.map(s => (
+                    <Signal
+                      key={s.id}
+                      sig={s}
+                      netName={local.name}
+                      onRemove={remove}
+                      onOpen={onOpenSignal ? () => onOpenSignal(s) : undefined}
+                    />
+                  ))}
+                </div>
+
+                {!signalsLoading && !signals.length && (
+                  <p style={{
+                    fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+                  }}>You haven&apos;t shared any signals in this network yet</p>
+                )}
+              </>
             )}
           </div>
         </MacWindow>
@@ -37717,7 +38848,7 @@ function NetworkDetail({ net, onBack, onLeave }) {
   );
 }
 
-function Networks({ onClose }) {
+function Networks({ onClose, onOpenSignal }) {
   // Live-only: the mirror holds the signed-in user's networks (set by
   // applyLoaded). Ensure it is an array so the local unshift below still
   // persists a just-created network to the other screens.
@@ -37753,38 +38884,96 @@ function Networks({ onClose }) {
   // loop; a single load (refreshed explicitly after mutations) is enough.
   useEffect(() => { loadRequests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // You made it, so you're in it and you run it.
-  const createNetwork = ({ name, desc, access, photo }) => {
-    NETWORKS.unshift({
+  // You made it, so you're in it and you run it. Picture is optional: a data
+  // URL from the picker is uploaded first so imageUrl on the server is a real
+  // storage key, not a discarded local preview. After create (or when a reviewed
+  // request is approved and the network lands in the list), owners open Access
+  // to copy the invitation / network link — same as the web Access tab.
+  const createNetwork = async ({ name, desc, access, photo }) => {
+    let imageUrl = null;
+    let photoOut = photo || undefined;
+    if (client && photo && /^data:/i.test(photo)) {
+      try {
+        imageUrl = await client.storage.uploadIndexImage(photo);
+        photoOut = window.IndexApp.avatarUrl(imageUrl) || imageUrl;
+      } catch (e) { /* keep the local data URL in the mirror */ }
+    }
+    const joinPolicy = access === "public" ? "anyone" : "invite_only";
+    let created = {
       id: `net-${Date.now().toString(36)}`,
       name,
       blurb: desc || undefined,
-      photo: photo || undefined,
+      photo: photoOut,
       members: 1,
       privacy: access,
-      role: "admin",
+      joinPolicy,
+      invitationCode: null,
+      role: "owner",
       joined: true,
+      isPersonal: false,
+      hasMasterKey: false,
       signals: [],
-    });
+    };
+    if (client) {
+      try {
+        const res = await client.networks.create({
+          title: name,
+          prompt: desc || undefined,
+          imageUrl: imageUrl || undefined,
+          joinPolicy,
+        });
+        const n = (res && res.network) || res || {};
+        const perms = n.permissions || {};
+        const jp = perms.joinPolicy || joinPolicy;
+        const code = perms.invitationLink && perms.invitationLink.code;
+        created = {
+          ...created,
+          id: n.id || created.id,
+          name: n.title || created.name,
+          members: (n._count && n._count.members) || n.memberCount || 1,
+          joinPolicy: jp,
+          privacy: jp === "anyone" ? "public" : "private",
+          invitationCode: code || null,
+          hasMasterKey: n.hasMasterKey === true,
+          photo: window.IndexApp.avatarUrl(n.imageUrl) || created.photo,
+          source: n,
+        };
+      } catch (e) { /* keep the optimistic mirror */ }
+    }
+    NETWORKS.unshift(created);
     setNets([...NETWORKS]);
     setCreating(false);
     setTab("mine");
-    if (client) {
-      client.networks.create({
-        title: name,
-        prompt: desc || undefined,
-        joinPolicy: access === "public" ? "anyone" : "invite_only",
-      }).catch(() => {});
-    }
+    setOpenNet(created);
+  };
+
+  const updateOpenNet = (merged) => {
+    setNets(prev => prev.map(n => n.id === merged.id ? { ...n, ...merged } : n));
+    const i = NETWORKS.findIndex(n => n.id === merged.id);
+    if (i >= 0) NETWORKS[i] = { ...NETWORKS[i], ...merged };
   };
 
   // Submit (or resubmit) a network request; resolves the request so the form
-  // can show its confirmation panel.
-  const submitRequest = (input) => {
-    if (!client) return Promise.resolve(null);
+  // can show its confirmation panel. Same upload path as create: a picked
+  // picture becomes a storage key before the request is written.
+  const submitRequest = async (input) => {
+    if (!client) return null;
+    let imageUrl = input.imageUrl;
+    if (input.photo && /^data:/i.test(input.photo)) {
+      try {
+        imageUrl = await client.storage.uploadIndexImage(input.photo);
+      } catch (e) { /* request still goes through without a picture */ }
+    }
+    const body = {
+      name: input.name,
+      purpose: input.purpose,
+      expectedSize: input.expectedSize,
+      joinPolicy: input.joinPolicy,
+      ...(imageUrl !== undefined ? { imageUrl } : {}),
+    };
     const p = editingRequest
-      ? client.networkRequests.update(editingRequest.id, input)
-      : client.networkRequests.create(input);
+      ? client.networkRequests.update(editingRequest.id, body)
+      : client.networkRequests.create(body);
     return p.then((res) => {
       loadRequests();
       return (res && res.request) || res;
@@ -37812,13 +39001,31 @@ function Networks({ onClose }) {
   };
 
   const leaveNetwork = (net) => {
-    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: false, role: undefined } : n));
+    setNets(prev => prev.filter(n => n.id !== net.id));
+    const i = NETWORKS.findIndex(n => n.id === net.id);
+    if (i >= 0) NETWORKS.splice(i, 1);
     if (client) client.networks.leave(net.id).catch(() => {});
     setOpenNet(null);
   };
 
+  const deleteNetwork = (net) => {
+    setNets(prev => prev.filter(n => n.id !== net.id));
+    const i = NETWORKS.findIndex(n => n.id === net.id);
+    if (i >= 0) NETWORKS.splice(i, 1);
+    setOpenNet(null);
+  };
+
   if (openNet) {
-    return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)} onLeave={leaveNetwork}/>;
+    return (
+      <NetworkDetail
+        net={openNet}
+        onBack={() => setOpenNet(null)}
+        onLeave={leaveNetwork}
+        onUpdated={updateOpenNet}
+        onDeleted={deleteNetwork}
+        onOpenSignal={onOpenSignal}
+      />
+    );
   }
   // Its own window, like the profile screen, not an overlay on this one.
   if (creating) {
@@ -38089,17 +39296,9 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
 // Your negotiator's identity, the one agent that speaks for you, and the only
 // thing on this page with a face. Laid out like the profile block in settings
 // (picture on the left, name beside it) because it is the same kind of thing:
-// who you are to the network, and who your agent is.
-//
-// Shuffle is the whole control surface: a generated avatar's point is that a
-// new one is one click away, and the kit has 3,600 draws behind it.
-function NegotiatorProfile({ agent, onShuffle,
-                            runtimeOptions, runtime, onChangeRuntime }) {
-  const btn = {
-    fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
-    border:"1px solid #000", background:"#fff", color:"#000",
-    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-  };
+// who you are to the network, and who your agent is. The face is derived from
+// your account id, so it is persistent and needs no control surface.
+function NegotiatorProfile({ agent, runtimeOptions, runtime, onChangeRuntime }) {
   return (
     <div style={{ display:"grid", gap:16 }}>
       {/* Pick the runtime first, then dress it. Which one carries your
@@ -38117,12 +39316,8 @@ function NegotiatorProfile({ agent, onShuffle,
         }}>index takes over if it's unavailable.</span>
       </div>
 
-      {/* No edit badge over the picture. The upload affordance sat in the
-          bottom-right corner, which is exactly where the agent's mark now
-          sits, so the pencil covered the thing it was there to change.
-          Shuffle is the control. */}
       <div style={{ display:"grid", gap:2 }}>
-        <RuleLabel size={13}>customize your agent</RuleLabel>
+        <RuleLabel size={13}>your agent</RuleLabel>
         <p style={{
           margin:"0 0 8px", maxWidth:560,
           fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
@@ -38133,14 +39328,9 @@ function NegotiatorProfile({ agent, onShuffle,
         <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
           <MyAgentAvatar size={54}/>
 
-          <div style={{ display:"grid", gap:6, minWidth:0 }}>
-            <div style={{
-              fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
-            }}>{agent.name}</div>
-            <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
-              <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
-            </div>
-          </div>
+          <div style={{
+            fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
+          }}>{agent.name}</div>
         </div>
       </div>
     </div>
@@ -38436,23 +39626,9 @@ function Agents({ onClose }) {
     [agentId]: { ...p[agentId], [permId]: !(p[agentId] || {})[permId] },
   }));
 
-  // Your negotiator's picture. setMyAgentFace writes the shared record so every
-  // other surface (the feed, a question card, onboarding) picks it up on its
-  // next render, and persists it so the draw survives a relaunch. `bump` only
-  // exists to re-render this pane, since the record is a plain object.
-  const [, bump] = useState(0);
+  // Your negotiator's picture is derived from your account id (see myAgent in
+  // primitives), so it is the same everywhere with nothing to configure here.
   const myNegotiator = myAgent();
-  // any distinct string moves the hash; the counter stops two shuffles in the
-  // same millisecond from landing on the same draw
-  const shuffleCount = useRef(0);
-  const shuffleFace = () => {
-    shuffleCount.current += 1;
-    setMyAgentFace({
-      seed: `${currentMe().name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
-      photo: null,
-    });
-    bump(n => n + 1);
-  };
 
   // Rows are the builtin Index runtime plus the detected local runtimes.
   // Index leads the list: always on, not switchable — it is the system
@@ -38578,12 +39754,11 @@ function Agents({ onClose }) {
               margin:"8px 0 12px",
               fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              one agent speaks for you in the network. pick which runtime carries it, then set how it looks when it does.
+              one agent speaks for you in the network. pick which runtime carries it.
             </p>
 
             <NegotiatorProfile
               agent={myNegotiator}
-              onShuffle={shuffleFace}
               runtimeOptions={negotiatorOptions}
               runtime={negotiator}
               onChangeRuntime={setNegotiator}
@@ -38946,35 +40121,10 @@ const SHELF_VISIBLE_ROWS = 6;
 
 /* ---------- account shelf ---------- */
 
-// Your photo if you've set one, otherwise a solid accent tile with lowercase
-// initials, deliberately not the photo Avatar used on the radar, so "you"
-// reads differently from "them".
-function InitialsTile({ name, size = 46, photo }) {
-  if (photo) {
-    return (
-      <img
-        src={photo}
-        alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size,
-          objectFit:"cover", display:"block",
-          border:"1px solid #000",
-          // matches Avatar and the settings preview
-          filter:"grayscale(1) contrast(1.05)",
-        }}/>
-    );
-  }
-  const initials = (name || "")
-    .split(/\s+/).filter(Boolean).slice(0, 2)
-    .map(w => w[0]).join("").toLowerCase();
+// Account shelf avatar — same bauhaus fallback as everywhere else.
+function InitialsTile({ id, name, size = 46, photo }) {
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size,
-      border:"1px solid #000", background:"#FF8A00",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      fontFamily:"var(--mac-mono)", fontSize: size * 0.4,
-      fontWeight:700, color:"#000", letterSpacing:0.5,
-    }}>{initials}</span>
+    <Avatar id={id} name={name} photo={photo} size={size}/>
   );
 }
 
@@ -39096,7 +40246,7 @@ function UserMenu({ me, onSelect }) {
           padding:"7px 11px", textAlign:"left", cursor:"pointer",
           border:"1px solid #000", background: open ? "#F2EFE6" : "#fff",
         }}>
-        <InitialsTile name={me.name} size={34} photo={me.photo}/>
+        <InitialsTile id={me.id} name={me.name} size={34} photo={me.photo}/>
         <span style={{ flex:1, minWidth:0 }}>
           <span style={{
             display:"block",
@@ -39192,7 +40342,17 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return <Settings initialTab={settingsTab} onClose={() => setSettingsTab(null)}/>;
   }
   if (showNetworks) {
-    return <Networks onClose={() => setShowNetworks(false)}/>;
+    return (
+      <Networks
+        onClose={() => setShowNetworks(false)}
+        onOpenSignal={(sig) => {
+          const intent = signals.find(s => s.id === sig.id)
+            || (window.INDEX_DATA.INTENTS || []).find(s => s.id === sig.id);
+          setShowNetworks(false);
+          if (intent && onPickExisting) onPickExisting(intent);
+        }}
+      />
+    );
   }
   if (showAgents) {
     return <Agents onClose={() => setShowAgents(false)}/>;
@@ -40865,31 +42025,45 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   };
   // Accepting means "I want to talk to this person", so go straight into the
-  // chat instead of letting the card silently jump to the accepted tab.
+  // chat instead of letting the card silently jump to the accepted tab. Match
+  // the web (useOpportunityActions): in live mode the card only moves to
+  // "accepted" once the server confirms, so a failed accept can't leave a
+  // phantom in the accepted tab. On failure, refresh from the server so the
+  // radar reflects the real state instead of the optimistic one.
   const acceptPerson = (personId) => {
-    setPeople(prev => prev.map(p =>
-      p.id === personId ? { ...p, status: "accepted" } : p));
     if (live && client) {
-      // Open the chat only after the accept lands; startChatForIntent expects
-      // an accepted opportunity.
       client.opportunities.updateStatusForIntent(personId, "accepted", intentId)
-        .then(() => { openChat(personId); setTimeout(refreshRadar, 1500); })
-        .catch(() => {});
+        .then(() => {
+          setPeople(prev => prev.map(p =>
+            p.id === personId ? { ...p, status: "accepted" } : p));
+          openChat(personId);
+          setTimeout(refreshRadar, 1500);
+        })
+        .catch(() => refreshRadar());
       return;
     }
+    setPeople(prev => prev.map(p =>
+      p.id === personId ? { ...p, status: "accepted" } : p));
     openChat(personId);
   };
   // Pass is the other half of the ready-stage decision, decline the intro
-  // instead of accepting it. They drop out of the radar into "passed".
+  // instead of accepting it. They drop out of the radar into "passed". Like
+  // accept, only commit the local status once the server confirms so a failed
+  // reject can't hide a still-pending opportunity; refresh on failure.
   const passPerson = (personId) => {
     if (chatId === personId) closeChats();
-    setPeople(prev => prev.map(p =>
-      p.id === personId ? { ...p, status: "passed" } : p));
     if (live && client) {
       client.opportunities.updateStatusForIntent(personId, "rejected", intentId)
-        .then(() => setTimeout(refreshRadar, 1500))
-        .catch(() => {});
+        .then(() => {
+          setPeople(prev => prev.map(p =>
+            p.id === personId ? { ...p, status: "passed" } : p));
+          setTimeout(refreshRadar, 1500);
+        })
+        .catch(() => refreshRadar());
+      return;
     }
+    setPeople(prev => prev.map(p =>
+      p.id === personId ? { ...p, status: "passed" } : p));
   };
   const sendChat = () => {
     const text = chatDraft.trim();
@@ -42157,7 +43331,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         transition:"all .12s ease",
       }}>
       <span onClick={openProfile} title="view profile" style={{ cursor:"pointer", lineHeight:0 }}>
-        <Avatar name={person.name} size={36} ring={accepted}/>
+        <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={36} ring={accepted}/>
       </span>
       <div style={{ display:"grid", gap:3, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", minWidth:0 }}>
@@ -42329,7 +43503,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
                 ? "inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 1px 1px 0 rgba(0,0,0,0.2)"
                 : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
             }}>
-              <Avatar name={c.name} size={32}/>
+              <Avatar id={c.userId || c.id} name={c.name} photo={c.person ? c.person.photo : null} size={32}/>
               <div style={{ display:"grid", gap:3, minWidth:0 }}>
                 <div style={{ fontFamily:"var(--amiga-title)", fontSize:14, fontWeight:600, color:"#000" }}>
                   {c.name}
@@ -42403,7 +43577,7 @@ function SummaryWindow({ person, onClose }) {
           padding:"12px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} size={34}/>
+          <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
           <div style={{ display:"grid", gap:2, minWidth:0 }}>
             <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
               {person.name}
@@ -42592,6 +43766,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
     ? {
         ...person,
         bio: person.bio || fetched.bio,
+        photo: person.photo || fetched.photo,
         socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
       }
     : person;
@@ -42606,7 +43781,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
           padding:"14px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} size={42} ring={isAccepted}/>
+          <Avatar id={person.userId || person.id} name={person.name} photo={merged.photo} size={42} ring={isAccepted}/>
           <div style={{
             fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000",
             minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
@@ -42706,7 +43881,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
             padding:"12px 16px", borderBottom:"1px solid #000",
             display:"flex", gap:12, alignItems:"center", background:"#fff",
           }}>
-            <Avatar name={person.name} size={34}/>
+            <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
             <div style={{ display:"grid", gap:2, minWidth:0 }}>
               <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
                 {person.name}
@@ -42942,6 +44117,7 @@ async function resolveDeepLinkPerson(route, people) {
       if (person && other) {
         person.userId = person.userId || other.id || null;
         person.name = other.name || person.name;
+        person.photo = person.photo || other.avatar || null;
       }
       return person;
     }
@@ -42965,6 +44141,9 @@ function App() {
   // True until the user creates their first signal, the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
+  // Public-research enrichment result, fetched on the "setting up" screen and
+  // handed to the first-run review so it opens pre-filled without a second load.
+  const [enriched, setEnriched] = useState(null);
   // Live snapshot state; null until loadSnapshot() resolves (or in demo mode).
   const [snapshot, setSnapshot] = useState(null);
   const [me, setMe] = useState(null);
@@ -42977,9 +44156,6 @@ function App() {
   const [conversation, setConversation] = useState([]);
   const [field, setField] = useState([]);
   const [simRate, setSimRate] = useState(1);
-  // A fresh sign-in (vs an already-authed relaunch) goes through the original
-  // profile-review gate after the building screen.
-  const freshLoginRef = useRef(false);
 
   // ---- deep links (index:// and universal links) --------------------------
   // Swift forwards the raw URL it was handed and decides nothing about it;
@@ -43084,13 +44260,24 @@ function App() {
         loaded = snap;
       }
       if (cancelled) return;
+      let needsProfile = false;
       if (loaded) {
         applyLoaded(loaded);
         setFreshUser((loaded.snapshot.INTENTS || []).length === 0);
+        // Durable gate: a user who hasn't confirmed their profile yet reviews it
+        // now, whether this is a fresh sign-in or a relaunch mid-onboarding.
+        const ob = loaded.raw && loaded.raw.user && loaded.raw.user.onboarding;
+        needsProfile = !(ob && ob.profileConfirmedAt);
       }
-      // First run after a sign-in reviews the assembled profile, exactly like
-      // the original flow; an already-signed-in relaunch goes straight in.
-      setScreen(freshLoginRef.current ? "profile" : "intents");
+      // First run only: run the public-research enrichment behind this same
+      // "setting up" loader so the review opens filled and the animation shows
+      // once. Gated on needsProfile so returning users are never re-enriched.
+      if (needsProfile && nativeAuthed() && window.IndexApp && window.IndexApp.triggerEnrichment) {
+        const res = await window.IndexApp.triggerEnrichment().catch(() => null);
+        if (cancelled) return;
+        setEnriched(res);
+      }
+      setScreen(needsProfile ? "onboarding" : "intents");
     })();
     return () => { cancelled = true; };
   }, [screen]);
@@ -43231,7 +44418,6 @@ function App() {
   };
 
   const startLogin = () => {
-    freshLoginRef.current = true;
     if (window.IndexApp && window.IndexApp.login()) {
       // Native bridge present: wait for __indexAuthChanged; Login shows waiting.
       return true;
@@ -43250,25 +44436,26 @@ function App() {
         {screen === "login"       && <Login onSignIn={startLogin}/>}
         {/* Boot loader: assembles the live snapshot, then opens the hub. */}
         {screen === "building"    && <BuildingProfile/>}
-        {/* First run: review the profile we assembled, then into the hub.
-            Declining returns to sign-in with nothing written, so the review
-            replays on the next sign-in rather than being silently approved. */}
-        {screen === "profile"     && <Settings
-                                       initialTab="profile"
-                                       profileOnly
-                                       onClose={() => { freshLoginRef.current = false; signOut(); }}
-                                       onDone={() => {
-                                         freshLoginRef.current = false;
-                                         if (!nativeAuthed()) setFreshUser(true);
-                                         setScreen("intents");
-                                       }}/>}
         {screen === "intents"     && <Intents
                                        fresh={freshUser}
                                        onPickExisting={pickExistingIntent}
                                        onNew={goNewIntent}
                                        onSignOut={signOut}/>}
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
-        {screen === "onboarding"  && <Onboarding onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
+        {/* First run: the getting-started profile review, now backed by real
+            enrichment. Settings drafts via preview_user_context, saves the
+            approved profile through confirm_user_context (which records
+            onboarding.profileConfirmedAt so this screen doesn't reappear), and
+            the profile save enqueues the full enrich.user pipeline. Declining
+            (sign out) leaves the profile unconfirmed, so the review replays on
+            the next sign-in rather than being silently approved. */}
+        {screen === "onboarding"  && <Settings
+                                       initialTab="profile"
+                                       profileOnly
+                                       enrich
+                                       enriched={enriched}
+                                       onClose={signOut}
+                                       onDone={() => { setFreshUser((INTENTS || []).length === 0); setScreen("new-intent"); }}/>}
         {/* A deep-linked card floats over whatever screen is showing: the link
             can land on the hub, where the radar's selection state doesn't
             exist. */}

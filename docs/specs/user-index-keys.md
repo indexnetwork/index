@@ -59,7 +59,7 @@ All existing endpoints that accept a UUID in path params now also accept a key (
 ## Constraints
 
 - Keys are unique per table but not globally unique across tables
-- Personal networks can have keys (auto-generated from user's name + "-personal" or similar), but personal networks remain hidden from public listings
+- Personal networks can have keys (auto-generated from user's name + "-personal" or similar), but personal networks are not listed in public discovery
 - Key column is nullable to support existing records without keys
 - Prefix matching uses SQL LIKE, not full-text search
 - Prefix matching minimum length is not enforced server-side (the CLI displays 8 chars, but the API accepts any prefix length)

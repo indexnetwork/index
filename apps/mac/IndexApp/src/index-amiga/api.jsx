@@ -24,6 +24,17 @@ window.IndexApp = (function () {
       : raw.replace(/\/+$/, "");
   }
 
+  // users.avatar is either a full URL (legacy Google/OAuth photos) or an S3
+  // object key like "avatars/<userId>/<uuid>.jpg". Keys are served by the API at
+  // {base}/storage/<key>; in the WebView a bare key would resolve against the app
+  // origin and 404, so absolutize it. Absolute (http/https/data) values pass
+  // through untouched.
+  function avatarUrl(avatar) {
+    if (!avatar) return null;
+    if (/^(https?:|data:)/i.test(avatar)) return avatar;
+    return `${apiBaseUrl()}/storage/${String(avatar).replace(/^\/+/, "")}`;
+  }
+
   function getClient() {
     if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
     return window.IndexApi.createIndexApiClient({
@@ -156,10 +167,42 @@ window.IndexApp = (function () {
     return {
       snapshot,
       me: mapMe(user),
-      networks: mapNetworks(networks),
+      networks: mapNetworks(networks, user),
       features,
       raw: { user, features, networks, intents, questions, radarItems },
     };
+  }
+
+  // Web origin for share / invitation links. Always pair with the active API
+  // host (drop leading `protocol.`) — never deepLinkHosts[0] (prod AASA host).
+  // Remote APP_URL wins when set; localhost APP_URL is ignored for remote APIs.
+  function webBaseUrl() {
+    try {
+      const u = new URL(apiBaseUrl());
+      let host = u.hostname;
+      if (host === "localhost" || host === "127.0.0.1") {
+        const appUrl = native().appUrl;
+        if (appUrl) return String(appUrl).replace(/\/+$/, "");
+        return `${u.protocol}//${host}:3000`;
+      }
+      if (host.startsWith("protocol.")) host = host.slice("protocol.".length);
+      const appUrl = native().appUrl;
+      if (appUrl) {
+        try {
+          const a = new URL(appUrl);
+          if (a.hostname && a.hostname !== "localhost" && a.hostname !== "127.0.0.1") {
+            return String(appUrl).replace(/\/+$/, "");
+          }
+        } catch (e) { /* ignore bad APP_URL */ }
+      }
+      return `https://${host}`;
+    } catch (e) { /* fall through */ }
+
+    const appUrl = native().appUrl;
+    if (appUrl) return String(appUrl).replace(/\/+$/, "");
+    const hosts = native().deepLinkHosts;
+    const host = Array.isArray(hosts) && hosts.length ? String(hosts[0]) : "index.network";
+    return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
   }
 
   // Map an API user onto the shape the UI's ME expects. Live-only: there is no
@@ -177,25 +220,65 @@ window.IndexApp = (function () {
       email: user.email || "",
       location: user.location || "",
       intro: user.intro || user.bio || "",
-      photo: user.avatar || null,
+      photo: avatarUrl(user.avatar),
       socials,
       websites: [],
       source: user,
     };
   }
 
-  function mapNetworks(networks) {
-    return networks.map((n) => ({
-      id: n.id,
-      name: n.title || n.name || "untitled",
-      members: (n._count && n._count.members) || n.memberCount || 0,
-      role: n.isPersonal ? "personal" : (n.role || "member"),
-      joined: true,
-      isPersonal: n.isPersonal === true,
-      privacy: n.joinPolicy === "anyone" ? "public" : "private",
-      signals: [],
-      source: n,
-    }));
+  function mapNetworks(networks, user) {
+    const meId = user && user.id;
+    return networks.map((n) => {
+      const joinPolicy = (n.permissions && n.permissions.joinPolicy) || n.joinPolicy || "invite_only";
+      const invite = (n.permissions && n.permissions.invitationLink) || n.invitationLink || null;
+      // Prefer API `role` (viewer membership). Falling back to user.id ===
+      // network.user.id is wrong for multi-owner networks.
+      const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
+      const ownerId = n.user && n.user.id;
+      const inferredOwner = !!(meId && ownerId && meId === ownerId);
+      const role = n.isPersonal
+        ? "personal"
+        : (apiRole || (inferredOwner ? "owner" : "member"));
+      return {
+        id: n.id,
+        name: n.title || n.name || "untitled",
+        blurb: n.prompt || n.description || "",
+        members: (n._count && n._count.members) || n.memberCount || 0,
+        role,
+        joined: true,
+        isPersonal: n.isPersonal === true,
+        hasMasterKey: n.hasMasterKey === true,
+        hidden: n.hidden === true,
+        privacy: joinPolicy === "anyone" ? "public" : "private",
+        joinPolicy,
+        invitationCode: invite && invite.code ? invite.code : null,
+        // Same key resolution as user avatars: S3 keys need the storage base.
+        photo: avatarUrl(n.imageUrl || n.photo || null),
+        signals: [],
+        source: n,
+      };
+    });
+  }
+
+  // ---- tools + enrichment -------------------------------------------------
+
+  // Invoke a protocol tool over REST (POST /tools/:name). Onboarding-allowed
+  // tools (preview_user_context, confirm_user_context) work with the x-api-key.
+  // Resolves the parsed tool result envelope ({ success, data } | { success:false, ... }).
+  function invokeTool(toolName, query) {
+    const c = getClient();
+    if (!c) return Promise.reject(new Error("no api client"));
+    return c.tools.invoke(toolName, query || {});
+  }
+
+  // Run the full public-research enrichment inline (POST /enrichment/enrich) and
+  // resolve { enriched, profile:{ name, intro, location, socials } } so callers
+  // can display discovered socials immediately. Other enrichment is automatic.
+  function triggerEnrichment() {
+    const c = getClient();
+    if (!c) return Promise.reject(new Error("no api client"));
+    return c.enrichment.trigger();
   }
 
   // ---- fetch-based SSE ----------------------------------------------------
@@ -358,6 +441,8 @@ window.IndexApp = (function () {
     apiKey,
     isAuthed,
     apiBaseUrl,
+    avatarUrl,
+    webBaseUrl,
     getClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,
@@ -375,6 +460,8 @@ window.IndexApp = (function () {
     streamChat,
     streamInbox,
     mcpCall,
+    invokeTool,
+    triggerEnrichment,
   };
 })();
 

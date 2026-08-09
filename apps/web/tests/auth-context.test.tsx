@@ -79,7 +79,7 @@ function renderAuthProviderAt(route: string) {
   );
 }
 
-describe('AuthProvider onboarding routing', () => {
+describe('AuthProvider routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.useSession.mockReturnValue({
@@ -90,10 +90,10 @@ describe('AuthProvider onboarding routing', () => {
     mocks.authService.updateProfile.mockResolvedValue(incompleteUser());
   });
 
-  test('redirects an authenticated incomplete user from the home page to onboarding', async () => {
+  test('allows an authenticated incomplete user to stay on the home page', async () => {
     renderAuthProviderAt('/');
 
-    expect((await screen.findByTestId('location')).textContent).toContain('/onboarding');
+    expect((await screen.findByTestId('location')).textContent).toBe('/');
   });
 
   test('allows an authenticated incomplete user to stay on networks', async () => {

@@ -44,7 +44,6 @@ export interface OnboardingState {
 export interface NetworkPermissionsState {
   joinPolicy: 'anyone' | 'invite_only';
   invitationLink: { code: string } | null;
-  allowGuestVibeCheck: boolean;
   contextInjection?: { discovery: boolean };
 }
 
@@ -60,6 +59,9 @@ export interface NetworkRequestDetails {
   audience?: string;
   expectedSize?: string;
   notes?: string;
+  // Optional preferred access, mirrored onto networks.permissions on create/update
+  // so approval does not have to re-ask. Same values as create-network joinPolicy.
+  joinPolicy?: 'anyone' | 'invite_only';
   reviewNote?: string;
   submittedAt: string;
   reviewedAt?: string;
@@ -788,7 +790,6 @@ export const networks = pgTable('networks', {
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
   masterKeyHash: text('master_key_hash'),
-  hidden: boolean('hidden').default(false).notNull(),
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
   requestStatus: text('request_status').$type<NetworkRequestStatus>(),
@@ -796,7 +797,6 @@ export const networks = pgTable('networks', {
   permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',
     invitationLink: null,
-    allowGuestVibeCheck: false,
   }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

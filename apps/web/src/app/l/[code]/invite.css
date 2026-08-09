@@ -1,0 +1,213 @@
+/* Exact shell from IndexApp/Sources/main.swift auth-callback page:
+   #14241f / #F4FBF6, Public Sans, wordmark nav, centered .c column. */
+
+.invite {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #14241f;
+  color: #f4fbf6;
+  font-family: "Public Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.invite .invite-nav {
+  display: flex;
+  align-items: center;
+  padding: 22px 56px;
+}
+
+.invite .invite-nav a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.invite .invite-nav img {
+  height: 14px;
+  width: auto;
+  display: block;
+}
+
+.invite main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.invite .c {
+  text-align: center;
+  max-width: 420px;
+  width: 100%;
+}
+
+.invite .invite-kicker {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 10px;
+  color: rgba(244, 251, 246, 0.78);
+}
+
+.invite h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: #f4fbf6;
+  word-break: break-word;
+}
+
+.invite .invite-meta,
+.invite .invite-status,
+.invite .invite-error {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+  color: rgba(244, 251, 246, 0.78);
+}
+
+.invite .cta-stack {
+  display: grid;
+  grid-template-columns: 158px 158px;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 26px;
+}
+
+.invite .cta-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  aspect-ratio: 1;
+  width: 158px;
+  box-sizing: border-box;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  text-transform: uppercase;
+  text-decoration: none;
+  text-align: center;
+  line-height: 1.35;
+  padding: 12px 8px;
+  border: 1px solid transparent;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.invite .cta-btn svg,
+.invite .cta-btn img {
+  flex: 0 0 auto;
+  display: block;
+}
+
+.invite .cta-btn img {
+  width: 42px;
+  height: auto;
+}
+
+.invite .cta-btn.primary img {
+  width: 56px;
+}
+
+.invite .cta-btn.primary {
+  background: #e08a2e;
+  color: #000;
+  border-color: #e08a2e;
+}
+
+.invite .cta-btn.primary:hover {
+  background: #f0a04b;
+  border-color: #f0a04b;
+}
+
+.invite .cta-btn.ghost {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(244, 251, 246, 0.4);
+}
+
+.invite .cta-btn.ghost:hover {
+  background: rgba(244, 251, 246, 0.08);
+}
+
+.invite .cta-btn--disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.invite .cta-btn-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.invite .invite-meta--spaced {
+  margin-top: 18px;
+}
+
+.invite .invite-foot {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(244, 251, 246, 0.22);
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(244, 251, 246, 0.78);
+}
+
+.invite .invite-foot a {
+  color: #e08a2e;
+  text-decoration: none;
+}
+
+.invite .invite-foot a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  .invite .invite-nav {
+    padding: 18px 22px;
+  }
+}
+
+.invite .invite-auth {
+  margin-top: 28px;
+  width: 100%;
+  max-width: 440px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+
+.invite .invite-auth .auth {
+  border-top: 1px solid rgba(244, 251, 246, 0.22);
+  padding-top: 24px;
+}
+
+.invite .invite-status--join {
+  margin-top: 24px;
+}
+
+.invite .invite-retry {
+  margin-top: 16px;
+  padding: 10px 18px;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #14241f;
+  background: #e08a2e;
+  border: 1px solid #e08a2e;
+  cursor: pointer;
+}
+
+.invite .invite-retry:hover {
+  background: #f0a04b;
+  border-color: #f0a04b;
+}

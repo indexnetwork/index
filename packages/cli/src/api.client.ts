@@ -5,10 +5,10 @@
  * common error patterns (401, network errors).
  */
 
-import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, SearchedUser, AddMemberResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, ToolResult } from "./types";
+import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, SearchedUser, AddMemberResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, ToolResult } from "./types";
+export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
 export interface UptakeQuestion {
   id: string;
@@ -35,6 +35,16 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+function isEarlyAccessNetworkCreationError(error: unknown): error is ApiError {
+  if (!(error instanceof ApiError) || error.status !== 403) return false;
+  const response = error.response;
+  return typeof response === "object"
+    && response !== null
+    && "error" in response
+    && typeof response.error === "string"
+    && response.error.startsWith("Network creation is in early access.");
 }
 
 export class ApiClient {
@@ -162,13 +172,19 @@ export class ApiClient {
     return (await res.json()) as OpportunityDetail;
   }
 
-  /** Accept an opportunity over REST, optionally acknowledging uptake questions. */
-  async acceptOpportunity(id: string, acknowledgedUptakeQuestionIds?: string[]): Promise<Record<string, unknown>> {
+  /** Update an opportunity status over REST, optionally acknowledging uptake questions on acceptance. */
+  async updateOpportunityStatus(
+    id: string,
+    status: "accepted" | "rejected",
+    acknowledgedUptakeQuestionIds?: string[],
+  ): Promise<Record<string, unknown>> {
     const res = await this.patch(`/api/opportunities/${id}/status`, {
-      status: "accepted",
-      ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}),
+      status,
+      ...(status === "accepted" && acknowledgedUptakeQuestionIds
+        ? { acknowledgedUptakeQuestionIds }
+        : {}),
     });
-    return (await res.json()) as Record<string, unknown>;
+    return await res.json() as Record<string, unknown>;
   }
 
   /**
@@ -254,6 +270,10 @@ export class ApiClient {
     return body;
   }
 
+  async updateIntent(intentId: string, description: string): Promise<ToolResult> {
+    return this.callTool("update_intent", { intentId, description });
+  }
+
   // ── Network methods ─────────────────────────────────────────────
 
   /**
@@ -272,20 +292,31 @@ export class ApiClient {
   }
 
   /**
-   * Create a new network.
+   * Create a new network or submit an early-access creation request.
    *
    * @param title - The network title.
    * @param prompt - Optional description/prompt for the network.
-   * @returns The created network object.
-   * @throws Error on auth failure or network error.
+   * @returns A tagged created-network or submitted-request result.
+   * @throws Error on auth failure, unrelated authorization errors, or network error.
    */
-  async createNetwork(title: string, prompt?: string): Promise<Network> {
-    const res = await this.post("/api/networks", {
-      title,
-      ...(prompt ? { prompt } : {}),
+  async createNetworkOrRequest(title: string, prompt?: string): Promise<NetworkCreateResult> {
+    try {
+      const res = await this.post("/api/networks", {
+        title,
+        ...(prompt ? { prompt } : {}),
+      });
+      const body = await res.json() as { network: Network };
+      return { kind: "created", network: body.network };
+    } catch (error) {
+      if (!isEarlyAccessNetworkCreationError(error)) throw error;
+    }
+
+    const res = await this.post("/api/network-requests", {
+      name: title,
+      ...(prompt ? { purpose: prompt } : {}),
     });
-    const body = (await res.json()) as { network: Network };
-    return body.network;
+    const body = await res.json() as { request: NetworkRequest };
+    return { kind: "requested", request: body.request };
   }
 
   /**
@@ -338,34 +369,17 @@ export class ApiClient {
     await this.post(`/api/networks/${id}/leave`, {});
   }
 
-  /**
-   * Search users by query string, optionally filtering by network membership.
-   *
-   * @param query - Search query (email or name).
-   * @param networkId - Optional network ID to exclude existing members.
-   * @returns Array of matching user objects.
-   * @throws Error on auth failure or network error.
-   */
-  async searchUsers(query: string, networkId?: string): Promise<SearchedUser[]> {
-    const params = new URLSearchParams({ q: query });
-    if (networkId) params.set("networkId", networkId);
-    const res = await this.get(`/api/networks/search-users?${params.toString()}`);
-    const body = (await res.json()) as { users: SearchedUser[] };
-    return body.users;
-  }
-
-  /**
-   * Add a member to a network.
-   *
-   * @param networkId - The network ID.
-   * @param userId - The user ID to add.
-   * @returns Object with member info and message.
-   * @throws Error on auth failure, forbidden, or network error.
-   */
-  async addNetworkMember(networkId: string, userId: string): Promise<AddMemberResult> {
-    const res = await this.post(`/api/networks/${networkId}/members`, { userId });
-    const body = (await res.json()) as AddMemberResult;
-    return body;
+  /** Invite a network member directly by email. */
+  async inviteNetworkMember(
+    networkId: string,
+    email: string,
+    name?: string,
+  ): Promise<NetworkInvitationResult> {
+    const res = await this.post(`/api/networks/${networkId}/members/invite`, {
+      email,
+      ...(name ? { name } : {}),
+    });
+    return await res.json() as NetworkInvitationResult;
   }
 
   // ── Conversation methods ─────────────────────────────────────────
@@ -490,7 +504,31 @@ export class ApiClient {
     return body.negotiations;
   }
 
-  // ── Tool methods ────────────────────────────────────────────────
+  // ── Profile and tool methods ────────────────────────────────────
+
+  async enrichProfile(): Promise<EnrichmentResult> {
+    const res = await this.post("/api/enrichment/enrich", {});
+    return await res.json() as EnrichmentResult;
+  }
+
+  async readUserContexts(
+    query: { userId?: string; networkId?: string; query?: string } = {},
+  ): Promise<ToolResult> {
+    return this.callTool("read_user_contexts", query);
+  }
+
+  async createUserContext(query: {
+    confirm?: boolean;
+    linkedinUrl?: string;
+    githubUrl?: string;
+    twitterUrl?: string;
+  }): Promise<ToolResult> {
+    return this.callTool("create_user_context", query);
+  }
+
+  async updateUserContext(query: { action: string; details?: string }): Promise<ToolResult> {
+    return this.callTool("update_user_context", query);
+  }
 
   /**
    * Invoke a tool by name via the HTTP tool API.

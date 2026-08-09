@@ -209,6 +209,43 @@ describe("ApiClient", () => {
     });
   });
 
+  describe("updateIntent", () => {
+    it("uses the canonical description field", async () => {
+      let body: { query?: Record<string, unknown> } = {};
+      mock.on("POST", "/api/tools/update_intent", async (req) => {
+        body = await req.json() as { query?: Record<string, unknown> };
+        return Response.json({ success: true, data: { intentId: "i1" } });
+      });
+
+      await client.updateIntent("i1", "Find an AI co-founder");
+      expect(body.query).toEqual({ intentId: "i1", description: "Find an AI co-founder" });
+    });
+  });
+
+  describe("updateOpportunityStatus", () => {
+    it("uses REST for rejection without uptake acknowledgements", async () => {
+      let body: Record<string, unknown> = {};
+      mock.on("PATCH", "/api/opportunities/o1/status", async (req) => {
+        body = await req.json() as Record<string, unknown>;
+        return Response.json({ opportunity: { id: "o1", status: "rejected" } });
+      });
+
+      await client.updateOpportunityStatus("o1", "rejected");
+      expect(body).toEqual({ status: "rejected" });
+    });
+
+    it("includes uptake acknowledgements only for acceptance", async () => {
+      let body: Record<string, unknown> = {};
+      mock.on("PATCH", "/api/opportunities/o1/status", async (req) => {
+        body = await req.json() as Record<string, unknown>;
+        return Response.json({ opportunity: { id: "o1", status: "accepted" } });
+      });
+
+      await client.updateOpportunityStatus("o1", "accepted", ["q1"]);
+      expect(body).toEqual({ status: "accepted", acknowledgedUptakeQuestionIds: ["q1"] });
+    });
+  });
+
   describe("confirmIntent", () => {
     it("posts proposalId and description, returns the created intent ID", async () => {
       let receivedBody: Record<string, unknown> = {};
@@ -300,33 +337,44 @@ describe("ApiClient", () => {
     });
   });
 
-  describe("createNetwork", () => {
-    it("sends title and prompt in request body", async () => {
-      let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/networks", async (req) => {
-        receivedBody = (await req.json()) as Record<string, unknown>;
-        return Response.json({
-          network: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
-        });
-      });
+  describe("createNetworkOrRequest", () => {
+    it("returns a created result for direct staff creation", async () => {
+      mock.on("POST", "/api/networks", () =>
+        Response.json({ network: { id: "n1", title: "New Net", joinPolicy: "invite_only" } }),
+      );
 
-      const result = await client.createNetwork("New Net", "A description");
-      expect(receivedBody.title).toBe("New Net");
-      expect(receivedBody.prompt).toBe("A description");
-      expect(result.id).toBe("n1");
+      await expect(client.createNetworkOrRequest("New Net", "A description")).resolves.toEqual({
+        kind: "created",
+        network: { id: "n1", title: "New Net", joinPolicy: "invite_only" },
+      });
     });
 
-    it("omits prompt when not provided", async () => {
-      let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/networks", async (req) => {
-        receivedBody = (await req.json()) as Record<string, unknown>;
+    it("submits a request for the specific early-access 403", async () => {
+      let requestBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/networks", () =>
+        Response.json(
+          { error: "Network creation is in early access. Submit a request at POST /network-requests." },
+          { status: 403 },
+        ),
+      );
+      mock.on("POST", "/api/network-requests", async (req) => {
+        requestBody = await req.json() as Record<string, unknown>;
         return Response.json({
-          network: { id: "n1", title: "Minimal", joinPolicy: "invite_only" },
-        });
+          request: { id: "request-1", title: "New Net", status: "pending", purpose: "A description", submittedAt: "2026-08-07T00:00:00Z" },
+        }, { status: 201 });
       });
 
-      await client.createNetwork("Minimal");
-      expect(receivedBody.prompt).toBeUndefined();
+      const result = await client.createNetworkOrRequest("New Net", "A description");
+      expect(requestBody).toEqual({ name: "New Net", purpose: "A description" });
+      expect(result.kind).toBe("requested");
+    });
+
+    it("does not convert an unrelated 403 into a request", async () => {
+      mock.on("POST", "/api/networks", () =>
+        Response.json({ error: "Access denied" }, { status: 403 }),
+      );
+
+      await expect(client.createNetworkOrRequest("New Net")).rejects.toThrow("Access denied");
     });
   });
 
@@ -382,39 +430,20 @@ describe("ApiClient", () => {
     });
   });
 
-  describe("searchUsers", () => {
-    it("sends query and networkId as search params", async () => {
-      let receivedUrl = "";
-      // The mock server matches on pathname, so we need to handle query params
-      mock.on("GET", "/api/networks/search-users", (req) => {
-        receivedUrl = req.url;
-        return Response.json({
-          users: [{ id: "u1", name: "Alice", email: "alice@test.com" }],
-        });
-      });
-
-      const users = await client.searchUsers("alice@test.com", "n1");
-      expect(users).toHaveLength(1);
-      expect(users[0].email).toBe("alice@test.com");
-      expect(receivedUrl).toContain("q=alice%40test.com");
-      expect(receivedUrl).toContain("networkId=n1");
+  it("invites a member directly by email", async () => {
+    let receivedBody: Record<string, unknown> = {};
+    mock.on("POST", "/api/networks/n1/members/invite", async (req) => {
+      receivedBody = await req.json() as Record<string, unknown>;
+      return Response.json({
+        user: { id: "u1", email: "alice@test.com" },
+        created: true,
+        alreadyMember: false,
+        agentProvisioned: true,
+      }, { status: 201 });
     });
-  });
 
-  describe("addNetworkMember", () => {
-    it("sends userId in request body", async () => {
-      let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/networks/n1/members", async (req) => {
-        receivedBody = (await req.json()) as Record<string, unknown>;
-        return Response.json({
-          member: { userId: "u1" },
-          message: "Member added",
-        });
-      });
-
-      const result = await client.addNetworkMember("n1", "u1");
-      expect(receivedBody.userId).toBe("u1");
-      expect(result.message).toBe("Member added");
-    });
+    const result = await client.inviteNetworkMember("n1", "alice@test.com");
+    expect(receivedBody).toEqual({ email: "alice@test.com" });
+    expect(result.created).toBe(true);
   });
 });
