@@ -645,14 +645,35 @@
     appendText(panel, "h3", null, "Fallback versus selected mode");
     appendText(panel, "p", "configuration-explanation", comparison.mode.explanation);
     const assignments = element("dl", "configuration-assignments");
-    const resolved = new Map(records(comparison.resolvedValues).map((entry) => [entry.key, entry.value]));
-    for (const assignment of records(comparison.assignments)) {
-      assignments.append(
-        element("dt", null, assignment.key),
-        element("dd", null, `${assignment.value === null ? "unset" : assignment.value} → resolves ${resolved.get(assignment.key)}`),
+    const selectedAssignments = new Map(records(comparison.assignments).map((entry) => [entry.key, entry.value]));
+    const selectedResolved = new Map(records(comparison.resolvedValues).map((entry) => [entry.key, entry.value]));
+    const fallbackMode = records(experiment.modes).find((candidate) => candidate.id === experiment.fallbackModeId);
+    const fallbackAssignments = new Map(records(fallbackMode && fallbackMode.assignments).map((entry) => [entry.key, entry.value]));
+    const fallbackResolved = new Map(records(fallbackMode && fallbackMode.resolvedValues).map((entry) => [entry.key, entry.value]));
+    for (const setting of records(experiment.settings)) {
+      const selectedValue = selectedAssignments.get(setting.key);
+      const fallbackValue = fallbackAssignments.get(setting.key);
+      const detail = element("dd", null);
+      detail.append(
+        element("span", "configuration-assignment-fallback", `Package fallback: ${fallbackValue === null ? "unset" : fallbackValue} → ${fallbackResolved.get(setting.key)}`),
+        element("span", "configuration-assignment-selected", `Selected mode: ${selectedValue === null ? "unset" : selectedValue} → ${selectedResolved.get(setting.key)}`),
       );
+      assignments.append(element("dt", null, setting.key), detail);
     }
     panel.append(assignments);
+
+    appendText(panel, "h3", null, "Setting evidence");
+    const settingEvidence = element("ul", "configuration-setting-evidence");
+    for (const setting of records(experiment.settings)) {
+      const item = element("li", null);
+      appendText(item, "strong", null, `${setting.key} — ${setting.readTiming}`);
+      for (const site of records(setting.readSites)) appendText(item, "code", "configuration-evidence", `Read: ${site.path}#${site.symbol}`);
+      for (const hop of records(setting.accessorClosure)) appendText(item, "code", "configuration-evidence", `Accessor: ${hop.path}#${hop.symbol}`);
+      settingEvidence.append(item);
+    }
+    panel.append(settingEvidence);
+    appendText(panel, "p", "configuration-associations", `Affected chapters: ${records(comparison.affectedChapterIds).join(", ") || "none"}`);
+    appendText(panel, "p", "configuration-associations", `Affected steps: ${records(comparison.affectedStepIds).join(", ") || "none"}`);
 
     if (records(comparison.prerequisites).length > 0) {
       appendText(panel, "h3", null, "Prerequisites");
@@ -673,8 +694,13 @@
       const item = element("li", `configuration-delta configuration-delta--${delta.effect}`);
       appendText(item, "strong", "configuration-delta__label", configurationEffectLabel(delta.effect));
       appendText(item, "span", null, `${delta.targetKind}: ${delta.targetId}`);
-      if (delta.consumerPath) appendText(item, "code", "configuration-evidence", `${delta.consumerPath}#${delta.consumerSymbol}`);
-      if (delta.behaviorTest) appendText(item, "code", "configuration-evidence", `${delta.behaviorTest.path} — ${delta.behaviorTest.testName}`);
+      if (delta.consumerPath) appendText(item, "code", "configuration-evidence", `Consumer: ${delta.consumerPath}#${delta.consumerSymbol}`);
+      if (records(delta.referenceChain).length > 0) {
+        const chain = element("ol", "configuration-reference-chain");
+        for (const hop of delta.referenceChain) chain.append(element("li", null, `${hop.path}#${hop.symbol}`));
+        item.append(chain);
+      }
+      if (delta.behaviorTest) appendText(item, "code", "configuration-evidence", `Behavior test: ${delta.behaviorTest.path} — ${delta.behaviorTest.testName}`);
       if (delta.effect === "unresolved") appendText(item, "span", "configuration-caveat", "No direct protocol behavior consumer is established; no effect is invented.");
       deltas.append(item);
     }

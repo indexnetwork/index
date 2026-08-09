@@ -993,6 +993,19 @@ noscript {
   overflow-wrap: anywhere;
 }
 
+.configuration-assignments dd,
+.configuration-setting-evidence li,
+.configuration-reference-chain {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.configuration-setting-evidence,
+.configuration-reference-chain {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}
+
 .configuration-deltas,
 .configuration-prerequisites,
 .configuration-caveats {

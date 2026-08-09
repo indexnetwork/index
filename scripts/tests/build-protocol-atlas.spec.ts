@@ -30,19 +30,38 @@ const APPROVED_CONFIGURATION_MODE_IDS = {
 
 const repoRoot = resolve(import.meta.dir, "../..");
 
+type MutableConfigurationDelta = {
+  id: string;
+  effect: string;
+  targetKind: string;
+  targetId: string;
+  settingKeys?: string[];
+  noDirectProtocolConsumer?: boolean;
+  consumerPath?: string;
+  consumerSymbol?: string;
+  referenceChain?: Array<{ path: string; symbol: string }>;
+  behaviorTest?: { path: string; testName: string };
+};
+
 type MutableConfigurationContent = {
+  chapters: Array<{ id: string }>;
+  flows: Array<{ steps: Array<{ id: string }> }>;
   configurationExperiments: Array<{
     id: string;
-    settings: Array<{ key: string; readSites: Array<{ path: string; symbol: string }> }>;
+    fallbackModeId: string;
+    settings: Array<{
+      key: string;
+      readSites: Array<{ path: string; symbol: string }>;
+      accessorClosure: Array<{ path: string; symbol: string }>;
+      acceptedValues: string[];
+    }>;
     modes: Array<{
+      id: string;
+      assignments: Array<{ key: string; value: string | null }>;
+      resolvedValues: Array<{ key: string; value: string }>;
       prerequisites: Array<Record<string, unknown>>;
-      deltas: Array<{
-        targetId: string;
-        consumerPath?: string;
-        consumerSymbol?: string;
-        referenceChain?: Array<{ path: string; symbol: string }>;
-        behaviorTest?: { path: string; testName: string };
-      }>;
+      deltas: MutableConfigurationDelta[];
+      caveats: string[];
     }>;
   }>;
 };
@@ -420,6 +439,15 @@ describe("protocol atlas generator", () => {
     expect(issues).toContain("must not contain timestamps");
   });
 
+  test("binds each environment read to its actual enclosing source symbol", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const discovery = content.configurationExperiments.find(({ id }) => id === "discovery-corpus")!;
+    discovery.settings.find(({ key }) => key === "DISCOVERY_ALLOWED_TYPES")!.readSites[0].symbol = "discoveryProfileSource";
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("readSites do not match current production reads");
+  });
+
   test("enforces definitive evidence and unresolved consumerlessness", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     const definitive = content.configurationExperiments.find(({ id }) => id === "negotiation-screen")!.modes[1].deltas[0];
@@ -440,6 +468,128 @@ describe("protocol atlas generator", () => {
     expect(issues).toContain("behavior test name is missing");
     expect(issues).toContain("unresolved delta must not include consumerPath");
     expect(issues).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("rejects empty, reordered, and disconnected definitive reference chains", async () => {
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const base = await loadAtlasContent() as MutableConfigurationContent;
+
+    for (const mutate of [
+      (delta: MutableConfigurationDelta) => { delta.referenceChain = []; },
+      (delta: MutableConfigurationDelta) => { delta.referenceChain = [...(delta.referenceChain ?? [])].reverse(); },
+      (delta: MutableConfigurationDelta) => {
+        delta.referenceChain = [
+          ...(delta.referenceChain ?? []).slice(0, 1),
+          { path: "packages/protocol/src/negotiation/domain/negotiation.protocol.ts", symbol: "configuredProtocolVersion" },
+          ...(delta.referenceChain ?? []).slice(1),
+        ];
+      },
+    ]) {
+      const content = structuredClone(base);
+      const delta = content.configurationExperiments.find(({ id }) => id === "negotiation-screen")!.modes.find(({ id }) => id === "shadow")!.deltas[0];
+      mutate(delta);
+      const artifact = buildAtlasArtifact(input, content);
+      expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toMatch(/reference chain.*(?:empty|ordered|link)/i);
+    }
+  });
+
+  test("detects an imported alias call escaping an unresolved accessor closure", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
+      'import { isOutcomeQuestionsActivated as active } from "./outcome.env.js";',
+      "export function consumeOutcomeQuestions() { return active(); }",
+    ].join("\n");
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("requires exact named test calls rather than arbitrary source substrings", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const delta = content.configurationExperiments.find(({ id }) => id === "negotiation-screen")!.modes.find(({ id }) => id === "shadow")!.deltas[0];
+    delta.behaviorTest!.testName = "describe";
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("behavior test name is missing");
+  });
+
+  test("rejects missing locked modes and duplicate nested ids", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const screen = content.configurationExperiments.find(({ id }) => id === "negotiation-screen")!;
+    screen.modes = screen.modes.filter(({ id }) => id !== "enforce");
+    screen.settings.push(structuredClone(screen.settings[0]));
+    screen.modes[0].assignments.push(structuredClone(screen.modes[0].assignments[0]));
+    screen.modes[1].deltas.push(structuredClone(screen.modes[1].deltas[0]));
+    screen.modes.push(structuredClone(screen.modes[0]));
+    content.configurationExperiments.push(structuredClone(screen));
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    const issues = validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n");
+    expect(issues).toContain("missing approved mode");
+    expect(issues).toContain("duplicate configuration experiment id");
+    expect(issues).toContain("duplicate configuration setting key");
+    expect(issues).toContain("duplicate assignments");
+    expect(issues).toContain("duplicate configuration mode id");
+    expect(issues).toContain("duplicate deltas");
+  });
+
+  test("rejects unknown edge and step targets plus mismatched prerequisites", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const consultation = content.configurationExperiments.find(({ id }) => id === "negotiation-consultation")!;
+    const mode = consultation.modes.find(({ id }) => id === "v2-on")!;
+    mode.prerequisites = [{ kind: "setting", key: "NEGOTIATION_PROTOCOL_VERSION", value: "v1" }];
+    mode.deltas[0].targetKind = "edge";
+    mode.deltas[0].targetId = "edge.missing";
+    const second = structuredClone(mode.deltas[0]);
+    second.id = `${second.id}.step`;
+    second.targetKind = "step";
+    second.targetId = "step-missing";
+    mode.deltas.push(second);
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    const issues = validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n");
+    expect(issues).toContain("missing edge edge.missing");
+    expect(issues).toContain("missing step step-missing");
+    expect(issues).toContain("setting prerequisite does not match its mode assignment");
+  });
+
+  test("ignores type-only and barrel-only references for unresolved consumers", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/type-only.ts"] = [
+      'import type { isOutcomeQuestionsActivated as ActivationType } from "./outcome.env.js";',
+      "export type Consumer = typeof ActivationType;",
+    ].join("\n");
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/barrel.ts"] = 'export { isOutcomeQuestionsActivated } from "./outcome.env.js";';
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
+  });
+
+  test("normalizes real nested experiments deterministically without adding unresolved chains", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const reordered = structuredClone(content);
+    reordered.configurationExperiments.reverse();
+    for (const experiment of reordered.configurationExperiments) {
+      experiment.settings.reverse();
+      experiment.modes.reverse();
+      for (const mode of experiment.modes) {
+        mode.assignments.reverse();
+        mode.resolvedValues.reverse();
+        mode.prerequisites.reverse();
+        mode.deltas.reverse();
+        mode.caveats.reverse();
+      }
+    }
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const first = serializeAtlasArtifact(buildAtlasArtifact(input, content));
+    const second = serializeAtlasArtifact(buildAtlasArtifact(input, reordered));
+    expect(second).toBe(first);
+    const generated = buildAtlasArtifact(input, content);
+    const unresolved = generated.configurationExperiments.flatMap((experiment) => experiment.modes)
+      .flatMap((mode) => mode.deltas as Array<Record<string, unknown>>)
+      .filter((delta) => delta.effect === "unresolved");
+    expect(unresolved.length).toBeGreaterThan(0);
+    expect(unresolved.every((delta) => !("referenceChain" in delta))).toBe(true);
   });
 
   test("emits byte-identical stdout under different covered environment sentinels", () => {

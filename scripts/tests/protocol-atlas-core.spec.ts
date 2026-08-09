@@ -81,21 +81,21 @@ const fixtureGenerated = () => ({
   configurationExperiments: [
     {
       id: "negotiation-screen", title: "Negotiation screen", summary: "Controls first-turn screening.", capability: "negotiation",
-      fallbackModeId: "off", coverage: "definitive",
-      settings: [{ key: "NEGOTIATION_SCREEN_MODE", acceptedValues: ["off", "enforce"], readSites: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }], entryAccessorSymbol: "configuredScreenMode", accessorClosure: [], readTiming: "invocation" }],
+      fallbackModeId: "off", coverage: "definitive", affectedChapterIds: ["consent", "explore"], affectedStepIds: ["evaluate-fit"],
+      settings: [{ key: "NEGOTIATION_SCREEN_MODE", acceptedValues: ["off", "shadow", "enforce"], readSites: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }], entryAccessorSymbol: "configuredScreenMode", accessorClosure: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "normalizeScreenMode" }], readTiming: "invocation" }],
       modes: [
         { id: "off", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: null }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "off" }], prerequisites: [], deltas: [], explanation: "Fallback bypasses screening.", caveats: [] },
         { id: "shadow", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "shadow" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "shadow" }], prerequisites: [], deltas: [], explanation: "No reviewed topology delta.", caveats: [] },
-        { id: "enforce", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], prerequisites: [], deltas: [{ id: "screen-enforce", effect: "activated", targetKind: "node", targetId: "component.opportunity-graph-factory", consumerPath: "packages/protocol/src/negotiation/application/negotiation.graph.ts", consumerSymbol: "NegotiationGraphFactory", referenceChain: [], behaviorTest: { path: "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts", testName: "enforce" } }], explanation: "Enforces screening.", caveats: [] },
+        { id: "enforce", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], prerequisites: [], deltas: [{ id: "screen-enforce", effect: "activated", targetKind: "node", targetId: "component.opportunity-graph-factory", settingKeys: ["NEGOTIATION_SCREEN_MODE"], consumerPath: "packages/protocol/src/negotiation/application/negotiation.graph.ts", consumerSymbol: "NegotiationGraphFactory", referenceChain: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }, { path: "packages/protocol/src/negotiation/application/negotiation.graph.ts", symbol: "NegotiationGraphFactory" }], behaviorTest: { path: "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts", testName: "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected" } }], explanation: "Enforces screening.", caveats: [] },
       ],
     },
     {
       id: "questioner-discovery-contract", title: "Questioner discovery", summary: "Declared discovery-question contract.", capability: "questions",
-      fallbackModeId: "off", coverage: "unresolved",
+      fallbackModeId: "off", coverage: "unresolved", affectedChapterIds: ["discovery", "explore"], affectedStepIds: ["evaluate-fit"],
       settings: [{ key: "QUESTIONER_DISCOVERY_ENABLED", acceptedValues: ["false", "true"], readSites: [{ path: "packages/protocol/src/questions/application/question.env.ts", symbol: "isDiscoveryQuestionsEnabled" }], entryAccessorSymbol: "isDiscoveryQuestionsEnabled", accessorClosure: [], readTiming: "invocation" }],
       modes: [
         { id: "off", assignments: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: null }], resolvedValues: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "false" }], prerequisites: [], deltas: [], explanation: "Fallback is off.", caveats: [] },
-        { id: "transcripts-unresolved", assignments: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "true" }], resolvedValues: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "true" }], prerequisites: [], deltas: [{ id: "questioner-unresolved", effect: "unresolved", targetKind: "node", targetId: "component.opportunity-graph-factory", noDirectProtocolConsumer: true }], explanation: "The package declares the accessor, but direct runtime effect is unresolved.", caveats: ["No direct package consumer."] },
+        { id: "transcripts-unresolved", assignments: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "true" }], resolvedValues: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "true" }], prerequisites: [], deltas: [{ id: "questioner-unresolved", effect: "unresolved", targetKind: "node", targetId: "component.opportunity-graph-factory", settingKeys: ["QUESTIONER_DISCOVERY_ENABLED"], noDirectProtocolConsumer: true }], explanation: "The package declares the accessor, but direct runtime effect is unresolved.", caveats: ["No direct package consumer."] },
       ],
     },
   ],
@@ -258,6 +258,8 @@ describe("ProtocolAtlasCore configuration lab", () => {
     const changed = core().transition(selected, { type: "select-configuration-mode", experimentId: "negotiation-screen", modeId: "enforce" }, fixtureContent(), fixtureGenerated());
     expect(changed).toMatchObject({ configurationModeId: "enforce", focusIntent: { experimentId: "negotiation-screen", modeId: "enforce" } });
     expect(String(changed.announcement)).toContain("activated");
+    const switched = core().transition(changed, { type: "select-configuration-mode", experimentId: "questioner-discovery-contract", modeId: "transcripts-unresolved" }, fixtureContent(), fixtureGenerated());
+    expect(switched).toMatchObject({ configurationExperimentId: "questioner-discovery-contract", configurationModeId: "off", focusIntent: { experimentId: "questioner-discovery-contract", modeId: "off" } });
     const reset = core().transition(changed, { type: "reset-configuration" }, fixtureContent(), fixtureGenerated());
     expect(reset).toMatchObject({ configurationModeId: "off", filters: { capabilities: ["opportunities"], kinds: [], edgeKinds: [] } });
     expect(core().transition(reset, { type: "set-layer", layer: "protocol" }, fixtureContent(), fixtureGenerated())).toMatchObject({ configurationExperimentId: null, configurationModeId: null });
@@ -281,17 +283,17 @@ describe("ProtocolAtlasCore configuration lab", () => {
     });
   });
 
-  test("isolates one malformed experiment without invalidating ordinary evidence", () => {
+  test("isolates one deeply malformed experiment without invalidating ordinary evidence", () => {
     const generated = fixtureGenerated();
-    generated.configurationExperiments.push({
-      ...structuredClone(generated.configurationExperiments[0]),
-      id: "malformed",
-      fallbackModeId: "missing",
-    });
+    const malformed = structuredClone(generated.configurationExperiments[0]);
+    malformed.id = "malformed";
+    malformed.modes[1].assignments[0] = null as never;
+    generated.configurationExperiments.push(malformed);
     const availability = core().configurationAvailability(generated);
     expect(availability.available).toBe(true);
     expect(availability.experiments.map(({ id }) => id)).toEqual(["negotiation-screen", "questioner-discovery-contract"]);
     expect(availability.errors.join(" ")).toContain("malformed");
+    expect(availability.errors.join(" ")).toContain("assignment");
     expect(core().validateData(fixtureContent(), generated).ok).toBe(true);
   });
 });
@@ -517,6 +519,16 @@ describe("Protocol Atlas Configuration Lab renderer", () => {
       enforce?.click();
       expect(harness.window.location.hash).toContain("experiment=negotiation-screen&mode=enforce");
       expect(harness.document.querySelector(".configuration-delta--activated")?.textContent).toContain("+ activated");
+      const comparisonText = harness.document.querySelector(".configuration-comparison")?.textContent || "";
+      expect(comparisonText).toContain("Package fallback: unset → off");
+      expect(comparisonText).toContain("Selected mode: enforce → enforce");
+      expect(comparisonText).toContain("invocation");
+      expect(comparisonText).toContain("configuredScreenMode");
+      expect(comparisonText).toContain("normalizeScreenMode");
+      expect(comparisonText).toContain("NegotiationGraphFactory");
+      expect(comparisonText).toContain("negotiation.screen-routing.spec.ts");
+      expect(comparisonText).toContain("Affected chapters: consent, explore");
+      expect(comparisonText).toContain("Affected steps: evaluate-fit");
       expect(harness.document.querySelector(".configuration-comparison-active")).not.toBeNull();
       expect(harness.document.querySelector(".configuration-comparison-active .atlas-node:not(.configuration-delta--activated)")).not.toBeNull();
       expect(harness.document.activeElement?.getAttribute("value")).toBe("enforce");
@@ -563,9 +575,12 @@ describe("Protocol Atlas configuration history and filter composition", () => {
     }
   });
 
-  test("omits a malformed experiment and keeps a valid comparison usable", async () => {
+  test("omits a deeply malformed experiment and keeps a valid comparison usable", async () => {
     const generated = fixtureGenerated();
-    generated.configurationExperiments.push({ ...structuredClone(generated.configurationExperiments[0]), id: "malformed", fallbackModeId: "missing" });
+    const malformed = structuredClone(generated.configurationExperiments[0]);
+    malformed.id = "malformed";
+    malformed.modes[1].assignments[0] = null as never;
+    generated.configurationExperiments.push(malformed);
     const originalError = console.error;
     console.error = () => {};
     let harness: RendererHarness | undefined;

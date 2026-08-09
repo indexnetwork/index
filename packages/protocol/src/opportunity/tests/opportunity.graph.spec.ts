@@ -924,6 +924,57 @@ describe('Opportunity Graph', () => {
     }, 30_000);
   });
 
+  describe('Evaluation node: rejection cooldown', () => {
+    test('applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates', async () => {
+      const previousCooldown = process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
+      process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = '1';
+      const evaluatorInputs: EvaluatorInput[] = [];
+      const evaluator: OpportunityEvaluatorLike = {
+        invokeEntityBundle: async (input) => {
+          evaluatorInputs.push(input);
+          return [];
+        },
+      };
+
+      try {
+        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({ evaluator });
+        const cooldownCalls: Array<{ userId: string; candidateIds: string[]; cooldownMs: number }> = [];
+        mockDb.getRecentlyRejectedOpportunityCounterparties = async (userId, candidateIds, cooldownMs) => {
+          cooldownCalls.push({ userId, candidateIds: [...candidateIds], cooldownMs });
+          return ['b0000000-0000-4000-8000-000000000002'];
+        };
+        spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+          { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+          { type: 'intent' as const, id: 'intent-carol', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.8, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+        ]);
+
+        await compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: { minScore: 70 },
+        } as OpportunityGraphInvokeInput);
+
+        expect(cooldownCalls).toEqual([{
+          userId: 'a0000000-0000-4000-8000-000000000001',
+          candidateIds: [
+            'b0000000-0000-4000-8000-000000000002',
+            'c0000000-0000-4000-8000-000000000003',
+          ],
+          cooldownMs: 24 * 60 * 60 * 1000,
+        }]);
+        expect(evaluatorInputs).toHaveLength(1);
+        expect(evaluatorInputs[0].entities.slice(1).map(({ userId }) => userId)).toEqual([
+          'c0000000-0000-4000-8000-000000000003',
+          'b0000000-0000-4000-8000-000000000002',
+        ]);
+        expect(evaluatorInputs[0].entities.slice(1).map(({ ragScore }) => ragScore)).toEqual([80, 45]);
+      } finally {
+        if (previousCooldown === undefined) delete process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
+        else process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = previousCooldown;
+      }
+    });
+  });
+
   describe('Evaluation node: early termination', () => {
     test('when search is query-driven and remaining candidates have no query-sourced entries, remainingCandidates is empty', async () => {
       // 5 query candidates come through HyDE search → tagged 'query'

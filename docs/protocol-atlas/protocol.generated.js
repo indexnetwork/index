@@ -1404,10 +1404,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-corpus.context-cross-match",
+              "id": "discovery-corpus.context-cross-match.discovery-allowed-types",
               "effect": "activated",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_ALLOWED_TYPES"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
@@ -1416,20 +1419,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "discoveryAllowedTypes"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
                   "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryProfileSource"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
+                  "symbol": "discoveryIntentMatchingEnabled"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
@@ -1437,8 +1428,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
-                "testName": "parses intent-only"
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
               }
             }
           ],
@@ -1478,10 +1469,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-corpus.context-profile",
+              "id": "discovery-corpus.context-profile.discovery-allowed-types",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_ALLOWED_TYPES"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
@@ -1490,20 +1484,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "discoveryAllowedTypes"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
                   "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryProfileSource"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
+                  "symbol": "discoveryIntentMatchingEnabled"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
@@ -1511,8 +1493,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
-                "testName": "parses intent-only"
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
               }
             }
           ],
@@ -1587,10 +1569,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-corpus.intent-only",
+              "id": "discovery-corpus.intent-only.discovery-allowed-types",
               "effect": "bypassed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_ALLOWED_TYPES"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
@@ -1599,20 +1584,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "discoveryAllowedTypes"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
                   "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryProfileSource"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
+                  "symbol": "discoveryIntentMatchingEnabled"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
@@ -1620,8 +1593,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
-                "testName": "parses intent-only"
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
               }
             }
           ],
@@ -1661,10 +1634,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-corpus.premise-profile",
+              "id": "discovery-corpus.premise-profile.discovery-allowed-types",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_ALLOWED_TYPES"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
@@ -1673,20 +1649,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "discoveryAllowedTypes"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
                   "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryProfileSource"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
+                  "symbol": "discoveryIntentMatchingEnabled"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
@@ -1694,8 +1658,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
-                "testName": "parses intent-only"
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
               }
             }
           ],
@@ -1774,17 +1738,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-evaluation-topology.pairwise",
+              "id": "discovery-evaluation-topology.pairwise.run-opportunity-eval-in-parallel",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "RUN_OPPORTUNITY_EVAL_IN_PARALLEL"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
@@ -1792,7 +1755,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
-                "testName": "splits into pairwise opportunities"
+                "testName": "when evaluator returns 3 actors, splits into pairwise opportunities (viewer + each non-viewer)"
               }
             }
           ],
@@ -1853,10 +1816,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-premise-limit.disabled-0",
+              "id": "discovery-premise-limit.disabled-0.discovery-source-premise-limit",
               "effect": "bypassed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_SOURCE_PREMISE_LIMIT"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
@@ -1871,7 +1837,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
-                "testName": "premise discovery uses scoped capped source premises"
+                "testName": "premise discovery uses scoped capped source premises and one batched DB search"
               }
             }
           ],
@@ -1895,10 +1861,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-premise-limit.expanded-100",
+              "id": "discovery-premise-limit.expanded-100.discovery-source-premise-limit",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_SOURCE_PREMISE_LIMIT"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
@@ -1913,7 +1882,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
-                "testName": "premise discovery uses scoped capped source premises"
+                "testName": "premise discovery uses scoped capped source premises and one batched DB search"
               }
             }
           ],
@@ -1946,7 +1915,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "title": "Discovery rejection cooldown",
       "summary": "Discovery rejection cooldown compares reviewed package fallback behavior with named non-secret assignments.",
       "capability": "opportunities",
-      "coverage": "documented-only",
+      "coverage": "definitive",
       "fallbackModeId": "fallback-7d",
       "affectedChapterIds": [
         "discovery",
@@ -2010,7 +1979,33 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
             }
           ],
           "prerequisites": [],
-          "deltas": [],
+          "deltas": [
+            {
+              "id": "discovery-rejection-cooldown.long-30d.discovery-rejection-cooldown-days",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_REJECTION_COOLDOWN_DAYS"
+              ],
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "getRejectionCooldownMs"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates"
+              }
+            }
+          ],
           "explanation": "The rejection penalty window extends to thirty days.",
           "caveats": []
         },
@@ -2029,7 +2024,33 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
             }
           ],
           "prerequisites": [],
-          "deltas": [],
+          "deltas": [
+            {
+              "id": "discovery-rejection-cooldown.short-1d.discovery-rejection-cooldown-days",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "DISCOVERY_REJECTION_COOLDOWN_DAYS"
+              ],
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "getRejectionCooldownMs"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates"
+              }
+            }
+          ],
           "explanation": "The rejection penalty window shortens to one day.",
           "caveats": []
         }
@@ -2087,10 +2108,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "hyde-frame-constraints.frame-v1",
+              "id": "hyde-frame-constraints.frame-v1.hyde-frame-constraints-enabled",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.hyde-graph-factory",
+              "settingKeys": [
+                "HYDE_FRAME_CONSTRAINTS_ENABLED"
+              ],
               "consumerPath": "packages/protocol/src/shared/hyde/hyde.graph.ts",
               "consumerSymbol": "HydeGraphFactory",
               "referenceChain": [
@@ -2203,20 +2227,23 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "introducer-discovery.on",
+              "id": "introducer-discovery.on.introducer-discovery-enabled",
               "effect": "activated",
               "targetKind": "node",
               "targetId": "component.maintenance-graph-factory",
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
-              "consumerSymbol": "isIntroducerDiscoveryEnabled",
+              "settingKeys": [
+                "INTRODUCER_DISCOVERY_ENABLED"
+              ],
+              "consumerPath": "packages/protocol/src/maintenance/maintenance.graph.ts",
+              "consumerSymbol": "MaintenanceGraphFactory",
               "referenceChain": [
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
                   "symbol": "isIntroducerDiscoveryEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
-                  "symbol": "isIntroducerDiscoveryEnabled"
+                  "path": "packages/protocol/src/maintenance/maintenance.graph.ts",
+                  "symbol": "MaintenanceGraphFactory"
                 }
               ],
               "behaviorTest": {
@@ -2400,37 +2427,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-consultation.shadow",
+              "id": "negotiation-consultation.shadow.negotiation-consultation-policy-mode",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_CONSULTATION_POLICY_MODE"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredProtocolVersion"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredAskUserEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "askUserAnswerWindowMs"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
                 {
                   "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
                   "symbol": "negotiationConsultationPolicyMode"
@@ -2442,7 +2448,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
-                "testName": "policy on"
+                "testName": "policy on excludes a pre-screened path before consultation effects"
               }
             }
           ],
@@ -2496,37 +2502,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           ],
           "deltas": [
             {
-              "id": "negotiation-consultation.v2-on",
+              "id": "negotiation-consultation.v2-on.negotiation-consultation-policy-mode",
               "effect": "activated",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_CONSULTATION_POLICY_MODE"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredProtocolVersion"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredAskUserEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "askUserAnswerWindowMs"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
                 {
                   "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
                   "symbol": "negotiationConsultationPolicyMode"
@@ -2538,7 +2523,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
-                "testName": "policy on"
+                "testName": "policy on excludes a pre-screened path before consultation effects"
               }
             }
           ],
@@ -2592,37 +2577,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           ],
           "deltas": [
             {
-              "id": "negotiation-consultation.v2-short-window",
+              "id": "negotiation-consultation.v2-short-window.negotiation-consultation-policy-mode",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_CONSULTATION_POLICY_MODE"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredProtocolVersion"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredAskUserEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "askUserAnswerWindowMs"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
                 {
                   "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
                   "symbol": "negotiationConsultationPolicyMode"
@@ -2634,7 +2598,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
-                "testName": "policy on"
+                "testName": "policy on excludes a pre-screened path before consultation effects"
               }
             }
           ],
@@ -2694,10 +2658,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-context.exact-only",
+              "id": "negotiation-context.exact-only.negotiation-include-other-intents",
               "effect": "bypassed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_INCLUDE_OTHER_INTENTS"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
               "consumerSymbol": "negotiateExistingOpportunity",
               "referenceChain": [
@@ -2712,7 +2679,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/opportunity.existing-negotiation.spec.ts",
-                "testName": "false flag isolates both sides"
+                "testName": "false flag isolates both sides on an exact continuation and skips unrelated active-intent reads"
               }
             }
           ],
@@ -2910,40 +2877,19 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-deadlock.v2-fast-2",
+              "id": "negotiation-deadlock.v2-fast-2.negotiation-deadlock-shift-enabled",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_DEADLOCK_SHIFT_ENABLED"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredProtocolVersion"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
                   "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
                   "symbol": "configuredDeadlockShiftEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
-                  "symbol": "configuredDeadlockThreshold"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
-                  "symbol": "configuredNegotiatorStance"
                 },
                 {
                   "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
@@ -2952,7 +2898,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
-                "testName": "flag ON: bargaining stance from the threshold turn"
+                "testName": "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once"
               }
             }
           ],
@@ -3000,40 +2946,19 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-deadlock.v2-skeptic",
+              "id": "negotiation-deadlock.v2-skeptic.negotiation-deadlock-shift-enabled",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_DEADLOCK_SHIFT_ENABLED"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredProtocolVersion"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
                   "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
                   "symbol": "configuredDeadlockShiftEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
-                  "symbol": "configuredDeadlockThreshold"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
-                  "symbol": "configuredNegotiatorStance"
                 },
                 {
                   "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
@@ -3042,7 +2967,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
-                "testName": "flag ON: bargaining stance from the threshold turn"
+                "testName": "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once"
               }
             }
           ],
@@ -3090,40 +3015,19 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-deadlock.v2-threshold-4",
+              "id": "negotiation-deadlock.v2-threshold-4.negotiation-deadlock-shift-enabled",
               "effect": "activated",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_DEADLOCK_SHIFT_ENABLED"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
-                  "symbol": "configuredProtocolVersion"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
                   "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
                   "symbol": "configuredDeadlockShiftEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
-                  "symbol": "configuredDeadlockThreshold"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
-                  "symbol": "configuredNegotiatorStance"
                 },
                 {
                   "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
@@ -3132,7 +3036,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
-                "testName": "flag ON: bargaining stance from the threshold turn"
+                "testName": "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once"
               }
             }
           ],
@@ -3219,8 +3123,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_EVIDENCE_QUESTIONS_MODE"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Current package handling treats on as the same shadow-pipeline activation contract.",
@@ -3250,8 +3153,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_EVIDENCE_QUESTIONS_MODE"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Shadow mode resolves, but no direct package activation consumer is established.",
@@ -3329,10 +3231,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-protocol.v2",
+              "id": "negotiation-protocol.v2.negotiation-protocol-version",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_PROTOCOL_VERSION"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
@@ -3410,10 +3315,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-screen.enforce",
+              "id": "negotiation-screen.enforce.negotiation-screen-mode",
               "effect": "activated",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_SCREEN_MODE"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
@@ -3428,7 +3336,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts",
-                "testName": "enforce"
+                "testName": "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected"
               }
             }
           ],
@@ -3471,10 +3379,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-screen.shadow",
+              "id": "negotiation-screen.shadow.negotiation-screen-mode",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_SCREEN_MODE"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
@@ -3489,7 +3400,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts",
-                "testName": "enforce"
+                "testName": "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected"
               }
             }
           ],
@@ -3569,10 +3480,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-stance.evaluator",
+              "id": "negotiation-stance.evaluator.negotiator-stance",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.index-negotiator",
+              "settingKeys": [
+                "NEGOTIATOR_STANCE"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
               "consumerSymbol": "IndexNegotiator",
               "referenceChain": [
@@ -3587,7 +3501,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts",
-                "testName": "configuredNegotiatorStance"
+                "testName": "resolves every declared stance verbatim"
               }
             }
           ],
@@ -3611,10 +3525,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-stance.skeptic",
+              "id": "negotiation-stance.skeptic.negotiator-stance",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.index-negotiator",
+              "settingKeys": [
+                "NEGOTIATOR_STANCE"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
               "consumerSymbol": "IndexNegotiator",
               "referenceChain": [
@@ -3629,7 +3546,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts",
-                "testName": "configuredNegotiatorStance"
+                "testName": "resolves every declared stance verbatim"
               }
             }
           ],
@@ -3720,29 +3637,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-turn-caps.extended-8-12",
+              "id": "negotiation-turn-caps.extended-8-12.negotiation-max-turns-ambient",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_MAX_TURNS_AMBIENT"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
                 {
                   "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
@@ -3750,7 +3654,28 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
-                "testName": "emits outcome='turn_cap'"
+                "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
+              }
+            },
+            {
+              "id": "negotiation-turn-caps.extended-8-12.negotiation-max-turns-chat",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_MAX_TURNS_CHAT"
+              ],
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
               }
             }
           ],
@@ -3809,29 +3734,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "negotiation-turn-caps.short-2-3",
+              "id": "negotiation-turn-caps.short-2-3.negotiation-max-turns-ambient",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.negotiation-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_MAX_TURNS_AMBIENT"
+              ],
               "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
-                  "symbol": "NegotiationGraphFactory"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
-                  "symbol": "OpportunityGraphFactory"
-                },
                 {
                   "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
@@ -3839,7 +3751,28 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
-                "testName": "emits outcome='turn_cap'"
+                "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
+              }
+            },
+            {
+              "id": "negotiation-turn-caps.short-2-3.negotiation-max-turns-chat",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_MAX_TURNS_CHAT"
+              ],
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
               }
             }
           ],
@@ -3931,8 +3864,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "OUTCOME_QUESTIONS_MODE"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Current package activation treats on as shadow-equivalent for capture and mining.",
@@ -3962,8 +3894,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "OUTCOME_QUESTIONS_MODE"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "The protocol accessor activates shadow capture; its invoking path remains unresolved here.",
@@ -4181,11 +4112,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 "POOL_QUESTIONS_MINING",
                 "POOL_QUESTIONS_MODE",
                 "POOL_QUESTIONS_PUSH",
-                "POOL_QUESTIONS_VISIT_TRIGGER",
-                "POOL_QUESTIONS_STAMP_NEWBORN"
+                "POOL_QUESTIONS_STAMP_NEWBORN",
+                "POOL_QUESTIONS_VISIT_TRIGGER"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Newborn stamping is declared; direct package activation remains unresolved.",
@@ -4248,11 +4178,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 "POOL_QUESTIONS_MINING",
                 "POOL_QUESTIONS_MODE",
                 "POOL_QUESTIONS_PUSH",
-                "POOL_QUESTIONS_VISIT_TRIGGER",
-                "POOL_QUESTIONS_STAMP_NEWBORN"
+                "POOL_QUESTIONS_STAMP_NEWBORN",
+                "POOL_QUESTIONS_VISIT_TRIGGER"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Pull-mode question activation is declared; direct package activation remains unresolved.",
@@ -4315,11 +4244,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 "POOL_QUESTIONS_MINING",
                 "POOL_QUESTIONS_MODE",
                 "POOL_QUESTIONS_PUSH",
-                "POOL_QUESTIONS_VISIT_TRIGGER",
-                "POOL_QUESTIONS_STAMP_NEWBORN"
+                "POOL_QUESTIONS_STAMP_NEWBORN",
+                "POOL_QUESTIONS_VISIT_TRIGGER"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Push activation is declared; direct package activation remains unresolved.",
@@ -4382,11 +4310,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 "POOL_QUESTIONS_MINING",
                 "POOL_QUESTIONS_MODE",
                 "POOL_QUESTIONS_PUSH",
-                "POOL_QUESTIONS_VISIT_TRIGGER",
-                "POOL_QUESTIONS_STAMP_NEWBORN"
+                "POOL_QUESTIONS_STAMP_NEWBORN",
+                "POOL_QUESTIONS_VISIT_TRIGGER"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Visit-trigger activation is declared; direct package activation remains unresolved.",
@@ -4449,11 +4376,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 "POOL_QUESTIONS_MINING",
                 "POOL_QUESTIONS_MODE",
                 "POOL_QUESTIONS_PUSH",
-                "POOL_QUESTIONS_VISIT_TRIGGER",
-                "POOL_QUESTIONS_STAMP_NEWBORN"
+                "POOL_QUESTIONS_STAMP_NEWBORN",
+                "POOL_QUESTIONS_VISIT_TRIGGER"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "Shadow mining is declared; direct package activation remains unresolved.",
@@ -4531,16 +4457,23 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "pool-ranking.on",
+              "id": "pool-ranking.on.pool-questions-ranking",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.radar-graph-factory",
+              "settingKeys": [
+                "POOL_QUESTIONS_RANKING"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/radar/radar.graph.ts",
               "consumerSymbol": "RadarGraphFactory",
               "referenceChain": [
                 {
                   "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
                   "symbol": "poolQuestionsRanking"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/radar/radar.graph.ts",
+                  "symbol": "getPoolRankingProvenance"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/radar/radar.graph.ts",
@@ -4610,10 +4543,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "premise-deduplication.broad-0.85",
+              "id": "premise-deduplication.broad-0.85.premise-dedup-similarity",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.premise-graph-factory",
+              "settingKeys": [
+                "PREMISE_DEDUP_SIMILARITY"
+              ],
               "consumerPath": "packages/protocol/src/premise/premise.graph.ts",
               "consumerSymbol": "PremiseGraphFactory",
               "referenceChain": [
@@ -4628,7 +4564,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/premise/tests/premise.graph.spec.ts",
-                "testName": "skips persisting a near-duplicate premise"
+                "testName": "skips persisting a near-duplicate premise on create"
               }
             }
           ],
@@ -4671,10 +4607,13 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "premise-deduplication.strict-0.98",
+              "id": "premise-deduplication.strict-0.98.premise-dedup-similarity",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.premise-graph-factory",
+              "settingKeys": [
+                "PREMISE_DEDUP_SIMILARITY"
+              ],
               "consumerPath": "packages/protocol/src/premise/premise.graph.ts",
               "consumerSymbol": "PremiseGraphFactory",
               "referenceChain": [
@@ -4689,7 +4628,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/premise/tests/premise.graph.spec.ts",
-                "testName": "skips persisting a near-duplicate premise"
+                "testName": "skips persisting a near-duplicate premise on create"
               }
             }
           ],
@@ -4722,12 +4661,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
             }
           ],
           "entryAccessorSymbol": "isDiscoveryQuestionsEnabled",
-          "accessorClosure": [
-            {
-              "path": "packages/protocol/src/questions/application/question.env.ts",
-              "symbol": "isQuestionerEnabled"
-            }
-          ],
+          "accessorClosure": [],
           "acceptedValues": [
             "false",
             "true"
@@ -4812,8 +4746,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 "QUESTIONER_DISCOVERY_ENABLED",
                 "QUESTIONER_DISCOVERY_INPUT_MODE"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "The accessor resolves insight input, but no direct package behavior consumer is established.",
@@ -4895,8 +4828,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 "QUESTIONER_DISCOVERY_ENABLED",
                 "QUESTIONER_DISCOVERY_INPUT_MODE"
               ],
-              "noDirectProtocolConsumer": true,
-              "referenceChain": []
+              "noDirectProtocolConsumer": true
             }
           ],
           "explanation": "The accessor resolves transcript input, but no direct package behavior consumer is established.",
@@ -5045,32 +4977,23 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "questioner-uptake.on-threshold-70",
+              "id": "questioner-uptake.on-threshold-70.questioner-uptake-enabled",
               "effect": "activated",
               "targetKind": "node",
               "targetId": "component.opportunity-tools",
+              "settingKeys": [
+                "QUESTIONER_UPTAKE_ENABLED"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
               "consumerSymbol": "createOpportunityTools",
               "referenceChain": [
                 {
                   "path": "packages/protocol/src/questions/application/question.env.ts",
-                  "symbol": "isQuestionerEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
-                  "symbol": "createOpportunityTools"
-                },
-                {
-                  "path": "packages/protocol/src/questions/application/question.env.ts",
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
-                  "symbol": "createOpportunityTools"
-                },
-                {
-                  "path": "packages/protocol/src/questions/application/question.env.ts",
-                  "symbol": "uptakeAuthorityThreshold"
+                  "path": "packages/protocol/src/capabilities/questions.runtime.facade.ts",
+                  "symbol": "isUptakeGuardEnabled"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
@@ -5079,7 +5002,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts",
-                "testName": "uptake soft interlock"
+                "testName": "returns a structured advisory with public questions and no graph mutation"
               }
             }
           ],
@@ -5119,32 +5042,33 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "questioner-uptake.on-threshold-90",
+              "id": "questioner-uptake.on-threshold-90.questioner-uptake-authority-threshold",
+              "effect": "unresolved",
+              "targetKind": "step",
+              "targetId": "accept-or-decline",
+              "settingKeys": [
+                "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD"
+              ],
+              "noDirectProtocolConsumer": true
+            },
+            {
+              "id": "questioner-uptake.on-threshold-90.questioner-uptake-enabled",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.opportunity-tools",
+              "settingKeys": [
+                "QUESTIONER_UPTAKE_ENABLED"
+              ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
               "consumerSymbol": "createOpportunityTools",
               "referenceChain": [
                 {
                   "path": "packages/protocol/src/questions/application/question.env.ts",
-                  "symbol": "isQuestionerEnabled"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
-                  "symbol": "createOpportunityTools"
-                },
-                {
-                  "path": "packages/protocol/src/questions/application/question.env.ts",
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
-                  "symbol": "createOpportunityTools"
-                },
-                {
-                  "path": "packages/protocol/src/questions/application/question.env.ts",
-                  "symbol": "uptakeAuthorityThreshold"
+                  "path": "packages/protocol/src/capabilities/questions.runtime.facade.ts",
+                  "symbol": "isUptakeGuardEnabled"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
@@ -5153,11 +5077,11 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts",
-                "testName": "uptake soft interlock"
+                "testName": "returns a structured advisory with public questions and no graph mutation"
               }
             }
           ],
-          "explanation": "The uptake interlock covers a broader authority range.",
+          "explanation": "The uptake guard is active; the configured authority threshold is declared but has no direct protocol consumer.",
           "caveats": []
         }
       ]

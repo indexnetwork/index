@@ -58,6 +58,127 @@
     return null;
   }
 
+  function nonEmptyString(value) {
+    return typeof value === "string" && value.length > 0;
+  }
+
+  function validProtocolPath(value) {
+    return nonEmptyString(value) && value.startsWith("packages/protocol/") && !value.includes("\\") && !value.split("/").includes("..");
+  }
+
+  function validEvidenceRecord(value) {
+    return isRecord(value) && validProtocolPath(value.path) && nonEmptyString(value.symbol);
+  }
+
+  function configurationExperimentErrors(candidate, generated, seen) {
+    const errors = [];
+    if (!isRecord(candidate) || !nonEmptyString(candidate.id) || seen.has(candidate.id)) return ["experiment id must be unique and non-empty"];
+    for (const field of ["title", "summary", "capability", "fallbackModeId", "coverage"]) {
+      if (!nonEmptyString(candidate[field])) errors.push(`${field} must be non-empty`);
+    }
+    if (!["definitive", "unresolved"].includes(candidate.coverage)) errors.push("coverage must be definitive or unresolved");
+    for (const field of ["affectedChapterIds", "affectedStepIds"]) {
+      if (!Array.isArray(candidate[field]) || candidate[field].some((value) => !nonEmptyString(value))) errors.push(`${field} must be a string array`);
+    }
+
+    if (!Array.isArray(candidate.settings) || candidate.settings.length === 0) errors.push("settings must be a non-empty array");
+    const settings = records(candidate.settings);
+    const settingsByKey = new Map();
+    for (const setting of settings) {
+      if (!isRecord(setting) || !nonEmptyString(setting.key) || settingsByKey.has(setting.key)) {
+        errors.push("setting keys must be unique and non-empty");
+        continue;
+      }
+      settingsByKey.set(setting.key, setting);
+      if (!Array.isArray(setting.acceptedValues) || setting.acceptedValues.length === 0 || setting.acceptedValues.some((value) => !nonEmptyString(value))) errors.push(`setting ${setting.key} acceptedValues must be non-empty strings`);
+      if (!Array.isArray(setting.readSites) || setting.readSites.length === 0 || setting.readSites.some((site) => !validEvidenceRecord(site))) errors.push(`setting ${setting.key} readSites are malformed`);
+      if (!nonEmptyString(setting.entryAccessorSymbol)) errors.push(`setting ${setting.key} entryAccessorSymbol is malformed`);
+      if (!Array.isArray(setting.accessorClosure) || setting.accessorClosure.some((hop) => !validEvidenceRecord(hop))) errors.push(`setting ${setting.key} accessorClosure is malformed`);
+      if (!["module-load", "invocation"].includes(setting.readTiming)) errors.push(`setting ${setting.key} readTiming is malformed`);
+    }
+
+    if (!Array.isArray(candidate.modes) || candidate.modes.length === 0) errors.push("modes must be a non-empty array");
+    const modeIds = new Set();
+    const nodeIds = new Set(records(generated.nodes).filter(isRecord).map((node) => node.id));
+    const edgeIds = new Set(records(generated.edges).filter(isRecord).map((edge) => edge.id));
+    for (const mode of records(candidate.modes)) {
+      if (!isRecord(mode) || !nonEmptyString(mode.id) || modeIds.has(mode.id)) {
+        errors.push("mode ids must be unique and non-empty");
+        continue;
+      }
+      modeIds.add(mode.id);
+      if (!nonEmptyString(mode.explanation)) errors.push(`mode ${mode.id} explanation is malformed`);
+      if (!Array.isArray(mode.caveats) || mode.caveats.some((value) => typeof value !== "string")) errors.push(`mode ${mode.id} caveats are malformed`);
+      const assignments = mode.assignments;
+      const assignmentKeys = new Set();
+      if (!Array.isArray(assignments) || assignments.length !== settingsByKey.size) errors.push(`mode ${mode.id} assignments are malformed`);
+      for (const assignment of records(assignments)) {
+        if (!isRecord(assignment)) {
+          errors.push(`mode ${mode.id} assignment is malformed`);
+          continue;
+        }
+        const setting = settingsByKey.get(assignment.key);
+        if (!setting || assignmentKeys.has(assignment.key)
+          || !(assignment.value === null || setting.acceptedValues.includes(assignment.value))) errors.push(`mode ${mode.id} assignment is malformed`);
+        else assignmentKeys.add(assignment.key);
+      }
+      if (Array.isArray(assignments) && assignments.some((assignment) => !isRecord(assignment))) errors.push(`mode ${mode.id} assignment is malformed`);
+      const resolvedKeys = new Set();
+      if (!Array.isArray(mode.resolvedValues) || mode.resolvedValues.length !== settingsByKey.size) errors.push(`mode ${mode.id} resolved values are malformed`);
+      for (const resolved of records(mode.resolvedValues)) {
+        if (!isRecord(resolved)) {
+          errors.push(`mode ${mode.id} resolved value is malformed`);
+          continue;
+        }
+        const setting = settingsByKey.get(resolved.key);
+        if (!setting || resolvedKeys.has(resolved.key) || !setting.acceptedValues.includes(resolved.value)) errors.push(`mode ${mode.id} resolved value is malformed`);
+        else resolvedKeys.add(resolved.key);
+      }
+      if (Array.isArray(mode.resolvedValues) && mode.resolvedValues.some((resolved) => !isRecord(resolved))) errors.push(`mode ${mode.id} resolved value is malformed`);
+      if (!Array.isArray(mode.prerequisites)) errors.push(`mode ${mode.id} prerequisites are malformed`);
+      for (const prerequisite of records(mode.prerequisites)) {
+        if (!isRecord(prerequisite)) {
+          errors.push(`mode ${mode.id} prerequisite is malformed`);
+          continue;
+        }
+        if (prerequisite.kind === "setting") {
+          const setting = settingsByKey.get(prerequisite.key);
+          if (!setting || !(prerequisite.value === null || setting.acceptedValues.includes(prerequisite.value))) errors.push(`mode ${mode.id} prerequisite is malformed`);
+        } else if (prerequisite.kind === "injected-capability") {
+          if (!nonEmptyString(prerequisite.nodeId) || !nodeIds.has(prerequisite.nodeId)) errors.push(`mode ${mode.id} prerequisite is malformed`);
+        } else errors.push(`mode ${mode.id} prerequisite is malformed`);
+      }
+      if (Array.isArray(mode.prerequisites) && mode.prerequisites.some((prerequisite) => !isRecord(prerequisite))) errors.push(`mode ${mode.id} prerequisite is malformed`);
+      if (!Array.isArray(mode.deltas)) errors.push(`mode ${mode.id} deltas are malformed`);
+      const deltaIds = new Set();
+      for (const delta of records(mode.deltas)) {
+        if (!isRecord(delta)) {
+          errors.push(`mode ${mode.id} delta is malformed`);
+          continue;
+        }
+        if (!nonEmptyString(delta.id) || deltaIds.has(delta.id) || !["activated", "bypassed", "changed", "unresolved"].includes(delta.effect)
+          || !["node", "edge", "step"].includes(delta.targetKind) || !nonEmptyString(delta.targetId)) {
+          errors.push(`mode ${mode.id} delta is malformed`);
+          continue;
+        }
+        deltaIds.add(delta.id);
+        if (delta.targetKind === "node" && !nodeIds.has(delta.targetId)) errors.push(`mode ${mode.id} delta node target is missing`);
+        if (delta.targetKind === "edge" && !edgeIds.has(delta.targetId)) errors.push(`mode ${mode.id} delta edge target is missing`);
+        if (!Array.isArray(delta.settingKeys) || delta.settingKeys.length === 0 || delta.settingKeys.some((key) => !settingsByKey.has(key))) errors.push(`mode ${mode.id} delta settingKeys are malformed`);
+        if (delta.effect === "unresolved") {
+          if (delta.noDirectProtocolConsumer !== true || ["consumerPath", "consumerSymbol", "referenceChain", "behaviorTest"].some((field) => delta[field] !== undefined)) errors.push(`mode ${mode.id} unresolved delta evidence is malformed`);
+        } else if (!validProtocolPath(delta.consumerPath) || !nonEmptyString(delta.consumerSymbol)
+          || !Array.isArray(delta.referenceChain) || delta.referenceChain.length === 0 || delta.referenceChain.some((hop) => !validEvidenceRecord(hop))
+          || !isRecord(delta.behaviorTest) || !validProtocolPath(delta.behaviorTest.path) || !nonEmptyString(delta.behaviorTest.testName)) {
+          errors.push(`mode ${mode.id} definitive delta evidence is malformed`);
+        }
+      }
+      if (Array.isArray(mode.deltas) && mode.deltas.some((delta) => !isRecord(delta))) errors.push(`mode ${mode.id} delta is malformed`);
+    }
+    if (!modeIds.has(candidate.fallbackModeId)) errors.push("fallback mode must exist");
+    return [...new Set(errors)];
+  }
+
   function configurationAvailability(generated) {
     const unavailable = { available: false, experiments: [], errors: ["Configuration Lab unavailable for this artifact."] };
     if (!isRecord(generated) || generated.schemaVersion !== 2 || !Array.isArray(generated.configurationExperiments)) return unavailable;
@@ -65,25 +186,9 @@
     const errors = [];
     const seen = new Set();
     for (const candidate of generated.configurationExperiments) {
-      const localErrors = [];
-      if (!isRecord(candidate) || typeof candidate.id !== "string" || !candidate.id || seen.has(candidate.id)) {
-        localErrors.push("experiment id must be unique and non-empty");
-      }
-      const modes = records(candidate && candidate.modes);
-      const modeIds = new Set();
-      for (const mode of modes) {
-        if (!isRecord(mode) || typeof mode.id !== "string" || !mode.id || modeIds.has(mode.id)) localErrors.push("mode ids must be unique and non-empty");
-        else modeIds.add(mode.id);
-        for (const delta of records(mode && mode.deltas)) {
-          if (!isRecord(delta) || typeof delta.id !== "string" || !["activated", "bypassed", "changed", "unresolved"].includes(delta.effect)
-            || !["node", "edge", "step"].includes(delta.targetKind) || typeof delta.targetId !== "string") {
-            localErrors.push("delta records must name an effect and target");
-          }
-        }
-      }
-      if (!isRecord(candidate) || typeof candidate.fallbackModeId !== "string" || !modeIds.has(candidate.fallbackModeId)) localErrors.push("fallback mode must exist");
+      const localErrors = configurationExperimentErrors(candidate, generated, seen);
       if (localErrors.length > 0) {
-        errors.push(`Configuration experiment ${isRecord(candidate) && candidate.id || "at unknown index"} omitted: ${[...new Set(localErrors)].join(", ")}.`);
+        errors.push(`Configuration experiment ${isRecord(candidate) && candidate.id || "at unknown index"} omitted: ${localErrors.join(", ")}.`);
         continue;
       }
       seen.add(candidate.id);
@@ -400,8 +505,12 @@
     }
     if (action.type === "select-configuration-mode") {
       const experiment = configurationExperiment(generated, action.experimentId);
-      const mode = configurationMode(experiment, action.modeId);
-      if (!experiment || !mode || next.chapterId !== "explore" || next.layer !== "implementation") return next;
+      const requestedMode = configurationMode(experiment, action.modeId);
+      if (!experiment || !requestedMode || next.chapterId !== "explore" || next.layer !== "implementation") return next;
+      const mode = next.configurationExperimentId === experiment.id
+        ? requestedMode
+        : configurationMode(experiment, experiment.fallbackModeId);
+      if (!mode) return next;
       const comparison = deriveConfigurationComparison(experiment.id, mode.id, content, generated);
       return {
         ...next,

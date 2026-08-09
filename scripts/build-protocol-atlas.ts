@@ -44,6 +44,30 @@ export type ConfigurationEffect = "activated" | "bypassed" | "changed" | "unreso
 export type GeneratedConfigurationExperiment = Record<string, unknown> & { id: string; modes: Array<Record<string, unknown> & { id: string }> };
 export type AtlasArtifactV1 = { schemaVersion: 1; nodes: AtlasNode[]; edges: AtlasEdge[] };
 export type AtlasArtifact = { schemaVersion: 2; nodes: AtlasNode[]; edges: AtlasEdge[]; configurationExperiments: GeneratedConfigurationExperiment[] };
+
+const APPROVED_CONFIGURATION_MODE_IDS: Readonly<Record<string, readonly string[]>> = {
+  "discovery-corpus": ["fallback", "intent-only", "premise-profile", "context-profile", "context-cross-match"],
+  "discovery-premise-limit": ["fallback-40", "disabled-0", "expanded-100"],
+  "discovery-rejection-cooldown": ["fallback-7d", "short-1d", "long-30d"],
+  "discovery-evaluation-topology": ["bundled", "pairwise"],
+  "hyde-frame-constraints": ["legacy", "frame-v1"],
+  "premise-deduplication": ["fallback-0.93", "broad-0.85", "strict-0.98"],
+  "introducer-discovery": ["off", "on"],
+  "negotiation-context": ["include-active", "exact-only"],
+  "negotiation-turn-caps": ["fallback-4-6", "short-2-3", "extended-8-12"],
+  "negotiation-protocol": ["v1", "v2"],
+  "negotiation-screen": ["off", "shadow", "enforce"],
+  "negotiation-stance": ["advocate", "evaluator", "skeptic"],
+  "negotiation-consultation": ["off", "shadow", "v2-on", "v2-short-window"],
+  "negotiation-deadlock": ["off", "v2-threshold-4", "v2-fast-2", "v2-skeptic"],
+  "questioner-uptake": ["off", "on-threshold-70", "on-threshold-90"],
+  "questioner-discovery-contract": ["off", "transcripts-unresolved", "insights-unresolved"],
+  "pool-question-contract": ["off", "shadow-mining", "on-pull", "on-push", "on-visit", "on-newborn"],
+  "pool-ranking": ["off", "on"],
+  "negotiation-evidence-contract": ["off", "shadow", "on-alias"],
+  "outcome-questions-contract": ["off", "shadow", "on-alias"],
+};
+
 export type GeneratorInput = {
   exportInventory: {
     exports: Array<{
@@ -490,11 +514,15 @@ function recordArray(value: unknown): Array<Record<string, unknown>> {
     : [];
 }
 
-function compareField(field: string) {
+function compareFields(...fields: string[]) {
   return (left: Record<string, unknown>, right: Record<string, unknown>): number => {
-    const leftValue = String(left[field] ?? "");
-    const rightValue = String(right[field] ?? "");
-    return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+    for (const field of fields) {
+      const leftValue = String(left[field] ?? "");
+      const rightValue = String(right[field] ?? "");
+      if (leftValue < rightValue) return -1;
+      if (leftValue > rightValue) return 1;
+    }
+    return 0;
   };
 }
 
@@ -504,21 +532,22 @@ function normalizedConfigurationExperiments(content: unknown): GeneratedConfigur
     const normalized = structuredClone(experiment);
     normalized.settings = recordArray(normalized.settings).map((setting) => ({
       ...setting,
-      readSites: recordArray(setting.readSites).sort(compareField("path")),
-      accessorClosure: recordArray(setting.accessorClosure).sort(compareField("path")),
+      readSites: recordArray(setting.readSites).sort(compareFields("path", "symbol")),
+      accessorClosure: recordArray(setting.accessorClosure).sort(compareFields("path", "symbol")),
       acceptedValues: Array.isArray(setting.acceptedValues) ? [...setting.acceptedValues].sort() : [],
-    })).sort(compareField("key"));
+    })).sort(compareFields("key", "entryAccessorSymbol", "readTiming"));
     normalized.modes = recordArray(normalized.modes).map((mode) => ({
       ...mode,
-      assignments: recordArray(mode.assignments).sort(compareField("key")),
-      resolvedValues: recordArray(mode.resolvedValues).sort(compareField("key")),
-      prerequisites: recordArray(mode.prerequisites).sort(compareField("key")),
+      assignments: recordArray(mode.assignments).sort(compareFields("key", "value")),
+      resolvedValues: recordArray(mode.resolvedValues).sort(compareFields("key", "value")),
+      prerequisites: recordArray(mode.prerequisites).sort(compareFields("kind", "key", "value", "nodeId")),
       deltas: recordArray(mode.deltas).map((delta) => ({
         ...delta,
-        referenceChain: recordArray(delta.referenceChain),
-      })).sort(compareField("id")),
+        ...(Array.isArray(delta.settingKeys) ? { settingKeys: [...delta.settingKeys].sort() } : {}),
+        ...(Array.isArray(delta.referenceChain) ? { referenceChain: recordArray(delta.referenceChain) } : {}),
+      })).sort(compareFields("id", "effect", "targetKind", "targetId")),
       caveats: Array.isArray(mode.caveats) ? [...mode.caveats].sort() : [],
-    })).sort(compareField("id"));
+    })).sort(compareFields("id"));
     normalized.affectedChapterIds = Array.isArray(normalized.affectedChapterIds) ? [...normalized.affectedChapterIds].sort() : [];
     normalized.affectedStepIds = Array.isArray(normalized.affectedStepIds) ? [...normalized.affectedStepIds].sort() : [];
     return normalized as GeneratedConfigurationExperiment;
@@ -726,16 +755,28 @@ function sourceDeclaresSymbol(path: string, symbol: string, sourceFiles: Record<
   return found;
 }
 
-function environmentReadPaths(sourceFiles: Record<string, string>): Map<string, Set<string>> {
+function enclosingTopLevelSymbol(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
+  let current: ts.Node | undefined = node.parent;
+  let symbol: string | undefined;
+  while (current && current !== sourceFile) {
+    if ((ts.isFunctionDeclaration(current) || ts.isClassDeclaration(current) || ts.isEnumDeclaration(current)) && current.name) symbol = current.name.text;
+    if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name)) symbol = current.name.text;
+    current = current.parent;
+  }
+  return symbol;
+}
+
+function environmentReadSites(sourceFiles: Record<string, string>): Map<string, Set<string>> {
   const reads = new Map<string, Set<string>>();
   for (const [path, source] of Object.entries(sourceFiles)) {
     const sourceFile = parseSourceFile(path, source);
     const visit = (node: ts.Node): void => {
       const key = processEnvironmentKey(node);
       if (key) {
-        const paths = reads.get(key) ?? new Set<string>();
-        paths.add(path);
-        reads.set(key, paths);
+        const symbol = enclosingTopLevelSymbol(node, sourceFile);
+        const sites = reads.get(key) ?? new Set<string>();
+        sites.add(`${path}#${symbol ?? "<module>"}`);
+        reads.set(key, sites);
       }
       ts.forEachChild(node, visit);
     };
@@ -756,29 +797,215 @@ function enclosingCallableName(node: ts.Node, sourceFile: ts.SourceFile): string
   return undefined;
 }
 
-function runtimeCallReferences(
-  sourceFiles: Record<string, string>,
-  symbols: Set<string>,
-  allowedAccessorCallers: Set<string>,
-): string[] {
-  const references: string[] = [];
+type SymbolLocation = { path: string; symbol: string };
+type RuntimeBinding = { targetPath: string; importedSymbol: string; namespace: boolean };
+type ModuleEvidence = {
+  sourceFile: ts.SourceFile;
+  declarations: Map<string, ts.Node>;
+  imports: Map<string, RuntimeBinding>;
+  reexports: Map<string, { targetPath: string; importedSymbol: string }>;
+};
+
+function symbolKey(location: SymbolLocation): string {
+  return `${location.path}#${location.symbol}`;
+}
+
+function topLevelDeclarations(sourceFile: ts.SourceFile): Map<string, ts.Node> {
+  const declarations = new Map<string, ts.Node>();
+  const addNamed = (node: ts.Node & { name?: ts.Node }): void => {
+    if (node.name && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))) declarations.set(node.name.text, node);
+  };
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)
+      || ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) addNamed(statement);
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name)) declarations.set(declaration.name.text, declaration);
+      }
+    }
+  }
+  return declarations;
+}
+
+function buildModuleEvidence(sourceFiles: Record<string, string>): Map<string, ModuleEvidence> {
+  const modules = new Map<string, ModuleEvidence>();
   for (const [path, source] of Object.entries(sourceFiles)) {
     const sourceFile = parseSourceFile(path, source);
+    const imports = new Map<string, RuntimeBinding>();
+    const reexports = new Map<string, { targetPath: string; importedSymbol: string }>();
+    for (const statement of sourceFile.statements) {
+      if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+        const targetPath = importedSourcePath(path, statement.moduleSpecifier.text);
+        const clause = statement.importClause;
+        if (!targetPath || !clause || clause.isTypeOnly) continue;
+        if (clause.name) imports.set(clause.name.text, { targetPath, importedSymbol: "default", namespace: false });
+        if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+          imports.set(clause.namedBindings.name.text, { targetPath, importedSymbol: "*", namespace: true });
+        }
+        if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+          for (const element of clause.namedBindings.elements) {
+            if (element.isTypeOnly) continue;
+            imports.set(element.name.text, {
+              targetPath,
+              importedSymbol: (element.propertyName ?? element.name).text,
+              namespace: false,
+            });
+          }
+        }
+      }
+      if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
+        && !statement.isTypeOnly && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        const targetPath = importedSourcePath(path, statement.moduleSpecifier.text);
+        if (!targetPath) continue;
+        for (const element of statement.exportClause.elements) {
+          if (!element.isTypeOnly) reexports.set(element.name.text, {
+            targetPath,
+            importedSymbol: (element.propertyName ?? element.name).text,
+          });
+        }
+      }
+    }
+    modules.set(path, { sourceFile, declarations: topLevelDeclarations(sourceFile), imports, reexports });
+  }
+  return modules;
+}
+
+function resolveExportOrigin(
+  location: SymbolLocation,
+  modules: Map<string, ModuleEvidence>,
+  seen = new Set<string>(),
+): SymbolLocation | undefined {
+  const key = symbolKey(location);
+  if (seen.has(key)) return undefined;
+  seen.add(key);
+  const module = modules.get(location.path);
+  if (!module) return undefined;
+  if (module.declarations.has(location.symbol)) return location;
+  const reexport = module.reexports.get(location.symbol);
+  return reexport ? resolveExportOrigin(reexport, modules, seen) : undefined;
+}
+
+function declarationReferences(node: ts.Node, localName: string, namespaceMember?: string): boolean {
+  let found = false;
+  const visit = (candidate: ts.Node): void => {
+    if (found) return;
+    if (namespaceMember && ts.isPropertyAccessExpression(candidate) && ts.isIdentifier(candidate.expression)
+      && candidate.expression.text === localName && candidate.name.text === namespaceMember) {
+      found = true;
+      return;
+    }
+    if (!namespaceMember && ts.isIdentifier(candidate) && candidate.text === localName && candidate !== (node as ts.NamedDeclaration).name) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(node);
+  return found;
+}
+
+function referenceHopLinked(
+  from: SymbolLocation,
+  to: SymbolLocation,
+  modules: Map<string, ModuleEvidence>,
+): boolean {
+  if (from.path === to.path && from.symbol === to.symbol) return true;
+  const toModule = modules.get(to.path);
+  if (!toModule) return false;
+  const toDeclaration = toModule.declarations.get(to.symbol);
+  if (from.path === to.path) return Boolean(toDeclaration && declarationReferences(toDeclaration, from.symbol));
+
+  const reexport = toModule.reexports.get(to.symbol);
+  if (reexport && reexport.targetPath === from.path && reexport.importedSymbol === from.symbol) return true;
+  if (!toDeclaration) return false;
+  const fromOrigin = resolveExportOrigin(from, modules);
+  for (const [localName, binding] of toModule.imports) {
+    if (binding.namespace) {
+      const rawMatch = binding.targetPath === from.path;
+      const resolved = resolveExportOrigin({ path: binding.targetPath, symbol: from.symbol }, modules);
+      if ((rawMatch || (fromOrigin && resolved && symbolKey(fromOrigin) === symbolKey(resolved)))
+        && declarationReferences(toDeclaration, localName, from.symbol)) return true;
+      continue;
+    }
+    const rawMatch = binding.targetPath === from.path && binding.importedSymbol === from.symbol;
+    const bindingOrigin = resolveExportOrigin({ path: binding.targetPath, symbol: binding.importedSymbol }, modules);
+    if ((rawMatch || (fromOrigin && bindingOrigin && symbolKey(fromOrigin) === symbolKey(bindingOrigin)))
+      && declarationReferences(toDeclaration, localName)) return true;
+  }
+  return false;
+}
+
+function callTargetOrigin(
+  expression: ts.LeftHandSideExpression,
+  path: string,
+  modules: Map<string, ModuleEvidence>,
+): SymbolLocation | undefined {
+  const module = modules.get(path);
+  if (!module) return undefined;
+  if (ts.isIdentifier(expression)) {
+    const binding = module.imports.get(expression.text);
+    if (binding && !binding.namespace) return resolveExportOrigin({ path: binding.targetPath, symbol: binding.importedSymbol }, modules);
+    return resolveExportOrigin({ path, symbol: expression.text }, modules);
+  }
+  if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+    const binding = module.imports.get(expression.expression.text);
+    if (binding?.namespace) return resolveExportOrigin({ path: binding.targetPath, symbol: expression.name.text }, modules);
+  }
+  return undefined;
+}
+
+function nodeIsInsideDeclaration(node: ts.Node, declaration: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (current === declaration) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function runtimeCallReferences(
+  sourceFiles: Record<string, string>,
+  closure: Set<string>,
+  modules: Map<string, ModuleEvidence>,
+): string[] {
+  const references: string[] = [];
+  for (const [path] of Object.entries(sourceFiles)) {
+    const module = modules.get(path);
+    if (!module) continue;
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
-        const expression = node.expression;
-        const symbol = ts.isIdentifier(expression) ? expression.text
-          : ts.isPropertyAccessExpression(expression) ? expression.name.text : undefined;
-        const caller = enclosingCallableName(node, sourceFile);
-        if (symbol && symbols.has(symbol) && (!caller || !allowedAccessorCallers.has(caller))) {
-          references.push(`${path}#${caller ? `${caller}->` : ""}${symbol}`);
+        const target = callTargetOrigin(node.expression, path, modules);
+        if (target && closure.has(symbolKey(target))) {
+          const insideClosure = [...closure].some((key) => {
+            const separator = key.lastIndexOf("#");
+            const closurePath = key.slice(0, separator);
+            const closureSymbol = key.slice(separator + 1);
+            if (closurePath !== path) return false;
+            const declaration = modules.get(closurePath)?.declarations.get(closureSymbol);
+            return Boolean(declaration && nodeIsInsideDeclaration(node, declaration));
+          });
+          if (!insideClosure) references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${target.symbol}`);
         }
       }
       ts.forEachChild(node, visit);
     };
-    visit(sourceFile);
+    visit(module.sourceFile);
   }
   return [...new Set(references)].sort();
+}
+
+function behaviorTestNames(source: string, path: string): Set<string> {
+  const sourceFile = parseSourceFile(path, source);
+  const names = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && ["test", "it"].includes(node.expression.text)) {
+      const first = node.arguments[0];
+      if (first && (ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first))) names.add(first.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return names;
 }
 
 function ids(records: Array<Record<string, unknown>>): string[] {
@@ -806,6 +1033,9 @@ export function validateConfigurationExperiments(
   for (const id of duplicateIds(experiments.filter((entry): entry is { id: string } => typeof entry.id === "string"))) {
     issues.push(`duplicate configuration experiment id: ${id}`);
   }
+  if (!sameStrings(ids(experiments), Object.keys(APPROVED_CONFIGURATION_MODE_IDS))) {
+    issues.push("configuration experiment ids must exactly match the approved inventory");
+  }
   const generatedIds = artifact.configurationExperiments.map(({ id }) => id);
   if (!sameStrings(ids(experiments), generatedIds)) issues.push("generated configuration experiments must exactly match curated experiment ids");
 
@@ -814,7 +1044,8 @@ export function validateConfigurationExperiments(
   const root = content as Record<string, unknown>;
   const stepIds = new Set(recordArray(root.flows).flatMap((flow) => ids(recordArray(flow.steps))));
   const chapterIds = new Set(ids(recordArray(root.chapters)));
-  const envReads = environmentReadPaths(input.sourceFiles);
+  const envReads = environmentReadSites(input.sourceFiles);
+  const modules = buildModuleEvidence(input.sourceFiles);
   const secretKey = /(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|CREDENTIAL)/i;
 
   for (const experiment of experiments) {
@@ -822,6 +1053,9 @@ export function validateConfigurationExperiments(
     if (typeof experiment.id !== "string" || !experiment.id) issues.push("configuration experiments must have a non-empty id");
     const settings = recordArray(experiment.settings);
     const modes = recordArray(experiment.modes);
+    if (!["definitive", "unresolved"].includes(String(experiment.coverage))) issues.push(`${experimentId} has unapproved coverage classification ${String(experiment.coverage)}`);
+    const approvedModes = APPROVED_CONFIGURATION_MODE_IDS[experimentId];
+    if (approvedModes && !sameStrings(ids(modes), approvedModes)) issues.push(`${experimentId} is missing approved mode or contains an unapproved mode`);
     for (const id of duplicateIds(settings.filter((entry): entry is { id: string } => typeof entry.id === "string").map((entry) => ({ id: entry.id })))) {
       issues.push(`duplicate configuration setting id in ${experimentId}: ${id}`);
     }
@@ -848,27 +1082,46 @@ export function validateConfigurationExperiments(
       settingsByKey.set(key, setting);
       if (secretKey.test(key)) issues.push(`${experimentId} uses secret-shaped configuration key ${key}`);
       const readSites = recordArray(setting.readSites);
-      const declaredPaths = new Set<string>();
+      const declaredSites = new Set<string>();
       for (const readSite of readSites) {
         if (typeof readSite.path !== "string") {
           issues.push(`${experimentId}.${key} read site must name a path`);
           continue;
         }
-        declaredPaths.add(readSite.path);
+        declaredSites.add(`${readSite.path}#${String(readSite.symbol)}`);
         const pathError = pathIssue(readSite.path, repoRoot, `${experimentId}.${key} read site`);
         if (pathError) issues.push(pathError);
         if (typeof readSite.symbol !== "string" || !sourceDeclaresSymbol(readSite.path, readSite.symbol, input.sourceFiles)) issues.push(`${experimentId}.${key} read site symbol is missing: ${String(readSite.symbol)}`);
       }
-      const actualPaths = envReads.get(key) ?? new Set<string>();
-      if (!sameStrings(declaredPaths, actualPaths)) issues.push(`${experimentId}.${key} readSites do not match current production reads`);
+      const actualSites = envReads.get(key) ?? new Set<string>();
+      if (!sameStrings(declaredSites, actualSites)) issues.push(`${experimentId}.${key} readSites do not match current production reads`);
       if (typeof setting.entryAccessorSymbol !== "string" || !readSites.some((site) => sourceDeclaresSymbol(String(site.path), String(setting.entryAccessorSymbol), input.sourceFiles))) {
         issues.push(`${experimentId}.${key} entry accessor is missing: ${String(setting.entryAccessorSymbol)}`);
       }
-      for (const hop of recordArray(setting.accessorClosure)) {
+      const closureHops = recordArray(setting.accessorClosure);
+      const closureKeys = closureHops.map((hop) => `${String(hop.path)}#${String(hop.symbol)}`);
+      if (new Set(closureKeys).size !== closureKeys.length) issues.push(`${experimentId}.${key} has duplicate accessor closure hops`);
+      const readSiteKeys = readSites.map((site) => `${String(site.path)}#${String(site.symbol)}`);
+      if (new Set(readSiteKeys).size !== readSiteKeys.length) issues.push(`${experimentId}.${key} has duplicate read sites`);
+      const entrySite = readSites.find((site) => site.symbol === setting.entryAccessorSymbol);
+      const connected: SymbolLocation[] = entrySite && typeof entrySite.path === "string"
+        ? [{ path: entrySite.path, symbol: String(setting.entryAccessorSymbol) }]
+        : [];
+      const remaining = closureHops.filter((hop): hop is Record<string, unknown> & { path: string; symbol: string } => {
         if (typeof hop.path !== "string" || typeof hop.symbol !== "string" || !sourceDeclaresSymbol(hop.path, hop.symbol, input.sourceFiles)) {
           issues.push(`${experimentId}.${key} accessor closure hop is missing`);
+          return false;
         }
+        return true;
+      });
+      while (remaining.length > 0) {
+        const index = remaining.findIndex((hop) => connected.some((member) =>
+          referenceHopLinked(member, hop, modules) || referenceHopLinked(hop, member, modules)));
+        if (index < 0) break;
+        const [hop] = remaining.splice(index, 1);
+        connected.push(hop);
       }
+      if (remaining.length > 0) issues.push(`${experimentId}.${key} accessor closure is disconnected`);
     }
 
     for (const mode of modes) {
@@ -877,6 +1130,11 @@ export function validateConfigurationExperiments(
       const assignmentKeys = assignments.map(({ key }) => key).filter((key): key is string => typeof key === "string");
       if (!sameStrings(assignmentKeys, settingsByKey.keys())) issues.push(`${modeId} assignments must cover every experiment setting exactly once`);
       if (new Set(assignmentKeys).size !== assignmentKeys.length) issues.push(`${modeId} has duplicate assignments`);
+      const resolvedKeys = recordArray(mode.resolvedValues).map(({ key }) => key).filter((key): key is string => typeof key === "string");
+      if (!sameStrings(resolvedKeys, settingsByKey.keys())) issues.push(`${modeId} resolvedValues must cover every experiment setting exactly once`);
+      if (new Set(resolvedKeys).size !== resolvedKeys.length) issues.push(`${modeId} has duplicate resolved values`);
+      const assignmentByKey = new Map(assignments.map((assignment) => [assignment.key, assignment.value]));
+      const resolvedByKey = new Map(recordArray(mode.resolvedValues).map((resolved) => [resolved.key, resolved.value]));
       for (const assignment of assignments) {
         const setting = settingsByKey.get(String(assignment.key));
         const accepted = Array.isArray(setting?.acceptedValues) ? setting.acceptedValues : [];
@@ -889,6 +1147,9 @@ export function validateConfigurationExperiments(
           const setting = settingsByKey.get(String(prerequisite.key));
           if (!setting || !(prerequisite.value === null || (typeof prerequisite.value === "string" && (setting.acceptedValues as unknown[])?.includes(prerequisite.value)))) {
             issues.push(`${modeId} has malformed setting prerequisite`);
+          } else {
+            const actual = assignmentByKey.get(prerequisite.key) ?? resolvedByKey.get(prerequisite.key);
+            if (actual !== prerequisite.value) issues.push(`${modeId} setting prerequisite does not match its mode assignment`);
           }
         } else if (prerequisite.kind === "injected-capability") {
           if (typeof prerequisite.nodeId !== "string" || !nodeIds.has(prerequisite.nodeId)) issues.push(`${modeId} has missing injected capability`);
@@ -912,20 +1173,20 @@ export function validateConfigurationExperiments(
           }
           const unresolvedSettingKeys = Array.isArray(delta.settingKeys) ? new Set(delta.settingKeys.filter((key): key is string => typeof key === "string")) : new Set(settingsByKey.keys());
           if (unresolvedSettingKeys.size === 0 || [...unresolvedSettingKeys].some((key) => !settingsByKey.has(key))) issues.push(`${deltaId} unresolved delta has malformed settingKeys`);
-          const targetAccessorSymbols = new Set<string>();
-          const allowedAccessorCallers = new Set<string>();
+          const accessorClosure = new Set<string>();
           for (const setting of settings.filter((candidate) => unresolvedSettingKeys.has(String(candidate.key)))) {
-            if (typeof setting.entryAccessorSymbol === "string") {
-              targetAccessorSymbols.add(setting.entryAccessorSymbol);
-              allowedAccessorCallers.add(setting.entryAccessorSymbol);
+            for (const site of recordArray(setting.readSites)) {
+              if (typeof site.path !== "string" || typeof site.symbol !== "string") continue;
+              const origin = resolveExportOrigin({ path: site.path, symbol: site.symbol }, modules);
+              if (origin) accessorClosure.add(symbolKey(origin));
             }
-            for (const site of recordArray(setting.readSites)) if (typeof site.symbol === "string") {
-              targetAccessorSymbols.add(site.symbol);
-              allowedAccessorCallers.add(site.symbol);
+            for (const hop of recordArray(setting.accessorClosure)) {
+              if (typeof hop.path !== "string" || typeof hop.symbol !== "string") continue;
+              const origin = resolveExportOrigin({ path: hop.path, symbol: hop.symbol }, modules);
+              if (origin) accessorClosure.add(symbolKey(origin));
             }
-            for (const hop of recordArray(setting.accessorClosure)) if (typeof hop.symbol === "string") allowedAccessorCallers.add(hop.symbol);
           }
-          const escapingReferences = runtimeCallReferences(input.sourceFiles, targetAccessorSymbols, allowedAccessorCallers);
+          const escapingReferences = runtimeCallReferences(input.sourceFiles, accessorClosure, modules);
           if (escapingReferences.length > 0) issues.push(`${deltaId} unresolved accessor has direct production consumer: ${escapingReferences.join(", ")}`);
           continue;
         }
@@ -938,8 +1199,26 @@ export function validateConfigurationExperiments(
           }
         }
         if (typeof delta.consumerSymbol !== "string" || !sourceDeclaresSymbol(String(delta.consumerPath), delta.consumerSymbol, input.sourceFiles)) issues.push(`${deltaId} consumer symbol is missing`);
-        for (const hop of recordArray(delta.referenceChain)) {
+        const settingKeys = Array.isArray(delta.settingKeys) ? delta.settingKeys.filter((key): key is string => typeof key === "string") : [];
+        if (settingKeys.length !== 1 || !settingsByKey.has(settingKeys[0])) issues.push(`${deltaId} definitive delta must name exactly one experiment settingKey`);
+        const chain = recordArray(delta.referenceChain);
+        if (chain.length === 0) issues.push(`${deltaId} reference chain must not be empty`);
+        const locations: SymbolLocation[] = [];
+        for (const hop of chain) {
           if (typeof hop.path !== "string" || typeof hop.symbol !== "string" || !sourceDeclaresSymbol(hop.path, hop.symbol, input.sourceFiles)) issues.push(`${deltaId} reference-chain hop is missing`);
+          else locations.push({ path: hop.path, symbol: hop.symbol });
+        }
+        const setting = settingsByKey.get(settingKeys[0]);
+        const first = locations[0];
+        const allowedStarts = setting ? [
+          ...recordArray(setting.readSites).map((site) => ({ path: String(site.path), symbol: String(site.symbol) })),
+          ...recordArray(setting.accessorClosure).map((hop) => ({ path: String(hop.path), symbol: String(hop.symbol) })),
+        ] : [];
+        if (first && !allowedStarts.some((start) => start.path === first.path && start.symbol === first.symbol)) issues.push(`${deltaId} reference chain must start at its setting accessor`);
+        const last = locations.at(-1);
+        if (last && (last.path !== delta.consumerPath || last.symbol !== delta.consumerSymbol)) issues.push(`${deltaId} reference chain must end at its consumer`);
+        for (let index = 1; index < locations.length; index += 1) {
+          if (!referenceHopLinked(locations[index - 1], locations[index], modules)) issues.push(`${deltaId} reference chain has no ordered link between ${symbolKey(locations[index - 1])} and ${symbolKey(locations[index])}`);
         }
         const behaviorTest = delta.behaviorTest;
         if (!behaviorTest || typeof behaviorTest !== "object" || Array.isArray(behaviorTest)) {
@@ -951,7 +1230,7 @@ export function validateConfigurationExperiments(
             const pathError = pathIssue(testRecord.path, repoRoot, `${deltaId} behavior test`);
             if (pathError) issues.push(pathError);
             const source = input.behaviorTestFiles?.[testRecord.path];
-            if (typeof testRecord.testName !== "string" || !source?.includes(testRecord.testName)) issues.push(`${deltaId} behavior test name is missing: ${String(testRecord.testName)}`);
+            if (typeof testRecord.testName !== "string" || !source || !behaviorTestNames(source, testRecord.path).has(testRecord.testName)) issues.push(`${deltaId} behavior test name is missing: ${String(testRecord.testName)}`);
           }
         }
       }
