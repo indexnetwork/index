@@ -791,7 +791,6 @@ export const networks = pgTable('networks', {
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
   masterKeyHash: text('master_key_hash'),
-  hidden: boolean('hidden').default(false).notNull(),
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
   requestStatus: text('request_status').$type<NetworkRequestStatus>(),

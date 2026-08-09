@@ -767,8 +767,6 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         invite_code = _text(invite.get("code")) if isinstance(invite, dict) else ""
         if invite_code:
             item["invitationLink"] = {"code": invite_code}
-        if network.get("hidden") is True:
-            item["hidden"] = True
         net_type = _text(network.get("type"))
         if net_type:
             item["type"] = net_type
@@ -1191,7 +1189,7 @@ def network_overview(network_id: str) -> dict[str, Any]:
 
 @router.put("/networks/{network_id}")
 def update_network(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Update network settings / directory hide — REST `PUT /networks/:id`."""
+    """Update network settings — REST `PUT /networks/:id`."""
     network_id = _text(network_id)
     if not network_id:
         return {"success": False, "error": "A network id is required."}
@@ -1208,8 +1206,6 @@ def update_network(network_id: str, body: dict[str, Any] | None = Body(default=N
     if "imageUrl" in payload_in:
         image_url = payload_in.get("imageUrl")
         forward["imageUrl"] = None if image_url is None else _text(image_url) or None
-    if "hidden" in payload_in:
-        forward["hidden"] = bool(payload_in.get("hidden"))
     if not forward:
         return {"success": False, "error": "No updatable fields provided."}
     payload = tools._api_request("PUT", f"/networks/{quote(network_id, safe='')}", forward)
@@ -1223,7 +1219,6 @@ def update_network(network_id: str, body: dict[str, Any] | None = Body(default=N
         "id": _text(network.get("id") or network_id),
         "title": _text(network.get("title"), "Untitled network"),
         "detail": _truncate(network.get("prompt") or network.get("description")) or "",
-        "hidden": network.get("hidden") is True,
     }
     image_url = _text(network.get("imageUrl"))
     if image_url:

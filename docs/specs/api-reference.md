@@ -1730,7 +1730,7 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 **Controller prefix**: `/networks`
 
-**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hidden`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hidden: true` excludes the network from the public directory; `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
+**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
 
 ### GET /api/networks
 
@@ -1923,8 +1923,7 @@ Update an index (title, prompt, image, join policy). Owner only.
   "prompt": "string | null (optional)",
   "imageUrl": "string | null (optional)",
   "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)",
-  "hidden": "boolean (optional — exclude from the public directory)"
+  "allowGuestVibeCheck": "boolean (optional)"
 }
 ```
 

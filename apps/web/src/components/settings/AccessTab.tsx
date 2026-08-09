@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff, EyeOff } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff } from 'lucide-react';
 
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,6 @@ export default function AccessTab({
   const usersService = createUsersService(api);
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
-  const [isHiddenFromDirectory, setIsHiddenFromDirectory] = useState(network.hidden ?? false);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -77,13 +76,12 @@ export default function AccessTab({
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local state from prop changes */
   useEffect(() => {
     setAnyoneCanJoin(network.permissions?.joinPolicy === 'anyone');
-    setIsHiddenFromDirectory(network.hidden ?? false);
     if (network.permissions?.invitationLink?.code) {
       setInvitationLink({ code: network.permissions.invitationLink.code });
     } else {
       setInvitationLink(null);
     }
-  }, [network.id, network.permissions, network.hidden]);
+  }, [network.id, network.permissions]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadMembers = useCallback(async () => {
@@ -153,17 +151,6 @@ export default function AccessTab({
     } catch (err) {
       logger.error('Error updating permissions', { error: err });
       error('Failed to update permissions');
-    }
-  };
-
-  const handleUpdateHidden = async (hidden: boolean) => {
-    try {
-      await networkService.updateNetwork(networkId, { hidden });
-      const updatedNetwork = await networkService.getNetwork(networkId);
-      onUpdated(updatedNetwork);
-    } catch (err) {
-      logger.error('Error updating directory visibility', { error: err });
-      error('Failed to update directory visibility');
     }
   };
 
@@ -381,24 +368,6 @@ export default function AccessTab({
                 </div>
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Hidden from directory — personal networks reject non-prompt updates */}
-        {!network.isPersonal && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Directory Listing</p>
-            <button
-              type="button"
-              onClick={() => { setIsHiddenFromDirectory(!isHiddenFromDirectory); handleUpdateHidden(!isHiddenFromDirectory); }}
-              className={`w-full flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${isHiddenFromDirectory ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-            >
-              <EyeOff className={`h-4 w-4 flex-shrink-0 ${isHiddenFromDirectory ? 'text-black' : 'text-gray-400'}`} />
-              <div>
-                <p className="text-sm font-medium text-black">Hidden from directory</p>
-                <p className="text-xs text-gray-400">{isHiddenFromDirectory ? 'This network is not shown in public listings' : 'This network appears in public listings'}</p>
-              </div>
-            </button>
           </div>
         )}
 

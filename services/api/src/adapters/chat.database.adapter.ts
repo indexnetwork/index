@@ -726,7 +726,6 @@ export class ChatDatabaseAdapter {
         imageUrl: schema.networks.imageUrl,
         permissions: schema.networks.permissions,
         isPersonal: schema.networks.isPersonal,
-        hidden: schema.networks.hidden,
         masterKeyHash: schema.networks.masterKeyHash,
         ownerId: ownerMembers.userId,
         createdAt: schema.networks.createdAt,
@@ -776,7 +775,6 @@ export class ChatDatabaseAdapter {
           metadata: (row.metadata ?? {}) as Record<string, unknown>,
           permissions: toPublicNetworkPermissions(row.permissions),
           isPersonal: row.isPersonal,
-          hidden: row.hidden,
           hasMasterKey: row.masterKeyHash != null,
           role,
           createdAt: row.createdAt,
@@ -859,7 +857,6 @@ export class ChatDatabaseAdapter {
     const whereConditions = [
       isNull(schema.networks.deletedAt),
       eq(schema.networks.isPersonal, false),
-      eq(schema.networks.hidden, false),
       // Unapproved network requests are inert rows, never discoverable.
       isNull(schema.networks.requestStatus),
     ];
@@ -1713,7 +1710,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -1729,7 +1726,6 @@ export class ChatDatabaseAdapter {
     if (data.title !== undefined) updateData.title = data.title;
     if (data.prompt !== undefined) updateData.prompt = data.prompt;
     if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
-    if (data.hidden !== undefined) updateData.hidden = data.hidden;
     if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
       const currentPerms = (existing.permissions as schema.NetworkPermissionsState | null) ?? {
         joinPolicy: 'invite_only',
@@ -2305,7 +2301,6 @@ export class ChatDatabaseAdapter {
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
         isPersonal: networks.isPersonal,
-        hidden: networks.hidden,
         masterKeyHash: networks.masterKeyHash,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
@@ -2345,7 +2340,6 @@ export class ChatDatabaseAdapter {
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       permissions: toPublicNetworkPermissions(row.permissions),
       isPersonal: row.isPersonal,
-      hidden: row.hidden,
       hasMasterKey: row.masterKeyHash != null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

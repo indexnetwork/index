@@ -267,7 +267,6 @@ export class NetworkController {
         allowGuestVibeCheck?: boolean;
         metadata?: Record<string, unknown>;
         contextInjection?: { discovery: boolean };
-        hidden?: boolean;
       };
 
       const result = await networkService.updateNetwork(params.id, user.id, body);
