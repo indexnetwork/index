@@ -44,20 +44,6 @@ function ensureAssets() {
   return assetsPromise
 }
 
-function DesktopPage() {
-  const tick = React.useState(0)
-  React.useEffect(function () {
-    let alive = true
-    ensureAssets().then(function () {
-      if (alive) tick[1](function (n) { return n + 1 })
-    })
-    return function () { alive = false }
-  }, [])
-  if (!DashboardComponent) return null
-  return React.createElement('div', { className: 'index-network-desktop-page' },
-    React.createElement(DashboardComponent))
-}
-
 function stashDesktopInvite(code) {
   const c = String(code || '').trim()
   if (!c) return
@@ -78,6 +64,94 @@ function stashDesktopPublicJoin(networkId) {
   } catch (e) { /* noop */ }
 }
 
+/** Read ?invite= / ?join= from the desktop hash route (#/index-network?join=…). */
+function readJoinQueryFromHash() {
+  const hash = String(window.location.hash || '')
+  const q = hash.indexOf('?')
+  if (q < 0) return { invite: null, join: null }
+  let params
+  try { params = new URLSearchParams(hash.slice(q + 1)) } catch (e) { return { invite: null, join: null } }
+  return {
+    invite: String(params.get('invite') || '').trim() || null,
+    join: String(params.get('join') || '').trim() || null,
+  }
+}
+
+function applyJoinQueryFromHash() {
+  const q = readJoinQueryFromHash()
+  if (q.invite) stashDesktopInvite(q.invite)
+  if (q.join) stashDesktopPublicJoin(q.join)
+}
+
+function openIndexNetwork(query) {
+  const q = query && (query.invite || query.join)
+    ? ('?' + new URLSearchParams(
+      query.invite ? { invite: query.invite } : { join: query.join }
+    ).toString())
+    : ''
+  try { host.navigate('/index-network' + q) } catch (e) { /* route not ready yet */ }
+}
+
+function handleIndexDeepLink(payload) {
+  if (!payload || !payload.name) return false
+  const kind = String(payload.kind || '').toLowerCase()
+  // hermes://l/<code> — private invite
+  if (kind === 'l') {
+    console.info('[index-network] deep-link invite', payload.name)
+    stashDesktopInvite(payload.name)
+    openIndexNetwork({ invite: payload.name })
+    return true
+  }
+  // hermes://index/<id> — public network join (also accept index-network/<id>)
+  if (kind === 'index' || kind === 'index-network') {
+    console.info('[index-network] deep-link public join', payload.name)
+    stashDesktopPublicJoin(payload.name)
+    openIndexNetwork({ join: payload.name })
+    return true
+  }
+  return false
+}
+
+// Attach as soon as this module evaluates — disk plugins often finish loading
+// after Hermes' core signalDeepLinkReady flush, which would otherwise drop
+// hermes://index|l/… on cold start. Calling ready again is a no-op once
+// flushed; if we win the race, we receive the pending payload ourselves.
+let deepLinkAttached = false
+function attachDeepLinkListener() {
+  if (deepLinkAttached) return null
+  if (!window.hermesDesktop || typeof window.hermesDesktop.onDeepLink !== 'function') return null
+  deepLinkAttached = true
+  const off = window.hermesDesktop.onDeepLink(function (payload) {
+    handleIndexDeepLink(payload)
+  })
+  try { void window.hermesDesktop.signalDeepLinkReady?.() } catch (e) { /* older shells */ }
+  return typeof off === 'function' ? off : null
+}
+
+const earlyDeepLinkOff = attachDeepLinkListener()
+
+function DesktopPage() {
+  const tick = React.useState(0)
+  React.useEffect(function () {
+    let alive = true
+    ensureAssets().then(function () {
+      if (alive) tick[1](function (n) { return n + 1 })
+    })
+    return function () { alive = false }
+  }, [])
+  // Re-apply ?join= / ?invite= whenever this page is shown (cold start, remount,
+  // or same-route deep link while already here).
+  React.useEffect(function () {
+    applyJoinQueryFromHash()
+    function onHash() { applyJoinQueryFromHash() }
+    window.addEventListener('hashchange', onHash)
+    return function () { window.removeEventListener('hashchange', onHash) }
+  }, [])
+  if (!DashboardComponent) return null
+  return React.createElement('div', { className: 'index-network-desktop-page' },
+    React.createElement(DashboardComponent))
+}
+
 export default {
   id: 'index-network',
   name: 'Index Network',
@@ -91,18 +165,15 @@ export default {
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
 
-    // hermes://l/<code> and hermes://index/<id> — core Hermes only handles
-    // kind=blueprint; we claim network joins, open this page, and show Join.
-    if (window.hermesDesktop && typeof window.hermesDesktop.onDeepLink === 'function') {
-      const offDeepLink = window.hermesDesktop.onDeepLink(function (payload) {
-        if (!payload || !payload.name) return
-        if (payload.kind === 'l') stashDesktopInvite(payload.name)
-        else if (payload.kind === 'index') stashDesktopPublicJoin(payload.name)
-        else return
-        try { host.navigate('/index-network') } catch (e) { /* route not ready yet */ }
-      })
-      if (typeof offDeepLink === 'function') ctx.onDispose(offDeepLink)
-    }
+    const offDeepLink = attachDeepLinkListener() || earlyDeepLinkOff
+    if (typeof offDeepLink === 'function') ctx.onDispose(offDeepLink)
+
+    // If a link was stashed before this page contribution existed, open it now.
+    try {
+      const join = window.sessionStorage.getItem('index-public-join')
+      const invite = window.sessionStorage.getItem('index-invite')
+      if (join || invite) openIndexNetwork(join ? { join: join } : { invite: invite })
+    } catch (e) { /* private mode */ }
 
     ctx.registerMany([
       {

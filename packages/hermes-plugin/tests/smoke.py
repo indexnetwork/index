@@ -305,6 +305,8 @@ def main() -> None:
     assert "NetworkDetailModal" in desktop_js
     assert "Invitation Link" in desktop_js
     assert "stashDesktopPublicJoin" in desktop_js
+    assert "handleIndexDeepLink" in desktop_js
+    assert "signalDeepLinkReady" in desktop_js
     assert "onDeepLink" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js

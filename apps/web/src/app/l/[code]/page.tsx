@@ -75,8 +75,8 @@ export default function InvitationPage() {
       memberCount={index?._count?.members}
       indexHref={`index://l/${code}`}
       hermesHref={`hermes://l/${code}`}
-      indexCta="Accept invite in Index"
-      hermesCta="Accept invite in Hermes"
+      indexCta="Join using Index App"
+      hermesCta="Join using Hermes App"
     />
   );
 }

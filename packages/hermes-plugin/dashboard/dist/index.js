@@ -451,6 +451,19 @@
       stripHashJoinParams();
       return fromHash;
     }
+    if (DESKTOP_ENV) {
+      try {
+        const hash = String(window.location.hash || "");
+        const q = hash.indexOf("?");
+        if (q >= 0) {
+          const invite = normalizeJoinId(new URLSearchParams(hash.slice(q + 1)).get("invite"));
+          if (invite) {
+            storeInvite(invite);
+            return invite;
+          }
+        }
+      } catch (e) { /* noop */ }
+    }
     return readStoredInvite();
   }
 
@@ -460,6 +473,21 @@
       storePublicJoin(fromHash);
       stripHashJoinParams();
       return fromHash;
+    }
+    // Desktop routes live in the location hash (#/index-network?join=…);
+    // parseHash() ignores them under DESKTOP_ENV, so read the query here.
+    if (DESKTOP_ENV) {
+      try {
+        const hash = String(window.location.hash || "");
+        const q = hash.indexOf("?");
+        if (q >= 0) {
+          const join = normalizeJoinId(new URLSearchParams(hash.slice(q + 1)).get("join"));
+          if (join) {
+            storePublicJoin(join);
+            return join;
+          }
+        }
+      } catch (e) { /* noop */ }
     }
     return readStoredPublicJoin();
   }
@@ -3901,7 +3929,6 @@
       window.addEventListener(INVITE_EVENT, onInviteEvent);
       window.addEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
       function onHashChange() {
-        if (DESKTOP_ENV) return;
         const code = takePendingInvite();
         if (code) {
           setPendingPublicJoin(null);
@@ -3914,13 +3941,30 @@
           setPendingPublicJoin(id);
         }
       }
-      if (!DESKTOP_ENV) window.addEventListener("hashchange", onHashChange);
+      window.addEventListener("hashchange", onHashChange);
       return function () {
         window.removeEventListener(INVITE_EVENT, onInviteEvent);
         window.removeEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
-        if (!DESKTOP_ENV) window.removeEventListener("hashchange", onHashChange);
+        window.removeEventListener("hashchange", onHashChange);
       };
     }, []);
+
+    // Cold-start / late deep-link: a stash may land after the first render.
+    // Re-pull from sessionStorage / hash once the gates are open.
+    useEffect(function () {
+      if (auth !== "authed" || needsOnboarding) return;
+      const code = takePendingInvite();
+      if (code) {
+        setPendingPublicJoin(null);
+        setPendingInvite(code);
+        return;
+      }
+      const id = takePendingPublicJoin();
+      if (id) {
+        setPendingInvite(null);
+        setPendingPublicJoin(id);
+      }
+    }, [auth, needsOnboarding]);
 
     useEffect(function () {
       const header = document.querySelector('header[role="banner"]');

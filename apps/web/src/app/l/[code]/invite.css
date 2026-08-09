@@ -69,32 +69,48 @@
 }
 
 .invite .cta-stack {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 158px 158px;
   gap: 10px;
+  justify-content: center;
   margin-top: 26px;
 }
 
 .invite .cta-btn {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  width: 100%;
+  gap: 20px;
+  aspect-ratio: 1;
+  width: 158px;
   box-sizing: border-box;
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 10px;
   letter-spacing: 0.06em;
   font-weight: 600;
   text-transform: uppercase;
   text-decoration: none;
-  padding: 14px 18px;
+  text-align: center;
+  line-height: 1.35;
+  padding: 12px 8px;
   border: 1px solid transparent;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
-.invite .cta-btn svg {
+.invite .cta-btn svg,
+.invite .cta-btn img {
   flex: 0 0 auto;
+  display: block;
+}
+
+.invite .cta-btn img {
+  width: 42px;
+  height: auto;
+}
+
+.invite .cta-btn.primary img {
+  width: 56px;
 }
 
 .invite .cta-btn.primary {

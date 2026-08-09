@@ -75,8 +75,8 @@ export default function PublicJoinPage() {
       memberCount={index?._count?.members}
       indexHref={`index://index/${indexId}`}
       hermesHref={`hermes://index/${indexId}`}
-      indexCta="Join in Index"
-      hermesCta="Join in Hermes"
+      indexCta="Join using Index App"
+      hermesCta="Join using Hermes App"
     />
   );
 }
