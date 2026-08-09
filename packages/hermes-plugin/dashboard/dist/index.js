@@ -1302,14 +1302,19 @@
 
     function memberAvatar(member, size) {
       const sz = size || 28;
-      if (member.avatar) {
+      const avatar = member.avatar;
+      const looksAbsolute = avatar && /^(https?:|data:)/i.test(String(avatar));
+      if (avatar && looksAbsolute) {
         return React.createElement("img", {
           className: "index-dashboard__net-member-avatar" + (member.isGhost ? " index-dashboard__net-member-avatar--ghost" : ""),
-          src: member.avatar,
+          src: avatar,
           alt: "",
           width: sz,
           height: sz,
           loading: "lazy",
+          onError: function (e) {
+            if (e && e.currentTarget) e.currentTarget.style.display = "none";
+          },
         });
       }
       return React.createElement("span", {

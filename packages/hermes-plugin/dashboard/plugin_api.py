@@ -582,6 +582,17 @@ def _avatar_url(value: Any) -> str:
     return f"{origin}/{path}"
 
 
+def _normalize_member(member: dict[str, Any]) -> dict[str, Any]:
+    """Absolutize member avatar keys so the Access-tab list can render them."""
+    out = dict(member)
+    avatar = _avatar_url(member.get("avatar"))
+    if avatar:
+        out["avatar"] = avatar
+    else:
+        out.pop("avatar", None)
+    return out
+
+
 def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> str:
     """Resolve the displayed counterpart, preferring non-introducer actors."""
     if not current_user_id:
@@ -735,7 +746,7 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         item: dict[str, Any] = {"title": title}
         if network_id:
             item["id"] = network_id
-        image_url = _text(network.get("imageUrl"))
+        image_url = _avatar_url(network.get("imageUrl"))
         if image_url:
             item["imageUrl"] = image_url
         member_count = _member_count(network)
@@ -1246,7 +1257,7 @@ def list_network_members(network_id: str) -> dict[str, Any]:
     members = payload.get("members") if isinstance(payload, dict) else None
     return {
         "success": True,
-        "members": [row for row in _list(members) if isinstance(row, dict)],
+        "members": [_normalize_member(row) for row in _list(members) if isinstance(row, dict)],
     }
 
 
@@ -1271,7 +1282,10 @@ def add_network_member(network_id: str, body: dict[str, Any] | None = Body(defau
     if payload.get("success") is False:
         return payload
     member = payload.get("member") if isinstance(payload, dict) else None
-    return {"success": True, "member": member if isinstance(member, dict) else None}
+    return {
+        "success": True,
+        "member": _normalize_member(member) if isinstance(member, dict) else None,
+    }
 
 
 @router.patch("/networks/{network_id}/members/{member_id}")
@@ -1295,7 +1309,10 @@ def update_network_member(
     if payload.get("success") is False:
         return payload
     member = payload.get("member") if isinstance(payload, dict) else None
-    return {"success": True, "member": member if isinstance(member, dict) else None}
+    return {
+        "success": True,
+        "member": _normalize_member(member) if isinstance(member, dict) else None,
+    }
 
 
 @router.delete("/networks/{network_id}/members/{member_id}")
@@ -1354,7 +1371,10 @@ def search_network_users(q: str = "", networkId: str = "") -> dict[str, Any]:
     if payload.get("success") is False:
         return payload
     users = payload.get("users") if isinstance(payload, dict) else None
-    return {"success": True, "users": [row for row in _list(users) if isinstance(row, dict)]}
+    return {
+        "success": True,
+        "users": [_normalize_member(row) for row in _list(users) if isinstance(row, dict)],
+    }
 
 
 @router.patch("/networks/{network_id}/permissions")
