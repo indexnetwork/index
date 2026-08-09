@@ -801,6 +801,7 @@ type SymbolLocation = { path: string; symbol: string };
 type ModuleEvidence = {
   sourceFile: ts.SourceFile;
   declarations: Map<string, ts.Node>;
+  explicitExportNames: Set<string>;
   reexports: Map<string, { targetPath: string; importedSymbol: string }>;
   namespaceReexports: Map<string, string>;
   exportAllTargets: string[];
@@ -873,29 +874,67 @@ function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceConte
     if (!sourceFile) continue;
     const reexports = new Map<string, { targetPath: string; importedSymbol: string }>();
     const namespaceReexports = new Map<string, string>();
+    const namespaceImports = new Map<string, string>();
+    const explicitExportNames = new Set<string>();
     const exportAllTargets: string[] = [];
     const exportAssignments = new Map<string, ts.Expression>();
     for (const statement of sourceFile.statements) {
-      if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
-        && !statement.isTypeOnly) {
+      if (ts.isImportDeclaration(statement) && statement.importClause?.namedBindings
+        && ts.isNamespaceImport(statement.importClause.namedBindings) && ts.isStringLiteral(statement.moduleSpecifier)) {
         const targetPath = importedSourcePath(path, statement.moduleSpecifier.text);
-        if (!targetPath) continue;
-        if (!statement.exportClause) exportAllTargets.push(targetPath);
-        else if (ts.isNamespaceExport(statement.exportClause)) namespaceReexports.set(statement.exportClause.name.text, targetPath);
-        else if (ts.isNamedExports(statement.exportClause)) {
+        if (targetPath) namespaceImports.set(statement.importClause.namedBindings.name.text, targetPath);
+      }
+    }
+    for (const statement of sourceFile.statements) {
+      if (ts.isExportDeclaration(statement) && !statement.isTypeOnly) {
+        const targetPath = statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
+          ? importedSourcePath(path, statement.moduleSpecifier.text)
+          : undefined;
+        if (!statement.exportClause && targetPath) {
+          exportAllTargets.push(targetPath);
+        } else if (statement.exportClause && ts.isNamespaceExport(statement.exportClause) && targetPath) {
+          explicitExportNames.add(statement.exportClause.name.text);
+          namespaceReexports.set(statement.exportClause.name.text, targetPath);
+        } else if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
           for (const element of statement.exportClause.elements) {
-            if (!element.isTypeOnly) reexports.set(element.name.text, {
-              targetPath,
-              importedSymbol: (element.propertyName ?? element.name).text,
-            });
+            if (element.isTypeOnly) continue;
+            const exportedName = element.name.text;
+            explicitExportNames.add(exportedName);
+            if (targetPath) {
+              reexports.set(exportedName, {
+                targetPath,
+                importedSymbol: (element.propertyName ?? element.name).text,
+              });
+              continue;
+            }
+            const localName = (element.propertyName ?? element.name).text;
+            const namespaceTarget = namespaceImports.get(localName);
+            if (namespaceTarget) namespaceReexports.set(exportedName, namespaceTarget);
           }
         }
       }
-      if (ts.isExportAssignment(statement) && !statement.isExportEquals) exportAssignments.set("default", statement.expression);
+      if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+        explicitExportNames.add("default");
+        exportAssignments.set("default", statement.expression);
+      }
+      if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)
+        || ts.isVariableStatement(statement))
+        && statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+        if (statement.modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) {
+          explicitExportNames.add("default");
+        } else if (ts.isVariableStatement(statement)) {
+          for (const declaration of statement.declarationList.declarations) {
+            if (ts.isIdentifier(declaration.name)) explicitExportNames.add(declaration.name.text);
+          }
+        } else if (statement.name) {
+          explicitExportNames.add(statement.name.text);
+        }
+      }
     }
     modules.set(path, {
       sourceFile,
       declarations: topLevelDeclarations(sourceFile),
+      explicitExportNames,
       reexports,
       namespaceReexports,
       exportAllTargets: [...new Set(exportAllTargets)].sort(),
@@ -1217,7 +1256,7 @@ function isDeclarationOnlyExportReference(node: ts.Node, evidence: EvidenceConte
 }
 
 function importBindingIsDeclarationOnlyBarrel(name: ts.Identifier, evidence: EvidenceContext): boolean {
-  const symbol = canonicalSymbol(evidence.checker.getSymbolAtLocation(name), evidence.checker);
+  const symbol = evidence.checker.getSymbolAtLocation(name);
   if (!symbol) return false;
   let importDeclaration: ts.Node = name;
   while (importDeclaration.parent && !ts.isImportDeclaration(importDeclaration)) importDeclaration = importDeclaration.parent;
@@ -1226,10 +1265,16 @@ function importBindingIsDeclarationOnlyBarrel(name: ts.Identifier, evidence: Evi
   const sourceFile = name.getSourceFile();
   const visit = (node: ts.Node): void => {
     if (runtimeReference || nodeIsInsideDeclaration(node, importDeclaration)) return;
-    if (ts.isIdentifier(node)
-      && canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker) === symbol) {
-      referenceCount += 1;
-      if (!isDeclarationOnlyExportReference(node, evidence)) runtimeReference = true;
+    if (ts.isIdentifier(node)) {
+      const exportSpecifier = ts.isExportSpecifier(node.parent) ? node.parent : undefined;
+      const exportDeclaration = exportSpecifier?.parent.parent;
+      const isLocalBarrelReference = Boolean(exportSpecifier && ts.isExportDeclaration(exportDeclaration)
+        && !exportDeclaration.moduleSpecifier
+        && (exportSpecifier.propertyName ?? exportSpecifier.name).text === name.text);
+      if (evidence.checker.getSymbolAtLocation(node) === symbol || isLocalBarrelReference) {
+        referenceCount += 1;
+        if (!isDeclarationOnlyExportReference(node, evidence)) runtimeReference = true;
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -1324,11 +1369,12 @@ function exportBindingCanExposeClosure(
     && moduleCanExposeClosure(exportedNamespacePath, context, nextSeen)) return true;
 
   const reexport = module.reexports.get(name);
-  if (reexport && exportBindingCanExposeClosure(reexport.targetPath, reexport.importedSymbol, context, nextSeen)) return true;
+  if (reexport) return exportBindingCanExposeClosure(reexport.targetPath, reexport.importedSymbol, context, nextSeen);
   const namespaceTarget = module.namespaceReexports.get(name);
-  if (namespaceTarget && moduleCanExposeClosure(namespaceTarget, context, nextSeen)) return true;
+  if (namespaceTarget) return moduleCanExposeClosure(namespaceTarget, context, nextSeen);
   const assignment = module.exportAssignments.get(name);
-  if (assignment && expressionCanExposeClosure(assignment, context, nextSeen)) return true;
+  if (assignment) return expressionCanExposeClosure(assignment, context, nextSeen);
+  if (module.explicitExportNames.has(name)) return false;
   return module.exportAllTargets.some((targetPath) => exportBindingCanExposeClosure(targetPath, name, context, nextSeen));
 }
 
@@ -1423,30 +1469,57 @@ function unresolvedImportSurfaceEscapes(
     evidence,
   };
   for (const [path, module] of evidence.modules) {
+    const recordModuleReference = (targetPath: string, symbol: string, exposes: boolean): void => {
+      if (!exposes) return;
+      references.add(`${path}#<module>->${symbol}`);
+      for (const cycle of exportGraphCycles(targetPath, evidence)) cycles.add(cycle);
+    };
     for (const statement of module.sourceFile.statements) {
-      if (!ts.isImportDeclaration(statement) || !statement.importClause || statement.importClause.isTypeOnly
-        || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-      const targetPath = importedSourcePath(path, statement.moduleSpecifier.text);
-      if (!targetPath || !evidence.modules.has(targetPath)) continue;
-      const imported = statement.importClause;
-      const record = (name: ts.Identifier, symbol: string, exposes: boolean): void => {
-        if (!exposes || importBindingIsDeclarationOnlyBarrel(name, evidence)) return;
-        references.add(`${path}#<module>->${symbol}`);
-        for (const cycle of exportGraphCycles(targetPath, evidence)) cycles.add(cycle);
-      };
-      if (imported.name) {
-        record(imported.name, "default", exportBindingCanExposeClosure(targetPath, "default", context));
-      }
-      if (imported.namedBindings && ts.isNamedImports(imported.namedBindings)) {
-        for (const element of imported.namedBindings.elements) {
-          if (element.isTypeOnly) continue;
-          const importedName = (element.propertyName ?? element.name).text;
-          record(element.name, importedName, exportBindingCanExposeClosure(targetPath, importedName, context));
+      if (ts.isImportDeclaration(statement) && statement.importClause && !statement.importClause.isTypeOnly
+        && ts.isStringLiteral(statement.moduleSpecifier)) {
+        const targetPath = importedSourcePath(path, statement.moduleSpecifier.text);
+        if (!targetPath || !evidence.modules.has(targetPath)) continue;
+        const imported = statement.importClause;
+        const recordBinding = (name: ts.Identifier, symbol: string, exposes: boolean): void => {
+          if (!exposes || importBindingIsDeclarationOnlyBarrel(name, evidence)) return;
+          recordModuleReference(targetPath, symbol, true);
+        };
+        if (imported.name) {
+          recordBinding(imported.name, "default", exportBindingCanExposeClosure(targetPath, "default", context));
         }
-      } else if (imported.namedBindings && ts.isNamespaceImport(imported.namedBindings)) {
-        record(imported.namedBindings.name, "*", moduleCanExposeClosure(targetPath, context));
+        if (imported.namedBindings && ts.isNamedImports(imported.namedBindings)) {
+          for (const element of imported.namedBindings.elements) {
+            if (element.isTypeOnly) continue;
+            const importedName = (element.propertyName ?? element.name).text;
+            recordBinding(element.name, importedName, exportBindingCanExposeClosure(targetPath, importedName, context));
+          }
+        } else if (imported.namedBindings && ts.isNamespaceImport(imported.namedBindings)) {
+          recordBinding(imported.namedBindings.name, "*", moduleCanExposeClosure(targetPath, context));
+        }
+        continue;
+      }
+      if (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly
+        && ts.isExternalModuleReference(statement.moduleReference)
+        && statement.moduleReference.expression && ts.isStringLiteral(statement.moduleReference.expression)) {
+        const targetPath = importedSourcePath(path, statement.moduleReference.expression.text);
+        if (targetPath && evidence.modules.has(targetPath)) {
+          recordModuleReference(targetPath, "*", moduleCanExposeClosure(targetPath, context));
+        }
       }
     }
+    const visitDynamicImports = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        const specifier = node.arguments[0];
+        if (specifier && (ts.isStringLiteral(specifier) || ts.isNoSubstitutionTemplateLiteral(specifier))) {
+          const targetPath = importedSourcePath(path, specifier.text);
+          if (targetPath && evidence.modules.has(targetPath)) {
+            recordModuleReference(targetPath, "*", moduleCanExposeClosure(targetPath, context));
+          }
+        }
+      }
+      ts.forEachChild(node, visitDynamicImports);
+    };
+    visitDynamicImports(module.sourceFile);
   }
   return { references: [...references].sort(), cycles: [...cycles].sort() };
 }
