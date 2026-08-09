@@ -1,7 +1,7 @@
 # Protocol Atlas Design
 
-**Date:** 2026-08-07  
-**Status:** Approved design  
+**Date:** 2026-08-07
+**Status:** Approved amended design
 **Target:** `packages/protocol` graphical documentation website
 
 ## Summary
@@ -17,6 +17,8 @@ The atlas has two explicit information layers:
 
 This distinction prevents historical implementation vocabulary or current rollout details from being presented as universal protocol requirements.
 
+Within Explore, a **Configuration Lab** provides counterfactual comparisons for reviewed, non-secret behavior gates owned by `packages/protocol`. It explains how package fallback behavior changes under selected `.env` assignments without reading or claiming to represent any local, test, development, Railway, or production environment.
+
 ## Goals
 
 - Make the protocol's components, concepts, boundaries, and major flows legible to newcomers.
@@ -25,12 +27,16 @@ This distinction prevents historical implementation vocabulary or current rollou
 - Provide five guided, step-through flows with inspectable components.
 - Let technical readers search, filter, deep-link, and reveal source evidence without overwhelming the main narrative.
 - Keep editorial explanations curated while generating source-derived inventory data deterministically.
+- Visually explain how reviewed protocol behavior gates activate, bypass, change, or leave unresolved parts of package behavior.
+- Make configuration evidence drift fail deterministically when protocol slimming moves or removes an accessor, consumer, or affected component.
 - Work offline from `file://` and from any ordinary static HTTP host.
 - Require no runtime service, external network request, framework, or third-party client dependency.
 
 ## Non-goals
 
 - Catalog every source file, test, eval suite, feature flag, or public export in the first release.
+- Read, embed, or infer current environment values, secrets, deployment state, or runtime telemetry.
+- Treat an omitted, disabled, bypassed, or unresolved configuration path as evidence that its capability is unused or removable.
 - Replace `packages/protocol/README.md`, `IMPLEMENTATION.md`, `STABILITY.md`, domain docs, or architecture gates as authoritative references.
 - Execute live protocol graphs, model calls, evaluations, or database queries.
 - Visualize runtime telemetry or production state.
@@ -173,6 +179,8 @@ Distinguish static imports from runtime and injected relationships. Show that `p
 
 Provide search and filters over the generated core inventory. Results link back to the chapter and flow where a component matters, avoiding an isolated catalog experience.
 
+Explore also contains the Configuration Lab. It remains a subsection—not an eighth chapter or sixth guided flow—so the approved teaching structure stays at exactly seven chapters and five flows.
+
 ## First-release guided flows
 
 ### A. Build trusted context
@@ -241,6 +249,94 @@ Caller credential input
 
 Explain that MCP is a protocol-package interoperability surface and cannot bypass effective scope or consent. The host resolver is shown only as a required contract; no concrete authentication route or host implementation is explained.
 
+## Configuration Lab
+
+### Purpose and safety boundary
+
+The lab is an explanatory simulator for `packages/protocol`, not an environment viewer. Every comparison starts from the package's source-defined fallback and applies one reviewed alternative mode. The UI permanently states:
+
+> This compares documented `packages/protocol` behavior against package fallbacks. It does not show any deployed environment and is not evidence that a capability is unused or removable.
+
+The lab never reads `.env` files in the browser, emits active values during generation, contacts Railway, stores overrides, invokes protocol code, or performs telemetry. A host activation requirement may be shown only when it is derived from a protocol-owned port or composition contract; the atlas neither inspects nor describes concrete host wiring.
+
+### Included configuration
+
+The first release covers non-secret settings read under `packages/protocol` whose values change a visible protocol branch, policy, representation, admission rule, or capability requirement. Reviewed experiments are grouped around:
+
+- discovery corpus, source selection, evaluation, and admission;
+- premise deduplication and constrained HyDE representations;
+- introducer eligibility;
+- negotiation context, protocol version, turn policy, screening, stance, consultation, and deadlock behavior;
+- Questioner uptake and its master prerequisite;
+- Radar ranking adjustments.
+
+Credentials, provider/model selection, generic retries, ordinary request timeouts, output limits, and pure throughput tuning are excluded. A concurrency setting is included only when it changes failure isolation or persisted results. Accessor-only or configured-but-unresolved settings appear with an explicit `? unresolved` result; the atlas must not invent a behavior delta or silently classify them as deprecated. A visible coverage note lists excluded and unresolved categories so omission cannot be mistaken for a safety decision.
+
+The first-release experiment IDs, settings, and required modes are locked as follows. A mode ID denotes a reviewed bundle of exact assignments; the curated manifest supplies those assignments and explanations.
+
+| Experiment ID | Protocol setting keys | Required mode IDs |
+| --- | --- | --- |
+| `discovery-corpus` | `DISCOVERY_ALLOWED_TYPES`, `DISCOVERY_PROFILE_SOURCE`, `DISCOVERY_CONTEXT_TO_INTENT` | `fallback`, `intent-only`, `premise-profile`, `context-profile`, `context-cross-match` |
+| `discovery-premise-limit` | `DISCOVERY_SOURCE_PREMISE_LIMIT` | `fallback-40`, `disabled-0`, `expanded-100` |
+| `discovery-rejection-cooldown` | `DISCOVERY_REJECTION_COOLDOWN_DAYS` | `fallback-7d`, `short-1d`, `long-30d` |
+| `discovery-evaluation-topology` | `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` | `bundled`, `pairwise` |
+| `hyde-frame-constraints` | `HYDE_FRAME_CONSTRAINTS_ENABLED` | `legacy`, `frame-v1` |
+| `premise-deduplication` | `PREMISE_DEDUP_SIMILARITY` | `fallback-0.93`, `broad-0.85`, `strict-0.98` |
+| `introducer-discovery` | `INTRODUCER_DISCOVERY_ENABLED` | `off`, `on` |
+| `negotiation-context` | `NEGOTIATION_INCLUDE_OTHER_INTENTS` | `include-active`, `exact-only` |
+| `negotiation-turn-caps` | `NEGOTIATION_MAX_TURNS_CHAT`, `NEGOTIATION_MAX_TURNS_AMBIENT` | `fallback-4-6`, `short-2-3`, `extended-8-12` |
+| `negotiation-protocol` | `NEGOTIATION_PROTOCOL_VERSION` | `v1`, `v2` |
+| `negotiation-screen` | `NEGOTIATION_SCREEN_MODE` | `off`, `shadow`, `enforce` |
+| `negotiation-stance` | `NEGOTIATOR_STANCE` | `advocate`, `evaluator`, `skeptic` |
+| `negotiation-consultation` | `NEGOTIATION_PROTOCOL_VERSION`, `NEGOTIATION_ASK_USER_ENABLED`, `NEGOTIATION_ASK_USER_WINDOW_MS`, `NEGOTIATION_CONSULTATION_POLICY_MODE` | `off`, `shadow`, `v2-on`, `v2-short-window` |
+| `negotiation-deadlock` | `NEGOTIATION_PROTOCOL_VERSION`, `NEGOTIATION_DEADLOCK_SHIFT_ENABLED`, `NEGOTIATION_DEADLOCK_THRESHOLD`, `NEGOTIATOR_STANCE` | `off`, `v2-threshold-4`, `v2-fast-2`, `v2-skeptic` |
+| `questioner-uptake` | `QUESTIONER_ENABLED`, `QUESTIONER_UPTAKE_ENABLED`, `QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD` | `off`, `on-threshold-70`, `on-threshold-90` |
+| `questioner-discovery-contract` | `QUESTIONER_ENABLED`, `QUESTIONER_DISCOVERY_ENABLED`, `QUESTIONER_DISCOVERY_INPUT_MODE` | `off`, `transcripts-unresolved`, `insights-unresolved` |
+| `pool-question-contract` | `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_VISIT_TRIGGER`, `POOL_QUESTIONS_STAMP_NEWBORN` | `off`, `shadow-mining`, `on-pull`, `on-push`, `on-visit`, `on-newborn` |
+| `pool-ranking` | `POOL_QUESTIONS_RANKING` | `off`, `on` |
+| `negotiation-evidence-contract` | `NEGOTIATION_EVIDENCE_QUESTIONS_MODE` | `off`, `shadow`, `on-alias` |
+| `outcome-questions-contract` | `OUTCOME_QUESTIONS_MODE` | `off`, `shadow`, `on-alias` |
+
+`questioner-discovery-contract`, the host-activation portions of `pool-question-contract`, `negotiation-evidence-contract`, and `outcome-questions-contract` may only claim unresolved or protocol-boundary effects until a direct `packages/protocol` consumer proves more. The `on-alias` modes explicitly explain when the current package resolves `on` to behavior equivalent to `shadow`.
+
+### Experiment model
+
+Readers choose one reviewed experiment at a time. An experiment may coordinate several interdependent keys, but offers only named, source-supported modes—no arbitrary text input and no unrestricted cross-family composition. Numeric settings use representative, validated modes rather than accepting free-form numbers. Each mode shows:
+
+- exact non-secret assignment or `unset`;
+- source-derived resolved value and package fallback;
+- prerequisite settings or injected capabilities;
+- affected chapters, guided steps, nodes, and edges;
+- a concise behavioral explanation and protocol-only source evidence;
+- caveats such as history pinning, module-load capture, or a currently unresolved consumer.
+
+Switching experiments resets the prior experiment to its package fallback. This keeps comparisons reviewable and prevents the atlas from pretending to execute the full configuration state space.
+
+### Curated authority and generated evidence
+
+`atlas-content.js` is the authoritative, hand-reviewed manifest for experiment IDs, settings, named modes, assignment literals, explanations, prerequisites, delta semantics, and caveats. The generator never discovers, adds, removes, or semantically infers experiments from environment reads. It joins that curated manifest to source-derived evidence and emits a validated, normalized copy in `protocol.generated.js` for runtime use.
+
+Each curated setting declares a package-owned read site and accessor symbol. Every definitive `activated`, `bypassed`, or `changed` delta declares a package-owned consumer path and symbol plus an explicit, ordered import/reference chain from the read or accessor to that consumer. The generator uses the same syntax-aware module and symbol-reference machinery as the implementation inventory to verify every hop, verifies the consumer's target node/edge/step association, and fails the whole build if any definitive delta cannot be proven. Semantic meaning remains human-authored; targeted behavior tests cited by the manifest protect claims that syntax alone cannot prove.
+
+An `unresolved` delta is deliberately consumerless. It declares package-owned read/accessor evidence plus a `noDirectProtocolConsumer` assertion. Generation performs reverse-reference analysis over production modules in `packages/protocol`, excluding declaration-only exports and barrels, and fails if a direct runtime consumer appears. This makes newly wired behavior force reclassification without inventing a consumer or requiring a nonexistent behavior test.
+
+The 20 experiment IDs and required mode IDs above are asserted exactly by content-schema tests. They cannot be auto-pruned during generation. Changing an ID, dropping an experiment, or dropping a required mode is an explicit design change, not artifact regeneration.
+
+### Visual delta semantics
+
+The focused diagram retains topology and overlays deterministic, non-color-only delta marks:
+
+- `+ activated` — a reviewed path becomes eligible relative to fallback;
+- `− bypassed` — a reviewed path becomes ineligible but remains visible and dimmed;
+- `~ changed` — the component remains involved but its policy, representation, or routing changes;
+- `? unresolved` — declared configuration intent exists, but current package evidence does not support a definitive effect.
+
+Patterned strokes, text badges, and a textual delta list carry the same meaning. Unaffected topology remains inspectable but visually secondary. A live region announces the experiment, mode, and counts by delta kind.
+
+### Slimming alignment
+
+Configuration experiments are evidence-checked against the current `packages/protocol` tree. A protocol slimming change that moves or removes an accessor, key read, consumer, node, edge, or flow association makes `--check` fail until the experiment is reviewed. The lab does not consume the slimming preflight's local or deployed values and cannot authorize deletion; configured or externally reachable behavior remains governed by the slimming design's fail-closed evidence process.
+
 ## Progressive disclosure
 
 Each primary diagram starts with plain-language concepts. Selecting a node opens an inspector containing:
@@ -307,6 +403,17 @@ Curated flow records may reference generated component IDs. The generator valida
 
 ## Generated data model
 
+The generated artifact uses a versioned envelope:
+
+```js
+{
+  schemaVersion: 2,
+  nodes: [],
+  edges: [],
+  configurationExperiments: []
+}
+```
+
 The generated inventory is intentionally core-sized. It includes selected public and architectural components, not every implementation file.
 
 Node fields:
@@ -328,6 +435,17 @@ Edge fields:
 - evidence path and symbol;
 - optional label.
 
+The curated configuration manifest and its generated evidence join contain:
+
+- stable experiment ID, title, summary, capability, and package-fallback mode;
+- one or more settings with key, package-owned read path, accessor symbol, accepted values, and read timing;
+- sorted named modes containing explicit non-secret assignments and resolved values;
+- prerequisite settings or injected capabilities;
+- delta targets for nodes, edges, and guided steps with `activated`, `bypassed`, `changed`, or `unresolved` effects;
+- for definitive deltas: package-owned consumer path and symbol, ordered read/accessor-to-consumer reference chain, and behavior-test citation;
+- for unresolved deltas: package-owned read/accessor evidence and a validated `noDirectProtocolConsumer` assertion, with no invented consumer or behavior-test citation;
+- caveats and coverage classification.
+
 Compatibility and legacy directories normalize to their canonical capability. Type-only references are not presented as runtime edges. Every generated source path must remain inside `packages/protocol`; a protocol port may produce a synthetic host-requirement callout, but never a node for a concrete external implementation. The generator reuses the package's architecture metadata and module-reference semantics rather than inventing competing classification rules.
 
 ## Build and freshness contract
@@ -337,6 +455,11 @@ The generator:
 - produces deterministic, sorted output;
 - emits no timestamps, machine-specific paths, or volatile line numbers;
 - validates duplicate IDs, record shape, edge endpoints, source paths, curated references, and the `packages/protocol` source boundary;
+- validates each configuration key against a syntax-aware package source read, each accessor symbol against its file, every declared definitive reference-chain hop, each definitive consumer symbol, and every delta target against a generated node, edge, or curated step;
+- validates unresolved records by proving their package-owned read/accessor evidence and absence of direct production consumers; a newly found consumer fails generation and requires reclassification;
+- asserts the exact locked experiment and required-mode inventory before generation and fails rather than dropping an invalid record;
+- rejects secret-shaped keys, timestamps, unrestricted assignments, and configuration evidence from outside `packages/protocol`;
+- accepts no environment-derived input: generation never reads `process.env` for content, never loads `.env` files, and produces byte-identical output under differing sentinel environment values;
 - rejects generated source evidence from `services/api`, applications, or other host implementations;
 - supports write mode and `--check` mode;
 - fails when a curated reference cannot be resolved;
@@ -356,9 +479,10 @@ The URL hash encodes:
 - flow step;
 - Protocol or Implementation layer;
 - selected node;
-- active filters.
+- active filters;
+- the selected configuration experiment and named mode.
 
-Reload and browser back/forward restore the same view. Invalid state falls back to Orientation and shows a concise recovery notice.
+Reload and browser back/forward restore the same view. Invalid state falls back to Orientation and shows a concise recovery notice. Configuration experiment and mode must appear as a valid pair. Selecting an experiment moves to Explore / Implementation; leaving Explore or switching to Protocol clears the comparison. General Explore filters remain stored but inactive while a focused comparison is displayed.
 
 ### Step-through flows
 
@@ -375,6 +499,10 @@ Search covers concepts and generated core components. Filters include layer, cap
 ### Source navigation
 
 Source references display repository-relative paths and symbols with a copy-path action. The first release does not synthesize branch-specific GitHub URLs; the repository-relative path is the durable contract.
+
+### Configuration controls
+
+A semantic fieldset lists reviewed experiments and their named modes. Radio controls compare the selected mode with the package fallback. Focus returns to the replacement control after rendering, and Back, Forward, reload, and canonical hash normalization restore the exact comparison. A reset action returns to package fallback without clearing ordinary Explore filters.
 
 ## Responsive and accessible behavior
 
@@ -416,6 +544,8 @@ The atlas has no server or API failure mode. If generated data is missing or inv
 
 Missing source evidence is shown as unavailable; the renderer never fabricates an edge. Invalid URL state recovers to Orientation. Empty searches retain controls and offer reset actions.
 
+A missing schema-2 configuration section leaves the ordinary atlas and explorer available and shows “Configuration Lab unavailable for this artifact.” One malformed experiment is omitted with a concise banner and console detail rather than disabling unrelated inventory. A mode with no valid reviewed deltas renders an explicit unresolved or empty state; it never invents a visual change.
+
 ## Verification strategy
 
 ### Generator and data tests
@@ -428,7 +558,15 @@ Missing source evidence is shown as unavailable; the renderer never fabricates a
 - node and edge schema validation;
 - duplicate and unresolved-reference failures;
 - generated/curated cross-reference validation;
-- check-mode stale-artifact detection.
+- check-mode stale-artifact detection;
+- deterministic configuration experiment sorting and serialization;
+- exact seven-chapter, five-flow, 20-experiment, and required-mode inventories;
+- configuration key/read-site/accessor validation, definitive reference-chain/consumer validation, and unresolved no-consumer validation;
+- failure when a consumer is removed from a definitive delta or added to an unresolved delta;
+- duplicate experiment, mode, assignment, and delta failures;
+- unknown node, edge, or step targets;
+- rejection of host paths, credentials, timestamps, and malformed prerequisites;
+- subprocess generation under differing sentinel environment values, asserting byte-identical output and absence of both sentinels.
 
 ### Interaction-core tests
 
@@ -440,7 +578,15 @@ Missing source evidence is shown as unavailable; the renderer never fabricates a
 - search ranking and empty results;
 - filter composition;
 - node selection and inspector state;
-- graceful generated-data failure.
+- graceful generated-data failure;
+- configuration experiment/mode URL round-trips and invalid-pair recovery;
+- experiment selection and reset transitions;
+- pure delta derivation and prerequisite handling;
+- filter preservation while a focused comparison is active;
+- focus-restoration and announcement intents returned by pure transitions;
+- malformed-experiment isolation.
+
+Renderer DOM tests and manual browser acceptance separately verify actual focus continuity, semantic fieldsets/radio controls, live-region announcements, Back/Forward behavior, and keyboard operation.
 
 ### Targeted checks
 
@@ -463,7 +609,9 @@ Verify:
 7. desktop and narrow mobile layouts;
 8. reduced-motion and visible-focus states;
 9. loading from `file://` and a static HTTP server;
-10. no console errors or external network requests.
+10. no console errors or external network requests;
+11. Configuration Lab fallback-versus-mode comparison, reset, deep link, keyboard operation, and non-color delta cues;
+12. simulator disclaimer, unresolved-state language, and absence of active environment values.
 
 ## Acceptance criteria
 
@@ -477,6 +625,10 @@ Verify:
 - External hosts are represented only by protocol-derived requirement callouts; no API component or implementation detail appears in the atlas.
 - Search, filters, deep links, inspector selection, and Show code work without a server.
 - Failure of generated data does not erase curated educational content.
+- The Configuration Lab remains inside Explore, preserves exactly seven chapters and five flows, and works from both `file://` and static HTTP.
+- Every configuration claim is backed by reviewed `packages/protocol` evidence and exposes only named non-secret assignments.
+- The lab clearly distinguishes activated, bypassed, changed, and unresolved effects without removing topology or implying deprecation.
+- Protocol slimming causes stale configuration evidence to fail deterministic validation rather than silently disappearing.
 - The site is keyboard-accessible, responsive, reduced-motion aware, and usable without color-only cues.
 - Automated targeted checks and manual browser acceptance pass.
 
