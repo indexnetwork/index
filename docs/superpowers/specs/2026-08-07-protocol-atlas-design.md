@@ -316,9 +316,9 @@ Switching experiments resets the prior experiment to its package fallback. This 
 
 `atlas-content.js` is the authoritative, hand-reviewed manifest for experiment IDs, settings, named modes, assignment literals, explanations, prerequisites, delta semantics, and caveats. The generator never discovers, adds, removes, or semantically infers experiments from environment reads. It joins that curated manifest to source-derived evidence and emits a validated, normalized copy in `protocol.generated.js` for runtime use.
 
-Each curated setting declares a package-owned read site and accessor symbol. Every definitive `activated`, `bypassed`, or `changed` delta declares a package-owned consumer path and symbol plus an explicit, ordered import/reference chain from the read or accessor to that consumer. The generator uses the same syntax-aware module and symbol-reference machinery as the implementation inventory to verify every hop, verifies the consumer's target node/edge/step association, and fails the whole build if any definitive delta cannot be proven. Semantic meaning remains human-authored; targeted behavior tests cited by the manifest protect claims that syntax alone cannot prove.
+Each curated setting declares every package-owned read site, its entry accessor symbol, and—when accessors wrap one another—an explicit accessor closure. The closure lists only package configuration helpers reachable from the entry accessor; generation verifies every internal helper reference and then treats the first runtime reference from outside that closure as a behavior consumer. Every definitive `activated`, `bypassed`, or `changed` delta declares a package-owned consumer path and symbol plus an explicit, ordered import/reference chain from the read or accessor closure to that consumer. The generator uses the same syntax-aware module and symbol-reference machinery as the implementation inventory to verify every hop, verifies the consumer's target node/edge/step association, and fails the whole build if any definitive delta cannot be proven. Semantic meaning remains human-authored; targeted behavior tests cited by the manifest protect claims that syntax alone cannot prove.
 
-An `unresolved` delta is deliberately consumerless. It declares package-owned read/accessor evidence plus a `noDirectProtocolConsumer` assertion. Generation performs reverse-reference analysis over production modules in `packages/protocol`, excluding declaration-only exports and barrels, and fails if a direct runtime consumer appears. This makes newly wired behavior force reclassification without inventing a consumer or requiring a nonexistent behavior test.
+An `unresolved` delta is deliberately consumerless. It declares package-owned read/accessor-closure evidence plus a `noDirectProtocolConsumer` assertion. Generation performs reverse-reference analysis over production modules in `packages/protocol`, excluding only the declared accessor closure, declaration-only exports, and barrels, and fails if a runtime reference escapes that closure. This makes newly wired behavior force reclassification without inventing a consumer or requiring a nonexistent behavior test.
 
 The 20 experiment IDs and required mode IDs above are asserted exactly by content-schema tests. They cannot be auto-pruned during generation. Changing an ID, dropping an experiment, or dropping a required mode is an explicit design change, not artifact regeneration.
 
@@ -438,12 +438,12 @@ Edge fields:
 The curated configuration manifest and its generated evidence join contain:
 
 - stable experiment ID, title, summary, capability, and package-fallback mode;
-- one or more settings with key, package-owned read path, accessor symbol, accepted values, and read timing;
+- one or more settings with key, all package-owned read sites, entry accessor symbol, optional verified accessor closure, accepted values, and read timing;
 - sorted named modes containing explicit non-secret assignments and resolved values;
 - prerequisite settings or injected capabilities;
 - delta targets for nodes, edges, and guided steps with `activated`, `bypassed`, `changed`, or `unresolved` effects;
 - for definitive deltas: package-owned consumer path and symbol, ordered read/accessor-to-consumer reference chain, and behavior-test citation;
-- for unresolved deltas: package-owned read/accessor evidence and a validated `noDirectProtocolConsumer` assertion, with no invented consumer or behavior-test citation;
+- for unresolved deltas: package-owned read/accessor-closure evidence and a validated `noDirectProtocolConsumer` assertion, with no invented consumer or behavior-test citation;
 - caveats and coverage classification.
 
 Compatibility and legacy directories normalize to their canonical capability. Type-only references are not presented as runtime edges. Every generated source path must remain inside `packages/protocol`; a protocol port may produce a synthetic host-requirement callout, but never a node for a concrete external implementation. The generator reuses the package's architecture metadata and module-reference semantics rather than inventing competing classification rules.

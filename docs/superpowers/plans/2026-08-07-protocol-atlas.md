@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a dependency-free, graphical Guided Atlas that explains only `packages/protocol`, with curated protocol narratives and a deterministic protocol-source inventory.
+**Goal:** Build a dependency-free, graphical Guided Atlas that explains only `packages/protocol`, with curated protocol narratives, a deterministic protocol-source inventory, and a source-evidenced simulator for protocol behavior gates.
 
-**Architecture:** A classic-script static microsite under `docs/protocol-atlas/` reads one hand-authored content global and one generated inventory global. A protocol-only Bun generator validates selected package exports, source paths, capability ownership, typed relationships, and curated references; a pure browser/Bun core owns routing, search, filters, and selection state; a thin DOM layer renders the Technical Blueprint experience.
+**Architecture:** A classic-script static microsite under `docs/protocol-atlas/` reads one hand-authored content global and one generated inventory global. A protocol-only Bun generator validates selected package exports, source paths, capability ownership, typed relationships, curated references, and the evidence join for 20 hand-reviewed configuration experiments; a pure browser/Bun core owns routing, search, filters, selection, and configuration-comparison state; a thin DOM layer renders the Technical Blueprint experience.
 
 **Tech Stack:** Bun 1.3, TypeScript 5.9 compiler API, vanilla HTML/CSS/JavaScript, SVG, `bun:test`, existing protocol architecture scripts.
 
@@ -18,7 +18,9 @@
 - Preserve explicit Protocol and Implementation layers and the normative/product/internal vocabulary legend.
 - Never depict an internal candidate as surfaced, or agent negotiation acceptance as participant consent.
 - Use stable IDs, deterministic sorting, atomic generated writes, and no timestamps or line numbers.
-- Keep the first release to seven chapters, five guided flows, and a selected core inventory—not a full package catalog.
+- Keep the first release to exactly seven chapters, five guided flows, 20 approved configuration experiments, and a selected core inventory—not a full package catalog.
+- The Configuration Lab compares named, non-secret assignments with source-defined package fallbacks; never read `.env`, `process.env` values, deployed configuration, Railway state, or runtime telemetry.
+- A configuration comparison is explanatory only and must never imply that disabled, bypassed, omitted, or unresolved behavior is deprecated or removable.
 - Meet WCAG 2.2 AA contrast for text and controls; support keyboard use, visible focus, SVG descriptions, reduced motion, and narrow layouts.
 - Follow the repository's targeted-validation policy; do not run database-backed tests.
 
@@ -34,18 +36,18 @@
 
 ### Generator and tests
 
-- Create `scripts/build-protocol-atlas.ts` — pure data contracts, selected core manifest, protocol-only source loading, validation, deterministic JavaScript serialization, write/check CLI.
-- Create `scripts/tests/build-protocol-atlas.spec.ts` — generator, boundary, determinism, cross-reference, and stale-artifact tests.
+- Create `scripts/build-protocol-atlas.ts` — pure data contracts, selected core manifest, protocol-only source loading, curated configuration-evidence join, validation, deterministic JavaScript serialization, write/check/stdout CLI.
+- Create `scripts/tests/build-protocol-atlas.spec.ts` — generator, boundary, determinism, cross-reference, configuration evidence, environment-independence, and stale-artifact tests.
 - Modify `package.json` — add `build:protocol-atlas` and `check:protocol-atlas` scripts.
 
 ### Static atlas
 
 - Create `docs/protocol-atlas/index.html` — semantic shell, landmarks, fallback, and classic asset ordering.
 - Create `docs/protocol-atlas/atlas.css` — Technical Blueprint visual system and responsive/accessibility states.
-- Create `docs/protocol-atlas/atlas-core.js` — environment-neutral global with data validation, routing, transition, search, and graph filtering.
-- Create `docs/protocol-atlas/atlas.js` — DOM bootstrap, chapter/step rendering, SVG diagrams, inspector, controls, history, and graceful degradation.
-- Create `docs/protocol-atlas/atlas-content.js` — seven chapters, five flows, concepts, invariants, vocabulary, and curated conceptual relationships.
-- Create `docs/protocol-atlas/protocol.generated.js` — committed output from the generator; never hand-edit.
+- Create `docs/protocol-atlas/atlas-core.js` — environment-neutral global with data validation, routing, transition, search, graph filtering, and pure configuration comparison.
+- Create `docs/protocol-atlas/atlas.js` — DOM bootstrap, chapter/step rendering, SVG diagrams, inspector, Configuration Lab, controls, history, and graceful degradation.
+- Create `docs/protocol-atlas/atlas-content.js` — seven chapters, five flows, concepts, invariants, vocabulary, conceptual relationships, and the authoritative 20-experiment configuration manifest.
+- Create `docs/protocol-atlas/protocol.generated.js` — committed schema-2 output with the source-validated configuration evidence join; never hand-edit.
 - Create `scripts/tests/protocol-atlas-core.spec.ts` — pure behavior tests for the classic-script core.
 
 ### Release/documentation
@@ -1159,14 +1161,608 @@ git commit -m "feat(docs): complete protocol atlas exploration"
 
 ---
 
-### Task 8: Version, verify, and prepare the branch for review
+### Task 8: Add the source-evidenced Configuration Lab
+
+**Files:**
+- Modify: `scripts/build-protocol-atlas.ts`
+- Modify: `scripts/tests/build-protocol-atlas.spec.ts`
+- Modify: `scripts/tests/protocol-atlas-core.spec.ts`
+- Modify: `docs/protocol-atlas/atlas-content.js`
+- Modify: `docs/protocol-atlas/atlas-core.js`
+- Modify: `docs/protocol-atlas/atlas.js`
+- Modify: `docs/protocol-atlas/atlas.css`
+- Regenerate: `docs/protocol-atlas/protocol.generated.js`
+
+**Interfaces:**
+- Curated authority remains `globalThis.ProtocolAtlasContent`. Add `configurationExperiments`, while retaining curated `schemaVersion: 1` and the existing chapter/flow records.
+- Upgrade the generated envelope to schema 2:
+
+```ts
+export type AtlasArtifactV1 = {
+  schemaVersion: 1;
+  nodes: AtlasNode[];
+  edges: AtlasEdge[];
+};
+
+export type AtlasArtifact = {
+  schemaVersion: 2;
+  nodes: AtlasNode[];
+  edges: AtlasEdge[];
+  configurationExperiments: GeneratedConfigurationExperiment[];
+};
+```
+
+- Model curated configuration records without allowing unrestricted input:
+
+```ts
+export type ConfigurationEffect = "activated" | "bypassed" | "changed" | "unresolved";
+export type ConfigurationTargetKind = "node" | "edge" | "step";
+
+export type ConfigurationReadSite = {
+  path: string;
+  symbol: string;
+};
+
+export type ConfigurationSetting = {
+  key: string;
+  readSites: readonly ConfigurationReadSite[];
+  entryAccessorSymbol: string;
+  accessorClosure: readonly EvidenceHop[];
+  acceptedValues: readonly string[];
+  readTiming: "module-load" | "invocation";
+};
+
+export type EvidenceHop = {
+  path: string;
+  symbol: string;
+};
+
+export type DefinitiveConfigurationDelta = {
+  id: string;
+  effect: Exclude<ConfigurationEffect, "unresolved">;
+  targetKind: ConfigurationTargetKind;
+  targetId: string;
+  consumerPath: string;
+  consumerSymbol: string;
+  referenceChain: readonly EvidenceHop[];
+  behaviorTest: { path: string; testName: string };
+};
+
+export type UnresolvedConfigurationDelta = {
+  id: string;
+  effect: "unresolved";
+  targetKind: ConfigurationTargetKind;
+  targetId: string;
+  noDirectProtocolConsumer: true;
+};
+
+export type ConfigurationMode = {
+  id: string;
+  assignments: readonly { key: string; value: string | null }[]; // null means unset
+  resolvedValues: readonly { key: string; value: string }[];
+  prerequisites: readonly (
+    | { kind: "setting"; key: string; value: string | null }
+    | { kind: "injected-capability"; nodeId: string }
+  )[];
+  deltas: readonly (DefinitiveConfigurationDelta | UnresolvedConfigurationDelta)[];
+  explanation: string;
+  caveats: readonly string[];
+};
+```
+
+- `GeneratedConfigurationExperiment` is the normalized, sorted evidence join. It retains the curated title, summary, fallback mode, assignments, explanations, prerequisites, target associations, and caveats, and adds only validated package-owned evidence. It must contain no active environment values, timestamps, line numbers, absolute paths, or inferred experiments.
+- Extend `GeneratorInput` with all production TypeScript modules under `packages/protocol/src` needed for syntax-aware reference analysis. Inventory membership remains selected and reviewed; this wider scan is solely for configuration evidence and unresolved-consumer detection.
+- Extend `globalThis.ProtocolAtlasCore` with pure configuration helpers:
+
+```js
+{
+  configurationAvailability(generated),
+  deriveConfigurationComparison(experimentId, modeId, content, generated),
+}
+```
+
+- Extend state without changing the existing filter shape:
+
+```js
+{
+  // existing fields...
+  configurationExperimentId: null,
+  configurationModeId: null,
+  focusIntent: null,
+  announcement: null,
+}
+```
+
+`focusIntent` and `announcement` are transient transition results, ignored by hash serialization and reset by the next action.
+
+- Add exact actions:
+
+```js
+{ type: "select-configuration-experiment", experimentId }
+{ type: "select-configuration-mode", experimentId, modeId }
+{ type: "reset-configuration" }
+```
+
+- Serialize configuration after the existing fields in fixed hash order:
+
+```text
+chapter, step, layer, node, capabilities, kinds, edgeKinds, experiment, mode
+```
+
+- [ ] **Step 1: Perform the source-only preflight before authoring the manifest**
+
+Read the approved Configuration Lab section in `docs/superpowers/specs/2026-08-07-protocol-atlas-design.md`. Also read the latest approved protocol slimming design, using its landed repository path when available or the current sibling worktree copy only as review context.
+
+Reconcile every curated setting’s read path, accessor symbol, consumer symbol, behavior-test citation, target node/edge/step, and ordered reference chain against the current `packages/protocol` tree. Prefer canonical capability/application/domain paths; do not preserve a deprecated path merely because the atlas previously cited it.
+
+Start with the current source seams, including:
+
+```text
+packages/protocol/src/opportunity/discovery.env.ts
+packages/protocol/src/opportunity/application/opportunity.graph.ts
+packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts
+packages/protocol/src/premise/premise.graph.ts
+packages/protocol/src/shared/hyde/hyde.env.ts
+packages/protocol/src/questions/application/question.env.ts
+packages/protocol/src/negotiation/domain/negotiation.protocol.ts
+packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts
+packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts
+packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts
+packages/protocol/src/negotiation/domain/negotiation.deadlock.ts
+packages/protocol/src/opportunity/discriminator/discriminator.env.ts
+packages/protocol/src/opportunity/negotiation-evidence/negotiation-evidence.env.ts
+packages/protocol/src/opportunity/outcome/outcome.env.ts
+```
+
+Run source-only searches:
+
+```bash
+rg -n --glob '*.ts' \
+  'DISCOVERY_|RUN_OPPORTUNITY_EVAL_IN_PARALLEL|HYDE_FRAME_CONSTRAINTS_ENABLED|PREMISE_DEDUP_SIMILARITY|INTRODUCER_DISCOVERY_ENABLED|NEGOTIATION_|NEGOTIATOR_STANCE|QUESTIONER_|POOL_QUESTIONS_|OUTCOME_QUESTIONS_MODE' \
+  packages/protocol/src
+
+rg -n --glob '*.ts' \
+  'discoveryAllowedTypes|discoveryProfileSource|getHydeGenerationMode|isQuestionerEnabled|isDiscoveryQuestionsEnabled|isUptakeGuardEnabled|uptakeAuthorityThreshold|configuredProtocolVersion|configuredScreenMode|configuredNegotiatorStance|negotiationConsultationPolicyMode|configuredDeadlock|poolQuestions|negotiationEvidenceQuestionsMode|outcomeQuestionsMode' \
+  packages/protocol/src
+```
+
+Expected:
+
+- every approved setting has all current `packages/protocol` read sites, an entry accessor/direct-read symbol, and a complete accessor closure;
+- definitive deltas have a current runtime consumer outside that closure, ordered syntax-verifiable chain, target association, and DB-free behavior test;
+- unresolved deltas have read/accessor-closure evidence but no production reference escaping that closure;
+- any path changed by slimming is updated before the manifest is written;
+- no atlas evidence comes from a compatibility shim scheduled for deletion.
+
+This preflight must not inspect `.env*`, `services/api`, applications, Railway, host configuration, deployed revisions, `process.env` values, or other live environment state. The slimming design’s configured-capability protection remains an operational rule; the lab is only a fallback-based source simulator.
+
+- [ ] **Step 2: Write the generator RED tests**
+
+Extend `scripts/tests/build-protocol-atlas.spec.ts` with fixtures for curated settings, named modes, definitive chains, unresolved records, target associations, and production-source reverse references.
+
+Lock the approved inventory with a compact ID/mode assertion derived from the approved spec, rather than reproducing full manifest objects in the test:
+
+```ts
+const APPROVED_CONFIGURATION_MODE_IDS = {
+  "discovery-corpus": ["fallback", "intent-only", "premise-profile", "context-profile", "context-cross-match"],
+  "discovery-premise-limit": ["fallback-40", "disabled-0", "expanded-100"],
+  "discovery-rejection-cooldown": ["fallback-7d", "short-1d", "long-30d"],
+  "discovery-evaluation-topology": ["bundled", "pairwise"],
+  "hyde-frame-constraints": ["legacy", "frame-v1"],
+  "premise-deduplication": ["fallback-0.93", "broad-0.85", "strict-0.98"],
+  "introducer-discovery": ["off", "on"],
+  "negotiation-context": ["include-active", "exact-only"],
+  "negotiation-turn-caps": ["fallback-4-6", "short-2-3", "extended-8-12"],
+  "negotiation-protocol": ["v1", "v2"],
+  "negotiation-screen": ["off", "shadow", "enforce"],
+  "negotiation-stance": ["advocate", "evaluator", "skeptic"],
+  "negotiation-consultation": ["off", "shadow", "v2-on", "v2-short-window"],
+  "negotiation-deadlock": ["off", "v2-threshold-4", "v2-fast-2", "v2-skeptic"],
+  "questioner-uptake": ["off", "on-threshold-70", "on-threshold-90"],
+  "questioner-discovery-contract": ["off", "transcripts-unresolved", "insights-unresolved"],
+  "pool-question-contract": ["off", "shadow-mining", "on-pull", "on-push", "on-visit", "on-newborn"],
+  "pool-ranking": ["off", "on"],
+  "negotiation-evidence-contract": ["off", "shadow", "on-alias"],
+  "outcome-questions-contract": ["off", "shadow", "on-alias"],
+} as const;
+
+test("locks the approved seven chapters, five flows, and 20 configuration experiments", async () => {
+  const content = await loadAtlasContent() as {
+    chapters: Array<{ id: string }>;
+    flows: Array<{ id: string }>;
+    configurationExperiments: Array<{
+      id: string;
+      modes: Array<{ id: string }>;
+    }>;
+  };
+  expect(content.chapters).toHaveLength(7);
+  expect(content.flows).toHaveLength(5);
+  expect(Object.fromEntries(
+    content.configurationExperiments.map((experiment) => [
+      experiment.id,
+      experiment.modes.map((mode) => mode.id),
+    ]),
+  )).toEqual(APPROVED_CONFIGURATION_MODE_IDS);
+  expect(content.configurationExperiments.flatMap((experiment) => experiment.modes)).toHaveLength(61);
+});
+```
+
+Add focused tests proving:
+
+1. schema-2 experiments and nested records sort and serialize deterministically;
+2. duplicate experiment, setting, mode, assignment, delta, and target IDs fail;
+3. missing required modes fail rather than being pruned;
+4. unknown node, edge, and guided-step targets fail;
+5. package-only read, consumer, and test paths are enforced, and a setting fails if any current production read of its key is missing from declared `readSites`;
+6. a definitive delta fails if its consumer symbol or any ordered chain hop is removed;
+7. a definitive delta requires a behavior-test path and named test;
+8. accessor-to-accessor wrappers are traversed only through the declared, internally verified accessor closure;
+9. an unresolved delta rejects consumer/test fields and fails when a runtime reference escapes its accessor closure;
+10. declaration-only exports, type-only references, test files, declared accessor helpers, and barrels do not count as unresolved runtime consumers;
+11. setting prerequisites require an exact `{ key, value }` assignment and reject mode-shaped or cross-experiment ambiguity;
+12. secret-shaped keys, unrestricted assignments, malformed prerequisites, timestamps, line numbers, traversal paths, and host paths fail;
+13. `on-alias` normalizes to the current source-supported shadow-equivalent explanation rather than inventing an `on` consumer;
+14. curated authority fields survive the join and generated evidence fields are derived rather than semantically inferred.
+
+Add a subprocess determinism test using a `--stdout` generator mode. Spawn twice with different controlled sentinel values, including a covered configuration key, and assert byte equality plus absence of both sentinels:
+
+```ts
+expect(first.exitCode).toBe(0);
+expect(second.exitCode).toBe(0);
+expect(first.stdout).toEqual(second.stdout);
+expect(first.stdout).not.toContain("atlas-sentinel-a");
+expect(first.stdout).not.toContain("atlas-sentinel-b");
+```
+
+- [ ] **Step 3: Run the generator RED phase**
+
+Run:
+
+```bash
+bun test scripts/tests/build-protocol-atlas.spec.ts \
+  -t "configuration|seven chapters|definitive|unresolved|sentinel"
+```
+
+Expected: FAIL because curated experiments, schema 2, evidence joining, reference-chain validation, reverse-consumer validation, and `--stdout` do not exist.
+
+- [ ] **Step 4: Implement the generator GREEN phase and curate the 20 experiments**
+
+In `docs/protocol-atlas/atlas-content.js`, add the 20 approved experiments and all 61 required modes exactly as defined by the approved spec. Do not add an eighth chapter or sixth flow.
+
+For each experiment author:
+
+- stable ID, title, summary, capability, coverage classification, and package-fallback mode;
+- exact setting keys, all package-owned read sites, entry accessor symbols, complete accessor closures, accepted values, and read timing;
+- named modes containing only exact non-secret assignments or `unset`;
+- source-derived resolved values and fallback values;
+- prerequisites;
+- affected chapters, steps, nodes, and edges;
+- human-reviewed explanations, delta semantics, caveats, and coverage notes;
+- definitive evidence or an explicit unresolved assertion, never both.
+
+Include the permanent disclaimer verbatim:
+
+> This compares documented `packages/protocol` behavior against package fallbacks. It does not show any deployed environment and is not evidence that a capability is unused or removable.
+
+Keep `questioner-discovery-contract`, the host-activation portions of `pool-question-contract`, `negotiation-evidence-contract`, and `outcome-questions-contract` unresolved/protocol-boundary-only unless the preflight finds a direct current package consumer satisfying the approved evidence rules. Such a discovery is a design-review finding, not permission to silently reclassify the manifest.
+
+In `scripts/build-protocol-atlas.ts`:
+
+1. scan production `.ts` modules under `packages/protocol/src` for evidence only, excluding `tests/`, `*.spec.ts`, `*.test.ts`, and declarations;
+2. parse environment reads with the TypeScript AST, supporting direct property and string-literal element access without evaluating modules, and fail when a production read of an approved key is absent from its declared `readSites`;
+3. verify entry accessor declarations and every declared accessor-closure helper/reference;
+4. verify consumer declarations and each ordered reference-chain hop from outside the accessor closure with runtime import/reference semantics, excluding type-only references;
+5. reverse-index runtime references for unresolved checks, following declared accessor wrappers and excluding only the accessor closure, declaration-only re-exports, and barrels;
+6. verify behavior-test path and named test citation;
+7. validate all node, edge, chapter, flow, and step targets;
+8. reject secret-shaped keys such as names containing `SECRET`, `TOKEN`, `PASSWORD`, `PRIVATE_KEY`, `API_KEY`, or credential equivalents;
+9. normalize and sort experiments, settings, modes, assignments, prerequisites, deltas, chains, and target IDs;
+10. emit schema 2 with the joined `configurationExperiments`;
+11. add `--stdout`, emitting only serialized artifact bytes and performing no write;
+12. keep write mode atomic and `--check` byte-comparing the complete schema-2 artifact.
+
+The generator must not load `.env` files explicitly or read `process.env` to populate configuration records. `process.argv` and `process.pid` may continue to control CLI/write mechanics only.
+
+Run:
+
+```bash
+bun test scripts/tests/build-protocol-atlas.spec.ts \
+  -t "configuration|seven chapters|definitive|unresolved|sentinel"
+```
+
+Expected: PASS with exactly seven chapters, five flows, 20 experiments, and 61 named modes.
+
+- [ ] **Step 5: Write the core RED tests**
+
+Extend the core fixtures in `scripts/tests/protocol-atlas-core.spec.ts` with a small schema-2 generated artifact containing one definitive and one unresolved comparison. Do not duplicate the production manifest.
+
+Add tests for:
+
+- valid experiment/mode hash round-trips and fixed ordering;
+- invalid or incomplete experiment/mode pairs recovering to Orientation with the existing notice;
+- experiment selection moving to Explore/Implementation;
+- selecting a different experiment choosing that experiment’s package fallback;
+- reset returning the selected experiment to its fallback without clearing ordinary filters;
+- leaving Explore or switching to Protocol clearing the comparison;
+- ordinary filters remaining stored but inactive during a focused comparison;
+- pure derivation of activated/bypassed/changed/unresolved targets and prerequisite status;
+- deterministic delta counts and announcement text;
+- focus intents for replacement radios after selection/reset;
+- schema-1 generated data retaining the ordinary atlas while reporting Configuration Lab unavailable;
+- one malformed schema-2 experiment being omitted without invalidating nodes, edges, or valid experiments.
+
+Representative routing assertion:
+
+```ts
+expect(core().serializeHash(fixtureState({
+  chapterId: "explore",
+  layer: "implementation",
+  configurationExperimentId: "negotiation-screen",
+  configurationModeId: "enforce",
+}))).toBe(
+  "#chapter=explore&layer=implementation&experiment=negotiation-screen&mode=enforce",
+);
+```
+
+Representative degradation assertion:
+
+```ts
+expect(core().configurationAvailability(fixtureGeneratedV1())).toEqual({
+  available: false,
+  experiments: [],
+  errors: ["Configuration Lab unavailable for this artifact."],
+});
+```
+
+- [ ] **Step 6: Run the core RED phase**
+
+Run:
+
+```bash
+bun test scripts/tests/protocol-atlas-core.spec.ts \
+  -t "configuration|schema-1|experiment|prerequisite|focus"
+```
+
+Expected: FAIL because configuration state, hash fields, transitions, derivation, transient UI intents, and schema compatibility do not exist.
+
+- [ ] **Step 7: Implement the core GREEN phase**
+
+In `docs/protocol-atlas/atlas-core.js`:
+
+- accept generated schema 1 and schema 2 for ordinary node/edge validation;
+- treat schema 1 or a missing schema-2 configuration section as Configuration Lab unavailable, not as an ordinary atlas failure;
+- validate each schema-2 experiment independently and return valid experiments plus per-record errors;
+- parse `experiment` and `mode` only as a valid pair;
+- serialize them after existing filters;
+- clear the pair when leaving Explore or switching to Protocol;
+- preserve general filters while the focused comparison is active;
+- select the package fallback when an experiment is first selected or changed;
+- reset only the active experiment’s mode to its package fallback while keeping the experiment focused and filters inactive;
+- derive delta lists and counts without mutating generated data;
+- keep bypassed targets in the comparison result rather than deleting them;
+- return deterministic focus and live-announcement intents from configuration transitions;
+- clear stale transient intents on the next transition;
+- never infer a definitive delta when the generated record says unresolved.
+
+Run:
+
+```bash
+bun test scripts/tests/protocol-atlas-core.spec.ts \
+  -t "configuration|schema-1|experiment|prerequisite|focus"
+```
+
+Expected: PASS.
+
+- [ ] **Step 8: Write the renderer RED tests**
+
+Use the existing Happy DOM renderer harness in `scripts/tests/protocol-atlas-core.spec.ts`. Extend the static CSS contract in `scripts/tests/build-protocol-atlas.spec.ts` for effective 44px controls, literal non-color delta labels/pattern hooks, focus-visible treatment, reduced motion, and bounded 900px/640px/375px layouts. Add renderer tests proving:
+
+1. Explore contains the Configuration Lab as a subsection, not navigation chapter eight;
+2. the disclaimer is permanently visible;
+3. experiments and modes use semantic `<fieldset>`, `<legend>`, and radio controls with no text/number input;
+4. exact assignments, fallback/resolved values, prerequisites, evidence paths/symbols, behavior-test citations, explanations, and caveats render as text;
+5. choosing a mode updates the canonical hash and focused topology;
+6. Back, Forward, and reload restore the experiment/mode pair;
+7. switching experiment focuses the replacement fallback radio;
+8. mode/reset rerenders preserve focus on the replacement radio;
+9. the live region announces experiment, mode, and counts for all four delta kinds;
+10. activated, bypassed, changed, and unresolved targets receive text badges and distinct classes/patterns;
+11. bypassed topology remains present but visually secondary;
+12. ordinary filters remain stored but inactive while any experiment—including its fallback mode—is focused, and become active again only after leaving the Configuration Lab focus;
+13. schema 1 shows exactly `Configuration Lab unavailable for this artifact.` while ordinary Explore remains usable;
+14. one malformed experiment is omitted with a concise banner and `console.error`, while another valid experiment remains usable;
+15. an experiment with no valid reviewed deltas renders an explicit unresolved/empty state;
+16. no rendered copy claims to show local, test, development, Railway, or production values.
+
+Run:
+
+```bash
+bun test scripts/tests/protocol-atlas-core.spec.ts scripts/tests/build-protocol-atlas.spec.ts \
+  -t "Configuration Lab|configuration fieldset|configuration CSS|delta|replacement radio|artifact"
+```
+
+Expected: FAIL because the renderer and CSS do not yet implement the lab or its static contracts.
+
+- [ ] **Step 9: Implement the renderer and CSS GREEN phase**
+
+In `docs/protocol-atlas/atlas.js`:
+
+- render the lab only inside Explore;
+- render the permanent disclaimer, coverage note, experiment fieldset, named-mode radio group, reset action, and evidence panel;
+- show fallback versus selected-mode assignments and resolved values without executing protocol code;
+- show prerequisites as satisfied, unmet, or protocol-boundary/unresolved based only on generated records;
+- reuse the existing node/edge topology and overlay generated deltas;
+- retain all bypassed and unaffected topology, dimming rather than removing it;
+- include a textual delta list carrying the same meaning as the diagram;
+- suspend general filter application while an experiment is focused, including its fallback mode, without clearing filter state; restore filter application only after leaving the Configuration Lab focus;
+- apply `focusIntent` after replacement DOM exists and announce `announcement` through `#atlas-status`;
+- preserve canonical hash/history behavior through existing `dispatch`, `syncHash`, and `hashchange` paths;
+- isolate malformed experiments and log developer detail without disabling ordinary implementation evidence;
+- render schema-1 degradation with the approved unavailable message;
+- never access `process.env`, `.env` files, storage, network APIs, Railway, runtime telemetry, or host implementation data.
+
+In `docs/protocol-atlas/atlas.css`, add non-color-only styles:
+
+```css
+.configuration-delta--activated { /* + badge plus distinct solid/double treatment */ }
+.configuration-delta--bypassed { /* − badge, patterned/dimmed but still visible */ }
+.configuration-delta--changed { /* ~ badge plus distinct dashed treatment */ }
+.configuration-delta--unresolved { /* ? badge plus dotted/hatch treatment */ }
+```
+
+Also add:
+
+- layout for the fieldsets, mode radios, assignment table/list, prerequisite/caveat panels, coverage note, and textual delta summary;
+- minimum 44px targets for radios and reset controls;
+- visible `:focus-visible` treatment;
+- grayscale-distinguishable patterns and literal `+ activated`, `− bypassed`, `~ changed`, and `? unresolved` labels;
+- `prefers-reduced-motion` compliance;
+- stacked, overflow-safe behavior at 900px, 640px, and 375px;
+- no horizontal body overflow or precision interaction requirement.
+
+Run:
+
+```bash
+bun test scripts/tests/protocol-atlas-core.spec.ts scripts/tests/build-protocol-atlas.spec.ts \
+  -t "Configuration Lab|configuration fieldset|configuration CSS|delta|replacement radio|artifact"
+```
+
+Expected: PASS.
+
+- [ ] **Step 10: Regenerate schema 2 and run all automated Task 8 validation**
+
+Run:
+
+```bash
+bun run build:protocol-atlas
+bun test scripts/tests/build-protocol-atlas.spec.ts scripts/tests/protocol-atlas-core.spec.ts
+bun run check:protocol-atlas
+bunx eslint scripts/build-protocol-atlas.ts \
+  scripts/tests/build-protocol-atlas.spec.ts \
+  scripts/tests/protocol-atlas-core.spec.ts \
+  docs/protocol-atlas/atlas-content.js \
+  docs/protocol-atlas/atlas-core.js \
+  docs/protocol-atlas/atlas.js
+```
+
+Expected:
+
+- all tests and lint checks PASS;
+- the committed artifact has `schemaVersion: 2`;
+- the artifact reports exactly 20 experiments and 61 modes;
+- `--check` reports the artifact current;
+- repeated generation is byte-identical.
+
+Run all unique DB-free behavior-test citations from the generated configuration evidence:
+
+```bash
+set -euo pipefail
+ATLAS_BEHAVIOR_TEST_OUTPUT="$(bun -e '
+    await import("./docs/protocol-atlas/protocol.generated.js");
+    const generated = globalThis.ProtocolAtlasGenerated;
+    const paths = new Set();
+    for (const experiment of generated.configurationExperiments ?? []) {
+      for (const mode of experiment.modes ?? []) {
+        for (const delta of mode.deltas ?? []) {
+          if (delta.behaviorTest?.path) paths.add(delta.behaviorTest.path);
+        }
+      }
+    }
+    process.stdout.write([...paths].sort().join("\n"));
+  '
+)"
+if [[ -z "${ATLAS_BEHAVIOR_TEST_OUTPUT//[$'\t\r\n ']/}" ]]; then
+  echo "No Configuration Lab behavior-test citations were generated" >&2
+  exit 1
+fi
+mapfile -t ATLAS_BEHAVIOR_TESTS < <(printf '%s\n' "$ATLAS_BEHAVIOR_TEST_OUTPUT" | grep -v '^$')
+for test_path in "${ATLAS_BEHAVIOR_TESTS[@]}"; do
+  if [[ ! -f "$test_path" ]]; then
+    echo "Missing cited behavior test: $test_path" >&2
+    exit 1
+  fi
+done
+bun test "${ATLAS_BEHAVIOR_TESTS[@]}"
+```
+
+Expected: every cited behavior test PASS. Do not cite or run database-backed tests, provider-backed tests, live evals, or host tests.
+
+Run boundary and determinism assertions:
+
+```bash
+rg -n \
+  'services/api|apps/|src/controllers|src/services|src/adapters|src/queues|Railway|generatedAt|timestamp' \
+  docs/protocol-atlas/atlas-content.js \
+  docs/protocol-atlas/protocol.generated.js \
+  scripts/build-protocol-atlas.ts
+
+rg -n \
+  'process\.env|Bun\.env|dotenv|--env-file|readFile[^;]*\.env|Bun\.file[^;]*\.env' \
+  scripts/build-protocol-atlas.ts \
+  docs/protocol-atlas/atlas-content.js \
+  docs/protocol-atlas/atlas-core.js \
+  docs/protocol-atlas/atlas.js
+```
+
+Expected:
+
+- no concrete host path or timestamp is emitted;
+- any occurrence of `process.env` in the generator is syntax-analysis code or the controlled sentinel test, never a value read used as atlas content;
+- runtime assets contain no environment inspection.
+
+- [ ] **Step 11: Perform focused browser acceptance**
+
+Open `docs/protocol-atlas/index.html` directly from `file://` and through:
+
+```bash
+python3 -m http.server 4173 --directory docs/protocol-atlas
+```
+
+Verify in both contexts:
+
+1. navigation remains exactly seven chapters and five flows;
+2. Explore contains the Configuration Lab;
+3. the disclaimer and coverage note are always visible;
+4. one definitive experiment shows fallback versus selected assignments and correct activated/bypassed/changed evidence;
+5. one unresolved contract shows `? unresolved` without an invented consumer;
+6. switching experiments selects the new fallback;
+7. reset preserves ordinary filters;
+8. deep link, reload, Back, and Forward restore the exact pair;
+9. keyboard-only radio/reset operation preserves focus;
+10. the live region announces experiment, mode, and four delta counts;
+11. delta meaning remains legible in grayscale and without color;
+12. reduced-motion behavior is static;
+13. 1440px, 900px, 640px, and 375px layouts have no body overflow;
+14. no external request, active environment value, host inspection, or console error occurs.
+
+Stop the HTTP server after verification.
+
+- [ ] **Step 12: Commit the Configuration Lab**
+
+```bash
+git add scripts/build-protocol-atlas.ts \
+  scripts/tests/build-protocol-atlas.spec.ts \
+  scripts/tests/protocol-atlas-core.spec.ts \
+  docs/protocol-atlas/atlas-content.js \
+  docs/protocol-atlas/atlas-core.js \
+  docs/protocol-atlas/atlas.js \
+  docs/protocol-atlas/atlas.css \
+  docs/protocol-atlas/protocol.generated.js
+git commit -m "feat(docs): add protocol atlas configuration lab"
+```
+
+No `packages/protocol` source, package metadata, lockfile, HTML shell, spec, or plan file belongs in the Task 8 implementation commit.
+
+---
+
+### Task 9: Version, verify, and prepare the branch for review
 
 **Files:**
 - Modify: `packages/protocol/package.json`
 - Modify: `packages/protocol/CHANGELOG.md`
 - Modify: `bun.lock`
 - Regenerate: `docs/protocol-atlas/protocol.generated.js`
-- Keep during Task 8 and final review:
+- Keep during Task 9 and final review:
   - `docs/superpowers/specs/2026-08-07-protocol-atlas-design.md`
   - `docs/superpowers/plans/2026-08-07-protocol-atlas.md`
 
@@ -1175,18 +1771,19 @@ git commit -m "feat(docs): complete protocol atlas exploration"
 
 - [ ] **Step 1: Bump the protocol patch version**
 
-Change `packages/protocol/package.json` from `10.0.1` to `10.0.2`. If the branch is rebased onto a newer protocol version before execution, increment that current version's patch instead; do not lower or reuse a published base version.
+Change `packages/protocol/package.json` from the current `10.0.3` to `10.0.4`. If the branch is rebased onto a newer protocol version before execution, increment that current version's patch instead; do not lower or reuse a published base version.
 
 - [ ] **Step 2: Add the changelog entry**
 
 Under `## [Unreleased]` → `### Added`, add:
 
 ```md
-- Add the protocol-only Guided Atlas and deterministic architecture inventory
-  generator. The atlas explains normative concepts and the current
-  `packages/protocol` reference implementation, while concrete API and host
-  implementations remain outside its scope. Tooling-only public-package
-  change; no root export or runtime behavior changes.
+- Add the protocol-only Guided Atlas, deterministic architecture inventory
+  generator, and source-evidenced Configuration Lab. The atlas explains
+  normative concepts, the current `packages/protocol` reference implementation,
+  and counterfactual behavior-gate changes, while live environment values and
+  concrete API or host implementations remain outside its scope. Tooling-only
+  public-package change; no root export or runtime behavior changes.
 ```
 
 Also note the extracted capability metadata helper under `### Changed` if that heading exists; otherwise add it:
@@ -1256,7 +1853,12 @@ Open `docs/protocol-atlas/index.html` directly and verify:
 7. reduced-motion mode;
 8. 1440px and 375px layouts without body overflow;
 9. no console errors and no network requests;
-10. no API implementation node, path, or explanation.
+10. no API implementation node, path, or explanation;
+11. exactly 20 Configuration Lab experiments and 61 named modes;
+12. one definitive and one unresolved configuration comparison;
+13. disclaimer, coverage note, assignments, prerequisites, and evidence;
+14. configuration deep links, Back/Forward, reset, radio focus, and live announcements;
+15. `+`, `−`, `~`, and `?` delta semantics remain legible without color.
 
 Record concise manual notes in the eventual PR description.
 
@@ -1277,6 +1879,10 @@ Run:
 ```bash
 git diff --check origin/dev...HEAD
 git diff --name-only origin/dev...HEAD
+git diff --check
+git diff --name-only
+git diff --cached --check
+git diff --cached --name-only
 rg -n "services/api|apps/web|src/controllers|src/services|src/adapters|src/queues" docs/protocol-atlas scripts/build-protocol-atlas.ts
 ```
 
@@ -1289,7 +1895,7 @@ test -f docs/superpowers/specs/2026-08-07-protocol-atlas-design.md
 test -f docs/superpowers/plans/2026-08-07-protocol-atlas.md
 ```
 
-Expected: both commands succeed so the Task 8 and whole-branch reviewers can read the approved requirements. The coordinator removes these files only after final review is clean.
+Expected: both commands succeed so the Task 9 and whole-branch reviewers can read the approved requirements. The coordinator removes these files only after final review is clean.
 
 - [ ] **Step 10: Commit release metadata and final verification state**
 
@@ -1331,8 +1937,8 @@ The implementation handoff must report:
 
 - changed files grouped by architecture metadata, generator, static site, tests, and release metadata;
 - exact command outputs and exit codes for every targeted check;
-- generated inventory node/edge counts;
-- manual `file://` and HTTP browser acceptance notes;
+- generated inventory node/edge counts plus exact configuration experiment/mode counts;
+- manual `file://` and HTTP browser acceptance notes, including one definitive and one unresolved configuration comparison;
 - explicit confirmation that atlas evidence paths are `packages/protocol`-only;
 - explicit confirmation that no concrete API component is depicted or explained;
 - accessibility and responsive checks performed;
