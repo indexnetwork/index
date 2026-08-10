@@ -17,12 +17,22 @@ type HistoricalQualityRuntime = (
   dependencies: HistoricalQualityRuntimeDependencies,
 ) => Promise<unknown>;
 
+const RUNTIME_MODULE_SPECIFIER = '../discovery-quality.runtime';
+
+function isMissingRuntimeModule(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'message' in error
+    && typeof error.message === 'string'
+    && error.message.startsWith(`Cannot find module '${RUNTIME_MODULE_SPECIFIER}' `);
+}
+
 async function loadRuntime(): Promise<HistoricalQualityRuntime | undefined> {
   try {
-    const runtime = await import('../discovery-quality.runtime');
+    const runtime = await import(RUNTIME_MODULE_SPECIFIER);
     return runtime.runHistoricalQualityRuntime as HistoricalQualityRuntime | undefined;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Cannot find module')) return undefined;
+    if (isMissingRuntimeModule(error)) return undefined;
     throw error;
   }
 }

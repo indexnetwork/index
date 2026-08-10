@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import path from 'node:path';
 
 import { runDiscoveryBootstrap, type DiscoveryBootstrapDependencies } from '../discovery';
-import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, HISTORICAL_QUALITY_PR_A_REFUSAL, formatHistoricalQualityCost, historicalQualityCost, historicalQualityUsage, parseHistoricalQualityArgs, runHistoricalQualityPrARefusal } from '../discovery-quality.contract';
+import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, HISTORICAL_QUALITY_PR_A_REFUSAL, formatHistoricalQualityCost, historicalQualityCost, historicalQualityUsage, parseHistoricalQualityArgs, runHistoricalQualityPrARefusal, type HistoricalQualityRequest } from '../discovery-quality.contract';
 
 const BOOTSTRAP = path.resolve(import.meta.dir, '../discovery.ts');
 const fullArgs = ['--historical-quality', '--env', 'DISCOVERY_ALLOWED_TYPES=intent,profile'] as const;
@@ -203,28 +203,36 @@ describe('historical quality provider-free contract', () => {
 });
 
 describe('historical quality PR B dispatch acceptance', () => {
-  it('enters the attested runtime seam instead of returning the PR A runtime-unavailable refusal', async () => {
+  it('passes the parsed request to the dedicated quality runtime instead of legacy A/B', async () => {
     const calls: string[] = [];
-    const dependencies: DiscoveryBootstrapDependencies = {
-      assertConfirmation: () => { calls.push('confirmation'); },
+    let dispatchedRequest: HistoricalQualityRequest | undefined;
+    const dependencies: DiscoveryBootstrapDependencies & {
+      importQualityRuntime(): Promise<{
+        runHistoricalQualityRuntime(request: HistoricalQualityRequest): Promise<void>;
+      }>;
+    } = {
+      assertConfirmation: () => { calls.push('legacy-confirmation'); },
       parseManifest: () => {
-        calls.push('manifest');
-        return {
-          projectId: 'project-audit',
-          baseBranchId: 'branch-base',
-          targets: [
-            { sideId: 'a', branchId: 'branch-a', endpointId: 'endpoint-a', databaseUrl: 'postgres://audit.invalid/protocol_eval' },
-            { sideId: 'b', branchId: 'branch-b', endpointId: 'endpoint-b', databaseUrl: 'postgres://audit.invalid/protocol_eval' },
-          ],
-        };
+        calls.push('legacy-manifest');
+        throw new Error('quality dispatch must not parse the legacy A/B manifest');
       },
-      attestTargets: async () => { calls.push('attest'); },
+      attestTargets: async () => { calls.push('legacy-attest'); },
       importRuntime: async () => {
-        calls.push('runtime-import');
-        return { main: async () => { calls.push('quality-dispatch'); } };
+        calls.push('legacy-runtime-import');
+        return { main: async () => { calls.push('legacy-dispatch'); } };
+      },
+      importQualityRuntime: async () => {
+        calls.push('quality-runtime-import');
+        return {
+          runHistoricalQualityRuntime: async (request) => {
+            calls.push('quality-dispatch');
+            dispatchedRequest = request;
+          },
+        };
       },
     };
     const stderr: string[] = [];
+    const request: HistoricalQualityRequest = parseHistoricalQualityArgs([...fullArgs, '--runs', '1']);
 
     const result = await runDiscoveryBootstrap(
       [...fullArgs, '--runs', '1'],
@@ -235,6 +243,7 @@ describe('historical quality PR B dispatch acceptance', () => {
 
     expect(result).toBeUndefined();
     expect(stderr).toEqual([]);
-    expect(calls).toEqual(['confirmation', 'manifest', 'attest', 'runtime-import', 'quality-dispatch']);
+    expect(calls).toEqual(['quality-runtime-import', 'quality-dispatch']);
+    expect(dispatchedRequest).toEqual(request);
   });
 });
