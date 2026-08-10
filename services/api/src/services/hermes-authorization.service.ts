@@ -1,4 +1,4 @@
-import { HERMES_AGENT_AUDIENCE, HERMES_AUTHORIZATION_CODE_TTL_MS, HERMES_AUTHORIZATION_REQUEST_TTL_MS, HERMES_CREDENTIAL_TTL_MS, InvalidHermesCredentialError, derivePkceS256Challenge, hashHermesSecret, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
+import { AuthorizationInvalidGrantError, HERMES_AGENT_AUDIENCE, HERMES_AUTHORIZATION_CODE_TTL_MS, HERMES_AUTHORIZATION_REQUEST_TTL_MS, HERMES_CREDENTIAL_TTL_MS, InvalidHermesCredentialError, derivePkceS256Challenge, hashHermesSecret, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
 import { isExactHermesCapabilitySet, type HermesCapability } from '../lib/agent/hermes-capabilities';
 
 export type HermesAuthorizationServiceDependencies = {
@@ -57,12 +57,21 @@ export class HermesAuthorizationService {
     });
   }
 
-  /** Owner-approve one request and return its raw five-minute code exactly once. */
-  async approveAuthorization(ownerId: string, requestId: string) {
+  /** Resolve only pending, unexpired metadata admitted by the request's secret state. */
+  async getAuthorization(requestId: string, state: string) {
+    return this.store.getAuthorization({ requestId, state, now: this.dependencies.now() });
+  }
+
+  /** Owner-approve one state/redirect-bound request and return its raw five-minute code exactly once. */
+  async approveAuthorization(ownerId: string, requestId: string, state: string, redirectUri: string) {
     const now = this.dependencies.now();
+    const pending = await this.store.getAuthorization({ requestId, state, now });
+    if (pending.redirectUri !== redirectUri) throw new AuthorizationInvalidGrantError();
     const code = this.dependencies.randomSecret();
     const approved = await this.store.approveAuthorization({
       requestId,
+      state,
+      redirectUri,
       ownerId,
       setupAttemptId: this.dependencies.randomId(),
       codeHash: await hashHermesSecret(code),
@@ -154,6 +163,10 @@ const lazyHermesAuthorizationStore: HermesAuthorizationStore = {
   async createAuthorization(input) {
     const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
     return hermesAuthorizationDatabaseAdapter.createAuthorization(input);
+  },
+  async getAuthorization(input) {
+    const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
+    return hermesAuthorizationDatabaseAdapter.getAuthorization(input);
   },
   async approveAuthorization(input) {
     const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');

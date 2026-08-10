@@ -63,8 +63,25 @@ export type CreateHermesAuthorizationRecord = {
   expiresAt: Date;
 };
 
+export type GetHermesAuthorizationRecord = {
+  requestId: string;
+  state: string;
+  now: Date;
+};
+
+export type HermesAuthorizationRequestView = {
+  requestId: string;
+  installationId: string;
+  redirectUri: string;
+  state: string;
+  actions: readonly HermesCapability[];
+  expiresAt: Date;
+};
+
 export type ApproveHermesAuthorizationRecord = {
   requestId: string;
+  state: string;
+  redirectUri: string;
   ownerId: string;
   setupAttemptId: string;
   codeHash: string;
@@ -91,6 +108,7 @@ export interface HermesAuthorizationStore {
     state: string;
     expiresAt: Date;
   }>;
+  getAuthorization(input: GetHermesAuthorizationRecord): Promise<HermesAuthorizationRequestView>;
   approveAuthorization(input: ApproveHermesAuthorizationRecord): Promise<{
     redirectUri: string;
     state: string;
@@ -131,6 +149,7 @@ export function isHermesLoopbackRedirect(value: string): boolean {
     || parsed.pathname !== '/callback'
     || parsed.search !== ''
     || parsed.hash !== ''
+    || parsed.toString() !== value
   ) return false;
   const port = Number(parsed.port);
   return Number.isInteger(port) && port >= 49152 && port <= 65535;

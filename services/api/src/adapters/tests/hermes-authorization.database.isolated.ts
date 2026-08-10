@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm/sql';
 
+import { ConnectedAgentsDatabaseAdapter } from '../connected-agents.database.adapter';
 import { HermesAuthorizationDatabaseAdapter } from '../hermes-authorization.database.adapter';
 import db from '../../lib/drizzle/drizzle';
 import { AuthorizationExpiredError, AuthorizationReplayError, HERMES_AGENT_AUDIENCE, hashHermesSecret } from '../../lib/agent/hermes-authorization';
 import { HERMES_CANONICAL_ACTIONS } from '../../lib/agent/hermes-capabilities';
+import { ConnectedAgentsService } from '../../services/connected-agents.service';
 import { HermesAuthorizationService } from '../../services/hermes-authorization.service';
 import * as schema from '../../schemas/database.schema';
 
@@ -57,7 +59,7 @@ describe('HermesAuthorizationDatabaseAdapter transactions', () => {
       codeChallenge: await pkce(verifier),
     });
     requestIds.push(first.requestId);
-    const firstApproval = await firstService.approveAuthorization(ownerId, first.requestId);
+    const firstApproval = await firstService.approveAuthorization(ownerId, first.requestId, first.state, redirectUri);
     const firstExchange = await firstService.exchangeAuthorizationCode({
       requestId: first.requestId,
       code: firstApproval.code,
@@ -102,7 +104,7 @@ describe('HermesAuthorizationDatabaseAdapter transactions', () => {
       codeChallenge: await pkce(verifier),
     });
     requestIds.push(second.requestId);
-    const secondApproval = await firstService.approveAuthorization(ownerId, second.requestId);
+    const secondApproval = await firstService.approveAuthorization(ownerId, second.requestId, second.state, redirectUri);
     const [fallbackAgent] = await db.select().from(schema.agents)
       .where(eq(schema.agents.id, firstExchange.agentId));
     expect(fallbackAgent.handleNegotiations).toBe(false);
@@ -136,6 +138,54 @@ describe('HermesAuthorizationDatabaseAdapter transactions', () => {
     expect(JSON.stringify(authorization)).not.toContain(secondExchange.credential);
   });
 
+  it('lists, pauses without revocation, then owner-revokes all installation authority', async () => {
+    const authorization = new HermesAuthorizationService(adapter);
+    const state = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+    const created = await authorization.createAuthorization({
+      ...authorizationInput(state),
+      codeChallenge: await pkce(verifier),
+    });
+    requestIds.push(created.requestId);
+    const approval = await authorization.approveAuthorization(ownerId, created.requestId, state, redirectUri);
+    const exchange = await authorization.exchangeAuthorizationCode({
+      requestId: created.requestId,
+      code: approval.code,
+      verifier,
+      redirectUri,
+    });
+    const principal = await authorization.authenticatePendingHermesCredential(exchange.credential);
+    await authorization.activatePendingHermesCredential(principal);
+    await db.update(schema.agents).set({ handleNegotiations: true })
+      .where(eq(schema.agents.id, exchange.agentId));
+
+    const connected = new ConnectedAgentsService(new ConnectedAgentsDatabaseAdapter());
+    expect((await connected.list(ownerId)).connections[0]).toMatchObject({
+      installationId,
+      agentId: exchange.agentId,
+      activationState: 'active',
+      selected: true,
+    });
+
+    const paused = await connected.pause(ownerId, installationId);
+    expect(paused).toMatchObject({ activationState: 'active', selected: false, indexCovering: true });
+    const [credentialAfterPause] = await db.select().from(schema.hermesAgentCredentials)
+      .where(eq(schema.hermesAgentCredentials.id, exchange.credentialId));
+    expect(credentialAfterPause.activationState).toBe('active');
+    const [permissionAfterPause] = await db.select().from(schema.agentPermissions)
+      .where(eq(schema.agentPermissions.agentId, exchange.agentId));
+    expect(permissionAfterPause.actions).toEqual(HERMES_CANONICAL_ACTIONS);
+
+    await expect(connected.revoke(ownerId, installationId)).resolves.toEqual({ revoked: true });
+    const credentials = await db.select().from(schema.hermesAgentCredentials)
+      .where(eq(schema.hermesAgentCredentials.installationId, installationId));
+    expect(credentials.every((row) => row.activationState === 'revoked')).toBe(true);
+    expect(await db.select().from(schema.agentPermissions)
+      .where(eq(schema.agentPermissions.agentId, exchange.agentId))).toEqual([]);
+    const [inactive] = await db.select().from(schema.agents).where(eq(schema.agents.id, exchange.agentId));
+    expect(inactive).toMatchObject({ status: 'inactive', handleNegotiations: false, runtimeSetupAttemptId: null });
+    await expect(connected.revoke(ownerId, installationId)).resolves.toEqual({ revoked: true });
+  });
+
   it('rejects an expired request before approval', async () => {
     const oldNow = new Date(Date.now() - 20 * 60 * 1000);
     const expiredService = new HermesAuthorizationService(adapter, {
@@ -149,7 +199,7 @@ describe('HermesAuthorizationDatabaseAdapter transactions', () => {
     });
     requestIds.push(expired.requestId);
     const approvalService = new HermesAuthorizationService(adapter);
-    await expect(approvalService.approveAuthorization(ownerId, expired.requestId))
+    await expect(approvalService.approveAuthorization(ownerId, expired.requestId, expired.state, redirectUri))
       .rejects.toBeInstanceOf(AuthorizationExpiredError);
   });
 

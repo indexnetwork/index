@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
-import { AuthorizationConflictError, AuthorizationExpiredError, AuthorizationInvalidGrantError, AuthorizationReplayError, HERMES_AGENT_AUDIENCE, type ApproveHermesAuthorizationRecord, type CreateHermesAuthorizationRecord, type ExchangeHermesAuthorizationRecord, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
+import { AuthorizationConflictError, AuthorizationExpiredError, AuthorizationInvalidGrantError, AuthorizationReplayError, HERMES_AGENT_AUDIENCE, type ApproveHermesAuthorizationRecord, type CreateHermesAuthorizationRecord, type ExchangeHermesAuthorizationRecord, type GetHermesAuthorizationRecord, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
 import type { HermesCapability } from '../lib/agent/hermes-capabilities';
 import * as schema from '../schemas/database.schema';
 
@@ -42,6 +42,33 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
     return row;
   }
 
+  /** Read only state-bound pending consent metadata; challenge material stays server-side. */
+  async getAuthorization(input: GetHermesAuthorizationRecord) {
+    const [row] = await db.select({
+      requestId: schema.hermesAuthorizations.requestId,
+      installationId: schema.hermesAuthorizations.installationId,
+      redirectUri: schema.hermesAuthorizations.redirectUri,
+      state: schema.hermesAuthorizations.state,
+      actions: schema.hermesAuthorizations.actions,
+      expiresAt: schema.hermesAuthorizations.expiresAt,
+      approvedAt: schema.hermesAuthorizations.approvedAt,
+      consumedAt: schema.hermesAuthorizations.consumedAt,
+    }).from(schema.hermesAuthorizations).where(and(
+      eq(schema.hermesAuthorizations.requestId, input.requestId),
+      eq(schema.hermesAuthorizations.state, input.state),
+    )).limit(1);
+    if (!row || row.approvedAt || row.consumedAt) throw new AuthorizationInvalidGrantError();
+    if (row.expiresAt <= input.now) throw new AuthorizationExpiredError();
+    return {
+      requestId: row.requestId,
+      installationId: row.installationId,
+      redirectUri: row.redirectUri,
+      state: row.state,
+      actions: actions(row.actions),
+      expiresAt: row.expiresAt,
+    };
+  }
+
   /**
    * Owner-lock approval, Index fallback, installation revocation, and pending
    * generation creation are one transaction. No raw code enters the adapter.
@@ -53,9 +80,13 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
         .where(eq(schema.hermesAuthorizations.requestId, input.requestId))
         .limit(1)
         .for('update');
-      if (!authorization) throw new AuthorizationInvalidGrantError();
+      if (
+        !authorization
+        || authorization.state !== input.state
+        || authorization.redirectUri !== input.redirectUri
+      ) throw new AuthorizationInvalidGrantError();
       if (authorization.expiresAt <= input.now) throw new AuthorizationExpiredError();
-      if (authorization.approvedAt) throw new AuthorizationConflictError();
+      if (authorization.approvedAt || authorization.consumedAt) throw new AuthorizationConflictError();
 
       await tx.execute(sql`
         SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${input.ownerId}`}, 0))

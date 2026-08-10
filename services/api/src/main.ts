@@ -25,6 +25,7 @@ import { ConversationController } from './controllers/conversation.controller';
 import { AgentController } from './controllers/agent.controller';
 import { AgentRuntimeController } from './controllers/agent-runtime.controller';
 import { HermesAuthorizationController } from './controllers/hermes-authorization.controller';
+import { ConnectedAgentsController } from './controllers/connected-agents.controller';
 import { AgentActionController } from './controllers/agent-action.controller';
 import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
@@ -634,6 +635,7 @@ controllerInstances.set(ConversationController, new ConversationController(new C
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
 controllerInstances.set(HermesAuthorizationController, new HermesAuthorizationController());
+controllerInstances.set(ConnectedAgentsController, new ConnectedAgentsController());
 controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);

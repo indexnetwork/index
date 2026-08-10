@@ -5,7 +5,7 @@ import { RateLimit } from '../guards/limiter.guard';
 import { AuthorizationInvalidRequestError, HermesAuthorizationError, InvalidHermesCredentialError, isHermesLoopbackRedirect } from '../lib/agent/hermes-authorization';
 import { HERMES_CANONICAL_ACTIONS, isExactHermesCapabilitySet } from '../lib/agent/hermes-capabilities';
 import { log } from '../lib/log';
-import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { hermesAuthorizationService, type HermesAuthorizationService } from '../services/hermes-authorization.service';
 
 const logger = log.controller.from('hermes-authorization');
@@ -41,6 +41,11 @@ const activateSchema = z.object({
 
 const disconnectSchema = z.object({
   protocolVersion: z.literal(1),
+}).strict();
+const authorizationState = z.string().min(32).max(128).regex(base64url);
+const approveSchema = z.object({
+  state: authorizationState,
+  redirectUri,
 }).strict();
 
 type RouteParams = Record<string, string>;
@@ -98,13 +103,40 @@ export class HermesAuthorizationController {
     }
   }
 
+  @Get('/:id')
+  @UseGuards(RateLimit('read'), SessionOnlyGuard)
+  async get(request: Request, _user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
+    const requestId = uuid.safeParse(params?.id);
+    const entries = [...new URL(request.url).searchParams.entries()];
+    const stateValues = new URL(request.url).searchParams.getAll('state');
+    const state = authorizationState.safeParse(stateValues[0]);
+    if (
+      !requestId.success
+      || entries.length !== 1
+      || entries[0]?.[0] !== 'state'
+      || stateValues.length !== 1
+      || !state.success
+    ) return authorizationResponse(new AuthorizationInvalidRequestError());
+    try {
+      return Response.json(serialize(await this.authorization.getAuthorization(requestId.data, state.data)));
+    } catch (error) {
+      return this.handleError(error, 'get');
+    }
+  }
+
   @Post('/:id/approve')
   @UseGuards(RateLimit('write'), SessionOnlyGuard)
-  async approve(_request: Request, user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
+  async approve(request: Request, user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
     const requestId = uuid.safeParse(params?.id);
     if (!requestId.success) return authorizationResponse(new AuthorizationInvalidRequestError());
     try {
-      return Response.json(serialize(await this.authorization.approveAuthorization(user.id, requestId.data)));
+      const body = await parseBody(request, approveSchema);
+      return Response.json(serialize(await this.authorization.approveAuthorization(
+        user.id,
+        requestId.data,
+        body.state,
+        body.redirectUri,
+      )));
     } catch (error) {
       return this.handleError(error, 'approve');
     }

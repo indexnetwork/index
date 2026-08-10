@@ -75,9 +75,27 @@ class MemoryHermesAuthorizationStore implements HermesAuthorizationStore {
     return { requestId: input.requestId, state: input.state, expiresAt: input.expiresAt };
   }
 
+  async getAuthorization(input: { requestId: string; state: string; now: Date }) {
+    const row = this.authorizations.get(input.requestId);
+    if (!row || row.state !== input.state || row.approvedAt || row.consumedAt) {
+      throw new AuthorizationInvalidGrantError();
+    }
+    if (row.expiresAt <= input.now) throw new AuthorizationExpiredError();
+    return {
+      requestId: row.requestId,
+      installationId: row.installationId,
+      redirectUri: row.redirectUri,
+      state: row.state,
+      actions: row.actions,
+      expiresAt: row.expiresAt,
+    };
+  }
+
   async approveAuthorization(input: Parameters<HermesAuthorizationStore['approveAuthorization']>[0]) {
     const row = this.authorizations.get(input.requestId);
-    if (!row) throw new AuthorizationInvalidGrantError();
+    if (!row || row.state !== input.state || row.redirectUri !== input.redirectUri) {
+      throw new AuthorizationInvalidGrantError();
+    }
     if (row.expiresAt <= input.now) throw new AuthorizationExpiredError();
     if (row.approvedAt) throw new AuthorizationConflictError();
     row.ownerId = input.ownerId;
@@ -187,9 +205,21 @@ async function createAuthorization(overrides: Record<string, unknown> = {}) {
   }));
 }
 
-async function approveAuthorization() {
+async function readAuthorization(path = `/hermes-authorizations/${REQUEST_ID}?state=${STATE}`) {
+  return controller.get(
+    new Request(`http://localhost/api${path}`),
+    OWNER,
+    { id: REQUEST_ID },
+  );
+}
+
+async function approveAuthorization(overrides: Record<string, unknown> = {}) {
   return controller.approve(
-    request(`/hermes-authorizations/${REQUEST_ID}/approve`, {}),
+    request(`/hermes-authorizations/${REQUEST_ID}/approve`, {
+      state: STATE,
+      redirectUri: REDIRECT_URI,
+      ...overrides,
+    }),
     OWNER,
     { id: REQUEST_ID },
   );
@@ -251,9 +281,10 @@ describe('HermesAuthorizationController provider-free contract', () => {
     controller = new HermesAuthorizationController(service, () => undefined);
   });
 
-  it('keeps creation/exchange public but requires a browser session for approval', () => {
+  it('keeps creation/exchange public but requires a browser session for request reads and approval', () => {
     const approvalGuards = RouteRegistry.getGuards(HermesAuthorizationController, 'approve');
     expect(approvalGuards).toContain(SessionOnlyGuard);
+    expect(RouteRegistry.getGuards(HermesAuthorizationController, 'get')).toContain(SessionOnlyGuard);
     expect(RouteRegistry.getGuards(HermesAuthorizationController, 'create')).not.toContain(SessionOnlyGuard);
     expect(RouteRegistry.getGuards(HermesAuthorizationController, 'exchange')).not.toContain(SessionOnlyGuard);
     expect(SessionOnlyGuard(new Request('http://localhost/api/hermes-authorizations/x/approve')))
@@ -272,6 +303,8 @@ describe('HermesAuthorizationController provider-free contract', () => {
     expect((await createAuthorization({ setupAttemptId: SETUP_ATTEMPT_ID })).status).toBe(400);
     expect((await createAuthorization({ protocolVersion: 2 })).status).toBe(400);
     expect((await createAuthorization({ redirectUri: 'http://localhost:49152/callback' })).status).toBe(400);
+    expect((await createAuthorization({ redirectUri: 'http://2130706433:49152/callback' })).status).toBe(400);
+    expect((await createAuthorization({ redirectUri: 'http://127.0.0.1:049152/callback' })).status).toBe(400);
     expect((await createAuthorization({ redirectUri: 'http://127.0.0.1:49151/callback' })).status).toBe(400);
     expect((await createAuthorization({ actions: [...HERMES_CANONICAL_ACTIONS, 'manage:contacts'] })).status).toBe(400);
     expect((await createAuthorization({ actions: HERMES_CANONICAL_ACTIONS.slice(0, 5) })).status).toBe(400);
@@ -280,8 +313,32 @@ describe('HermesAuthorizationController provider-free contract', () => {
     ] })).status).toBe(400);
   });
 
-  it('approves under owner authority, selects Index, revokes prior installation authority, and emits a five-minute code', async () => {
+  it('returns only state-bound pending consent metadata and rejects malformed query admission', async () => {
     await createAuthorization();
+    const response = await readAuthorization();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      requestId: REQUEST_ID,
+      installationId: INSTALLATION_ID,
+      redirectUri: REDIRECT_URI,
+      state: STATE,
+      actions: HERMES_CANONICAL_ACTIONS,
+      expiresAt: '2026-08-09T12:10:00.000Z',
+    });
+
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&state=${STATE}`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&extra=1`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=wrong`)).status).toBe(400);
+  });
+
+  it('approves under owner authority only when state and redirect byte-match, then emits a five-minute code', async () => {
+    await createAuthorization();
+    expect((await approveAuthorization({ redirectUri: 'http://127.0.0.1:49153/callback' })).status).toBe(400);
+    expect((await approveAuthorization({ state: `${STATE}x` })).status).toBe(400);
+    expect((await approveAuthorization({ extra: true })).status).toBe(400);
+    expect(store.authorizations.get(REQUEST_ID)?.approvedAt).toBeNull();
+
     const response = await approveAuthorization();
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({

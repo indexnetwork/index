@@ -166,7 +166,7 @@ describe('AuthProvider onboarding routing', () => {
   // app (and typically logged out), so the guard must not bounce them to home
   // or open the login modal. Renders the real AuthProvider with a mocked
   // logged-out session — regression coverage for the /o download funnel.
-  test.each(['/c/aB3xY9zQ2w', '/o/opp-123', '/download'])(
+  test.each(['/c/aB3xY9zQ2w', '/o/opp-123', '/download', '/hermes-authorize'])(
     'treats deep-link landing route %s as public for logged-out visitors',
     async (route) => {
       mocks.useSession.mockReturnValue({ data: null, isPending: false });
