@@ -297,18 +297,42 @@ export interface HistoricalQualitySlotInput {
   passes?: number;
 }
 
+export type HistoricalQualityTrigger = "intent" | "enrichment";
+
+export interface HistoricalQualityRunSlotInput {
+  logicalCaseId: string;
+  trigger: HistoricalQualityTrigger;
+  /** Zero-based repetition identity. */
+  repetition: number;
+  slotSummary: HistoricalQualitySlotSummary;
+}
+
+export interface HistoricalQualityRunGroup {
+  logicalCaseId: string;
+  trigger: HistoricalQualityTrigger;
+  /** Sorted zero-based identities shared by both rank distributions. */
+  repetitions: number[];
+  completedRepetitions: number;
+  requestedRepetitions: number;
+  stageFunnel: HistoricalStageFunnel;
+  /** One entry per repetition; null preserves a target retrieval miss. */
+  targetRetrievalRanks: Array<number | null>;
+  /** One entry per repetition; null preserves a target finalization miss. */
+  targetFinalRanks: Array<number | null>;
+}
+
 export type HistoricalQualityRunSummary =
   | {
     qualityVerdictAvailable: true;
     completedSlots: number;
     requestedSlots: number;
-    summary: HistoricalStageFunnel;
+    groups: HistoricalQualityRunGroup[];
   }
   | {
     qualityVerdictAvailable: false;
     completedSlots: number;
     requestedSlots: number;
-    summary: null;
+    groups: null;
     message: "no quality verdict";
   };
 
@@ -516,29 +540,82 @@ function isValidSingleSlotFunnel(funnel: HistoricalStageFunnel): boolean {
     && funnel.failureStages.none === total("finalIncluded");
 }
 
+function isValidRunSlotIdentity(slot: HistoricalQualityRunSlotInput): boolean {
+  return typeof slot.logicalCaseId === "string"
+    && slot.logicalCaseId.trim().length > 0
+    && (slot.trigger === "intent" || slot.trigger === "enrichment")
+    && Number.isInteger(slot.repetition)
+    && slot.repetition >= 0;
+}
+
 export function summarizeHistoricalQualityRun(
-  slots: readonly (HistoricalQualitySlotSummary | null | undefined)[],
+  slots: readonly (HistoricalQualityRunSlotInput | null | undefined)[],
   requestedSlots = slots.length,
 ): HistoricalQualityRunSummary {
   if (!Number.isInteger(requestedSlots) || requestedSlots < 1) {
     throw new Error("Historical quality run requires a positive requested slot count");
   }
-  const completed = slots.filter((slot): slot is Extract<HistoricalQualitySlotSummary, { qualityVerdictAvailable: true }> =>
-    slot?.qualityVerdictAvailable === true && slot.completed === true && isValidSingleSlotFunnel(slot.summary));
-  if (slots.length !== requestedSlots || completed.length !== requestedSlots) {
+  const completedSlots = slots.filter((slot) => slot?.slotSummary.qualityVerdictAvailable === true
+    && slot.slotSummary.completed === true
+    && isValidSingleSlotFunnel(slot.slotSummary.summary)).length;
+  const complete = slots.filter((slot): slot is HistoricalQualityRunSlotInput => slot !== null
+    && slot !== undefined
+    && isValidRunSlotIdentity(slot)
+    && slot.slotSummary.qualityVerdictAvailable === true
+    && slot.slotSummary.completed === true
+    && isValidSingleSlotFunnel(slot.slotSummary.summary));
+  const tupleKeys = complete.map(({ logicalCaseId, trigger, repetition }) =>
+    JSON.stringify([logicalCaseId, trigger, repetition]));
+  if (slots.length !== requestedSlots
+    || complete.length !== requestedSlots
+    || new Set(tupleKeys).size !== tupleKeys.length) {
     return {
       qualityVerdictAvailable: false,
-      completedSlots: completed.length,
+      completedSlots,
       requestedSlots,
-      summary: null,
+      groups: null,
       message: "no quality verdict",
     };
   }
+
+  const grouped = new Map<string, HistoricalQualityRunSlotInput[]>();
+  for (const slot of complete) {
+    const key = JSON.stringify([slot.logicalCaseId, slot.trigger]);
+    const members = grouped.get(key) ?? [];
+    members.push(slot);
+    grouped.set(key, members);
+  }
+  const groups = [...grouped.values()]
+    .map((members): HistoricalQualityRunGroup => {
+      members.sort((left, right) => left.repetition - right.repetition);
+      const { logicalCaseId, trigger } = members[0]!;
+      const funnels = members.map(({ slotSummary }) => {
+        if (slotSummary.summary === null) throw new Error("Historical quality group lost complete evidence");
+        return slotSummary.summary;
+      });
+      const targetRank = (funnel: HistoricalStageFunnel, kind: "retrieval" | "final"): number | null => {
+        const rank = kind === "retrieval" ? funnel.targetRetrievalRank : funnel.targetFinalRank;
+        return rank.count === 0 ? null : rank.sum;
+      };
+      return {
+        logicalCaseId,
+        trigger,
+        repetitions: members.map(({ repetition }) => repetition),
+        completedRepetitions: members.length,
+        requestedRepetitions: members.length,
+        stageFunnel: aggregateFunnels(funnels),
+        targetRetrievalRanks: funnels.map((funnel) => targetRank(funnel, "retrieval")),
+        targetFinalRanks: funnels.map((funnel) => targetRank(funnel, "final")),
+      };
+    })
+    .sort((left, right) => left.logicalCaseId.localeCompare(right.logicalCaseId)
+      || left.trigger.localeCompare(right.trigger));
+
   return {
     qualityVerdictAvailable: true,
-    completedSlots: completed.length,
+    completedSlots: complete.length,
     requestedSlots,
-    summary: aggregateFunnels(completed.map(({ summary }) => summary)),
+    groups,
   };
 }
 

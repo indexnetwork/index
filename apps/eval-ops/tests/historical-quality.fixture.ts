@@ -1,5 +1,5 @@
 import { EvalArtifactEnvelopeV2Schema, isHistoricalQualityArtifact, type HistoricalQualityArtifactEnvelope } from '../../../packages/protocol/eval/shared/artifact';
-import { makeHistoricalQualityArtifact, makeIncompleteHistoricalQualityArtifact } from '../../../packages/protocol/eval/shared/tests/artifact.fixtures';
+import { makeHistoricalQualityArtifact } from '../../../packages/protocol/eval/shared/tests/artifact.fixtures';
 import type { ArtifactRef } from '../src/api/client';
 
 function parseQualityFixture(value: unknown): HistoricalQualityArtifactEnvelope {
@@ -12,16 +12,16 @@ function parseQualityFixture(value: unknown): HistoricalQualityArtifactEnvelope 
 
 /** Every UI fixture passes through the protocol's real strict V2 dispatcher. */
 export const COMPLETE_HISTORICAL_QUALITY_ARTIFACT = parseQualityFixture(
-  makeHistoricalQualityArtifact(),
+  makeHistoricalQualityArtifact({ repetitions: 3 }),
 );
 
 export const INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT = parseQualityFixture(
-  makeIncompleteHistoricalQualityArtifact(),
+  makeHistoricalQualityArtifact({ repetitions: 3, failedSlot: 29 }),
 );
 
 /** Proves quality routing is owned by the artifact discriminator, not its harness. */
 export const NON_DISCOVERY_HISTORICAL_QUALITY_ARTIFACT = parseQualityFixture({
-  ...makeHistoricalQualityArtifact(),
+  ...makeHistoricalQualityArtifact({ repetitions: 3 }),
   harness: 'matching',
 });
 

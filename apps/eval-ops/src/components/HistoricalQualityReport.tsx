@@ -1,4 +1,5 @@
 import type { HistoricalParticipantMetric, HistoricalQualityArtifact, HistoricalStageFunnel } from '../api/client';
+import { groupHistoricalQualityCases } from '../lib/historical-quality';
 import { Frame } from './Frame';
 
 export function HistoricalQualityReport({
@@ -7,6 +8,9 @@ export function HistoricalQualityReport({
   artifact: HistoricalQualityArtifact;
 }) {
   const { measurement } = artifact;
+  const groups = measurement.qualityVerdictAvailable
+    ? groupHistoricalQualityCases(artifact.payload.cases)
+    : [];
 
   return (
     <Frame label="historical quality evidence">
@@ -33,21 +37,34 @@ export function HistoricalQualityReport({
 
         {measurement.qualityVerdictAvailable && (
           <div className="space-y-6">
-            {artifact.payload.cases.map((row) => (
+            {groups.map((group) => (
               <section
-                key={row.caseId}
-                data-testid="quality-slot"
+                key={`${group.logicalCaseId}:${group.trigger}`}
+                data-testid="quality-group"
                 className="border-t border-term-rule pt-3 space-y-3"
               >
                 <div className="flex flex-wrap gap-x-4 gap-y-1 items-baseline">
-                  <h3 className="font-mono text-term-cyan">{row.logicalCaseId}</h3>
+                  <h3 className="font-mono text-term-cyan">{group.logicalCaseId}</h3>
                   <span className="text-term-dim">trigger</span>
-                  <span data-trigger className="font-mono">{row.trigger}</span>
-                  <span className="text-term-dim">repetition</span>
-                  <span className="font-mono">{row.repetition + 1}</span>
+                  <span data-trigger className="font-mono">{group.trigger}</span>
+                  <span className="font-mono">
+                    {group.completedRepetitions}/{group.requestedRepetitions} repetitions
+                  </span>
                 </div>
-                {row.stageFunnel !== null && <StageFunnel funnel={row.stageFunnel} />}
-                <ParticipantMetrics metrics={row.participantMetrics} />
+                <StageFunnel
+                  funnel={group.stageFunnel}
+                  repetitions={group.repetitions}
+                  targetRetrievalRanks={group.targetRetrievalRanks}
+                  targetFinalRanks={group.targetFinalRanks}
+                />
+                <div className="space-y-5">
+                  {group.rows.map((row) => (
+                    <div key={row.caseId} data-testid="participant-repetition" className="space-y-2">
+                      <h4 className="text-term-cyan font-mono">repetition {row.repetition + 1}</h4>
+                      <ParticipantMetrics metrics={row.participantMetrics} />
+                    </div>
+                  ))}
+                </div>
               </section>
             ))}
           </div>
@@ -57,7 +74,17 @@ export function HistoricalQualityReport({
   );
 }
 
-function StageFunnel({ funnel }: { funnel: HistoricalStageFunnel }) {
+function StageFunnel({
+  funnel,
+  repetitions,
+  targetRetrievalRanks,
+  targetFinalRanks,
+}: {
+  funnel: HistoricalStageFunnel;
+  repetitions: number[];
+  targetRetrievalRanks: Array<number | null>;
+  targetFinalRanks: Array<number | null>;
+}) {
   const groups = [
     ['target', funnel.target],
     ['semantic-negative', funnel.semanticNegatives],
@@ -99,8 +126,16 @@ function StageFunnel({ funnel }: { funnel: HistoricalStageFunnel }) {
         </table>
       </div>
       <div className="grid gap-1 md:grid-cols-2 font-mono text-sm">
-        <RankSummary label="target retrieval rank" rank={funnel.targetRetrievalRank} />
-        <RankSummary label="target final rank" rank={funnel.targetFinalRank} />
+        <RankDistribution
+          label="target retrieval rank distribution"
+          repetitions={repetitions}
+          ranks={targetRetrievalRanks}
+        />
+        <RankDistribution
+          label="target final rank distribution"
+          repetitions={repetitions}
+          ranks={targetFinalRanks}
+        />
       </div>
       <div className="font-mono text-sm">
         <span className="text-term-dim">failure stages</span>{' '}
@@ -112,17 +147,19 @@ function StageFunnel({ funnel }: { funnel: HistoricalStageFunnel }) {
   );
 }
 
-function RankSummary({
+function RankDistribution({
   label,
-  rank,
+  repetitions,
+  ranks,
 }: {
   label: string;
-  rank: HistoricalStageFunnel['targetRetrievalRank'];
+  repetitions: number[];
+  ranks: Array<number | null>;
 }) {
   return (
     <div>
       <span className="text-term-dim">{label}</span>{' '}
-      count={rank.count} · sum={rank.sum} · mean={formatOptionalNumber(rank.mean)}
+      {ranks.map((rank, index) => `r${repetitions[index]! + 1}=${rank ?? '—'}`).join(' · ')}
     </div>
   );
 }

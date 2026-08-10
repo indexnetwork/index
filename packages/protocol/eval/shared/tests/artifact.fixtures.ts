@@ -113,14 +113,16 @@ function qualityFunnel() {
   };
 }
 
-/** Complete ten-slot quality artifact used by strict schema and Ops tests. */
-export function makeHistoricalQualityArtifact(options: { emittedSlots?: number; failedSlot?: number; requestedSlots?: number } = {}) {
-  const emittedSlots = options.emittedSlots ?? 10;
+/** Complete quality artifact used by strict schema and Ops tests. */
+export function makeHistoricalQualityArtifact(options: { emittedSlots?: number; failedSlot?: number; repetitions?: number; requestedSlots?: number } = {}) {
+  const repetitions = options.repetitions ?? 1;
+  const emittedSlots = options.emittedSlots ?? 10 * repetitions;
   const requestedSlots = options.requestedSlots ?? emittedSlots;
   const rows = Array.from({ length: emittedSlots }, (_, index) => {
-    const logicalCaseId = `historical/case-${Math.floor(index / 2) + 1}`;
-    const trigger = index % 2 === 0 ? "intent" as const : "enrichment" as const;
-    const repetition = 0;
+    const pairIndex = Math.floor(index / repetitions);
+    const logicalCaseId = `historical/case-${Math.floor(pairIndex / 2) + 1}`;
+    const trigger = pairIndex % 2 === 0 ? "intent" as const : "enrichment" as const;
+    const repetition = index % repetitions;
     const caseId = `${encodeURIComponent(logicalCaseId)}/${trigger}/r${repetition + 1}`;
     const completed = index !== options.failedSlot;
     return {
@@ -198,7 +200,7 @@ export function makeHistoricalQualityArtifact(options: { emittedSlots?: number; 
     measurement: {
       kind: "historical-quality-pilot" as const,
       scorecardSemantics: "execution-completeness" as const,
-      repetitionsRequested: 1,
+      repetitionsRequested: repetitions,
       requestedSlots,
       completedSlots,
       qualityVerdictAvailable: verdict,

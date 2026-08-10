@@ -192,8 +192,8 @@ describe('Harness', () => {
 
     renderHarness('discovery');
 
-    expect(await screen.findByText('9/10')).toBeInTheDocument();
-    expect(screen.getByText('10/10')).toBeInTheDocument();
+    expect(await screen.findByText('29/30')).toBeInTheDocument();
+    expect(screen.getByText('30/30')).toBeInTheDocument();
     expect(screen.getAllByText(/completed\/requested/i)).toHaveLength(2);
     expect(document.body.textContent).not.toContain('90.0%');
     expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner/i);

@@ -780,7 +780,7 @@ describe('Run · historical quality', () => {
     await act(async () => {
       resolveArtifact(new Response(JSON.stringify(NON_DISCOVERY_HISTORICAL_QUALITY_ARTIFACT)));
     });
-    expect(await screen.findByText('10/10')).toBeInTheDocument();
+    expect(await screen.findByText('30/30')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/SECRET QUALITY RAW LOG|profile:|overrides:|experimental configuration|baseline|scorecard/i);
     expect(screen.queryByRole('button', { name: /raw output/i })).toBeNull();
   });
@@ -821,13 +821,13 @@ describe('Run · historical quality', () => {
     await act(async () => {
       sources.get('/api/runs/run-1/stream')!._emit('status', qualityRun);
     });
-    expect(await screen.findByText('10/10')).toBeInTheDocument();
+    expect(await screen.findByText('30/30')).toBeInTheDocument();
 
     await act(async () => {
       await router.navigate('/r/run-2');
     });
     expect(screen.getByText('Loading...')).toBeInTheDocument();
-    expect(screen.queryByText('10/10')).toBeNull();
+    expect(screen.queryByText('30/30')).toBeNull();
     expect(document.body.textContent).not.toMatch(/quality measurement|quality verdict/i);
   });
 
@@ -888,13 +888,13 @@ describe('Run · historical quality', () => {
         artifactPath: qualityPath,
       });
     });
-    expect(await screen.findByText('10/10')).toBeInTheDocument();
+    expect(await screen.findByText('30/30')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/baseline|stale comparison failure/i);
   });
 
   it.each([
-    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '10/10'],
-    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '9/10'],
+    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '30/30'],
+    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '29/30'],
   ])('routes a %s measurement by artifact discriminator', async (_kind, report, completeness) => {
     stubArtifactFetch(report);
     renderRun(qualityRun);

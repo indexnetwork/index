@@ -352,7 +352,7 @@ describe('historical quality client types', () => {
     // @ts-expect-error generic refs cannot carry historical quality completeness
     const genericWithQuality: ArtifactRef = { ...qualityRef, measurementKind: null };
 
-    expect(_omitted.completedSlots).toBe(10);
+    expect(_omitted.completedSlots).toBe(30);
     expect(missing.measurementKind).toBe('historical-quality-pilot');
     expect(genericWithQuality.qualityCompleteness).toEqual(_omitted);
   });
@@ -362,12 +362,12 @@ describe('historical quality client types', () => {
     const first = artifact.payload.cases[0]!;
 
     expect(artifact.measurement.kind).toBe('historical-quality-pilot');
-    expect(artifact.measurement.completedSlots).toBe(10);
+    expect(artifact.measurement.completedSlots).toBe(30);
     const indexed: ArtifactRef['qualityCompleteness'] = {
       requestedSlots: artifact.measurement.requestedSlots,
       completedSlots: artifact.measurement.completedSlots,
     };
-    expect(indexed).toEqual({ requestedSlots: 10, completedSlots: 10 });
+    expect(indexed).toEqual({ requestedSlots: 30, completedSlots: 30 });
     expect(first.stageFunnel?.participants).toBe(24);
     expect(first.participantMetrics).toHaveLength(24);
     expect(first.participantMetrics[0]?.role).toBe('target');

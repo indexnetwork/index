@@ -148,8 +148,8 @@ describe('ArtifactView', () => {
   });
 
   it.each([
-    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '10/10'],
-    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '9/10'],
+    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '30/30'],
+    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '29/30'],
   ])('routes a %s quality measurement to the dedicated report', async (_kind, artifact, completeness) => {
     stubArtifact(artifact);
     const { container } = renderArtifact('quality-artifact');

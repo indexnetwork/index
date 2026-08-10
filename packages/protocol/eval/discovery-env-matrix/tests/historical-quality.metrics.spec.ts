@@ -97,6 +97,37 @@ function cloneMetrics(metrics: readonly HistoricalParticipantMetric[]): Historic
   return structuredClone(metrics) as HistoricalParticipantMetric[];
 }
 
+function missedTargetInput(): HistoricalParticipantMetricsInput {
+  const input = completeInput();
+  return {
+    ...input,
+    retrievalEvidence: input.retrievalEvidence.filter((row) => row.participantId !== "target"),
+    evaluatorTraces: input.evaluatorTraces.map((trace) => trace.participantId === "target"
+      ? { participantId: trace.participantId, eligible: false, submitted: false, returned: false, score: null }
+      : trace),
+    evaluatedOpportunities: input.evaluatedOpportunities.filter((participantId) => participantId !== "target"),
+  };
+}
+
+function runSlot(
+  logicalCaseId: string,
+  trigger: "intent" | "enrichment",
+  repetition: number,
+  input: HistoricalParticipantMetricsInput = completeInput(),
+  passes = 1,
+) {
+  return {
+    logicalCaseId,
+    trigger,
+    repetition,
+    slotSummary: summarizeHistoricalQualitySlot({
+      completed: true,
+      participantMetrics: buildHistoricalParticipantMetrics(input),
+      passes,
+    }),
+  };
+}
+
 describe("historical quality metrics", () => {
   it("deduplicates evidence rows by participant using best score, evidence union, descending rank, and stable-id ties", () => {
     expect(dedupeHistoricalRetrieval([
@@ -308,26 +339,28 @@ describe("historical quality metrics", () => {
     });
   });
 
-  it("suppresses the whole run when any requested slot is missing, incomplete, or malformed", () => {
-    const complete = summarizeHistoricalQualitySlot({
-      completed: true,
-      participantMetrics: buildHistoricalParticipantMetrics(completeInput()),
-    });
-    const incomplete = summarizeHistoricalQualitySlot({ completed: false, participantMetrics: [] });
-    const malformed = summarizeHistoricalQualitySlot({
-      completed: true,
-      participantMetrics: buildHistoricalParticipantMetrics(completeInput()).slice(0, 23),
-    });
+  it("suppresses every group when any requested slot is missing, incomplete, malformed, or duplicated", () => {
+    const complete = runSlot("historical/case-a", "intent", 0);
+    const incomplete = {
+      ...runSlot("historical/case-a", "intent", 1),
+      slotSummary: summarizeHistoricalQualitySlot({ completed: false, participantMetrics: [] }),
+    };
+    const malformed = structuredClone(runSlot("historical/case-a", "intent", 1));
+    if (malformed.slotSummary.summary !== null) malformed.slotSummary.summary.target.finalIncluded = 0;
 
-    const forged = structuredClone(complete);
-    if (forged.summary !== null) forged.summary.target.finalIncluded = 0;
-
-    for (const slots of [[complete, incomplete], [complete, undefined], [complete, malformed], [complete, forged]]) {
+    for (const { slots, completedSlots } of [
+      { slots: [complete, incomplete], completedSlots: 1 },
+      { slots: [complete, undefined], completedSlots: 1 },
+      { slots: [complete, malformed], completedSlots: 1 },
+      { slots: [complete, { ...complete }], completedSlots: 2 },
+      { slots: [complete, { ...runSlot("historical/case-a", "intent", 1), repetition: -1 }], completedSlots: 2 },
+      { slots: [complete, { ...runSlot("historical/case-a", "intent", 1), repetition: 0.5 }], completedSlots: 2 },
+    ]) {
       expect(summarizeHistoricalQualityRun(slots)).toEqual({
         qualityVerdictAvailable: false,
-        completedSlots: 1,
+        completedSlots,
         requestedSlots: 2,
-        summary: null,
+        groups: null,
         message: "no quality verdict",
       });
     }
@@ -335,23 +368,20 @@ describe("historical quality metrics", () => {
       qualityVerdictAvailable: false,
       completedSlots: 1,
       requestedSlots: 2,
-      summary: null,
+      groups: null,
       message: "no quality verdict",
     });
   });
 
   it("suppresses a run when forged target ranks exceed retrieved or final-included populations", () => {
-    const complete = summarizeHistoricalQualitySlot({
-      completed: true,
-      participantMetrics: buildHistoricalParticipantMetrics(transitionInput()),
-    });
+    const complete = runSlot("historical/case-a", "intent", 0, transitionInput());
     const forgedRetrievalRank = structuredClone(complete);
     const forgedFinalRank = structuredClone(complete);
-    if (forgedRetrievalRank.summary !== null) {
-      forgedRetrievalRank.summary.targetRetrievalRank = { count: 1, sum: 24, mean: 24 };
+    if (forgedRetrievalRank.slotSummary.summary !== null) {
+      forgedRetrievalRank.slotSummary.summary.targetRetrievalRank = { count: 1, sum: 24, mean: 24 };
     }
-    if (forgedFinalRank.summary !== null) {
-      forgedFinalRank.summary.targetFinalRank = { count: 1, sum: 24, mean: 24 };
+    if (forgedFinalRank.slotSummary.summary !== null) {
+      forgedFinalRank.slotSummary.summary.targetFinalRank = { count: 1, sum: 24, mean: 24 };
     }
 
     for (const slot of [forgedRetrievalRank, forgedFinalRank]) {
@@ -359,32 +389,78 @@ describe("historical quality metrics", () => {
         qualityVerdictAvailable: false,
         completedSlots: 0,
         requestedSlots: 1,
-        summary: null,
+        groups: null,
         message: "no quality verdict",
       });
     }
   });
 
-  it("aggregates only quality funnels and never transport passes", () => {
-    const metrics = buildHistoricalParticipantMetrics(completeInput());
-    const passingTransport = summarizeHistoricalQualitySlot({ completed: true, participantMetrics: metrics, passes: 1 });
-    const failingTransport = summarizeHistoricalQualitySlot({ completed: true, participantMetrics: metrics, passes: 0 });
-    expect(failingTransport).toEqual(passingTransport);
+  it("groups two and three repetitions deterministically with additive stage and failure counts and null-preserving target ranks", () => {
+    const slots = [
+      runSlot("historical/case-b", "intent", 2, missedTargetInput()),
+      runSlot("historical/case-a", "intent", 1, transitionInput()),
+      runSlot("historical/case-b", "enrichment", 0),
+      runSlot("historical/case-a", "intent", 0),
+      runSlot("historical/case-b", "intent", 1, transitionInput()),
+      runSlot("historical/case-b", "intent", 0),
+    ];
 
-    const run = summarizeHistoricalQualityRun([passingTransport, failingTransport]);
+    const run = summarizeHistoricalQualityRun(slots);
     expect(run.qualityVerdictAvailable).toBe(true);
-    expect(run.completedSlots).toBe(2);
-    expect(run.requestedSlots).toBe(2);
-    expect(run.summary).toMatchObject({
-      slots: 2,
-      participants: 48,
-      target: { total: 2, finalIncluded: 2 },
-      semanticNegatives: { total: 6, finalIncluded: 6 },
-      backgrounds: { total: 40, finalIncluded: 40 },
-      targetRetrievalRank: { count: 2, sum: 2, mean: 1 },
-      targetFinalRank: { count: 2, sum: 2, mean: 1 },
-      failureStages: { none: 48 },
+    if (!run.qualityVerdictAvailable) throw new Error("expected quality evidence");
+    expect(run.completedSlots).toBe(6);
+    expect(run.requestedSlots).toBe(6);
+    expect(run.groups.map(({ logicalCaseId, trigger }) => `${logicalCaseId}:${trigger}`)).toEqual([
+      "historical/case-a:intent",
+      "historical/case-b:enrichment",
+      "historical/case-b:intent",
+    ]);
+
+    expect(run.groups[0]).toEqual({
+      logicalCaseId: "historical/case-a",
+      trigger: "intent",
+      repetitions: [0, 1],
+      completedRepetitions: 2,
+      requestedRepetitions: 2,
+      stageFunnel: {
+        slots: 2,
+        participants: 48,
+        target: { total: 2, retrieved: 2, evaluatorEligible: 2, evaluatorSubmitted: 2, evaluatorReturned: 2, finalIncluded: 2 },
+        semanticNegatives: { total: 6, retrieved: 6, evaluatorEligible: 6, evaluatorSubmitted: 5, evaluatorReturned: 4, finalIncluded: 3 },
+        backgrounds: { total: 40, retrieved: 39, evaluatorEligible: 38, evaluatorSubmitted: 38, evaluatorReturned: 38, finalIncluded: 38 },
+        targetRetrievalRank: { count: 2, sum: 2, mean: 1 },
+        targetFinalRank: { count: 2, sum: 3, mean: 1.5 },
+        failureStages: { execution: 0, retrieval: 1, evaluation_admission: 2, evaluation_rejection: 1, finalization: 1, none: 43 },
+      },
+      targetRetrievalRanks: [1, 1],
+      targetFinalRanks: [1, 2],
     });
+    expect(run.groups[2]).toMatchObject({
+      repetitions: [0, 1, 2],
+      completedRepetitions: 3,
+      requestedRepetitions: 3,
+      targetRetrievalRanks: [1, 1, null],
+      targetFinalRanks: [1, 2, null],
+      stageFunnel: {
+        slots: 3,
+        participants: 72,
+        target: { total: 3, retrieved: 2, finalIncluded: 2 },
+        failureStages: { retrieval: 2, evaluation_admission: 2, evaluation_rejection: 1, finalization: 1, none: 66 },
+      },
+    });
+  });
+
+  it("isolates triggers and ignores transport passes in grouped quality evidence", () => {
+    const passingTransport = runSlot("historical/case-a", "intent", 0, completeInput(), 1);
+    const failingTransport = runSlot("historical/case-a", "enrichment", 0, completeInput(), 0);
+    expect(failingTransport.slotSummary).toEqual(passingTransport.slotSummary);
+
+    const run = summarizeHistoricalQualityRun([failingTransport, passingTransport]);
+    expect(run.qualityVerdictAvailable).toBe(true);
+    if (!run.qualityVerdictAvailable) throw new Error("expected quality evidence");
+    expect(run.groups).toHaveLength(2);
+    expect(run.groups.map((group) => group.trigger)).toEqual(["enrichment", "intent"]);
+    expect(run.groups.every((group) => group.stageFunnel.slots === 1)).toBe(true);
   });
 
   it("rejects coercible safe-ID and error-class objects instead of copying their enumerable secrets", () => {

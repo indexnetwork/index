@@ -177,7 +177,7 @@ describe('Overview', () => {
       </BrowserRouter>,
     );
 
-    expect(await screen.findByText('9/10')).toBeInTheDocument();
+    expect(await screen.findByText('29/30')).toBeInTheDocument();
     expect(screen.getByText(/completed\/requested/i)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('90.0%');
     expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner/i);
