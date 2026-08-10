@@ -841,6 +841,13 @@
       "when": 1786104719205,
       "tag": "0119_add_hermes_runtime_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1786350427344,
+      "tag": "0120_add_hermes_authorizations",
+      "breakpoints": true
     }
   ]
 }

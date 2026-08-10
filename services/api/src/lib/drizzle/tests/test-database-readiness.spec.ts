@@ -73,8 +73,10 @@ describe('test database readiness', () => {
     ).rejects.toThrow('TEST_DATABASE_SAFE=1 is not set');
   });
 
-  test('requires intent_proposals before database-backed fixtures run', () => {
+  test('requires current authorization tables before database-backed fixtures run', () => {
     expect(REQUIRED_TEST_DATABASE_OBJECTS).toContain('public.intent_proposals');
+    expect(REQUIRED_TEST_DATABASE_OBJECTS).toContain('public.hermes_authorizations');
+    expect(REQUIRED_TEST_DATABASE_OBJECTS).toContain('public.hermes_agent_credentials');
   });
 
   test('reports stale schema objects and closes the probe client', async () => {

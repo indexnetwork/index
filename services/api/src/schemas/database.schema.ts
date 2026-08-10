@@ -1130,6 +1130,64 @@ export const agents = pgTable('agents', {
     .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
 }));
 
+export const hermesAuthorizations = pgTable('hermes_authorizations', {
+  requestId: text('request_id').primaryKey(),
+  ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
+  agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
+  installationId: text('installation_id').notNull(),
+  redirectUri: text('redirect_uri').notNull(),
+  state: text('state').notNull(),
+  codeChallenge: text('code_challenge').notNull(),
+  codeChallengeMethod: text('code_challenge_method').notNull(),
+  actions: text('actions').array().notNull(),
+  codeHash: text('code_hash'),
+  setupAttemptId: text('setup_attempt_id'),
+  replayReceipt: text('replay_receipt'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+}, (table) => ({
+  methodS256: check('hermes_authorizations_s256_check', sql`${table.codeChallengeMethod} = 'S256'`),
+  canonicalActions: check('hermes_authorizations_actions_check', sql`${table.actions} = ARRAY['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities', 'manage:negotiations']::text[]`),
+  positiveExpiry: check('hermes_authorizations_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+  stateUnique: uniqueIndex('hermes_authorization_state_unique').on(table.state),
+  codeHashUnique: uniqueIndex('hermes_authorization_code_hash_unique')
+    .on(table.codeHash)
+    .where(sql`${table.codeHash} IS NOT NULL`),
+  installationIdx: index('hermes_authorizations_installation_idx').on(table.installationId),
+  expiryIdx: index('hermes_authorizations_expiry_idx').on(table.expiresAt),
+}));
+
+export const hermesAgentCredentials = pgTable('hermes_agent_credentials', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  secretHash: text('secret_hash').notNull(),
+  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  installationId: text('installation_id').notNull(),
+  setupAttemptId: text('setup_attempt_id').notNull(),
+  audience: text('audience').notNull(),
+  actions: text('actions').array().notNull(),
+  activationState: text('activation_state').notNull().$type<'pending' | 'active' | 'revoked'>(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  audienceCheck: check('hermes_agent_credentials_audience_check', sql`${table.audience} = 'hermes-agent'`),
+  canonicalActions: check('hermes_agent_credentials_actions_check', sql`${table.actions} = ARRAY['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities', 'manage:negotiations']::text[]`),
+  stateCheck: check('hermes_agent_credentials_state_check', sql`${table.activationState} IN ('pending', 'active', 'revoked')`),
+  positiveExpiry: check('hermes_agent_credentials_expiry_check', sql`${table.expiresAt} > ${table.issuedAt}`),
+  secretHashUnique: uniqueIndex('hermes_agent_credentials_secret_hash_unique').on(table.secretHash),
+  liveInstallationUnique: uniqueIndex('hermes_agent_credentials_live_installation_unique')
+    .on(table.ownerId, table.installationId)
+    .where(sql`${table.activationState} IN ('pending', 'active')`),
+  liveGenerationUnique: uniqueIndex('hermes_agent_credentials_live_generation_unique')
+    .on(table.agentId, table.setupAttemptId)
+    .where(sql`${table.activationState} IN ('pending', 'active')`),
+  expiryIdx: index('hermes_agent_credentials_expiry_idx').on(table.expiresAt),
+}));
+
 export const agentTransports = pgTable('agent_transports', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
@@ -1534,6 +1592,10 @@ export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
 export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
+export type HermesAuthorization = typeof hermesAuthorizations.$inferSelect;
+export type NewHermesAuthorization = typeof hermesAuthorizations.$inferInsert;
+export type HermesAgentCredential = typeof hermesAgentCredentials.$inferSelect;
+export type NewHermesAgentCredential = typeof hermesAgentCredentials.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;
