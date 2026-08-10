@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
-import { chmod, open, readFile, stat, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { chmod, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 
 import { attestHistoricalQualityTargets, parseHistoricalQualityManifest, parseLegacyAbManifest, type DiscoveryManifestV2 } from './discovery.neon';
-import { createNeonControlPlane, isEndpointHost, type NeonEndpoint, type NeonReadReplicaControlPlane } from './discovery-env-matrix.neon';
+import { createNeonControlPlane, isEndpointHost, type NeonEndpoint, type NeonEndpointType, type NeonReadReplicaControlPlane } from './discovery-env-matrix.neon';
+import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
 
 export const READ_REPLICA_CONFIRMATION = 'provision IND-638 base read replica';
 const BASE_NAME = 'eval-discovery-base';
@@ -17,33 +19,80 @@ export interface QualityReadReplicaSecureRecord {
   baseBranchId: string;
   endpointId: string;
   endpointHost: string;
-  endpointType: 'read_only';
+  endpointType: NeonEndpointType;
   databaseName: 'protocol_eval';
+  status: 'attested' | 'recovery_required';
   proposedManifest?: DiscoveryManifestV2;
 }
 
+export interface QualityReadReplicaSecureRecordReservation {
+  writeRecovery(record: QualityReadReplicaSecureRecord): Promise<void>;
+  commit(record: QualityReadReplicaSecureRecord): Promise<void>;
+  abandon(): Promise<void>;
+}
+
 export interface QualityReadReplicaSecureRecordStore {
-  write(path: string, record: QualityReadReplicaSecureRecord, mode: number): Promise<void>;
+  reserve(path: string, mode: number): Promise<QualityReadReplicaSecureRecordReservation>;
   read(path: string): Promise<{ value: unknown; mode: number }>;
 }
 
+async function replaceFileContents(handle: Awaited<ReturnType<typeof open>>, contents: string): Promise<void> {
+  const bytes = Buffer.from(contents, 'utf8');
+  await handle.truncate(0);
+  await handle.write(bytes, 0, bytes.length, 0);
+  await handle.sync();
+}
+
+async function writeRecord(handle: Awaited<ReturnType<typeof open>>, record: QualityReadReplicaSecureRecord): Promise<void> {
+  await replaceFileContents(handle, `${JSON.stringify(record, null, 2)}\n`);
+}
+
 const productionRecordStore: QualityReadReplicaSecureRecordStore = {
-  write: async (path, record, mode) => {
-    let created = false;
+  reserve: async (path, mode) => {
+    const handle = await open(path, 'wx', mode);
     try {
-      const handle = await open(path, 'wx', mode);
-      created = true;
-      try {
-        await handle.writeFile(`${JSON.stringify(record, null, 2)}\n`, 'utf8');
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
+      await replaceFileContents(handle, `${JSON.stringify({ status: 'reserved' })}\n`);
       await chmod(path, mode);
     } catch (error) {
-      if (created) await unlink(path).catch(() => undefined);
+      await handle.close().catch(() => undefined);
+      await unlink(path).catch(() => undefined);
       throw error;
     }
+    let closed = false;
+    const close = async (): Promise<void> => {
+      if (!closed) {
+        closed = true;
+        await handle.close();
+      }
+    };
+    return {
+      writeRecovery: async (record) => {
+        await writeRecord(handle, record);
+        await chmod(path, mode);
+      },
+      commit: async (record) => {
+        const temporaryPath = `${path}.complete-${randomUUID()}`;
+        try {
+          const temporary = await open(temporaryPath, 'wx', mode);
+          try {
+            await writeRecord(temporary, record);
+          } finally {
+            await temporary.close();
+          }
+          await chmod(temporaryPath, mode);
+          await rename(temporaryPath, path);
+          await close();
+        } catch (error) {
+          await unlink(temporaryPath).catch(() => undefined);
+          await close().catch(() => undefined);
+          throw error;
+        }
+      },
+      abandon: async () => {
+        await close();
+        await unlink(path).catch(() => undefined);
+      },
+    };
   },
   read: async (path) => {
     const [raw, metadata] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
@@ -80,9 +129,10 @@ function parseSecureRecord(value: unknown): QualityReadReplicaSecureRecord {
   const hasManifest = Object.prototype.hasOwnProperty.call(record, 'proposedManifest');
   assertExactKeys(record, [
     'version', 'projectId', 'baseBranchId', 'endpointId', 'endpointHost',
-    'endpointType', 'databaseName', ...(hasManifest ? ['proposedManifest'] : []),
+    'endpointType', 'databaseName', 'status', ...(hasManifest ? ['proposedManifest'] : []),
   ], 'Historical quality read-replica secure record');
-  if (record.version !== 1 || record.endpointType !== 'read_only' || record.databaseName !== DATABASE_NAME) {
+  if (record.version !== 1 || (record.endpointType !== 'read_only' && record.endpointType !== 'read_write')
+    || record.databaseName !== DATABASE_NAME || (record.status !== 'attested' && record.status !== 'recovery_required')) {
     throw new Error('Historical quality read-replica secure record has an invalid fixed contract');
   }
   const proposedManifest = hasManifest
@@ -94,8 +144,9 @@ function parseSecureRecord(value: unknown): QualityReadReplicaSecureRecord {
     baseBranchId: asString(record.baseBranchId, 'secure record baseBranchId'),
     endpointId: asString(record.endpointId, 'secure record endpointId'),
     endpointHost: asString(record.endpointHost, 'secure record endpointHost'),
-    endpointType: 'read_only',
+    endpointType: record.endpointType,
     databaseName: DATABASE_NAME,
+    status: record.status,
     ...(proposedManifest ? { proposedManifest } : {}),
   };
 }
@@ -179,6 +230,44 @@ async function attestRecordEndpoint(input: {
   assertReadReplicaEndpoint(endpoint, record);
 }
 
+function assertLegacyRefreshBinding(input: {
+  legacy: ReturnType<typeof parseLegacyAbManifest>;
+  refresh: Awaited<ReturnType<typeof attestWritableQualityBaseTarget>>;
+  replicaEndpointId?: string;
+}): void {
+  const { legacy, refresh } = input;
+  if (refresh.projectId !== legacy.projectId || refresh.branchId !== legacy.baseBranchId
+    || refresh.endpointType !== 'read_write' || refresh.databaseName !== DATABASE_NAME) {
+    throw new Error('Historical quality writable refresh target does not bind to the discovery base');
+  }
+  const roleIds = [
+    legacy.projectId,
+    legacy.baseBranchId,
+    refresh.endpointId,
+    ...(input.replicaEndpointId ? [input.replicaEndpointId] : []),
+    ...legacy.targets.flatMap((target) => [target.branchId, target.endpointId]),
+  ];
+  if (new Set(roleIds).size !== roleIds.length) {
+    throw new Error('Historical quality read-replica roles must be pairwise distinct');
+  }
+}
+
+function recoveryRecord(input: {
+  legacy: ReturnType<typeof parseLegacyAbManifest>;
+  endpoint: NeonEndpoint;
+}): QualityReadReplicaSecureRecord {
+  return {
+    version: 1,
+    projectId: input.legacy.projectId,
+    baseBranchId: input.legacy.baseBranchId,
+    endpointId: input.endpoint.id,
+    endpointHost: input.endpoint.host,
+    endpointType: input.endpoint.type,
+    databaseName: DATABASE_NAME,
+    status: 'recovery_required',
+  };
+}
+
 /** Exact, separately confirmed, control-plane-only read-replica provisioning. */
 export async function runQualityReadReplicaProvision(input: {
   args: readonly string[];
@@ -191,62 +280,55 @@ export async function runQualityReadReplicaProvision(input: {
   if (env.DISCOVERY_QUALITY_READ_REPLICA_CONFIRM !== READ_REPLICA_CONFIRMATION) {
     throw new Error(`Set DISCOVERY_QUALITY_READ_REPLICA_CONFIRM exactly to "${READ_REPLICA_CONFIRMATION}"`);
   }
-  const args = parseProvisionArgs(input.args);
-  const legacy = parseLegacyAbManifest(env.DISCOVERY_TARGETS);
-  const controlPlane = input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? '');
-
+  let reservation: QualityReadReplicaSecureRecordReservation | undefined;
+  let created: NeonEndpoint | undefined;
   try {
-    const base = await controlPlane.getBranch(legacy.projectId, legacy.baseBranchId);
-    if (base.id !== legacy.baseBranchId || base.name !== BASE_NAME || base.primary) {
-      throw new Error('Historical quality read-replica base identity is invalid');
-    }
-    const before = await controlPlane.listEndpoints(legacy.projectId, legacy.baseBranchId);
-    if (before.some((endpoint) => endpoint.branchId !== legacy.baseBranchId)) {
-      throw new Error('Historical quality base endpoint ownership is invalid');
-    }
-    if (before.some((endpoint) => endpoint.type === 'read_only')) {
-      throw new Error('Historical quality base already has a read replica');
-    }
+    const args = parseProvisionArgs(input.args);
+    const legacy = parseLegacyAbManifest(env.DISCOVERY_TARGETS);
+    const refreshTarget = parseQualityBaseRefreshTarget(env.DISCOVERY_QUALITY_BASE_REFRESH_TARGET);
+    const controlPlane = input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? '');
+    const refresh = await attestWritableQualityBaseTarget({ target: refreshTarget, controlPlane });
+    assertLegacyRefreshBinding({ legacy, refresh });
 
-    let created: NeonEndpoint;
-    try {
-      created = await controlPlane.createReadOnlyEndpoint(legacy.projectId, legacy.baseBranchId);
-    } catch {
-      throw new Error('Historical quality read-replica endpoint creation failed');
-    }
-    if (legacy.targets.some((target) => target.endpointId === created.id)) {
-      throw new Error('Historical quality read-replica endpoint crosses a child endpoint role');
-    }
+    reservation = await (input.recordStore ?? productionRecordStore).reserve(args.secureRecord, SECURE_MODE);
+    const before = await controlPlane.listEndpoints(legacy.projectId, legacy.baseBranchId);
+    const exactRefresh = before.find((endpoint) => endpoint.id === refresh.endpointId);
+    const refreshUrl = new URL(refresh.databaseUrl);
+    if (!exactRefresh || exactRefresh.branchId !== legacy.baseBranchId || exactRefresh.type !== 'read_write'
+      || !isEndpointHost(refreshUrl.hostname, exactRefresh.host)) throw new Error('refresh changed before create');
+    if (before.some((endpoint) => endpoint.branchId !== legacy.baseBranchId)) throw new Error('base endpoint ownership');
+    if (before.some((endpoint) => endpoint.type === 'read_only')) throw new Error('read replica already exists');
+
+    created = await controlPlane.createReadOnlyEndpoint(legacy.projectId, legacy.baseBranchId);
+    await reservation.writeRecovery(recoveryRecord({ legacy, endpoint: created }));
+    assertLegacyRefreshBinding({ legacy, refresh, replicaEndpointId: created.id });
     assertReadReplicaEndpoint(created, { projectId: legacy.projectId, baseBranchId: legacy.baseBranchId });
 
     const after = await controlPlane.listEndpoints(legacy.projectId, legacy.baseBranchId);
-    const reattested = after.find((endpoint) => endpoint.id === created.id);
-    if (!reattested) throw new Error('Historical quality read-replica endpoint was not returned by re-attestation');
+    const reattested = after.find((endpoint) => endpoint.id === created!.id);
+    if (!reattested) throw new Error('created endpoint missing from re-attestation');
     assertReadReplicaEndpoint(reattested, {
       projectId: legacy.projectId,
       baseBranchId: legacy.baseBranchId,
       endpointId: created.id,
       endpointHost: created.host,
     });
-    if (after.filter((endpoint) => endpoint.type === 'read_only').length !== 1) {
-      throw new Error('Historical quality base read-replica cardinality is invalid');
-    }
+    if (after.filter((endpoint) => endpoint.type === 'read_only').length !== 1) throw new Error('read-replica cardinality');
+    const refreshAfter = after.find((endpoint) => endpoint.id === refresh.endpointId);
+    if (!refreshAfter || refreshAfter.branchId !== legacy.baseBranchId || refreshAfter.type !== 'read_write'
+      || !isEndpointHost(refreshUrl.hostname, refreshAfter.host)) throw new Error('refresh changed after create');
 
     const record: QualityReadReplicaSecureRecord = {
-      version: 1,
-      projectId: legacy.projectId,
-      baseBranchId: legacy.baseBranchId,
-      endpointId: created.id,
-      endpointHost: created.host,
+      ...recoveryRecord({ legacy, endpoint: created }),
       endpointType: 'read_only',
-      databaseName: DATABASE_NAME,
+      status: 'attested',
     };
-    await (input.recordStore ?? productionRecordStore).write(args.secureRecord, record, SECURE_MODE);
+    await reservation.commit(record);
     (input.log ?? console.log)(safeSummary(record));
     return record;
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Historical quality')) throw error;
-    throw new Error('Historical quality read-replica provisioning failed', { cause: error });
+  } catch {
+    if (reservation && !created) await reservation.abandon().catch(() => undefined);
+    throw new Error('Historical quality read-replica provisioning failed');
   }
 }
 
@@ -259,30 +341,34 @@ export async function runQualityReadReplicaAttestation(input: {
   log?: (line: string) => void;
 }): Promise<QualityReadReplicaSecureRecord> {
   const env = input.env ?? process.env;
-  const args = parseAttestArgs(input.args);
-  const stored = await (input.recordStore ?? productionRecordStore).read(args.secureRecord);
-  if (stored.mode !== SECURE_MODE) throw new Error('Historical quality read-replica secure record mode must be exactly 0600');
-  const record = parseSecureRecord(stored.value);
-  const controlPlane = input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? '');
   try {
-    await attestRecordEndpoint({ record, controlPlane });
+    const args = parseAttestArgs(input.args);
+    const stored = await (input.recordStore ?? productionRecordStore).read(args.secureRecord);
+    if (stored.mode !== SECURE_MODE) throw new Error('record mode');
+    const record = parseSecureRecord(stored.value);
+    if (record.status !== 'attested' || record.endpointType !== 'read_only') throw new Error('record status');
+    const legacy = parseLegacyAbManifest(env.DISCOVERY_TARGETS);
+    const refreshTarget = parseQualityBaseRefreshTarget(env.DISCOVERY_QUALITY_BASE_REFRESH_TARGET);
+    const controlPlane = input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? '');
+    const refresh = await attestWritableQualityBaseTarget({ target: refreshTarget, controlPlane });
+    assertLegacyRefreshBinding({ legacy, refresh, replicaEndpointId: record.endpointId });
+    if (record.projectId !== legacy.projectId || record.baseBranchId !== legacy.baseBranchId) throw new Error('record binding');
+
     if (record.proposedManifest) {
       const manifest = record.proposedManifest;
       if (manifest.projectId !== record.projectId || manifest.baseBranchId !== record.baseBranchId
-        || manifest.baseReadReplica.endpointId !== record.endpointId) {
-        throw new Error('Historical quality proposed manifest crosses secure-record roles');
-      }
+        || manifest.baseReadReplica.endpointId !== record.endpointId) throw new Error('manifest binding');
       const url = new URL(manifest.baseReadReplica.databaseUrl);
-      if (!isEndpointHost(url.hostname, record.endpointHost)) {
-        throw new Error('Historical quality proposed manifest crosses secure-record host roles');
-      }
-      await attestHistoricalQualityTargets({ manifest, controlPlane });
+      if (!isEndpointHost(url.hostname, record.endpointHost)) throw new Error('manifest host');
+      await attestHistoricalQualityTargets({ manifest, writableRefreshTarget: refresh, controlPlane });
+    } else {
+      await attestRecordEndpoint({ record, controlPlane });
     }
+    (input.log ?? console.log)(safeSummary(record));
+    return record;
   } catch {
     throw new Error('Historical quality read-replica attestation failed');
   }
-  (input.log ?? console.log)(safeSummary(record));
-  return record;
 }
 
 async function main(): Promise<void> {

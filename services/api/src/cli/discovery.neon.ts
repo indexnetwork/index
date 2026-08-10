@@ -43,6 +43,23 @@ export interface DiscoveryManifestV2 {
 }
 export type DiscoveryManifest = LegacyAbManifest | DiscoveryManifestV2;
 
+export interface QualityBaseRefreshTargetV2 {
+  version: 2;
+  projectId: string;
+  branchId: string;
+  endpointId: string;
+  databaseName: 'protocol_eval';
+  databaseUrl: string;
+}
+
+declare const WRITABLE_REFRESH_ATTESTED: unique symbol;
+export type AttestedWritableQualityBaseTarget = QualityBaseRefreshTargetV2 & {
+  endpointType: 'read_write';
+  branchName: 'eval-discovery-base';
+  primary: false;
+  readonly [WRITABLE_REFRESH_ATTESTED]: true;
+};
+
 /**
  * Module-private brand. It is `declare`d, so it exists only in the type system
  * and only this module can produce a value carrying it: `attestAbTargets` is the
@@ -146,6 +163,12 @@ function parseJsonManifest(raw: string | undefined): Record<string, unknown> {
   return asRecord(parsed, 'Discovery manifest must be an object');
 }
 
+function assertPairwiseDistinctRoleIds(ids: readonly string[]): void {
+  if (new Set(ids).size !== ids.length) {
+    throw new Error('Discovery manifest project, branch, and endpoint role identifiers must be pairwise distinct');
+  }
+}
+
 function parseTargets(root: Record<string, unknown>, baseBranchId: string, strict: boolean): readonly [AbTarget, AbTarget] {
   if (!Array.isArray(root.targets) || root.targets.length !== 2) {
     throw new Error('Discovery manifest must name exactly two sides');
@@ -199,9 +222,12 @@ export function parseHistoricalQualityManifest(raw: string | undefined): Discove
   };
   assertNeonPostgresUrl(baseReadReplica.databaseUrl, 'baseReadReplica databaseUrl');
   const targets = parseTargets(root, baseBranchId, true);
-  if (targets.some((target) => target.endpointId === baseReadReplica.endpointId)) {
-    throw new Error('Discovery manifest child endpoints must be distinct from the base read replica');
-  }
+  assertPairwiseDistinctRoleIds([
+    projectId,
+    baseBranchId,
+    baseReadReplica.endpointId,
+    ...targets.flatMap((target) => [target.branchId, target.endpointId]),
+  ]);
   const urls = [baseReadReplica.databaseUrl, ...targets.map((target) => target.databaseUrl)];
   if (new Set(urls).size !== urls.length) {
     throw new Error('Discovery manifest endpoint URL roles must be distinct');
@@ -217,23 +243,42 @@ export function parseHistoricalQualityManifest(raw: string | undefined): Discove
  */
 export async function attestHistoricalQualityTargets(input: {
   manifest: DiscoveryManifestV2;
+  writableRefreshTarget: AttestedWritableQualityBaseTarget;
   controlPlane: NeonControlPlane;
 }): Promise<AttestedHistoricalQualityManifest> {
   try {
-    const { manifest, controlPlane } = input;
+    const { manifest, writableRefreshTarget: refresh, controlPlane } = input;
+    if (refresh.projectId !== manifest.projectId || refresh.branchId !== manifest.baseBranchId
+      || refresh.databaseName !== 'protocol_eval' || refresh.endpointType !== 'read_write'
+      || refresh.branchName !== BASE_NAME || refresh.primary !== false) throw new Error('refresh binding');
+    assertPairwiseDistinctRoleIds([
+      manifest.projectId,
+      manifest.baseBranchId,
+      manifest.baseReadReplica.endpointId,
+      refresh.endpointId,
+      ...manifest.targets.flatMap((target) => [target.branchId, target.endpointId]),
+    ]);
+    if ([manifest.baseReadReplica.databaseUrl, ...manifest.targets.map((target) => target.databaseUrl)].includes(refresh.databaseUrl)) {
+      throw new Error('refresh URL crossing');
+    }
+
     const base = await controlPlane.getBranch(manifest.projectId, manifest.baseBranchId);
     if (base.id !== manifest.baseBranchId || base.name !== BASE_NAME || base.primary) throw new Error('base');
     const baseUrl = parseUrl(manifest.baseReadReplica.databaseUrl);
+    const refreshUrl = parseUrl(refresh.databaseUrl);
     const baseEndpoints = await controlPlane.listEndpoints(manifest.projectId, manifest.baseBranchId);
     const replica = baseEndpoints.find((candidate) => candidate.id === manifest.baseReadReplica.endpointId);
+    const refreshEndpoint = baseEndpoints.find((candidate) => candidate.id === refresh.endpointId);
     if (!baseUrl || !replica || replica.branchId !== base.id || replica.type !== 'read_only'
       || !isEndpointHost(baseUrl.hostname, replica.host)) throw new Error('replica');
+    if (!refreshUrl || !refreshEndpoint || refreshEndpoint.branchId !== base.id || refreshEndpoint.type !== 'read_write'
+      || !isEndpointHost(refreshUrl.hostname, refreshEndpoint.host) || refreshEndpoint.host === replica.host) throw new Error('refresh');
     const childEndpointIds = new Set(manifest.targets.map((target) => target.endpointId));
     if (baseEndpoints.some((endpoint) => childEndpointIds.has(endpoint.id))) throw new Error('base/child endpoint crossing');
-    const endpointHosts = new Set([replica.host]);
+    const endpointHosts = new Set([replica.host, refreshEndpoint.host]);
 
     for (const target of manifest.targets) {
-      if (target.branchId === base.id || target.endpointId === replica.id) throw new Error('crossed role');
+      if (target.branchId === base.id || target.endpointId === replica.id || target.endpointId === refreshEndpoint.id) throw new Error('crossed role');
       const branch = await controlPlane.getBranch(manifest.projectId, target.branchId);
       if (branch.id !== target.branchId || branch.name !== AB_BRANCH_NAMES[target.sideId]
         || branch.parentId !== base.id || branch.primary) throw new Error('child branch');

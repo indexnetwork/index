@@ -2,23 +2,9 @@
 import { z } from 'zod';
 
 import { createNeonControlPlane, isEndpointHost, type NeonControlPlane } from './discovery-env-matrix.neon';
+import type { AttestedWritableQualityBaseTarget, QualityBaseRefreshTargetV2 } from './discovery.neon';
 
-export interface QualityBaseRefreshTargetV2 {
-  version: 2;
-  projectId: string;
-  branchId: string;
-  endpointId: string;
-  databaseName: 'protocol_eval';
-  databaseUrl: string;
-}
-
-declare const writableRefreshTargetBrand: unique symbol;
-export type AttestedWritableQualityBaseTarget = QualityBaseRefreshTargetV2 & {
-  endpointType: 'read_write';
-  branchName: 'eval-discovery-base';
-  primary: false;
-  readonly [writableRefreshTargetBrand]: true;
-};
+export type { AttestedWritableQualityBaseTarget, QualityBaseRefreshTargetV2 } from './discovery.neon';
 
 const nonBlank = z.string().trim().min(1);
 const targetSchema = z.object({
@@ -63,11 +49,17 @@ export async function attestWritableQualityBaseTarget(input: {
   controlPlane: NeonControlPlane;
 }): Promise<AttestedWritableQualityBaseTarget> {
   const { target, controlPlane } = input;
-  const branch = await controlPlane.getBranch(target.projectId, target.branchId);
+  let branch: Awaited<ReturnType<NeonControlPlane['getBranch']>>;
+  let endpoints: Awaited<ReturnType<NeonControlPlane['listEndpoints']>>;
+  try {
+    branch = await controlPlane.getBranch(target.projectId, target.branchId);
+    endpoints = await controlPlane.listEndpoints(target.projectId, target.branchId);
+  } catch {
+    throw new Error('Historical quality writable refresh control-plane attestation failed');
+  }
   if (branch.id !== target.branchId || branch.name !== 'eval-discovery-base' || branch.primary !== false) {
     throw new Error('Historical quality writable refresh branch identity is invalid');
   }
-  const endpoints = await controlPlane.listEndpoints(target.projectId, target.branchId);
   const endpoint = endpoints.find((candidate) => candidate.id === target.endpointId);
   const url = new URL(target.databaseUrl);
   if (!endpoint || endpoint.branchId !== target.branchId || !isEndpointHost(url.hostname, endpoint.host)) {

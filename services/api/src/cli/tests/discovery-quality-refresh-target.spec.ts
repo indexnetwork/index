@@ -70,6 +70,19 @@ describe('historical quality writable refresh target', () => {
     await expect(attestWritableQualityBaseTarget({ target: parsed, controlPlane: controlPlane({ endpointHost: 'other.neon.tech' }) })).rejects.toThrow('endpoint');
   });
 
+  it('does not retain or serialize credential-bearing control-plane causes', async () => {
+    const secret = 'refresh-provider-secret';
+    const error = await attestWritableQualityBaseTarget({
+      target: parseQualityBaseRefreshTarget(JSON.stringify(target)),
+      controlPlane: {
+        getBranch: async () => { throw new Error(secret, { cause: new Error(`nested-${secret}`) }); },
+        listEndpoints: async () => { throw new Error('not reached'); },
+      },
+    }).catch((caught: Error) => caught);
+    expect(error.cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(secret);
+  });
+
   it('requires the branded attestation before runtime binding', () => {
     const compileOnlyBoundary = () => {
       // @ts-expect-error A parsed target has not been control-plane attested.

@@ -14,6 +14,15 @@ const legacyManifest = {
   ],
 } as const;
 
+const refreshTarget = {
+  version: 2,
+  projectId: 'project-quality',
+  branchId: 'br-quality-base',
+  endpointId: 'ep-refresh',
+  databaseName: 'protocol_eval',
+  databaseUrl: 'postgresql://writer:refresh-secret@ep-refresh.neon.tech/protocol_eval',
+} as const;
+
 const qualityManifest = {
   version: 2,
   ...legacyManifest,
@@ -36,6 +45,7 @@ function environment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     DISCOVERY_QUALITY_READ_REPLICA_CONFIRM: READ_REPLICA_CONFIRMATION,
     NEON_API_KEY: 'neon-api-secret',
     DISCOVERY_TARGETS: JSON.stringify(legacyManifest),
+    DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(refreshTarget),
     ...overrides,
   };
 }
@@ -68,7 +78,7 @@ function makeControlPlane(input: {
       listEndpoints: async (projectId, branchId) => {
         calls.push(`listEndpoints:${projectId}:${branchId}`);
         listed += 1;
-        return listed === 1 ? input.before ?? [writable] : input.after ?? [writable, created];
+        return listed <= 2 ? input.before ?? [writable] : input.after ?? [writable, created];
       },
       createReadOnlyEndpoint: async (projectId, branchId) => {
         calls.push(`createReadOnlyEndpoint:${projectId}:${branchId}`);
@@ -79,18 +89,38 @@ function makeControlPlane(input: {
   };
 }
 
-function memoryRecordStore(initial?: QualityReadReplicaSecureRecord, mode = 0o600): {
+function memoryRecordStore(initial?: QualityReadReplicaSecureRecord, mode = 0o600, input: {
+  reserveError?: Error;
+  commitError?: Error;
+} = {}): {
   store: QualityReadReplicaSecureRecordStore;
-  writes: Array<{ path: string; record: QualityReadReplicaSecureRecord; mode: number }>;
+  events: string[];
+  records: QualityReadReplicaSecureRecord[];
 } {
-  const writes: Array<{ path: string; record: QualityReadReplicaSecureRecord; mode: number }> = [];
+  const events: string[] = [];
+  const records: QualityReadReplicaSecureRecord[] = [];
   let record = initial;
   return {
-    writes,
+    events,
+    records,
     store: {
-      write: async (path, next, requestedMode) => {
-        writes.push({ path, record: next, mode: requestedMode });
-        record = next;
+      reserve: async (path, requestedMode) => {
+        events.push(`reserve:${path}:${requestedMode.toString(8)}`);
+        if (input.reserveError) throw input.reserveError;
+        return {
+          writeRecovery: async (next) => {
+            events.push('write-recovery');
+            records.push(next);
+            record = next;
+          },
+          commit: async (next) => {
+            events.push('commit');
+            if (input.commitError) throw input.commitError;
+            records.push(next);
+            record = next;
+          },
+          abandon: async () => { events.push('abandon'); },
+        };
       },
       read: async () => ({ value: record, mode }),
     },
@@ -105,6 +135,7 @@ const initialRecord: QualityReadReplicaSecureRecord = {
   endpointHost: 'ep-replica.neon.tech',
   endpointType: 'read_only',
   databaseName: 'protocol_eval',
+  status: 'attested',
 };
 
 describe('historical quality read-replica provision command', () => {
@@ -135,10 +166,14 @@ describe('historical quality read-replica provision command', () => {
     expect(calls).toEqual([
       'getBranch:project-quality:br-quality-base',
       'listEndpoints:project-quality:br-quality-base',
+      'listEndpoints:project-quality:br-quality-base',
       'createReadOnlyEndpoint:project-quality:br-quality-base',
       'listEndpoints:project-quality:br-quality-base',
     ]);
-    expect(records.writes).toEqual([{ path: '/secure/read-replica.json', record: initialRecord, mode: 0o600 }]);
+    expect(records.events).toEqual([
+      'reserve:/secure/read-replica.json:600', 'write-recovery', 'commit',
+    ]);
+    expect(records.records.at(-1)).toEqual(initialRecord);
     expect(result).toEqual(initialRecord);
     expect(JSON.parse(output[0]!)).toEqual({
       projectId: 'project-quality',
@@ -172,6 +207,132 @@ describe('historical quality read-replica provision command', () => {
     }
   });
 
+  it.each([undefined, '', JSON.stringify({ ...refreshTarget, endpointId: '' })])('requires a strict writable refresh target before any create: %p', async (raw) => {
+    const { controlPlane, calls } = makeControlPlane();
+    await expect(runQualityReadReplicaProvision({
+      args: provisionArgs,
+      env: environment({ DISCOVERY_QUALITY_BASE_REFRESH_TARGET: raw }),
+      controlPlane,
+      recordStore: memoryRecordStore().store,
+      log: () => {},
+    })).rejects.toThrow();
+    expect(calls.some((call) => call.startsWith('create'))).toBeFalse();
+  });
+
+  it.each([
+    ['project', { ...refreshTarget, projectId: 'project-other' }],
+    ['base branch', { ...refreshTarget, branchId: 'br-other' }],
+  ])('binds the separately attested refresh %s to the legacy project/base before create', async (_label, target) => {
+    const events: string[] = [];
+    const controlPlane: QualityReadReplicaControlPlane = {
+      getBranch: async (_projectId, branchId) => ({ id: branchId, name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: false }),
+      listEndpoints: async (_projectId, branchId) => [{ id: 'ep-refresh', branchId, host: 'ep-refresh.neon.tech', type: 'read_write' }],
+      createReadOnlyEndpoint: async () => { events.push('create'); throw new Error('must not create'); },
+    };
+    const records = memoryRecordStore();
+    await expect(runQualityReadReplicaProvision({
+      args: provisionArgs,
+      env: environment({ DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(target) }),
+      controlPlane,
+      recordStore: records.store,
+      log: () => {},
+    })).rejects.toThrow();
+    expect(events).toEqual([]);
+    expect(records.events).toEqual([]);
+  });
+
+  it('rejects a separately attested refresh endpoint crossing a child role before reservation or create', async () => {
+    const crossed = { ...refreshTarget, endpointId: 'ep-a', databaseUrl: 'postgresql://writer:x@ep-a.neon.tech/protocol_eval' };
+    const { controlPlane, calls } = makeControlPlane({
+      before: [{ id: 'ep-a', branchId: 'br-quality-base', host: 'ep-a.neon.tech', type: 'read_write' }],
+    });
+    const records = memoryRecordStore();
+    await expect(runQualityReadReplicaProvision({
+      args: provisionArgs,
+      env: environment({ DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(crossed) }),
+      controlPlane,
+      recordStore: records.store,
+      log: () => {},
+    })).rejects.toThrow();
+    expect(records.events).toEqual([]);
+    expect(calls.some((call) => call.startsWith('create'))).toBeFalse();
+  });
+
+  it('reserves the secure record before create and refuses an unwritable reservation without mutation', async () => {
+    const records = memoryRecordStore(undefined, 0o600, { reserveError: new Error('unwritable secret path') });
+    const { controlPlane, calls } = makeControlPlane();
+    const error = await runQualityReadReplicaProvision({
+      args: provisionArgs, env: environment(), controlPlane, recordStore: records.store, log: () => {},
+    }).catch((caught: Error) => caught);
+    expect(records.events).toEqual(['reserve:/secure/read-replica.json:600']);
+    expect(calls.some((call) => call.startsWith('create'))).toBeFalse();
+    expect(error.cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('unwritable secret path');
+  });
+
+  it('orders exclusive reservation before the irreversible create call', async () => {
+    const records = memoryRecordStore();
+    const { controlPlane } = makeControlPlane();
+    const create = controlPlane.createReadOnlyEndpoint;
+    controlPlane.createReadOnlyEndpoint = async (projectId, branchId) => {
+      expect(records.events).toEqual(['reserve:/secure/read-replica.json:600']);
+      return create(projectId, branchId);
+    };
+    await runQualityReadReplicaProvision({
+      args: provisionArgs, env: environment(), controlPlane, recordStore: records.store, log: () => {},
+    });
+  });
+
+  it('refuses an existing secure-record path before create and preserves its contents', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'quality-replica-existing-'));
+    const recordPath = path.join(directory, 'record.json');
+    await Bun.write(recordPath, 'preserve-me');
+    const { controlPlane, calls } = makeControlPlane();
+    try {
+      await expect(runQualityReadReplicaProvision({
+        args: [...provisionArgs.slice(0, -1), recordPath], env: environment(), controlPlane, log: () => {},
+      })).rejects.toThrow();
+      expect(calls.some((call) => call.startsWith('create'))).toBeFalse();
+      expect(await readFile(recordPath, 'utf8')).toBe('preserve-me');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('holds an exclusive real-path reservation so a concurrent provision cannot create', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'quality-replica-concurrent-'));
+    const recordPath = path.join(directory, 'record.json');
+    let releaseCreate!: () => void;
+    let announceCreate!: () => void;
+    const createStarted = new Promise<void>((resolve) => { announceCreate = resolve; });
+    const release = new Promise<void>((resolve) => { releaseCreate = resolve; });
+    const first = makeControlPlane();
+    const originalCreate = first.controlPlane.createReadOnlyEndpoint;
+    first.controlPlane.createReadOnlyEndpoint = async (projectId, branchId) => {
+      announceCreate();
+      await release;
+      return originalCreate(projectId, branchId);
+    };
+    try {
+      const firstRun = runQualityReadReplicaProvision({
+        args: [...provisionArgs.slice(0, -1), recordPath], env: environment(), controlPlane: first.controlPlane, log: () => {},
+      });
+      await createStarted;
+      expect((await stat(recordPath)).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(await readFile(recordPath, 'utf8'))).toEqual({ status: 'reserved' });
+      const second = makeControlPlane();
+      await expect(runQualityReadReplicaProvision({
+        args: [...provisionArgs.slice(0, -1), recordPath], env: environment(), controlPlane: second.controlPlane, log: () => {},
+      })).rejects.toThrow();
+      expect(second.calls.some((call) => call.startsWith('create'))).toBeFalse();
+      releaseCreate();
+      await firstRun;
+    } finally {
+      releaseCreate?.();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['wrong base name', { baseName: 'production' }],
     ['primary base', { primary: true }],
@@ -179,7 +340,7 @@ describe('historical quality read-replica provision command', () => {
     const { controlPlane, calls } = makeControlPlane(overrides);
     await expect(runQualityReadReplicaProvision({
       args: provisionArgs, env: environment(), controlPlane, recordStore: memoryRecordStore().store, log: () => {},
-    })).rejects.toThrow('base');
+    })).rejects.toThrow('Historical quality read-replica provisioning failed');
     expect(calls.some((call) => call.startsWith('create'))).toBeFalse();
   });
 
@@ -190,10 +351,12 @@ describe('historical quality read-replica provision command', () => {
         { id: 'ep-existing', branchId: 'br-quality-base', host: 'ep-existing.neon.tech', type: 'read_only' },
       ],
     });
+    const records = memoryRecordStore();
     await expect(runQualityReadReplicaProvision({
-      args: provisionArgs, env: environment(), controlPlane, recordStore: memoryRecordStore().store, log: () => {},
-    })).rejects.toThrow('already');
+      args: provisionArgs, env: environment(), controlPlane, recordStore: records.store, log: () => {},
+    })).rejects.toThrow('Historical quality read-replica provisioning failed');
     expect(calls.some((call) => call.startsWith('create'))).toBeFalse();
+    expect(records.events.at(-1)).toBe('abandon');
   });
 
   it.each([
@@ -205,13 +368,50 @@ describe('historical quality read-replica provision command', () => {
         { id: 'ep-replica', branchId: 'br-a', host: 'ep-replica.neon.tech', type: 'read_only' as const },
       ],
     }],
-  ])('refuses a %s and writes no record', async (_label, overrides) => {
+  ])('refuses a %s but retains a recovery record for the created endpoint', async (_label, overrides) => {
     const { controlPlane } = makeControlPlane(overrides);
     const records = memoryRecordStore();
     await expect(runQualityReadReplicaProvision({
       args: provisionArgs, env: environment(), controlPlane, recordStore: records.store, log: () => {},
     })).rejects.toThrow();
-    expect(records.writes).toEqual([]);
+    expect(records.records).toHaveLength(1);
+    expect(records.records[0]).toMatchObject({ endpointId: 'ep-replica', status: 'recovery_required' });
+  });
+
+  it('retains a real mode-0600 recovery record when post-create reattestation fails', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'quality-replica-recovery-'));
+    const recordPath = path.join(directory, 'record.json');
+    const { controlPlane } = makeControlPlane({
+      after: [{ id: 'ep-refresh', branchId: 'br-quality-base', host: 'ep-refresh.neon.tech', type: 'read_write' }],
+    });
+    try {
+      await expect(runQualityReadReplicaProvision({
+        args: [...provisionArgs.slice(0, -1), recordPath], env: environment(), controlPlane, log: () => {},
+      })).rejects.toThrow();
+      expect((await stat(recordPath)).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(await readFile(recordPath, 'utf8'))).toMatchObject({
+        endpointId: 'ep-replica', endpointHost: 'ep-replica.neon.tech', status: 'recovery_required',
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('retains the recovery record when final record commit fails after create', async () => {
+    const records = memoryRecordStore(undefined, 0o600, { commitError: new Error('disk-secret-finalize') });
+    const error = await runQualityReadReplicaProvision({
+      args: provisionArgs,
+      env: environment(),
+      controlPlane: makeControlPlane().controlPlane,
+      recordStore: records.store,
+      log: () => {},
+    }).catch((caught: Error) => caught);
+    expect(records.records).toHaveLength(1);
+    expect(records.records[0]).toMatchObject({
+      endpointId: 'ep-replica', endpointHost: 'ep-replica.neon.tech', status: 'recovery_required',
+    });
+    expect(error.cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('disk-secret-finalize');
   });
 
   it('sanitizes create API failures and writes no record', async () => {
@@ -225,7 +425,10 @@ describe('historical quality read-replica provision command', () => {
     }).catch((caught: Error) => caught);
     expect(error.message).not.toContain('neon-api-secret');
     expect(error.message).not.toContain('response-password');
-    expect(records.writes).toEqual([]);
+    expect(error.cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('response-password');
+    expect(records.records).toEqual([]);
+    expect(records.events).toContain('abandon');
   });
 
   it('rejects any provisioning shape other than the fixed base/type/database contract', async () => {
@@ -245,6 +448,7 @@ describe('historical quality read-replica provision command', () => {
 describe('historical quality read-replica attest command', () => {
   it('attests the create-free secure record with no confirmation or runtime dependency', async () => {
     const { controlPlane, calls } = makeControlPlane({ before: [
+      { id: 'ep-refresh', branchId: 'br-quality-base', host: 'ep-refresh.neon.tech', type: 'read_write' },
       { id: 'ep-replica', branchId: 'br-quality-base', host: 'ep-replica.neon.tech', type: 'read_only' },
     ] });
     const output: string[] = [];
@@ -256,6 +460,8 @@ describe('historical quality read-replica attest command', () => {
       log: (line) => output.push(line),
     });
     expect(calls).toEqual([
+      'getBranch:project-quality:br-quality-base',
+      'listEndpoints:project-quality:br-quality-base',
       'getBranch:project-quality:br-quality-base',
       'listEndpoints:project-quality:br-quality-base',
     ]);
@@ -280,7 +486,10 @@ describe('historical quality read-replica attest command', () => {
       },
       listEndpoints: async (_projectId, branchId) => {
         calls.push(`list:${branchId}`);
-        if (branchId === 'br-quality-base') return [{ id: 'ep-replica', branchId, host: 'ep-replica.neon.tech', type: 'read_only' }];
+        if (branchId === 'br-quality-base') return [
+          { id: 'ep-replica', branchId, host: 'ep-replica.neon.tech', type: 'read_only' },
+          { id: 'ep-refresh', branchId, host: 'ep-refresh.neon.tech', type: 'read_write' },
+        ];
         return [{ id: branchId === 'br-a' ? 'ep-a' : 'ep-b', branchId, host: branchId === 'br-a' ? 'ep-a.neon.tech' : 'ep-b.neon.tech', type: 'read_write' }];
       },
       createReadOnlyEndpoint: async () => { throw new Error('attest must never create'); },
@@ -306,7 +515,23 @@ describe('historical quality read-replica attest command', () => {
       controlPlane: makeControlPlane().controlPlane,
       recordStore: memoryRecordStore(initialRecord, mode).store,
       log: () => {},
-    })).rejects.toThrow('0600');
+    })).rejects.toThrow('Historical quality read-replica attestation failed');
+  });
+
+  it('removes credential-bearing causes from structured attest failures', async () => {
+    const secret = 'refresh-control-secret';
+    const error = await runQualityReadReplicaAttestation({
+      args: attestArgs,
+      env: environment(),
+      controlPlane: {
+        ...makeControlPlane().controlPlane,
+        getBranch: async () => { throw new Error(secret, { cause: new Error(`nested-${secret}`) }); },
+      },
+      recordStore: memoryRecordStore(initialRecord).store,
+      log: () => {},
+    }).catch((caught: Error) => caught);
+    expect(error.cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(secret);
   });
 
   it('rejects record/manifest endpoint crossing without echoing credentials', async () => {

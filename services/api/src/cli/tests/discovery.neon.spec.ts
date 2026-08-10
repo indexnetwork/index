@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
-import { attestAbTargets, attestHistoricalQualityTargets, parseAbManifest, parseHistoricalQualityManifest, parseLegacyAbManifest, resetAbBranch, type AbManifest, type AttestedAbManifest, type DiscoveryManifestV2 } from '../discovery.neon';
+import { attestAbTargets, attestHistoricalQualityTargets, parseAbManifest, parseHistoricalQualityManifest, parseLegacyAbManifest, resetAbBranch, type AbManifest, type AttestedAbManifest, type AttestedWritableQualityBaseTarget, type DiscoveryManifestV2 } from '../discovery.neon';
 import type { NeonControlPlane } from '../discovery-env-matrix.neon';
+import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget, type QualityBaseRefreshTargetV2 } from '../discovery-quality-refresh-target';
 
 const manifest: AbManifest = {
   projectId: 'proj-1',
@@ -76,6 +77,15 @@ const qualityManifestJson = (overrides: Record<string, unknown> = {}): string =>
   ...overrides,
 });
 
+const refreshTarget = {
+  version: 2,
+  projectId: 'proj-1',
+  branchId: 'br-base',
+  endpointId: 'ep-refresh',
+  databaseName: 'protocol_eval',
+  databaseUrl: 'postgresql://writer:refresh-secret@ep-refresh.neon.tech/protocol_eval',
+} as const;
+
 function qualityControlPlane(input: {
   baseName?: string;
   basePrimary?: boolean;
@@ -100,7 +110,10 @@ function qualityControlPlane(input: {
       const override = input.endpointByRequestedBranch?.[requestedBranchId];
       if (override) return [override];
       if (requestedBranchId === 'br-base') {
-        return [{ id: 'ep-replica', branchId: 'br-base', host: 'ep-replica.neon.tech', type: 'read_only' }];
+        return [
+          { id: 'ep-replica', branchId: 'br-base', host: 'ep-replica.neon.tech', type: 'read_only' },
+          { id: 'ep-refresh', branchId: 'br-base', host: 'ep-refresh.neon.tech', type: 'read_write' },
+        ];
       }
       return [{
         id: requestedBranchId === 'br-a' ? 'ep-a' : 'ep-b',
@@ -110,6 +123,27 @@ function qualityControlPlane(input: {
       }];
     },
   };
+}
+
+async function attestedRefreshTarget(
+  target: QualityBaseRefreshTargetV2 = refreshTarget,
+  controlPlane: NeonControlPlane = qualityControlPlane(),
+): Promise<AttestedWritableQualityBaseTarget> {
+  return attestWritableQualityBaseTarget({
+    target: parseQualityBaseRefreshTarget(JSON.stringify(target)),
+    controlPlane,
+  });
+}
+
+async function attestQuality(
+  manifestValue: DiscoveryManifestV2 = qualityManifest,
+  controlPlane: NeonControlPlane = qualityControlPlane(),
+): Promise<unknown> {
+  return attestHistoricalQualityTargets({
+    manifest: manifestValue,
+    writableRefreshTarget: await attestedRefreshTarget(refreshTarget, controlPlane),
+    controlPlane,
+  });
 }
 
 describe('attestAbTargets', () => {
@@ -395,6 +429,17 @@ describe('strict historical quality manifest parsing and attestation', () => {
   });
 
   it.each([
+    ['project equals base branch', { projectId: 'br-base' }],
+    ['project equals replica endpoint', { projectId: 'ep-replica' }],
+    ['base branch equals replica endpoint', { baseBranchId: 'ep-replica' }],
+    ['child branch equals project', { targets: [{ ...qualityManifest.targets[0], branchId: 'proj-1' }, qualityManifest.targets[1]] }],
+    ['child branch equals sibling endpoint', { targets: [{ ...qualityManifest.targets[0], branchId: 'ep-b' }, qualityManifest.targets[1]] }],
+    ['child endpoint equals base branch', { targets: [{ ...qualityManifest.targets[0], endpointId: 'br-base' }, qualityManifest.targets[1]] }],
+  ])('rejects cross-namespace identifier reuse: %s', (_label, override) => {
+    expect(() => parseHistoricalQualityManifest(qualityManifestJson(override))).toThrow(/pairwise distinct/);
+  });
+
+  it.each([
     'https://ep-replica.neon.tech/protocol_eval',
     'postgresql://reader:secret@example.com/protocol_eval',
     'postgresql://reader:secret@ep-replica.neon.tech/other',
@@ -415,8 +460,7 @@ describe('strict historical quality manifest parsing and attestation', () => {
   });
 
   it('accepts the strict v2 manifest for quality attestation', async () => {
-    await expect(attestHistoricalQualityTargets({ manifest: qualityManifest, controlPlane: qualityControlPlane() }))
-      .resolves.toBeDefined();
+    await expect(attestQuality()).resolves.toBeDefined();
   });
 
   it.each([
@@ -430,15 +474,17 @@ describe('strict historical quality manifest parsing and attestation', () => {
     ['primary base', { basePrimary: true }],
     ['wrong base name', { baseName: 'production' }],
   ])('rejects the %s role-crossing attack', async (_label, overrides) => {
-    await expect(attestHistoricalQualityTargets({ manifest: qualityManifest, controlPlane: qualityControlPlane(overrides) }))
-      .rejects.toThrow();
+    const controlPlane = qualityControlPlane(overrides);
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane,
+    })).rejects.toThrow();
   });
 
   it('rejects a child endpoint ID returned on the base as a refresh endpoint role', async () => {
     const base = qualityControlPlane();
-    await expect(attestHistoricalQualityTargets({
-      manifest: qualityManifest,
-      controlPlane: {
+    const controlPlane: NeonControlPlane = {
         ...base,
         listEndpoints: async (projectId, branchId) => branchId === 'br-base'
           ? [
@@ -446,14 +492,69 @@ describe('strict historical quality manifest parsing and attestation', () => {
             { id: 'ep-a', branchId, host: 'ep-refresh.neon.tech', type: 'read_write' },
           ]
           : base.listEndpoints(projectId, branchId),
-      },
+      };
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane,
     })).rejects.toThrow();
+  });
+
+  it('jointly rejects a separately attested refresh target from another project', async () => {
+    const otherProject = await attestedRefreshTarget({ ...refreshTarget, projectId: 'project-other' });
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: otherProject,
+      controlPlane: qualityControlPlane(),
+    })).rejects.toThrow();
+  });
+
+  it('jointly rejects a separately attested refresh endpoint crossing a child role', async () => {
+    const crossedTarget = { ...refreshTarget, endpointId: 'ep-a', databaseUrl: 'postgresql://writer:x@ep-a.neon.tech/protocol_eval' };
+    const crossedControlPlane: NeonControlPlane = {
+      getBranch: async (_projectId, branchId) => ({ id: branchId, name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: false }),
+      listEndpoints: async () => [{ id: 'ep-a', branchId: 'br-base', host: 'ep-a.neon.tech', type: 'read_write' }],
+    };
+    const crossed = await attestedRefreshTarget(crossedTarget, crossedControlPlane);
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: crossed,
+      controlPlane: qualityControlPlane(),
+    })).rejects.toThrow();
+  });
+
+  it('requires the exact separately attested refresh endpoint to remain read_write on the shared base', async () => {
+    const controlPlane = qualityControlPlane({
+      endpointByRequestedBranch: {
+        'br-base': { id: 'ep-refresh', branchId: 'br-base', host: 'ep-refresh.neon.tech', type: 'read_only' },
+      },
+    });
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane,
+    })).rejects.toThrow();
+  });
+
+  it('never retains or serializes a credential-bearing control-plane cause', async () => {
+    const secret = 'provider-body-hunter2';
+    const error = await attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane: {
+        getBranch: async () => { throw new Error(secret, { cause: new Error(`nested-${secret}`) }); },
+        listEndpoints: async () => { throw new Error('not reached'); },
+      },
+    }).catch((caught: Error) => caught);
+    expect((error as Error).cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(secret);
   });
 
   it('never echoes a control-plane or URL secret on attestation failure', async () => {
     const secret = 'provider-body-hunter2';
     const error = await attestHistoricalQualityTargets({
       manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
       controlPlane: {
         getBranch: async () => { throw new Error(secret); },
         listEndpoints: async () => { throw new Error('not reached'); },
