@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX, authorizeIndexAppOwner, authenticateApiKey, authenticateRequestApiKey, type IndexAppOwnerAuthenticationStore } from '../auth.guard';
+import { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX, authorizeIndexAppOwner, authorizeIndexAppOwnerOpportunityStatus, authenticateApiKey, authenticateRequestApiKey, type IndexAppOwnerAuthenticationStore } from '../auth.guard';
+import { recordRequestAuthContext } from '../../lib/request-auth-context';
 
 const allowed = [
   ['GET', '/api/auth/me'],
@@ -40,6 +41,22 @@ describe('Index app dedicated owner principal', () => {
         allowed: false, reason: 'dedicated_owner_route_denied',
       });
     }
+  });
+
+  it('narrows opportunity mutations only for the dedicated owner context', () => {
+    const ownerRequest = new Request('https://api.index.network/api/opportunities/o1/status', { method: 'PATCH' });
+    recordRequestAuthContext(ownerRequest, {
+      kind: 'api_key', agentId: null, audience: INDEX_APP_OWNER_AUDIENCE,
+      credentialId: 'credential-1', installationId: 'installation-1', setupAttemptId: 'generation-1',
+    });
+    expect(authorizeIndexAppOwnerOpportunityStatus(ownerRequest, 'accepted')).toBe(true);
+    expect(authorizeIndexAppOwnerOpportunityStatus(ownerRequest, 'rejected')).toBe(true);
+    for (const status of ['latent', 'draft', 'pending', 'negotiating', 'stalled', 'expired', 'unknown']) {
+      expect(authorizeIndexAppOwnerOpportunityStatus(ownerRequest, status), status).toBe(false);
+    }
+    const sessionRequest = new Request('https://api.index.network/api/opportunities/o1/status', { method: 'PATCH' });
+    recordRequestAuthContext(sessionRequest, { kind: 'session' });
+    expect(authorizeIndexAppOwnerOpportunityStatus(sessionRequest, 'pending')).toBe(true);
   });
 
   it('dispatches idxo_ before legacy lookup and requires active installation authority', async () => {

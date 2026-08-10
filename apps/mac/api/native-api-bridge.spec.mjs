@@ -17,6 +17,7 @@ const streamFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIStreamDel
 const bodyFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIBodyValidationFixture.swift', import.meta.url), 'utf8');
 const quarantineFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIQuarantineFixture.swift', import.meta.url), 'utf8');
 const macWorkflow = readFileSync(new URL('../../../.github/workflows/mac-app-build.yml', import.meta.url), 'utf8');
+const mcpTransportSource = readFileSync(new URL('../../../node_modules/@modelcontextprotocol/server/dist/index.mjs', import.meta.url), 'utf8');
 
 function createBridgeHarness() {
   const posted = [];
@@ -135,15 +136,21 @@ describe('native owner migration and transport source contracts', () => {
     expect(nativeBridge).toContain('validDraft');
     expect(nativeBridge).toContain('hasAllowedQuery');
     expect(nativeBridge).toContain('create_intent');
+    expect(mcpTransportSource).toContain('Client must accept both application/json and text/event-stream');
+    expect(nativeBridge).toContain('application/json, text/event-stream');
     expect(nativeBridge).toContain('URLSessionDataDelegate');
     expect(nativeBridge).toContain('didReceive data: Data');
     expect(nativeBridge).toContain('maximumPartialFrameBytes = 65_536');
     expect(nativeBridge).toContain('maximumEventAggregateBytes = 1_048_576');
+    expect(nativeBridge).toContain('rawBytesReceived');
+    expect(nativeBridge).toContain('data.count <= NativeAPIRequestBridge.maximumEventAggregateBytes - rawBytesReceived');
     expect(nativeBridge).toContain('beginQuarantine');
     expect(nativeBridge).toContain('endQuarantineAfterCredentialReadBack');
     expect(streamFixture).toContain('mid-stream event was completion-buffered');
     expect(streamFixture).toContain('partial-frame overflow was not cancelled');
     expect(streamFixture).toContain('malformed SSE was not cancelled');
+    expect(streamFixture).toContain('comment-only raw-byte overflow was not cancelled');
+    expect(streamFixture).toContain('framing-overhead overflow published a decoded event');
     expect(build).toContain('--fixture NativeAPIStreamDelegateFixture');
     expect(build).toContain('--fixture NativeAPIBodyValidationFixture');
     expect(build).toContain('--fixture NativeAPIQuarantineFixture');
@@ -152,7 +159,12 @@ describe('native owner migration and transport source contracts', () => {
     expect(macWorkflow).toContain('./build.sh --fixture NativeAPIQuarantineFixture');
     for (const evidence of ['depth overflow accepted', 'object-key overflow accepted', 'array overflow accepted',
       'string overflow accepted', 'serialized overflow accepted', 'wrong/null/unknown typed body accepted',
-      'bool-as-number accepted', 'arbitrary MCP tool accepted', 'arbitrary REST tool accepted']) expect(bodyFixture).toContain(evidence);
+      'bool-as-number accepted', 'arbitrary MCP tool accepted', 'arbitrary REST tool accepted',
+      'intent enum parity failed', 'opportunity owner subset parity failed', 'unused global opportunity status accepted']) {
+      expect(bodyFixture).toContain(evidence);
+    }
+    expect(nativeBridge).toContain('enumString($0["status"], ["ACTIVE", "PAUSED"])');
+    expect(nativeBridge).toContain('enumString(item["status"], ["accepted", "rejected"])');
     expect(nativeBridge).toContain('message.frameInfo.isMainFrame');
     const handler = nativeBridge.match(/func handle\(_ message: WKScriptMessage\)[\s\S]*?private func decode/)?.[0] || '';
     expect(handler.indexOf('trustedMessage(message)')).toBeLessThan(handler.indexOf('message.body'));

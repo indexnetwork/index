@@ -98,7 +98,7 @@ final class NativeAPIStreamDelegate: NSObject, URLSessionDataDelegate {
     private let complete: (NativeAPIRequestFailure?, Int?, [String: String]) -> Void
     private let isSafe: (NativeJSONValue) -> Bool
     private var partial = Data()
-    private var aggregateBytes = 0
+    private var rawBytesReceived = 0
     private var eventCount = 0
     private var sequence = 0
     private var status: Int?
@@ -140,6 +140,11 @@ final class NativeAPIStreamDelegate: NSObject, URLSessionDataDelegate {
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         guard !terminal else { return }
+        guard rawBytesReceived <= NativeAPIRequestBridge.maximumEventAggregateBytes,
+              data.count <= NativeAPIRequestBridge.maximumEventAggregateBytes - rawBytesReceived else {
+            fail(.oversizedResponse, task: dataTask); return
+        }
+        rawBytesReceived += data.count
         partial.append(data)
         while let boundary = frameBoundary(in: partial) {
             guard boundary.lowerBound <= NativeAPIRequestBridge.maximumPartialFrameBytes else {
@@ -189,13 +194,12 @@ final class NativeAPIStreamDelegate: NSObject, URLSessionDataDelegate {
         let payload = values.joined(separator: "\n")
         guard !payload.isEmpty, let bytes = payload.data(using: .utf8),
               bytes.count <= NativeAPIRequestBridge.maximumEventBytes,
-              aggregateBytes + bytes.count <= NativeAPIRequestBridge.maximumEventAggregateBytes,
               eventCount < NativeAPIRequestBridge.maximumEvents,
               let value = try? JSONDecoder().decode(NativeJSONValue.self, from: bytes),
               isSafe(value) else {
             fail(.transportFailure, task: task); return false
         }
-        aggregateBytes += bytes.count; eventCount += 1
+        eventCount += 1
         guard publish(NativeAPIEvent(requestId: requestId, sequence: sequence, event: value)) else {
             fail(.cancelled, task: task); return false
         }
@@ -511,6 +515,9 @@ final class NativeAPIRequestBridge {
         guard case .string(let string) = value, string.count <= 128 else { return false }
         return string.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil
     }
+    private static func uuidIdentifier(_ value: NativeJSONValue?) -> Bool {
+        guard case .string(let string) = value else { return false }; return UUID(uuidString: string) != nil
+    }
     private static func enumString(_ value: NativeJSONValue?, _ values: Set<String>) -> Bool {
         guard case .string(let string) = value else { return false }; return values.contains(string)
     }
@@ -590,26 +597,30 @@ final class NativeAPIRequestBridge {
         }
         switch route {
         case "/auth/profile/update":
-            return exactTypedObject(body, optional: ["name", "intro", "location", "socials", "avatar", "notificationPreferences"]) { item in
+            return exactTypedObject(body, optional: ["name", "intro", "location", "timezone", "socials", "avatar", "notificationPreferences"]) { item in
                 optionalString(item, "name", maximum: 256) && optionalString(item, "intro", maximum: 65_536)
-                    && optionalString(item, "location", maximum: 512) && optionalString(item, "avatar", maximum: 2_048)
+                    && optionalString(item, "location", maximum: 512) && optionalString(item, "timezone", maximum: 128)
+                    && optionalString(item, "avatar", maximum: 2_048)
                     && (item["socials"] == nil || validSocials(item["socials"]))
-                    && (item["notificationPreferences"] == nil || exactTypedObject(item["notificationPreferences"], optional: ["email", "push"]) { prefs in optionalBool(prefs, "email") && optionalBool(prefs, "push") })
+                    && (item["notificationPreferences"] == nil || exactTypedObject(item["notificationPreferences"], optional: ["connectionUpdates", "weeklyNewsletter"]) { prefs in optionalBool(prefs, "connectionUpdates") && optionalBool(prefs, "weeklyNewsletter") })
             }
         case "/agent-runtime":
             return exactTypedObject(body, required: ["runtime"], optional: ["installationId", "executorId", "setupAttemptId"]) { item in
                 enumString(item["runtime"], ["index", "hermes"])
-                    && ["installationId", "executorId", "setupAttemptId"].allSatisfy { item[$0] == nil || identifier(item[$0]) }
+                    && ["installationId", "executorId", "setupAttemptId"].allSatisfy { item[$0] == nil || uuidIdentifier(item[$0]) }
+                    && (item["runtime"] == .string("index")
+                        ? Set(item.keys) == ["runtime"]
+                        : ["installationId", "executorId", "setupAttemptId"].allSatisfy { item[$0] != nil })
             }
         case "/agent-runtime/hermes/prepare":
-            return exactTypedObject(body, required: ["installationId", "setupAttemptId"]) { identifier($0["installationId"]) && identifier($0["setupAttemptId"]) }
+            return exactTypedObject(body, required: ["installationId", "setupAttemptId"]) { uuidIdentifier($0["installationId"]) && uuidIdentifier($0["setupAttemptId"]) }
         case "/agent-runtime/rollback":
-            return exactTypedObject(body, required: ["setupAttemptId"]) { identifier($0["setupAttemptId"]) }
+            return exactTypedObject(body, required: ["setupAttemptId"]) { uuidIdentifier($0["setupAttemptId"]) }
         case "/networks":
             return exactTypedObject(body, required: ["title"], optional: ["prompt", "imageUrl", "joinPolicy"]) { item in
                 boundedString(item["title"], maximum: 256) && optionalString(item, "prompt", maximum: 65_536)
                     && optionalString(item, "imageUrl", maximum: 2_048)
-                    && (item["joinPolicy"] == nil || enumString(item["joinPolicy"], ["anyone", "approval", "invite_only"]))
+                    && (item["joinPolicy"] == nil || enumString(item["joinPolicy"], ["anyone", "invite_only"]))
             }
         case let value where value.range(of: #"^/networks/[^/?]+/(?:join|leave)$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
@@ -617,46 +628,47 @@ final class NativeAPIRequestBridge {
         case let value where value.range(of: #"^/network-requests/[^/?]+$"#, options: .regularExpression) != nil:
             return validNetworkRequest(body)
         case "/intents/list":
-            return exactTypedObject(body, optional: ["status", "page", "limit", "networkId", "scopeType", "scopeId"]) { item in
-                (item["status"] == nil || enumString(item["status"], ["active", "archived", "draft"]))
-                    && optionalInteger(item, "page", minimum: 1, maximum: 10_000)
+            return exactTypedObject(body, optional: ["page", "limit", "archived", "sourceType"]) { item in
+                optionalInteger(item, "page", minimum: 1, maximum: 10_000)
                     && optionalInteger(item, "limit", minimum: 1, maximum: 100)
-                    && ["networkId", "scopeId"].allSatisfy { item[$0] == nil || identifier(item[$0]) }
-                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["global", "network", "intent"]))
+                    && optionalBool(item, "archived") && optionalString(item, "sourceType", maximum: 128)
             }
         case "/intents/confirm":
-            return exactTypedObject(body, required: ["proposalId", "description"]) { identifier($0["proposalId"]) && boundedString($0["description"], maximum: 65_536) }
+            return exactTypedObject(body, required: ["proposalId", "description"], optional: ["networkId"]) { item in
+                uuidIdentifier(item["proposalId"]) && boundedString(item["description"], maximum: 65_536)
+                    && (item["networkId"] == nil || uuidIdentifier(item["networkId"]))
+            }
         case "/intents/reject":
             return exactTypedObject(body, required: ["proposalId"]) { identifier($0["proposalId"]) }
         case "/intents/intake/start": return keysAllowed(body, allowed: [])
         case "/intents/intake/question":
-            return exactTypedObject(body, required: ["rounds"], optional: ["plannedTotal"]) { validRounds($0["rounds"]) && optionalInteger($0, "plannedTotal", minimum: 1, maximum: 20) }
+            return exactTypedObject(body, required: ["rounds"], optional: ["plannedTotal"]) { validRounds($0["rounds"]) && optionalInteger($0, "plannedTotal", minimum: 1, maximum: 10) }
         case "/intents/intake/prepare":
             return exactTypedObject(body, required: ["rounds"]) { validRounds($0["rounds"]) }
         case "/intents/intake/proposal":
             return exactTypedObject(body, required: ["runId", "rounds"], optional: ["networkId", "whereText"]) { item in
-                identifier(item["runId"]) && validRounds(item["rounds"])
-                    && (item["networkId"] == nil || identifier(item["networkId"]))
+                uuidIdentifier(item["runId"]) && validRounds(item["rounds"])
+                    && (item["networkId"] == nil || uuidIdentifier(item["networkId"]))
                     && optionalString(item, "whereText", maximum: 280)
             }
         case "/intents/intake/revise":
             return exactTypedObject(body, required: ["runId", "rounds", "feedback"], optional: ["networkId"]) { item in
-                identifier(item["runId"]) && validRounds(item["rounds"]) && boundedString(item["feedback"], maximum: 600)
-                    && (item["networkId"] == nil || identifier(item["networkId"]))
+                uuidIdentifier(item["runId"]) && validRounds(item["rounds"]) && boundedString(item["feedback"], maximum: 600)
+                    && (item["networkId"] == nil || uuidIdentifier(item["networkId"]))
             }
         case let value where value.range(of: #"^/intents/[^/?]+/status$"#, options: .regularExpression) != nil:
-            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["active", "archived", "paused"]) }
+            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["ACTIVE", "PAUSED"]) }
         case let value where value.range(of: #"^/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["status"], optional: ["scopeType", "scopeId"]) { item in
-                enumString(item["status"], ["interested", "dismissed", "accepted", "declined"])
+                enumString(item["status"], ["accepted", "rejected"])
                     && (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
-                    && (item["scopeId"] == nil || identifier(item["scopeId"]))
+                    && (item["scopeId"] == nil || uuidIdentifier(item["scopeId"]))
                     && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
             }
         case let value where value.range(of: #"^/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, optional: ["scopeType", "scopeId"]) { item in
                 (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
-                    && (item["scopeId"] == nil || identifier(item["scopeId"]))
+                    && (item["scopeId"] == nil || uuidIdentifier(item["scopeId"]))
                     && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
             }
         case let value where value.range(of: #"^/questions/[^/?]+/answer$"#, options: .regularExpression) != nil:
@@ -682,8 +694,8 @@ final class NativeAPIRequestBridge {
             return exactTypedObject(body, required: ["parts"]) { validMessageParts($0["parts"]) }
         case let value where value.range(of: #"^/conversations/[^/?]+/metadata$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["metadata"]) { item in
-                exactTypedObject(item["metadata"], optional: ["title", "muted", "archived"]) { metadata in
-                    optionalString(metadata, "title", maximum: 256) && optionalBool(metadata, "muted") && optionalBool(metadata, "archived")
+                exactTypedObject(item["metadata"], optional: ["title"]) { metadata in
+                    optionalString(metadata, "title", maximum: 256)
                 }
             }
         default: return false
@@ -696,9 +708,9 @@ final class NativeAPIRequestBridge {
             return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId", "persona"]) { item in
                 boundedString(item["message"], maximum: 65_536)
                     && (item["sessionId"] == nil || identifier(item["sessionId"]))
-                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["global", "network", "intent"]))
+                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["network", "intent"]))
                     && (item["scopeId"] == nil || identifier(item["scopeId"]))
-                    && (item["persona"] == nil || enumString(item["persona"], ["orchestrator", "negotiator"]))
+                    && (item["persona"] == nil || enumString(item["persona"], ["negotiator", "signal", "reporter"]))
                     && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
             }
         }
@@ -767,7 +779,7 @@ final class NativeAPIRequestBridge {
             transport.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         if sse { transport.setValue("text/event-stream", forHTTPHeaderField: "Accept") }
-        else if url == mcpURL { transport.setValue("application/json", forHTTPHeaderField: "Accept") }
+        else if url == mcpURL { transport.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept") }
         start(requestId: request.requestId, transport: transport, sse: sse)
     }
 

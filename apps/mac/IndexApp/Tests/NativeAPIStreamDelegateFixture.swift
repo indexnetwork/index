@@ -56,5 +56,58 @@ enum NativeAPIStreamDelegateFixture {
         malformedDelegate.urlSession(session, dataTask: malformedTask, didReceive: response) { _ in }
         malformedDelegate.urlSession(session, dataTask: malformedTask, didReceive: Data([0xff, 0x0a, 0x0a]))
         if case .transportFailure? = malformed {} else { throw FixtureFailure.assertion("malformed SSE was not cancelled") }
+
+        func proveRawOverflow(frame: Data, requestId: String, failureMessage: String) throws {
+            let aggregateTask = session.dataTask(with: url)
+            var aggregateEvents: [NativeAPIEvent] = []
+            var aggregateCompletions: [NativeAPIRequestFailure?] = []
+            let aggregateDelegate = NativeAPIStreamDelegate(
+                requestId: requestId,
+                publish: { aggregateEvents.append($0); return true }, isSafe: { _ in true },
+                complete: { aggregateCompletions.append($0) }
+            )
+            aggregateDelegate.urlSession(session, dataTask: aggregateTask, didReceive: response) { _ in }
+            var received = 0
+            while received + frame.count <= NativeAPIRequestBridge.maximumEventAggregateBytes {
+                let frameCount = min(
+                    10_000,
+                    (NativeAPIRequestBridge.maximumEventAggregateBytes - received) / frame.count
+                )
+                if frameCount == 0 { break }
+                var chunk = Data(capacity: frame.count * frameCount)
+                for _ in 0..<frameCount { chunk.append(frame) }
+                aggregateDelegate.urlSession(session, dataTask: aggregateTask, didReceive: chunk)
+                received += chunk.count
+            }
+            let remainder = NativeAPIRequestBridge.maximumEventAggregateBytes - received
+            if remainder > 0 {
+                aggregateDelegate.urlSession(
+                    session, dataTask: aggregateTask,
+                    didReceive: Data(repeating: 0x3a, count: remainder)
+                )
+            }
+            try require(aggregateEvents.count == 1, "framing-overhead overflow published a decoded event")
+            try require(aggregateCompletions.isEmpty, "raw aggregate cancelled before its exact bound")
+            aggregateDelegate.urlSession(session, dataTask: aggregateTask, didReceive: Data([0x78]))
+            try require(aggregateCompletions.count == 1, failureMessage)
+            if case .oversizedResponse? = aggregateCompletions[0] {} else {
+                throw FixtureFailure.assertion(failureMessage)
+            }
+            aggregateDelegate.urlSession(
+                session, task: aggregateTask,
+                didCompleteWithError: URLError(.cancelled)
+            )
+            try require(aggregateCompletions.count == 1, "raw-byte overflow emitted multiple terminal results")
+            try require(aggregateEvents.count == 1, "raw-byte overflow published a decoded event")
+        }
+
+        try proveRawOverflow(
+            frame: Data(":x\n\n".utf8), requestId: "comment-overflow",
+            failureMessage: "comment-only raw-byte overflow was not cancelled"
+        )
+        try proveRawOverflow(
+            frame: Data(":\r\n\r\n".utf8), requestId: "framing-overflow",
+            failureMessage: "framing-overhead raw-byte overflow was not cancelled"
+        )
     }
 }

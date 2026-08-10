@@ -295,6 +295,15 @@ export class IndexAppOwnerRouteDeniedError extends Error {
   }
 }
 
+const INDEX_APP_OWNER_OPPORTUNITY_STATUS_SUBSET: ReadonlySet<string> = new Set(['accepted', 'rejected']);
+
+/** Dedicated native owner status mutation subset; session/legacy callers retain the global controller contract. */
+export function authorizeIndexAppOwnerOpportunityStatus(request: Request, status: string): boolean {
+  const context = getRequestAuthContext(request);
+  return context?.kind !== 'api_key' || context.audience !== INDEX_APP_OWNER_AUDIENCE
+    || INDEX_APP_OWNER_OPPORTUNITY_STATUS_SUBSET.has(status);
+}
+
 export type IndexAppOwnerRouteDecision =
   | { allowed: true }
   | { allowed: false; reason: 'dedicated_owner_route_denied' };
