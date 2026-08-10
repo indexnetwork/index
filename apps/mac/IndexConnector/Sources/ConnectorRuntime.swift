@@ -860,7 +860,7 @@ final class ConnectorRuntime {
             health = "expired"
             connected = false
         } else if let record, record.activationState == "active" {
-            health = "healthy"
+            health = "active"
             connected = true
         } else {
             health = "disconnected"
@@ -870,6 +870,8 @@ final class ConnectorRuntime {
             "connected": .bool(connected),
             "accountLabel": record.map { .string($0.accountLabel) } ?? .null,
             "installationId": .string(installationStore.installationId),
+            "agentId": record.map { .string($0.agentId) } ?? .null,
+            "setupAttemptId": record.map { .string($0.setupAttemptId) } ?? .null,
             "actions": .array(record?.actions.map(JSONValue.string) ?? []),
             "expiresAt": record.map { .string(Self.iso8601($0.expiresAt)) } ?? .null,
             "health": .string(health),

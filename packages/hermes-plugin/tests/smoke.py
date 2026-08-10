@@ -367,7 +367,8 @@ def main() -> None:
     assert "index-dashboard__opp-id--clickable" in dashboard_js
     # Mac/CLI-parity browser login gate + sign out.
     assert "LoginScreen" in dashboard_js
-    assert "Log in with browser" in dashboard_js
+    assert "log in with browser" in dashboard_js
+    assert "retry secure disconnect" in dashboard_js
     assert "/auth/status" in dashboard_js
     assert "/auth/login/start" in dashboard_js
     assert "/auth/login/status" in dashboard_js
@@ -393,7 +394,8 @@ def main() -> None:
     assert "index-dashboard__setting-up" in desktop_js
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
     # Hermes Desktop ships the same browser-login gate via the built bundle.
-    assert "Log in with browser" in desktop_js
+    assert "log in with browser" in desktop_js
+    assert "retry secure disconnect" in desktop_js
     assert "/auth/login/start" in desktop_js
     assert "index-dashboard__login" in desktop_js
     assert "onOpenUser" in dashboard_js
@@ -1768,8 +1770,9 @@ def main() -> None:
                 self.calls.append("status")
                 return {
                     "connected": True, "accountLabel": "ada@example.test",
-                    "installationId": "installation-1", "expiresAt": "2026-09-01T00:00:00Z",
-                    "health": "healthy", "reconnectSoon": False,
+                    "installationId": "installation-1", "agentId": "agent-private-metadata",
+                    "setupAttemptId": "setup-private-metadata", "expiresAt": "2026-09-01T00:00:00Z",
+                    "health": "active", "reconnectSoon": False,
                     "reconnectRequired": False, "revocationPending": False,
                 }
 
@@ -1793,6 +1796,7 @@ def main() -> None:
             status_ok = dashboard_api.auth_status()
             assert status_ok["authenticated"] is True and status_ok["needsLogin"] is False
             assert status_ok["accountLabel"] == "ada@example.test"
+            assert "agentId" not in status_ok and "setupAttemptId" not in status_ok
             assert dashboard_api.auth_login_start() == {
                 "success": True, "started": True, "status": "pending",
             }

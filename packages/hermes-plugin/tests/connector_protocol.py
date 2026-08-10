@@ -108,9 +108,11 @@ class ConnectorProtocolTests(unittest.TestCase):
                     "connected": True,
                     "accountLabel": "owner@example.test",
                     "installationId": "installation-1",
+                    "agentId": "agent-1",
+                    "setupAttemptId": "setup-1",
                     "actions": [],
                     "expiresAt": expires.isoformat().replace("+00:00", "Z"),
-                    "health": "healthy",
+                    "health": "active",
                     "revocationPending": False,
                 }},
             ])

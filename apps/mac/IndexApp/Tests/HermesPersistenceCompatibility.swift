@@ -38,6 +38,26 @@ private struct FixtureLayout {
     let jobsURL: URL
 }
 
+private final class FixtureConnectorStatus: HermesConnectorStatusProviding {
+    func activeStatus() throws -> HermesConnectorStatus {
+        HermesConnectorStatus(
+            connected: true,
+            health: "active",
+            revocationPending: false,
+            installationId: "installation-old",
+            agentId: "executor-new",
+            setupAttemptId: "attempt-new",
+            actions: [
+                "manage:identity", "manage:premises", "manage:intents",
+                "manage:networks", "manage:opportunities", "manage:negotiations",
+            ],
+            expiresAt: ISO8601DateFormatter().string(
+                from: Date().addingTimeInterval(29 * 24 * 60 * 60)
+            )
+        )
+    }
+}
+
 private final class FixtureRunner: HermesCommandRunning {
     private let jobsURL: URL
 
@@ -150,7 +170,6 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: nil,
             executorId: nil,
             setupAttemptId: nil,
-            credential: nil,
             operationJournal: nil
         )
     }
@@ -163,7 +182,6 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: "installation-old",
             executorId: "executor-new",
             setupAttemptId: "attempt-new",
-            credential: "fixture-secret-not-persisted-in-installation",
             operationJournal: nil
         )
     }
@@ -232,7 +250,6 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: "installation-old",
             executorId: "executor-other",
             setupAttemptId: "attempt-other",
-            credential: "foreign-secret",
             operationJournal: nil
         ))
         try require(!foreignRebind.ok && foreignRebind.errorCode == "owner_mismatch", "owner fence accepted a foreign rebind")
@@ -255,7 +272,8 @@ struct HermesPersistenceCompatibilityFixture {
             runner: FixtureRunner(jobsURL: layout.jobsURL),
             binaryProvider: { layout.binary.path },
             applicationSupportURL: layout.applicationSupport,
-            hermesHomeURL: layout.hermesHome
+            hermesHomeURL: layout.hermesHome,
+            connectorStatusProvider: FixtureConnectorStatus()
         )
     }
 

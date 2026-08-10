@@ -254,9 +254,10 @@ describe('queue-aware Hermes bridge bounds', () => {
     };
     const productionCommands = [
       ['inspect', { ownerId: 'owner-1' }],
+      ['connectorStatus', {}],
       ['configureDisabled', {
         ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
-        setupAttemptId: 'setup-current', credential: 'transient-secret',
+        setupAttemptId: 'setup-current',
       }],
       ['enable', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
       ['confirmHealthy', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
@@ -282,14 +283,24 @@ describe('queue-aware Hermes bridge bounds', () => {
       expect(h.bridge.receive({ requestId: message.requestId, ok: true, stage: command })).toBe(true);
       await expect(promise).resolves.toMatchObject({ ok: true });
     }
-    expect(productionCommands.map(([command]) => command)).toHaveLength(10);
+    expect(productionCommands.map(([command]) => command)).toHaveLength(11);
     expect(HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS).toBeGreaterThanOrEqual(10 * 60_000);
+    expect(HERMES_RUNTIME_TIMEOUTS_MS.connectorStatus).toBeGreaterThan(0);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.configureDisabled).toBeGreaterThanOrEqual(5 * 60_000);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.disconnect).toBeGreaterThanOrEqual(5 * 60_000);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.enable).toBeGreaterThanOrEqual(3 * 60_000);
     for (const command of ['prepareLogout', 'loadOperation', 'saveOperation', 'clearOperation']) {
       expect(HERMES_RUNTIME_TIMEOUTS_MS[command]).toBeGreaterThan(0);
     }
+  });
+
+  it('rejects every credential-bearing runtime payload, including local configuration', async () => {
+    const h = bridgeHarness();
+    await expect(h.bridge.request('configureDisabled', {
+      ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
+      setupAttemptId: 'setup-current', credential: 'must-never-cross',
+    })).rejects.toThrow('credential');
+    expect(h.messages).toEqual([]);
   });
 
   it('keeps command-specific generation and journal payload admission strict', async () => {
@@ -332,7 +343,7 @@ describe('queue-aware Hermes bridge bounds', () => {
     const controller = new AbortController();
     const pending = h.bridge.request(
       'configureDisabled',
-      { setupAttemptId: 'setup-1', credential: 'secret' },
+      { setupAttemptId: 'setup-1' },
       { signal: controller.signal },
     );
     const requestId = h.messages.at(-1).requestId;

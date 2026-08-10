@@ -422,6 +422,25 @@ test('keeps a Linux source contract for the macOS-native historical persistence 
   expect(macWorkflow).toContain('hermes-persistence-compatibility');
 });
 
+test('uses a verified credential-free connector status boundary for runtime authority', () => {
+  expect(runtime).not.toContain('let credential: String?');
+  expect(runtime).not.toContain('"INDEX_API_KEY"');
+  expect(runtime).toContain('case connectorStatus');
+  expect(runtime).toContain('struct HermesConnectorStatus: Codable');
+  expect(runtime).toContain('connectorActivationConfirmed');
+  for (const token of [
+    '/Applications/Index Connector.app/Contents/MacOS/IndexConnector',
+    'Applications/Index Connector.app/Contents/MacOS/IndexConnector',
+    'connector-release.cms', '/usr/bin/security', '/usr/bin/codesign',
+    'TeamIdentifier', 'designatedRequirement', 'SHA256',
+    'protocolVersion', 'buildMode', 'apiEnvironment',
+    'maximumConnectorResponseBytes', 'allowedChildEnvironmentKeys',
+    'forbiddenConnectorResponseKeys',
+  ]) expect(runtime).toContain(token);
+  expect(runtime).not.toContain('credentialId');
+  expect(runtime).not.toContain('CommandLine.arguments');
+});
+
 test('defines the request-correlated runtime bridge contract', () => {
   expect(runtime).toContain('enum HermesRuntimeCommand: String');
   for (const command of ['inspect', 'configureDisabled', 'enable', 'confirmHealthy', 'disable', 'disconnect']) {
@@ -568,21 +587,18 @@ test('preserves existing Hermes env unless a readable UTF-8 file or ENOENT is es
   }
 });
 
-test('writes only the owned Index env keys with negotiator mode and secure file permissions', () => {
-  for (const key of [
-    'INDEX_API_KEY', 'INDEX_API_URL', 'INDEX_MCP_URL', 'INDEX_AGENT_ID',
-    'INDEX_INSTALLATION_ID', 'INDEX_PLUGIN_MODE',
-  ]) {
-    expect(runtime).toContain(`"${key}"`);
-  }
-  expect(runtime).toContain('("INDEX_PLUGIN_MODE", "negotiator")');
+test('scrubs all legacy env keys and gates nonsecret development values twice', () => {
+  expect(runtime).not.toContain('"INDEX_API_KEY"');
+  expect(runtime).not.toContain('static let ownedKeys');
+  expect(runtime).toContain('static let legacyOwnedKeys');
+  expect(runtime).toContain('INDEX_PLUGIN_DEVELOPMENT_TRANSPORT');
+  expect(runtime).toContain('.index-plugin-development');
+  expect(runtime).toContain('source-checkout-only');
+  expect(runtime).toContain('try environment.removeOwnedValues()');
+  expect(runtime).toContain('verifyEnvironmentPolicy(developmentTransport:');
   expect(runtime).toContain('mode_t(0o600)');
-  expect(runtime).toContain('O_CREAT | O_EXCL | O_NOFOLLOW');
-  expect(runtime).toContain('forbiddenEnvValueCharacters');
   expect(runtime).not.toContain('/bin/sh');
   expect(runtime).not.toContain('/bin/zsh');
-  expect(runtime).toContain('process.executableURL = URL(fileURLWithPath: executable)');
-  expect(runtime).toContain('process.arguments = arguments');
 });
 
 test('persists the strict non-secret saga journal in Application Support across bridge instances', () => {
@@ -902,7 +918,7 @@ test('native logout preparation and completion independently require no key and 
   expect(runtime).toContain('private func prepareLogout');
   expect(runtime).toContain('try environment.removeOwnedValues()');
   expect(runtime).toContain('verifyLogoutPostconditions');
-  expect(runtime).toContain('env["INDEX_API_KEY"] == nil');
+  expect(runtime).toContain('intersection(HermesEnvironmentFile.legacyOwnedKeys).isEmpty');
   expect(runtime).toContain('verifyNoEnabledAttributableCron');
   const evidence = runtime.match(/func logoutEvidence[\s\S]*?func finishLogoutEvidence/)?.[0] ?? '';
   expect(evidence).toContain('evidence.operation == "disconnect"');

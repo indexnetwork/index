@@ -55,7 +55,7 @@ class EnvironmentCredentialTransport:
             "installationId": os.environ.get("INDEX_INSTALLATION_ID") or None,
             "actions": [],
             "expiresAt": None,
-            "health": "healthy" if connected else "disconnected",
+            "health": "active" if connected else "disconnected",
             "revocationPending": False,
             "reconnectSoon": False,
             "reconnectRequired": False,

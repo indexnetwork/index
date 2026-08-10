@@ -1,5 +1,6 @@
 export const HERMES_RUNTIME_TIMEOUTS_MS = Object.freeze({
   inspect: 130_000,
+  connectorStatus: 45_000,
   configureDisabled: 330_000,
   enable: 210_000,
   confirmHealthy: 15_000,
@@ -27,6 +28,7 @@ const JOURNAL_COMMANDS = new Set(['saveOperation', 'clearOperation']);
 const OPERATION_JOURNAL_STAGES = Object.freeze({
   'select-hermes': new Set([
     'prepare-pending', 'prepared', 'configured', 'activated', 'native-recovery',
+    'connector-confirmed', 'connector-configured', 'connector-selected',
   ]),
   'select-index': new Set(['server-pending', 'server-complete']),
   disconnect: new Set(['server-pending', 'server-complete']),
@@ -66,8 +68,8 @@ function validateRuntimePayload(command, payload) {
   if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
     return 'Hermes runtime payload must be an object';
   }
-  if (command === 'loadOperation') {
-    return hasExactKeys(payload, []) ? null : 'Hermes operation load payload must be empty';
+  if (command === 'loadOperation' || command === 'connectorStatus') {
+    return hasExactKeys(payload, []) ? null : `Hermes ${command} payload must be empty`;
   }
   if (JOURNAL_COMMANDS.has(command)) {
     return hasExactKeys(payload, ['operationJournal'])
@@ -80,6 +82,9 @@ function validateRuntimePayload(command, payload) {
       || (typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)
       ? null
       : 'Hermes logout generation must be nonempty or explicitly null';
+  }
+  if (Object.keys(payload).some((key) => /credential|secret|verifier|authorization|api.?key/i.test(key))) {
+    return 'Hermes runtime payload must not contain credential material';
   }
   if (command !== 'inspect' && !(typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)) {
     return 'Hermes runtime generation is required';
@@ -161,9 +166,6 @@ export function createHermesRuntimeBridge({
     if (!executionTimeoutMs) return Promise.reject(new Error('unsupported Hermes runtime command'));
     const payloadError = validateRuntimePayload(command, payload);
     if (payloadError) return Promise.reject(new Error(payloadError));
-    if (Object.prototype.hasOwnProperty.call(payload, 'credential') && command !== 'configureDisabled') {
-      return Promise.reject(new Error('credential is allowed only for Hermes configuration'));
-    }
     if (signal?.aborted) return Promise.reject(bridgeAbortError());
 
     const requestId = createRequestId();

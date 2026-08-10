@@ -198,6 +198,16 @@ test('authorization, transport, persistence, and serialized runtime remain bound
   }
 });
 
+test('status exposes only the nonsecret authority tuple required for exact runtime selection', () => {
+  const runtime = read('./Sources/ConnectorRuntime.swift');
+  expect(runtime).toContain('"agentId": record.map');
+  expect(runtime).toContain('"setupAttemptId": record.map');
+  expect(runtime).toContain('health = "active"');
+  const statusBlock = runtime.match(/private func statusObject[\s\S]*?private var disconnectedResult/)?.[0] ?? '';
+  expect(statusBlock).not.toContain('credentialId');
+  expect(statusBlock).not.toContain('rawCredential');
+});
+
 test('authorize.start response is encoded without browser or setup details', () => {
   const runtime = read('./Sources/ConnectorRuntime.swift');
   const fixture = read('./Tests/ConnectorProtocolFixture.swift');
