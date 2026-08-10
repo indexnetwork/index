@@ -33,7 +33,70 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- packaging pipeline (staging, Finder styling, UDZO convert) goes here ---
+echo "==> Generating DMG background (Amiga palette)"
+swiftc -O -o "$WORK/dmg-background" "$SCRIPT_DIR/dmg-background.swift"
+"$WORK/dmg-background" "$WORK"
+
+APP_BASENAME="$(basename "$APP_PATH")"
+SIZE_KB=$(( $(du -sk "$APP_PATH" | awk '{print $1}') + 20480 ))
+
+echo "==> Creating read-write image (${SIZE_KB}K)"
+RW_DMG="$WORK/index-rw.dmg"
+hdiutil create -size "${SIZE_KB}k" -fs HFS+ -volname "$VOLUME_NAME" -o "$RW_DMG"
+
+# Finder's AppleScript `tell disk` only resolves volumes mounted under
+# /Volumes, so attach at the default location rather than a temp mountpoint.
+hdiutil attach "$RW_DMG" -readwrite -noverify >/dev/null
+MOUNT="/Volumes/$VOLUME_NAME"
+[ -d "$MOUNT" ] || { echo "==> ERROR: expected mount at $MOUNT" >&2; exit 1; }
+
+echo "==> Populating DMG"
+ditto "$APP_PATH" "$MOUNT/$APP_BASENAME"
+ln -s /Applications "$MOUNT/Applications"
+mkdir -p "$MOUNT/.background"
+cp "$WORK/dmg-background.png" "$MOUNT/.background/dmg-background.png"
+cp "$WORK/dmg-background@2x.png" "$MOUNT/.background/dmg-background@2x.png"
+chflags hidden "$MOUNT/.background"
+
+echo "==> Styling Finder window"
+attempt=0
+until /usr/bin/osascript <<APPLESCRIPT
+tell application "Finder"
+    tell disk "${VOLUME_NAME}"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set the bounds of container window to {100, 100, 640, 480}
+        set viewOptions to the icon view options of container window
+        set arrangement of viewOptions to not arranged
+        set icon size of viewOptions to 128
+        set background picture of viewOptions to file ".background:dmg-background.png"
+        set position of item "${APP_BASENAME}" of container window to {140, 190}
+        set position of item "Applications" of container window to {400, 190}
+        close
+        open
+        update without registering applications
+    end tell
+end tell
+APPLESCRIPT
+do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 5 ]; then
+        echo "==> ERROR: Finder styling failed after $attempt attempts" >&2
+        exit 1
+    fi
+    sleep 2
+done
+
+sync
+sleep 2
+hdiutil detach "$MOUNT"
+MOUNT=""
+
+echo "==> Compressing to UDZO: $DMG_PATH"
+hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$WORK/compressed.dmg"
+mv -f "$WORK/compressed.dmg" "$DMG_PATH"
 
 if [ "$SKIP_NOTARY" != "1" ]; then
     echo "==> Notarizing DMG"

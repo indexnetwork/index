@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, lstat, mkdir, readlink, rm, writeFile } from 'node:fs/promises';
 
 const root = new URL('.', import.meta.url).pathname;
 
@@ -97,3 +97,62 @@ test('refuses to package an unnotarized app', async () => {
     await rm(fixture.root, { recursive: true, force: true });
   }
 });
+
+test('validation runs before any hdiutil packaging', () => {
+  expect(dmg.indexOf('stapler validate "$APP_PATH"')).toBeLessThan(dmg.indexOf('hdiutil create'));
+});
+
+test('packages a signed fixture app into a styled DMG when SKIP_NOTARY=1', async () => {
+  const fixture = await makeSignedApp();
+  const mount = `${fixture.root}/mount`;
+  await mkdir(mount, { recursive: true });
+  const dmgPath = `${fixture.root}/Index.dmg`;
+  // Plan defect fix (approved): an ad-hoc fixture can never pass dmg.sh's
+  // notary-dependent validation (`xcrun stapler validate` needs a real Apple
+  // ticket, `spctl --assess` rejects ad-hoc signatures), so the e2e stubs
+  // those two commands via a PATH-prepended bin dir. The stubs fake ONLY the
+  // notary-dependent checks; the packaging pipeline under test (hdiutil,
+  // osascript, UDZO convert) runs for real. The refusal test above remains
+  // the behavioral guard for the unstubbed validation gate.
+  const stubBin = `${fixture.root}/bin`;
+  await mkdir(stubBin, { recursive: true });
+  await writeFile(`${stubBin}/xcrun`, '#!/bin/sh\nif [ "${1:-}" = "stapler" ]; then exit 0; fi\nexec /usr/bin/xcrun "$@"\n');
+  await writeFile(`${stubBin}/spctl`, '#!/bin/sh\nexit 0\n');
+  await chmod(`${stubBin}/xcrun`, 0o755);
+  await chmod(`${stubBin}/spctl`, 0o755);
+  try {
+    const result = Bun.spawnSync(['bash', new URL('./dmg.sh', import.meta.url).pathname], {
+      cwd: root,
+      env: {
+        ...Bun.env,
+        PATH: `${stubBin}:${Bun.env.PATH}`,
+        APP_PATH: fixture.app,
+        DMG_PATH: dmgPath,
+        SKIP_NOTARY: '1',
+      },
+    });
+    // codesign --verify logs to stderr even on success, so only the exit
+    // code and the produced artifact are meaningful assertions here.
+    expect(result.exitCode).toBe(0);
+    expect(await Bun.file(dmgPath).exists()).toBe(true);
+
+    const attach = Bun.spawnSync(['hdiutil', 'attach', dmgPath, '-readonly', '-nobrowse', '-mountpoint', mount]);
+    expect(attach.exitCode).toBe(0);
+    try {
+      await access(`${mount}/index.app/Contents/MacOS/index`);
+      const link = await lstat(`${mount}/Applications`);
+      expect(link.isSymbolicLink()).toBe(true);
+      expect(await readlink(`${mount}/Applications`)).toBe('/Applications');
+      expect(pngSize(await Bun.file(`${mount}/.background/dmg-background.png`).bytes()))
+        .toEqual({ width: 540, height: 380 });
+      expect(pngSize(await Bun.file(`${mount}/.background/dmg-background@2x.png`).bytes()))
+        .toEqual({ width: 1080, height: 760 });
+    } finally {
+      Bun.spawnSync(['hdiutil', 'detach', mount, '-force']);
+    }
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+  // Packaging compiles the Swift generator and runs real hdiutil/osascript
+  // work, far beyond bun's 5s default timeout.
+}, 180_000);
