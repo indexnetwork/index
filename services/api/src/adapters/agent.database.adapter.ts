@@ -841,7 +841,52 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     return selectedId ? this.getAgentWithRelations(selectedId) : null;
   }
 
-  /** Compare-and-clear one current Hermes setup generation and only its token. */
+  /** Owner-locked CAS that can only deselect the exact observed Hermes authority. */
+  async compareAndSelectIndex(input: {
+    ownerId: string;
+    expectedAgentId: string;
+    expectedInstallationId: string;
+    expectedSetupAttemptId: string;
+  }): Promise<'selected' | 'already_index' | 'preserved'> {
+    return db.transaction(async (tx) => {
+      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
+      const [selected] = await tx.select().from(schema.agents).where(and(
+        eq(schema.agents.ownerId, input.ownerId),
+        eq(schema.agents.type, 'external'),
+        eq(schema.agents.handleNegotiations, true),
+        isNull(schema.agents.deletedAt),
+      )).limit(1).for('update');
+      if (!selected) return 'already_index';
+      if (selected.id !== input.expectedAgentId
+        || selected.runtimeKind !== 'hermes'
+        || selected.installationId !== input.expectedInstallationId
+        || selected.runtimeSetupAttemptId !== input.expectedSetupAttemptId) {
+        return 'preserved';
+      }
+      await tx.update(schema.agents).set({
+        handleNegotiations: false,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(schema.agents.id, input.expectedAgentId),
+        eq(schema.agents.handleNegotiations, true),
+        eq(schema.agents.installationId, input.expectedInstallationId),
+        eq(schema.agents.runtimeSetupAttemptId, input.expectedSetupAttemptId),
+      ));
+      await tx.execute(sql`
+        UPDATE agent_permissions
+        SET actions = array_remove(actions, 'manage:negotiations')
+        WHERE agent_id = ${input.expectedAgentId}
+          AND 'manage:negotiations' = ANY(actions)
+      `);
+      await tx.execute(sql`
+        DELETE FROM agent_permissions
+        WHERE agent_id = ${input.expectedAgentId} AND cardinality(actions) = 0
+      `);
+      return 'selected';
+    });
+  }
+
+  /** Compare-and-clear one current legacy setup generation and only its token. */
   async rollbackHermesSetup(input: { ownerId: string; expectedSetupAttemptId: string }): Promise<boolean> {
     return db.transaction(async (tx) => {
       await this.acquireOwnerRuntimeLock(tx, input.ownerId);

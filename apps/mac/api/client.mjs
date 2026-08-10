@@ -282,15 +282,14 @@ export function createIndexApiClient(options = {}) {
       '/agent-runtime',
       { ...options, method: 'PUT', body },
     ),
+    compareAndSelectIndex: (expected, options = {}) => request(
+      '/agent-runtime/reconcile-index',
+      { ...options, method: 'POST', body: expected },
+    ),
     rollbackHermesRuntime: (setupAttemptId, options = {}) => request(
       '/agent-runtime/rollback',
       { ...options, method: 'POST', body: { setupAttemptId } },
     ),
-    disconnectHermesRuntime: (installationId, options = {}) => request(
-      `/agent-runtime/hermes/${encodeURIComponent(installationId)}`,
-      { ...options, method: 'DELETE' },
-    ),
-
     auth: {
       me: (options = {}) => request('/auth/me', options),
       updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),

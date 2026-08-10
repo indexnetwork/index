@@ -24,6 +24,11 @@ const runtimeSelectionSchema = z.discriminatedUnion('runtime', [
   }).strict(),
 ]);
 const rollbackSchema = z.object({ setupAttemptId: uuid }).strict();
+const compareSelectIndexSchema = z.object({
+  agentId: uuid,
+  installationId: uuid,
+  setupAttemptId: uuid,
+}).strict();
 
 type RouteParams = Record<string, string>;
 
@@ -112,6 +117,18 @@ export class AgentRuntimeController {
       return Response.json(await this.runtime.setRuntime(user.id, body as RuntimeSelectionInput));
     } catch (err) {
       return runtimeError(err, 'set', this.reportUnexpected);
+    }
+  }
+
+  @Post('/reconcile-index')
+  @UseGuards(RateLimit('write'), OwnerControlGuard)
+  async compareSelectIndex(req: Request, user: AuthenticatedUser): Promise<Response> {
+    const body = await parseBody(req, compareSelectIndexSchema);
+    if (body instanceof Response) return body;
+    try {
+      return Response.json(await this.runtime.compareAndSelectIndex(user.id, body));
+    } catch (err) {
+      return runtimeError(err, 'compare-select-index', this.reportUnexpected);
     }
   }
 

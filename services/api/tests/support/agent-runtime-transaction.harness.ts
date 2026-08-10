@@ -336,6 +336,35 @@ export class AgentRuntimeTransactionHarness implements
     });
   }
 
+  async compareAndSelectIndex(input: {
+    ownerId: string;
+    expectedAgentId: string;
+    expectedInstallationId: string;
+    expectedSetupAttemptId: string;
+  }): Promise<'selected' | 'already_index' | 'preserved'> {
+    return this.transaction((draft) => {
+      const selected = [...draft.agents.values()].find((candidate) =>
+        candidate.ownerId === input.ownerId
+        && candidate.type === 'external'
+        && candidate.handleNegotiations) ?? null;
+      if (!selected) return 'already_index';
+      if (selected.id !== input.expectedAgentId
+        || selected.runtimeKind !== 'hermes'
+        || selected.installationId !== input.expectedInstallationId
+        || selected.runtimeSetupAttemptId !== input.expectedSetupAttemptId) {
+        return 'preserved';
+      }
+      selected.handleNegotiations = false;
+      selected.updatedAt = new Date();
+      for (const permission of [...draft.permissions.values()]) {
+        if (permission.agentId !== selected.id) continue;
+        permission.actions = permission.actions.filter((action) => action !== 'manage:negotiations');
+        if (permission.actions.length === 0) draft.permissions.delete(permission.id);
+      }
+      return 'selected';
+    });
+  }
+
   async rollbackHermesSetup(input: {
     ownerId: string;
     expectedSetupAttemptId: string;

@@ -429,16 +429,74 @@ test('uses a verified credential-free connector status boundary for runtime auth
   expect(runtime).toContain('struct HermesConnectorStatus: Codable');
   expect(runtime).toContain('connectorActivationConfirmed');
   for (const token of [
-    '/Applications/Index Connector.app/Contents/MacOS/IndexConnector',
-    'Applications/Index Connector.app/Contents/MacOS/IndexConnector',
-    'connector-release.cms', '/usr/bin/security', '/usr/bin/codesign',
-    'TeamIdentifier', 'designatedRequirement', 'SHA256',
+    '/Applications/Index Connector.app',
+    'Applications/Index Connector.app',
+    'connector-release.cms', '/usr/bin/security',
+    'LMQ3XNXLAD', 'expectedDesignatedRequirement', 'SHA256',
+    'SecStaticCodeCreateWithPath', 'SecRequirementCreateWithString',
+    'SecStaticCodeCheckValidity', 'SecCodeCopySigningInformation',
     'protocolVersion', 'buildMode', 'apiEnvironment',
     'maximumConnectorResponseBytes', 'allowedChildEnvironmentKeys',
-    'forbiddenConnectorResponseKeys',
+    'forbiddenCanonicalKeys', 'connectorDisconnect',
+    'stagingRoot', 'copyItem', 'hardenAndRejectSymlinks',
+    'sourceAfter.identity == sourceBefore.identity',
+    'afterExecution.identity == immediatelyBefore.identity',
   ]) expect(runtime).toContain(token);
+  expect(runtime).toContain('CharacterSet.alphanumerics.contains');
+  expect(runtime).toContain('status.st_mode & mode_t(S_IFMT) != mode_t(S_IFLNK)');
+  expect(runtime).toContain('metadata["teamId"] as? String == Self.expectedTeamID');
+  expect(runtime).toContain('metadata["designatedRequirement"] as? String == Self.expectedDesignatedRequirement');
+  expect(build).toContain('production connector trust pins missing or mismatched');
   expect(runtime).not.toContain('credentialId');
   expect(runtime).not.toContain('CommandLine.arguments');
+});
+
+test('connector staging rejects ancestor links, source replacement, and staged mutation', () => {
+  const admit = ({ ancestorKinds, sourceBefore, sourceAfter, stagedBefore, stagedAfter }) => {
+    if (ancestorKinds.some((kind) => kind === 'symlink')) throw new Error('connector_unverified');
+    if (sourceBefore !== sourceAfter || stagedBefore !== stagedAfter) throw new Error('connector_unverified');
+    return true;
+  };
+  expect(() => admit({
+    ancestorKinds: ['directory', 'symlink', 'directory'],
+    sourceBefore: 'a', sourceAfter: 'a', stagedBefore: 'a', stagedAfter: 'a',
+  })).toThrow('connector_unverified');
+  expect(() => admit({
+    ancestorKinds: ['directory'],
+    sourceBefore: 'source-a', sourceAfter: 'source-b', stagedBefore: 'a', stagedAfter: 'a',
+  })).toThrow('connector_unverified');
+  expect(() => admit({
+    ancestorKinds: ['directory'],
+    sourceBefore: 'a', sourceAfter: 'a', stagedBefore: 'stage-a', stagedAfter: 'stage-b',
+  })).toThrow('connector_unverified');
+  expect(runtime).toContain('HermesFilesystem.openDirectory(bundle, createMissing: false)');
+  expect(runtime).toContain('sourceAfter.data == sourceBefore.data');
+  expect(runtime).toContain('afterExecution.data == immediatelyBefore.data');
+});
+
+test('connector response secret keys are canonicalized recursively across separator variants', () => {
+  const forbidden = new Set([
+    'credential', 'rawcredential', 'credentialid', 'apikey', 'token', 'secret',
+    'password', 'auth', 'authorization', 'authorizationcode', 'verifier', 'challenge',
+  ]);
+  const rejects = (value) => Array.isArray(value)
+    ? value.some(rejects)
+    : value && typeof value === 'object'
+      ? Object.entries(value).some(([key, child]) => (
+        [...forbidden].some((term) => {
+          const canonical = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+          return canonical === term || canonical.startsWith(term) || canonical.endsWith(term);
+        }) || rejects(child)
+      ))
+      : false;
+  for (const key of [
+    'raw-credential', 'raw_credential', 'credential.id', 'API---KEY', 'auth_token',
+    'pass-word', 'veri_fier', 'chal.lenge', 'se-cret',
+  ]) expect(rejects({ safe: [{ nested: { [key]: 'redacted-fixture' } }] })).toBe(true);
+  expect(rejects({ accountLabel: null, installationId: 'safe' })).toBe(false);
+  expect(runtime).toContain('Set(payload.keys) == Self.statusKeys');
+  expect(runtime).toContain('payload["accountLabel"] is NSNull');
+  expect(runtime).toContain('actions.count <= Self.canonicalActions.count');
 });
 
 test('defines the request-correlated runtime bridge contract', () => {
@@ -523,7 +581,7 @@ test('persists stable installation identity and a generation-fenced setup journa
   expect(runtime).toContain('var currentOwnerId: String?');
   for (const stage of [
     'preparing', 'environmentWritten', 'pluginInstalled', 'scheduleDisabled',
-    'enabling', 'awaitingHeartbeat', 'disconnecting', 'disconnectCleanupComplete',
+    'enabling', 'awaitingHeartbeat', 'disconnecting', 'connectorDisconnected', 'disconnectCleanupComplete',
   ]) {
     expect(runtime).toContain(`case ${stage}`);
   }
@@ -911,6 +969,16 @@ test('gateway failure performs checked exact-job rollback and retains recovery j
   expect(result).toBe('gateway_failed');
   expect(job.enabled).toBe(false);
   expect(journal.stage).toBe('enabling');
+});
+
+test('connector-backed local cleanup requires durable connector and exact server proofs', () => {
+  const block = runtime.match(/private func disconnect\(_ request:[\s\S]*?private func finishTerminalDisconnect/)?.[0] ?? '';
+  expect(block).toContain('journal?.stage == .connectorDisconnected');
+  expect(block).toContain('operation?.stage == "server-complete"');
+  expect(block).toContain('operation?.installationId == installation.currentConnectorInstallationId');
+  expect(block.indexOf('operation?.stage == "server-complete"')).toBeLessThan(
+    block.indexOf('plugins", "remove"'),
+  );
 });
 
 test('native logout preparation and completion independently require no key and no attributable enabled cron', () => {

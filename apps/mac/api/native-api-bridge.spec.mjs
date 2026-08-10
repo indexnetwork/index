@@ -121,6 +121,8 @@ describe('native owner migration and transport source contracts', () => {
     expect(nativeBridge).toContain('maximumPendingRequests = 32');
     expect(nativeBridge).toContain('containsForbiddenResponseField');
     expect(nativeBridge).toContain('allowedHTTPRoutes');
+    expect(nativeBridge).toContain('/agent-runtime/reconcile-index');
+    expect(nativeBridge).toContain('required: ["agentId", "installationId", "setupAttemptId"]');
     expect(nativeBridge).toContain('allowedMCPTools');
     expect(nativeBridge).toContain('/tools/read_user_contexts');
     expect(nativeBridge).toContain('/tools/preview_user_context');

@@ -1,6 +1,7 @@
 export const HERMES_RUNTIME_TIMEOUTS_MS = Object.freeze({
   inspect: 130_000,
   connectorStatus: 45_000,
+  connectorDisconnect: 90_000,
   configureDisabled: 330_000,
   enable: 210_000,
   confirmHealthy: 15_000,
@@ -64,12 +65,35 @@ function validOperationJournal(value) {
   return bothNull || bothPresent;
 }
 
+const FORBIDDEN_RUNTIME_KEYS = new Set([
+  'credential', 'rawcredential', 'credentialid', 'apikey', 'token', 'secret',
+  'password', 'auth', 'authorization', 'authorizationcode', 'verifier', 'challenge',
+]);
+
+function containsForbiddenRuntimeField(value) {
+  if (Array.isArray(value)) return value.some(containsForbiddenRuntimeField);
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, child]) => {
+    const canonical = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const forbidden = [...FORBIDDEN_RUNTIME_KEYS].some((term) => (
+      canonical === term || canonical.startsWith(term) || canonical.endsWith(term)
+    ));
+    return forbidden || containsForbiddenRuntimeField(child);
+  });
+}
+
 function validateRuntimePayload(command, payload) {
   if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
     return 'Hermes runtime payload must be an object';
   }
   if (command === 'loadOperation' || command === 'connectorStatus') {
     return hasExactKeys(payload, []) ? null : `Hermes ${command} payload must be empty`;
+  }
+  if (command === 'connectorDisconnect') {
+    return hasExactKeys(payload, ['installationId', 'executorId', 'setupAttemptId'])
+      && ['installationId', 'executorId', 'setupAttemptId'].every((key) => validJournalIdentifier(payload[key]))
+      ? null
+      : 'Hermes connector disconnect requires only the exact authority tuple';
   }
   if (JOURNAL_COMMANDS.has(command)) {
     return hasExactKeys(payload, ['operationJournal'])
@@ -83,7 +107,7 @@ function validateRuntimePayload(command, payload) {
       ? null
       : 'Hermes logout generation must be nonempty or explicitly null';
   }
-  if (Object.keys(payload).some((key) => /credential|secret|verifier|authorization|api.?key/i.test(key))) {
+  if (containsForbiddenRuntimeField(payload)) {
     return 'Hermes runtime payload must not contain credential material';
   }
   if (command !== 'inspect' && !(typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)) {
@@ -323,6 +347,7 @@ export function mapAgentRuntimeState({ binding, localState, operation }) {
       && executor.status === 'active'
       && localState.executorId === executor.id
       && localState.setupAttemptId
+      && executor.setupAttemptId === localState.setupAttemptId
       && localState.pluginInstalled === true
       && localState.negotiatorMode === true
       && localState.schedulePresent === true
@@ -457,6 +482,7 @@ export async function waitForHermesHealth({
   api,
   installationId,
   executorId,
+  setupAttemptId,
   timeoutMs = 90_000,
   pollIntervalMs = 2_000,
   now = () => Date.now(),
@@ -475,6 +501,7 @@ export async function waitForHermesHealth({
         && binding.health === 'active'
         && binding.executor?.id === executorId
         && binding.executor?.installationId === installationId
+        && binding.executor?.setupAttemptId === setupAttemptId
       ) {
         return binding;
       }

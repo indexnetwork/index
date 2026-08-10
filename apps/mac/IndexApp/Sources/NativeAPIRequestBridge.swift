@@ -250,8 +250,7 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/auth/me$"#), ("PATCH", #"^/auth/profile/update$"#),
         ("GET", #"^/agent-runtime(?:\?installationId=[A-Za-z0-9_-]+)?$"#),
         ("PUT", #"^/agent-runtime$"#),
-        ("POST", #"^/agent-runtime/(?:hermes/prepare|rollback)$"#),
-        ("DELETE", #"^/agent-runtime/hermes/[^/?]+$"#),
+        ("POST", #"^/agent-runtime/(?:hermes/prepare|rollback|reconcile-index)$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
         ("GET", #"^/networks/[^/?]+/(?:overview|my-intents)$"#),
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
@@ -616,6 +615,15 @@ final class NativeAPIRequestBridge {
             return exactTypedObject(body, required: ["installationId", "setupAttemptId"]) { uuidIdentifier($0["installationId"]) && uuidIdentifier($0["setupAttemptId"]) }
         case "/agent-runtime/rollback":
             return exactTypedObject(body, required: ["setupAttemptId"]) { uuidIdentifier($0["setupAttemptId"]) }
+        case "/agent-runtime/reconcile-index":
+            return exactTypedObject(
+                body,
+                required: ["agentId", "installationId", "setupAttemptId"]
+            ) {
+                uuidIdentifier($0["agentId"])
+                    && uuidIdentifier($0["installationId"])
+                    && uuidIdentifier($0["setupAttemptId"])
+            }
         case "/networks":
             return exactTypedObject(body, required: ["title"], optional: ["prompt", "imageUrl", "joinPolicy"]) { item in
                 boundedString(item["title"], maximum: 256) && optionalString(item, "prompt", maximum: 65_536)

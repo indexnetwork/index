@@ -86,6 +86,14 @@ echo "==> Compiling Swift (host arch)"
 SWIFT_DEFINES=()
 if [ "${INDEX_DEVELOPMENT_BUILD:-0}" = "1" ]; then
     SWIFT_DEFINES+=("-DINDEX_DEVELOPMENT_BUILD")
+else
+    # The connector trust anchor is compiled into and covered by the app's
+    # signature. Production builds fail closed if the immutable source pin is
+    # missing or changed; release CMS metadata is evidence, never authority.
+    grep -Fq 'private static let expectedTeamID = "LMQ3XNXLAD"' Sources/HermesRuntime.swift \
+        && grep -Fq 'private static let expectedBundleID = "network.index.connector"' Sources/HermesRuntime.swift \
+        && grep -Fq 'anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\" and identifier \"\(expectedBundleID)\"' Sources/HermesRuntime.swift \
+        || { echo 'production connector trust pins missing or mismatched' >&2; exit 1; }
 fi
 swiftc -Onone "${SWIFT_DEFINES[@]}" \
     -target "$(uname -m)-apple-macosx13.0" \

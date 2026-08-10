@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  createIndexApiClient, IndexApiError, normalizeApiBaseUrl, toQueryString,
+  createIndexApiClient, normalizeApiBaseUrl, toQueryString,
 } from './client.mjs';
 
 const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
@@ -55,9 +55,15 @@ describe('mac Index API client endpoint contract', () => {
       },
     });
     await client.getRuntimeBinding('installation-1');
+    await client.compareAndSelectIndex({
+      agentId: 'agent-1', installationId: 'installation-1', setupAttemptId: 'setup-1',
+    });
     await client.rollbackHermesRuntime('setup-1');
     expect(operations).toEqual([
       { kind: 'http', method: 'GET', path: '/agent-runtime?installationId=installation-1' },
+      { kind: 'http', method: 'POST', path: '/agent-runtime/reconcile-index', body: {
+        agentId: 'agent-1', installationId: 'installation-1', setupAttemptId: 'setup-1',
+      } },
       { kind: 'http', method: 'POST', path: '/agent-runtime/rollback', body: { setupAttemptId: 'setup-1' } },
     ]);
   });
@@ -78,25 +84,15 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('setRuntimeBinding hermes', (client) => client.setRuntimeBinding({ runtime: 'hermes', installationId, executorId, setupAttemptId }), {
       path: '/agent-runtime', method: 'PUT', body: { runtime: 'hermes', installationId, executorId, setupAttemptId },
     });
+    await expectCall('compareAndSelectIndex', (client) => client.compareAndSelectIndex({
+      agentId: executorId, installationId, setupAttemptId,
+    }), {
+      path: '/agent-runtime/reconcile-index', method: 'POST',
+      body: { agentId: executorId, installationId, setupAttemptId },
+    });
     await expectCall('rollbackHermesRuntime', (client) => client.rollbackHermesRuntime(setupAttemptId), {
       path: '/agent-runtime/rollback', method: 'POST', body: { setupAttemptId },
     });
-    await expectCall('disconnectHermesRuntime', (client) => client.disconnectHermesRuntime(installationId), {
-      path: `/agent-runtime/hermes/${installationId}`, method: 'DELETE',
-    });
-  });
-
-  it('preserves disconnect 404 as authorization/not-found rather than guessing absence', async () => {
-    const client = createIndexApiClient({
-      nativeRequest: async () => ({
-        status: 404, body: { error: 'runtime_not_found' }, headers: {},
-      }),
-    });
-
-    await expect(client.disconnectHermesRuntime('installation-other-owner'))
-      .rejects.toBeInstanceOf(IndexApiError);
-    await expect(client.disconnectHermesRuntime('installation-other-owner'))
-      .rejects.toMatchObject({ status: 404, response: { error: 'runtime_not_found' } });
   });
 
   it('uses controller-backed auth/network/intent endpoints', async () => {

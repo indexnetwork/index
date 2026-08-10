@@ -10,6 +10,7 @@ export type NegotiationRuntimeView = {
   executor: null | {
     id: string;
     installationId: string | null;
+    setupAttemptId: string | null;
     status: 'active' | 'inactive';
     lastNegotiationPickupAt: string | null;
   };
@@ -33,6 +34,7 @@ export type PrepareHermesRuntimeResult = {
 };
 
 export type DisconnectHermesInstallationResult = 'disconnected' | 'absent' | 'owner_mismatch';
+export type CompareSelectIndexResult = 'selected' | 'already_index' | 'preserved';
 
 export type RuntimeSelectionInput =
   | { runtime: 'index' }
@@ -60,6 +62,12 @@ export interface AgentRuntimeStore {
     ownerId: string;
     expectedSetupAttemptId: string;
   }): Promise<boolean>;
+  compareAndSelectIndex(input: {
+    ownerId: string;
+    expectedAgentId: string;
+    expectedInstallationId: string;
+    expectedSetupAttemptId: string;
+  }): Promise<CompareSelectIndexResult>;
   getNegotiationExecutorBinding(ownerId: string): Promise<AgentWithRelations | null>;
   getHermesInstallation(ownerId: string, installationId: string): Promise<AgentWithRelations | null>;
   disconnectHermesInstallation(input: {
@@ -150,7 +158,24 @@ export class AgentRuntimeService {
     });
   }
 
-  /** Select Index, revoke the installation credentials, and mark it inactive. */
+  /** Owner-locked compare-and-select-Index. It never revokes connector credentials. */
+  async compareAndSelectIndex(
+    ownerId: string,
+    expected: { agentId: string; installationId: string; setupAttemptId: string },
+  ): Promise<{ outcome: CompareSelectIndexResult; binding: NegotiationRuntimeView }> {
+    const outcome = await this.store.compareAndSelectIndex({
+      ownerId,
+      expectedAgentId: expected.agentId,
+      expectedInstallationId: expected.installationId,
+      expectedSetupAttemptId: expected.setupAttemptId,
+    });
+    return {
+      outcome,
+      binding: await this.getRuntime(ownerId, expected.installationId),
+    };
+  }
+
+  /** Legacy owner removal. Connector-backed clients do not call this path. */
   async disconnectHermes(ownerId: string, installationId: string): Promise<NegotiationRuntimeView> {
     const outcome = await this.store.disconnectHermesInstallation({ ownerId, installationId });
     // Global absence is positive evidence that this owner has nothing to revoke,
@@ -182,6 +207,7 @@ export class AgentRuntimeService {
         ? {
             id: selected.id,
             installationId: selected.installationId,
+            setupAttemptId: selected.runtimeSetupAttemptId,
             status: selected.status,
             lastNegotiationPickupAt: lastPickup?.toISOString() ?? null,
           }
@@ -213,6 +239,10 @@ const lazyAgentRuntimeStore: AgentRuntimeStore = {
   async rollbackHermesSetup(input) {
     const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');
     return agentDatabaseAdapter.rollbackHermesSetup(input);
+  },
+  async compareAndSelectIndex(input) {
+    const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');
+    return agentDatabaseAdapter.compareAndSelectIndex(input);
   },
   async getNegotiationExecutorBinding(ownerId) {
     const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');

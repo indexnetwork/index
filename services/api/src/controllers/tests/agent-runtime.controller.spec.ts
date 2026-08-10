@@ -29,6 +29,7 @@ const prepareHermes = mock(async () => ({
 }));
 const setRuntime = mock(async () => binding);
 const rollbackHermes = mock(async () => true);
+const compareAndSelectIndex = mock(async () => ({ outcome: 'selected' as const, binding }));
 const disconnectHermes = mock(async () => binding);
 const reportUnexpectedError = mock((_error: unknown, _operation: string) => undefined);
 
@@ -38,6 +39,7 @@ function controller() {
     prepareHermes,
     setRuntime,
     rollbackHermes,
+    compareAndSelectIndex,
     disconnectHermes,
   } as never, reportUnexpectedError);
 }
@@ -125,6 +127,7 @@ describe('AgentRuntimeController', () => {
     prepareHermes.mockClear();
     setRuntime.mockClear();
     rollbackHermes.mockClear();
+    compareAndSelectIndex.mockClear();
     disconnectHermes.mockClear();
     reportUnexpectedError.mockClear();
     getRuntime.mockResolvedValue(binding);
@@ -136,6 +139,7 @@ describe('AgentRuntimeController', () => {
     });
     setRuntime.mockResolvedValue(binding);
     rollbackHermes.mockResolvedValue(true);
+    compareAndSelectIndex.mockResolvedValue({ outcome: 'selected', binding });
     disconnectHermes.mockResolvedValue(binding);
   });
 
@@ -198,6 +202,47 @@ describe('AgentRuntimeController', () => {
       error: 'runtime_invalid',
       detail: 'The runtime request is invalid',
     });
+  });
+
+  it('compare-selects Index only for the exact selected Hermes tuple', async () => {
+    const body = {
+      agentId: EXECUTOR_ID, installationId: INSTALLATION_ID, setupAttemptId: SETUP_ATTEMPT_ID,
+    };
+    const response = await controller().compareSelectIndex(
+      jsonRequest('/api/agent-runtime/reconcile-index', 'POST', body), OWNER,
+    );
+    expect(response.status).toBe(200);
+    expect(compareAndSelectIndex).toHaveBeenCalledWith(OWNER.id, body);
+
+    const persistence = new AgentRuntimeTransactionHarness();
+    persistence.seedUser(OWNER);
+    persistence.seedFullHermesExecutor({
+      id: EXECUTOR_ID, ownerId: OWNER.id, installationId: INSTALLATION_ID,
+      setupAttemptId: SETUP_ATTEMPT_ID, handleNegotiations: true,
+    });
+    const runtime = new AgentRuntimeService(persistence);
+    const stale = await runtime.compareAndSelectIndex(OWNER.id, {
+      agentId: EXECUTOR_ID,
+      installationId: INSTALLATION_ID,
+      setupAttemptId: '44444444-4444-4444-8444-444444444444',
+    });
+    expect(stale.outcome).toBe('preserved');
+    expect(stale.binding).toMatchObject({ selectedRuntime: 'hermes', executor: {
+      id: EXECUTOR_ID, installationId: INSTALLATION_ID, setupAttemptId: SETUP_ATTEMPT_ID,
+    } });
+    const exact = await runtime.compareAndSelectIndex(OWNER.id, body);
+    expect(exact).toMatchObject({ outcome: 'selected', binding: { selectedRuntime: 'index' } });
+  });
+
+  it('rejects extra or malformed compare-select fields', async () => {
+    const response = await controller().compareSelectIndex(
+      jsonRequest('/api/agent-runtime/reconcile-index', 'POST', {
+        agentId: EXECUTOR_ID, installationId: INSTALLATION_ID,
+        setupAttemptId: SETUP_ATTEMPT_ID, newer: true,
+      }), OWNER,
+    );
+    expect(response.status).toBe(400);
+    expect(compareAndSelectIndex).not.toHaveBeenCalled();
   });
 
   it('rolls back only the requested setup generation', async () => {

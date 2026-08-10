@@ -56,6 +56,23 @@ private final class FixtureConnectorStatus: HermesConnectorStatusProviding {
             )
         )
     }
+
+    func disconnect(
+        installationId: String,
+        agentId: String,
+        setupAttemptId: String
+    ) throws -> HermesConnectorStatus {
+        HermesConnectorStatus(
+            connected: false,
+            health: "disconnected",
+            revocationPending: false,
+            installationId: installationId,
+            agentId: nil,
+            setupAttemptId: nil,
+            actions: [],
+            expiresAt: nil
+        )
+    }
 }
 
 private final class FixtureRunner: HermesCommandRunning {

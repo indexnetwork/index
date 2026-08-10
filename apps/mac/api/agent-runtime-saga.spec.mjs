@@ -25,7 +25,7 @@ const KEY = 'transient-secret-key';
 const INDEX = { selectedRuntime: 'index', executor: null, health: 'never-seen', indexCovering: true };
 const ACTIVE = {
   selectedRuntime: 'hermes',
-  executor: { id: EXECUTOR, installationId: INSTALLATION, status: 'active', lastNegotiationPickupAt: '2026-08-07T00:00:00.000Z' },
+  executor: { id: EXECUTOR, installationId: INSTALLATION, setupAttemptId: ATTEMPT, status: 'active', lastNegotiationPickupAt: '2026-08-07T00:00:00.000Z' },
   health: 'active', indexCovering: false,
 };
 const LOCAL_DISABLED = {
@@ -207,8 +207,11 @@ describe('Hermes selection saga', () => {
         getRuntimeBinding: async () => binding,
         setRuntimeBinding: async (body) => {
           calls.push(['set', body]);
-          if (body.runtime === 'hermes') throw new Error('selection unavailable');
-          return INDEX;
+          throw new Error('selection unavailable');
+        },
+        compareAndSelectIndex: async (expected) => {
+          calls.push(['compare-index', expected]);
+          return { outcome: 'selected', binding: INDEX };
         },
       },
       nativeRuntime: async (command, payload) => {
@@ -222,24 +225,34 @@ describe('Hermes selection saga', () => {
       },
       waitForHealth: async () => ACTIVE,
     })).rejects.toThrow('selection unavailable');
-    expect(calls).toContainEqual(['set', { runtime: 'index' }]);
+    expect(calls).toContainEqual(['compare-index', {
+      agentId: EXECUTOR, installationId: INSTALLATION, setupAttemptId: ATTEMPT,
+    }]);
     expect(calls).toContainEqual(['disable', { ownerId: OWNER, setupAttemptId: ATTEMPT }]);
     expect(callNames(calls)).not.toContain('disconnect');
   });
 });
 
 describe('selection, disconnect, and relaunch reconciliation', () => {
-  it('disconnect pauses local activity before server revocation and exact cleanup', async () => {
+  it('disconnect pauses locally, invokes exact connector revocation, then CAS-selects Index and cleans', async () => {
     const calls = [];
     const result = await disconnectHermesSaga({
-      api: { disconnectHermesRuntime: async (installationId) => {
-        calls.push(['server-disconnect', installationId]); return INDEX;
+      api: { compareAndSelectIndex: async (expected) => {
+        calls.push(['compare-index', expected]); return { outcome: 'selected', binding: INDEX };
       } },
       nativeRuntime: async (command, payload) => {
         calls.push([command, payload]);
         if (command === 'prepareLogout') return {
           ok: true, stage: 'logout_prepared',
           state: { ...LOCAL_DISABLED, negotiatorMode: false },
+        };
+        if (command === 'connectorDisconnect') return {
+          ok: true, stage: 'connector_disconnected',
+          connectorStatus: {
+            connected: false, health: 'disconnected', revocationPending: false,
+            installationId: INSTALLATION, agentId: null, setupAttemptId: null,
+            actions: [], expiresAt: null,
+          },
         };
         return {
           ok: true, stage: 'disconnected',
@@ -252,11 +265,81 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
     });
     expect(calls).toEqual([
       ['prepareLogout', { ownerId: OWNER, setupAttemptId: ATTEMPT }],
-      ['server-disconnect', INSTALLATION],
+      ['connectorDisconnect', {
+        installationId: INSTALLATION, executorId: EXECUTOR, setupAttemptId: ATTEMPT,
+      }],
+      ['compare-index', {
+        agentId: EXECUTOR, installationId: INSTALLATION, setupAttemptId: ATTEMPT,
+      }],
       ['disconnect', { ownerId: OWNER, setupAttemptId: ATTEMPT }],
     ]);
     expect(result.binding).toEqual(INDEX);
     expect(result.localState.schedulePresent).toBe(false);
+  });
+
+  it('retains exact recovery and never reaches server/local clear while connector revocation is uncertain', async () => {
+    const calls = [];
+    const store = { saved: [], save: async function (value) { this.saved.push(value); return value; }, clear: async () => { throw new Error('must retain'); } };
+    await expect(disconnectHermesSaga({
+      api: { compareAndSelectIndex: async () => { throw new Error('must not CAS'); } },
+      operationStore: store,
+      nativeRuntime: async (command, payload) => {
+        calls.push([command, payload]);
+        if (command === 'prepareLogout') return {
+          ok: true, stage: 'logout_prepared', state: { ...LOCAL_DISABLED, negotiatorMode: false },
+        };
+        if (command === 'connectorDisconnect') return {
+          ok: true, stage: 'connector_revocation_pending',
+          connectorStatus: {
+            connected: false, health: 'recovery_only', revocationPending: true,
+            installationId: INSTALLATION, agentId: EXECUTOR, setupAttemptId: ATTEMPT,
+            actions: ['manage:identity'], expiresAt: new Date().toISOString(),
+          },
+        };
+        throw new Error('must not clear locally');
+      },
+      ownerId: OWNER, installationId: INSTALLATION,
+      setupAttemptId: ATTEMPT, executorId: EXECUTOR,
+    })).rejects.toMatchObject({
+      code: 'connector_revocation_pending', recoveryState: 'revocation_pending',
+    });
+    expect(calls.map(([command]) => command)).toEqual(['prepareLogout', 'connectorDisconnect']);
+    expect(store.saved.at(-1)).toMatchObject({
+      operation: 'disconnect', stage: 'server-pending', installationId: INSTALLATION,
+      executorId: EXECUTOR, setupAttemptId: ATTEMPT,
+    });
+  });
+
+  it('preserves a newer server authority when stale recovery loses the exact CAS', async () => {
+    const calls = [];
+    await expect(disconnectHermesSaga({
+      api: { compareAndSelectIndex: async (expected) => {
+        calls.push(['compare-index', expected]);
+        return { outcome: 'preserved', binding: {
+          ...ACTIVE,
+          executor: { ...ACTIVE.executor, id: OTHER_OWNER, setupAttemptId: OTHER_OWNER },
+        } };
+      } },
+      nativeRuntime: async (command, payload) => {
+        calls.push([command, payload]);
+        if (command === 'prepareLogout') return {
+          ok: true, stage: 'logout_prepared', state: { ...LOCAL_DISABLED, negotiatorMode: false },
+        };
+        if (command === 'connectorDisconnect') return {
+          ok: true, stage: 'connector_disconnected', connectorStatus: {
+            connected: false, health: 'disconnected', revocationPending: false,
+            installationId: INSTALLATION, agentId: null, setupAttemptId: null,
+            actions: [], expiresAt: null,
+          },
+        };
+        throw new Error('stale cleanup must not run');
+      },
+      ownerId: OWNER, installationId: INSTALLATION,
+      setupAttemptId: ATTEMPT, executorId: EXECUTOR,
+    })).rejects.toMatchObject({ code: 'server_authority_preserved' });
+    expect(calls.map(([command]) => command)).toEqual([
+      'prepareLogout', 'connectorDisconnect', 'compare-index',
+    ]);
   });
 
   it('selecting Index updates the server first and only disables matching local scheduling', async () => {
@@ -302,6 +385,12 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
           stage: 'logout_prepared',
           state: { ...LOCAL_DISABLED, negotiatorMode: false },
         };
+        if (command === 'connectorDisconnect') return {
+          ok: true, stage: 'connector_revocation_pending', connectorStatus: {
+            connected: false, health: 'recovery_only', revocationPending: true,
+            installationId: INSTALLATION, agentId: EXECUTOR, setupAttemptId: ATTEMPT,
+          },
+        };
         throw new Error(`unexpected ${command}`);
       };
       const operationStore = createNativeSagaJournal(h.nativeRuntime, null);
@@ -309,21 +398,21 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
         ownerId: OWNER,
         operationStore,
         nativeRuntime,
-        api: { disconnectHermesRuntime: async (installationId) => {
-          calls.push(['server-disconnect', installationId]);
-          throw new Error('server response uncertain');
+        api: { compareAndSelectIndex: async () => {
+          throw new Error('server CAS must not run before connector proof');
         } },
       })).rejects.toMatchObject({
-        code: 'server_disconnect_uncertain',
-        stage: 'logout',
+        code: 'connector_revocation_pending',
         retryable: true,
         serverUncertain: true,
-        state: { ...LOCAL_DISABLED, negotiatorMode: false },
+        recoveryState: 'revocation_pending',
       });
       expect(calls).toEqual([
         ['inspect', { ownerId: OWNER }],
         ['prepareLogout', { ownerId: OWNER, setupAttemptId: ATTEMPT }],
-        ['server-disconnect', INSTALLATION],
+        ['connectorDisconnect', {
+          installationId: INSTALLATION, executorId: EXECUTOR, setupAttemptId: ATTEMPT,
+        }],
       ]);
       expect(await operationStore.load()).toEqual(
         persistedOperation('disconnect', 'server-pending'),
@@ -331,30 +420,30 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
     }
   });
 
-  it('does not reinterpret a server 404 as absence, but still completes the local logout scrub', async () => {
+  it('retains the crash journal when exact server CAS is uncertain after connector proof', async () => {
     const { journal } = persistentJournalHarness();
     const calls = [];
-    const notFound = Object.assign(new Error('runtime_not_found'), { status: 404 });
-
+    const network = new Error('response uncertain');
     await expect(prepareHermesLogout({
       ownerId: OWNER,
       operationStore: journal,
-      api: { disconnectHermesRuntime: async () => { calls.push('server-404'); throw notFound; } },
+      api: { compareAndSelectIndex: async () => { calls.push('compare-index'); throw network; } },
       nativeRuntime: async (command) => {
         calls.push(command);
         if (command === 'inspect') return { ok: true, stage: 'inspected', state: LOCAL_ENABLED };
-        return {
-          ok: true,
-          stage: 'logout_prepared',
-          state: { ...LOCAL_DISABLED, negotiatorMode: false },
+        if (command === 'prepareLogout') return {
+          ok: true, stage: 'logout_prepared', state: { ...LOCAL_DISABLED, negotiatorMode: false },
         };
+        if (command === 'connectorDisconnect') return {
+          ok: true, stage: 'connector_disconnected', connectorStatus: {
+            connected: false, health: 'disconnected', revocationPending: false,
+            installationId: INSTALLATION, agentId: null, setupAttemptId: null,
+          },
+        };
+        throw new Error(`unexpected ${command}`);
       },
-    })).rejects.toMatchObject({
-      code: 'server_disconnect_uncertain', status: 404, serverUncertain: true,
-      state: { scheduleEnabled: false, negotiatorMode: false },
-    });
-
-    expect(calls).toEqual(['inspect', 'prepareLogout', 'server-404']);
+    })).rejects.toMatchObject({ serverUncertain: true, recoveryState: 'revocation_pending' });
+    expect(calls).toEqual(['inspect', 'prepareLogout', 'connectorDisconnect', 'compare-index']);
     expect(await journal.load()).toEqual(persistedOperation('disconnect', 'server-pending'));
   });
 
@@ -365,8 +454,8 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
       ownerId: OWNER,
       operationStore: journal,
       api: {
-        disconnectHermesRuntime: async (installationId) => {
-          calls.push(['server-disconnect', installationId]);
+        getRuntimeBinding: async (installationId) => {
+          calls.push(['server-read', installationId]);
           return INDEX;
         },
       },
@@ -392,7 +481,7 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
     expect(calls).toEqual([
       ['inspect', { ownerId: OWNER }],
       ['prepareLogout', { ownerId: OWNER, setupAttemptId: null }],
-      ['server-disconnect', INSTALLATION],
+      ['server-read', INSTALLATION],
     ]);
     expect(await journal.load()).toEqual(persistedOperation('disconnect', 'server-complete', {
       setupAttemptId: null, executorId: null,
@@ -422,6 +511,9 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
           } else if (message.command === 'saveOperation') {
             nativeRecord = structuredClone(message.operationJournal);
             result = { ok: true, stage: 'operation_saved', operationJournal: nativeRecord };
+          } else if (message.command === 'clearOperation') {
+            nativeRecord = null;
+            result = { ok: true, stage: 'operation_cleared', operationJournal: null };
           } else if (message.command === 'prepareLogout') {
             local = { ...local, negotiatorMode: false, scheduleEnabled: false };
             result = { ok: true, stage: 'logout_prepared', state: local };
@@ -436,10 +528,7 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
       bridge.request(command, payload, options)
     );
     const operationStore = createNativeSagaJournal(nativeRuntime, null);
-    const api = {
-      getRuntimeBinding: async () => INDEX,
-      disconnectHermesRuntime: async () => INDEX,
-    };
+    const api = { getRuntimeBinding: async () => INDEX };
 
     await expect(bootstrapHermesRuntime({
       api, nativeRuntime, operationStore, ownerId: OWNER,
@@ -468,7 +557,7 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
     await expect(prepareHermesLogout({
       ownerId: OWNER,
       operationStore: journal,
-      api: { disconnectHermesRuntime: async () => INDEX },
+      api: { compareAndSelectIndex: async () => { throw new Error('must not reach server CAS'); } },
       nativeRuntime: async (command) => {
         if (command === 'inspect') return { ok: true, stage: 'inspected', state: LOCAL_ENABLED };
         return { ok: true, stage: 'logout_prepared', state: { ...LOCAL_DISABLED, negotiatorMode: true } };
