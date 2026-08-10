@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-import { classifyAbParentFailure, type AbRunStage } from './discovery.contract';
+import { HistoricalQualitySpentRunError, classifyAbParentFailure, type AbRunStage } from './discovery.contract';
 import { assertAbConfirmation } from './discovery.gate';
 import { assertHistoricalQualitySerialEvaluation } from './discovery.flags';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
@@ -13,7 +13,7 @@ import { preflightHistoricalQualityChildRuntime } from './discovery-quality.chil
 import { embeddingConfigurationFingerprint, HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY } from '../lib/embedding/embedding.identity';
 import { attestHistoricalQualityTargets, parseHistoricalQualityManifest, restoreHistoricalQualitySelectedChild, type AttestedHistoricalQualityManifest } from './discovery.neon';
 
-import type { HistoricalQualityRequest } from './discovery-quality.contract';
+import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, HISTORICAL_QUALITY_APPROVED_FINGERPRINTS, type HistoricalQualityRequest } from './discovery-quality.contract';
 
 export const HISTORICAL_QUALITY_SCORING_POLICY_VERSION = 'historical-quality-v1' as const;
 
@@ -77,6 +77,11 @@ export interface HistoricalQualitySlotDispatch {
   outputPath: string;
 }
 
+/**
+ * Build-only view of the dynamically imported canonical protocol type. Runtime
+ * construction and parsing remain exclusively owned by
+ * HistoricalQualityChildOutputSchema/parseHistoricalQualityChildOutput.
+ */
 export interface HistoricalQualityChildOutput {
   readonly schemaVersion: 1;
   readonly runId: string;
@@ -94,6 +99,7 @@ export interface HistoricalQualityRuntimeDeps {
   spawnSlot(input: {
     dispatch: HistoricalQualitySlotDispatch;
     environment: HistoricalQualityChildEnvironment;
+    markSpawned(): void;
   }): Promise<unknown>;
   validateSlotOutput(
     slot: HistoricalQualityPilotSlot,
@@ -101,12 +107,71 @@ export interface HistoricalQualityRuntimeDeps {
     output: unknown,
     forbiddenValues: string[],
   ): Promise<HistoricalQualityChildOutput>;
+  prepareArtifactWrite?(reportPath: string, force: boolean): Promise<void>;
+  artifactWriter?: HistoricalQualityArtifactWriter;
+  log?(message: string): void;
 }
 
-export interface HistoricalQualityParentResult {
+export type HistoricalQualityFailureClass =
+  | 'restore-failure'
+  | 'spawn-failure'
+  | 'supervisor-timeout'
+  | 'missing-child-output'
+  | 'malformed-child-output'
+  | 'artifact-writer-unavailable'
+  | 'artifact-write-failure';
+
+/** Opaque, content-free parent diagnostics are the only operational detail persisted. */
+export interface HistoricalQualityParentDiagnostic {
+  failureClass: HistoricalQualityFailureClass;
+}
+
+export type SanitizedOperationalFailure = HistoricalQualityParentDiagnostic;
+
+export interface HistoricalQualityArtifactWriter {
+  (reportPath: string, artifact: unknown, options?: { force?: boolean }): Promise<void>;
+}
+
+export interface HistoricalQualityRunSummary {
+  qualityVerdictAvailable: boolean;
+  completedSlots: number;
+  requestedSlots: number;
+  groups: unknown[] | null;
+  message?: 'no quality verdict';
+}
+
+export interface HistoricalQualityArtifactView extends Record<string, unknown> {
+  measurement: {
+    requestedSlots: number;
+    completedSlots: number;
+    qualityVerdictAvailable: boolean;
+  };
+  selection: { fullCorpus: boolean; filters: Record<string, string> };
+  execution: { policy: 'strict'; runs: unknown[] };
+  payload: { aggregatePassRate: number; cases: unknown[] };
+}
+
+export interface HistoricalQualityAggregation {
+  artifact: HistoricalQualityArtifactView;
+  qualitySummary: HistoricalQualityRunSummary;
+}
+
+export interface HistoricalQualityParentResult extends HistoricalQualityAggregation {
   runId: string;
   configurationFingerprint: string;
   outputs: HistoricalQualityChildOutput[];
+  reportPath: string;
+  exitCode: 0 | 3;
+}
+
+export class HistoricalQualitySlotOperationalError extends Error {
+  readonly failureClass: HistoricalQualityFailureClass;
+
+  constructor(failureClass: HistoricalQualityFailureClass, options?: ErrorOptions) {
+    super(`Historical quality ${failureClass}`, options);
+    this.name = 'HistoricalQualitySlotOperationalError';
+    this.failureClass = failureClass;
+  }
 }
 
 type HistoricalAuthorities = {
@@ -129,6 +194,19 @@ type HistoricalAuthorities = {
     repetition: number;
     forbiddenValues: string[];
   }): HistoricalQualityChildOutput;
+  summarizeHistoricalQualitySlot(input: {
+    completed: boolean;
+    participantMetrics: readonly unknown[];
+  }): Record<string, unknown>;
+  summarizeHistoricalQualityRun(
+    slots: readonly Record<string, unknown>[],
+    requestedSlots: number,
+    repetitionsRequested: number,
+  ): HistoricalQualityRunSummary;
+  parseHistoricalQualityArtifact(value: unknown): HistoricalQualityArtifactView;
+  readEvalGitProvenance(cwd: string): { revision: string; dirty: boolean | null };
+  writeEvalArtifact(path: string, artifact: unknown, options?: { force?: boolean }): Promise<void>;
+  assertEvalWritePlan(plan: { inputs: string[]; outputs: string[]; force?: boolean }): Promise<void>;
 };
 
 async function loadHistoricalAuthorities(): Promise<HistoricalAuthorities> {
@@ -138,11 +216,17 @@ async function loadHistoricalAuthorities(): Promise<HistoricalAuthorities> {
   const sharedSpecifier = '../../../../packages/protocol/eval/shared/index.js';
   const modelsSpecifier = '../../../../packages/protocol/src/shared/agent/model.resolver.js';
   const childOutputSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
-  const [pilot, shared, models, childOutput] = await Promise.all([
+  const metricsSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.metrics.js';
+  const artifactSpecifier = '../../../../packages/protocol/eval/shared/artifact.js';
+  const artifactIoSpecifier = '../../../../packages/protocol/eval/shared/artifact.io.js';
+  const [pilot, shared, models, childOutput, metrics, artifact, artifactIo] = await Promise.all([
     import(pilotSpecifier),
     import(sharedSpecifier),
     import(modelsSpecifier),
     import(childOutputSpecifier),
+    import(metricsSpecifier),
+    import(artifactSpecifier),
+    import(artifactIoSpecifier),
   ]);
   return {
     buildHistoricalQualityPilotPlan: pilot.buildHistoricalQualityPilotPlan as HistoricalAuthorities['buildHistoricalQualityPilotPlan'],
@@ -150,6 +234,12 @@ async function loadHistoricalAuthorities(): Promise<HistoricalAuthorities> {
     resolveEvalJudgeModelId: shared.resolveEvalJudgeModelId as HistoricalAuthorities['resolveEvalJudgeModelId'],
     resolveCanonicalAllAgentModels: models.resolveCanonicalAllAgentModels as HistoricalAuthorities['resolveCanonicalAllAgentModels'],
     parseHistoricalQualityChildOutput: childOutput.parseHistoricalQualityChildOutput as HistoricalAuthorities['parseHistoricalQualityChildOutput'],
+    summarizeHistoricalQualitySlot: metrics.summarizeHistoricalQualitySlot as HistoricalAuthorities['summarizeHistoricalQualitySlot'],
+    summarizeHistoricalQualityRun: metrics.summarizeHistoricalQualityRun as HistoricalAuthorities['summarizeHistoricalQualityRun'],
+    parseHistoricalQualityArtifact: (value) => artifact.HistoricalQualityArtifactEnvelopeSchema.parse(value) as HistoricalQualityArtifactView,
+    readEvalGitProvenance: artifact.readEvalGitProvenance as HistoricalAuthorities['readEvalGitProvenance'],
+    writeEvalArtifact: artifactIo.writeEvalArtifact as HistoricalAuthorities['writeEvalArtifact'],
+    assertEvalWritePlan: artifactIo.assertEvalWritePlan as HistoricalAuthorities['assertEvalWritePlan'],
   };
 }
 
@@ -351,12 +441,17 @@ async function productionAttest(): Promise<AttestedHistoricalQualityManifest> {
   return attestHistoricalQualityTargets({ manifest, writableRefreshTarget: refresh, controlPlane });
 }
 
+export const HISTORICAL_QUALITY_SUPERVISOR_TIMEOUT_MS = 210_000;
+
 async function productionSpawnSlot(input: {
   dispatch: HistoricalQualitySlotDispatch;
   environment: HistoricalQualityChildEnvironment;
+  markSpawned(): void;
 }): Promise<unknown> {
   const { dispatch } = input;
-  const child = Bun.spawn({
+  let child: ReturnType<typeof Bun.spawn>;
+  try {
+    child = Bun.spawn({
     cmd: [
       process.execPath, new URL('./discovery.ts', import.meta.url).pathname,
       '--historical-quality-child',
@@ -369,19 +464,44 @@ async function productionSpawnSlot(input: {
       '--child-output', dispatch.outputPath,
     ],
     env: input.environment,
-    stdout: 'pipe',
-    stderr: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    input.markSpawned();
+  } catch (error) {
+    throw new HistoricalQualitySlotOperationalError('spawn-failure', { cause: error });
+  }
+  const consume = (stream: unknown): Promise<string> => stream instanceof ReadableStream
+    ? new Response(stream).text().catch(() => '')
+    : Promise.resolve('');
+  // Drain immediately so a verbose child cannot block on a full pipe before exit.
+  const stdout = consume(child.stdout);
+  const stderr = consume(child.stderr);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), HISTORICAL_QUALITY_SUPERVISOR_TIMEOUT_MS);
+    timer.unref?.();
   });
-  const [_stdout, _stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-  if (exitCode !== 0) throw new Error('Historical quality slot child failed');
+  const exit = child.exited.then((exitCode) => ({ kind: 'exit' as const, exitCode }));
+  const supervised = await Promise.race([exit, timeout]);
+  if (timer) clearTimeout(timer);
+  if (supervised === 'timeout') {
+    child.kill('SIGTERM');
+    const escalation = setTimeout(() => child.kill('SIGKILL'), 5_000);
+    escalation.unref?.();
+    await child.exited.catch(() => undefined);
+    clearTimeout(escalation);
+    await Promise.all([stdout, stderr]);
+    throw new HistoricalQualitySlotOperationalError('supervisor-timeout');
+  }
+  await Promise.all([stdout, stderr]);
+  if (supervised.exitCode !== 0) throw new HistoricalQualitySlotOperationalError('spawn-failure');
+  const file = Bun.file(dispatch.outputPath);
+  if (!(await file.exists())) throw new HistoricalQualitySlotOperationalError('missing-child-output');
   try {
-    return await Bun.file(dispatch.outputPath).json();
-  } catch {
-    throw new Error('Historical quality slot child output was unavailable');
+    return await file.json();
+  } catch (error) {
+    throw new HistoricalQualitySlotOperationalError('malformed-child-output', { cause: error });
   }
 }
 
@@ -434,6 +554,258 @@ async function productionValidateSlotOutput(
   }
 }
 
+interface HistoricalQualityPilotPlanShape {
+  slots: HistoricalQualityPilotSlot[];
+  childSlots?: Array<{ slotId: string; configurationId: 'a' }>;
+  configurationFingerprint: string;
+  graphInvocations?: number;
+  evaluatorCalls?: number;
+  maxAttempts?: 1;
+}
+
+const HISTORICAL_QUALITY_FAILURE_CLASSES = new Set<HistoricalQualityFailureClass>([
+  'restore-failure',
+  'spawn-failure',
+  'supervisor-timeout',
+  'missing-child-output',
+  'malformed-child-output',
+  'artifact-writer-unavailable',
+  'artifact-write-failure',
+]);
+
+function assertHistoricalQualityPlanCardinality(plan: HistoricalQualityPilotPlanShape): number {
+  const requestedSlots = plan.slots.length;
+  if (requestedSlots < 1
+    || plan.graphInvocations !== undefined && plan.graphInvocations !== requestedSlots
+    || plan.evaluatorCalls !== undefined && plan.evaluatorCalls !== requestedSlots
+    || plan.maxAttempts !== undefined && plan.maxAttempts !== 1) {
+    throw new Error('Historical quality plan cardinality is inconsistent');
+  }
+  const slotIds = plan.slots.map((slot) => slot.slotId);
+  const tupleIds = plan.slots.map((slot) => JSON.stringify([slot.caseId, slot.trigger, slot.repetition]));
+  if (new Set(slotIds).size !== requestedSlots || new Set(tupleIds).size !== requestedSlots
+    || plan.slots.some((slot) => slot.selectedSide !== 'a'
+      || slot.configurationFingerprint !== plan.configurationFingerprint || slot.maxAttempts !== 1)) {
+    throw new Error('Historical quality plan identities are inconsistent');
+  }
+  if (plan.childSlots !== undefined) {
+    if (plan.childSlots.length !== requestedSlots
+      || plan.childSlots.some((slot, index) => slot.slotId !== plan.slots[index]!.slotId || slot.configurationId !== 'a')) {
+      throw new Error('Historical quality plan child cardinality is inconsistent');
+    }
+  }
+  const repetitionsByGroup = new Map<string, number[]>();
+  for (const slot of plan.slots) {
+    const key = JSON.stringify([slot.caseId, slot.trigger]);
+    const repetitions = repetitionsByGroup.get(key) ?? [];
+    repetitions.push(slot.repetition);
+    repetitionsByGroup.set(key, repetitions);
+  }
+  const first = repetitionsByGroup.values().next().value as number[] | undefined;
+  const repetitionsRequested = first?.length ?? 0;
+  if (repetitionsRequested < 1 || [...repetitionsByGroup.values()].some((repetitions) =>
+    repetitions.length !== repetitionsRequested
+      || [...repetitions].sort((left, right) => left - right).some((value, index) => value !== index))) {
+    throw new Error('Historical quality plan repetition cardinality is inconsistent');
+  }
+  return repetitionsRequested;
+}
+
+function isoAtLeast(values: readonly string[], fallback: string, kind: 'min' | 'max'): string {
+  if (values.length === 0) return fallback;
+  const times = values.map((value) => Date.parse(value));
+  return new Date(kind === 'min' ? Math.min(...times) : Math.max(...times)).toISOString();
+}
+
+/**
+ * Aggregates only canonical child envelopes. Per-slot parsing binds every
+ * parent-owned identity; this layer adds cross-output set and cardinality rules.
+ */
+export async function aggregateHistoricalQualityChildren(input: {
+  plan: HistoricalQualityPilotPlanShape;
+  outputs: readonly HistoricalQualityChildOutput[];
+  diagnostics: readonly HistoricalQualityParentDiagnostic[];
+  models?: readonly string[];
+  model?: string;
+}): Promise<HistoricalQualityAggregation> {
+  const authorities = await loadHistoricalAuthorities();
+  const repetitionsRequested = assertHistoricalQualityPlanCardinality(input.plan);
+  if (input.diagnostics.length > 1
+    || input.diagnostics.some((diagnostic) => !HISTORICAL_QUALITY_FAILURE_CLASSES.has(diagnostic.failureClass))) {
+    throw new Error('Historical quality parent diagnostics are invalid');
+  }
+  if (input.diagnostics.length === 0 && input.outputs.length !== input.plan.slots.length) {
+    throw new Error('Missing historical quality slot output');
+  }
+  if (input.outputs.length > input.plan.slots.length) throw new Error('Historical quality output cardinality exceeds plan');
+
+  const expected = new Map(input.plan.slots.map((slot) => [slot.slotId, slot]));
+  const seen = new Set<string>();
+  const parsedOutputs: HistoricalQualityChildOutput[] = [];
+  let commonRunId: string | undefined;
+  for (const output of input.outputs) {
+    const candidate = output as HistoricalQualityChildOutput;
+    const slot = expected.get(candidate.slotId);
+    if (!slot) throw new Error('Unplanned historical quality slot output');
+    if (seen.has(candidate.slotId)) throw new Error('Duplicate historical quality slot output');
+    const parsed = authorities.parseHistoricalQualityChildOutput(output, {
+      runId: commonRunId ?? candidate.runId,
+      slotId: slot.slotId,
+      configurationId: 'a',
+      configurationFingerprint: input.plan.configurationFingerprint,
+      logicalCaseId: slot.caseId,
+      trigger: slot.trigger,
+      repetition: slot.repetition,
+      forbiddenValues: [],
+    });
+    commonRunId ??= parsed.runId;
+    seen.add(parsed.slotId);
+    parsedOutputs.push(parsed);
+  }
+
+  const runSlots = parsedOutputs.map((output) => {
+    const transport = output.transportRow as {
+      logicalCaseId: string;
+      trigger: 'intent' | 'enrichment';
+      repetition: number;
+      completed: boolean;
+      participantMetrics: readonly unknown[];
+    };
+    return {
+      logicalCaseId: transport.logicalCaseId,
+      trigger: transport.trigger,
+      repetition: transport.repetition,
+      slotSummary: authorities.summarizeHistoricalQualitySlot({
+        completed: transport.completed,
+        participantMetrics: transport.participantMetrics,
+      }),
+    };
+  });
+  const qualitySummary = authorities.summarizeHistoricalQualityRun(
+    runSlots,
+    input.plan.slots.length,
+    repetitionsRequested,
+  );
+  if (input.diagnostics.length > 0 && qualitySummary.qualityVerdictAvailable === true) {
+    throw new Error('Historical quality operational diagnostic cannot carry a quality verdict');
+  }
+
+  const cases = parsedOutputs.map(({ transportRow, executionRun }) => ({
+    caseId: executionRun.caseId,
+    rule: 'execution-completeness' as const,
+    runs: 1 as const,
+    passes: transportRow.completed ? 1 as const : 0 as const,
+    passRate: transportRow.completed ? 1 as const : 0 as const,
+    flaky: false as const,
+    scoredRunIds: transportRow.completed ? [executionRun.runId] : [],
+    ...transportRow,
+  }));
+  const executionRuns = parsedOutputs.map((output) => output.executionRun as {
+    runId: string;
+    caseId: string;
+    outcome: string;
+    recovered: boolean;
+    attempts: Array<{ startedAt: string; completedAt: string }>;
+  });
+  const completedSlots = parsedOutputs.filter((output) => (output.transportRow as { completed: boolean }).completed).length;
+  const successRuns = executionRuns.filter((run) => run.outcome === 'success').length;
+  const recoveredRuns = executionRuns.filter((run) => run.recovered).length;
+  const totalAttempts = executionRuns.reduce((total, run) => total + run.attempts.length, 0);
+  const attemptStarts = executionRuns.flatMap((run) => run.attempts.map((attempt) => attempt.startedAt));
+  const attemptEnds = executionRuns.flatMap((run) => run.attempts.map((attempt) => attempt.completedAt));
+  const now = new Date().toISOString();
+  const startedAt = isoAtLeast(attemptStarts, now, 'min');
+  const completedAt = isoAtLeast(attemptEnds, now, 'max');
+  const createdAt = new Date(Math.max(Date.parse(now), Date.parse(completedAt))).toISOString();
+  const failureClass = input.diagnostics[0]?.failureClass;
+  const selectedCaseIds = [...new Set(input.plan.slots.map((slot) => slot.caseId))];
+  const selectedTriggers = [...new Set(input.plan.slots.map((slot) => slot.trigger))];
+  const fullSelection = failureClass === undefined
+    && selectedCaseIds.length === HISTORICAL_QUALITY_APPROVED_CASE_IDS.length
+    && HISTORICAL_QUALITY_APPROVED_CASE_IDS.every((caseId) => selectedCaseIds.includes(caseId))
+    && selectedTriggers.length === 2;
+  const filters: Record<string, string> = {};
+  if (!fullSelection) {
+    filters.case = selectedCaseIds.join(',');
+    filters.trigger = selectedTriggers.join(',');
+  }
+  if (failureClass !== undefined) filters.operationalFailureClass = failureClass;
+  const rate = cases.length === 0 ? 0 : completedSlots / cases.length;
+  const verdict = qualitySummary.qualityVerdictAvailable === true && failureClass === undefined;
+  const models = [...new Set(input.models ?? ['configured runtime models'])];
+  const model = input.model ?? models[0] ?? 'configured runtime models';
+  if (models.length === 0 || models.some((value) => value.trim() === '') || model.trim() === '') {
+    throw new Error('Historical quality artifact models are invalid');
+  }
+  const artifact = {
+    artifactType: 'index-eval/run-report' as const,
+    schemaVersion: 2 as const,
+    harness: 'discovery',
+    harnessVersion: '1',
+    source: 'run' as const,
+    createdAt,
+    startedAt,
+    completedAt,
+    models,
+    runs: 1 as const,
+    selection: { fullCorpus: fullSelection, filters },
+    corpusFingerprint: HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.planFingerprint,
+    configFingerprint: input.plan.configurationFingerprint,
+    git: authorities.readEvalGitProvenance(import.meta.dir),
+    completeness: {
+      caseCount: cases.length,
+      ruleCount: 1,
+      totalRuns: cases.length,
+      totalPasses: completedSlots,
+      flakyCaseCount: 0,
+      requestedRuns: executionRuns.length,
+      completedRuns: successRuns,
+      failedRuns: executionRuns.length - successRuns,
+      recoveredRuns,
+      totalAttempts,
+      complete: verdict,
+    },
+    measurement: {
+      kind: 'historical-quality-pilot' as const,
+      scorecardSemantics: 'execution-completeness' as const,
+      repetitionsRequested,
+      requestedSlots: input.plan.slots.length,
+      completedSlots,
+      qualityVerdictAvailable: verdict,
+    },
+    execution: { policy: 'strict' as const, runs: executionRuns },
+    payload: {
+      generatedAt: completedAt,
+      model,
+      runs: 1 as const,
+      aggregatePassRate: rate,
+      rules: [{ rule: 'execution-completeness' as const, caseCount: cases.length, passRate: rate }],
+      cases,
+    },
+  };
+  return { artifact: authorities.parseHistoricalQualityArtifact(artifact), qualitySummary };
+}
+
+export async function writeOperationalDiagnosticBestEffort(input: {
+  plan: HistoricalQualityPilotPlanShape;
+  acceptedOutputs: readonly HistoricalQualityChildOutput[];
+  primaryFailure: SanitizedOperationalFailure;
+  reportPath: string;
+  writer: HistoricalQualityArtifactWriter;
+}): Promise<{ written: boolean; artifactWriteFailure?: SanitizedOperationalFailure }> {
+  try {
+    const { artifact } = await aggregateHistoricalQualityChildren({
+      plan: input.plan,
+      outputs: input.acceptedOutputs,
+      diagnostics: [input.primaryFailure],
+    });
+    await input.writer(input.reportPath, artifact);
+    return { written: true };
+  } catch {
+    return { written: false, artifactWriteFailure: { failureClass: 'artifact-write-failure' } };
+  }
+}
+
 const productionDependencies: HistoricalQualityRuntimeDeps = {
   preflightChildRuntime: async () => {
     // Consent stays the first production gate, while child availability still
@@ -449,6 +821,15 @@ const productionDependencies: HistoricalQualityRuntimeDeps = {
   }),
   spawnSlot: productionSpawnSlot,
   validateSlotOutput: productionValidateSlotOutput,
+  prepareArtifactWrite: async (reportPath, force) => {
+    const { assertEvalWritePlan } = await loadHistoricalAuthorities();
+    await assertEvalWritePlan({ inputs: [], outputs: [reportPath], force });
+  },
+  artifactWriter: async (reportPath, artifact, options) => {
+    const { writeEvalArtifact } = await loadHistoricalAuthorities();
+    await writeEvalArtifact(reportPath, artifact, options);
+  },
+  log: (message) => console.log(message),
 };
 
 export async function runHistoricalQualityRuntime(
@@ -457,6 +838,11 @@ export async function runHistoricalQualityRuntime(
 ): Promise<HistoricalQualityParentResult> {
   let stage: AbRunStage | null = null;
   let temporaryDirectory: string | undefined;
+  let plan: HistoricalQualityPilotPlanShape | undefined;
+  let reportPath: string | undefined;
+  let artifactModels: string[] | undefined;
+  let artifactModel: string | undefined;
+  const outputs: HistoricalQualityChildOutput[] = [];
   try {
     // Parallel mode spends once per candidate. Refuse it before even runtime
     // preflight so the quality cost remains exactly one evaluator call per slot.
@@ -470,16 +856,18 @@ export async function runHistoricalQualityRuntime(
     const reconciledEnvironment = reconcileHistoricalQualityEmbedding(verifiedBase, process.env);
     const resolved = await resolveHistoricalQualityConfiguration({ request, verifiedBase, environment: reconciledEnvironment });
     const { buildHistoricalQualityPilotPlan, fingerprintCanonicalJson } = await loadHistoricalAuthorities();
-    const plan = buildHistoricalQualityPilotPlan({
+    plan = buildHistoricalQualityPilotPlan({
       caseIds: request.caseIds,
       triggers: request.triggers,
       repetitions: request.repetitions,
       configuration: { id: 'a', config: resolved },
-    });
+    }) as HistoricalQualityPilotPlanShape;
     const recomputedConfigurationFingerprint = fingerprintCanonicalJson(resolved);
     const childResolvedConfigurationFingerprint = await fingerprintHistoricalQualityChildResolvedConfiguration(
       historicalQualityChildResolvedProjection(resolved),
     );
+    artifactModels = [...new Set([...Object.values(resolved.models), resolved.fixed.judgeModelId])];
+    artifactModel = resolved.fixed.judgeModelId;
     if (plan.configurationFingerprint !== recomputedConfigurationFingerprint
       || plan.slots.some((slot) => slot.configurationFingerprint !== recomputedConfigurationFingerprint)) {
       throw new Error('Historical quality planner configuration fingerprint mismatch');
@@ -488,13 +876,25 @@ export async function runHistoricalQualityRuntime(
       parentEnvironment: reconciledEnvironment,
       sanitizedConfiguration: request.configuration.config,
     });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    reportPath = request.reportPath === undefined
+      ? path.resolve(import.meta.dir, '../../eval/discovery/runs', `${stamp}.json`)
+      : path.resolve(request.reportPath);
+    if ((await stat(reportPath).catch(() => undefined))?.isDirectory()) {
+      throw new Error(`Historical quality report path must name a file: ${reportPath}`);
+    }
+    await deps.prepareArtifactWrite?.(reportPath, request.force);
+
     const runId = `hq-run-${randomBytes(16).toString('hex')}`;
-    const outputs: HistoricalQualityChildOutput[] = [];
     temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'historical-quality-'));
 
     for (const slot of plan.slots) {
       stage = 'resetting';
-      await deps.restoreSelectedChild(manifest);
+      try {
+        await deps.restoreSelectedChild(manifest);
+      } catch (error) {
+        throw new HistoricalQualitySlotOperationalError('restore-failure', { cause: error });
+      }
       stage = 'reset';
       const dispatch: HistoricalQualitySlotDispatch = {
         runId,
@@ -505,14 +905,92 @@ export async function runHistoricalQualityRuntime(
         childResolvedConfigurationFingerprint,
         outputPath: path.join(temporaryDirectory, `${slot.slotId}.json`),
       };
-      stage = 'spawned';
-      const output = await deps.spawnSlot({ dispatch, environment: childEnvironment });
-      outputs.push(await deps.validateSlotOutput(slot, dispatch, output, forbiddenValues));
+      let output: unknown;
+      try {
+        output = await deps.spawnSlot({
+          dispatch,
+          environment: childEnvironment,
+          markSpawned: () => { stage = 'spawned'; },
+        });
+      } catch (error) {
+        if (error instanceof HistoricalQualitySlotOperationalError) throw error;
+        throw new HistoricalQualitySlotOperationalError('spawn-failure', { cause: error });
+      }
+      try {
+        outputs.push(await deps.validateSlotOutput(slot, dispatch, output, forbiddenValues));
+      } catch (error) {
+        throw new HistoricalQualitySlotOperationalError('malformed-child-output', { cause: error });
+      }
     }
-    return { runId, configurationFingerprint: plan.configurationFingerprint, outputs };
+
+    const aggregation = await aggregateHistoricalQualityChildren({
+      plan,
+      outputs,
+      diagnostics: [],
+      models: artifactModels,
+      model: artifactModel,
+    });
+    if (!deps.artifactWriter) throw new HistoricalQualitySlotOperationalError('artifact-writer-unavailable');
+    try {
+      await deps.artifactWriter(reportPath, aggregation.artifact, { force: request.force });
+    } catch (error) {
+      throw new HistoricalQualitySlotOperationalError('artifact-write-failure', { cause: error });
+    }
+    const exitCode = aggregation.qualitySummary.qualityVerdictAvailable === true ? 0 as const : 3 as const;
+    deps.log?.(`Historical quality artifact written: ${reportPath}`);
+    if (exitCode === 3) {
+      deps.log?.('no quality verdict');
+    } else {
+      deps.log?.(`Historical quality summary: ${JSON.stringify(aggregation.qualitySummary)}`);
+    }
+    process.exitCode = exitCode;
+    return {
+      runId,
+      configurationFingerprint: plan.configurationFingerprint,
+      outputs,
+      reportPath,
+      exitCode,
+      ...aggregation,
+    };
   } catch (error) {
+    if (stage !== null && plan !== undefined && reportPath !== undefined) {
+      const primaryFailure: SanitizedOperationalFailure = {
+        failureClass: error instanceof HistoricalQualitySlotOperationalError
+          ? error.failureClass
+          : stage === 'resetting' ? 'restore-failure' : 'spawn-failure',
+      };
+      let artifactFailure: SanitizedOperationalFailure | undefined;
+      let diagnosticReportPath: string | undefined;
+      if (primaryFailure.failureClass !== 'artifact-write-failure') {
+        if (deps.artifactWriter) {
+          const diagnostic = await writeOperationalDiagnosticBestEffort({
+            plan,
+            acceptedOutputs: outputs,
+            primaryFailure,
+            reportPath,
+            writer: (destination, artifact) => deps.artifactWriter!(destination, artifact, { force: request.force }),
+          });
+          artifactFailure = diagnostic.artifactWriteFailure;
+          if (diagnostic.written) diagnosticReportPath = reportPath;
+        } else if (primaryFailure.failureClass !== 'artifact-writer-unavailable') {
+          artifactFailure = { failureClass: 'artifact-writer-unavailable' };
+        }
+      }
+      throw new HistoricalQualitySpentRunError(
+        stage,
+        primaryFailure.failureClass,
+        artifactFailure?.failureClass,
+        {
+          shape: 'single',
+          cause: error,
+          ...(diagnosticReportPath === undefined ? {} : { diagnosticReportPath }),
+        },
+      );
+    }
     throw classifyAbParentFailure(stage, error, { shape: 'single' });
   } finally {
+    // Child files are removed only after aggregation/report handling has either
+    // succeeded or been classified. Cleanup never replaces the primary result.
     if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
   }
 }

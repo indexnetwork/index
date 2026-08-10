@@ -3,9 +3,12 @@ import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, type HistoricalQualityRequest } from '../discovery-quality.contract';
+import { makeHistoricalQualityArtifact } from '../../../../../packages/protocol/eval/shared/tests/artifact.fixtures.js';
+import { HistoricalQualityChildOutputSchema } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
 import { DISCOVERY_ENV_KEYS } from '../discovery.flags';
 import { HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
-import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, historicalQualityChildResolvedProjection, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, type HistoricalQualityRuntimeDeps, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
+import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, HistoricalQualitySlotOperationalError, historicalQualityChildResolvedProjection, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, type HistoricalQualityRuntimeDeps, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
+import { HistoricalQualitySpentRunError, describeAbFailure } from '../discovery.contract';
 import { embeddingConfigurationFingerprint } from '../../lib/embedding/embedding.identity';
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -54,6 +57,7 @@ const saved = { ...process.env };
 afterEach(() => {
   for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
   Object.assign(process.env, saved);
+  process.exitCode = 0;
 });
 
 describe('historical quality child environment', () => {
@@ -161,10 +165,41 @@ describe('historical quality production configuration resolver', () => {
   });
 });
 
-function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
+function terminalOutput(slot: { slotId: string; caseId: string; trigger: 'intent' | 'enrichment'; repetition: number }, dispatch: { runId: string; configurationFingerprint: string }, completed = true) {
+  const fixture = makeHistoricalQualityArtifact({ emittedSlots: 1, requestedSlots: 1, ...(completed ? {} : { failedSlot: 0 }) });
+  const sourceRow = fixture.payload.cases[0]!;
+  const transportCaseId = `${encodeURIComponent(slot.caseId)}/${slot.trigger}/r${slot.repetition + 1}`;
+  const executionRun = structuredClone(fixture.execution.runs[0]!);
+  executionRun.caseId = transportCaseId;
+  executionRun.runId = `${encodeURIComponent(transportCaseId)}::run:1`;
+  executionRun.attempts[0]!.runId = executionRun.runId;
+  executionRun.attempts[0]!.attemptId = `${executionRun.runId}::attempt:1`;
+  return HistoricalQualityChildOutputSchema.parse({
+    schemaVersion: 1,
+    runId: dispatch.runId,
+    slotId: slot.slotId,
+    configurationId: 'a',
+    transportRow: {
+      kind: 'historical-quality-pilot',
+      logicalCaseId: slot.caseId,
+      trigger: slot.trigger,
+      repetition: slot.repetition,
+      configurationFingerprint: dispatch.configurationFingerprint,
+      completed,
+      participantMetrics: sourceRow.participantMetrics,
+      stageFunnel: sourceRow.stageFunnel,
+    },
+    executionRun,
+  });
+}
+
+function runtimeDeps(input: { verifierFailure?: Error; failedSlots?: Set<number> } = {}) {
   const calls: string[] = [];
   let active = false;
+  let slotIndex = 0;
   const argv: string[][] = [];
+  const written: Array<{ path: string; artifact: unknown }> = [];
+  const logs: string[] = [];
   const deps: HistoricalQualityRuntimeDeps = {
     preflightChildRuntime: async () => { calls.push('child-preflight'); },
     attest: async () => {
@@ -189,10 +224,11 @@ function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
       expect(active).toBe(false);
       calls.push('restore');
     },
-    spawnSlot: async ({ dispatch, environment }) => {
+    spawnSlot: async ({ dispatch, environment, markSpawned }) => {
       expect(active).toBe(false);
       active = true;
       calls.push('spawn');
+      markSpawned();
       argv.push([
         dispatch.runId,
         dispatch.slotId,
@@ -207,15 +243,19 @@ function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
       active = false;
       return { slotId: dispatch.slotId, configurationId: 'a' };
     },
-    validateSlotOutput: async (slot, _dispatch, output, forbiddenValues) => {
+    validateSlotOutput: async (slot, dispatch, output, forbiddenValues) => {
       expect(active).toBe(false);
       calls.push('validate');
       expect((output as { slotId: string }).slotId).toBe(slot.slotId);
       expect(forbiddenValues).toEqual(expect.arrayContaining(['manifest-secret-sentinel', 'neon-secret-sentinel', 'openrouter-secret-sentinel', 'redis://redis-secret-sentinel@example.invalid', 'replica-secret', 'a-secret', 'b-secret', providerFingerprint]));
-      return output as never;
+      const completed = !input.failedSlots?.has(slotIndex++);
+      return terminalOutput(slot, dispatch, completed);
     },
+    prepareArtifactWrite: async () => { calls.push('prepare-write'); },
+    artifactWriter: async (reportPath, artifact) => { calls.push('write'); written.push({ path: reportPath, artifact }); },
+    log: (message) => { logs.push(message); },
   };
-  return { calls, argv, deps };
+  return { calls, argv, written, logs, deps };
 }
 
 describe('historical quality runtime acceptance order', () => {
@@ -252,8 +292,9 @@ describe('historical quality runtime acceptance order', () => {
     const result = await runHistoricalQualityRuntime(tenSlots, deps);
     expect(result.outputs).toHaveLength(10);
     expect(calls).toEqual([
-      'child-preflight', 'attest', 'verify', 'verifier-closed',
+      'child-preflight', 'attest', 'verify', 'verifier-closed', 'prepare-write',
       ...Array.from({ length: 10 }, () => ['restore', 'spawn', 'validate']).flat(),
+      'write',
     ]);
     expect(argv.flat().join(' ')).not.toContain('DISCOVERY_ALLOWED_TYPES');
     for (const sentinel of ['manifest-secret-sentinel', 'neon-secret-sentinel', 'openrouter-secret-sentinel', 'redis-secret-sentinel', providerFingerprint]) {
@@ -358,5 +399,110 @@ describe('historical quality runtime acceptance order', () => {
       { ...projection, fixed: { ...projection.fixed, scoringPolicyFingerprint: 'f'.repeat(64) } },
     ];
     for (const mutation of mutations) expect(digest(canonicalJson(mutation))).not.toBe(baseFingerprint);
+  });
+
+  it('writes a complete V2 report and exposes a quality summary only after every exact slot is handled', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps, written, calls, logs } = runtimeDeps();
+    const result = await runHistoricalQualityRuntime({ ...request, reportPath: '/tmp/quality-complete.json' }, deps);
+    expect(result.exitCode).toBe(0);
+    expect(result.qualitySummary.qualityVerdictAvailable).toBeTrue();
+    expect(result.artifact.measurement.qualityVerdictAvailable).toBeTrue();
+    expect(written).toHaveLength(1);
+    expect(calls.at(-1)).toBe('write');
+    expect(logs).toContain('Historical quality artifact written: /tmp/quality-complete.json');
+    expect(logs.some((line) => line.startsWith('Historical quality summary: '))).toBeTrue();
+  });
+
+  it('continues scheduling terminal failed slots, writes all rows, then prints exact no-verdict and exits 3', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps, written, logs, calls } = runtimeDeps({ failedSlots: new Set([0]) });
+    const twoSlots = { ...request, triggers: ['intent', 'enrichment'] as const };
+    const result = await runHistoricalQualityRuntime(twoSlots, deps);
+    expect(calls.filter((call) => call === 'spawn')).toHaveLength(2);
+    expect(result.exitCode).toBe(3);
+    expect(result.qualitySummary).toMatchObject({ qualityVerdictAvailable: false, groups: null });
+    expect(result.artifact.payload.cases).toHaveLength(2);
+    expect(written).toHaveLength(1);
+    expect(logs).toContain('no quality verdict');
+  });
+
+  it('stops after an operational restore failure, writes accepted rows best-effort, and retains exit 4', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps, written, calls } = runtimeDeps();
+    let restores = 0;
+    deps.restoreSelectedChild = async () => {
+      calls.push('restore');
+      if (restores++ === 1) throw new Error('postgres://user:secret@example.invalid/raw');
+    };
+    const twoSlots = { ...request, triggers: ['intent', 'enrichment'] as const };
+    const thrown = await runHistoricalQualityRuntime(twoSlots, deps).catch((error) => error);
+    expect(thrown).toBeInstanceOf(HistoricalQualitySpentRunError);
+    expect(describeAbFailure(thrown).exitCode).toBe(4);
+    expect(calls.filter((call) => call === 'spawn')).toHaveLength(1);
+    expect(written).toHaveLength(1);
+    const artifact = written[0]!.artifact as {
+      payload: { cases: unknown[] };
+      selection: { filters: Record<string, string> };
+    };
+    expect(artifact.payload.cases).toHaveLength(1);
+    expect(artifact.selection.filters.operationalFailureClass).toBe('restore-failure');
+    const report = describeAbFailure(thrown);
+    expect(report.message).toContain('Diagnostic unavailable-verdict report written:');
+    expect(report.message).not.toContain('No run report was written');
+    expect(report.message).not.toContain('secret');
+  });
+
+  it.each([
+    'spawn-failure',
+    'supervisor-timeout',
+    'missing-child-output',
+    'malformed-child-output',
+  ] as const)('best-effort writes a sanitized diagnostic for operational class %s', async (failureClass) => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps, written } = runtimeDeps();
+    if (failureClass === 'malformed-child-output') {
+      deps.validateSlotOutput = async () => { throw new Error('raw malformed detail'); };
+    } else {
+      deps.spawnSlot = async ({ markSpawned }) => {
+        if (failureClass !== 'spawn-failure') markSpawned();
+        throw new HistoricalQualitySlotOperationalError(failureClass);
+      };
+    }
+    const thrown = await runHistoricalQualityRuntime(request, deps).catch((error) => error);
+    expect(describeAbFailure(thrown).exitCode).toBe(4);
+    expect(written).toHaveLength(1);
+    const artifact = written[0]!.artifact as { selection: { filters: Record<string, string> } };
+    expect(artifact.selection.filters.operationalFailureClass).toBe(failureClass);
+  });
+
+  it('classifies supervisor timeout separately and never converts writer failure into exit 3', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps } = runtimeDeps();
+    deps.spawnSlot = async ({ markSpawned }) => {
+      markSpawned();
+      throw new HistoricalQualitySlotOperationalError('supervisor-timeout');
+    };
+    deps.artifactWriter = async () => { throw new Error('Authorization: Bearer writer-secret'); };
+    const thrown = await runHistoricalQualityRuntime(request, deps).catch((error) => error);
+    expect(thrown).toBeInstanceOf(HistoricalQualitySpentRunError);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(4);
+    expect(report.message).toContain('supervisor-timeout');
+    expect(report.message).toContain('artifact-write-failure');
+    expect(report.message).not.toContain('writer-secret');
+  });
+
+  it('reports an unavailable writer separately without masking the primary malformed-output class', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps } = runtimeDeps();
+    deps.validateSlotOutput = async () => { throw new Error('raw malformed secret'); };
+    delete deps.artifactWriter;
+    const thrown = await runHistoricalQualityRuntime(request, deps).catch((error) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(4);
+    expect(report.message).toContain('malformed-child-output');
+    expect(report.message).toContain('artifact-writer-unavailable');
+    expect(report.message).not.toContain('raw malformed secret');
   });
 });

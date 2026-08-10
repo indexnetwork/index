@@ -217,6 +217,42 @@ export class AbSpentRunError extends Error {
 }
 
 /**
+ * Historical quality operational failures carry only fixed opaque classes.
+ * A secondary report-write failure is appended rather than replacing the
+ * restore/spawn/supervision failure that determines exit 4.
+ */
+export class HistoricalQualitySpentRunError extends AbSpentRunError {
+  readonly primaryFailureClass: string;
+  readonly artifactFailureClass?: string;
+  readonly diagnosticReportPath?: string;
+
+  constructor(
+    stage: AbRunStage,
+    primaryFailureClass: string,
+    artifactFailureClass?: string,
+    options?: ErrorOptions & AbSpentRunDetail & { diagnosticReportPath?: string },
+  ) {
+    super(stage, options);
+    this.name = 'HistoricalQualitySpentRunError';
+    this.primaryFailureClass = primaryFailureClass;
+    if (artifactFailureClass !== undefined) this.artifactFailureClass = artifactFailureClass;
+    if (options?.diagnosticReportPath !== undefined) this.diagnosticReportPath = options.diagnosticReportPath;
+    const operation = stage === 'resetting'
+      ? `while restoring ${AB_BRANCH_NAMES.a}; the branch may have been overwritten and no side was confirmed started`
+      : stage === 'reset'
+        ? `after restoring ${AB_BRANCH_NAMES.a} and before a side was confirmed started`
+        : `after restoring ${AB_BRANCH_NAMES.a} and starting the side process`;
+    const artifact = this.diagnosticReportPath === undefined
+      ? 'No diagnostic run report was written.'
+      : `Diagnostic unavailable-verdict report written: ${this.diagnosticReportPath}.`;
+    this.message = `Historical quality failed ${operation}. Operational failure: ${primaryFailureClass}. ${artifact}`;
+    if (artifactFailureClass !== undefined) {
+      this.message += ` Diagnostic artifact reporting failure: ${artifactFailureClass}.`;
+    }
+  }
+}
+
+/**
  * Classifies a parent failure by how far the run got, so the two halves of the
  * old catch-all can be told apart.
  *
