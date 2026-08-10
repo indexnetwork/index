@@ -981,7 +981,8 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   function UserAvatar(props) {
     const seed = props.id || props.name || "default";
     const size = props.size;
-    const className = (props.className || "index-dashboard__avatar")
+    const className = "index-dashboard__avatar"
+      + (props.className ? " " + props.className : "")
       + (props.ghost ? " index-dashboard__net-member-avatar--ghost" : "");
     const style = size ? { width: size, height: size } : undefined;
     const children = [React.createElement(BoringAvatar, { key: "fallback", seed: seed })];
