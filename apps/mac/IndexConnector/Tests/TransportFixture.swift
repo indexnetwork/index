@@ -43,7 +43,8 @@ private final class TransportInstallationStore: ConnectorInstallationStoring {
     private var state: ConnectorInstallationState
     var failNextSet = false
     var failPhase: ConnectorRecoveryPhase?
-    var failClearCount = 0
+    var failNoneTransitionNumber: Int?
+    private var noneTransitionCount = 0
     init(installationId: String) {
         state = ConnectorInstallationState(installationId: installationId, recoveryPhase: .none)
     }
@@ -56,10 +57,6 @@ private final class TransportInstallationStore: ConnectorInstallationStoring {
     func setRecoveryPhase(_ phase: ConnectorRecoveryPhase) throws {
         if failNextSet {
             failNextSet = false
-            throw ConnectorInstallationStoreError.invalidState
-        }
-        if phase == .none && failClearCount > 0 {
-            failClearCount -= 1
             throw ConnectorInstallationStoreError.invalidState
         }
         var replacement = state
@@ -78,9 +75,12 @@ private final class TransportInstallationStore: ConnectorInstallationStoring {
             failPhase = nil
             throw ConnectorInstallationStoreError.invalidState
         }
-        if replacement.recoveryPhase == .none && failClearCount > 0 {
-            failClearCount -= 1
-            throw ConnectorInstallationStoreError.invalidState
+        if replacement.recoveryPhase == .none {
+            noneTransitionCount += 1
+            if failNoneTransitionNumber == noneTransitionCount {
+                failNoneTransitionNumber = nil
+                throw ConnectorInstallationStoreError.invalidState
+            }
         }
         state = replacement
         return true
@@ -691,7 +691,8 @@ struct TransportFixture {
         let journalClearFailureNoKeyConvergence = "journalClearFailureNoKeyConvergence"
         let clearServer = TransportFixtureServer()
         let clearCredentials = TransportCredentialStore(record: record)
-        let clearJournal = TransportInstallationStore(installationId: record.installationId); clearJournal.failClearCount = 1
+        let clearJournal = TransportInstallationStore(installationId: record.installationId)
+        clearJournal.failNoneTransitionNumber = 2
         let clearRuntime = try makeRuntime(server: clearServer, record: record, credentialStore: clearCredentials, installationStore: clearJournal)
         precondition(clearRuntime.handle(disconnectRequest("clear-failure")).result == .object(["status": .string("recovery_only")]))
         precondition(clearCredentials.record == nil && clearJournal.recoveryPhase == .revocationProbeConfirmed)

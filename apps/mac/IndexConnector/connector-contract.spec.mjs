@@ -376,6 +376,7 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
     'serverUncertaintyKeyRetention', 'keychainDeletionFailure',
     'journalClearFailureNoKeyConvergence', 'initialRecoveryJournalFailure',
     'serverReceiptJournalFailure', 'probeConfirmedJournalFailure',
+    'failNoneTransitionNumber = 2',
     'activationRequestedJournalFailure', 'labelUpdateKeychainFailure',
     'disconnectBeforeCallback', 'callbackBeforeDisconnectBeforePoll',
     'disconnectWhileActivationBlocked', 'disconnectWhileExchangeBlocked',
