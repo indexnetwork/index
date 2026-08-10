@@ -357,19 +357,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     return () => { alive = false; };
   }, [live, client, discovering]);
 
-  // 45s is fine for a settled radar, but far too slow to watch a status turn
-  // while the agents are mid-negotiation, so the poll tightens while discovery
-  // is running or anyone is still negotiating, and relaxes once it settles.
-  // Declared here rather than beside refreshRadar because it reads
-  // negotiatingPeople, which is derived above.
-  const pollMs = discovering ? 4000 : (negotiatingPeople.length > 0 ? 12000 : 45000);
-
   useEffect(() => {
     if (!live) return;
     refreshRadar();
-    const t = setInterval(refreshRadar, pollMs);
+    const t = setInterval(refreshRadar, 5000);
     return () => clearInterval(t);
-  }, [live, refreshRadar, pollMs]);
+  }, [live, refreshRadar]);
 
   // The four states an opportunity can be in for you, in the order they happen:
   // it needs you, agents are still talking, you took it, it ran out.
