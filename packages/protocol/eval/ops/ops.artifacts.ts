@@ -130,6 +130,14 @@ export class FsArtifactSource implements ArtifactSource {
       caseCount: envelope.payload.cases.length,
       complete: typeof completeness.complete === "boolean" ? completeness.complete : null,
       measurementKind: isHistoricalQualityArtifact(envelope) ? envelope.measurement.kind : null,
+      ...(isHistoricalQualityArtifact(envelope)
+        ? {
+            qualityCompleteness: {
+              requestedSlots: envelope.measurement.requestedSlots,
+              completedSlots: envelope.measurement.completedSlots,
+            },
+          }
+        : {}),
       sizeBytes: stats.size,
       mtimeMs: stats.mtimeMs,
     };

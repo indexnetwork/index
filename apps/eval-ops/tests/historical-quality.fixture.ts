@@ -40,6 +40,10 @@ export function historicalQualityRef(
     caseCount: artifact.payload.cases.length,
     complete: artifact.completeness.complete,
     measurementKind: artifact.measurement.kind,
+    qualityCompleteness: {
+      requestedSlots: artifact.measurement.requestedSlots,
+      completedSlots: artifact.measurement.completedSlots,
+    },
     sizeBytes: 4096,
     mtimeMs: Date.parse(artifact.createdAt),
   };

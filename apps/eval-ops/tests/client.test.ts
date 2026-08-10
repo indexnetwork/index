@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { api, onAuthRefusal, subscribeToRun, encodeArtifactId } from '../src/api/client';
-import type { HistoricalQualityArtifact } from '../src/api/client';
+import type { ArtifactRef, HistoricalQualityArtifact } from '../src/api/client';
 import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 describe('subscribeToRun', () => {
@@ -346,6 +346,11 @@ describe('historical quality client types', () => {
 
     expect(artifact.measurement.kind).toBe('historical-quality-pilot');
     expect(artifact.measurement.completedSlots).toBe(10);
+    const indexed: ArtifactRef['qualityCompleteness'] = {
+      requestedSlots: artifact.measurement.requestedSlots,
+      completedSlots: artifact.measurement.completedSlots,
+    };
+    expect(indexed).toEqual({ requestedSlots: 10, completedSlots: 10 });
     expect(first.stageFunnel?.participants).toBe(24);
     expect(first.participantMetrics).toHaveLength(24);
     expect(first.participantMetrics[0]?.role).toBe('target');

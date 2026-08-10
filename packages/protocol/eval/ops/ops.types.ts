@@ -155,6 +155,11 @@ export interface ArtifactRef {
   complete: boolean | null;
   /** Indexed discriminator for descriptive measurement artifacts; null for scorecards. */
   measurementKind: "historical-quality-pilot" | null;
+  /** Exact execution completeness, present only for indexed historical-quality artifacts. */
+  qualityCompleteness?: {
+    requestedSlots: number;
+    completedSlots: number;
+  };
   sizeBytes: number;
   mtimeMs: number;
 }

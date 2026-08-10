@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
-import { api, isHistoricalQualityArtifact, type ArtifactRef, type HarnessDescriptor, type IndexIssue } from '../api/client';
+import { QualityCompleteness } from '../components/QualityCompleteness';
+import { api, type ArtifactRef, type HarnessDescriptor, type IndexIssue } from '../api/client';
 
 interface HarnessState {
   artifacts: ArtifactRef[];
@@ -128,7 +129,10 @@ function ArtifactList({ artifacts }: { artifacts: ArtifactRef[] }) {
             {artifact.kind}
           </span>
           {artifact.measurementKind === 'historical-quality-pilot' ? (
-            <QualityCompleteness artifactId={artifact.id} />
+            <QualityCompleteness
+              completeness={artifact.qualityCompleteness}
+              className="text-right"
+            />
           ) : (
             <span className="w-16 text-right">
               {(artifact.aggregatePassRate * 100).toFixed(1)}%
@@ -138,32 +142,6 @@ function ArtifactList({ artifacts }: { artifacts: ArtifactRef[] }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function QualityCompleteness({ artifactId }: { artifactId: string }) {
-  const [value, setValue] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    api.artifact(artifactId).then((artifact) => {
-      if (!mounted) return;
-      setValue(isHistoricalQualityArtifact(artifact)
-        ? `${artifact.measurement.completedSlots}/${artifact.measurement.requestedSlots}`
-        : 'unavailable');
-    }).catch(() => {
-      if (mounted) setValue('unavailable');
-    });
-    return () => {
-      mounted = false;
-    };
-  }, [artifactId]);
-
-  return (
-    <span className="text-right">
-      <span className="font-mono">{value ?? '…'}</span>{' '}
-      <span className="text-term-dim">completed/requested</span>
-    </span>
   );
 }
 

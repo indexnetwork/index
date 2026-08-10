@@ -165,9 +165,6 @@ describe('Overview', () => {
         if (href.endsWith('/api/artifacts')) {
           return new Response(JSON.stringify({ refs: [qualityRef], issues: [] }));
         }
-        if (href.endsWith('/api/artifacts/quality')) {
-          return new Response(JSON.stringify(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT));
-        }
         if (href.endsWith('/api/runs')) return new Response(JSON.stringify({ runs: [], issues: [] }));
         if (href.endsWith('/api/fixture')) return new Response(JSON.stringify({ allowed: false, reason: 'not configured' }));
         throw new Error(`unexpected fetch ${url}`);
@@ -184,6 +181,8 @@ describe('Overview', () => {
     expect(screen.getByText(/completed\/requested/i)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('90.0%');
     expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner/i);
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain('/api/artifacts/quality');
   });
 
   it('surfaces index issues instead of hiding them', async () => {

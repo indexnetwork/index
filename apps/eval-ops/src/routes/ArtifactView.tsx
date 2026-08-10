@@ -30,7 +30,7 @@ export function ArtifactView() {
     );
   }
 
-  return <ArtifactDetail artifactId={artifactId} />;
+  return <ArtifactDetail key={artifactId} artifactId={artifactId} />;
 }
 
 interface ArtifactState {

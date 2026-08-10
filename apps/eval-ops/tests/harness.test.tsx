@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { Harness } from '../src/routes/Harness';
 import { encodeArtifactId } from '../src/api/client';
 import type { HarnessDescriptor } from '../src/api/client';
-import { INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, historicalQualityRef } from './historical-quality.fixture';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, historicalQualityRef } from './historical-quality.fixture';
 
 const BASELINE_PATH = 'matching/baselines/matching.baseline.json';
 const RUN_PATH = 'matching/runs/2026-07-30.json';
@@ -167,6 +167,7 @@ describe('Harness', () => {
 
   it('shows a quality artifact as completed/requested instead of a pass-rate score', async () => {
     const qualityRef = historicalQualityRef(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, 'quality');
+    const completeQualityRef = historicalQualityRef(COMPLETE_HISTORICAL_QUALITY_ARTIFACT, 'quality-complete');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -185,19 +186,21 @@ describe('Harness', () => {
             }],
           }));
         }
-        if (href.endsWith('/api/artifacts/quality')) {
-          return new Response(JSON.stringify(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT));
-        }
-        return new Response(JSON.stringify({ refs: [qualityRef], issues: [] }));
+        return new Response(JSON.stringify({ refs: [qualityRef, completeQualityRef], issues: [] }));
       }),
     );
 
     renderHarness('discovery');
 
     expect(await screen.findByText('9/10')).toBeInTheDocument();
-    expect(screen.getByText(/completed\/requested/i)).toBeInTheDocument();
+    expect(screen.getByText('10/10')).toBeInTheDocument();
+    expect(screen.getAllByText(/completed\/requested/i)).toHaveLength(2);
     expect(document.body.textContent).not.toContain('90.0%');
     expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner/i);
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain('/api/artifacts/quality');
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain('/api/artifacts/quality-complete');
   });
 
   it('surfaces index issues for this harness and hides unrelated ones', async () => {

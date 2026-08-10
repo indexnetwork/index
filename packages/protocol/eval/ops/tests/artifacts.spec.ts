@@ -152,6 +152,7 @@ describe("FsArtifactSource", () => {
     expect(ref.caseCount).toBe(1);
     expect(ref.complete).toBeNull();
     expect(ref.measurementKind).toBeNull();
+    expect(ref).not.toHaveProperty("qualityCompleteness");
     expect(ref.sizeBytes).toBeGreaterThan(0);
     expect(ref.mtimeMs).toBeGreaterThan(0);
   });
@@ -224,6 +225,10 @@ describe("FsArtifactSource", () => {
     expect(issues).toEqual([]);
     expect(refs).toHaveLength(1);
     expect(refs[0].measurementKind).toBe("historical-quality-pilot");
+    expect(refs[0].qualityCompleteness).toEqual({
+      requestedSlots: 10,
+      completedSlots: 10,
+    });
   });
 
   it("round-trips artifact ids and rejects traversal", async () => {
