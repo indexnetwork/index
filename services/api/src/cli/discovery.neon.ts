@@ -432,33 +432,70 @@ async function awaitOperations(input: {
  * branch that is still being overwritten. Poll interval and timeout are
  * injectable so tests do not sleep.
  */
-export async function resetAbBranch(input: {
-  manifest: AttestedAbManifest; branchId: string; apiKey: string; fetchImpl?: typeof fetch;
+interface AttestedRestoreTopology {
+  projectId: string;
+  baseBranchId: string;
+  targets: readonly AbTarget[];
+}
+
+/** Shared control-plane primitive; public wrappers retain their distinct brands. */
+async function restoreAttestedBranch(input: {
+  topology: AttestedRestoreTopology; branchId: string; apiKey: string; fetchImpl?: typeof fetch;
   pollIntervalMs?: number; pollTimeoutMs?: number;
 }): Promise<void> {
-  const { manifest, branchId, apiKey } = input;
-  if (!manifest.targets.some((target) => target.branchId === branchId)) {
+  const { topology, branchId, apiKey } = input;
+  if (!topology.targets.some((target) => target.branchId === branchId)) {
     throw new Error(`${branchId} is not a designated A/B branch; refusing to reset it`);
   }
   const send = input.fetchImpl ?? fetch;
   const response = await send(
-    `${NEON_API_ORIGIN}/projects/${encodeURIComponent(manifest.projectId)}/branches/${encodeURIComponent(branchId)}/restore`,
+    `${NEON_API_ORIGIN}/projects/${encodeURIComponent(topology.projectId)}/branches/${encodeURIComponent(branchId)}/restore`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_branch_id: manifest.baseBranchId }),
+      body: JSON.stringify({ source_branch_id: topology.baseBranchId }),
       redirect: 'error',
     },
   );
-  // The body may echo credentials; only the status is safe to report.
   if (!response.ok) throw new Error(`Neon control-plane reset failed with status ${response.status}`);
   const operationIds = readOperationIds(await readJson(response, 'restore'));
   await awaitOperations({
-    projectId: manifest.projectId,
+    projectId: topology.projectId,
     operationIds,
     apiKey,
     send,
     pollIntervalMs: input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     pollTimeoutMs: input.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
+  });
+}
+
+export async function resetAbBranch(input: {
+  manifest: AttestedAbManifest; branchId: string; apiKey: string; fetchImpl?: typeof fetch;
+  pollIntervalMs?: number; pollTimeoutMs?: number;
+}): Promise<void> {
+  return restoreAttestedBranch({
+    topology: input.manifest,
+    branchId: input.branchId,
+    apiKey: input.apiKey,
+    ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
+    ...(input.pollIntervalMs === undefined ? {} : { pollIntervalMs: input.pollIntervalMs }),
+    ...(input.pollTimeoutMs === undefined ? {} : { pollTimeoutMs: input.pollTimeoutMs }),
+  });
+}
+
+/** Restores exactly v2 side a; no v2-to-legacy brand conversion exists. */
+export async function restoreHistoricalQualitySelectedChild(input: {
+  manifest: AttestedHistoricalQualityManifest; apiKey: string; fetchImpl?: typeof fetch;
+  pollIntervalMs?: number; pollTimeoutMs?: number;
+}): Promise<void> {
+  const selected = input.manifest.targets.find((target) => target.sideId === 'a');
+  if (!selected) throw new Error('Historical quality topology does not designate side a');
+  return restoreAttestedBranch({
+    topology: input.manifest,
+    branchId: selected.branchId,
+    apiKey: input.apiKey,
+    ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
+    ...(input.pollIntervalMs === undefined ? {} : { pollIntervalMs: input.pollIntervalMs }),
+    ...(input.pollTimeoutMs === undefined ? {} : { pollTimeoutMs: input.pollTimeoutMs }),
   });
 }

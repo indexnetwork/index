@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { attestAbTargets, attestHistoricalQualityTargets, parseAbManifest, parseHistoricalQualityManifest, parseLegacyAbManifest, resetAbBranch, type AbManifest, type AttestedAbManifest, type AttestedWritableQualityBaseTarget, type DiscoveryManifestV2 } from '../discovery.neon';
+import { attestAbTargets, attestHistoricalQualityTargets, parseAbManifest, parseHistoricalQualityManifest, parseLegacyAbManifest, resetAbBranch, restoreHistoricalQualitySelectedChild, type AbManifest, type AttestedAbManifest, type AttestedHistoricalQualityManifest, type AttestedWritableQualityBaseTarget, type DiscoveryManifestV2 } from '../discovery.neon';
 import type { NeonControlPlane } from '../discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget, type QualityBaseRefreshTargetV2 } from '../discovery-quality-refresh-target';
 
@@ -138,7 +138,7 @@ async function attestedRefreshTarget(
 async function attestQuality(
   manifestValue: DiscoveryManifestV2 = qualityManifest,
   controlPlane: NeonControlPlane = qualityControlPlane(),
-): Promise<unknown> {
+): Promise<AttestedHistoricalQualityManifest> {
   return attestHistoricalQualityTargets({
     manifest: manifestValue,
     writableRefreshTarget: await attestedRefreshTarget(refreshTarget, controlPlane),
@@ -358,6 +358,33 @@ describe('resetAbBranch', () => {
       fetchImpl: (async () => new Response('{}', { status: 403 })) as unknown as typeof fetch,
     }).catch((caught: Error) => caught);
     expect((error as Error).message).not.toContain('neon_api_key_secret');
+  });
+});
+
+describe('restoreHistoricalQualitySelectedChild', () => {
+  it('uses the branded v2 topology directly and restores side a only', async () => {
+    const calls: string[] = [];
+    await restoreHistoricalQualitySelectedChild({
+      manifest: await attestQuality(),
+      apiKey: 'quality-key',
+      pollIntervalMs: 0,
+      pollTimeoutMs: 1_000,
+      fetchImpl: restoreFetch({ operationIds: ['op-quality'], statuses: ['finished'], calls }),
+    });
+    expect(calls).toEqual([
+      `POST ${RESTORE_URL}`,
+      `GET ${OPERATION_URL('op-quality')}`,
+    ]);
+    expect(calls.join(' ')).not.toContain('/branches/br-b/');
+  });
+
+  it('does not accept a parsed, unattested v2 manifest', async () => {
+    await restoreHistoricalQualitySelectedChild({
+      // @ts-expect-error - only attestHistoricalQualityTargets can produce this brand.
+      manifest: parseHistoricalQualityManifest(qualityManifestJson()),
+      apiKey: 'k',
+      fetchImpl: (async () => { throw new Error('must not restore'); }) as unknown as typeof fetch,
+    }).catch(() => undefined);
   });
 });
 

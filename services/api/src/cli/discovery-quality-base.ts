@@ -278,11 +278,11 @@ export async function verifyHistoricalQualitySeedState(
 }
 
 /** Verifies exact seed rows plus atomically published candidate vectors and metadata. */
-export async function verifyHistoricalQualityPublishedState(
+export async function readVerifiedHistoricalQualityPublishedState(
   db: DrizzleDB,
   projection: HistoricalSharedPoolSeedProjection,
   dependencies: HistoricalQualityBaseDependencies = productionHistoricalQualityBaseDependencies,
-): Promise<void> {
+): Promise<HistoricalQualityBaseAttestation> {
   assertApprovedProjection(projection);
   const state = await dependencies.readState(db, projection);
   let attestation: HistoricalQualityBaseAttestation;
@@ -296,7 +296,16 @@ export async function verifyHistoricalQualityPublishedState(
   const expectedSchemaFingerprint = await dependencies.schemaMigrationFingerprint();
   if (state.qualityMetadata?.schemaMigrationFingerprint !== expectedSchemaFingerprint) fail('schema migration fingerprint mapping');
   if (state.legacyMetadata.some((row) => row.qualityAttestation !== null)) fail('legacy metadata attestation', 'must remain null');
-  parseHistoricalQualityBaseAttestation(attestation);
+  return parseHistoricalQualityBaseAttestation(attestation);
+}
+
+/** Compatibility verifier for callers that need only success/failure. */
+export async function verifyHistoricalQualityPublishedState(
+  db: DrizzleDB,
+  projection: HistoricalSharedPoolSeedProjection,
+  dependencies: HistoricalQualityBaseDependencies = productionHistoricalQualityBaseDependencies,
+): Promise<void> {
+  await readVerifiedHistoricalQualityPublishedState(db, projection, dependencies);
 }
 
 function assertProviderVectors(vectors: readonly number[][], documentCount: number): void {

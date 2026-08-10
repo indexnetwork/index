@@ -1,138 +1,212 @@
-import { describe, expect, it } from 'bun:test';
+import { createHash } from 'node:crypto';
 
-import type { HistoricalQualityRequest } from '../discovery-quality.contract';
+import { afterEach, describe, expect, it } from 'bun:test';
 
-interface HistoricalQualityRuntimeDependencies {
-  attest(): Promise<typeof attested>;
-  verifyProtectedBase(): Promise<void>;
-  closeVerifier(): Promise<void>;
-  restoreTarget(): Promise<void>;
-  constructChildDependencies(): Promise<{ kind: string }>;
-  spawnChild(): Promise<{ kind: string }>;
-  validateChildOutput(): Promise<{ kind: string }>;
-}
+import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, type HistoricalQualityRequest } from '../discovery-quality.contract';
+import { HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
+import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, type HistoricalQualityRuntimeDeps, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
 
-type HistoricalQualityRuntime = (
-  request: HistoricalQualityRequest,
-  dependencies: HistoricalQualityRuntimeDependencies,
-) => Promise<unknown>;
-
-const RUNTIME_MODULE_SPECIFIER = '../discovery-quality.runtime';
-
-function isMissingRuntimeModule(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'message' in error
-    && typeof error.message === 'string'
-    && error.message.startsWith(`Cannot find module '${RUNTIME_MODULE_SPECIFIER}' `);
-}
-
-async function loadRuntime(): Promise<HistoricalQualityRuntime | undefined> {
-  try {
-    const runtime = await import(RUNTIME_MODULE_SPECIFIER);
-    return runtime.runHistoricalQualityRuntime as HistoricalQualityRuntime | undefined;
-  } catch (error) {
-    if (isMissingRuntimeModule(error)) return undefined;
-    throw error;
-  }
-}
-
+const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
+const providerFingerprint = digest('stable-provider-account');
+const verifiedBase: VerifiedHistoricalQualityBase = {
+  version: 1,
+  embeddingModelId: 'openai/text-embedding-3-large',
+  corpusVersion: 'historical-shared-pool-v1',
+};
 const request: HistoricalQualityRequest = {
-  caseIds: ['historical/builder-and-operator'],
+  caseIds: [HISTORICAL_QUALITY_APPROVED_CASE_IDS[0]!],
   triggers: ['intent'],
   repetitions: 1,
   configuration: { id: 'a', config: { DISCOVERY_ALLOWED_TYPES: 'intent' } },
   force: false,
 };
 
-const attested = {
-  projectId: 'project-audit',
-  baseBranchId: 'branch-base',
-  target: {
-    sideId: 'a' as const,
-    branchId: 'branch-a',
-    endpointId: 'endpoint-a',
-    databaseUrl: 'postgres://audit.invalid/protocol_eval',
-  },
-};
+const requiredParentEnvironment = (): Record<string, string> => ({
+  DISCOVERY_TARGETS: 'manifest-secret-sentinel',
+  NEON_API_KEY: 'neon-secret-sentinel',
+  DISCOVERY_CONFIRM: '1',
+  TEST_DATABASE_SAFE: '1',
+  NODE_ENV: 'test',
+  OPENROUTER_API_KEY: 'openrouter-secret-sentinel',
+  REDIS_URL: 'redis://redis-secret-sentinel@example.invalid',
+  HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT: providerFingerprint,
+});
 
-function instrumentRuntime(options: { verifierFailure?: Error } = {}) {
+const saved = { ...process.env };
+afterEach(() => {
+  for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+  Object.assign(process.env, saved);
+});
+
+describe('historical quality child environment', () => {
+  it('copies exactly required core keys, every defined model key, one Redis form, and canonical non-model config', () => {
+    const parent = {
+      ...requiredParentEnvironment(),
+      ...Object.fromEntries(HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS.map((key) => [key, `${key}-value`])),
+      DATABASE_URL: 'database-secret-sentinel',
+      PATH: '/secret/path',
+      HOME: '/secret/home',
+      AWS_SECRET_ACCESS_KEY: 'aws-secret-sentinel',
+      SENTRY_DSN: 'sentry-secret-sentinel',
+      INVENTED_SECRET: 'invented-secret-sentinel',
+    };
+    parent.CHAT_MODEL = 'google/gemini-2.5-flash';
+    parent.CHAT_REASONING_EFFORT = 'low';
+    parent.EVAL_MODEL_OVERRIDES = '{}';
+    const environment = buildHistoricalQualityChildEnvironment({
+      parentEnvironment: parent,
+      sanitizedConfiguration: { DISCOVERY_ALLOWED_TYPES: 'intent', CHAT_MODEL: 'anthropic/claude-sonnet-4' },
+      configurationFingerprint: digest('resolved-config'),
+    });
+
+    expect(HISTORICAL_QUALITY_RUNTIME_CORE_KEYS.every((key) => environment[key] === parent[key])).toBe(true);
+    expect(HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS.every((key) => environment[key] !== undefined)).toBe(true);
+    expect(environment.CHAT_MODEL).toBe('anthropic/claude-sonnet-4');
+    expect(JSON.parse(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON)).toEqual({ DISCOVERY_ALLOWED_TYPES: 'intent' });
+    expect(Object.keys(environment).sort()).toEqual([
+      ...HISTORICAL_QUALITY_RUNTIME_CORE_KEYS,
+      ...HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS,
+      'REDIS_URL',
+      'DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON',
+    ].sort());
+    for (const forbidden of ['DATABASE_URL', 'PATH', 'HOME', 'AWS_SECRET_ACCESS_KEY', 'SENTRY_DSN', 'INVENTED_SECRET', 'HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT']) {
+      expect(environment).not.toHaveProperty(forbidden);
+    }
+    const serializedConfig = environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON;
+    for (const sentinel of ['manifest-secret-sentinel', 'neon-secret-sentinel', 'openrouter-secret-sentinel', 'redis-secret-sentinel', 'database-secret-sentinel', 'aws-secret-sentinel', 'sentry-secret-sentinel', 'invented-secret-sentinel', providerFingerprint]) {
+      expect(serializedConfig).not.toContain(sentinel);
+    }
+  });
+
+  it('accepts the complete split Redis form', () => {
+    const parent = requiredParentEnvironment();
+    delete parent.REDIS_URL;
+    Object.assign(parent, { REDIS_HOST: 'cache', REDIS_PORT: '6379', REDIS_PASSWORD: 'password-secret', REDIS_DB: '4' });
+    expect(parseHistoricalQualityRuntimeEnvironment(parent)).toMatchObject({ REDIS_HOST: 'cache', REDIS_PORT: '6379', REDIS_PASSWORD: 'password-secret', REDIS_DB: '4' });
+  });
+
+  it.each([
+    ['missing Redis', {}, /exactly one Redis configuration/],
+    ['ambiguous Redis', { REDIS_URL: 'redis://x', REDIS_HOST: 'x', REDIS_PORT: '1', REDIS_PASSWORD: 'p', REDIS_DB: '0' }, /exactly one Redis configuration/],
+    ['partial Redis', { REDIS_HOST: 'x', REDIS_PORT: '1' }, /complete REDIS_HOST/],
+    ['missing gate', { REDIS_URL: 'redis://x', DISCOVERY_CONFIRM: '0' }, /DISCOVERY_CONFIRM must equal 1/],
+  ])('refuses %s', (_label, overrides, expected) => {
+    expect(() => parseHistoricalQualityRuntimeEnvironment({ ...requiredParentEnvironment(), REDIS_URL: undefined, ...overrides })).toThrow(expected);
+  });
+});
+
+describe('historical quality production configuration resolver', () => {
+  it('moves model carriers into the canonical all-agent model map and binds fixed identities', async () => {
+    const resolved = await resolveHistoricalQualityConfiguration({
+      request: {
+        ...request,
+        configuration: { id: 'a', config: { EVAL_MODEL_OVERRIDES: '{"opportunityEvaluator":"model/selected"}' } },
+      },
+      verifiedBase,
+      environment: {
+        ...requiredParentEnvironment(),
+        CHAT_MODEL: 'chat/parent',
+        SMARTEST_VERIFIER_MODEL: 'judge/model',
+      },
+    });
+    expect(resolved.models).toMatchObject({ chat: 'chat/parent', opportunityEvaluator: 'model/selected' });
+    expect(resolved.env).toEqual({});
+    expect(resolved.fixed).toMatchObject({
+      judgeModelId: 'judge/model',
+      embeddingModelId: verifiedBase.embeddingModelId,
+      corpusVersion: verifiedBase.corpusVersion,
+      providerAccountFingerprint: providerFingerprint,
+    });
+    expect(resolved.fixed.scoringPolicyFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(HISTORICAL_QUALITY_SCORING_POLICY_VERSION).toBe('historical-quality-v1');
+  });
+
+  it.each(['ABC', 'a'.repeat(63), 'a'.repeat(65), ''])('refuses invalid parent-only provider fingerprint %p', async (fingerprint) => {
+    await expect(resolveHistoricalQualityConfiguration({
+      request,
+      verifiedBase,
+      environment: { ...requiredParentEnvironment(), HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT: fingerprint },
+    })).rejects.toThrow(/lowercase 64-hex/);
+  });
+});
+
+function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
   const calls: string[] = [];
-  const counts = {
-    reset: 0,
-    spawn: 0,
-    dependencyConstruction: 0,
-  };
-  const dependencies: HistoricalQualityRuntimeDependencies = {
+  let active = false;
+  const argv: string[][] = [];
+  const deps: HistoricalQualityRuntimeDeps = {
     attest: async () => {
       calls.push('attest');
-      return attested;
+      return {
+        version: 2, projectId: 'project', baseBranchId: 'base',
+        baseReadReplica: { endpointId: 'replica', databaseUrl: 'postgresql://user:replica-secret@replica.neon.tech/protocol_eval' },
+        targets: [
+          { sideId: 'a', branchId: 'branch-a', endpointId: 'endpoint-a', databaseUrl: 'postgresql://user:a-secret@a.neon.tech/protocol_eval' },
+          { sideId: 'b', branchId: 'branch-b', endpointId: 'endpoint-b', databaseUrl: 'postgresql://user:b-secret@b.neon.tech/protocol_eval' },
+        ],
+      } as never;
     },
-    verifyProtectedBase: async () => {
-      calls.push('verifier');
-      if (options.verifierFailure) throw options.verifierFailure;
+    verifyBase: async () => {
+      calls.push('verify');
+      if (input.verifierFailure) throw input.verifierFailure;
+      calls.push('verifier-closed');
+      return verifiedBase;
     },
-    closeVerifier: async () => {
-      calls.push('close');
-    },
-    restoreTarget: async () => {
-      counts.reset += 1;
+    restoreSelectedChild: async (manifest) => {
+      expect(manifest.targets[0]!.sideId).toBe('a');
+      expect(active).toBe(false);
       calls.push('restore');
     },
-    constructChildDependencies: async () => {
-      counts.dependencyConstruction += 1;
-      calls.push('construct');
-      return { kind: 'quality-child-dependencies' };
-    },
-    spawnChild: async () => {
-      counts.spawn += 1;
+    spawnSlot: async ({ dispatch, environment }) => {
+      expect(active).toBe(false);
+      active = true;
       calls.push('spawn');
-      return { kind: 'quality-child-output' };
+      argv.push([dispatch.runId, dispatch.slotId, dispatch.configurationId, dispatch.configurationFingerprint, dispatch.outputPath]);
+      expect(environment).not.toHaveProperty('HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT');
+      await Promise.resolve();
+      active = false;
+      return { slotId: dispatch.slotId, configurationId: 'a' };
     },
-    validateChildOutput: async () => {
+    validateSlotOutput: (slot, output) => {
+      expect(active).toBe(false);
       calls.push('validate');
-      return { kind: 'validated-quality-output' };
+      expect((output as { slotId: string }).slotId).toBe(slot.slotId);
+      return output as Record<string, unknown>;
     },
   };
-  return { calls, counts, dependencies };
+  return { calls, argv, deps };
 }
 
 describe('historical quality runtime acceptance order', () => {
-  it('runs attest → verifier → close → restore → spawn → validate', async () => {
-    const { calls, dependencies } = instrumentRuntime();
-    const runHistoricalQualityRuntime = await loadRuntime();
-
-    expect(runHistoricalQualityRuntime).toBeFunction();
-    await runHistoricalQualityRuntime!(request, dependencies);
-
-    expect(calls.filter((call) => call !== 'construct')).toEqual([
-      'attest',
-      'verifier',
-      'close',
-      'restore',
-      'spawn',
-      'validate',
-    ]);
+  it('attests, verifies and closes, resolves and plans, then restores/spawns/validates every slot serially', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { calls, argv, deps } = runtimeDeps();
+    const tenSlots: HistoricalQualityRequest = { ...request, caseIds: [...HISTORICAL_QUALITY_APPROVED_CASE_IDS], triggers: ['intent', 'enrichment'] };
+    const result = await runHistoricalQualityRuntime(tenSlots, deps);
+    expect(result.outputs).toHaveLength(10);
     expect(calls).toEqual([
-      'attest',
-      'verifier',
-      'close',
-      'restore',
-      'construct',
-      'spawn',
-      'validate',
+      'attest', 'verify', 'verifier-closed',
+      ...Array.from({ length: 10 }, () => ['restore', 'spawn', 'validate']).flat(),
     ]);
+    expect(argv.flat().join(' ')).not.toContain('DISCOVERY_ALLOWED_TYPES');
+    for (const sentinel of ['manifest-secret-sentinel', 'neon-secret-sentinel', 'openrouter-secret-sentinel', 'redis-secret-sentinel', providerFingerprint]) {
+      expect(argv.flat().join(' ')).not.toContain(sentinel);
+    }
   });
 
-  it('closes verifier resources but never resets, spawns, or constructs child dependencies after verifier failure', async () => {
-    const verifierFailure = new Error('protected base verifier refused');
-    const { calls, counts, dependencies } = instrumentRuntime({ verifierFailure });
-    const runHistoricalQualityRuntime = await loadRuntime();
+  it('performs no destructive or provider work when the fresh verifier fails', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const failure = new Error('sanitized verifier failure');
+    const { calls, deps } = runtimeDeps({ verifierFailure: failure });
+    await expect(runHistoricalQualityRuntime(request, deps)).rejects.toBe(failure);
+    expect(calls).toEqual(['attest', 'verify']);
+  });
 
-    expect(runHistoricalQualityRuntime).toBeFunction();
-    await expect(runHistoricalQualityRuntime!(request, dependencies)).rejects.toBe(verifierFailure);
-
-    expect(calls).toEqual(['attest', 'verifier', 'close']);
-    expect(counts).toEqual({ reset: 0, spawn: 0, dependencyConstruction: 0 });
+  it('validates the minimal child environment before the first destructive restore', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    delete process.env.REDIS_URL;
+    const { calls, deps } = runtimeDeps();
+    await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow();
+    expect(calls).toEqual(['attest', 'verify', 'verifier-closed']);
   });
 });

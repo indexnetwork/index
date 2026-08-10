@@ -22,7 +22,7 @@ import { AB_BRANCH_NAMES, attestAbTargets, parseLegacyAbManifest, type AbManifes
 import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery.gate';
 import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
-import { hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, runHistoricalQualityPrARefusal } from './discovery-quality.contract';
+import { formatHistoricalQualityCost, hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, type HistoricalQualityRequest } from './discovery-quality.contract';
 
 import type { AbSideId } from './discovery.plan';
 
@@ -78,6 +78,9 @@ export interface DiscoveryBootstrapDependencies {
   parseManifest(raw: string | undefined): AbManifest;
   attestTargets(manifest: AbManifest, role: AbInvocationRole): Promise<void>;
   importRuntime(): Promise<DiscoveryRuntime>;
+  importQualityRuntime?(): Promise<{
+    runHistoricalQualityRuntime(request: HistoricalQualityRequest): Promise<unknown>;
+  }>;
 }
 
 const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
@@ -85,6 +88,7 @@ const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
   parseManifest: parseLegacyAbManifest,
   attestTargets: attestOrRefuse,
   importRuntime: async () => await import('./discovery.main'),
+  importQualityRuntime: async () => await import('./discovery-quality.runtime'),
 };
 
 /**
@@ -97,15 +101,17 @@ export async function runDiscoveryBootstrap(
   io: Pick<Console, 'log' | 'error'>,
   dependencies: DiscoveryBootstrapDependencies = productionBootstrapDependencies,
 ): Promise<0 | 2 | undefined> {
-  // The dedicated quality shape is parsed, costed, and refused before the
-  // legacy confirmation gate, manifest, attestation, or dynamic runtime import.
-  // PR A deliberately performs no provider or infrastructure operation.
+  // Help remains above every gate, environment read, runtime import, and live operation.
   if (isHistoricalQualityRequest(args)) {
     if (hasHistoricalQualityHelp(args)) {
       io.log(historicalQualityUsage());
       return 0;
     }
-    return runHistoricalQualityPrARefusal(parseHistoricalQualityArgs(args), io);
+    const request = parseHistoricalQualityArgs(args);
+    io.log(formatHistoricalQualityCost(request));
+    const runtime = await (dependencies.importQualityRuntime ?? productionBootstrapDependencies.importQualityRuntime!)();
+    await runtime.runHistoricalQualityRuntime(request);
+    return undefined;
   }
   // Before the gate, and before any environment variable is read: the full
   // legacy contract, printed to anyone who asks for it.

@@ -4,7 +4,7 @@ import postgres from 'postgres';
 
 import * as schema from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
-import { assertReadOnlySession, productionHistoricalQualityBaseDependencies, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, type HistoricalQualityBaseDependencies, type HistoricalQualityEmbedder, type HistoricalSharedPoolSeedProjection } from './discovery-quality-base';
+import { assertReadOnlySession, productionHistoricalQualityBaseDependencies, readVerifiedHistoricalQualityPublishedState, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, type HistoricalQualityBaseDependencies, type HistoricalQualityEmbedder, type HistoricalSharedPoolSeedProjection } from './discovery-quality-base';
 
 export interface HistoricalQualityBaseCommandDependencies {
   createVerifier(): Promise<{
@@ -20,6 +20,7 @@ export interface HistoricalQualityBaseCommandDependencies {
   dependencies(): HistoricalQualityBaseDependencies;
   projection: HistoricalSharedPoolSeedProjection;
   log(line: string): void;
+  verified?(metadata: { version: 1; embeddingModelId: string; corpusVersion: string }): void;
 }
 
 function parseArgs(args: readonly string[]): { verifyOnly: boolean } {
@@ -40,7 +41,12 @@ export async function runHistoricalQualityBaseCommand(
     try {
       await assertReadOnlySession(verifier.query);
       dependencies.log('Historical quality base verifier session read-only: on');
-      await verifyHistoricalQualityPublishedState(verifier.db, dependencies.projection, operations);
+      const attestation = await readVerifiedHistoricalQualityPublishedState(verifier.db, dependencies.projection, operations);
+      dependencies.verified?.({
+        version: 1,
+        embeddingModelId: attestation.embedding.model,
+        corpusVersion: attestation.corpusVersion,
+      });
       return 'verified';
     } finally {
       await verifier.close();
@@ -122,5 +128,6 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     dependencies: () => productionHistoricalQualityBaseDependencies,
     projection,
     log: console.log,
+    verified: (metadata) => { console.log(JSON.stringify(metadata)); },
   });
 }
