@@ -120,7 +120,8 @@ build_connector() {
   cp Info.plist "${contents}/Info.plist"
   MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -parse-as-library -O \
     -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
-    "${flags[@]}" "${sources[@]}" "${generated_sources[@]}" Sources/main.swift \
+    ${flags[@]+"${flags[@]}"} "${sources[@]}" \
+    ${generated_sources[@]+"${generated_sources[@]}"} Sources/main.swift \
     -o "$executable"
   chmod 0755 "$executable"
   echo "Built ${app} (${mode})"

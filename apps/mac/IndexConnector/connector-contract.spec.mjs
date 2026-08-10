@@ -108,6 +108,8 @@ test('bundle and entitlement contracts keep app and connector credentials distin
   expect(build).toContain('--signed-access-fixture');
   expect(build).toContain('INDEX_KEYCHAIN_SIGNING_FIXTURE');
   expect(build).toContain('IndexConnector.app/Contents/MacOS/IndexConnector');
+  expect(build).toContain('${flags[@]+"${flags[@]}"}');
+  expect(build).toContain('${generated_sources[@]+"${generated_sources[@]}"}');
   expect(build).toContain('validate_profile_files_distinct');
   expect(build).toContain('validate_decoded_profile_pair');
   expect(build).toContain('verify_designated_requirements');
