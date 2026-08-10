@@ -443,8 +443,8 @@ function MacMenubar({ screen, signals = [], chatGroups = {}, onOpenChat }) {
 
       <span className="right">
         <span className="m subtle">
-          { screen === "intents"    ? "index · your signals"
-          : screen === "new-intent" ? "index · calibrating"
+          { screen === "intents"    ? "your signals"
+          : screen === "new-intent" ? "calibrating"
           : "" }
         </span>
         <span className="clock">{clock}</span>

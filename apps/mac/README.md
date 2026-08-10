@@ -36,7 +36,6 @@ IndexApp/                    # macOS app (Swift + WKWebView)
 ├── assemble.py          # Bundles everything into single HTML
 └── Info.plist          # macOS app metadata
 
-IndexApp-iOS/             # iOS app (same architecture)
 api/                     # API client library
 design_bundle/           # Design system reference files
 ```

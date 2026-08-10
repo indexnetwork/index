@@ -2496,7 +2496,7 @@ function BottomBar({ stats }) {
       </div>
       <div style={{ display:"flex", gap:12, alignItems:"center" }}>
         <LiveDot size={6}/>
-        <span>index · syn-0518-bk-04</span>
+        <span>syn-0518-bk-04</span>
       </div>
     </div>
   );

@@ -457,7 +457,7 @@ function NewIntent({ onDone, onBack }) {
         height: "min(720px, calc(100vh - 128px))",
       }}>
         {/* LEFT, conversation window */}
-        <MacWindow title="index · calibrating" onClose={onBack}>
+        <MacWindow title="calibrating" onClose={onBack}>
           <div style={{
             padding:"18px 28px 12px",
             display:"flex", flexDirection:"column",
@@ -833,7 +833,7 @@ function Calibrating() {
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
     }}>
-      <MacWindow title="index · calibrating" style={{ width: 420 }}>
+      <MacWindow title="calibrating" style={{ width: 420 }}>
         <div style={{ padding:"26px 28px 24px", textAlign:"center" }}>
           <div style={{
             display:"flex", justifyContent:"center",

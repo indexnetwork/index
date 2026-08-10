@@ -257,7 +257,7 @@ function NegotiationHistory({ onClose }) {
       padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{ width:1000, maxWidth:"100%", height:"calc(100vh - 112px)" }}>
-        <MacWindow title="index · negotiation history" onClose={onClose} style={{ height:"100%" }}>
+        <MacWindow title="negotiation history" onClose={onClose} style={{ height:"100%" }}>
           <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
 
             {/* header: lifetime counters + mode/filter controls */}

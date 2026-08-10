@@ -33752,11 +33752,11 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 <script>
 (function(){
 /**
- * Standalone Index API client for the macOS/iOS prototypes.
+ * Standalone Index API client for the macOS prototype.
  *
- * This module is intentionally not imported by IndexApp or IndexApp-iOS yet. It
- * gives the mac subtree a dedicated place to evolve API consumption without
- * coupling live transport to the current fake-data prototype screens.
+ * Assembled into IndexApp as `window.IndexApi`. Gives the mac subtree a
+ * dedicated place to evolve API consumption without coupling live transport
+ * to browser-preview fake-data screens.
  */
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
@@ -33769,7 +33769,7 @@ const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
  *   Keychain and inject it into the web layer.
  * @property {() => (string | Promise<string | null | undefined>)} [getApiKey]
  *   Optional API-key provider, sent as the `x-api-key` header. Used by the
- *   native macOS/iOS shells whose credential is a CLI API key, not a session.
+ *   native macOS shell whose credential is a CLI API key, not a session.
  * @property {typeof fetch} [fetchImpl] Optional fetch implementation for tests.
  */
 
@@ -34499,7 +34499,7 @@ function relativeAge(isoDate) {
 }
 
 /**
- * Pure deep-link parser for the macOS/iOS shells.
+ * Pure deep-link parser for the macOS shell.
  *
  * The native side does no routing: it receives a URL from macOS (a universal
  * link handed over as an NSUserActivity, or an `index://` scheme open) and
@@ -36432,7 +36432,7 @@ function BuildingProfile({ onDone }) {
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
     }}>
-      <MacWindow title="index · setting up" style={{ width: 420 }}>
+      <MacWindow title="setting up" style={{ width: 420 }}>
         <div style={{ padding:"26px 28px 24px", textAlign:"center" }}>
           <div style={{
             display:"flex", justifyContent:"center",
@@ -37260,12 +37260,12 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         maxHeight: "calc(100vh - 112px)",
       }}>
         <MacWindow
-          title={profileOnly ? "getting started" : "index · settings"}
+          title={profileOnly ? "getting started" : "settings"}
           onClose={onClose}
           style={{ height: profileOnly ? undefined : "100%", maxHeight:"100%", minHeight:0 }}>
 
           {/* first-run shows only the profile, no notifications / api keys.
-              The titlebar already reads "index · getting started", so repeating
+              The titlebar already reads "getting started", so repeating
               "getting started" as a heading here was the same words twice; the
               band carries the instruction instead, the one thing the titlebar
               can't say. */}
@@ -37564,7 +37564,7 @@ function CreateNetwork({ onCancel, onCreate }) {
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title="index · new network"
+          title="new network"
           onClose={onCancel}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -37759,7 +37759,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
         height:"min(720px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title="index · request a network"
+          title="request a network"
           onClose={onCancel}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -38565,7 +38565,7 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title={`index · ${local.name.toLowerCase()}`}
+          title={local.name.toLowerCase()}
           onClose={onBack}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -39145,7 +39145,7 @@ function Networks({ onClose, onOpenSignal }) {
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title="index · networks"
+          title="networks"
           onClose={onClose}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -39763,7 +39763,7 @@ function Agents({ onClose }) {
         height:"min(880px, calc(100vh - 96px))",
       }}>
         <MacWindow
-          title="index · agents"
+          title="agents"
           onClose={onClose}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -40124,7 +40124,7 @@ function NegotiationHistory({ onClose }) {
       padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{ width:1000, maxWidth:"100%", height:"calc(100vh - 112px)" }}>
-        <MacWindow title="index · negotiation history" onClose={onClose} style={{ height:"100%" }}>
+        <MacWindow title="negotiation history" onClose={onClose} style={{ height:"100%" }}>
           <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
 
             {/* header: lifetime counters + mode/filter controls */}
@@ -41218,7 +41218,7 @@ function NewIntent({ onDone, onBack }) {
         height: "min(720px, calc(100vh - 128px))",
       }}>
         {/* LEFT, conversation window */}
-        <MacWindow title="index · calibrating" onClose={onBack}>
+        <MacWindow title="calibrating" onClose={onBack}>
           <div style={{
             padding:"18px 28px 12px",
             display:"flex", flexDirection:"column",
@@ -41594,7 +41594,7 @@ function Calibrating() {
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
     }}>
-      <MacWindow title="index · calibrating" style={{ width: 420 }}>
+      <MacWindow title="calibrating" style={{ width: 420 }}>
         <div style={{ padding:"26px 28px 24px", textAlign:"center" }}>
           <div style={{
             display:"flex", justifyContent:"center",
@@ -44143,7 +44143,7 @@ function BottomBar({ stats }) {
       </div>
       <div style={{ display:"flex", gap:12, alignItems:"center" }}>
         <LiveDot size={6}/>
-        <span>index · syn-0518-bk-04</span>
+        <span>syn-0518-bk-04</span>
       </div>
     </div>
   );
@@ -44599,8 +44599,8 @@ function MacMenubar({ screen, signals = [], chatGroups = {}, onOpenChat }) {
 
       <span className="right">
         <span className="m subtle">
-          { screen === "intents"    ? "index · your signals"
-          : screen === "new-intent" ? "index · calibrating"
+          { screen === "intents"    ? "your signals"
+          : screen === "new-intent" ? "calibrating"
           : "" }
         </span>
         <span className="clock">{clock}</span>

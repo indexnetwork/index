@@ -724,12 +724,12 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         maxHeight: "calc(100vh - 112px)",
       }}>
         <MacWindow
-          title={profileOnly ? "getting started" : "index · settings"}
+          title={profileOnly ? "getting started" : "settings"}
           onClose={onClose}
           style={{ height: profileOnly ? undefined : "100%", maxHeight:"100%", minHeight:0 }}>
 
           {/* first-run shows only the profile, no notifications / api keys.
-              The titlebar already reads "index · getting started", so repeating
+              The titlebar already reads "getting started", so repeating
               "getting started" as a heading here was the same words twice; the
               band carries the instruction instead, the one thing the titlebar
               can't say. */}

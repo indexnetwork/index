@@ -52,7 +52,7 @@ function BuildingProfile({ onDone }) {
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
     }}>
-      <MacWindow title="index · setting up" style={{ width: 420 }}>
+      <MacWindow title="setting up" style={{ width: 420 }}>
         <div style={{ padding:"26px 28px 24px", textAlign:"center" }}>
           <div style={{
             display:"flex", justifyContent:"center",

@@ -206,7 +206,7 @@ function CreateNetwork({ onCancel, onCreate }) {
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title="index · new network"
+          title="new network"
           onClose={onCancel}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -401,7 +401,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
         height:"min(720px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title="index · request a network"
+          title="request a network"
           onClose={onCancel}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -1207,7 +1207,7 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title={`index · ${local.name.toLowerCase()}`}
+          title={local.name.toLowerCase()}
           onClose={onBack}
           style={{ height:"100%", minHeight:0 }}>
 
@@ -1787,7 +1787,7 @@ function Networks({ onClose, onOpenSignal }) {
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title="index · networks"
+          title="networks"
           onClose={onClose}
           style={{ height:"100%", minHeight:0 }}>
 

@@ -547,7 +547,7 @@ function Agents({ onClose }) {
         height:"min(880px, calc(100vh - 96px))",
       }}>
         <MacWindow
-          title="index · agents"
+          title="agents"
           onClose={onClose}
           style={{ height:"100%", minHeight:0 }}>
 
