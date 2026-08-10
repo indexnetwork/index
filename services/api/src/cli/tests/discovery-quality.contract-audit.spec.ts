@@ -7,7 +7,7 @@ import { buildHistoricalParticipantMetrics } from '../../../../../packages/proto
 import { buildHistoricalQualityPilotPlan } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.pilot.js';
 import { HISTORICAL_SHARED_POOL_APPROVAL_RECORD, HISTORICAL_SHARED_POOL_FIXTURE, HISTORICAL_SHARED_POOL_PLAN, HISTORICAL_SHARED_POOL_SEED_PROJECTION } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
 import { admitHistoricalSharedPool, historicalRetrievalDocumentFingerprint, historicalSharedPoolPlanFingerprint, historicalSharedPoolSeedFingerprint } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.js';
-import { HistoricalQualityExecutionRunSchema, HistoricalQualityTransportRowSchema, type HistoricalQualityExecutionRun, type HistoricalQualityTransportRow } from '../../../../../packages/protocol/eval/shared/artifact.js';
+import { HistoricalQualityExecutionRunSchema, HistoricalQualityTransportRowSchema, type HistoricalQualityExecutionRun, type HistoricalQualityTransportRow } from '../../../../../packages/protocol/eval/shared/index.js';
 import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger } from '../../queues/opportunity/discovery-trigger.builders';
 
 const ROOT = path.resolve(import.meta.dir, '../../../../../');
