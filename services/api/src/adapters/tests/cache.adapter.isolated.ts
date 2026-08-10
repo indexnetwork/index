@@ -6,11 +6,34 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import { resolveRedisIntegrationTestUrl } from '../../lib/redis/test-integration';
 import { closeRedisConnection, getRedisClient, RedisCacheAdapter } from '../cache.adapter';
+import { NamespacedHydeCache } from '../../cli/discovery-quality.cache';
 
 const KEY_PREFIX = 'protocol:';
 const TEST_PREFIX = `test:cache:${Date.now()}:`;
 const redisUrl = resolveRedisIntegrationTestUrl();
 const describeRedis = redisUrl ? describe : describe.skip;
+
+describe('historical quality cache isolation (provider- and Redis-free)', () => {
+  it('exposes no bulk deletion surface and never delegates deleteByPattern', async () => {
+    let patternDeletes = 0;
+    const cache = new NamespacedHydeCache({
+      get: async () => null,
+      set: async () => {},
+      delete: async () => false,
+      exists: async () => false,
+      deleteByPattern: async () => { patternDeletes += 1; return 0; },
+    }, {
+      runId: `hq-run-${'1'.repeat(32)}`,
+      slotId: `hq-slot-${'2'.repeat(64)}`,
+      configurationId: 'a',
+    });
+
+    expect(Object.keys(cache).sort()).toEqual([]);
+    expect('deleteByPattern' in cache).toBe(false);
+    await cache.delete('one-key-only');
+    expect(patternDeletes).toBe(0);
+  });
+});
 
 describeRedis('RedisCacheAdapter', () => {
   let cache: RedisCacheAdapter;

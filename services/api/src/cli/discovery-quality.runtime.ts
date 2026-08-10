@@ -39,6 +39,17 @@ export interface HistoricalResolvedConfiguration {
   };
 }
 
+export interface HistoricalQualityChildResolvedConfiguration {
+  models: Record<string, string>;
+  env: Record<string, string>;
+  fixed: {
+    judgeModelId: string;
+    embeddingModelId: string;
+    corpusVersion: string;
+    scoringPolicyFingerprint: string;
+  };
+}
+
 export interface HistoricalQualityPilotSlot {
   slotId: string;
   caseId: string;
@@ -57,6 +68,11 @@ export interface HistoricalQualitySlotDispatch {
   configurationFingerprint: string;
   /** Canonical fingerprint of the strict sanitized child config JSON. */
   childEnvironmentFingerprint: string;
+  /**
+   * Child-verifiable resolved projection. This excludes only the parent-owned
+   * providerAccountFingerprint; the full planner fingerprint above still binds it.
+   */
+  childResolvedConfigurationFingerprint: string;
   outputPath: string;
 }
 
@@ -136,6 +152,28 @@ async function loadHistoricalAuthorities(): Promise<HistoricalAuthorities> {
   };
 }
 
+export function historicalQualityChildResolvedProjection(
+  configuration: HistoricalResolvedConfiguration,
+): HistoricalQualityChildResolvedConfiguration {
+  return Object.freeze({
+    models: Object.freeze({ ...configuration.models }),
+    env: Object.freeze({ ...configuration.env }),
+    fixed: Object.freeze({
+      judgeModelId: configuration.fixed.judgeModelId,
+      embeddingModelId: configuration.fixed.embeddingModelId,
+      corpusVersion: configuration.fixed.corpusVersion,
+      scoringPolicyFingerprint: configuration.fixed.scoringPolicyFingerprint,
+    }),
+  }) as HistoricalQualityChildResolvedConfiguration;
+}
+
+export async function fingerprintHistoricalQualityChildResolvedConfiguration(
+  configuration: HistoricalQualityChildResolvedConfiguration,
+): Promise<string> {
+  const { fingerprintCanonicalJson } = await loadHistoricalAuthorities();
+  return fingerprintCanonicalJson(configuration);
+}
+
 export function historicalQualityScoringPolicy(judgeModelId: string): Readonly<Record<string, unknown>> {
   return Object.freeze({
     version: HISTORICAL_QUALITY_SCORING_POLICY_VERSION,
@@ -161,19 +199,19 @@ function exactProviderFingerprint(environment: Readonly<Record<string, string | 
   return value;
 }
 
-export async function resolveHistoricalQualityConfiguration(input: {
-  request: HistoricalQualityRequest;
+export async function resolveHistoricalQualityChildConfiguration(input: {
+  configuration: Readonly<Record<string, string>>;
   verifiedBase: VerifiedHistoricalQualityBase;
   environment: Readonly<Record<string, string | undefined>>;
-}): Promise<HistoricalResolvedConfiguration> {
+}): Promise<HistoricalQualityChildResolvedConfiguration> {
   const authorities = await loadHistoricalAuthorities();
   const modelEnvironment = {
-    CHAT_MODEL: input.request.configuration.config.CHAT_MODEL ?? input.environment.CHAT_MODEL,
-    EVAL_MODEL_OVERRIDES: input.request.configuration.config.EVAL_MODEL_OVERRIDES ?? input.environment.EVAL_MODEL_OVERRIDES,
+    CHAT_MODEL: input.configuration.CHAT_MODEL ?? input.environment.CHAT_MODEL,
+    EVAL_MODEL_OVERRIDES: input.configuration.EVAL_MODEL_OVERRIDES ?? input.environment.EVAL_MODEL_OVERRIDES,
   };
   const models = { ...authorities.resolveCanonicalAllAgentModels(modelEnvironment) };
   const env = Object.fromEntries(
-    Object.entries(input.request.configuration.config)
+    Object.entries(input.configuration)
       .filter(([key]) => key !== 'CHAT_MODEL' && key !== 'EVAL_MODEL_OVERRIDES')
       .sort(([left], [right]) => left.localeCompare(right)),
   );
@@ -186,9 +224,31 @@ export async function resolveHistoricalQualityConfiguration(input: {
     fixed: {
       judgeModelId,
       embeddingModelId: input.verifiedBase.embedding.model,
-      providerAccountFingerprint: exactProviderFingerprint(input.environment),
       corpusVersion: input.verifiedBase.corpusVersion,
       scoringPolicyFingerprint: authorities.fingerprintCanonicalJson(historicalQualityScoringPolicy(judgeModelId)),
+    },
+  };
+}
+
+export async function resolveHistoricalQualityConfiguration(input: {
+  request: HistoricalQualityRequest;
+  verifiedBase: VerifiedHistoricalQualityBase;
+  environment: Readonly<Record<string, string | undefined>>;
+}): Promise<HistoricalResolvedConfiguration> {
+  const childResolved = await resolveHistoricalQualityChildConfiguration({
+    configuration: input.request.configuration.config,
+    verifiedBase: input.verifiedBase,
+    environment: input.environment,
+  });
+  return {
+    models: childResolved.models,
+    env: childResolved.env,
+    fixed: {
+      judgeModelId: childResolved.fixed.judgeModelId,
+      embeddingModelId: childResolved.fixed.embeddingModelId,
+      providerAccountFingerprint: exactProviderFingerprint(input.environment),
+      corpusVersion: childResolved.fixed.corpusVersion,
+      scoringPolicyFingerprint: childResolved.fixed.scoringPolicyFingerprint,
     },
   };
 }
@@ -304,6 +364,7 @@ async function productionSpawnSlot(input: {
       '--configuration-id', dispatch.configurationId,
       '--configuration-fingerprint', dispatch.configurationFingerprint,
       '--child-environment-fingerprint', dispatch.childEnvironmentFingerprint,
+      '--child-resolved-configuration-fingerprint', dispatch.childResolvedConfigurationFingerprint,
       '--child-output', dispatch.outputPath,
     ],
     env: input.environment,
@@ -412,6 +473,9 @@ export async function runHistoricalQualityRuntime(
       configuration: { id: 'a', config: resolved },
     });
     const recomputedConfigurationFingerprint = fingerprintCanonicalJson(resolved);
+    const childResolvedConfigurationFingerprint = await fingerprintHistoricalQualityChildResolvedConfiguration(
+      historicalQualityChildResolvedProjection(resolved),
+    );
     if (plan.configurationFingerprint !== recomputedConfigurationFingerprint
       || plan.slots.some((slot) => slot.configurationFingerprint !== recomputedConfigurationFingerprint)) {
       throw new Error('Historical quality planner configuration fingerprint mismatch');
@@ -434,6 +498,7 @@ export async function runHistoricalQualityRuntime(
         configurationId: 'a',
         configurationFingerprint: recomputedConfigurationFingerprint,
         childEnvironmentFingerprint: childEnvironment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT,
+        childResolvedConfigurationFingerprint,
         outputPath: path.join(temporaryDirectory, `${slot.slotId}.json`),
       };
       stage = 'spawned';

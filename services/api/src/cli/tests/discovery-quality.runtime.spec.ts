@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, type HistoricalQualityRequest } from '../discovery-quality.contract';
 import { HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
-import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, type HistoricalQualityRuntimeDeps, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
+import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, historicalQualityChildResolvedProjection, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, type HistoricalQualityRuntimeDeps, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
 import { embeddingConfigurationFingerprint } from '../../lib/embedding/embedding.identity';
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -188,6 +188,7 @@ function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
         dispatch.configurationId,
         dispatch.configurationFingerprint,
         dispatch.childEnvironmentFingerprint,
+        dispatch.childResolvedConfigurationFingerprint,
         dispatch.outputPath,
       ]);
       expect(environment).not.toHaveProperty('HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT');
@@ -274,15 +275,17 @@ describe('historical quality runtime acceptance order', () => {
     expect(calls).toEqual(['child-preflight', 'attest', 'verify', 'verifier-closed']);
   });
 
-  it('dispatches distinct recomputed full-config and canonical child-env fingerprints', async () => {
+  it('dispatches distinct full, child-resolved, and child-environment fingerprints without the provider digest', async () => {
     Object.assign(process.env, requiredParentEnvironment());
     const { deps } = runtimeDeps();
-    let observed: { full: string; childEnv: string; json: string } | undefined;
+    let observed: { full: string; childResolved: string; childEnv: string; json: string; argv: string } | undefined;
     deps.spawnSlot = async ({ dispatch, environment }) => {
       observed = {
         full: dispatch.configurationFingerprint,
+        childResolved: dispatch.childResolvedConfigurationFingerprint,
         childEnv: dispatch.childEnvironmentFingerprint,
         json: environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON,
+        argv: JSON.stringify(dispatch),
       };
       return { slotId: dispatch.slotId, configurationId: 'a' };
     };
@@ -292,8 +295,31 @@ describe('historical quality runtime acceptance order', () => {
       verifiedBase,
       environment: process.env,
     });
+    const childProjection = historicalQualityChildResolvedProjection(resolved);
     expect(observed?.childEnv).toBe(digest(observed!.json));
     expect(observed?.full).toBe(digest(canonicalJson(resolved)));
-    expect(observed?.full).not.toBe(observed?.childEnv);
+    expect(observed?.childResolved).toBe(digest(canonicalJson(childProjection)));
+    expect(new Set([observed?.full, observed?.childResolved, observed?.childEnv])).toHaveLength(3);
+    expect(observed?.argv).not.toContain(providerFingerprint);
+    expect(JSON.stringify(childProjection)).not.toContain(providerFingerprint);
+  });
+
+  it('binds every child-verifiable resolved field while excluding only provider account identity', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const resolved = await resolveHistoricalQualityConfiguration({ request, verifiedBase, environment: process.env });
+    const projection = historicalQualityChildResolvedProjection(resolved);
+    expect(Object.keys(projection.fixed).sort()).toEqual([
+      'corpusVersion', 'embeddingModelId', 'judgeModelId', 'scoringPolicyFingerprint',
+    ]);
+    const baseFingerprint = digest(canonicalJson(projection));
+    const mutations = [
+      { ...projection, models: { ...projection.models, opportunity: 'mutated/model' } },
+      { ...projection, env: { ...projection.env, DISCOVERY_ALLOWED_TYPES: 'profile' } },
+      { ...projection, fixed: { ...projection.fixed, judgeModelId: 'mutated/judge' } },
+      { ...projection, fixed: { ...projection.fixed, embeddingModelId: 'mutated/embedding' } },
+      { ...projection, fixed: { ...projection.fixed, corpusVersion: 'mutated-corpus' } },
+      { ...projection, fixed: { ...projection.fixed, scoringPolicyFingerprint: 'f'.repeat(64) } },
+    ];
+    for (const mutation of mutations) expect(digest(canonicalJson(mutation))).not.toBe(baseFingerprint);
   });
 });
