@@ -92,6 +92,13 @@ jobs:
         working-directory: apps/mac/IndexApp
         run: ./build.sh --fixture OwnerCredentialMigrationFixture
 
+      - name: Native incremental SSE delegate and typed-body fixtures
+        working-directory: apps/mac/IndexApp
+        run: |
+          ./build.sh --fixture NativeAPIStreamDelegateFixture
+          ./build.sh --fixture NativeAPIBodyValidationFixture
+          ./build.sh --fixture NativeAPIQuarantineFixture
+
       - name: Native historical Hermes persistence compatibility
         working-directory: apps/mac/IndexApp
         run: |

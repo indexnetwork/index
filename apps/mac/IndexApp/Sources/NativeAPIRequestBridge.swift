@@ -81,15 +81,152 @@ enum NativeAPIRequestFailure: Error {
     }
 }
 
+private final class NativeAPIStreamContext {
+    let delegate: NativeAPIStreamDelegate
+    let session: URLSession
+    let task: URLSessionDataTask
+    init(delegate: NativeAPIStreamDelegate, session: URLSession, task: URLSessionDataTask) {
+        self.delegate = delegate; self.session = session; self.task = task
+    }
+}
+
+/// Incremental, strict SSE decoder. It never buffers a completed response:
+/// response metadata and each complete frame are delivered by URLSessionDataDelegate.
+final class NativeAPIStreamDelegate: NSObject, URLSessionDataDelegate {
+    private let requestId: String
+    private let publish: (NativeAPIEvent) -> Bool
+    private let complete: (NativeAPIRequestFailure?, Int?, [String: String]) -> Void
+    private let isSafe: (NativeJSONValue) -> Bool
+    private var partial = Data()
+    private var aggregateBytes = 0
+    private var eventCount = 0
+    private var sequence = 0
+    private var status: Int?
+    private var headers: [String: String] = [:]
+    private var terminal = false
+
+    init(
+        requestId: String,
+        publish: @escaping (NativeAPIEvent) -> Bool,
+        isSafe: @escaping (NativeJSONValue) -> Bool,
+        complete: @escaping (NativeAPIRequestFailure?, Int?, [String: String]) -> Void
+    ) {
+        self.requestId = requestId; self.publish = publish; self.isSafe = isSafe; self.complete = complete
+    }
+
+    func urlSession(
+        _ session: URLSession, dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard !terminal, let http = response as? HTTPURLResponse,
+              (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased().contains("text/event-stream") else {
+            fail(.transportFailure, task: dataTask); completionHandler(.cancel); return
+        }
+        status = http.statusCode
+        if let value = http.value(forHTTPHeaderField: "X-Session-Id"), value.utf8.count <= 256 {
+            headers["x-session-id"] = value
+        }
+        let headerEvent: NativeJSONValue = .object([
+            "type": .string("native_headers"), "status": .number(Double(http.statusCode)),
+            "headers": .object(headers.mapValues(NativeJSONValue.string)),
+        ])
+        guard publish(NativeAPIEvent(requestId: requestId, sequence: sequence, event: headerEvent)) else {
+            fail(.cancelled, task: dataTask); completionHandler(.cancel); return
+        }
+        sequence += 1
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard !terminal else { return }
+        partial.append(data)
+        while let boundary = frameBoundary(in: partial) {
+            guard boundary.lowerBound <= NativeAPIRequestBridge.maximumPartialFrameBytes else {
+                fail(.oversizedResponse, task: dataTask); return
+            }
+            let frame = partial.subdata(in: 0..<boundary.lowerBound)
+            partial.removeSubrange(0..<boundary.upperBound)
+            guard decode(frame: frame, task: dataTask) else { return }
+        }
+        guard partial.count <= NativeAPIRequestBridge.maximumPartialFrameBytes else {
+            fail(.oversizedResponse, task: dataTask); return
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard !terminal else { return }
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            finish(.cancelled); return
+        }
+        guard error == nil, partial.isEmpty, let status else { finish(.transportFailure); return }
+        terminal = true
+        complete(nil, status, headers)
+    }
+
+    private func frameBoundary(in data: Data) -> Range<Data.Index>? {
+        let lf = Data([0x0a, 0x0a]); let crlf = Data([0x0d, 0x0a, 0x0d, 0x0a])
+        let a = data.range(of: lf); let b = data.range(of: crlf)
+        if let a, let b { return a.lowerBound < b.lowerBound ? a : b }
+        return a ?? b
+    }
+
+    private func decode(frame: Data, task: URLSessionTask) -> Bool {
+        guard frame.count <= NativeAPIRequestBridge.maximumEventBytes,
+              let text = String(data: frame, encoding: .utf8) else {
+            fail(.transportFailure, task: task); return false
+        }
+        if text.split(whereSeparator: \.isNewline).allSatisfy({ $0.hasPrefix(":") }) { return true }
+        var values: [String] = []
+        for rawLine in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false) {
+            if rawLine.hasPrefix(":") { continue }
+            guard rawLine == "data" || rawLine.hasPrefix("data:") else {
+                fail(.transportFailure, task: task); return false
+            }
+            let value = rawLine == "data" ? "" : String(rawLine.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            values.append(value)
+        }
+        let payload = values.joined(separator: "\n")
+        guard !payload.isEmpty, let bytes = payload.data(using: .utf8),
+              bytes.count <= NativeAPIRequestBridge.maximumEventBytes,
+              aggregateBytes + bytes.count <= NativeAPIRequestBridge.maximumEventAggregateBytes,
+              eventCount < NativeAPIRequestBridge.maximumEvents,
+              let value = try? JSONDecoder().decode(NativeJSONValue.self, from: bytes),
+              isSafe(value) else {
+            fail(.transportFailure, task: task); return false
+        }
+        aggregateBytes += bytes.count; eventCount += 1
+        guard publish(NativeAPIEvent(requestId: requestId, sequence: sequence, event: value)) else {
+            fail(.cancelled, task: task); return false
+        }
+        sequence += 1
+        return true
+    }
+
+    private func fail(_ failure: NativeAPIRequestFailure, task: URLSessionTask) {
+        task.cancel(); finish(failure)
+    }
+    private func finish(_ failure: NativeAPIRequestFailure) {
+        guard !terminal else { return }
+        terminal = true; complete(failure, status, headers)
+    }
+}
+
 /// Credential-owning, structured WebKit request boundary. JavaScript can choose
 /// only an enumerated operation and relative allowlisted product path; Swift
 /// alone reads Keychain and constructs transport authentication.
 final class NativeAPIRequestBridge {
-    static let maximumRequestBytes = 1_048_576
+    static let maximumJSONRequestBytes = 262_144
+    static let maximumJSONDepth = 16
+    static let maximumObjectKeys = 64
+    static let maximumArrayItems = 100
+    static let maximumStringBytes = 65_536
     static let maximumUploadBytes = 8_388_608
     static let maximumEncodedUploadRequestBytes = 11_184_896
     static let maximumResponseBytes = 1_048_576
+    static let maximumPartialFrameBytes = 65_536
     static let maximumEventBytes = 65_536
+    static let maximumEventAggregateBytes = 1_048_576
     static let maximumEvents = 256
     static let maximumPendingRequests = 32
     static let requestTimeout: TimeInterval = 30
@@ -126,7 +263,8 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
         ("GET", #"^/questions(?:\?.*)?$"#),
         ("POST", #"^/questions/[^/?]+/(?:answer|dismiss)$"#),
-        ("POST", #"^/tools/[^/?]+$"#), ("POST", #"^/enrichment/enrich$"#),
+        ("POST", #"^/tools/(?:read_user_contexts|preview_user_context|confirm_user_context)$"#),
+        ("POST", #"^/enrichment/enrich$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
         ("POST", #"^/conversations/(?:dm|[^/?]+/messages)$"#),
@@ -151,7 +289,10 @@ final class NativeAPIRequestBridge {
     private let session: URLSession
     private let stateQueue = DispatchQueue(label: "network.index.native-api.state")
     private var tasks: [String: URLSessionTask] = [:]
+    private var streamContexts: [String: NativeAPIStreamContext] = [:]
     private var completed: Set<String> = []
+    private var quarantined = false
+    private var quarantineDrains: [() -> Void] = []
 
     init(
         apiBaseURL: URL,
@@ -181,6 +322,9 @@ final class NativeAPIRequestBridge {
         let requestId = (message.body as? [String: Any])?["requestId"] as? String ?? ""
         do {
             let request = try decode(message.body)
+            guard stateQueue.sync(execute: { !quarantined }) else {
+                throw NativeAPIRequestFailure.signedOut
+            }
             if request.operation.kind == .cancel {
                 try cancel(request)
                 finish(NativeAPIResponse(requestId: request.requestId, ok: true, status: 200,
@@ -188,10 +332,12 @@ final class NativeAPIRequestBridge {
                 return
             }
             try stateQueue.sync {
-                guard tasks.count < Self.maximumPendingRequests,
+                guard !quarantined,
+                      tasks.count < Self.maximumPendingRequests,
                       tasks[request.requestId] == nil,
                       !completed.contains(request.requestId) else { throw NativeAPIRequestFailure.invalidRequest }
             }
+            try validateBeforeCredentialRead(request)
             try execute(request)
         } catch let failure as NativeAPIRequestFailure {
             finishFailure(requestId: requestId, failure: failure)
@@ -210,9 +356,73 @@ final class NativeAPIRequestBridge {
               Self.exactOperationKeys[kind]?.contains(Set(operation.keys)) == true,
               JSONSerialization.isValidJSONObject(object) else { throw NativeAPIRequestFailure.invalidRequest }
         let data = try JSONSerialization.data(withJSONObject: object)
-        let limit = kind == .upload ? Self.maximumEncodedUploadRequestBytes : Self.maximumRequestBytes
+        let limit = kind == .upload ? Self.maximumEncodedUploadRequestBytes : Self.maximumJSONRequestBytes
         guard data.count <= limit else { throw NativeAPIRequestFailure.oversizedRequest }
         return try JSONDecoder().decode(NativeAPIRequest.self, from: data)
+    }
+
+    private func validateBeforeCredentialRead(_ request: NativeAPIRequest) throws {
+        let operation = request.operation
+        switch operation.kind {
+        case .http:
+            guard let method = operation.method, let path = operation.path,
+                  Self.isAllowedHTTP(method: method, path: path),
+                  Self.isGloballyBoundedJSON(operation.body),
+                  Self.isAllowedBody(method: method, path: path, body: operation.body) else {
+                throw NativeAPIRequestFailure.deniedOperation
+            }
+        case .sse:
+            guard let method = operation.method, let path = operation.path,
+                  Self.allowedSSERoutes.contains("\(method) \(path)"),
+                  Self.isGloballyBoundedJSON(operation.body),
+                  Self.isAllowedSSEBody(method: method, path: path, body: operation.body) else {
+                throw NativeAPIRequestFailure.deniedOperation
+            }
+        case .mcp:
+            guard let tool = operation.tool, tool == "create_intent", Self.allowedMCPTools.contains(tool),
+                  Self.isGloballyBoundedJSON(operation.arguments),
+                  Self.isAllowedMCPArguments(tool: tool, arguments: operation.arguments) else {
+                throw NativeAPIRequestFailure.deniedOperation
+            }
+        case .upload:
+            guard operation.body == nil, operation.arguments == nil,
+                  Self.isAllowedUploadOperation(operation) else { throw NativeAPIRequestFailure.deniedOperation }
+        case .cancel:
+            return
+        }
+    }
+
+    private static func isGloballyBoundedJSON(_ value: NativeJSONValue?, depth: Int = 0) -> Bool {
+        guard depth <= maximumJSONDepth else { return false }
+        guard let value else { return true }
+        if depth == 0 {
+            guard let encoded = try? JSONEncoder().encode(value), encoded.count <= maximumJSONRequestBytes else { return false }
+        }
+        switch value {
+        case .null, .bool: return true
+        case .number(let number): return number.isFinite
+        case .string(let string): return string.utf8.count <= maximumStringBytes
+        case .array(let values):
+            return values.count <= maximumArrayItems
+                && values.allSatisfy { isGloballyBoundedJSON($0, depth: depth + 1) }
+        case .object(let object):
+            return object.count <= maximumObjectKeys
+                && object.keys.allSatisfy { $0.utf8.count <= maximumStringBytes }
+                && object.values.allSatisfy { isGloballyBoundedJSON($0, depth: depth + 1) }
+        }
+    }
+
+    static func validateGlobalJSONForFixture(_ body: NativeJSONValue?) -> Bool { isGloballyBoundedJSON(body) }
+    static func validateHTTPBodyForFixture(method: String, path: String, body: NativeJSONValue?) -> Bool {
+        isAllowedHTTP(method: method, path: path) && isGloballyBoundedJSON(body)
+            && isAllowedBody(method: method, path: path, body: body)
+    }
+    static func validateSSEBodyForFixture(method: String, path: String, body: NativeJSONValue?) -> Bool {
+        isGloballyBoundedJSON(body) && isAllowedSSEBody(method: method, path: path, body: body)
+    }
+    static func validateMCPForFixture(tool: String = "create_intent", arguments: NativeJSONValue?) -> Bool {
+        allowedMCPTools.contains(tool) && isGloballyBoundedJSON(arguments)
+            && isAllowedMCPArguments(tool: tool, arguments: arguments)
     }
 
     private func execute(_ request: NativeAPIRequest) throws {
@@ -277,6 +487,101 @@ final class NativeAPIRequestBridge {
         return required.isSubset(of: keys) && keys.isSubset(of: allowed)
     }
 
+    private static func object(_ value: NativeJSONValue?) -> [String: NativeJSONValue]? {
+        guard case .object(let object) = value else { return nil }; return object
+    }
+    private static func boundedString(_ value: NativeJSONValue?, minimum: Int = 1, maximum: Int = 4_096) -> Bool {
+        guard case .string(let string) = value else { return false }
+        return string.utf8.count >= minimum && string.utf8.count <= maximum
+    }
+    private static func optionalString(_ object: [String: NativeJSONValue], _ key: String, maximum: Int = 4_096) -> Bool {
+        guard let value = object[key] else { return true }; return boundedString(value, minimum: 0, maximum: maximum)
+    }
+    private static func optionalBool(_ object: [String: NativeJSONValue], _ key: String) -> Bool {
+        guard let value = object[key] else { return true }; if case .bool = value { return true }; return false
+    }
+    private static func optionalInteger(
+        _ object: [String: NativeJSONValue], _ key: String, minimum: Int, maximum: Int
+    ) -> Bool {
+        guard let value = object[key] else { return true }
+        guard case .number(let number) = value, number.rounded() == number else { return false }
+        return number >= Double(minimum) && number <= Double(maximum)
+    }
+    private static func identifier(_ value: NativeJSONValue?) -> Bool {
+        guard case .string(let string) = value, string.count <= 128 else { return false }
+        return string.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil
+    }
+    private static func enumString(_ value: NativeJSONValue?, _ values: Set<String>) -> Bool {
+        guard case .string(let string) = value else { return false }; return values.contains(string)
+    }
+    private static func boundedStringArray(_ value: NativeJSONValue?, maximumItems: Int = 50) -> Bool {
+        guard case .array(let values) = value, values.count <= maximumItems else { return false }
+        return values.allSatisfy { boundedString($0, maximum: 4_096) }
+    }
+    private static func exactTypedObject(
+        _ body: NativeJSONValue?, required: Set<String> = [], optional: Set<String> = [],
+        validate: ([String: NativeJSONValue]) -> Bool
+    ) -> Bool {
+        guard let object = object(body) else { return false }
+        let keys = Set(object.keys)
+        return required.isSubset(of: keys) && keys.isSubset(of: required.union(optional)) && validate(object)
+    }
+    private static func validSocials(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, values.count <= 50 else { return false }
+        return values.allSatisfy { item in
+            exactTypedObject(item, required: ["label", "value"]) { object in
+                boundedString(object["label"], maximum: 64) && boundedString(object["value"], maximum: 2_048)
+            }
+        }
+    }
+    private static func validNetworkRequest(_ body: NativeJSONValue?) -> Bool {
+        exactTypedObject(body, required: ["name"], optional: ["purpose", "audience", "expectedSize", "notes", "imageUrl", "joinPolicy"]) { item in
+            boundedString(item["name"], maximum: 256)
+                && ["purpose", "audience", "expectedSize", "notes"].allSatisfy { optionalString(item, $0, maximum: 8_192) }
+                && optionalString(item, "imageUrl", maximum: 2_048)
+                && (item["joinPolicy"] == nil || enumString(item["joinPolicy"], ["anyone", "invite_only"]))
+        }
+    }
+    private static func validAnswer(_ value: NativeJSONValue?) -> Bool {
+        exactTypedObject(value, optional: ["selectedOptions", "freeText"]) { answer in
+            let selectedValid = answer["selectedOptions"] == nil || boundedStringArray(answer["selectedOptions"], maximumItems: 20)
+            let selectedPresent: Bool
+            if case .array(let values)? = answer["selectedOptions"] { selectedPresent = !values.isEmpty } else { selectedPresent = false }
+            let textPresent: Bool
+            if case .string(let text)? = answer["freeText"] { textPresent = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } else { textPresent = false }
+            return selectedValid && optionalString(answer, "freeText", maximum: 65_536) && (selectedPresent || textPresent)
+        }
+    }
+    private static func validRounds(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, !values.isEmpty, values.count <= 10 else { return false }
+        return values.allSatisfy { item in
+            exactTypedObject(item, required: ["prompt", "answer"]) { round in
+                boundedString(round["prompt"], maximum: 400) && validAnswer(round["answer"])
+            }
+        }
+    }
+    private static func validDraft(_ value: NativeJSONValue?) -> Bool {
+        exactTypedObject(value, required: ["identity", "narrative", "attributes"]) { draft in
+            exactTypedObject(draft["identity"], required: ["name", "bio", "location"]) { identity in
+                optionalString(identity, "name", maximum: 256) && optionalString(identity, "bio", maximum: 65_536)
+                    && optionalString(identity, "location", maximum: 512)
+            } && exactTypedObject(draft["narrative"], required: ["context"]) { narrative in
+                optionalString(narrative, "context", maximum: 65_536)
+            } && exactTypedObject(draft["attributes"], required: ["skills", "interests"]) { attributes in
+                boundedStringArray(attributes["skills"]) && boundedStringArray(attributes["interests"])
+            }
+        }
+    }
+    private static func validMessageParts(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, !values.isEmpty, values.count <= 100 else { return false }
+        return values.allSatisfy { item in
+            exactTypedObject(item, required: ["text"], optional: ["type"]) { part in
+                boundedString(part["text"], maximum: 65_536)
+                    && (part["type"] == nil || enumString(part["type"], ["text"]))
+            }
+        }
+    }
+
     private static func isAllowedBody(method: String, path: String, body: NativeJSONValue?) -> Bool {
         let route = String(path.split(separator: "?", maxSplits: 1)[0])
         if method == "GET" || method == "DELETE" { return body == nil }
@@ -285,57 +590,102 @@ final class NativeAPIRequestBridge {
         }
         switch route {
         case "/auth/profile/update":
-            return keysAllowed(body, allowed: ["name", "intro", "location", "socials", "avatar", "notificationPreferences"])
+            return exactTypedObject(body, optional: ["name", "intro", "location", "socials", "avatar", "notificationPreferences"]) { item in
+                optionalString(item, "name", maximum: 256) && optionalString(item, "intro", maximum: 65_536)
+                    && optionalString(item, "location", maximum: 512) && optionalString(item, "avatar", maximum: 2_048)
+                    && (item["socials"] == nil || validSocials(item["socials"]))
+                    && (item["notificationPreferences"] == nil || exactTypedObject(item["notificationPreferences"], optional: ["email", "push"]) { prefs in optionalBool(prefs, "email") && optionalBool(prefs, "push") })
+            }
         case "/agent-runtime":
-            return keysAllowed(body, required: ["runtime"], allowed: ["runtime", "installationId", "executorId", "setupAttemptId"])
+            return exactTypedObject(body, required: ["runtime"], optional: ["installationId", "executorId", "setupAttemptId"]) { item in
+                enumString(item["runtime"], ["index", "hermes"])
+                    && ["installationId", "executorId", "setupAttemptId"].allSatisfy { item[$0] == nil || identifier(item[$0]) }
+            }
         case "/agent-runtime/hermes/prepare":
-            return keysAllowed(body, required: ["installationId", "setupAttemptId"], allowed: ["installationId", "setupAttemptId"])
+            return exactTypedObject(body, required: ["installationId", "setupAttemptId"]) { identifier($0["installationId"]) && identifier($0["setupAttemptId"]) }
         case "/agent-runtime/rollback":
-            return keysAllowed(body, required: ["setupAttemptId"], allowed: ["setupAttemptId"])
+            return exactTypedObject(body, required: ["setupAttemptId"]) { identifier($0["setupAttemptId"]) }
         case "/networks":
-            return keysAllowed(body, required: ["title"], allowed: ["title", "prompt", "imageUrl", "joinPolicy"])
+            return exactTypedObject(body, required: ["title"], optional: ["prompt", "imageUrl", "joinPolicy"]) { item in
+                boundedString(item["title"], maximum: 256) && optionalString(item, "prompt", maximum: 65_536)
+                    && optionalString(item, "imageUrl", maximum: 2_048)
+                    && (item["joinPolicy"] == nil || enumString(item["joinPolicy"], ["anyone", "approval", "invite_only"]))
+            }
         case let value where value.range(of: #"^/networks/[^/?]+/(?:join|leave)$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
-        case "/network-requests":
-            return keysAllowed(body, required: ["name", "purpose", "expectedSize", "joinPolicy"],
-                               allowed: ["name", "purpose", "expectedSize", "joinPolicy", "imageUrl"])
+        case "/network-requests": return validNetworkRequest(body)
         case let value where value.range(of: #"^/network-requests/[^/?]+$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, required: ["name", "purpose", "expectedSize", "joinPolicy"],
-                               allowed: ["name", "purpose", "expectedSize", "joinPolicy", "imageUrl"])
+            return validNetworkRequest(body)
         case "/intents/list":
-            return keysAllowed(body, allowed: ["status", "page", "limit", "networkId", "scopeType", "scopeId"])
+            return exactTypedObject(body, optional: ["status", "page", "limit", "networkId", "scopeType", "scopeId"]) { item in
+                (item["status"] == nil || enumString(item["status"], ["active", "archived", "draft"]))
+                    && optionalInteger(item, "page", minimum: 1, maximum: 10_000)
+                    && optionalInteger(item, "limit", minimum: 1, maximum: 100)
+                    && ["networkId", "scopeId"].allSatisfy { item[$0] == nil || identifier(item[$0]) }
+                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["global", "network", "intent"]))
+            }
         case "/intents/confirm":
-            return keysAllowed(body, required: ["proposalId", "description"], allowed: ["proposalId", "description"])
+            return exactTypedObject(body, required: ["proposalId", "description"]) { identifier($0["proposalId"]) && boundedString($0["description"], maximum: 65_536) }
         case "/intents/reject":
-            return keysAllowed(body, required: ["proposalId"], allowed: ["proposalId"])
+            return exactTypedObject(body, required: ["proposalId"]) { identifier($0["proposalId"]) }
         case "/intents/intake/start": return keysAllowed(body, allowed: [])
         case "/intents/intake/question":
-            return keysAllowed(body, required: ["rounds"], allowed: ["rounds", "plannedTotal"])
+            return exactTypedObject(body, required: ["rounds"], optional: ["plannedTotal"]) { validRounds($0["rounds"]) && optionalInteger($0, "plannedTotal", minimum: 1, maximum: 20) }
         case "/intents/intake/prepare":
-            return keysAllowed(body, required: ["rounds"], allowed: ["rounds"])
+            return exactTypedObject(body, required: ["rounds"]) { validRounds($0["rounds"]) }
         case "/intents/intake/proposal":
-            return keysAllowed(body, required: ["runId", "rounds"], allowed: ["runId", "rounds"])
+            return exactTypedObject(body, required: ["runId", "rounds"], optional: ["networkId", "whereText"]) { item in
+                identifier(item["runId"]) && validRounds(item["rounds"])
+                    && (item["networkId"] == nil || identifier(item["networkId"]))
+                    && optionalString(item, "whereText", maximum: 280)
+            }
         case "/intents/intake/revise":
-            return keysAllowed(body, required: ["runId", "rounds", "feedback"], allowed: ["runId", "rounds", "feedback"])
+            return exactTypedObject(body, required: ["runId", "rounds", "feedback"], optional: ["networkId"]) { item in
+                identifier(item["runId"]) && validRounds(item["rounds"]) && boundedString(item["feedback"], maximum: 600)
+                    && (item["networkId"] == nil || identifier(item["networkId"]))
+            }
         case let value where value.range(of: #"^/intents/[^/?]+/status$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, required: ["status"], allowed: ["status"])
+            return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["active", "archived", "paused"]) }
         case let value where value.range(of: #"^/opportunities/[^/?]+/status$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, required: ["status"], allowed: ["status", "scopeType", "scopeId"])
+            return exactTypedObject(body, required: ["status"], optional: ["scopeType", "scopeId"]) { item in
+                enumString(item["status"], ["interested", "dismissed", "accepted", "declined"])
+                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
+                    && (item["scopeId"] == nil || identifier(item["scopeId"]))
+                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
+            }
         case let value where value.range(of: #"^/opportunities/[^/?]+/start-chat$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, allowed: ["scopeType", "scopeId"])
+            return exactTypedObject(body, optional: ["scopeType", "scopeId"]) { item in
+                (item["scopeType"] == nil || enumString(item["scopeType"], ["intent"]))
+                    && (item["scopeId"] == nil || identifier(item["scopeId"]))
+                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
+            }
         case let value where value.range(of: #"^/questions/[^/?]+/answer$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, required: ["selectedOptions"], allowed: ["selectedOptions", "freeText"])
+            return exactTypedObject(body, required: ["selectedOptions"], optional: ["freeText"]) { item in
+                boundedStringArray(item["selectedOptions"], maximumItems: 20) && optionalString(item, "freeText", maximum: 65_536)
+            }
         case let value where value.range(of: #"^/questions/[^/?]+/dismiss$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
-        case let value where value.range(of: #"^/tools/[^/?]+$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, required: ["query"], allowed: ["query"])
+        case "/tools/read_user_contexts":
+            return exactTypedObject(body, required: ["query"]) { keysAllowed($0["query"], allowed: []) }
+        case "/tools/preview_user_context":
+            return exactTypedObject(body, required: ["query"]) { item in
+                exactTypedObject(item["query"], optional: ["linkedinUrl", "githubUrl", "twitterUrl", "bioOrDescription"]) { query in
+                    query.keys.allSatisfy { optionalString(query, $0, maximum: $0 == "bioOrDescription" ? 65_536 : 2_048) }
+                }
+            }
+        case "/tools/confirm_user_context":
+            return exactTypedObject(body, required: ["query"]) { item in exactTypedObject(item["query"], required: ["draft"]) { validDraft($0["draft"]) } }
         case "/enrichment/enrich": return keysAllowed(body, allowed: [])
         case "/conversations/dm":
-            return keysAllowed(body, required: ["peerUserId"], allowed: ["peerUserId"])
+            return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, required: ["parts"], allowed: ["parts"])
+            return exactTypedObject(body, required: ["parts"]) { validMessageParts($0["parts"]) }
         case let value where value.range(of: #"^/conversations/[^/?]+/metadata$"#, options: .regularExpression) != nil:
-            return keysAllowed(body, required: ["metadata"], allowed: ["metadata"])
+            return exactTypedObject(body, required: ["metadata"]) { item in
+                exactTypedObject(item["metadata"], optional: ["title", "muted", "archived"]) { metadata in
+                    optionalString(metadata, "title", maximum: 256) && optionalBool(metadata, "muted") && optionalBool(metadata, "archived")
+                }
+            }
         default: return false
         }
     }
@@ -343,15 +693,23 @@ final class NativeAPIRequestBridge {
     private static func isAllowedSSEBody(method: String, path: String, body: NativeJSONValue?) -> Bool {
         if method == "GET" && path == "/conversations/stream" { return body == nil }
         if method == "POST" && path == "/chat/stream" {
-            return keysAllowed(body, required: ["message"],
-                               allowed: ["message", "sessionId", "scopeType", "scopeId", "persona"])
+            return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId", "persona"]) { item in
+                boundedString(item["message"], maximum: 65_536)
+                    && (item["sessionId"] == nil || identifier(item["sessionId"]))
+                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["global", "network", "intent"]))
+                    && (item["scopeId"] == nil || identifier(item["scopeId"]))
+                    && (item["persona"] == nil || enumString(item["persona"], ["orchestrator", "negotiator"]))
+                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
+            }
         }
         return false
     }
 
     private static func isAllowedMCPArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
         tool == "create_intent"
-            && keysAllowed(arguments, required: ["description"], allowed: ["description", "autoApprove"])
+            && exactTypedObject(arguments, required: ["description"], optional: ["autoApprove"]) { item in
+                boundedString(item["description"], maximum: 65_536) && optionalBool(item, "autoApprove")
+            }
     }
 
     private static func hasAllowedQuery(_ path: String) -> Bool {
@@ -404,13 +762,25 @@ final class NativeAPIRequestBridge {
         transport.setValue(credential.credential, forHTTPHeaderField: "x-api-key")
         if let body {
             let data = try JSONEncoder().encode(body)
-            guard data.count <= Self.maximumRequestBytes else { throw NativeAPIRequestFailure.oversizedRequest }
+            guard data.count <= Self.maximumJSONRequestBytes else { throw NativeAPIRequestFailure.oversizedRequest }
             transport.httpBody = data
             transport.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         if sse { transport.setValue("text/event-stream", forHTTPHeaderField: "Accept") }
-        else if url == mcpURL { transport.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept") }
+        else if url == mcpURL { transport.setValue("application/json", forHTTPHeaderField: "Accept") }
         start(requestId: request.requestId, transport: transport, sse: sse)
+    }
+
+    private static func isAllowedUploadOperation(_ operation: NativeAPIOperation) -> Bool {
+        guard let path = operation.path, allowedUploadRoutes.contains(path),
+              let field = operation.fieldName, ["avatar", "image"].contains(field),
+              let basename = operation.basename, basename.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil,
+              let dataURL = operation.dataUrl,
+              let comma = dataURL.firstIndex(of: ","),
+              allowedUploadMedia[String(dataURL[..<comma])] != nil,
+              let bytes = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+              bytes.count <= maximumUploadBytes else { return false }
+        return true
     }
 
     private func performUpload(_ request: NativeAPIRequest, credential: OwnerCredentialRecord) throws {
@@ -440,6 +810,7 @@ final class NativeAPIRequestBridge {
     }
 
     private func start(requestId: String, transport: URLRequest, sse: Bool) {
+        if sse { startStream(requestId: requestId, transport: transport); return }
         let task = session.dataTask(with: transport) { [weak self] data, response, error in
             guard let self else { return }
             if let urlError = error as? URLError, urlError.code == .cancelled {
@@ -453,13 +824,10 @@ final class NativeAPIRequestBridge {
                 self.finishFailure(requestId: requestId, failure: .oversizedResponse); return
             }
             let contentType = http.value(forHTTPHeaderField: "Content-Type") ?? ""
-            let eventStream = contentType.lowercased().contains("text/event-stream")
-            let streamedValue = eventStream
-                ? self.decodeSSE(requestId: requestId, data: body, emitEvents: sse)
-                : nil
-            let value = sse
-                ? NativeJSONValue.object(["complete": .bool(true)])
-                : (streamedValue ?? Self.decodeResponse(body))
+            guard !contentType.lowercased().contains("text/event-stream") else {
+                self.finishFailure(requestId: requestId, failure: .transportFailure); return
+            }
+            let value = Self.decodeResponse(body)
             guard !Self.containsForbiddenResponseField(value) else {
                 self.finishFailure(requestId: requestId, failure: .transportFailure); return
             }
@@ -473,26 +841,68 @@ final class NativeAPIRequestBridge {
                 errorCode: (200..<300).contains(http.statusCode) ? nil : "http_error"
             ))
         }
-        stateQueue.sync { tasks[requestId] = task }
+        guard register(task, requestId: requestId) else {
+            task.cancel(); finishFailure(requestId: requestId, failure: .signedOut); return
+        }
         task.resume()
     }
 
-    private func decodeSSE(requestId: String, data: Data, emitEvents: Bool) -> NativeJSONValue? {
-        guard let text = String(data: data, encoding: .utf8) else { return nil }
-        var sequence = 0
-        var last: NativeJSONValue?
-        for frame in text.components(separatedBy: "\n\n") where sequence < Self.maximumEvents {
-            let payload = frame.split(separator: "\n").filter { $0.hasPrefix("data:") }
-                .map { $0.dropFirst(5).trimmingCharacters(in: .whitespaces) }.joined()
-            guard !payload.isEmpty, let bytes = payload.data(using: .utf8),
-                  bytes.count <= Self.maximumEventBytes,
-                  let value = try? JSONDecoder().decode(NativeJSONValue.self, from: bytes) else { continue }
-            guard !Self.containsForbiddenResponseField(value) else { continue }
-            last = value
-            if emitEvents { event(NativeAPIEvent(requestId: requestId, sequence: sequence, event: value)) }
-            sequence += 1
+    private func startStream(requestId: String, transport: URLRequest) {
+        let delegate = NativeAPIStreamDelegate(
+            requestId: requestId,
+            publish: { [weak self] value in self?.publishStreamEvent(value) == true },
+            isSafe: { !Self.containsForbiddenResponseField($0) },
+            complete: { [weak self] failure, status, headers in
+                guard let self else { return }
+                if let failure { self.finishFailure(requestId: requestId, failure: failure); return }
+                self.finish(NativeAPIResponse(
+                    requestId: requestId, ok: status.map { (200..<300).contains($0) } == true,
+                    status: status, body: .object(["complete": .bool(true)]), headers: headers,
+                    errorCode: status.map { (200..<300).contains($0) } == true ? nil : "http_error"
+                ))
+            }
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = Self.streamTimeout
+        configuration.timeoutIntervalForResource = Self.streamTimeout
+        configuration.httpCookieStorage = nil; configuration.urlCache = nil
+        let streamSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        let task = streamSession.dataTask(with: transport)
+        let context = NativeAPIStreamContext(delegate: delegate, session: streamSession, task: task)
+        guard register(task, requestId: requestId, streamContext: context) else {
+            task.cancel(); streamSession.invalidateAndCancel()
+            finishFailure(requestId: requestId, failure: .signedOut); return
         }
-        return last
+        task.resume()
+    }
+
+    private func register(
+        _ task: URLSessionTask, requestId: String, streamContext: NativeAPIStreamContext? = nil
+    ) -> Bool {
+        stateQueue.sync {
+            guard !quarantined, tasks.count < Self.maximumPendingRequests,
+                  tasks[requestId] == nil, !completed.contains(requestId) else { return false }
+            tasks[requestId] = task
+            if let streamContext { streamContexts[requestId] = streamContext }
+            return true
+        }
+    }
+
+    #if INDEX_NATIVE_FIXTURE
+    func registerTaskForFixture(_ task: URLSessionTask, requestId: String) -> Bool {
+        register(task, requestId: requestId)
+    }
+    func finishTaskForFixture(requestId: String) {
+        finishFailure(requestId: requestId, failure: .cancelled)
+    }
+    #endif
+
+    private func publishStreamEvent(_ value: NativeAPIEvent) -> Bool {
+        let admitted = stateQueue.sync {
+            !quarantined && tasks[value.requestId] != nil && !completed.contains(value.requestId)
+        }
+        if admitted { event(value) }
+        return admitted
     }
 
     private static func decodeResponse(_ data: Data) -> NativeJSONValue {
@@ -515,6 +925,28 @@ final class NativeAPIRequestBridge {
         }
     }
 
+    /// Atomically rejects new work, cancels every REST/SSE task, and invokes the
+    /// drain only after each request has emitted its one terminal callback.
+    func beginQuarantine(_ drained: @escaping () -> Void) {
+        let snapshot: [URLSessionTask] = stateQueue.sync {
+            quarantined = true
+            if tasks.isEmpty { return [] }
+            quarantineDrains.append(drained)
+            return Array(tasks.values)
+        }
+        if snapshot.isEmpty { drained(); return }
+        snapshot.forEach { $0.cancel() }
+    }
+
+    /// Login may reopen the bridge only after the credential provider performs
+    /// an active app-only Keychain read-back with no recovery journal.
+    func endQuarantineAfterCredentialReadBack() throws {
+        guard let credential = try credentialProvider(), credential.expiresAt > Date() else {
+            throw NativeAPIRequestFailure.signedOut
+        }
+        stateQueue.sync { quarantined = false }
+    }
+
     private func cancel(_ request: NativeAPIRequest) throws {
         guard let target = request.operation.targetRequestId, !target.isEmpty else {
             throw NativeAPIRequestFailure.invalidRequest
@@ -528,13 +960,20 @@ final class NativeAPIRequestBridge {
     }
 
     private func finish(_ response: NativeAPIResponse) {
+        var context: NativeAPIStreamContext?
+        var drains: [() -> Void] = []
         let shouldEmit: Bool = stateQueue.sync {
             guard !response.requestId.isEmpty, !completed.contains(response.requestId) else { return false }
             tasks.removeValue(forKey: response.requestId)
+            context = streamContexts.removeValue(forKey: response.requestId)
             completed.insert(response.requestId)
             if completed.count > 1_024 { completed.removeAll(keepingCapacity: true) }
+            if quarantined && tasks.isEmpty {
+                drains = quarantineDrains; quarantineDrains.removeAll()
+            }
             return true
         }
-        if shouldEmit { terminal(response) }
+        context?.session.finishTasksAndInvalidate()
+        if shouldEmit { terminal(response); drains.forEach { $0() } }
     }
 }

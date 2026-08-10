@@ -311,10 +311,11 @@ const INDEX_APP_OWNER_STATIC_ROUTES = new Set([
   'POST /intents/intake/prepare', 'POST /intents/intake/proposal',
   'POST /intents/intake/revise',
   'GET /opportunities', 'GET /opportunities/radar', 'GET /opportunities/chat-context',
-  'GET /questions', 'POST /tools/preview_user_context', 'POST /tools/confirm_user_context',
+  'GET /questions', 'POST /tools/read_user_contexts',
+  'POST /tools/preview_user_context', 'POST /tools/confirm_user_context',
   'POST /enrichment/enrich', 'GET /conversations', 'GET /conversations/negotiations',
   'GET /conversations/stream', 'POST /conversations/dm', 'POST /chat/stream',
-  'POST /storage/avatars', 'POST /storage/index-images', 'POST /mcp',
+  'POST /storage/avatars', 'POST /storage/index-images',
 ]);
 
 /** Exact product-only route matrix for the dedicated native owner principal. */
@@ -337,7 +338,6 @@ export function authorizeIndexAppOwner(input: { method: string; path: string }):
     ['PATCH', new RegExp(`^/opportunities/${segment}/status$`)],
     ['POST', new RegExp(`^/opportunities/${segment}/start-chat$`)],
     ['POST', new RegExp(`^/questions/${segment}/(?:answer|dismiss)$`)],
-    ['POST', new RegExp(`^/tools/${segment}$`)],
     ['GET', new RegExp(`^/conversations/${segment}/messages$`)],
     ['POST', new RegExp(`^/conversations/${segment}/messages$`)],
     ['PATCH', new RegExp(`^/conversations/${segment}/metadata$`)],

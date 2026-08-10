@@ -87,7 +87,7 @@ export function createNativeAPIRequestBridge(options) {
         });
         reject(new Error('native request timed out'));
       }, boundedTimeout);
-      const waiter = { resolve, reject, timer, onEvent: requestOptions.onEvent, events: 0, abort: null, signal: requestOptions.signal, started: false };
+      const waiter = { resolve, reject, timer, onEvent: requestOptions.onEvent, sequence: 0, dataEvents: 0, abort: null, signal: requestOptions.signal, started: false };
       waiters.set(requestId, waiter);
       if (requestOptions.signal) {
         waiter.abort = () => {
@@ -142,9 +142,11 @@ export function createNativeAPIRequestBridge(options) {
   function receiveEvent(event) {
     if (!event || typeof event.requestId !== 'string') return false;
     const waiter = waiters.get(event.requestId);
-    if (!waiter || typeof waiter.onEvent !== 'function' || waiter.events >= maximumEvents
-        || event.sequence !== waiter.events) return false;
-    waiter.events += 1;
+    if (!waiter || typeof waiter.onEvent !== 'function' || event.sequence !== waiter.sequence) return false;
+    const isHeaders = event.event && event.event.type === 'native_headers';
+    if (!isHeaders && waiter.dataEvents >= maximumEvents) return false;
+    waiter.sequence += 1;
+    if (!isHeaders) waiter.dataEvents += 1;
     waiter.onEvent(event.event);
     return true;
   }
@@ -448,9 +450,14 @@ export function createIndexApiClient(options = {}) {
     },
 
     tools: {
-      invoke: (toolName, query = {}, options = {}) => request(
-        `/tools/${encodeURIComponent(toolName)}`,
-        { ...options, method: 'POST', body: { query } },
+      readUserContexts: (options = {}) => request(
+        '/tools/read_user_contexts', { ...options, method: 'POST', body: { query: {} } },
+      ),
+      previewUserContext: (query, options = {}) => request(
+        '/tools/preview_user_context', { ...options, method: 'POST', body: { query } },
+      ),
+      confirmUserContext: (draft, options = {}) => request(
+        '/tools/confirm_user_context', { ...options, method: 'POST', body: { query: { draft } } },
       ),
     },
 

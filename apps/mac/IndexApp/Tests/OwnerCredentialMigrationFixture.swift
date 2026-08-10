@@ -50,6 +50,21 @@ enum OwnerCredentialMigrationFixture {
         } catch OwnerCredentialStoreFailure.malformedLegacyCredential {}
         try require(FileManager.default.fileExists(atPath: malformedURL.path), "malformed evidence was deleted")
 
+        // Legacy IDs must match the server's exact safe identifier grammar before
+        // any journal write or plaintext deletion occurs.
+        let invalidIDRoot = root.appendingPathComponent("invalid-id", isDirectory: true)
+        try FileManager.default.createDirectory(at: invalidIDRoot, withIntermediateDirectories: true)
+        let invalidIDURL = invalidIDRoot.appendingPathComponent("credential.json")
+        try Data(#"{"key":"secret","keyId":"unsafe/id","apiUrl":"https://api.example.test"}"#.utf8)
+            .write(to: invalidIDURL)
+        var invalidID = try OwnerCredentialStore(accessGroup: group, applicationSupportDirectory: invalidIDRoot)
+        do {
+            _ = try invalidID.prepareForStartup(installationId: installation)
+            throw FixtureFailure.assertion("invalid legacy key ID accepted")
+        } catch OwnerCredentialStoreFailure.malformedLegacyCredential {}
+        try require(FileManager.default.fileExists(atPath: invalidIDURL.path), "invalid legacy key ID source was deleted")
+        try require(!FileManager.default.fileExists(atPath: invalidID.migrationJournalURL.path), "invalid legacy key ID was journaled")
+
         // Deletion failure preserves the exact file and durable key-ID journal.
         let deletionRoot = root.appendingPathComponent("deletion", isDirectory: true)
         try FileManager.default.createDirectory(at: deletionRoot, withIntermediateDirectories: true)

@@ -6,12 +6,16 @@ import { createIndexApiClient, createNativeAPIRequestBridge } from './client.mjs
 const mainSwift = readFileSync(new URL('../IndexApp/Sources/main.swift', import.meta.url), 'utf8');
 const ownerStore = readFileSync(new URL('../IndexApp/Sources/OwnerCredentialStore.swift', import.meta.url), 'utf8');
 const nativeBridge = readFileSync(new URL('../IndexApp/Sources/NativeAPIRequestBridge.swift', import.meta.url), 'utf8');
+const clientSource = readFileSync(new URL('./client.mjs', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../IndexApp/src/index-amiga/api.jsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../IndexApp/src/index-amiga/app.jsx', import.meta.url), 'utf8');
 const settingsSource = readFileSync(new URL('../IndexApp/src/index-amiga/settings.jsx', import.meta.url), 'utf8');
 const plist = readFileSync(new URL('../IndexApp/Info.plist', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../IndexApp/build.sh', import.meta.url), 'utf8');
 const migrationFixture = readFileSync(new URL('../IndexApp/Tests/OwnerCredentialMigrationFixture.swift', import.meta.url), 'utf8');
+const streamFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIStreamDelegateFixture.swift', import.meta.url), 'utf8');
+const bodyFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIBodyValidationFixture.swift', import.meta.url), 'utf8');
+const quarantineFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIQuarantineFixture.swift', import.meta.url), 'utf8');
 const macWorkflow = readFileSync(new URL('../../../.github/workflows/mac-app-build.yml', import.meta.url), 'utf8');
 
 function createBridgeHarness() {
@@ -78,6 +82,8 @@ describe('credential-free native API JavaScript boundary', () => {
     }
     expect(mainSwift).not.toMatch(/"apiKey"\s*:|__indexAuthChanged\([^)]*(?:apiKey|key)/);
     expect(mainSwift).not.toContain('targetKey');
+    expect(apiSource).not.toMatch(/\bmcpCall\s*,|\binvokeTool\s*,/);
+    expect(clientSource).not.toContain('invoke: (toolName');
   });
 });
 
@@ -88,19 +94,25 @@ describe('native owner migration and transport source contracts', () => {
     expect(ownerStore).toContain('owner-credential-migration.json');
     expect(ownerStore).toContain('verifyLegacyCredentialAbsent');
     expect(ownerStore).toContain('Set(object.keys) == Self.legacyCredentialKeys');
+    expect(ownerStore).toContain('^[A-Za-z0-9_-]+$');
     expect(ownerStore).not.toContain('removeItem(at: applicationSupportDirectory)');
     expect(mainSwift).not.toContain('removeItem(at: applicationSupportDirectory)');
     for (const evidence of [
       'malformed plaintext accepted', 'deletion failure accepted',
       'offline revocation evidence was not durable', 'legacy key ID missing',
-      'absence read-back failure accepted', 'Keychain read-back mismatch accepted',
+      'absence read-back failure accepted', 'invalid legacy key ID accepted',
+      'invalid legacy key ID source was deleted', 'Keychain read-back mismatch accepted',
     ]) expect(migrationFixture).toContain(evidence);
     expect(build).toContain('--fixture OwnerCredentialMigrationFixture');
     expect(macWorkflow).toContain('./build.sh --fixture OwnerCredentialMigrationFixture');
   });
 
   it('enforces exact native method/path/MCP/upload/SSE bounds before network work', () => {
-    expect(nativeBridge).toContain('maximumRequestBytes = 1_048_576');
+    expect(nativeBridge).toContain('maximumJSONRequestBytes = 262_144');
+    expect(nativeBridge).toContain('maximumJSONDepth = 16');
+    expect(nativeBridge).toContain('maximumObjectKeys = 64');
+    expect(nativeBridge).toContain('maximumArrayItems = 100');
+    expect(nativeBridge).toContain('maximumStringBytes = 65_536');
     expect(nativeBridge).toContain('maximumUploadBytes = 8_388_608');
     expect(nativeBridge).toContain('maximumResponseBytes = 1_048_576');
     expect(nativeBridge).toContain('maximumEventBytes = 65_536');
@@ -109,26 +121,77 @@ describe('native owner migration and transport source contracts', () => {
     expect(nativeBridge).toContain('containsForbiddenResponseField');
     expect(nativeBridge).toContain('allowedHTTPRoutes');
     expect(nativeBridge).toContain('allowedMCPTools');
+    expect(nativeBridge).toContain('/tools/read_user_contexts');
+    expect(nativeBridge).toContain('/tools/preview_user_context');
+    expect(nativeBridge).toContain('/tools/confirm_user_context');
+    expect(nativeBridge).not.toContain('^/tools/[^/?]+$');
+    expect(nativeBridge).toContain('isGloballyBoundedJSON');
     expect(nativeBridge).toContain('isAllowedBody');
     expect(nativeBridge).toContain('isAllowedSSEBody');
     expect(nativeBridge).toContain('isAllowedMCPArguments');
+    expect(nativeBridge).toContain('exactTypedObject');
+    expect(nativeBridge).toContain('boundedStringArray');
+    expect(nativeBridge).toContain('validMessageParts');
+    expect(nativeBridge).toContain('validDraft');
     expect(nativeBridge).toContain('hasAllowedQuery');
     expect(nativeBridge).toContain('create_intent');
+    expect(nativeBridge).toContain('URLSessionDataDelegate');
+    expect(nativeBridge).toContain('didReceive data: Data');
+    expect(nativeBridge).toContain('maximumPartialFrameBytes = 65_536');
+    expect(nativeBridge).toContain('maximumEventAggregateBytes = 1_048_576');
+    expect(nativeBridge).toContain('beginQuarantine');
+    expect(nativeBridge).toContain('endQuarantineAfterCredentialReadBack');
+    expect(streamFixture).toContain('mid-stream event was completion-buffered');
+    expect(streamFixture).toContain('partial-frame overflow was not cancelled');
+    expect(streamFixture).toContain('malformed SSE was not cancelled');
+    expect(build).toContain('--fixture NativeAPIStreamDelegateFixture');
+    expect(build).toContain('--fixture NativeAPIBodyValidationFixture');
+    expect(build).toContain('--fixture NativeAPIQuarantineFixture');
+    expect(macWorkflow).toContain('./build.sh --fixture NativeAPIStreamDelegateFixture');
+    expect(macWorkflow).toContain('./build.sh --fixture NativeAPIBodyValidationFixture');
+    expect(macWorkflow).toContain('./build.sh --fixture NativeAPIQuarantineFixture');
+    for (const evidence of ['depth overflow accepted', 'object-key overflow accepted', 'array overflow accepted',
+      'string overflow accepted', 'serialized overflow accepted', 'wrong/null/unknown typed body accepted',
+      'bool-as-number accepted', 'arbitrary MCP tool accepted', 'arbitrary REST tool accepted']) expect(bodyFixture).toContain(evidence);
     expect(nativeBridge).toContain('message.frameInfo.isMainFrame');
     const handler = nativeBridge.match(/func handle\(_ message: WKScriptMessage\)[\s\S]*?private func decode/)?.[0] || '';
     expect(handler.indexOf('trustedMessage(message)')).toBeLessThan(handler.indexOf('message.body'));
     expect(nativeBridge).not.toMatch(/request\.headers|operation\.headers|URL\(string:\s*operation/);
   });
 
+  it('quarantines and drains in-flight mutation/SSE work before logout revocation', () => {
+    const quarantine = nativeBridge.match(/func beginQuarantine[\s\S]*?func endQuarantineAfterCredentialReadBack/)?.[0] || '';
+    expect(quarantine).toContain('quarantined = true');
+    expect(quarantine).toContain('snapshot.forEach { $0.cancel() }');
+    expect(quarantine.indexOf('quarantined = true')).toBeLessThan(quarantine.indexOf('snapshot.forEach'));
+    expect(nativeBridge).toContain('guard !quarantined, tasks.count < Self.maximumPendingRequests');
+    const finish = nativeBridge.match(/private func finish\(_ response[\s\S]*?\n    }\n}/)?.[0] || '';
+    expect(finish.indexOf('terminal(response)')).toBeLessThan(finish.indexOf('drains.forEach'));
+    expect(finish).toContain('streamContexts.removeValue');
+    expect(mainSwift).toContain('retryPendingOwnerRevocation');
+    expect(quarantineFixture).toContain('logout revoked before active requests drained');
+    expect(quarantineFixture).toContain('quarantine admitted a new request');
+    expect(quarantineFixture).toContain('SSE terminal did not precede revoke drain');
+    expect(quarantineFixture).toContain('verified activation did not reopen quarantine');
+  });
+
   it('uses code-only PKCE exchange, Keychain verification, activation/rollback, and ordered revocation', () => {
     expect(mainSwift).toContain('Data(SHA256.hash');
+    expect(mainSwift).toContain('secureRandomState');
+    expect(mainSwift).toContain('secureRandomBytesProvider');
+    expect(mainSwift).toContain('secure_random_unavailable');
+    const login = mainSwift.match(/private func startLogin[\s\S]*?private func finishLogin/)?.[0] || '';
+    expect(login.indexOf('secureRandomState()')).toBeLessThan(login.indexOf('LoopbackAuthServer(state:'));
+    expect(login.indexOf('secure_random_unavailable')).toBeLessThan(login.indexOf('performOwnerRequest'));
+    expect(mainSwift).not.toMatch(/UUID\(\)\.uuidString \+ UUID\(\)\.uuidString/);
     expect(mainSwift).toContain('/index-app-owner-authorizations/exchange');
     expect(mainSwift).toContain('try store.putAndVerify(record)');
     expect(mainSwift).toContain('/index-app-owner-authorizations/activate');
     expect(mainSwift).toContain('/index-app-owner-authorizations/rollback');
     expect(mainSwift).toContain('/index-app-owner-authorizations/revoke');
-    const revokeBlock = mainSwift.match(/private func revokeAndDelete[\s\S]*?private func verifyCredentialDenied/)?.[0] || '';
-    expect(revokeBlock.indexOf('verifyCredentialDenied')).toBeLessThan(revokeBlock.indexOf('store.deleteAndVerify()'));
+    const logoutBlock = mainSwift.match(/private func logout[\s\S]*?private func verifyCredentialDenied/)?.[0] || '';
+    expect(logoutBlock.indexOf('beginQuarantine')).toBeLessThan(logoutBlock.indexOf('revokeAndDelete'));
+    expect(logoutBlock.indexOf('verifyCredentialDenied')).toBeLessThan(logoutBlock.indexOf('store.deleteAndVerify()'));
     expect(mainSwift).toContain('Set(names) == ["request_id", "code", "state"]');
     expect(mainSwift).not.toMatch(/api_key|session_token|targetKey/);
   });

@@ -259,7 +259,7 @@ final class LoopbackAuthServer {
         conn.send(content: out, completion: .contentProcessed { _ in conn.cancel() })
     }
 
-    enum AuthError: Error { case noPort, timedOut, invalidCallback }
+    enum AuthError: Error { case noPort, timedOut, invalidCallback, secureRandomUnavailable }
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +369,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var nativeAPIGenerations: [String: UInt64] = [:]
     private var pendingOwnerVerifier: String?
     private var pendingOwnerRedirectURI: String?
+    var secureRandomBytesProvider: (Int) -> Data? = { count in
+        var bytes = [UInt8](repeating: 0, count: count)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
+        return Data(bytes)
+    }
     private let ownerAuthQueue = DispatchQueue(label: "network.index.owner-authorization", qos: .userInitiated)
     private let hermesRuntime = HermesRuntimeManager()
     private let hermesRuntimeQueue = DispatchQueue(label: "network.index.hermes-runtime", qos: .userInitiated)
@@ -936,6 +941,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             terminal: { [weak self] response in self?.emitNativeAPIResponse(response) },
             event: { [weak self] event in self?.emitNativeAPIEvent(event) }
         )
+        if ownerMigrationJournal == nil, currentOwnerCredential() != nil {
+            try? nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
+        }
         if ownerMigrationJournal?.phase == .revocation_pending,
            ownerMigrationJournal?.legacyKeyId == nil,
            currentOwnerCredential() != nil {
@@ -1007,8 +1015,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         do { try store.verifyLegacyCredentialAbsent() }
         catch { notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return }
         authServer?.stop()
-        let state = randomState()
-        let verifier = randomState()
+        guard let state = try? secureRandomState(), let verifier = try? secureRandomState() else {
+            ownerStartupFailure = "secure_random_unavailable"
+            notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
+            return
+        }
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
@@ -1132,10 +1143,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                         self.rollbackFailedActivation(record: record, proof: exchange.activationProof, admittedGeneration: admittedGeneration)
                     case .success:
                         do {
+                            guard try store.loadCredential() == record else {
+                                throw OwnerCredentialStoreFailure.keychainReadBackFailed
+                            }
                             try store.clearJournal()
                             self.ownerMigrationJournal = nil
+                            try self.nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
                             DispatchQueue.main.async { self.notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration) }
                         } catch {
+                            let recovery = OwnerCredentialMigrationJournal(
+                                version: 1, installationId: self.ownerInstallationId,
+                                legacyKeyId: nil, requestId: nil, phase: .revocation_pending
+                            )
+                            try? store.saveJournal(recovery)
+                            self.ownerMigrationJournal = recovery
                             self.rollbackFailedActivation(record: record, proof: exchange.activationProof, admittedGeneration: admittedGeneration)
                         }
                     }
@@ -1194,7 +1215,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         do { try store.saveJournal(journal); ownerMigrationJournal = journal }
         catch { return }
         notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
-        revokeAndDelete(record: record, evidence: evidence)
+        guard let bridge = nativeAPIBridge else { return }
+        bridge.beginQuarantine { [weak self] in
+            self?.revokeAndDelete(record: record, evidence: evidence)
+        }
     }
 
     private func currentOwnerCredential() -> OwnerCredentialRecord? {
@@ -1204,8 +1228,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func retryPendingOwnerRevocation() {
-        guard let record = currentOwnerCredential() else { return }
-        revokeAndDelete(record: record, evidence: nil)
+        guard let record = currentOwnerCredential(), let bridge = nativeAPIBridge else { return }
+        bridge.beginQuarantine { [weak self] in
+            self?.revokeAndDelete(record: record, evidence: nil)
+        }
     }
 
     private func revokeAndDelete(record: OwnerCredentialRecord, evidence: HermesSagaOperationRecord?) {
@@ -1284,12 +1310,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-    private func randomState() -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
-            return (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "")
+    private func secureRandomState() throws -> String {
+        guard let bytes = secureRandomBytesProvider(32), bytes.count == 32 else {
+            throw LoopbackAuthServer.AuthError.secureRandomUnavailable
         }
-        return Data(bytes).base64EncodedString()
+        return bytes.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")

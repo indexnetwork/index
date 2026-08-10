@@ -49,7 +49,10 @@ import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { HERMES_AGENT_CREDENTIAL_PREFIX, isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
-import { resolveHermesAgentCredential } from '../guards/auth.guard';
+import { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX } from '../lib/agent/index-app-owner-authorization';
+import { validateIndexAppOwnerMcpEnvelope } from '../lib/agent/index-app-owner-mcp';
+import { recordRequestAuthContext } from '../lib/request-auth-context';
+import { resolveHermesAgentCredential, resolveIndexAppOwnerCredential } from '../guards/auth.guard';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
@@ -565,6 +568,19 @@ const authResolver: McpAuthResolver = {
     }
 
     if (input.apiKey) {
+      if (input.apiKey.startsWith(INDEX_APP_OWNER_CREDENTIAL_PREFIX)) {
+        try {
+          const { user } = await resolveIndexAppOwnerCredential(input.apiKey);
+          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
+            userId: user.id,
+            isSessionAuth: true,
+            networkScopeId: null,
+          });
+        } catch (err) {
+          if (err instanceof TelegramIdentityError) throw err;
+          throw new Error('Invalid API key', { cause: err });
+        }
+      }
       if (input.apiKey.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)) {
         try {
           const { user, principal } = await resolveHermesAgentCredential(input.apiKey);
@@ -990,6 +1006,33 @@ export async function mcpHandler(
   const sizeCheckedRequest = await enforceMcpRequestSize(req, maxRequestBytes, corsHeaders);
   if (sizeCheckedRequest instanceof Response) return sizeCheckedRequest;
   req = sizeCheckedRequest;
+
+  // The dedicated native owner credential is not admitted by route alone. Its
+  // only MCP capability is one exact non-batch tools/call for create_intent.
+  // Authenticate the active installation authority and record its product
+  // context before allocating the generic MCP transport/tool registry.
+  const apiKey = req.headers.get('x-api-key');
+  if (apiKey?.startsWith(INDEX_APP_OWNER_CREDENTIAL_PREFIX)) {
+    if (req.method !== 'POST' || new URL(req.url).pathname !== '/mcp') {
+      return new Response(JSON.stringify({ error: 'Owner MCP operation denied' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+    let envelope: unknown;
+    try { envelope = await req.clone().json(); }
+    catch { return new Response(JSON.stringify({ error: 'Invalid owner MCP request' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }); }
+    if (!validateIndexAppOwnerMcpEnvelope(envelope)) {
+      return new Response(JSON.stringify({ error: 'Owner MCP operation denied' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+    try {
+      const { principal } = await resolveIndexAppOwnerCredential(apiKey);
+      recordRequestAuthContext(req, {
+        kind: 'api_key', agentId: null, audience: INDEX_APP_OWNER_AUDIENCE,
+        credentialId: principal.credentialId, installationId: principal.installationId,
+        setupAttemptId: principal.generation,
+      });
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid API key' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+  }
 
   let connection: PerRequestMcpConnection | undefined;
   try {

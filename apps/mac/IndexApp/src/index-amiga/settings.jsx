@@ -527,7 +527,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // the review — the form is shown once, pre-populated, with no second spinner.
   const [drafting, setDrafting] = useState(enrich && live && !usableEnriched(enriched));
   useEffect(() => {
-    if (!enrich || !live || !window.IndexApp || !window.IndexApp.invokeTool) { setDrafting(false); return; }
+    if (!enrich || !live || !window.IndexApp || !window.IndexApp.previewUserContext) { setDrafting(false); return; }
     let cancelled = false;
     const adopt = (next) => {
       assembled.current = { ...assembled.current, ...next };
@@ -568,7 +568,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       } catch (e) { /* fall through to reading any prior enriched context */ }
 
       try {
-        const ctx = await window.IndexApp.invokeTool("read_user_contexts", {});
+        const ctx = await window.IndexApp.readUserContexts();
         if (cancelled) return;
         const c = ctx && ctx.success !== false && ctx.data;
         if (c && c.hasProfile && String(c.context || "").trim()) {
@@ -580,7 +580,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           let location = c.location || "";
           let skills = [], interests = [];
           try {
-            const pv = await window.IndexApp.invokeTool("preview_user_context", { bioOrDescription: context });
+            const pv = await window.IndexApp.previewUserContext({ bioOrDescription: context });
             const pd = pv && pv.success !== false && pv.data && pv.data.draft;
             if (pd) {
               const pid = pd.identity || {}, pat = pd.attributes || {};
@@ -618,7 +618,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       }
       if (ME.intro) q.bioOrDescription = ME.intro;
       try {
-        const res = await window.IndexApp.invokeTool("preview_user_context", q);
+        const res = await window.IndexApp.previewUserContext(q);
         if (cancelled) return;
         if (res && res.success !== false && res.data && res.data.draft) {
           const d = res.data.draft;
@@ -682,7 +682,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       // (so this screen doesn't reappear) and decomposes premises. The
       // updateProfile call below persists socials and, via setSocials, enqueues
       // the full enrich.user pipeline (Parallel lookup -> premises -> discovery).
-      if (enrich && window.IndexApp && window.IndexApp.invokeTool) {
+      if (enrich && window.IndexApp && window.IndexApp.confirmUserContext) {
         const d = draftRef.current || {};
         const approved = {
           identity: { name: form.name.trim(), bio: form.intro.trim(), location: form.location.trim() },
@@ -692,7 +692,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             interests: (d.attributes && d.attributes.interests) || [],
           },
         };
-        await window.IndexApp.invokeTool("confirm_user_context", { draft: approved }).catch(() => {});
+        await window.IndexApp.confirmUserContext(approved).catch(() => {});
       }
       await client.auth.updateProfile({
         name: form.name,

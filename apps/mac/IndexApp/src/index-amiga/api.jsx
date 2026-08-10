@@ -264,13 +264,18 @@ window.IndexApp = (function () {
 
   // ---- tools + enrichment -------------------------------------------------
 
-  // Invoke a protocol tool over REST (POST /tools/:name). Onboarding-allowed
-  // tools (preview_user_context, confirm_user_context) use native owner authority.
-  // Resolves the parsed tool result envelope ({ success, data } | { success:false, ... }).
-  function invokeTool(toolName, query) {
+  // Exact onboarding tool wrappers. No page API accepts a tool name.
+  function readUserContexts() {
     const c = getClient();
-    if (!c) return Promise.reject(new Error("no api client"));
-    return c.tools.invoke(toolName, query || {});
+    return c ? c.tools.readUserContexts() : Promise.reject(new Error("no api client"));
+  }
+  function previewUserContext(query) {
+    const c = getClient();
+    return c ? c.tools.previewUserContext(query || {}) : Promise.reject(new Error("no api client"));
+  }
+  function confirmUserContext(draft) {
+    const c = getClient();
+    return c ? c.tools.confirmUserContext(draft) : Promise.reject(new Error("no api client"));
   }
 
   // Run the full public-research enrichment inline (POST /enrichment/enrich) and
@@ -295,12 +300,21 @@ window.IndexApp = (function () {
     if (scopeType && scopeId) { body.scopeType = scopeType; body.scopeId = scopeId; }
     if (persona) body.persona = persona;
 
+    let immediateSession = sessionId || null;
+    const receive = (event) => {
+      if (event && event.type === "native_headers") {
+        immediateSession = event.headers && event.headers["x-session-id"] || immediateSession;
+        if (immediateSession && onSession) { try { onSession(immediateSession); } catch (e) { /* ignore */ } }
+        return;
+      }
+      if (onEvent) onEvent(event);
+    };
     const response = await nativeAPIBridge.request(
       { kind:"sse", method:"POST", path:"/chat/stream", body },
-      { signal, onEvent, timeoutMs:300000 },
+      { signal, onEvent:receive, timeoutMs:300000 },
     );
-    const resolvedSession = response.headers["x-session-id"] || sessionId || null;
-    if (resolvedSession && onSession) { try { onSession(resolvedSession); } catch (e) { /* ignore */ } }
+    const resolvedSession = response.headers["x-session-id"] || immediateSession || null;
+    if (resolvedSession && resolvedSession !== immediateSession && onSession) { try { onSession(resolvedSession); } catch (e) { /* ignore */ } }
     return resolvedSession;
   }
 
@@ -318,24 +332,17 @@ window.IndexApp = (function () {
 
   // Single structured tools/call through native /mcp. Used for intent creation,
   // which has no plain REST POST.
-  async function mcpCall(tool, args) {
-    const response = await nativeAPIBridge.request({ kind:"mcp", tool, arguments:args || {} });
+  // create_intent is the only MCP operation exposed to the page.
+  async function createIntent(description) {
+    const response = await nativeAPIBridge.request({
+      kind:"mcp", tool:"create_intent", arguments:{ description, autoApprove:true },
+    });
     const rpc = response.body;
-    if (!rpc) throw new Error(`MCP ${tool} returned no response`);
-    if (rpc.error) throw new Error(rpc.error.message || `MCP ${tool} failed`);
-
+    if (!rpc) throw new Error("MCP create_intent returned no response");
+    if (rpc.error) throw new Error(rpc.error.message || "MCP create_intent failed");
     const result = rpc.result || {};
-    if (result.isError) {
-      const text = extractMcpText(result);
-      throw new Error(text || `MCP ${tool} reported an error`);
-    }
+    if (result.isError) throw new Error(extractMcpText(result) || "MCP create_intent reported an error");
     return parseMcpResult(result);
-  }
-
-  // create_intent has no plain REST POST, go through the MCP tool. autoApprove
-  // persists immediately (there is no proposal-card UI here).
-  function createIntent(description, extra) {
-    return mcpCall("create_intent", { description, autoApprove: true, ...(extra || {}) });
   }
 
   // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
@@ -390,8 +397,9 @@ window.IndexApp = (function () {
     parseIntentProposals,
     streamChat,
     streamInbox,
-    mcpCall,
-    invokeTool,
+    readUserContexts,
+    previewUserContext,
+    confirmUserContext,
     triggerEnrichment,
   };
 })();
