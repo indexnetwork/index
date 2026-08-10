@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
 import { CaseTable } from '../components/CaseTable';
-import { api, type Artifact } from '../api/client';
+import { HistoricalQualityReport } from '../components/HistoricalQualityReport';
+import { api, isHistoricalQualityArtifact, type Artifact } from '../api/client';
 
 /**
  * Detail view for a stored artifact: a committed baseline, a CLI-produced run
@@ -29,7 +30,7 @@ export function ArtifactView() {
     );
   }
 
-  return <ArtifactDetail artifactId={artifactId} />;
+  return <ArtifactDetail key={artifactId} artifactId={artifactId} />;
 }
 
 interface ArtifactState {
@@ -85,6 +86,7 @@ function ArtifactDetail({ artifactId }: { artifactId: string }) {
 
   const artifact = state.artifact;
   const isBaseline = artifact.artifactType.endsWith('/baseline');
+  const isQuality = isHistoricalQualityArtifact(artifact);
   const filters = Object.entries(artifact.selection?.filters ?? {});
 
   return (
@@ -147,27 +149,33 @@ function ArtifactDetail({ artifactId }: { artifactId: string }) {
         </div>
       </Frame>
 
-      <Frame label="scorecard">
-        <div className="space-y-2">
-          <Row label="aggregate pass rate">
-            {(artifact.payload.aggregatePassRate * 100).toFixed(1)}%
-          </Row>
-          <CaseTable cases={artifact.payload.cases} />
-        </div>
-      </Frame>
+      {isQuality ? (
+        <HistoricalQualityReport artifact={artifact} />
+      ) : (
+        <>
+          <Frame label="scorecard">
+            <div className="space-y-2">
+              <Row label="aggregate pass rate">
+                {(artifact.payload.aggregatePassRate * 100).toFixed(1)}%
+              </Row>
+              <CaseTable cases={artifact.payload.cases} />
+            </div>
+          </Frame>
 
-      <Frame label="compare">
-        <p className="text-term-dim">
-          To diff this against another artifact of the same harness, use{' '}
-          <Link
-            to={`/compare?subject=${encodeURIComponent(artifactId)}`}
-            className="text-term-blue hover:underline"
-          >
-            compare
-          </Link>
-          .
-        </p>
-      </Frame>
+          <Frame label="compare">
+            <p className="text-term-dim">
+              To diff this against another artifact of the same harness, use{' '}
+              <Link
+                to={`/compare?subject=${encodeURIComponent(artifactId)}`}
+                className="text-term-blue hover:underline"
+              >
+                compare
+              </Link>
+              .
+            </p>
+          </Frame>
+        </>
+      )}
     </div>
   );
 }

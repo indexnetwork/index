@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
+import { DISCOVERY_ENV_KEYS } from "../../ops/ops.allowlist.js";
 import { HISTORICAL_QUALITY_MAX_ATTEMPTS, buildHistoricalExperimentPlan, diffResolvedHistoricalConfigs } from "../historical-quality.experiment.js";
 
 const fixed = {
@@ -98,22 +99,36 @@ describe("historical experiment contract", () => {
     })).toThrow(/ordinary comparison requires exactly one resolved factor difference/);
   });
 
-  it("accepts an ordinary env-only comparison", () => {
+  it("accepts an ordinary env-only comparison using a generated discovery key", () => {
+    expect(DISCOVERY_ENV_KEYS).toContain("NEGOTIATOR_STANCE");
     const plan = buildHistoricalExperimentPlan({
       caseIds: ["case-1"],
       triggers: ["intent"],
       repetitions: 1,
       sides: [
-        side("a", { opportunityEvaluator: "model-a" }, { DISCOVERY_ALLOWED_TYPES: "intent" }),
-        side("b", { opportunityEvaluator: "model-a" }, { DISCOVERY_ALLOWED_TYPES: "intent,profile" }),
+        side("a", { opportunityEvaluator: "model-a" }, { NEGOTIATOR_STANCE: "balanced" }),
+        side("b", { opportunityEvaluator: "model-a" }, { NEGOTIATOR_STANCE: "advocate" }),
       ],
       mode: "ordinary",
     });
 
     expect(plan.factorDifferences).toEqual([
-      { kind: "env", key: "DISCOVERY_ALLOWED_TYPES", a: "intent", b: "intent,profile" },
+      { kind: "env", key: "NEGOTIATOR_STANCE", a: "balanced", b: "advocate" },
     ]);
     expect(plan.causalClaimAllowed).toBe(true);
+  });
+
+  it.each([
+    ["an unknown env key", "HISTORICAL_UNKNOWN_FLAG"],
+    ["a non-discovery env key", "SMARTEST_VERIFIER_MODEL"],
+  ])("rejects %s", (_label, key) => {
+    expect(() => buildHistoricalExperimentPlan({
+      caseIds: ["case-1"],
+      triggers: ["intent"],
+      repetitions: 1,
+      sides: [side("a", { opportunityEvaluator: "model-a" }, { [key]: "value" })],
+      mode: "ordinary",
+    })).toThrow(new RegExp(`resolved env key ${key} is not allowed for discovery`));
   });
 
   it("forbids EVAL_MODEL_OVERRIDES in resolved env and directs callers to models", () => {

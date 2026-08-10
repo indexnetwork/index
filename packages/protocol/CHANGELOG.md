@@ -20,6 +20,12 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 10.1.0 - 2026-08-07
+
+### Added
+
+- Added the independently reviewed 25-participant historical shared-pool contract, single-configuration dual-trigger pilot planner, descriptive stage-funnel metrics, and strict execution-completeness artifact schema for IND-638A.
+
 ## [Unreleased]
 
 ### Removed

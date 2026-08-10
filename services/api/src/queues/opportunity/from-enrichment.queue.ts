@@ -1,10 +1,10 @@
 import { Job } from 'bullmq';
 import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
-import type { Id } from '../../types/common.types';
 import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
+import { buildEnrichmentDiscoveryTrigger } from './discovery-trigger.builders';
 
 export const QUEUE_NAME = 'opportunity-from-enrichment';
 
@@ -16,7 +16,7 @@ export interface FromEnrichmentJobData {
 export interface FromEnrichmentGraphInvokeOptions {
   userId: string;
   operationMode: 'create';
-  networkId?: string;
+  networkId: string | undefined;
   options: { initialStatus: 'latent' };
 }
 
@@ -85,12 +85,14 @@ export class FromEnrichmentQueue {
 
     this.logger.info('Starting profile-based discovery', { userId, networkId });
 
-    const invokeOpts: FromEnrichmentGraphInvokeOptions = {
-      userId: userId as Id<'users'>,
-      operationMode: 'create',
-      networkId: networkId as Id<'networks'> | undefined,
-      options: { initialStatus: 'latent' },
-    };
+    const invokeOpts: FromEnrichmentGraphInvokeOptions = networkId === undefined
+      ? {
+          userId,
+          operationMode: 'create',
+          networkId: undefined,
+          options: { initialStatus: 'latent' },
+        }
+      : buildEnrichmentDiscoveryTrigger({ userId, networkId });
 
     await runOpportunityDiscovery({
       graphDb: this.graphDb,
