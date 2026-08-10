@@ -17,9 +17,13 @@ function displayName(profile: UserIdentity | null | undefined, fallback = 'Someo
   return name || fallback;
 }
 
-function isNegotiationAttention(payload: QuestionCreatedPayload): boolean {
-  if (payload.mode !== 'negotiation' && payload.mode !== 'negotiation_inflight') return false;
-  return payload.mode === 'negotiation_inflight';
+function questionNotificationTitle(
+  intentLabel: string | undefined,
+  opportunityLabel: string | undefined,
+): string {
+  if (opportunityLabel) return `Your agent has a question about ${opportunityLabel}'s fit`;
+  if (intentLabel) return `Your agent has a question about your ${intentLabel}`;
+  return 'Your agent has a question';
 }
 
 async function loadIntentLabel(intentId: string | undefined): Promise<string | undefined> {
@@ -55,29 +59,6 @@ export class NotificationDeliveryService {
         ?? (question.detection.sourceType === 'intent' ? question.detection.sourceId : undefined)
         ?? question.detection.negotiation?.recipientIntentId;
 
-      if (isNegotiationAttention(payload)) {
-        let peerName = 'someone';
-        if (question.detection.sourceType === 'opportunity') {
-          const opportunity = await this.opportunities.getOpportunity(question.detection.sourceId);
-          const counterpart = opportunity
-            ? counterpartForUser(opportunity, payload.userId)
-            : undefined;
-          if (counterpart) {
-            const profile = await buildProfileFromUser(counterpart.userId);
-            peerName = displayName(profile);
-          }
-        }
-        const event: NotificationStreamEvent = {
-          type: 'question.attention',
-          questionId: payload.questionId,
-          peerName,
-          negotiationId: question.detection.negotiation?.taskId
-            ?? question.detection.negotiation?.opportunityId,
-        };
-        await publishNotificationStreamEvent(payload.userId, event);
-        return;
-      }
-
       const intentLabel = await loadIntentLabel(intentId);
       let opportunityLabel: string | undefined;
       if (question.detection.sourceType === 'opportunity') {
@@ -93,10 +74,9 @@ export class NotificationDeliveryService {
 
       const event: NotificationStreamEvent = {
         type: 'question.new',
-        questionId: payload.questionId,
-        prompt: question.payload.prompt,
-        ...(intentLabel ? { intentLabel } : {}),
-        ...(opportunityLabel ? { opportunityLabel } : {}),
+        id: payload.questionId,
+        title: questionNotificationTitle(intentLabel, opportunityLabel),
+        body: question.payload.prompt?.trim() || 'Open Index to answer.',
       };
       await publishNotificationStreamEvent(payload.userId, event);
     } catch (err) {
@@ -131,10 +111,9 @@ export class NotificationDeliveryService {
 
         const event: NotificationStreamEvent = {
           type: 'opportunity.new',
-          opportunityId: opportunity.id,
-          headline,
-          summary,
-          counterpartyName,
+          id: opportunity.id,
+          title: headline,
+          body: summary,
         };
         await publishNotificationStreamEvent(recipientId, event);
       }));

@@ -296,6 +296,8 @@ def main() -> None:
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
     assert "startDesktopNotifications" in desktop_js
     assert "/notifications/stream" in desktop_js
+    assert "authedPluginStreamFetch" in desktop_js
+    assert "getConnection" in desktop_js
     assert "checkOpportunities" not in desktop_js
     # Hermes Desktop ships the same browser-login gate via the built bundle.
     assert "Log in with browser" in desktop_js
