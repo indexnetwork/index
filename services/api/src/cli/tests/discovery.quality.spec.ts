@@ -201,3 +201,40 @@ describe('historical quality provider-free contract', () => {
     expect(Object.values(calls)).toEqual(Array(9).fill(0));
   });
 });
+
+describe('historical quality PR B dispatch acceptance', () => {
+  it('enters the attested runtime seam instead of returning the PR A runtime-unavailable refusal', async () => {
+    const calls: string[] = [];
+    const dependencies: DiscoveryBootstrapDependencies = {
+      assertConfirmation: () => { calls.push('confirmation'); },
+      parseManifest: () => {
+        calls.push('manifest');
+        return {
+          projectId: 'project-audit',
+          baseBranchId: 'branch-base',
+          targets: [
+            { sideId: 'a', branchId: 'branch-a', endpointId: 'endpoint-a', databaseUrl: 'postgres://audit.invalid/protocol_eval' },
+            { sideId: 'b', branchId: 'branch-b', endpointId: 'endpoint-b', databaseUrl: 'postgres://audit.invalid/protocol_eval' },
+          ],
+        };
+      },
+      attestTargets: async () => { calls.push('attest'); },
+      importRuntime: async () => {
+        calls.push('runtime-import');
+        return { main: async () => { calls.push('quality-dispatch'); } };
+      },
+    };
+    const stderr: string[] = [];
+
+    const result = await runDiscoveryBootstrap(
+      [...fullArgs, '--runs', '1'],
+      { DISCOVERY_CONFIRM: '1', TEST_DATABASE_SAFE: '1' },
+      { log: () => {}, error: (message?: unknown) => stderr.push(String(message)) },
+      dependencies,
+    );
+
+    expect(result).toBeUndefined();
+    expect(stderr).toEqual([]);
+    expect(calls).toEqual(['confirmation', 'manifest', 'attest', 'runtime-import', 'quality-dispatch']);
+  });
+});
