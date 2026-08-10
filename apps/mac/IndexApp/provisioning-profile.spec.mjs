@@ -119,7 +119,7 @@ test('existing embedded profile reaches CMS decoding after temporary file creati
       helper,
       app,
     ], {
-      env: { ...Bun.env, SECURITY_MARKER: marker, PLIST_BUDDY: '/bin/true' },
+      env: { ...Bun.env, SECURITY_MARKER: marker, PLIST_BUDDY: '/usr/bin/true' },
     });
 
     expect(result.exitCode).not.toBe(0);
