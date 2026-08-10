@@ -258,6 +258,7 @@ const HERMES_AGENT_STATIC_ROUTES: ReadonlySet<string> = new Set([
   'POST /mcp',
   'GET /agents/me',
   'GET /auth/me',
+  'POST /hermes-authorizations/disconnect',
   'PATCH /auth/profile/update',
   'POST /intents/list',
   'GET /opportunities',

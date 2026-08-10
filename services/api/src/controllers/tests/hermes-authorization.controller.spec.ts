@@ -60,6 +60,7 @@ class MemoryHermesAuthorizationStore implements HermesAuthorizationStore {
   selectedRuntime: 'index' | 'external' = 'external';
   priorInstallationCredentialRevoked = false;
   permissionActions: readonly string[] | null = null;
+  disconnectedCredentialId: string | null = null;
 
   async createAuthorization(input: Parameters<HermesAuthorizationStore['createAuthorization']>[0]) {
     this.authorizations.set(input.requestId, {
@@ -131,6 +132,26 @@ class MemoryHermesAuthorizationStore implements HermesAuthorizationStore {
       row.credentialHash === credentialHash
       && row.activationState === 'pending'
       && row.expiresAt > NOW) ?? null;
+  }
+
+  async authenticateRevocableCredential(credentialHash: string) {
+    return [...this.credentials.values()].find((row) => row.credentialHash === credentialHash) ?? null;
+  }
+
+  async disconnectCredential(input: HermesActivationPrincipal) {
+    const row = this.credentials.get(input.credentialId);
+    if (!row) throw new AuthorizationConflictError();
+    if (row.activationState !== 'revoked') {
+      row.activationState = 'revoked';
+      this.selectedRuntime = 'index';
+      this.permissionActions = null;
+      this.disconnectedCredentialId = row.credentialId;
+    }
+    return {
+      revoked: true as const,
+      credentialId: row.credentialId,
+      setupAttemptId: row.setupAttemptId,
+    };
   }
 
   async activatePendingCredential(input: HermesActivationPrincipal) {
@@ -362,5 +383,89 @@ describe('HermesAuthorizationController provider-free contract', () => {
     ));
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: 'invalid_credential' });
+  });
+
+  it('self-revokes an exact pending credential with a strict body and stable retry receipt', async () => {
+    await createAuthorization();
+    const exchange = await exchangeAuthorization();
+    const pending = await exchange.json() as { credential: string; credentialId: string };
+    const receipt = {
+      revoked: true,
+      credentialId: pending.credentialId,
+      setupAttemptId: SETUP_ATTEMPT_ID,
+    };
+
+    const invalidBody = await controller.disconnect(request(
+      '/hermes-authorizations/disconnect',
+      { protocolVersion: 1, extra: true },
+      { 'x-api-key': pending.credential },
+    ));
+    expect(invalidBody.status).toBe(400);
+    expect(store.disconnectedCredentialId).toBeNull();
+
+    const disconnected = await controller.disconnect(request(
+      '/hermes-authorizations/disconnect',
+      { protocolVersion: 1 },
+      { 'x-api-key': pending.credential },
+    ));
+    expect(disconnected.status).toBe(200);
+    expect(await disconnected.json()).toEqual(receipt);
+    expect(store.selectedRuntime).toBe('index');
+    expect(store.permissionActions).toBeNull();
+    expect(store.disconnectedCredentialId).toBe(pending.credentialId);
+
+    const replay = await controller.disconnect(request(
+      '/hermes-authorizations/disconnect',
+      { protocolVersion: 1 },
+      { 'x-api-key': pending.credential },
+    ));
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(receipt);
+  });
+
+  it('self-revokes an exact active credential', async () => {
+    await createAuthorization();
+    const exchange = await exchangeAuthorization();
+    const pending = await exchange.json() as { credential: string; credentialId: string };
+    const activated = await controller.activate(request(
+      '/hermes-authorizations/activate',
+      { protocolVersion: 1, keychainConfirmed: true },
+      { 'x-api-key': pending.credential },
+    ));
+    expect(activated.status).toBe(200);
+
+    const disconnected = await controller.disconnect(request(
+      '/hermes-authorizations/disconnect',
+      { protocolVersion: 1 },
+      { 'x-api-key': pending.credential },
+    ));
+    expect(disconnected.status).toBe(200);
+    expect(await disconnected.json()).toEqual({
+      revoked: true,
+      credentialId: pending.credentialId,
+      setupAttemptId: SETUP_ATTEMPT_ID,
+    });
+    expect(store.disconnectedCredentialId).toBe(pending.credentialId);
+    expect(store.permissionActions).toBeNull();
+    expect(store.selectedRuntime).toBe('index');
+  });
+
+  it('self-revokes an expired exact credential', async () => {
+    await createAuthorization();
+    const exchange = await exchangeAuthorization();
+    const pending = await exchange.json() as { credential: string; credentialId: string };
+    store.credentials.get(pending.credentialId)!.expiresAt = new Date(NOW.getTime() - 1);
+
+    const disconnected = await controller.disconnect(request(
+      '/hermes-authorizations/disconnect',
+      { protocolVersion: 1 },
+      { 'x-api-key': pending.credential },
+    ));
+    expect(disconnected.status).toBe(200);
+    expect(await disconnected.json()).toEqual({
+      revoked: true,
+      credentialId: pending.credentialId,
+      setupAttemptId: SETUP_ATTEMPT_ID,
+    });
   });
 });

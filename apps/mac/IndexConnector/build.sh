@@ -22,6 +22,110 @@ compile_connector_protocol_fixture() {
   "$output"
 }
 
+write_development_endpoints() {
+  local destination="$1" web="$2" api="$3" mcp="$4"
+  python3 - "$destination" "$web" "$api" "$mcp" <<'PY'
+import json
+import sys
+
+path, web, api, mcp = sys.argv[1:]
+with open(path, 'w', encoding='utf-8') as output:
+    output.write('enum ConnectorEmbeddedDevelopmentEndpoints {\n')
+    output.write(f'    static let web = {json.dumps(web)}\n')
+    output.write(f'    static let api = {json.dumps(api)}\n')
+    output.write(f'    static let mcp = {json.dumps(mcp)}\n')
+    output.write('}\n')
+PY
+}
+
+compile_runtime_fixture() {
+  local fixture="$1"
+  local output="$(runner_temp)/index-connector-${fixture}"
+  local generated="$(runner_temp)/index-connector-fixture-endpoints.swift"
+  write_development_endpoints \
+    "$generated" \
+    "http://127.0.0.1:49152" \
+    "http://127.0.0.1:49152/api" \
+    "http://127.0.0.1:49152/mcp"
+  local -a sources=(
+    Sources/ConnectorProtocol.swift
+    Sources/ConnectorIdentity.swift
+    Sources/ConnectorCredentialStore.swift
+    Sources/ConnectorInstallationStore.swift
+    Sources/ConnectorHTTPClient.swift
+    Sources/BrowserAuthorization.swift
+    Sources/ConnectorRuntime.swift
+    ../Security/Sources/IndexKeychainStore.swift
+  )
+  swiftc -parse-as-library -DINDEX_CONNECTOR_NONPRODUCTION \
+    -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
+    "${sources[@]}" "$generated" "Tests/${fixture}.swift" \
+    -o "$output"
+  "$output"
+}
+
+validate_development_endpoint() {
+  local value="$1" expected_suffix="$2"
+  python3 - "$value" "$expected_suffix" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+value, suffix = sys.argv[1:]
+parsed = urlsplit(value)
+if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+    raise SystemExit('development endpoint is not an absolute trusted build input')
+if parsed.scheme == 'http' and parsed.hostname != '127.0.0.1':
+    raise SystemExit('plaintext development endpoints must use exact 127.0.0.1')
+if suffix and not parsed.path.endswith(suffix):
+    raise SystemExit(f'development endpoint must end in {suffix}')
+PY
+}
+
+build_connector() {
+  local mode="$1"
+  local app="dist/IndexConnector.app"
+  local contents="${app}/Contents"
+  local executable="${contents}/MacOS/IndexConnector"
+  local generated="$(runner_temp)/index-connector-development-endpoints.swift"
+  local -a flags=()
+  local -a generated_sources=()
+  if [[ "$mode" == "development" ]]; then
+    if [[ "${INDEX_CONNECTOR_NONPRODUCTION_BUILD:-}" != "1" ]]; then
+      echo "INDEX_CONNECTOR_NONPRODUCTION_BUILD=1 is required" >&2
+      exit 64
+    fi
+    require_value INDEX_CONNECTOR_DEV_WEB_URL
+    require_value INDEX_CONNECTOR_DEV_API_URL
+    require_value INDEX_CONNECTOR_DEV_MCP_URL
+    validate_development_endpoint "$INDEX_CONNECTOR_DEV_WEB_URL" ""
+    validate_development_endpoint "$INDEX_CONNECTOR_DEV_API_URL" "/api"
+    validate_development_endpoint "$INDEX_CONNECTOR_DEV_MCP_URL" "/mcp"
+    write_development_endpoints "$generated" \
+      "$INDEX_CONNECTOR_DEV_WEB_URL" "$INDEX_CONNECTOR_DEV_API_URL" "$INDEX_CONNECTOR_DEV_MCP_URL"
+    flags+=("-DINDEX_CONNECTOR_NONPRODUCTION")
+    generated_sources+=("$generated")
+  fi
+  local -a sources=(
+    Sources/ConnectorProtocol.swift
+    Sources/ConnectorIdentity.swift
+    Sources/ConnectorCredentialStore.swift
+    Sources/ConnectorInstallationStore.swift
+    Sources/ConnectorHTTPClient.swift
+    Sources/BrowserAuthorization.swift
+    Sources/ConnectorRuntime.swift
+    ../Security/Sources/IndexKeychainStore.swift
+  )
+  rm -rf "$app"
+  mkdir -p "${contents}/MacOS"
+  cp Info.plist "${contents}/Info.plist"
+  MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -parse-as-library -O \
+    -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
+    "${flags[@]}" "${sources[@]}" "${generated_sources[@]}" Sources/main.swift \
+    -o "$executable"
+  chmod 0755 "$executable"
+  echo "Built ${app} (${mode})"
+}
+
 compile_keychain_fixture() {
   local output="$(runner_temp)/index-keychain-fixture"
   swiftc -parse-as-library -framework Foundation -framework Security \
@@ -388,6 +492,8 @@ case "${1:-}" in
     case "${2:-}" in
       ConnectorProtocolFixture) compile_connector_protocol_fixture ;;
       KeychainIntegrationFixture) compile_keychain_fixture ;;
+      AuthorizationFixture) compile_runtime_fixture AuthorizationFixture ;;
+      TransportFixture) compile_runtime_fixture TransportFixture ;;
       *) echo "unknown fixture: ${2:-}" >&2; exit 64 ;;
     esac
     ;;
@@ -402,12 +508,14 @@ case "${1:-}" in
   --signed-access-fixture)
     run_signed_access_fixture
     ;;
+  --nonproduction)
+    build_connector development
+    ;;
   '')
-    echo "production IndexConnector.app assembly begins in Task 4; use --fixture in Task 1" >&2
-    exit 64
+    build_connector production
     ;;
   *)
-    echo "usage: $0 --fixture ConnectorProtocolFixture|KeychainIntegrationFixture | --validate-profile-pair-fixture ... | --signed-access-fixture" >&2
+    echo "usage: $0 [--nonproduction] | --fixture ConnectorProtocolFixture|KeychainIntegrationFixture|AuthorizationFixture|TransportFixture | --validate-profile-pair-fixture ... | --signed-access-fixture" >&2
     exit 64
     ;;
 esac

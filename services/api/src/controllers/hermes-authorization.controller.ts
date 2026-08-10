@@ -39,6 +39,10 @@ const activateSchema = z.object({
   keychainConfirmed: z.literal(true),
 }).strict();
 
+const disconnectSchema = z.object({
+  protocolVersion: z.literal(1),
+}).strict();
+
 type RouteParams = Record<string, string>;
 
 function authorizationResponse(error: HermesAuthorizationError): Response {
@@ -128,6 +132,20 @@ export class HermesAuthorizationController {
       return Response.json(serialize(await this.authorization.activatePendingHermesCredential(principal)));
     } catch (error) {
       return this.handleError(error, 'activate');
+    }
+  }
+
+  @Post('/disconnect')
+  @UseGuards(RateLimit('write'))
+  async disconnect(request: Request): Promise<Response> {
+    try {
+      await parseBody(request, disconnectSchema);
+      const credential = request.headers.get('x-api-key');
+      if (!credential) throw new InvalidHermesCredentialError();
+      const principal = await this.authorization.authenticateRevocableHermesCredential(credential);
+      return Response.json(await this.authorization.disconnectHermesCredential(principal));
+    } catch (error) {
+      return this.handleError(error, 'disconnect');
     }
   }
 

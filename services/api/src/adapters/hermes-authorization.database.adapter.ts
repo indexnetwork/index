@@ -242,6 +242,15 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
     return row ? metadata(row) : null;
   }
 
+  /** Resolve one exact row regardless of expiry/state for self-revocation only. */
+  async authenticateRevocableCredential(credentialHash: string) {
+    const [row] = await db.select().from(schema.hermesAgentCredentials).where(and(
+      eq(schema.hermesAgentCredentials.secretHash, credentialHash),
+      eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
+    )).limit(1);
+    return row ? metadata(row) : null;
+  }
+
   /** Compare-and-activate the exact row, generation, and canonical actions. */
   async activatePendingCredential(input: HermesActivationPrincipal) {
     return db.transaction(async (tx) => {
@@ -301,6 +310,101 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
       )).returning();
       if (!activated) throw new AuthorizationConflictError();
       return metadata(activated);
+    });
+  }
+
+  /** Idempotently revoke one exact row without disturbing a newer generation. */
+  async disconnectCredential(input: HermesActivationPrincipal): Promise<{
+    revoked: true;
+    credentialId: string;
+    setupAttemptId: string;
+  }> {
+    return db.transaction(async (tx) => {
+      const revokedAt = new Date();
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(hashtextextended(${`agent-runtime:${input.ownerId}`}, 0))
+      `);
+      const [credential] = await tx.select().from(schema.hermesAgentCredentials).where(and(
+        eq(schema.hermesAgentCredentials.id, input.credentialId),
+        eq(schema.hermesAgentCredentials.ownerId, input.ownerId),
+      )).limit(1).for('update');
+      if (
+        !credential
+        || credential.audience !== input.audience
+        || credential.agentId !== input.agentId
+        || credential.installationId !== input.installationId
+        || credential.setupAttemptId !== input.setupAttemptId
+        || credential.expiresAt.getTime() !== input.expiresAt.getTime()
+        || !sameActions(credential.actions, input.actions)
+      ) throw new AuthorizationConflictError();
+      const receipt = {
+        revoked: true as const,
+        credentialId: credential.id,
+        setupAttemptId: credential.setupAttemptId,
+      };
+      if (credential.activationState === 'revoked') return receipt;
+      if (credential.activationState !== 'pending' && credential.activationState !== 'active') {
+        throw new AuthorizationConflictError();
+      }
+
+      const [currentGeneration] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
+        eq(schema.agents.id, input.agentId),
+        eq(schema.agents.ownerId, input.ownerId),
+        eq(schema.agents.type, 'external'),
+        eq(schema.agents.runtimeKind, 'hermes'),
+        eq(schema.agents.installationId, input.installationId),
+        eq(schema.agents.runtimeSetupAttemptId, input.setupAttemptId),
+        eq(schema.agents.status, 'active'),
+        isNull(schema.agents.deletedAt),
+      )).limit(1).for('update');
+
+      if (currentGeneration) {
+        await tx.execute(sql`
+          UPDATE agent_permissions
+          SET actions = array_remove(actions, 'manage:negotiations')
+          WHERE agent_id IN (
+            SELECT id FROM agents
+            WHERE owner_id = ${input.ownerId} AND type = 'external' AND deleted_at IS NULL
+          ) AND 'manage:negotiations' = ANY(actions)
+        `);
+        await tx.execute(sql`
+          DELETE FROM agent_permissions
+          WHERE cardinality(actions) = 0
+            AND agent_id IN (
+              SELECT id FROM agents
+              WHERE owner_id = ${input.ownerId} AND type = 'external' AND deleted_at IS NULL
+            )
+        `);
+        await tx.update(schema.agents).set({
+          handleNegotiations: false,
+          updatedAt: revokedAt,
+        }).where(and(
+          eq(schema.agents.ownerId, input.ownerId),
+          eq(schema.agents.type, 'external'),
+          isNull(schema.agents.deletedAt),
+        ));
+        await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.agentId, input.agentId));
+        await tx.update(schema.agents).set({
+          status: 'inactive',
+          runtimeSetupAttemptId: null,
+          updatedAt: revokedAt,
+        }).where(eq(schema.agents.id, input.agentId));
+        await tx.delete(schema.apikeys).where(sql`
+          ${schema.apikeys.metadata} IS NOT NULL
+          AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${input.agentId}
+        `);
+      }
+
+      const [revoked] = await tx.update(schema.hermesAgentCredentials).set({
+        activationState: 'revoked',
+        revokedAt,
+      }).where(and(
+        eq(schema.hermesAgentCredentials.id, input.credentialId),
+        eq(schema.hermesAgentCredentials.setupAttemptId, input.setupAttemptId),
+        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
+      )).returning({ id: schema.hermesAgentCredentials.id });
+      if (!revoked) throw new AuthorizationConflictError();
+      return receipt;
     });
   }
 }

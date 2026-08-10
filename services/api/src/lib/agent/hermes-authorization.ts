@@ -98,7 +98,13 @@ export interface HermesAuthorizationStore {
   }>;
   exchangeAuthorizationCode(input: ExchangeHermesAuthorizationRecord): Promise<HermesCredentialMetadata>;
   authenticatePendingCredential(credentialHash: string): Promise<HermesCredentialMetadata | null>;
+  authenticateRevocableCredential(credentialHash: string): Promise<HermesCredentialMetadata | null>;
   activatePendingCredential(input: HermesActivationPrincipal): Promise<HermesCredentialMetadata>;
+  disconnectCredential(input: HermesActivationPrincipal): Promise<{
+    revoked: true;
+    credentialId: string;
+    setupAttemptId: string;
+  }>;
 }
 
 /** SHA-256 base64url encoding shared by codes, PKCE, and dedicated credentials. */

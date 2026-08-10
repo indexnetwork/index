@@ -1,5 +1,5 @@
 import { HERMES_AGENT_AUDIENCE, HERMES_AUTHORIZATION_CODE_TTL_MS, HERMES_AUTHORIZATION_REQUEST_TTL_MS, HERMES_CREDENTIAL_TTL_MS, InvalidHermesCredentialError, derivePkceS256Challenge, hashHermesSecret, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
-import type { HermesCapability } from '../lib/agent/hermes-capabilities';
+import { isExactHermesCapabilitySet, type HermesCapability } from '../lib/agent/hermes-capabilities';
 
 export type HermesAuthorizationServiceDependencies = {
   now: () => Date;
@@ -117,9 +117,36 @@ export class HermesAuthorizationService {
     };
   }
 
+  /** Resolve one exact dedicated row solely for expiry-safe self-revocation. */
+  async authenticateRevocableHermesCredential(rawCredential: string): Promise<HermesActivationPrincipal> {
+    if (!rawCredential.startsWith('idxh_')) throw new InvalidHermesCredentialError();
+    const metadata = await this.store.authenticateRevocableCredential(await hashHermesSecret(rawCredential));
+    if (
+      !metadata
+      || metadata.audience !== HERMES_AGENT_AUDIENCE
+      || !['pending', 'active', 'revoked'].includes(metadata.activationState)
+      || !isExactHermesCapabilitySet(metadata.actions)
+    ) throw new InvalidHermesCredentialError();
+    return {
+      ownerId: metadata.ownerId,
+      audience: metadata.audience,
+      agentId: metadata.agentId,
+      installationId: metadata.installationId,
+      setupAttemptId: metadata.setupAttemptId,
+      credentialId: metadata.credentialId,
+      actions: metadata.actions,
+      expiresAt: metadata.expiresAt,
+    };
+  }
+
   /** Install the exact pending generation's permission after native confirmation. */
   async activatePendingHermesCredential(principal: HermesActivationPrincipal) {
     return publicMetadata(await this.store.activatePendingCredential(principal));
+  }
+
+  /** Revoke this exact credential/generation and restore Index authority. */
+  async disconnectHermesCredential(principal: HermesActivationPrincipal) {
+    return this.store.disconnectCredential(principal);
   }
 }
 
@@ -140,9 +167,17 @@ const lazyHermesAuthorizationStore: HermesAuthorizationStore = {
     const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
     return hermesAuthorizationDatabaseAdapter.authenticatePendingCredential(credentialHash);
   },
+  async authenticateRevocableCredential(credentialHash) {
+    const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
+    return hermesAuthorizationDatabaseAdapter.authenticateRevocableCredential(credentialHash);
+  },
   async activatePendingCredential(input) {
     const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
     return hermesAuthorizationDatabaseAdapter.activatePendingCredential(input);
+  },
+  async disconnectCredential(input) {
+    const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
+    return hermesAuthorizationDatabaseAdapter.disconnectCredential(input);
   },
 };
 

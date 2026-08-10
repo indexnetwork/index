@@ -57,7 +57,7 @@ indirect enum JSONValue: Codable, Equatable {
 }
 
 enum ConnectorOperation: String, Codable {
-    case hello, status, authorizeStart, authorizePoll, rest, mcp, disconnect
+    case hello, status, authorizeStart = "authorize.start", authorizePoll = "authorize.poll", rest, mcp, disconnect
 }
 
 struct ConnectorRequest: Codable, Equatable {

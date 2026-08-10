@@ -25,6 +25,7 @@ const allowed = [
   ['POST', `/api/agents/${agentId}/negotiations/task-1/respond`],
   ['POST', `/api/agents/${agentId}/negotiations/task-1/consult`],
   ['GET', '/api/auth/me'],
+  ['POST', '/api/hermes-authorizations/disconnect'],
   ['PATCH', '/api/auth/profile/update'],
   ['POST', '/api/intents/list'],
   ['PATCH', '/api/intents/intent-1/status'],

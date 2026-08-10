@@ -37,7 +37,7 @@ afterEach(async () => Promise.all(temporaryPaths.splice(0).map((path) => rm(path
 test('connector protocol is exact, bounded, and credential-free', () => {
   const source = read('./Sources/ConnectorProtocol.swift');
   expect(source).toContain('static let current = 1');
-  expect(source).toContain('case hello, status, authorizeStart, authorizePoll, rest, mcp, disconnect');
+  expect(source).toContain('case hello, status, authorizeStart = "authorize.start", authorizePoll = "authorize.poll", rest, mcp, disconnect');
   expect(source).toContain('rejectUnknownKeys');
   expect(source).toContain('maximumRequestBytes = 262_144');
   expect(source).toContain('ConnectorResponseValidator');
@@ -157,6 +157,54 @@ test('macOS CI runs native fixtures and keeps signed identity verification gated
   expect(workflow).toContain('IndexConnector/connector-contract.spec.mjs');
   expect(workflow).toContain('./build.sh --fixture ConnectorProtocolFixture');
   expect(workflow).toContain('./build.sh --fixture KeychainIntegrationFixture');
+  expect(workflow).toContain('./build.sh --fixture AuthorizationFixture');
+  expect(workflow).toContain('./build.sh --fixture TransportFixture');
   expect(workflow).toContain('INDEX_KEYCHAIN_SIGNING_FIXTURE');
   expect(workflow).toContain('./build.sh --signed-access-fixture');
+});
+
+test('production connector endpoints and build mode cannot be supplied by callers', () => {
+  const identity = read('./Sources/ConnectorIdentity.swift');
+  const runtime = read('./Sources/ConnectorRuntime.swift');
+  const build = read('./build.sh');
+  expect(identity).toContain('https://index.network');
+  expect(identity).toContain('https://protocol.index.network/api');
+  expect(identity).toContain('https://protocol.index.network/mcp');
+  expect(identity).toContain('#if INDEX_CONNECTOR_NONPRODUCTION');
+  expect(build).toContain('-DINDEX_CONNECTOR_NONPRODUCTION');
+  expect(runtime).not.toMatch(/apiURL|mcpURL|webURL/);
+  expect(runtime).not.toMatch(/CommandLine\.arguments|ProcessInfo\.processInfo\.environment/);
+});
+
+test('authorization, transport, persistence, and serialized runtime remain bounded and secret-free', () => {
+  const authorization = read('./Sources/BrowserAuthorization.swift');
+  const transport = read('./Sources/ConnectorHTTPClient.swift');
+  const installation = read('./Sources/ConnectorInstallationStore.swift');
+  const main = read('./Sources/main.swift');
+  expect(authorization).toContain('SecRandomCopyBytes');
+  expect(authorization).toContain('127.0.0.1');
+  expect(authorization).toContain('/callback');
+  expect(transport).toContain('"codeChallengeMethod": .string("S256")');
+  expect(transport).toContain('timeoutInterval = 30');
+  expect(transport).toContain('maximumResponseBytes = 1_048_576');
+  expect(transport).toContain('maximumUploadBytes = 8_388_608');
+  expect(transport).toContain('hermes-authorizations/disconnect');
+  expect(transport).toContain('auth/me');
+  expect(installation).toContain('Application Support');
+  expect(installation).toContain('.atomic');
+  expect(main).toContain('readLine(strippingNewline: true)');
+  for (const source of [authorization, transport, installation, main]) {
+    expect(source).not.toMatch(/print\(.*(?:credential|verifier|authorizationCode|code\b)/i);
+  }
+});
+
+test('native fixtures cover callback replay, keychain ordering, transport bounds, and recovery mode', () => {
+  const authorization = read('./Tests/AuthorizationFixture.swift');
+  const transport = read('./Tests/TransportFixture.swift');
+  for (const token of ['wrongState', 'callbackReplay', 'wrongPath', 'wrongHost', 'keychainWriteBeforeActivation', 'activationOmittedAfterKeychainFailure']) {
+    expect(authorization).toContain(token);
+  }
+  for (const token of ['deniedRoute', 'deniedTool', 'oversizedPayload', 'endpointOverride', 'pendingRevocation', 'recovery_only']) {
+    expect(transport).toContain(token);
+  }
 });

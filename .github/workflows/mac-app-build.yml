@@ -51,13 +51,17 @@ jobs:
             api/deeplink.spec.mjs \
             IndexConnector/connector-contract.spec.mjs
 
-      - name: Native connector protocol and Keychain fixtures
+      - name: Native connector authorization, transport, protocol, and Keychain fixtures
         working-directory: apps/mac/IndexConnector
         run: |
           bash -n build.sh
           plutil -lint Info.plist IndexConnector.entitlements
           ./build.sh --fixture ConnectorProtocolFixture
           ./build.sh --fixture KeychainIntegrationFixture
+          ./build.sh --fixture AuthorizationFixture
+          ./build.sh --fixture TransportFixture
+          ./build.sh
+          test -x dist/IndexConnector.app/Contents/MacOS/IndexConnector
 
       - name: Protected signed cross-identity Keychain fixture
         working-directory: apps/mac/IndexConnector
