@@ -458,32 +458,32 @@ def main() -> None:
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
-    assert "write-enabled for pending-question answers" in dashboard_readme
-    assert "dashboard/plugin_api.py" in dashboard_readme
-    assert "../tools.py" in dashboard_readme
-    assert "claim pending negotiation turns" in dashboard_readme
-    assert "answering pending Index questions" in package_readme
-    assert "dashboard/plugin_api.py" in package_readme
-    assert "Log in with browser" in package_readme
-    assert "Log in with browser" in dashboard_readme
-    assert "/auth/login/start" in dashboard_readme
-    assert "tools.py" in package_readme
-    assert "### `index_open_app`" in package_readme
-    assert "INDEX_APP_BASE_URL" in package_readme
-    assert "no app-installation detection" in package_readme
-    assert "INDEX_PLUGIN_MODE" in package_readme
-    assert "unknown non-empty value fails closed" in package_readme
-    assert "Negotiator mode has no dashboard" in package_readme
-    assert "index_consult_owner" in package_readme
-    assert "Index Personal Agent Negotiator" in package_readme
-    assert "every 1m" in package_readme
-    assert (
-        'Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.'
-        in package_readme
-    )
-    for stale in ("/c/<code>", "connect link", "x-index-surface"):
-        assert stale not in package_readme, stale
-        assert stale not in dashboard_readme, stale
+    production_docs = {
+        "plugin": package_readme,
+        "dashboard": dashboard_readme,
+        "mac": (ROOT.parents[1] / "apps" / "mac" / "README.md").read_text(),
+    }
+    assert "Connect to Index" in package_readme
+    assert "PKCE S256" in package_readme
+    assert "idxh_" in package_readme
+    assert "30 days" in package_readme and "seven days" in package_readme
+    assert "manage:identity" in package_readme and "manage:negotiations" in package_readme
+    assert "exactly four handlers" in package_readme
+    assert "recovery-only" in package_readme
+    assert "JSON lines protocol v1" in package_readme
+    assert "source-only development transport" in package_readme
+    assert "credential-free" in dashboard_readme
+    assert "recovery-only disconnect" in dashboard_readme
+    assert "INDEX_PLUGIN_MODE=negotiator" in dashboard_readme
+    assert "App Sandbox is not a production requirement" in production_docs["mac"]
+    # Production instructions must never tell an operator to persist a Hermes or
+    # owner credential in an environment file, browser storage, or plaintext file.
+    for name, document in production_docs.items():
+        assert "INDEX_API_KEY" not in document, name
+        assert "saves it to Hermes" not in document, name
+        assert "writes it to Hermes" not in document, name
+        assert "set INDEX_API_KEY" not in document, name
+        assert "persist.*credential" not in document.lower(), name
 
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
