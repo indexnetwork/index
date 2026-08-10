@@ -114,8 +114,8 @@ function qualityFunnel() {
 }
 
 /** Complete ten-slot quality artifact used by strict schema and Ops tests. */
-export function makeHistoricalQualityArtifact(options: { failedSlot?: number; requestedSlots?: number } = {}) {
-  const emittedSlots = 10;
+export function makeHistoricalQualityArtifact(options: { emittedSlots?: number; failedSlot?: number; requestedSlots?: number } = {}) {
+  const emittedSlots = options.emittedSlots ?? 10;
   const requestedSlots = options.requestedSlots ?? emittedSlots;
   const rows = Array.from({ length: emittedSlots }, (_, index) => {
     const logicalCaseId = `historical/case-${Math.floor(index / 2) + 1}`;
@@ -193,7 +193,7 @@ export function makeHistoricalQualityArtifact(options: { failedSlot?: number; re
       failedRuns: rows.length - completedSlots,
       recoveredRuns: 0,
       totalAttempts: rows.length,
-      complete: completedSlots === rows.length,
+      complete: verdict,
     },
     measurement: {
       kind: "historical-quality-pilot" as const,

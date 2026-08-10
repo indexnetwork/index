@@ -702,6 +702,7 @@ function refineEvalArtifactEnvelopeV2(
   validateCommonEnvelope(artifact, context);
   const expected = summarizeCompletenessV2(artifact.payload.cases, artifact.payload.rules.length, artifact.execution);
   for (const key of Object.keys(expected) as Array<keyof EvalCompletenessV2>) {
+    if (quality && key === "complete") continue;
     if (artifact.completeness[key] !== expected[key]) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", key], message: `completeness.${key} is inconsistent with the payload/execution (expected ${String(expected[key])})` });
     }
@@ -809,6 +810,9 @@ function refineHistoricalQualityArtifactEnvelope(
     && completedSlots === measurement.requestedSlots;
   if (measurement.qualityVerdictAvailable !== completeEvidence) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "qualityVerdictAvailable"], message: "quality verdict availability must exactly match complete requested evidence" });
+  }
+  if (artifact.completeness.complete !== completeEvidence) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", "complete"], message: "quality completeness must exactly match complete requested evidence" });
   }
 }
 export const HistoricalQualityArtifactEnvelopeSchema = historicalQualityArtifactEnvelopeBaseSchema

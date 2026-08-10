@@ -246,6 +246,10 @@ describe("buildEvalArtifact + parseEvalArtifact", () => {
     const meta = makeTestMeta({ runs: 1, execution: failedRun });
     const report = buildEvalArtifact(EVAL_RUN_REPORT_ARTIFACT_TYPE, incomplete, meta);
     expect(report.completeness).toMatchObject({ requestedRuns: 1, completedRuns: 0, failedRuns: 1, complete: false });
+    expect(() => parseEvalArtifact({ ...report, completeness: { ...report.completeness, complete: true } }, { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE }))
+      .toThrow(/completeness\.complete is inconsistent with the payload\/execution \(expected false\)/);
+    expect(() => parseEvalArtifact({ ...validEnvelope(), completeness: { ...validEnvelope().completeness, complete: false } }, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE }))
+      .toThrow(/completeness\.complete is inconsistent with the payload\/execution \(expected true\)/);
     expect(() => buildEvalArtifact(EVAL_BASELINE_ARTIFACT_TYPE, incomplete, meta)).toThrow(/baseline artifacts require complete/);
   });
 });
@@ -266,27 +270,30 @@ describe("historical quality artifact governance", () => {
     expect(HistoricalQualityExecutionRunSchema.safeParse(artifact.execution.runs[0]).success).toBeTrue();
   });
 
+  it("binds both quality completeness indicators exactly to full requested evidence", () => {
+    const diagnostics = [
+      { name: "complete", artifact: makeHistoricalQualityArtifact(), expected: true },
+      { name: "ten of eleven emitted", artifact: makeHistoricalQualityArtifact({ requestedSlots: 11 }), expected: false },
+      { name: "zero of eleven emitted", artifact: makeHistoricalQualityArtifact({ emittedSlots: 0, requestedSlots: 11 }), expected: false },
+    ];
+
+    for (const { name, artifact, expected } of diagnostics) {
+      expect(parseQuality(artifact), `${name}: matching indicators`).toBeTruthy();
+
+      const wrongCompleteness = structuredClone(artifact);
+      wrongCompleteness.completeness.complete = !expected;
+      expect(() => parseQuality(wrongCompleteness), `${name}: completeness.complete`).toThrow(/completeness\.complete/);
+
+      const wrongVerdict = structuredClone(artifact);
+      wrongVerdict.measurement.qualityVerdictAvailable = !expected;
+      expect(() => parseQuality(wrongVerdict), `${name}: measurement.qualityVerdictAvailable`).toThrow(/quality verdict availability/);
+    }
+  });
+
   it("accepts complete and incomplete diagnostics, identifies quality, and forbids baselines/V1", () => {
     const complete = parseQuality(makeHistoricalQualityArtifact());
     expect(isHistoricalQualityArtifact(complete)).toBeTrue();
     expect((parseQuality(makeIncompleteHistoricalQualityArtifact()).completeness as { complete: boolean }).complete).toBeFalse();
-    expect(parseQuality(mutation((value) => {
-      value.measurement.requestedSlots = 11;
-      value.measurement.qualityVerdictAvailable = false;
-    }))).toBeTruthy();
-    expect(parseQuality(mutation((value) => {
-      value.payload.cases = [];
-      value.payload.aggregatePassRate = 0;
-      value.payload.rules[0].caseCount = 0;
-      value.payload.rules[0].passRate = 0;
-      value.execution.runs = [];
-      Object.assign(value.completeness, {
-        caseCount: 0, totalRuns: 0, totalPasses: 0, requestedRuns: 0,
-        completedRuns: 0, failedRuns: 0, totalAttempts: 0, complete: true,
-      });
-      value.measurement.completedSlots = 0;
-      value.measurement.qualityVerdictAvailable = false;
-    }))).toBeTruthy();
     expect(() => parseEvalArtifact({ ...makeHistoricalQualityArtifact(), artifactType: EVAL_BASELINE_ARTIFACT_TYPE }, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE })).toThrow();
     expect(() => parseEvalArtifact({ ...makeHistoricalQualityArtifact(), schemaVersion: 1 }, { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE })).toThrow();
   });
