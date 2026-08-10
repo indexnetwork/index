@@ -16,9 +16,14 @@
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>Index</string>
+    <!-- CFBundleIconFile points at Resources/AppIcon.icns. CFBundleIconName is
+         deliberately absent: it names an asset-catalog icon, which macOS
+         prefers over the .icns, so with both set the bundle drew whatever was
+         compiled into Assets.car and edits to the .icns did nothing. Rebuilding
+         Assets.car from AppIcon.icon needs actool (full Xcode), which this
+         build does not require for anything else. Restore the key and rebuild
+         the catalog together, or not at all. -->
     <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundleIconName</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
