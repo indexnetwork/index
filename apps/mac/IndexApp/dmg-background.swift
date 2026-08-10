@@ -1,9 +1,10 @@
 import Cocoa
 
 // Generates the branded DMG window background as a Workbench-window motif:
-// white 'paper' field (--amiga-paper #FFFFFF), orange title-bar strip
-// (--amiga-accent #FF8A00) at the top, black text, and a dark-gray arrow
-// guiding the drag from the app icon to the Applications alias.
+// white 'paper' field (--amiga-paper #FFFFFF), a plain orange title-bar strip
+// (--amiga-accent #FF8A00) at the top (no text — the real macOS title bar
+// already names the window), black caption, and a chunky brand-blue arrow
+// (--amiga-bg #0055AA) guiding the drag to the Applications alias.
 //
 // Usage: dmg-background <output-dir>
 // Writes <output-dir>/dmg-background.png (540x380) and
@@ -23,7 +24,7 @@ let fontURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 CTFontManagerRegisterFontsForURL(fontURL as CFURL, .process, nil)
 
 let accentOrange = NSColor(calibratedRed: 1, green: CGFloat(0x8A) / 255, blue: 0, alpha: 1)
-let arrowGray = NSColor(calibratedRed: CGFloat(0x55) / 255, green: CGFloat(0x55) / 255, blue: CGFloat(0x55) / 255, alpha: 1)
+let brandBlue = NSColor(calibratedRed: 0, green: CGFloat(0x55) / 255, blue: CGFloat(0xAA) / 255, alpha: 1)
 
 func render(scale: CGFloat, to path: String) {
     let size = CGSize(width: 540, height: 380)
@@ -52,33 +53,24 @@ func render(scale: CGFloat, to path: String) {
         ?? NSFont.systemFont(ofSize: 15, weight: .medium)
 
     // Title-bar strip across the top (Cocoa y-up coordinates: y 352..380),
-    // with a black hairline separator underneath (y 350..352).
+    // with a black hairline separator underneath (y 350..352). Deliberately
+    // text-free: the real macOS title bar above it already reads 'Index'.
     accentOrange.setFill()
     NSRect(x: 0, y: 352, width: size.width, height: 28).fill()
     NSColor.black.setFill()
     NSRect(x: 0, y: 350, width: size.width, height: 2).fill()
 
-    let title = "Index"
-    let titleAttributes: [NSAttributedString.Key: Any] = [
-        .font: font,
-        .foregroundColor: NSColor.black,
-    ]
-    let titleSize = title.size(withAttributes: titleAttributes)
-    title.draw(
-        at: NSPoint(x: 12, y: 352 + (28 - titleSize.height) / 2),
-        withAttributes: titleAttributes
-    )
-
     // Arrow guiding the drag: the Finder layout (dmg.sh) puts icon centers at
     // {140, 190} and {400, 190} in top-left coordinates with 128pt icons, so
-    // the icon row sits at y = 380 - 190 = 190 here, between the app icon's
-    // right edge (~x=204) and the alias's left edge (~x=336).
-    arrowGray.setFill()
-    NSRect(x: 216, y: 188, width: 94, height: 4).fill() // shaft x 216..310
+    // the icon row sits at y = 380 - 190 = 190 here, and the arrow must stay
+    // between the app icon's right edge (~x=204) and the alias's left edge
+    // (~x=336). Chunky 8pt shaft with a 24pt-tall filled head.
+    brandBlue.setFill()
+    NSRect(x: 216, y: 186, width: 86, height: 8).fill() // shaft x 216..302
     let head = NSBezierPath()
-    head.move(to: NSPoint(x: 310, y: 182))
-    head.line(to: NSPoint(x: 328, y: 190))
-    head.line(to: NSPoint(x: 310, y: 198))
+    head.move(to: NSPoint(x: 302, y: 178))
+    head.line(to: NSPoint(x: 330, y: 190))
+    head.line(to: NSPoint(x: 302, y: 202))
     head.close()
     head.fill()
 
@@ -88,8 +80,9 @@ func render(scale: CGFloat, to path: String) {
         .foregroundColor: NSColor.black,
     ]
     let textSize = text.size(withAttributes: attributes)
+    // Below the icon labels (icon bottom y-up 126, Finder labels ~y-up 95..115).
     text.draw(
-        at: NSPoint(x: (size.width - textSize.width) / 2, y: 120),
+        at: NSPoint(x: (size.width - textSize.width) / 2, y: 48),
         withAttributes: attributes
     )
 
