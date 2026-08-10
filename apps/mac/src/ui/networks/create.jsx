@@ -270,8 +270,8 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                 <div style={{
                   fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", maxWidth:360, margin:"0 auto",
                 }}>
-                  we&apos;re reviewing <b style={{ color:"#000" }}>{(done && done.title) || named}</b> and
-                  will get back to you shortly.
+                  <b style={{ color:"#000" }}>{(done && done.title) || named}</b> is in review.
+                  you&apos;ll hear back shortly.
                 </div>
                 <div style={{ marginTop:22 }}>
                   <ActionButton onClick={onCancel}>back to networks</ActionButton>
@@ -301,7 +301,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                     here and invite your members so their signals can find each
                     other.</p>
                   <p style={{ margin:"7px 0 0" }}>network creation is still
-                    early, so we&apos;ll review this before it goes live.</p>
+                    early, so this gets reviewed before it goes live.</p>
                 </div>
               </div>
 
@@ -453,7 +453,7 @@ function RequestStatusRow({ req, onEdit, onDismiss }) {
             }}>“{req.reviewNote}”</div>
           : <div style={{
               marginTop:2, fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-            }}>we&apos;re reviewing your request.</div>}
+            }}>your request is in review.</div>}
       </div>
       {needsChanges ? (
         <div style={{ display:"flex", alignItems:"center", gap:8, flex:"0 0 auto" }}>
