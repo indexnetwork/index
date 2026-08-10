@@ -9,8 +9,21 @@ import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { ALLOWED_CAPABILITY_DIRECTIONS, capabilityForSourcePath } from "../../../scripts/architecture/capability-model.ts";
+
 const sourceRoot = resolve(import.meta.dir, "../..");
 const boundaryScript = resolve(sourceRoot, "../scripts/architecture/capability-boundaries.ts");
+const coreCapabilities = [
+  "signals",
+  "participant-context",
+  "communities",
+  "opportunities",
+  "negotiation",
+  "questions",
+  "participant-agents",
+  "contacts",
+  "integrations",
+] as const;
 
 // ── Shell index existence ─────────────────────────────────────────────────────
 
@@ -92,41 +105,37 @@ describe("public shell", () => {
 // ── Boundary script awareness ─────────────────────────────────────────────────
 
 describe("capability-boundaries script classifies outer shells", () => {
-  test("script knows interaction-composition covers runtime/foreground", async () => {
-    const script = await readFile(boundaryScript, "utf8");
-    expect(script).toContain('"foreground"');
-    expect(script).toContain("interaction-composition");
-  });
-
-  test("script knows ambient-background covers runtime/background", async () => {
-    const script = await readFile(boundaryScript, "utf8");
-    expect(script).toContain('"background"');
-    expect(script).toContain("ambient-background");
-  });
-
-  test("script enforces neutral-platform with empty allowed directions", async () => {
-    const script = await readFile(boundaryScript, "utf8");
-    expect(script).toContain("neutral-platform");
-    // The neutral-platform allowed list is empty — the literal [] appears in the source
-    expect(script).toMatch(/"neutral-platform":\s*\[\]/);
-  });
-
-  test("script enforces public-compatibility requires facades only", async () => {
-    const script = await readFile(boundaryScript, "utf8");
-    expect(script).toContain("public-compatibility");
-    expect(script).toContain("root exports must use a capability facade");
-  });
-
-  test("script classifies all four outer shells in allowedDirections", async () => {
-    const script = await readFile(boundaryScript, "utf8");
-    for (const shell of [
+  test("classifies runtime/foreground as interaction-composition", () => {
+    expect(capabilityForSourcePath("runtime/foreground/index.ts")).toBe(
       "interaction-composition",
+    );
+  });
+
+  test("classifies runtime/background as ambient-background", () => {
+    expect(capabilityForSourcePath("runtime/background/index.ts")).toBe(
       "ambient-background",
-      "neutral-platform",
-      "public-compatibility",
-    ]) {
-      expect(script).toContain(`"${shell}"`);
-    }
+    );
+  });
+
+  test("classifies platform as neutral-platform with no allowed directions", () => {
+    const capability = capabilityForSourcePath("platform/index.ts");
+    expect(capability).toBe("neutral-platform");
+    expect(ALLOWED_CAPABILITY_DIRECTIONS["neutral-platform"]).toEqual([]);
+  });
+
+  test("classifies public as public-compatibility with facade-only directions", () => {
+    const capability = capabilityForSourcePath("public/index.ts");
+    expect(capability).toBe("public-compatibility");
+    expect(ALLOWED_CAPABILITY_DIRECTIONS["public-compatibility"]).toEqual([
+      ...coreCapabilities,
+      "interaction-composition",
+    ]);
+  });
+
+  test("retains actionable boundary violation messages", async () => {
+    const script = await readFile(boundaryScript, "utf8");
+    expect(script).toContain("direct implementation imports");
+    expect(script).toContain("root exports must use a capability facade");
   });
 });
 
