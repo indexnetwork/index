@@ -18,7 +18,7 @@ Historical quality is intentionally absent from the Eval Ops launch registry. Ev
 
 ## Historical-quality operation lease
 
-The stable host-local lease root is the host's `os.tmpdir()` (normally `/tmp`), which the runtime accepts only when `lstat` proves it is a real, non-symlink sticky mode-`01777` directory. This produces the same path for every OS user on the host; `$HOME` is never part of the identity. The stable lock path is an opaque SHA-256 directory derived only from the strict manifest-v2 `projectId` and side-`a` `branchId`: `<tmpdir>/<identifier>.lease`. It is created with atomic `mkdir` and forced to mode `0700`. Its `owner.json` token is a regular no-follow mode-`0600` file containing identifier/ownership metadata only, never a manifest, URL, credential, writable target, or provider configuration.
+The stable host-local lease root is the fixed literal `/tmp`; production does not consult `os.tmpdir()`, `$TMPDIR`, `$TMP`, `$TEMP`, `$HOME`, or any override. The runtime does not create or chmod that root and accepts it only when `lstat` proves the exact path is a real, non-symlink mode-`01777`, uid-`0`, gid-`0` directory. This trusted host-wide root gives every OS user the same identity namespace. The stable lock path is a direct child opaque SHA-256 directory derived only from the strict manifest-v2 `projectId` and side-`a` `branchId`: `/tmp/<identifier>.lease`. It is created with atomic `mkdir` and forced to mode `0700`. Its `owner.json` token is a regular no-follow mode-`0600` file containing identifier/ownership metadata only, never a manifest, URL, credential, writable target, or provider configuration. Cross-UID coordination still relies on ordinary sticky-directory permission semantics; root ownership closes authority over the shared namespace.
 
 A normal release validates the owned token, atomically renames the still-held stable directory to its unique owner-token-derived `<identifier>.lease.tombstone-<digest>` path, and only then deletes the token and tombstone. It never read-then-unlinks the stable pathname. A killed/crashed process can therefore leave either the stable directory or a release tombstone. There is no timeout, PID-based expiry, stale detection, takeover, or automatic deletion; either form keeps later invocations fail-closed.
 
@@ -31,7 +31,7 @@ LEASE_ROOT="$(dirname "$LEASE_PATH")"
 LEASE_IDENTIFIER="$(basename "$LEASE_PATH" .lease)"
 printf 'historical-quality lease identifier: %s\n' "$LEASE_IDENTIFIER"
 stat "$LEASE_ROOT"
-if test -e "$LEASE_PATH"; then stat "$LEASE_PATH" "$LEASE_PATH/owner.json"; fi
+if test -e "$LEASE_PATH" || test -L "$LEASE_PATH"; then stat "$LEASE_PATH" "$LEASE_PATH/owner.json"; fi
 find "$LEASE_ROOT" -maxdepth 1 -name "${LEASE_IDENTIFIER}.lease.tombstone-*" -print
 ```
 

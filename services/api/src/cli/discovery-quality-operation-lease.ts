@@ -1,35 +1,58 @@
 import { constants } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink, type FileHandle } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { parseHistoricalQualityManifest } from './discovery.neon';
 
-export const HISTORICAL_QUALITY_OPERATION_LEASE_ROOT = tmpdir();
+export const HISTORICAL_QUALITY_OPERATION_LEASE_ROOT = '/tmp';
 
 const LEASE_TOKEN_NAME = 'owner.json';
 const ROOT_MODE = 0o1777;
 const LOCK_MODE = 0o700;
 const TOKEN_MODE = 0o600;
 
+const ROOT_AUTHORITY_BRAND = Symbol('historical-quality-root-authority');
+
+type HistoricalQualityLeaseRootAuthority = Readonly<{
+  [ROOT_AUTHORITY_BRAND]: true;
+  kind: 'production' | 'test-override';
+  rootDirectory: string;
+  expectedUid: number;
+  expectedGid?: number;
+}>;
+
 export interface HistoricalQualityOperationLease {
   readonly identifier: string;
   /** Stable lock directory, not the token file within it. */
   readonly path: string;
   readonly ownerToken: string;
+  /** Root authority validated at acquisition and required again at release. */
+  readonly rootAuthority: HistoricalQualityLeaseRootAuthority;
   release(): Promise<boolean>;
 }
 
-interface HistoricalQualityOperationLeaseOptions {
-  rootDirectory?: string;
+interface HistoricalQualityOperationLeaseTestOptions {
+  rootDirectory: string;
 }
 
 interface HistoricalQualityOperationLeaseReleaseInput {
   path: string;
   ownerToken: string;
-  /** Narrow race injection used by the filesystem acceptance tests. */
+  rootAuthority: HistoricalQualityLeaseRootAuthority;
+}
+
+interface HistoricalQualityOperationLeaseReleaseTestHooks {
+  /** Narrow race injection used only by the filesystem acceptance tests. */
   beforeRename?: (input: { tombstonePath: string }) => Promise<void>;
+}
+
+interface LeaseRootMetadata {
+  isDirectory: boolean;
+  isSymbolicLink: boolean;
+  mode: number;
+  uid: number;
+  gid: number;
 }
 
 function leaseIdentifier(rawManifest: string | undefined): string {
@@ -43,12 +66,20 @@ function leaseIdentifier(rawManifest: string | undefined): string {
   })).digest('hex');
 }
 
-export function historicalQualityOperationLeasePath(
+function leasePath(rawManifest: string | undefined, rootDirectory: string): string {
+  return path.join(rootDirectory, `${leaseIdentifier(rawManifest)}.lease`);
+}
+
+export function historicalQualityOperationLeasePath(rawManifest: string | undefined): string {
+  return leasePath(rawManifest, HISTORICAL_QUALITY_OPERATION_LEASE_ROOT);
+}
+
+/** Test-only custom-root path seam; production always uses literal `/tmp`. */
+export function historicalQualityOperationLeasePathForTest(
   rawManifest: string | undefined,
-  options: HistoricalQualityOperationLeaseOptions = {},
+  options: HistoricalQualityOperationLeaseTestOptions,
 ): string {
-  const identifier = leaseIdentifier(rawManifest);
-  return path.join(options.rootDirectory ?? HISTORICAL_QUALITY_OPERATION_LEASE_ROOT, `${identifier}.lease`);
+  return leasePath(rawManifest, options.rootDirectory);
 }
 
 function errorCode(error: unknown): unknown {
@@ -67,16 +98,80 @@ function exactMode(mode: number, expected: number): boolean {
   return (mode & 0o7777) === expected;
 }
 
-async function validateLeaseRoot(rootDirectory: string): Promise<void> {
+function productionRootAuthority(): HistoricalQualityLeaseRootAuthority {
+  return Object.freeze({
+    [ROOT_AUTHORITY_BRAND]: true as const,
+    kind: 'production',
+    rootDirectory: HISTORICAL_QUALITY_OPERATION_LEASE_ROOT,
+    expectedUid: 0,
+    expectedGid: 0,
+  });
+}
+
+function testOverrideRootAuthority(rootDirectory: string): HistoricalQualityLeaseRootAuthority {
+  const currentUid = process.getuid?.();
+  if (currentUid === undefined) {
+    throw new Error('Historical quality test lease root requires a current POSIX uid');
+  }
+  return Object.freeze({
+    [ROOT_AUTHORITY_BRAND]: true as const,
+    kind: 'test-override',
+    rootDirectory,
+    expectedUid: currentUid,
+  });
+}
+
+function validateLeaseRootMetadata(authority: HistoricalQualityLeaseRootAuthority, root: LeaseRootMetadata): void {
+  if (authority.kind === 'production' && authority.rootDirectory !== HISTORICAL_QUALITY_OPERATION_LEASE_ROOT) {
+    throw new Error('Historical quality production lease root must be literal /tmp');
+  }
+  if (!path.isAbsolute(authority.rootDirectory)
+    || !root.isDirectory
+    || root.isSymbolicLink
+    || !exactMode(root.mode, ROOT_MODE)) {
+    throw new Error('Historical quality operation lease root must be an exact non-symlink mode-01777 directory');
+  }
+  if (root.uid !== authority.expectedUid) {
+    throw new Error(authority.kind === 'production'
+      ? 'Historical quality production lease root must be root-owned (uid 0)'
+      : 'Historical quality test override lease root must be owned by the current uid');
+  }
+  if (authority.expectedGid !== undefined && root.gid !== authority.expectedGid) {
+    throw new Error('Historical quality production lease root must be root-group-owned (gid 0)');
+  }
+}
+
+async function validateLeaseRoot(authority: HistoricalQualityLeaseRootAuthority): Promise<void> {
   let root;
   try {
-    root = await lstat(rootDirectory);
+    root = await lstat(authority.rootDirectory);
   } catch (error) {
     throw new Error('Historical quality operation lease root is unavailable', { cause: error });
   }
-  if (!root.isDirectory() || root.isSymbolicLink() || !exactMode(root.mode, ROOT_MODE)) {
-    throw new Error('Historical quality operation lease root must be a non-symlink sticky mode-01777 directory');
-  }
+  validateLeaseRootMetadata(authority, {
+    isDirectory: root.isDirectory(),
+    isSymbolicLink: root.isSymbolicLink(),
+    mode: root.mode,
+    uid: root.uid,
+    gid: root.gid,
+  });
+}
+
+/** Metadata injection seam proving production authority without modifying `/tmp`. */
+export function validateHistoricalQualityLeaseRootMetadataForTest(input: {
+  authority: 'production' | 'test-override';
+  rootDirectory: string;
+  currentUid?: number;
+  metadata: LeaseRootMetadata;
+}): void {
+  const production = input.authority === 'production';
+  validateLeaseRootMetadata(Object.freeze({
+    [ROOT_AUTHORITY_BRAND]: true as const,
+    kind: input.authority,
+    rootDirectory: input.rootDirectory,
+    expectedUid: production ? 0 : (input.currentUid ?? process.getuid?.() ?? -1),
+    ...(production ? { expectedGid: 0 } : {}),
+  }), input.metadata);
 }
 
 function exactLeaseOwner(raw: string, ownerToken: string, identifier: string): boolean {
@@ -122,10 +217,14 @@ async function closeQuietly(handle: FileHandle | undefined): Promise<void> {
  */
 export async function releaseHistoricalQualityOperationLease(
   input: HistoricalQualityOperationLeaseReleaseInput,
+  testHooks: HistoricalQualityOperationLeaseReleaseTestHooks = {},
 ): Promise<boolean> {
   const identifier = identifierFromLeasePath(input.path);
-  if (!identifier || !/^[a-f0-9]{64}$/.test(input.ownerToken)) return false;
-  await validateLeaseRoot(path.dirname(input.path));
+  if (!identifier
+    || !/^[a-f0-9]{64}$/.test(input.ownerToken)
+    || input.rootAuthority[ROOT_AUTHORITY_BRAND] !== true
+    || path.dirname(input.path) !== input.rootAuthority.rootDirectory) return false;
+  await validateLeaseRoot(input.rootAuthority);
 
   let stablePathStat;
   try {
@@ -167,7 +266,7 @@ export async function releaseHistoricalQualityOperationLease(
     } catch (error) {
       if (errorCode(error) !== 'ENOENT') throw error;
     }
-    await input.beforeRename?.({ tombstonePath });
+    await testHooks.beforeRename?.({ tombstonePath });
 
     // Revalidate both source and unique destination immediately before rename.
     // Sticky-root permissions prevent a normal different-user contender from
@@ -221,15 +320,15 @@ export async function releaseHistoricalQualityOperationLease(
  * directory. Existing locks and crash-left tombstones are never expired,
  * repaired, replaced, or automatically removed.
  */
-export async function acquireHistoricalQualityOperationLease(
+async function acquireWithRootAuthority(
   rawManifest: string | undefined,
-  options: HistoricalQualityOperationLeaseOptions = {},
+  rootAuthority: HistoricalQualityLeaseRootAuthority,
 ): Promise<HistoricalQualityOperationLease> {
   const identifier = leaseIdentifier(rawManifest);
-  const rootDirectory = options.rootDirectory ?? HISTORICAL_QUALITY_OPERATION_LEASE_ROOT;
+  const rootDirectory = rootAuthority.rootDirectory;
   const leasePath = path.join(rootDirectory, `${identifier}.lease`);
   const ownerToken = randomBytes(32).toString('hex');
-  await validateLeaseRoot(rootDirectory);
+  await validateLeaseRoot(rootAuthority);
 
   if (await hasIdentityTombstone(rootDirectory, leasePath)) {
     throw new Error(`Historical quality operation lease is already held (${identifier})`);
@@ -277,6 +376,22 @@ export async function acquireHistoricalQualityOperationLease(
     identifier,
     path: leasePath,
     ownerToken,
-    release: () => releaseHistoricalQualityOperationLease({ path: leasePath, ownerToken }),
+    rootAuthority,
+    release: () => releaseHistoricalQualityOperationLease({ path: leasePath, ownerToken, rootAuthority }),
   });
+}
+
+/** Production entry point: no environment or caller-provided root is read. */
+export async function acquireHistoricalQualityOperationLease(
+  rawManifest: string | undefined,
+): Promise<HistoricalQualityOperationLease> {
+  return acquireWithRootAuthority(rawManifest, productionRootAuthority());
+}
+
+/** Explicit custom-root seam for filesystem tests; the root must be caller-owned. */
+export async function acquireHistoricalQualityOperationLeaseForTest(
+  rawManifest: string | undefined,
+  options: HistoricalQualityOperationLeaseTestOptions,
+): Promise<HistoricalQualityOperationLease> {
+  return acquireWithRootAuthority(rawManifest, testOverrideRootAuthority(options.rootDirectory));
 }

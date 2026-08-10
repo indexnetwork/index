@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { HISTORICAL_QUALITY_OPERATION_LEASE_ROOT, acquireHistoricalQualityOperationLease, historicalQualityOperationLeasePath, releaseHistoricalQualityOperationLease } from '../discovery-quality-operation-lease';
+import { HISTORICAL_QUALITY_OPERATION_LEASE_ROOT, acquireHistoricalQualityOperationLeaseForTest, historicalQualityOperationLeasePath, historicalQualityOperationLeasePathForTest, releaseHistoricalQualityOperationLease, validateHistoricalQualityLeaseRootMetadataForTest } from '../discovery-quality-operation-lease';
 
 const temporaryDirectories: string[] = [];
 
@@ -58,12 +58,14 @@ function spawnLeaseProcess(input: {
   readyPath: string;
   releasePath: string;
   home?: string;
+  temporaryEnvironment?: Readonly<Record<'TMPDIR' | 'TMP' | 'TEMP', string>>;
 }) {
   return Bun.spawn({
     cmd: [process.execPath, new URL('./fixtures/historical-quality-lease-process.ts', import.meta.url).pathname],
     env: {
       ...(input.rootDirectory === undefined ? {} : { HISTORICAL_QUALITY_TEST_LEASE_ROOT: input.rootDirectory }),
       ...(input.home === undefined ? {} : { HOME: input.home }),
+      ...input.temporaryEnvironment,
       HISTORICAL_QUALITY_TEST_MANIFEST: input.manifest,
       HISTORICAL_QUALITY_TEST_MODE: input.mode,
       HISTORICAL_QUALITY_TEST_READY_PATH: input.readyPath,
@@ -79,9 +81,44 @@ afterEach(async () => {
 });
 
 describe('historical quality filesystem operation lease', () => {
-  it('uses one host-wide tmpdir root independent of the invoking home directory', () => {
-    expect(HISTORICAL_QUALITY_OPERATION_LEASE_ROOT).toBe(tmpdir());
-    expect(HISTORICAL_QUALITY_OPERATION_LEASE_ROOT).not.toContain(process.env.HOME ?? '/home');
+  it('pins the production host-wide root to literal root-owned /tmp', async () => {
+    expect(HISTORICAL_QUALITY_OPERATION_LEASE_ROOT).toBe('/tmp');
+    expect(historicalQualityOperationLeasePath(manifest())).toStartWith('/tmp/');
+    const root = await lstat(HISTORICAL_QUALITY_OPERATION_LEASE_ROOT);
+    expect(root.isDirectory()).toBeTrue();
+    expect(root.isSymbolicLink()).toBeFalse();
+    expect(root.mode & 0o7777).toBe(0o1777);
+    expect(root.uid).toBe(0);
+    expect(root.gid).toBe(0);
+  });
+
+  it('rejects a user-owned sticky root under injected production authority', () => {
+    expect(() => validateHistoricalQualityLeaseRootMetadataForTest({
+      authority: 'production',
+      rootDirectory: '/tmp',
+      metadata: {
+        isDirectory: true,
+        isSymbolicLink: false,
+        mode: 0o41777,
+        uid: 1234,
+        gid: 1234,
+      },
+    })).toThrow(/root-owned|uid 0/i);
+  });
+
+  it('rejects a test override not owned by the injected current uid', () => {
+    expect(() => validateHistoricalQualityLeaseRootMetadataForTest({
+      authority: 'test-override',
+      rootDirectory: '/test-only-root',
+      currentUid: 1234,
+      metadata: {
+        isDirectory: true,
+        isSymbolicLink: false,
+        mode: 0o41777,
+        uid: 4321,
+        gid: 4321,
+      },
+    })).toThrow(/owned by the current uid/i);
   });
 
   it('validates a sticky mode-01777 root and creates a mode-0700 lock directory with mode-0600 regular token', async () => {
@@ -91,12 +128,14 @@ describe('historical quality filesystem operation lease', () => {
     await mkdir(rootDirectory);
     expect(Bun.spawnSync(['chmod', '1777', rootDirectory]).exitCode).toBe(0);
     const rawManifest = manifest();
-    const lease = await acquireHistoricalQualityOperationLease(rawManifest, { rootDirectory });
+    const lease = await acquireHistoricalQualityOperationLeaseForTest(rawManifest, { rootDirectory });
     const tokenPath = path.join(lease.path, 'owner.json');
     const contents = await readFile(tokenPath, 'utf8');
     const record = JSON.parse(contents) as Record<string, unknown>;
 
-    expect((await lstat(rootDirectory)).mode & 0o7777).toBe(0o1777);
+    const overrideRoot = await lstat(rootDirectory);
+    expect(overrideRoot.mode & 0o7777).toBe(0o1777);
+    expect(overrideRoot.uid).toBe(process.getuid());
     expect((await lstat(lease.path)).isDirectory()).toBeTrue();
     expect((await lstat(lease.path)).mode & 0o777).toBe(0o700);
     expect((await lstat(tokenPath)).isFile()).toBeTrue();
@@ -107,18 +146,18 @@ describe('historical quality filesystem operation lease', () => {
       expect(contents).not.toContain(forbidden);
     }
 
-    await expect(releaseHistoricalQualityOperationLease({ path: lease.path, ownerToken: 'f'.repeat(64) })).resolves.toBeFalse();
+    await expect(releaseHistoricalQualityOperationLease({ ...lease, ownerToken: 'f'.repeat(64) })).resolves.toBeFalse();
     expect(existsSync(lease.path)).toBeTrue();
-    await expect(lease.release()).resolves.toBeTrue();
+    await expect(releaseHistoricalQualityOperationLease(lease)).resolves.toBeTrue();
     expect(existsSync(lease.path)).toBeFalse();
   });
 
   it('forces mode 0600 even under a restrictive caller umask', async () => {
     const rootDirectory = await temporaryRoot('mode');
     const previousUmask = process.umask(0o777);
-    let lease: Awaited<ReturnType<typeof acquireHistoricalQualityOperationLease>> | undefined;
+    let lease: Awaited<ReturnType<typeof acquireHistoricalQualityOperationLeaseForTest>> | undefined;
     try {
-      lease = await acquireHistoricalQualityOperationLease(manifest(), { rootDirectory });
+      lease = await acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory });
     } finally {
       process.umask(previousUmask);
     }
@@ -134,30 +173,30 @@ describe('historical quality filesystem operation lease', () => {
       .replace('replica-secret', 'other-replica-secret')
       .replace('side-a-secret', 'other-side-a-secret')
       .replace('side-b-secret', 'other-side-b-secret');
-    const originalPath = historicalQualityOperationLeasePath(original, { rootDirectory });
+    const originalPath = historicalQualityOperationLeasePathForTest(original, { rootDirectory });
 
-    expect(historicalQualityOperationLeasePath(changedSecrets, { rootDirectory })).toBe(originalPath);
-    expect(historicalQualityOperationLeasePath(manifest({ projectId: 'other-project-id' }), { rootDirectory })).not.toBe(originalPath);
-    expect(historicalQualityOperationLeasePath(manifest({ sideABranchId: 'other-side-a-branch-id' }), { rootDirectory })).not.toBe(originalPath);
-    expect(() => historicalQualityOperationLeasePath(JSON.stringify({ projectId: 'project-id', targets: [] }), { rootDirectory }))
+    expect(historicalQualityOperationLeasePathForTest(changedSecrets, { rootDirectory })).toBe(originalPath);
+    expect(historicalQualityOperationLeasePathForTest(manifest({ projectId: 'other-project-id' }), { rootDirectory })).not.toBe(originalPath);
+    expect(historicalQualityOperationLeasePathForTest(manifest({ sideABranchId: 'other-side-a-branch-id' }), { rootDirectory })).not.toBe(originalPath);
+    expect(() => historicalQualityOperationLeasePathForTest(JSON.stringify({ projectId: 'project-id', targets: [] }), { rootDirectory }))
       .toThrow(/version 2|documented fields/);
   });
 
   it('uses an opaque fixed-root path even when strict v2 identifiers contain traversal text', async () => {
     const rootDirectory = await temporaryRoot('traversal');
     const rawManifest = manifest({ projectId: '../../project-secret', sideABranchId: '../side-a-secret' });
-    const leasePath = historicalQualityOperationLeasePath(rawManifest, { rootDirectory });
+    const leasePath = historicalQualityOperationLeasePathForTest(rawManifest, { rootDirectory });
 
     expect(path.dirname(leasePath)).toBe(rootDirectory);
     expect(path.basename(leasePath)).toMatch(/^[a-f0-9]{64}\.lease$/);
     expect(leasePath).not.toContain('project-secret');
     expect(leasePath).not.toContain('side-a-secret');
-    const lease = await acquireHistoricalQualityOperationLease(rawManifest, { rootDirectory });
+    const lease = await acquireHistoricalQualityOperationLeaseForTest(rawManifest, { rootDirectory });
     expect(await readFile(path.join(lease.path, 'owner.json'), 'utf8')).not.toMatch(/project-secret|side-a-secret|postgresql:/);
     await lease.release();
   });
 
-  it('uses the same default host lease identity for fresh processes with different home directories', async () => {
+  it('contends in literal /tmp across fresh processes with different HOME and temp variables', async () => {
     const controlDirectory = await temporaryRoot('different-homes');
     const uniqueManifest = manifest({ projectId: `different-homes-${path.basename(controlDirectory)}` });
     const readyPath = path.join(controlDirectory, 'first.ready');
@@ -168,6 +207,11 @@ describe('historical quality filesystem operation lease', () => {
       readyPath,
       releasePath,
       home: path.join(controlDirectory, 'home-one'),
+      temporaryEnvironment: {
+        TMPDIR: path.join(controlDirectory, 'tmpdir-one'),
+        TMP: path.join(controlDirectory, 'tmp-one'),
+        TEMP: path.join(controlDirectory, 'temp-one'),
+      },
     });
     await waitForFile(readyPath);
     const second = spawnLeaseProcess({
@@ -176,6 +220,11 @@ describe('historical quality filesystem operation lease', () => {
       readyPath: path.join(controlDirectory, 'second.ready'),
       releasePath: path.join(controlDirectory, 'second.release'),
       home: path.join(controlDirectory, 'home-two'),
+      temporaryEnvironment: {
+        TMPDIR: path.join(controlDirectory, 'tmpdir-two'),
+        TMP: path.join(controlDirectory, 'tmp-two'),
+        TEMP: path.join(controlDirectory, 'temp-two'),
+      },
     });
     expect(await second.exited).toBe(2);
     expect(await new Response(second.stderr).text()).toMatch(/already held/);
@@ -202,7 +251,7 @@ describe('historical quality filesystem operation lease', () => {
 
     await writeFile(releasePath, 'release');
     expect(await first.exited).toBe(0);
-    const third = await acquireHistoricalQualityOperationLease(manifest(), { rootDirectory });
+    const third = await acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory });
     await expect(third.release()).resolves.toBeTrue();
   });
 
@@ -219,9 +268,9 @@ describe('historical quality filesystem operation lease', () => {
     expect(await crashed.exited).toBe(86);
     await waitForFile(readyPath);
 
-    const leasePath = historicalQualityOperationLeasePath(manifest(), { rootDirectory });
+    const leasePath = historicalQualityOperationLeasePathForTest(manifest(), { rootDirectory });
     const staleContents = await readFile(path.join(leasePath, 'owner.json'), 'utf8');
-    await expect(acquireHistoricalQualityOperationLease(manifest(), { rootDirectory })).rejects.toThrow(/already held/);
+    await expect(acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory })).rejects.toThrow(/already held/);
     expect(await readFile(path.join(leasePath, 'owner.json'), 'utf8')).toBe(staleContents);
   });
 
@@ -229,25 +278,25 @@ describe('historical quality filesystem operation lease', () => {
     const parent = await temporaryRoot('attacks');
     const malformedRoot = path.join(parent, 'malformed-root');
     await mkdir(malformedRoot, { mode: 0o755 });
-    await expect(acquireHistoricalQualityOperationLease(manifest(), { rootDirectory: malformedRoot })).rejects.toThrow(/root/i);
+    await expect(acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory: malformedRoot })).rejects.toThrow(/root/i);
 
     const realRoot = path.join(parent, 'real-root');
     await mkdir(realRoot);
     expect(Bun.spawnSync(['chmod', '1777', realRoot]).exitCode).toBe(0);
     const linkedRoot = path.join(parent, 'linked-root');
     await symlink(realRoot, linkedRoot);
-    await expect(acquireHistoricalQualityOperationLease(manifest(), { rootDirectory: linkedRoot })).rejects.toThrow(/root/i);
+    await expect(acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory: linkedRoot })).rejects.toThrow(/root/i);
 
-    const lockPath = historicalQualityOperationLeasePath(manifest(), { rootDirectory: realRoot });
+    const lockPath = historicalQualityOperationLeasePathForTest(manifest(), { rootDirectory: realRoot });
     await symlink(path.join(parent, 'missing-target'), lockPath);
-    await expect(acquireHistoricalQualityOperationLease(manifest(), { rootDirectory: realRoot })).rejects.toThrow(/already held|lock/i);
+    await expect(acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory: realRoot })).rejects.toThrow(/already held|lock/i);
     expect((await lstat(lockPath)).isSymbolicLink()).toBeTrue();
   });
 
   it('fails closed when the token is a symlink, malformed, or has unsafe permissions', async () => {
     for (const attack of ['symlink', 'malformed', 'mode'] as const) {
       const rootDirectory = await temporaryRoot(`token-${attack}`);
-      const lease = await acquireHistoricalQualityOperationLease(manifest(), { rootDirectory });
+      const lease = await acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory });
       const tokenPath = path.join(lease.path, 'owner.json');
       if (attack === 'symlink') {
         const target = path.join(rootDirectory, 'foreign-token');
@@ -266,13 +315,11 @@ describe('historical quality filesystem operation lease', () => {
 
   it('never deletes a replacement stable directory inserted before rename', async () => {
     const rootDirectory = await temporaryRoot('replacement-race');
-    const lease = await acquireHistoricalQualityOperationLease(manifest(), { rootDirectory });
+    const lease = await acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory });
     const displacedPath = `${lease.path}.displaced`;
     let replacementTokenPath = '';
 
-    const released = await releaseHistoricalQualityOperationLease({
-      path: lease.path,
-      ownerToken: lease.ownerToken,
+    const released = await releaseHistoricalQualityOperationLease(lease, {
       beforeRename: async () => {
         await rename(lease.path, displacedPath);
         await mkdir(lease.path, { mode: 0o700 });
@@ -288,11 +335,9 @@ describe('historical quality filesystem operation lease', () => {
 
   it('fails closed when the unique tombstone is inserted before rename', async () => {
     const rootDirectory = await temporaryRoot('rename-race');
-    const lease = await acquireHistoricalQualityOperationLease(manifest(), { rootDirectory });
+    const lease = await acquireHistoricalQualityOperationLeaseForTest(manifest(), { rootDirectory });
     let racedTombstone = '';
-    const released = await releaseHistoricalQualityOperationLease({
-      path: lease.path,
-      ownerToken: lease.ownerToken,
+    const released = await releaseHistoricalQualityOperationLease(lease, {
       beforeRename: async ({ tombstonePath }) => {
         racedTombstone = tombstonePath;
         await mkdir(tombstonePath, { mode: 0o700 });

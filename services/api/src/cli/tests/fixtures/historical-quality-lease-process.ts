@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 
-import { acquireHistoricalQualityOperationLease } from '../../discovery-quality-operation-lease';
+import { acquireHistoricalQualityOperationLease, acquireHistoricalQualityOperationLeaseForTest } from '../../discovery-quality-operation-lease';
 
 const rootDirectory = process.env.HISTORICAL_QUALITY_TEST_LEASE_ROOT;
 const manifest = process.env.HISTORICAL_QUALITY_TEST_MANIFEST;
@@ -13,7 +13,9 @@ if (!manifest || !readyPath || !releasePath || !['hold', 'once', 'crash'].includ
 }
 
 try {
-  const lease = await acquireHistoricalQualityOperationLease(manifest, rootDirectory === undefined ? {} : { rootDirectory });
+  const lease = rootDirectory === undefined
+    ? await acquireHistoricalQualityOperationLease(manifest)
+    : await acquireHistoricalQualityOperationLeaseForTest(manifest, { rootDirectory });
   await writeFile(readyPath, lease.identifier);
   if (mode === 'crash') process.exit(86);
   if (mode === 'once') {
