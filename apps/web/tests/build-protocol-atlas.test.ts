@@ -94,3 +94,18 @@ describe("publishProtocolAtlas", () => {
     expect(existsSync(join(distDir, ".protocol-atlas-staging"))).toBe(false);
   });
 });
+
+test("wires validation, publication, and atlas Railway watch inputs", () => {
+  const webDir = process.cwd();
+  const packageJson = JSON.parse(
+    readFileSync(join(webDir, "package.json"), "utf8"),
+  ) as { scripts: Record<string, string> };
+  const railway = readFileSync(join(webDir, "railway.toml"), "utf8");
+
+  expect(packageJson.scripts.build).toBe(
+    "bun run check:protocol-atlas && bun run build:blog && vite build && bun run publish:protocol-atlas",
+  );
+  expect(railway).toContain('"/docs/protocol-atlas/**"');
+  expect(railway).toContain('"/scripts/build-protocol-atlas.ts"');
+  expect(railway).toContain('"/packages/protocol/**"');
+});
