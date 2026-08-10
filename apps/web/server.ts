@@ -9,6 +9,13 @@ const HTML_CACHE_CONTROL = "no-store";
 const HASHED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const STATIC_FILE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 const NOT_FOUND_CACHE_CONTROL = "no-store";
+const PROTOCOL_ATLAS_PATH = "/protocol-atlas";
+const PROTOCOL_ATLAS_HOSTS = new Set([
+  "dev.index.network",
+  "localhost",
+  "127.0.0.1",
+  "[::1]",
+]);
 
 // Apple app-site-association (universal links). Served directly — Apple
 // rejects redirects and requires an extensionless JSON response.
@@ -83,6 +90,17 @@ function stripPreviewSurface(html: string): string {
     .replace(/<title>[^<]*<\/title>\s*/i, "<title></title>");
 }
 
+function isProtocolAtlasPath(pathname: string): boolean {
+  return pathname === PROTOCOL_ATLAS_PATH || pathname.startsWith(`${PROTOCOL_ATLAS_PATH}/`);
+}
+
+function protocolAtlasFilePath(distDir: string, pathname: string): string {
+  if (pathname === `${PROTOCOL_ATLAS_PATH}/`) {
+    return join(distDir, "protocol-atlas", "index.html");
+  }
+  return join(distDir, pathname.replace(/^\/+/, ""));
+}
+
 function isDocumentNavigation(req: Request): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
 
@@ -122,6 +140,32 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
         headers: {
           "Cache-Control": AASA_CACHE_CONTROL,
           "Content-Type": "application/json",
+        },
+      });
+    }
+
+    if (isProtocolAtlasPath(pathname)) {
+      if (!PROTOCOL_ATLAS_HOSTS.has(reqUrl.hostname)) return notFound(req);
+
+      if (pathname === PROTOCOL_ATLAS_PATH) {
+        return new Response(null, {
+          status: 308,
+          headers: {
+            "Cache-Control": NOT_FOUND_CACHE_CONTROL,
+            Location: `${PROTOCOL_ATLAS_PATH}/`,
+          },
+        });
+      }
+
+      const atlasPath = protocolAtlasFilePath(distDir, pathname);
+      if (!existsSync(atlasPath) || !statSync(atlasPath).isFile()) return notFound(req);
+      const file = Bun.file(atlasPath);
+      return new Response(req.method === "HEAD" ? null : file, {
+        headers: {
+          "Cache-Control": pathname.endsWith(".html") || pathname.endsWith("/")
+            ? HTML_CACHE_CONTROL
+            : STATIC_FILE_CACHE_CONTROL,
+          "Content-Type": file.type,
         },
       });
     }
