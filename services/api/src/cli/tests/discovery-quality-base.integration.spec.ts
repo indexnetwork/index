@@ -12,7 +12,7 @@ import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import { checkTestDatabaseReadiness } from '../../lib/drizzle/test-database-readiness';
 import { fingerprintHistoricalQualityVector, historicalQualityAttestationRoot, HISTORICAL_QUALITY_METADATA_KEY } from '../discovery-quality-attestation';
 import { assertReadOnlySession, productionHistoricalQualityBaseDependencies, readVerifiedHistoricalQualityPublishedState, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, type HistoricalQualityBaseDependencies, type HistoricalQualityBaseState, type HistoricalQualityEmbedder } from '../discovery-quality-base';
-import { proveDisposableQualityTestTarget } from '../discovery-quality-db-test.guard';
+import { proveDisposableQualityTestTarget, proveHistoricalQualityIntegrationTargets } from '../discovery-quality-db-test.guard';
 import { createNeonControlPlane, type NeonControlPlane } from '../discovery-env-matrix.neon';
 import { parseHistoricalQualityManifest, type DiscoveryManifestV2 } from '../discovery.neon';
 
@@ -35,14 +35,28 @@ function fixtureManifest(): DiscoveryManifestV2 {
   }));
 }
 
+const fixtureRefreshTarget = {
+  version: 2,
+  projectId: 'project-quality',
+  branchId: 'branch-base',
+  endpointId: 'endpoint-base-writable',
+  databaseName: 'protocol_eval',
+  databaseUrl: 'postgresql://fixture:refresh-secret@endpoint-base-writable.neon.tech/protocol_eval',
+} as const;
+
 function fixtureControlPlane(): NeonControlPlane {
   return {
     getBranch: async (_projectId, branchId) => branchId === 'branch-base'
       ? { id: branchId, name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: false }
       : { id: branchId, name: branchId === 'branch-a' ? 'eval-ab-a' : 'eval-ab-b', parentId: 'branch-base', expiresAt: null, primary: false },
-    listEndpoints: async (_projectId, branchId) => branchId === 'branch-a'
-      ? [{ id: 'endpoint-a', branchId, host: 'endpoint-a.neon.tech', type: 'read_write' }]
-      : [],
+    listEndpoints: async (_projectId, branchId) => {
+      if (branchId === 'branch-base') return [
+        { id: 'endpoint-base-readonly', branchId, host: 'endpoint-base-readonly.neon.tech', type: 'read_only' },
+        { id: 'endpoint-base-writable', branchId, host: 'endpoint-base-writable.neon.tech', type: 'read_write' },
+      ];
+      const side = branchId === 'branch-a' ? 'a' : 'b';
+      return [{ id: `endpoint-${side}`, branchId, host: `endpoint-${side}.neon.tech`, type: 'read_write' }];
+    },
   };
 }
 
@@ -102,6 +116,71 @@ describe('disposable historical quality DB target proof', () => {
         databaseUrl: manifest.targets[0].databaseUrl,
         controlPlane,
       })).rejects.toThrow('proof failed');
+    }
+  });
+
+  it('jointly proves the selected child, read-only base replica, and writable refresh topology with identifiers only', async () => {
+    const manifest = fixtureManifest();
+    const proof = await proveHistoricalQualityIntegrationTargets({
+      manifestRaw: JSON.stringify(manifest),
+      refreshTargetRaw: JSON.stringify(fixtureRefreshTarget),
+      selectedSide: 'a',
+      databaseUrl: manifest.targets[0].databaseUrl,
+      controlPlane: fixtureControlPlane(),
+    });
+    expect(proof).toEqual({
+      projectId: 'project-quality',
+      baseBranchId: 'branch-base',
+      basePrimary: false,
+      baseReadReplicaEndpointId: 'endpoint-base-readonly',
+      baseReadReplicaEndpointType: 'read_only',
+      refreshEndpointId: 'endpoint-base-writable',
+      refreshEndpointType: 'read_write',
+      childBranchId: 'branch-a',
+      childEndpointId: 'endpoint-a',
+      childEndpointType: 'read_write',
+      databaseName: 'protocol_eval',
+    });
+    expect(JSON.stringify(proof)).not.toContain('postgres');
+    expect(JSON.stringify(proof)).not.toContain('secret');
+  });
+
+  it('refuses a writable, crossed, wrong-host, wrong-branch, primary, or non-exact protocol_eval base replica', async () => {
+    const manifest = fixtureManifest();
+    for (const change of ['writable', 'crossed', 'host', 'branch', 'primary', 'database', 'query'] as const) {
+      const mutated = structuredClone(manifest);
+      const controlPlane = fixtureControlPlane();
+      if (change === 'database') mutated.baseReadReplica.databaseUrl = 'postgresql://fixture:secret@endpoint-base-readonly.neon.tech/other';
+      if (change === 'query') mutated.baseReadReplica.databaseUrl = 'postgresql://fixture:secret@endpoint-base-readonly.neon.tech/protocol_eval?sslmode=require';
+      if (change === 'primary') {
+        controlPlane.getBranch = async (_projectId, branchId) => branchId === 'branch-base'
+          ? { id: branchId, name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: true }
+          : { id: branchId, name: branchId === 'branch-a' ? 'eval-ab-a' : 'eval-ab-b', parentId: 'branch-base', expiresAt: null, primary: false };
+      }
+      if (['writable', 'crossed', 'host', 'branch'].includes(change)) {
+        controlPlane.listEndpoints = async (_projectId, branchId) => {
+          if (branchId !== 'branch-base') {
+            const side = branchId === 'branch-a' ? 'a' : 'b';
+            return [{ id: `endpoint-${side}`, branchId, host: `endpoint-${side}.neon.tech`, type: 'read_write' }];
+          }
+          return [
+            {
+              id: 'endpoint-base-readonly',
+              branchId: change === 'branch' ? 'branch-a' : branchId,
+              host: change === 'host' ? 'other.neon.tech' : change === 'crossed' ? 'endpoint-base-writable.neon.tech' : 'endpoint-base-readonly.neon.tech',
+              type: change === 'writable' ? 'read_write' : 'read_only',
+            },
+            { id: 'endpoint-base-writable', branchId, host: 'endpoint-base-writable.neon.tech', type: 'read_write' },
+          ];
+        };
+      }
+      await expect(proveHistoricalQualityIntegrationTargets({
+        manifestRaw: JSON.stringify(mutated),
+        refreshTargetRaw: JSON.stringify(fixtureRefreshTarget),
+        selectedSide: 'a',
+        databaseUrl: manifest.targets[0].databaseUrl,
+        controlPlane,
+      })).rejects.toThrow('integration target proof failed');
     }
   });
 });
@@ -164,17 +243,20 @@ dbDescribe('historical quality protected-base integration', () => {
   beforeAll(async () => {
     const databaseUrl = process.env.DATABASE_URL;
     const apiKey = process.env.NEON_API_KEY;
-    const manifest = parseHistoricalQualityManifest(process.env.DISCOVERY_TARGETS);
+    const manifestRaw = process.env.DISCOVERY_TARGETS;
+    const refreshTargetRaw = process.env.DISCOVERY_QUALITY_BASE_REFRESH_TARGET;
     if (!databaseUrl || !apiKey) throw new Error('Guarded quality DB suite requires DATABASE_URL and NEON_API_KEY');
 
-    // This proof remains mandatory inside the suite. Setting the describe gate
-    // cannot bypass exact selected-child control-plane binding.
-    await proveDisposableQualityTestTarget({
-      manifest,
+    // Both the selected writable child and the read-only base replica are
+    // jointly control-plane-proven before readiness or either client exists.
+    await proveHistoricalQualityIntegrationTargets({
+      manifestRaw,
+      refreshTargetRaw,
       selectedSide: 'a',
       databaseUrl,
       controlPlane: createNeonControlPlane(apiKey),
     });
+    const manifest = parseHistoricalQualityManifest(manifestRaw);
     await checkTestDatabaseReadiness({ databaseUrl, safeMarker: TEST_DATABASE_SAFE });
 
     ({ client: childClient, db: childDb } = database(databaseUrl));

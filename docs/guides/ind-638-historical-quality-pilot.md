@@ -7,7 +7,7 @@ Historical quality is intentionally absent from the Eval Ops launch registry. Ev
 ## Non-negotiable stop rules
 
 - Work from the reviewed merged revision and record `git rev-parse HEAD` before every operation.
-- Never combine the confirmation blocks or commands into a script, `&&` chain, loop, retry wrapper, or job.
+- Each confirmation and its one authorized operation must stay in the single isolated fail-closed shell block shown below. Never combine separate operation blocks into a script, `&&` chain, loop, retry wrapper, or job.
 - A failed, timed-out, missing, malformed, or incomplete operation is a **stop**. Do not automatically rerun it. Record the exit, surviving report, and target identifiers; obtain a new authorization before any retry.
 - Never paste a database URL, provider key, manifest, or secure record into a ticket, log, report, or command output.
 - `eval-discovery-base` is non-primary. Its writable refresh endpoint and read-only verification endpoint are different roles. Refresh may use only `DISCOVERY_QUALITY_BASE_REFRESH_TARGET`; verify may use only `DISCOVERY_TARGETS.baseReadReplica`.
@@ -89,22 +89,22 @@ Choose a new secure-record path on encrypted operator storage. It must not exist
 
 Obtain authorization, then type the exact confirmation for this operation only:
 
-```bash
-read -r -p 'Type "provision IND-638 base read replica": ' DISCOVERY_QUALITY_READ_REPLICA_CONFIRM
-test "$DISCOVERY_QUALITY_READ_REPLICA_CONFIRM" = 'provision IND-638 base read replica'
-export DISCOVERY_QUALITY_READ_REPLICA_CONFIRM
-```
-
-Run exactly one provisioning invocation:
+Run exactly one provisioning invocation in the same fail-closed block as its confirmation:
 
 ```bash
-cd services/api
-bun run eval:discovery-quality-read-replica:provision -- \
-  --base-branch-name eval-discovery-base \
-  --endpoint-type read_only \
-  --database-name protocol_eval \
-  --secure-record "$IND_638_READ_REPLICA_RECORD"
-unset DISCOVERY_QUALITY_READ_REPLICA_CONFIRM
+(
+  set -euo pipefail
+  trap 'unset DISCOVERY_QUALITY_READ_REPLICA_CONFIRM' EXIT
+  read -r -p 'Type "provision IND-638 base read replica": ' DISCOVERY_QUALITY_READ_REPLICA_CONFIRM
+  test "$DISCOVERY_QUALITY_READ_REPLICA_CONFIRM" = 'provision IND-638 base read replica'
+  export DISCOVERY_QUALITY_READ_REPLICA_CONFIRM
+  cd services/api
+  bun run eval:discovery-quality-read-replica:provision -- \
+    --base-branch-name eval-discovery-base \
+    --endpoint-type read_only \
+    --database-name protocol_eval \
+    --secure-record "$IND_638_READ_REPLICA_RECORD"
+)
 ```
 
 Expected output contains only project, base branch, endpoint ID, `read_only`, and `protocol_eval`. If creation is uncertain or a `recovery_required`/`create_uncertain` record remains, stop and reconcile the Neon control plane manually. Never remove the record and rerun provisioning.
@@ -127,11 +127,18 @@ This migration changes one secret value, not the launch registry.
 3. Obtain a separate secret-migration authorization.
 4. Replace the Eval Ops `DISCOVERY_TARGETS` value in **one secret-manager update operation**. Do not delete then recreate it, update fields piecemeal, or change any other variable in the same operation.
 5. Re-read the secret through the platform's non-printing metadata/digest facility and compare its locally computed digest with the prepared v2 value.
-6. Re-run the provider-free parser above in an environment populated from the updated secret. Confirm that `parseLegacyAbManifest` returns exactly project/base plus side `a` and `b` and no `baseReadReplica`:
+6. Re-run the provider-free parser in an environment populated from the updated secret. Obtain a separate validation authorization; the exact phrase and parser operation must remain in this one fail-closed block. It confirms that `parseLegacyAbManifest` returns exactly project/base plus side `a` and `b` and no `baseReadReplica`:
 
    ```bash
-   cd services/api
-   bun -e 'import { parseHistoricalQualityManifest, parseLegacyAbManifest } from "./src/cli/discovery.neon.ts"; const raw=process.env.DISCOVERY_TARGETS; const v2=parseHistoricalQualityManifest(raw); const legacy=parseLegacyAbManifest(raw); if (JSON.stringify(legacy)!==JSON.stringify({projectId:v2.projectId,baseBranchId:v2.baseBranchId,targets:v2.targets})) throw new Error("legacy projection mismatch"); console.log("v2 legacy child projection verified")'
+   (
+     set -euo pipefail
+     trap 'unset IND_638_CONFIRM' EXIT
+     read -r -p 'Type "validate IND-638 secret migration": ' IND_638_CONFIRM
+     test "$IND_638_CONFIRM" = 'validate IND-638 secret migration'
+     export IND_638_CONFIRM
+     cd services/api
+     bun -e 'import { parseHistoricalQualityManifest, parseLegacyAbManifest } from "./src/cli/discovery.neon.ts"; const raw=process.env.DISCOVERY_TARGETS; const v2=parseHistoricalQualityManifest(raw); const legacy=parseLegacyAbManifest(raw); if (JSON.stringify(legacy)!==JSON.stringify({projectId:v2.projectId,baseBranchId:v2.baseBranchId,targets:v2.targets})) throw new Error("legacy projection mismatch"); console.log("v2 legacy child projection verified")'
+   )
    ```
 
 7. Do not delete the old value from the secure rollback record until all parsing, attestation, and the separately authorized legacy smoke pass.
@@ -142,17 +149,18 @@ Rollback is also exactly one secret-manager update: replace `DISCOVERY_TARGETS` 
 
 This operation writes fixture rows and calls the embedding provider. Obtain separate authorization and type:
 
-```bash
-read -r -p 'Type "refresh IND-638 historical quality base": ' IND_638_CONFIRM
-test "$IND_638_CONFIRM" = 'refresh IND-638 historical quality base'
-unset IND_638_CONFIRM
-```
-
-Then run exactly once:
+Run exactly once in the same fail-closed block as the confirmation:
 
 ```bash
-cd services/api
-bun run eval:discovery-quality-base
+(
+  set -euo pipefail
+  trap 'unset IND_638_CONFIRM' EXIT
+  read -r -p 'Type "refresh IND-638 historical quality base": ' IND_638_CONFIRM
+  test "$IND_638_CONFIRM" = 'refresh IND-638 historical quality base'
+  export IND_638_CONFIRM
+  cd services/api
+  bun run eval:discovery-quality-base
+)
 ```
 
 The command first checks current integrity. A classified stale state enters refresh; an unclassified verifier failure never falls through to writes. Refresh publishes documents, round-tripped vectors, and quality metadata in one final transaction. Failure is a stop, not permission to rerun.
@@ -161,17 +169,18 @@ The command first checks current integrity. A classified stale state enters refr
 
 Obtain separate authorization and type:
 
-```bash
-read -r -p 'Type "verify IND-638 historical quality read replica": ' IND_638_CONFIRM
-test "$IND_638_CONFIRM" = 'verify IND-638 historical quality read replica'
-unset IND_638_CONFIRM
-```
-
-Then run:
+Run verification in the same fail-closed block as its separate confirmation:
 
 ```bash
-cd services/api
-bun run eval:discovery-quality-base:verify
+(
+  set -euo pipefail
+  trap 'unset IND_638_CONFIRM' EXIT
+  read -r -p 'Type "verify IND-638 historical quality read replica": ' IND_638_CONFIRM
+  test "$IND_638_CONFIRM" = 'verify IND-638 historical quality read replica'
+  export IND_638_CONFIRM
+  cd services/api
+  bun run eval:discovery-quality-base:verify
+)
 ```
 
 The bootstrap jointly attests manifest v2 and the separate writable refresh declaration, but hands the verifier only `DISCOVERY_TARGETS.baseReadReplica.databaseUrl`. The fresh verifier strips Neon, provider, embedding, model, and Redis secrets; forces `transaction_read_only=on`; constructs no refresh/provider dependency; and prints only read-only status plus sanitized version/embedding/corpus identifiers.
@@ -206,20 +215,22 @@ Record command, git revision, identifier-only proof output, exit code, and test 
 
 This is a paid two-side legacy smoke and is distinct from quality. Obtain a separate authorization and type:
 
-```bash
-read -r -p 'Type "run IND-638 legacy A/B smoke": ' IND_638_CONFIRM
-test "$IND_638_CONFIRM" = 'run IND-638 legacy A/B smoke'
-unset IND_638_CONFIRM
-```
-
-Run once:
+Run once in the same fail-closed block as its confirmation:
 
 ```bash
-cd services/api
-DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1 bun run eval:discovery -- \
-  --case historical/builder-and-operator --runs 1 \
-  --a DISCOVERY_ALLOWED_TYPES=intent \
-  --b DISCOVERY_ALLOWED_TYPES=intent,profile
+(
+  set -euo pipefail
+  trap 'unset IND_638_CONFIRM DISCOVERY_CONFIRM TEST_DATABASE_SAFE' EXIT
+  read -r -p 'Type "run IND-638 legacy A/B smoke": ' IND_638_CONFIRM
+  test "$IND_638_CONFIRM" = 'run IND-638 legacy A/B smoke'
+  export IND_638_CONFIRM
+  export DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1
+  cd services/api
+  bun run eval:discovery -- \
+    --case historical/builder-and-operator --runs 1 \
+    --a DISCOVERY_ALLOWED_TYPES=intent \
+    --b DISCOVERY_ALLOWED_TYPES=intent,profile
+)
 ```
 
 Confirm the legacy run used only the projected writable children. Do not infer quality readiness from this smoke.
@@ -230,36 +241,40 @@ Both smokes use only `historical/builder-and-operator`, one repetition, and one 
 
 For the intent smoke, obtain authorization and type:
 
-```bash
-read -r -p 'Type "run IND-638 intent quality smoke": ' IND_638_CONFIRM
-test "$IND_638_CONFIRM" = 'run IND-638 intent quality smoke'
-unset IND_638_CONFIRM
-```
-
-Run once:
+Run once in the same fail-closed block as its confirmation:
 
 ```bash
-cd services/api
-DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1 bun run eval:discovery -- \
-  --historical-quality --env DISCOVERY_ALLOWED_TYPES=intent,profile \
-  --case historical/builder-and-operator --trigger intent --runs 1
+(
+  set -euo pipefail
+  trap 'unset IND_638_CONFIRM DISCOVERY_CONFIRM TEST_DATABASE_SAFE' EXIT
+  read -r -p 'Type "run IND-638 intent quality smoke": ' IND_638_CONFIRM
+  test "$IND_638_CONFIRM" = 'run IND-638 intent quality smoke'
+  export IND_638_CONFIRM
+  export DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1
+  cd services/api
+  bun run eval:discovery -- \
+    --historical-quality --env DISCOVERY_ALLOWED_TYPES=intent,profile \
+    --case historical/builder-and-operator --trigger intent --runs 1
+)
 ```
 
 Stop and review the artifact. Then obtain a new authorization for enrichment and type:
 
-```bash
-read -r -p 'Type "run IND-638 enrichment quality smoke": ' IND_638_CONFIRM
-test "$IND_638_CONFIRM" = 'run IND-638 enrichment quality smoke'
-unset IND_638_CONFIRM
-```
-
-Run once:
+Run once in its own fail-closed block:
 
 ```bash
-cd services/api
-DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1 bun run eval:discovery -- \
-  --historical-quality --env DISCOVERY_ALLOWED_TYPES=intent,profile \
-  --case historical/builder-and-operator --trigger enrichment --runs 1
+(
+  set -euo pipefail
+  trap 'unset IND_638_CONFIRM DISCOVERY_CONFIRM TEST_DATABASE_SAFE' EXIT
+  read -r -p 'Type "run IND-638 enrichment quality smoke": ' IND_638_CONFIRM
+  test "$IND_638_CONFIRM" = 'run IND-638 enrichment quality smoke'
+  export IND_638_CONFIRM
+  export DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1
+  cd services/api
+  bun run eval:discovery -- \
+    --historical-quality --env DISCOVERY_ALLOWED_TYPES=intent,profile \
+    --case historical/builder-and-operator --trigger enrichment --runs 1
+)
 ```
 
 Any exit other than a complete expected result is a stop. Never automatically run the other smoke after a failure.
@@ -268,18 +283,20 @@ Any exit other than a complete expected result is a stop. Never automatically ru
 
 Only after both smoke artifacts are independently reviewed, obtain pilot authorization and type:
 
-```bash
-read -r -p 'Type "run IND-638 ten-slot quality pilot": ' IND_638_CONFIRM
-test "$IND_638_CONFIRM" = 'run IND-638 ten-slot quality pilot'
-unset IND_638_CONFIRM
-```
-
-Run exactly five approved cases × two triggers × one repetition:
+Run exactly five approved cases × two triggers × one repetition in the same fail-closed block:
 
 ```bash
-cd services/api
-DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1 bun run eval:discovery -- \
-  --historical-quality --env DISCOVERY_ALLOWED_TYPES=intent,profile --runs 1
+(
+  set -euo pipefail
+  trap 'unset IND_638_CONFIRM DISCOVERY_CONFIRM TEST_DATABASE_SAFE' EXIT
+  read -r -p 'Type "run IND-638 ten-slot quality pilot": ' IND_638_CONFIRM
+  test "$IND_638_CONFIRM" = 'run IND-638 ten-slot quality pilot'
+  export IND_638_CONFIRM
+  export DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1
+  cd services/api
+  bun run eval:discovery -- \
+    --historical-quality --env DISCOVERY_ALLOWED_TYPES=intent,profile --runs 1
+)
 ```
 
 A complete artifact supports the documented quality verdict. Exit `3` means paid but insufficient evidence and no quality verdict. Exit `4` means an operational failure after mutation/spend may have begun. Neither authorizes a rerun.

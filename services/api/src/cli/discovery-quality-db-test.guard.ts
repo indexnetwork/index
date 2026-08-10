@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { isEndpointHost, createNeonControlPlane, type NeonControlPlane } from './discovery-env-matrix.neon';
-import { parseHistoricalQualityManifest, type DiscoveryManifestV2 } from './discovery.neon';
+import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
+import { attestHistoricalQualityTargets, parseHistoricalQualityManifest, type DiscoveryManifestV2 } from './discovery.neon';
 
 const BASE_BRANCH_NAME = 'eval-discovery-base';
 const DATABASE_NAME = 'protocol_eval';
@@ -12,6 +13,20 @@ export interface DisposableQualityTestTargetProof {
   databaseName: 'protocol_eval';
   primary: false;
   parentBranchId: string;
+}
+
+export interface HistoricalQualityIntegrationTargetsProof {
+  projectId: string;
+  baseBranchId: string;
+  basePrimary: false;
+  baseReadReplicaEndpointId: string;
+  baseReadReplicaEndpointType: 'read_only';
+  refreshEndpointId: string;
+  refreshEndpointType: 'read_write';
+  childBranchId: string;
+  childEndpointId: string;
+  childEndpointType: 'read_write';
+  databaseName: 'protocol_eval';
 }
 
 function parseBoundDatabaseUrl(value: string): URL {
@@ -69,6 +84,55 @@ export async function proveDisposableQualityTestTarget(input: {
     };
   } catch {
     throw new Error('Disposable historical quality test target proof failed');
+  }
+}
+
+/**
+ * Proves the complete guarded integration topology before any SQL client may
+ * be constructed. It combines exact child binding with strict manifest-v2,
+ * protected-base, read-only replica, and separately attested refresh binding.
+ * Only control-plane identifiers escape this boundary.
+ */
+export async function proveHistoricalQualityIntegrationTargets(input: {
+  manifestRaw: string | undefined;
+  refreshTargetRaw: string | undefined;
+  selectedSide: 'a';
+  databaseUrl: string;
+  controlPlane: NeonControlPlane;
+}): Promise<HistoricalQualityIntegrationTargetsProof> {
+  try {
+    const manifest = parseHistoricalQualityManifest(input.manifestRaw);
+    parseBoundDatabaseUrl(manifest.baseReadReplica.databaseUrl);
+    const child = await proveDisposableQualityTestTarget({
+      manifest,
+      selectedSide: input.selectedSide,
+      databaseUrl: input.databaseUrl,
+      controlPlane: input.controlPlane,
+    });
+    const refresh = await attestWritableQualityBaseTarget({
+      target: parseQualityBaseRefreshTarget(input.refreshTargetRaw),
+      controlPlane: input.controlPlane,
+    });
+    await attestHistoricalQualityTargets({
+      manifest,
+      writableRefreshTarget: refresh,
+      controlPlane: input.controlPlane,
+    });
+    return {
+      projectId: manifest.projectId,
+      baseBranchId: manifest.baseBranchId,
+      basePrimary: false,
+      baseReadReplicaEndpointId: manifest.baseReadReplica.endpointId,
+      baseReadReplicaEndpointType: 'read_only',
+      refreshEndpointId: refresh.endpointId,
+      refreshEndpointType: 'read_write',
+      childBranchId: child.branchId,
+      childEndpointId: child.endpointId,
+      childEndpointType: 'read_write',
+      databaseName: DATABASE_NAME,
+    };
+  } catch {
+    throw new Error('Historical quality integration target proof failed');
   }
 }
 

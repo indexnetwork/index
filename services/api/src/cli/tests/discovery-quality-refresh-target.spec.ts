@@ -128,38 +128,21 @@ describe('historical quality writable refresh target', () => {
     expect(calls).toEqual(['Historical quality base writable refresh target attested.']);
   });
 
-  it('spawns a fresh verifier with read-only enforcement and no provider, Redis, or control-plane secrets', async () => {
+  it('never lets the writable refresh handoff launch verifier mode', async () => {
     const attested = await attestWritableQualityBaseTarget({
       target: parseQualityBaseRefreshTarget(JSON.stringify(target)),
       controlPlane: controlPlane(),
     });
-    let childEnvironment: NodeJS.ProcessEnv | undefined;
-    await handoffHistoricalQualityBaseRuntime({
+    let spawned = false;
+    await expect(handoffHistoricalQualityBaseRuntime({
       target: attested,
       args: ['--verify'],
-      env: {
-        OPENROUTER_API_KEY: 'provider-secret',
-        OPENAI_API_KEY: 'provider-secret-2',
-        REDIS_URL: 'redis://secret',
-        REDIS_HOST: 'secret-host',
-        REDIS_PORT: '6379',
-        NEON_API_KEY: 'control-secret',
-        EMBEDDING_MODEL: 'provider-model',
-        CHAT_MODEL: 'provider-chat-model',
-        DISCOVERY_QUALITY_BASE_REFRESH_TARGET: 'control-manifest',
-        SAFE_VALUE: 'preserved',
-      },
-      spawn: (options) => {
-        childEnvironment = options.env;
+      spawn: () => {
+        spawned = true;
         return { stdout: null, stderr: null, exited: Promise.resolve(0) };
       },
-    });
-    expect(childEnvironment?.DATABASE_URL).toBe(target.databaseUrl);
-    expect(childEnvironment?.PGOPTIONS).toContain('transaction_read_only=on');
-    expect(childEnvironment?.SAFE_VALUE).toBe('preserved');
-    for (const key of ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'REDIS_URL', 'REDIS_HOST', 'REDIS_PORT', 'NEON_API_KEY', 'EMBEDDING_MODEL', 'CHAT_MODEL', 'DISCOVERY_QUALITY_BASE_REFRESH_TARGET']) {
-      expect(childEnvironment?.[key]).toBeUndefined();
-    }
+    })).rejects.toThrow('writable refresh handoff cannot launch verifier mode');
+    expect(spawned).toBeFalse();
   });
 
   it('parses, attests, and then binds refresh runtime from the writable brand', async () => {
@@ -202,21 +185,44 @@ describe('historical quality writable refresh target', () => {
         return [{ id: side.endpointId, branchId, host: `${side.endpointId}.neon.tech`, type: 'read_write' }];
       },
     };
-    const seen: string[] = [];
+    const sentinel = 'strict-bootstrap-secret-sentinel';
+    let childEnvironment: NodeJS.ProcessEnv | undefined;
     await runHistoricalQualityBaseBootstrap({
       args: ['--verify'],
       env: {
         DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(target),
         DISCOVERY_TARGETS: JSON.stringify(manifest),
+        NEON_API_KEY: sentinel,
+        OPENROUTER_API_KEY: sentinel,
+        OPENAI_API_KEY: sentinel,
+        ANTHROPIC_API_KEY: sentinel,
+        GOOGLE_API_KEY: sentinel,
+        REDIS_URL: sentinel,
+        REDIS_HOST: sentinel,
+        REDIS_PORT: sentinel,
+        REDIS_PASSWORD: sentinel,
+        PATH: sentinel,
+        HOME: sentinel,
+        TMPDIR: sentinel,
+        NODE_ENV: sentinel,
+        DATABASE_URL: target.databaseUrl,
+        PGOPTIONS: sentinel,
+        EMBEDDING_MODEL: sentinel,
+        CHAT_MODEL: sentinel,
+        SAFE_VALUE: sentinel,
       },
       controlPlane: richControlPlane,
       handoff: async () => { throw new Error('verify must not use writable refresh handoff'); },
-      verifyHandoff: async (attested, args) => {
-        seen.push(attested.databaseUrl, ...args);
-        return 'identifier-only output';
+      verifySpawn: (options) => {
+        childEnvironment = options.env;
+        return { stdout: null, stderr: null, exited: Promise.resolve(0) };
       },
     });
-    expect(seen).toEqual([replicaUrl, '--verify']);
-    expect(seen).not.toContain(target.databaseUrl);
+    expect(childEnvironment).toEqual({
+      DATABASE_URL: replicaUrl,
+      PGOPTIONS: '-c transaction_read_only=on',
+    });
+    expect(JSON.stringify(childEnvironment)).not.toContain(sentinel);
+    expect(JSON.stringify(childEnvironment)).not.toContain(target.databaseUrl);
   });
 });

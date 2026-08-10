@@ -539,16 +539,13 @@ async function discardRuntimeOutput(stream: ReadableStream<Uint8Array> | null): 
   while (!(await reader.read()).done) { /* discard untrusted output */ }
 }
 
-function verifierEnvironment(env: NodeJS.ProcessEnv, databaseUrl: string): NodeJS.ProcessEnv {
-  const clean: NodeJS.ProcessEnv = {};
-  const secretPrefix = /^(OPENROUTER|OPENAI|ANTHROPIC|GOOGLE|GEMINI|MISTRAL|COHERE|TOGETHER|FIREWORKS|PERPLEXITY|REDIS|NEON|EMBEDDING|CHAT|EVAL|SMARTEST)_/;
-  for (const [key, value] of Object.entries(env)) {
-    if (!secretPrefix.test(key) && key !== 'DISCOVERY_QUALITY_BASE_REFRESH_TARGET') clean[key] = value;
-  }
-  const readOnlyOption = '-c transaction_read_only=on';
-  clean.PGOPTIONS = clean.PGOPTIONS ? `${clean.PGOPTIONS} ${readOnlyOption}` : readOnlyOption;
-  clean.DATABASE_URL = databaseUrl;
-  return clean;
+function verifierEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
+  // Deliberately construct from nothing. The verifier imports and queries by
+  // absolute process/runtime paths, so it needs no inherited shell state.
+  return {
+    DATABASE_URL: databaseUrl,
+    PGOPTIONS: '-c transaction_read_only=on',
+  };
 }
 
 interface HistoricalQualityDatabaseRuntimeTarget { databaseUrl: string }
@@ -564,7 +561,7 @@ async function handoffHistoricalQualityDatabaseRuntime(input: {
   const sourceEnv = input.env ?? process.env;
   const { NEON_API_KEY: _neonApiKey, DISCOVERY_QUALITY_BASE_REFRESH_TARGET: _target, ...refreshEnv } = sourceEnv;
   const env = verifyOnly
-    ? verifierEnvironment(sourceEnv, input.target.databaseUrl)
+    ? verifierEnvironment(input.target.databaseUrl)
     : { ...refreshEnv, DATABASE_URL: input.target.databaseUrl };
   const options: QualityBaseRuntimeSpawnOptions = {
     cmd: [process.execPath, input.runtimePath ?? QUALITY_BASE_RUNTIME_PATH, ...input.args],
@@ -590,6 +587,9 @@ export async function handoffHistoricalQualityBaseRuntime(input: {
   runtimePath?: string;
   spawn?: QualityBaseRuntimeSpawn;
 }): Promise<string> {
+  if (input.args.includes('--verify')) {
+    throw new Error('Historical quality writable refresh handoff cannot launch verifier mode');
+  }
   return handoffHistoricalQualityDatabaseRuntime(input);
 }
 
@@ -600,6 +600,7 @@ export async function runHistoricalQualityBaseBootstrap(input: {
   controlPlane?: NeonControlPlane;
   handoff?: (target: AttestedWritableQualityBaseTarget, args: readonly string[]) => Promise<string>;
   verifyHandoff?: (target: { endpointId: string; databaseUrl: string }, args: readonly string[]) => Promise<string>;
+  verifySpawn?: QualityBaseRuntimeSpawn;
 }): Promise<string> {
   const env = input.env ?? process.env;
   const controlPlane = input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? '');
@@ -617,6 +618,7 @@ export async function runHistoricalQualityBaseBootstrap(input: {
       target: boundTarget,
       args,
       env,
+      spawn: input.verifySpawn,
     })))(replica, input.args);
   }
   return (input.handoff ?? ((boundTarget, args) => handoffHistoricalQualityBaseRuntime({ target: boundTarget, args, env })))(attested, input.args);

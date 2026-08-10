@@ -14,6 +14,7 @@ const ROOT = path.resolve(import.meta.dir, '../../../../../');
 const REVIEWED_REVISION = 'cee496de7f79ac0ab696cf581f6c4da585f88bd8';
 const MERGED_PR_A_REVISION = 'a03bea49334150419f2ee8a499964ce7c79d6f4d';
 const FIXTURE_PATH = 'packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.ts';
+const QUALITY_RUNBOOK_PATH = 'docs/guides/ind-638-historical-quality-pilot.md';
 
 const resolvedConfig = {
   models: { lensInferrer: 'audit-lens', opportunityEvaluator: 'audit-evaluator' },
@@ -26,6 +27,35 @@ const resolvedConfig = {
     scoringPolicyFingerprint: 'audit-scoring-policy',
   },
 };
+
+describe('historical quality operator runbook confirmations', () => {
+  it('keeps every exact confirmation and its one operation in the same fail-closed shell block', () => {
+    const runbook = readFileSync(path.join(ROOT, QUALITY_RUNBOOK_PATH), 'utf8');
+    const shellBlocks = [...runbook.matchAll(/^[ \t]*```bash\n([\s\S]*?)\n[ \t]*```/gm)].map((match) => match[1]!);
+    const confirmations = [
+      ['provision IND-638 base read replica', 'eval:discovery-quality-read-replica:provision', 'DISCOVERY_QUALITY_READ_REPLICA_CONFIRM'],
+      ['validate IND-638 secret migration', 'v2 legacy child projection verified', 'IND_638_CONFIRM'],
+      ['refresh IND-638 historical quality base', 'eval:discovery-quality-base', 'IND_638_CONFIRM'],
+      ['verify IND-638 historical quality read replica', 'eval:discovery-quality-base:verify', 'IND_638_CONFIRM'],
+      ['run IND-638 legacy A/B smoke', '--a DISCOVERY_ALLOWED_TYPES=intent', 'IND_638_CONFIRM'],
+      ['run IND-638 intent quality smoke', '--trigger intent --runs 1', 'IND_638_CONFIRM'],
+      ['run IND-638 enrichment quality smoke', '--trigger enrichment --runs 1', 'IND_638_CONFIRM'],
+      ['run IND-638 ten-slot quality pilot', '--historical-quality --env DISCOVERY_ALLOWED_TYPES=intent,profile --runs 1', 'IND_638_CONFIRM'],
+    ] as const;
+
+    for (const [phrase, operation, gate] of confirmations) {
+      const block = shellBlocks.find((candidate) => candidate.includes(`Type "${phrase}"`) && candidate.includes(operation));
+      expect(block, phrase).toBeDefined();
+      expect(block).toContain('set -euo pipefail');
+      expect(block).toContain(`test "$${gate}" = '${phrase}'`);
+      expect(block).toContain(`export ${gate}`);
+      expect(block).toContain(`trap 'unset ${gate}`);
+      expect(block!.indexOf(`test "$${gate}" = '${phrase}'`)).toBeLessThan(block!.indexOf(operation));
+      expect(block!.indexOf(`export ${gate}`)).toBeLessThan(block!.indexOf(operation));
+    }
+    expect((runbook.match(/read -r -p 'Type "/g) ?? [])).toHaveLength(confirmations.length);
+  });
+});
 
 function git(...args: string[]): ReturnType<typeof Bun.spawnSync> {
   return Bun.spawnSync({ cmd: ['git', ...args], cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
