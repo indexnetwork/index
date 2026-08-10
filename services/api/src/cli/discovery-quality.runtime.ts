@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 
 import { HistoricalQualitySpentRunError, classifyAbParentFailure, type AbRunStage } from './discovery.contract';
 import { assertAbConfirmation } from './discovery.gate';
-import { assertHistoricalQualitySerialEvaluation } from './discovery.flags';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
 import { buildHistoricalQualityChildEnvironment, type HistoricalQualityChildEnvironment } from './discovery-quality.environment';
@@ -13,7 +12,7 @@ import { preflightHistoricalQualityChildRuntime } from './discovery-quality.chil
 import { embeddingConfigurationFingerprint, HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY } from '../lib/embedding/embedding.identity';
 import { attestHistoricalQualityTargets, parseHistoricalQualityManifest, restoreHistoricalQualitySelectedChild, type AttestedHistoricalQualityManifest } from './discovery.neon';
 
-import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, HISTORICAL_QUALITY_APPROVED_FINGERPRINTS, type HistoricalQualityRequest } from './discovery-quality.contract';
+import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, HISTORICAL_QUALITY_APPROVED_FINGERPRINTS, assertHistoricalQualitySerialEvaluation, type HistoricalQualityRequest } from './discovery-quality.contract';
 
 export const HISTORICAL_QUALITY_SCORING_POLICY_VERSION = 'historical-quality-v1' as const;
 

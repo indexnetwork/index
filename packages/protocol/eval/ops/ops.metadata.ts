@@ -32,10 +32,11 @@ export interface EnvFlagMeta {
    * DISCOVERY_ALLOWED_TYPES (src/opportunity/discovery.env.ts).
    *
    * `json-model-map` is a JSON object of agent id -> model id, mirroring
-   * EVAL_MODEL_OVERRIDES (src/shared/agent/model.config.ts). It exists because
-   * `string` would be a lie for that flag in a way that costs money: its read
-   * site THROWS on malformed JSON, on an unknown agent key and on a non-string
-   * model, and it is read lazily on the first model construction — so a typo
+   * EVAL_MODEL_OVERRIDES (src/shared/agent/model.resolver.ts, consumed by
+   * model.config.ts). It exists because `string` would be a lie for that flag
+   * in a way that costs money: the canonical resolver THROWS on malformed JSON,
+   * on an unknown agent key and on a non-string model, and it is invoked lazily
+   * on the first model construction — so a typo
    * surfaces as a crash after the branches have been reset and the run has
    * started spending, not as a refusal at launch.
    */
@@ -58,11 +59,11 @@ export interface EnvFlagMeta {
 /**
  * Agent ids EVAL_MODEL_OVERRIDES may name, and the models it may name them to.
  *
- * Injected by the caller rather than imported: the agent list lives in
- * src/shared/agent/model.config.ts (a `getBaseModelConfig` local, not exported)
- * and ALLOWED_CONFIG_MODELS lives in ops.profiles.ts, which imports node:fs and
- * therefore cannot be imported here — this module is in the browser bundle.
- * eval/ops/tests/metadata.spec.ts pins both lists against their real sources.
+ * Injected by the caller rather than imported: the canonical agent list lives
+ * in src/shared/agent/model.resolver.ts, while ALLOWED_CONFIG_MODELS lives in
+ * ops.profiles.ts, which imports node:fs and therefore cannot be imported here
+ * — this module is in the browser bundle. eval/ops/tests/metadata.spec.ts pins
+ * both lists against their real sources.
  */
 export interface ModelMapBounds {
   /**
@@ -182,8 +183,8 @@ export function envFlagValueIssue(meta: EnvFlagMeta, value: string, bounds?: Mod
       return null;
     }
     case "json-model-map": {
-      // Mirrors readModelOverrides (src/shared/agent/model.config.ts): every
-      // condition below is one the read site throws on. Refusing here turns a
+      // Mirrors the canonical parser in src/shared/agent/model.resolver.ts:
+      // every condition below is one the resolver throws on. Refusing here turns a
       // mid-run crash into a launch-time message.
       let parsed: unknown;
       try {
@@ -539,7 +540,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "EVAL_MODEL_OVERRIDES",
     label: "Per-agent model overrides",
     description:
-      "JSON object of agent id to model id, e.g. `{\"opportunityEvaluator\":\"anthropic/claude-sonnet-4\"}`. Applied on top of every other model setting, so it overrides CHAT_MODEL for the `chat` agent. Ignored entirely when NODE_ENV is production. Only the model id moves — temperature, token limits and reasoning effort stay fixed so a run measures a model swap and nothing else (src/shared/agent/model.config.ts).",
+      "JSON object of agent id to model id, e.g. `{\"opportunityEvaluator\":\"anthropic/claude-sonnet-4\"}`. Applied on top of every other model setting, so it overrides CHAT_MODEL for the `chat` agent. Ignored entirely when NODE_ENV is production. Only the model id moves — temperature, token limits and reasoning effort stay fixed so a run measures a model swap and nothing else (parsed by src/shared/agent/model.resolver.ts and consumed by model.config.ts).",
     kind: "json-model-map",
     defaultDescription: "no overrides",
   },
@@ -547,7 +548,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "CHAT_MODEL",
     label: "Chat model",
     description:
-      "Model for the `chat` agent only; every other agent has a fixed default. Lowest precedence of the three ways to set it: an explicit ModelConfig argument wins, and EVAL_MODEL_OVERRIDES is applied afterwards on top of both (src/shared/agent/model.config.ts).",
+      "Model for the `chat` agent only; every other agent has a fixed default. Lowest precedence of the three ways to set it: an explicit ModelConfig argument wins, and EVAL_MODEL_OVERRIDES is applied afterwards on top of both (resolved by src/shared/agent/model.resolver.ts and consumed by model.config.ts).",
     kind: "enum",
     values: [...ALLOWED_CONFIG_MODEL_IDS],
     defaultDescription: "google/gemini-3-pro-preview",

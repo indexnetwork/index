@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { buildHistoricalParticipantMetrics } from "../historical-quality.metrics.js";
-import { HISTORICAL_QUALITY_CHILD_OUTPUT_SCHEMA_VERSION, HistoricalQualityChildOutputSchema, parseHistoricalQualityChildOutput } from "../historical-quality.child-output.js";
+import { HISTORICAL_QUALITY_CHILD_OUTPUT_SCHEMA_VERSION, HistoricalQualityChildOutputSchema, parseHistoricalQualityChildOutput, type HistoricalQualityChildOutput } from "../historical-quality.child-output.js";
 
 const fingerprint = "a".repeat(64);
 const logicalCaseId = "historical/case-a";
@@ -56,7 +56,10 @@ function completedParticipantMetrics(evidenceIdOverride?: string) {
   return metrics;
 }
 
-const validOutput = () => ({
+type CanonicalChildOutput = HistoricalQualityChildOutput;
+type CanonicalAttemptTuple = CanonicalChildOutput["executionRun"]["attempts"];
+
+const validOutput = (): CanonicalChildOutput => ({
   schemaVersion: HISTORICAL_QUALITY_CHILD_OUTPUT_SCHEMA_VERSION,
   runId: "hq-run-test",
   slotId: "hq-slot-test",
@@ -85,12 +88,14 @@ const validOutput = () => ({
       startedAt: "2026-08-10T00:00:00.000Z",
       completedAt: "2026-08-10T00:00:00.010Z",
       durationMs: 10,
-      outcome: "success" as const,
-      retryable: false as const,
-      backoffMs: 0 as const,
-    }],
+      outcome: "success",
+      retryable: false,
+      backoffMs: 0,
+    }] as CanonicalAttemptTuple,
   },
 });
+
+const mutableOutput = (): CanonicalChildOutput => structuredClone(validOutput());
 
 function validIdentity() {
   return {
@@ -140,14 +145,14 @@ describe("HistoricalQualityChildOutputSchema", () => {
   });
 
   it.each(forbiddenValues)("rejects a forbidden sentinel in participantId: %s", (sentinel) => {
-    const output = validOutput();
+    const output = mutableOutput();
     const metrics = output.transportRow.participantMetrics;
     metrics[1] = { ...metrics[1]!, participantId: `prefix-${sentinel}-suffix` };
     expect(() => parseHistoricalQualityChildOutput(output, validIdentity())).toThrow(/forbidden/);
   });
 
   it.each(forbiddenValues)("rejects a forbidden sentinel in evidenceIds: %s", (sentinel) => {
-    const output = validOutput();
+    const output = mutableOutput();
     output.transportRow.completed = true;
     output.transportRow.participantMetrics = completedParticipantMetrics(`evidence-${sentinel}`);
     output.transportRow.stageFunnel = {
@@ -164,8 +169,8 @@ describe("HistoricalQualityChildOutputSchema", () => {
   });
 
   it.each(forbiddenValues)("rejects a forbidden sentinel in error.message: %s", (sentinel) => {
-    const output = validOutput();
-    output.executionRun.outcome = "failed" as const;
+    const output = mutableOutput();
+    output.executionRun.outcome = "failed";
     output.executionRun.attempts[0] = {
       ...output.executionRun.attempts[0]!,
       outcome: "failure" as const,

@@ -178,8 +178,8 @@ export function discoveryEnvValueIssue(key: string, value: string): string | nul
       // import (services/api sets rootDir ./src). Duplicating that list here is
       // the drift this whole module exists to prevent, and a stale copy would
       // refuse a model the site had just approved. A malformed value still fails
-      // at the read site rather than being silently ignored — readModelOverrides
-      // throws — so the failure is loud either way.
+      // at the read site rather than being silently ignored — the canonical
+      // parser in model.resolver.ts throws — so the failure is loud either way.
       return null;
     case 'string':
       return null;
@@ -215,12 +215,5 @@ export function assertAbEnvConfig(config: AbEnvConfig): void {
         + 'to its default, so this run would measure the default and record the value you typed',
       );
     }
-  }
-}
-
-/** Quality slots require one bundled evaluator call so one slot has one known cost. */
-export function assertHistoricalQualitySerialEvaluation(config: Readonly<Record<string, string>>): void {
-  if (config.RUN_OPPORTUNITY_EVAL_IN_PARALLEL === 'true') {
-    throw new Error('Historical quality refuses parallel opportunity evaluation; one bundled evaluator call is required per slot');
   }
 }

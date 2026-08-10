@@ -167,8 +167,11 @@ overrides and a small set of protocol feature flags:
 
 ### `EVAL_MODEL_OVERRIDES`
 
-A JSON object of agent → model id, read live by `getModelConfig` in
-`src/shared/agent/model.config.ts`. Two guards sit on it:
+A JSON object of agent → model id, parsed by the canonical assignment authority in
+`src/shared/agent/model.resolver.ts` and consumed by `getModelConfig` in
+`src/shared/agent/model.config.ts`. `EVAL_MODEL_OVERRIDES` is applied after
+`CHAT_MODEL`; `model.config.ts` decides whether eval overrides are enabled and
+passes the complete environment projection to the resolver. Two guards sit on it:
 
 1. **The protocol ignores it entirely when `NODE_ENV === "production"`** — a deployed
    process can never be repointed at another model by an environment variable.

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
-import { DISCOVERY_ENV_KEYS, assertAbEnvConfig, assertHistoricalQualitySerialEvaluation } from './discovery.flags';
+import { DISCOVERY_ENV_KEYS, assertAbEnvConfig } from './discovery.flags';
+import { assertHistoricalQualitySerialEvaluation } from './discovery-quality.contract';
 import { withDiscoveryEnvironment } from './discovery-env-matrix.runtime';
 import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger } from '../queues/opportunity/discovery-trigger.builders';
 import { HISTORICAL_QUALITY_CHILD_RUNTIME_CONTRACT_VERSION } from './discovery-quality.child-loader';

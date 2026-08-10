@@ -38,6 +38,13 @@ export interface HistoricalQualityCost {
   evaluatorCalls: number;
 }
 
+/** Quality slots require one bundled evaluator call so one slot has one known cost. */
+export function assertHistoricalQualitySerialEvaluation(config: Readonly<Record<string, string>>): void {
+  if (config.RUN_OPPORTUNITY_EVAL_IN_PARALLEL === 'true') {
+    throw new Error('Historical quality refuses parallel opportunity evaluation; one bundled evaluator call is required per slot');
+  }
+}
+
 const VALUE_FLAGS = new Set(['--case', '--trigger', '--runs', '--env', '--report']);
 const BASELINE_FLAGS = new Set(['--update-baseline', '--baseline', '--rolling-baseline']);
 const ENV_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
