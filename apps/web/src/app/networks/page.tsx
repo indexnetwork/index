@@ -245,7 +245,7 @@ export default function NetworksPage() {
                             </div>
                           </>
                         ) : (
-                          <p className="text-sm text-gray-500">We&apos;re reviewing your request and may reach out with questions.</p>
+                          <p className="text-sm text-gray-500">Your request is in review. You may get a few questions about it.</p>
                         )}
                       </div>
                     ))}
