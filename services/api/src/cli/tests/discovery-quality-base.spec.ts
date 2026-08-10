@@ -1,19 +1,22 @@
 import { describe, expect, it } from 'bun:test';
+import { createHash } from 'node:crypto';
 
 import { HISTORICAL_SHARED_POOL_SEED_PROJECTION } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
 import { fingerprintHistoricalQualityVector, historicalQualityAttestationRoot, HISTORICAL_QUALITY_METADATA_KEY } from '../discovery-quality-attestation';
-import { assertReadOnlySession, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, verifyHistoricalQualitySeedState, type HistoricalQualityBaseDependencies, type HistoricalQualityBaseState, type HistoricalQualityEmbedder } from '../discovery-quality-base';
+import { assertReadOnlySession, productionHistoricalQualityBaseDependencies, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, verifyHistoricalQualitySeedState, type HistoricalQualityBaseDependencies, type HistoricalQualityBaseState, type HistoricalQualityEmbedder } from '../discovery-quality-base';
 import { runHistoricalQualityBaseCommand } from '../discovery-quality-base.main';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 
 const projection = HISTORICAL_SHARED_POOL_SEED_PROJECTION;
-const fixedFingerprint = 'a'.repeat(64);
-const identity = {
-  provider: 'test-provider',
-  model: 'test-model',
+const identityFields = {
+  provider: 'openrouter',
+  model: 'openai/text-embedding-3-large',
   dimensions: 2000 as const,
-  configurationFingerprint: fixedFingerprint,
+};
+const identity = {
+  ...identityFields,
+  configurationFingerprint: createHash('sha256').update(JSON.stringify(identityFields)).digest('hex'),
 };
 
 type MutableState = HistoricalQualityBaseState & { unexpectedDependent?: string };
@@ -62,6 +65,7 @@ function exactSeedState(): MutableState {
     contexts: projection.contexts.map((row) => ({
       ...row,
       networkId: projection.networks[0].id,
+      premiseHash: projection.documents.find((document) => document.sourceRowId === row.id)?.contentFingerprint ?? null,
       embedding: null,
     })),
     documents: [],
@@ -73,6 +77,74 @@ function exactSeedState(): MutableState {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+function queuedReadDb(resultSets: unknown[][]): DrizzleDB {
+  const queue = [...resultSets];
+  return {
+    select: () => ({
+      from: () => {
+        const rows = queue.shift() ?? [];
+        const query = {
+          where: () => query,
+          orderBy: () => query,
+          limit: () => query,
+          then: (resolve: (value: unknown[]) => unknown, reject?: (error: unknown) => unknown) =>
+            Promise.resolve(rows).then(resolve, reject),
+        };
+        return query;
+      },
+    }),
+  } as unknown as DrizzleDB;
+}
+
+async function readProductionSeedState(input: {
+  premiseId?: string;
+  premiseUserId?: string;
+  premiseText?: string;
+  contextId?: string;
+  contextUserId?: string;
+  contextText?: string;
+} = {}): Promise<HistoricalQualityBaseState> {
+  const seed = exactSeedState();
+  const premises = seed.premises.map((row, index) => ({
+    id: index === 0 ? input.premiseId ?? row.id : row.id,
+    userId: index === 0 ? input.premiseUserId ?? row.userId : row.userId,
+    assertion: index === 0 && input.premiseText ? { ...row.assertion, text: input.premiseText } : row.assertion,
+    provenance: row.provenance,
+    validity: row.validity,
+    status: row.status,
+    retractedAt: row.retractedAt,
+    deletedAt: row.deletedAt,
+    embedding: row.embedding,
+  }));
+  const contexts = seed.contexts.map((row, index) => ({
+    id: index === 0 ? input.contextId ?? row.id : row.id,
+    userId: index === 0 ? input.contextUserId ?? row.userId : row.userId,
+    networkId: row.networkId,
+    text: index === 0 ? input.contextText ?? row.text : row.text,
+    premiseHash: projection.documents.find((document) => document.sourceRowId === row.id)?.contentFingerprint ?? null,
+    embedding: row.embedding,
+  }));
+  return productionHistoricalQualityBaseDependencies.readState(queuedReadDb([
+    seed.users,
+    seed.networks,
+    seed.memberships,
+    seed.intents,
+    seed.intentNetworkAssignments,
+    premises,
+    seed.premiseNetworkAssignments,
+    contexts,
+    [],
+    [{
+      key: 'discovery-env-matrix-base-v1',
+      schemaMigrationFingerprint: 'legacy-schema',
+      fixtureFingerprint: 'legacy-fixture',
+      fixtureCorpusVersion: 'legacy-corpus',
+      qualityAttestation: null,
+    }],
+    [],
+  ]), projection);
 }
 
 class FakeDb {
@@ -165,6 +237,24 @@ function dependencies(input: {
   };
 }
 
+async function publishedDb(): Promise<{ db: FakeDb; deps: HistoricalQualityBaseDependencies }> {
+  const db = new FakeDb();
+  const deps = dependencies();
+  await refreshHistoricalQualityBase(db as unknown as DrizzleDB, projection, fakeEmbedder(), deps);
+  return { db, deps };
+}
+
+function mutatePublishedAttestation(db: FakeDb, mutate: (attestation: NonNullable<MutableState['qualityMetadata']>['qualityAttestation']) => void): void {
+  const metadata = db.committed.qualityMetadata;
+  if (!metadata?.qualityAttestation) throw new Error('expected published metadata');
+  mutate(metadata.qualityAttestation);
+  metadata.fixtureFingerprint = historicalQualityAttestationRoot(metadata.qualityAttestation);
+}
+
+function embeddingConfigurationFingerprint(fields: { provider: string; model: string; dimensions: number }): string {
+  return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+}
+
 function fakeEmbedder(input: { events?: string[]; inspect?: () => void } = {}): HistoricalQualityEmbedder & { texts: string[] } {
   const result = {
     identity,
@@ -208,9 +298,42 @@ describe('historical quality base state', () => {
     changedTimestamp.committed.premises[0]!.provenance.timestamp = 'not-the-reviewed-timestamp';
     await expect(verifyHistoricalQualitySeedState(changedTimestamp as unknown as DrizzleDB, projection, dependencies())).rejects.toThrow('premise');
 
+    const missingContextFingerprint = new FakeDb();
+    delete (missingContextFingerprint.committed.contexts[0] as { premiseHash?: string | null }).premiseHash;
+    await expect(verifyHistoricalQualitySeedState(missingContextFingerprint as unknown as DrizzleDB, projection, dependencies())).rejects.toThrow('context');
+
     const published = new FakeDb();
     published.committed.documents = [{ ...projection.documents[0]!, embedding: [Math.fround(0.1)] }];
     await expect(verifyHistoricalQualitySeedState(published as unknown as DrizzleDB, projection, dependencies())).rejects.toThrow('candidate document');
+  });
+
+  for (const mutation of [
+    { label: 'premise ID', input: { premiseId: 'wrong-premise-id' }, select: (state: HistoricalQualityBaseState) => state.premises[0]!.id, expected: 'wrong-premise-id' },
+    { label: 'premise user ownership', input: { premiseUserId: 'wrong-premise-owner' }, select: (state: HistoricalQualityBaseState) => state.premises[0]!.userId, expected: 'wrong-premise-owner' },
+    { label: 'premise text', input: { premiseText: 'mutated database premise text' }, select: (state: HistoricalQualityBaseState) => state.premises[0]!.assertion.text, expected: 'mutated database premise text' },
+    { label: 'context ID', input: { contextId: 'wrong-context-id' }, select: (state: HistoricalQualityBaseState) => state.contexts[0]!.id, expected: 'wrong-context-id' },
+    { label: 'context user ownership', input: { contextUserId: 'wrong-context-owner' }, select: (state: HistoricalQualityBaseState) => state.contexts[0]!.userId, expected: 'wrong-context-owner' },
+    { label: 'context text', input: { contextText: 'mutated database context text' }, select: (state: HistoricalQualityBaseState) => state.contexts[0]!.text, expected: 'mutated database context text' },
+  ] as const) {
+    it(`preserves and rejects actual DB ${mutation.label}`, async () => {
+      const state = await readProductionSeedState(mutation.input);
+      expect(mutation.select(state)).toBe(mutation.expected);
+      const deps = dependencies();
+      deps.readState = async () => state;
+      await expect(verifyHistoricalQualitySeedState(new FakeDb() as unknown as DrizzleDB, projection, deps)).rejects.toThrow();
+    });
+  }
+
+  it('rejects a supplied projection outside approved seed authority', async () => {
+    const mutated = structuredClone(projection);
+    (mutated.contexts[0] as { sourcePaths: string[] }).sourcePaths = ['unapproved-source-path'];
+    await expect(verifyHistoricalQualitySeedState(new FakeDb() as unknown as DrizzleDB, mutated, dependencies())).rejects.toThrow('approved');
+  });
+
+  it('rejects a supplied projection outside approved document authority', async () => {
+    const mutated = structuredClone(projection);
+    (mutated.documents[0] as { targetFrame: string }).targetFrame = 'unapproved-target-frame';
+    await expect(verifyHistoricalQualitySeedState(new FakeDb() as unknown as DrizzleDB, mutated, dependencies())).rejects.toThrow('approved');
   });
 
   it('commits metadata-absent seed state before provider work and atomically publishes DB-readback fingerprints', async () => {
@@ -256,6 +379,55 @@ describe('historical quality base state', () => {
     expect(attestation.vectors[0]!.textFingerprint).toBe(projection.documents[0]!.contentFingerprint);
     await expect(verifyHistoricalQualityPublishedState(db as unknown as DrizzleDB, projection, deps)).resolves.toBeUndefined();
   });
+
+  for (const mutation of [
+    {
+      label: 'provider',
+      apply: (attestation: NonNullable<MutableState['qualityMetadata']>['qualityAttestation']) => {
+        if (!attestation) return;
+        attestation.embedding.provider = 'unapproved-provider';
+        attestation.embedding.configurationFingerprint = embeddingConfigurationFingerprint(attestation.embedding);
+      },
+    },
+    {
+      label: 'model',
+      apply: (attestation: NonNullable<MutableState['qualityMetadata']>['qualityAttestation']) => {
+        if (!attestation) return;
+        attestation.embedding.model = 'unapproved-model';
+        attestation.embedding.configurationFingerprint = embeddingConfigurationFingerprint(attestation.embedding);
+      },
+    },
+    {
+      label: 'dimensions',
+      apply: (attestation: NonNullable<MutableState['qualityMetadata']>['qualityAttestation']) => {
+        if (!attestation) return;
+        attestation.embedding.dimensions = 1536;
+        attestation.embedding.configurationFingerprint = embeddingConfigurationFingerprint(attestation.embedding);
+      },
+    },
+    {
+      label: 'configuration fingerprint',
+      apply: (attestation: NonNullable<MutableState['qualityMetadata']>['qualityAttestation']) => {
+        if (attestation) attestation.embedding.configurationFingerprint = 'f'.repeat(64);
+      },
+    },
+  ]) {
+    it(`rejects published embedding ${mutation.label} mutation without constructing a provider`, async () => {
+      const { db, deps } = await publishedDb();
+      mutatePublishedAttestation(db, mutation.apply);
+      await expect(verifyHistoricalQualityPublishedState(db as unknown as DrizzleDB, projection, deps)).rejects.toThrow('embedding');
+    });
+  }
+
+  for (const field of ['planFingerprint', 'seedProjectionFingerprint', 'documentSetFingerprint'] as const) {
+    it(`rejects published ${field} outside merged approval authority`, async () => {
+      const { db, deps } = await publishedDb();
+      mutatePublishedAttestation(db, (attestation) => {
+        if (attestation) attestation[field] = 'f'.repeat(64);
+      });
+      await expect(verifyHistoricalQualityPublishedState(db as unknown as DrizzleDB, projection, deps)).rejects.toThrow();
+    });
+  }
 
   for (const failure of ['write', 'readback', 'metadata', 'verification'] as const) {
     it(`rolls back all candidate state when final ${failure} fails`, async () => {

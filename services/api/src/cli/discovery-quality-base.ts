@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 
 import { and, eq, inArray, notInArray, or, sql } from 'drizzle-orm/sql';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
+import { embeddingConfigurationFingerprint, HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY } from '../lib/embedding/embedding.identity';
 import * as schema from '../schemas/database.schema';
 import type { HistoricalQualityBaseAttestation } from '../schemas/database.schema';
 import { fingerprintHistoricalQualityVector, historicalQualityAttestationRoot, HISTORICAL_QUALITY_METADATA_KEY, parseHistoricalQualityBaseAttestation } from './discovery-quality-attestation';
+import { HISTORICAL_QUALITY_APPROVED_FINGERPRINTS } from './discovery-quality.contract';
 import { createNeonControlPlane, type NeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget, type AttestedWritableQualityBaseTarget } from './discovery-quality-refresh-target';
 
@@ -50,9 +52,9 @@ export interface HistoricalQualityBaseState {
   memberships: Array<{ networkId: string; userId: string; permissions: string[]; autoAssign: boolean; deletedAt: unknown }>;
   intents: Array<{ id: string; userId: string; text?: string; payload: string; summary: string | null; sourceType: string | null; sourceId: string | null; status: string | null; isIncognito: boolean; archivedAt: unknown; embedding: number[] | null }>;
   intentNetworkAssignments: Array<{ networkId: string; intentId: string; relevancyScore: string | null }>;
-  premises: Array<{ id: string; participantId?: string; userId: string; intentId?: string; text?: string; sourcePath?: string; assertion: { text: string; tier: string }; provenance: { source: string; sourceId?: string; confidence: number; timestamp: string }; validity: { volatile: boolean }; status: string; retractedAt: unknown; deletedAt: unknown; embedding: number[] | null }>;
+  premises: Array<{ id: string; userId: string; assertion: { text: string; tier: string }; provenance: { source: string; sourceId?: string; confidence: number; timestamp: string }; validity: { volatile: boolean }; status: string; retractedAt: unknown; deletedAt: unknown; embedding: number[] | null }>;
   premiseNetworkAssignments: Array<{ premiseId: string; networkId: string; relevancyScore: string | null }>;
-  contexts: Array<{ id: string; participantId?: string; userId: string; text: string; sourcePaths?: readonly string[]; networkId: string | null; premiseHash?: string | null; embedding: number[] | null }>;
+  contexts: Array<{ id: string; userId: string; text: string; networkId: string | null; premiseHash: string | null; embedding: number[] | null }>;
   documents: Array<HistoricalQualitySeedDocument & { embedding: number[] }>;
   qualityMetadata: null | {
     key: string;
@@ -87,9 +89,7 @@ export interface HistoricalQualityBaseDependencies {
   beforePublishedVerification?(db: unknown): Promise<void>;
 }
 
-const EXPECTED_CORPUS_VERSION = 'historical-shared-pool-v1';
 const PREMISE_PROVENANCE_TIMESTAMP = '2026-08-09T19:02:56.000Z';
-const EXPECTED_PLAN_FINGERPRINT = '288336f6511a366d8d49303bc3e76eb475a981966e1ffb0eb2a8539d53fc4ce6';
 
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -110,6 +110,25 @@ function historicalSharedPoolSeedFingerprint(projection: HistoricalSharedPoolSee
 
 function historicalRetrievalDocumentFingerprint(documents: readonly HistoricalQualitySeedDocument[]): string {
   return fingerprintCanonicalJson(sorted(documents, (document) => document.documentId));
+}
+
+function assertApprovedProjection(projection: HistoricalSharedPoolSeedProjection): void {
+  if (historicalSharedPoolSeedFingerprint(projection) !== HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.seedProjectionFingerprint) {
+    fail('approved seed projection fingerprint');
+  }
+  if (historicalRetrievalDocumentFingerprint(projection.documents) !== HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.retrievalDocumentFingerprint) {
+    fail('approved retrieval document fingerprint');
+  }
+}
+
+function assertApprovedEmbeddingIdentity(identity: HistoricalQualityBaseAttestation['embedding']): void {
+  const approved = HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY;
+  if (identity.provider !== approved.provider || identity.model !== approved.model || identity.dimensions !== approved.dimensions) {
+    fail('embedding identity authority');
+  }
+  if (identity.configurationFingerprint !== embeddingConfigurationFingerprint(identity)) {
+    fail('embedding configuration fingerprint');
+  }
 }
 
 function compareText(left: string, right: string): number {
@@ -204,7 +223,7 @@ function assertSeedRows(state: HistoricalQualityBaseState, projection: Historica
     const expected = expectedContexts.get(row.id);
     const document = expected ? expectedContextDocument(projection, expected.id) : null;
     if (!expected || !document || row.userId !== expected.userId || row.networkId !== projection.networks[0].id
-      || row.text !== expected.text || (row.premiseHash !== undefined && row.premiseHash !== document.contentFingerprint)
+      || row.text !== expected.text || row.premiseHash !== document.contentFingerprint
       || row.embedding !== null) fail('context scalar/lifecycle', row.id);
   }
   if (state.fixtureOpportunityIds.length > 0) fail('fixture-actor opportunity', state.fixtureOpportunityIds[0]);
@@ -233,10 +252,13 @@ function assertDocumentRows(state: HistoricalQualityBaseState, projection: Histo
     };
   });
   if (JSON.stringify(attestation.vectors) !== JSON.stringify(vectors)) fail('vector fingerprint mapping');
-  if (attestation.corpusVersion !== EXPECTED_CORPUS_VERSION || attestation.planFingerprint !== EXPECTED_PLAN_FINGERPRINT
-    || attestation.seedProjectionFingerprint !== historicalSharedPoolSeedFingerprint(projection)
-    || attestation.documentSetFingerprint !== historicalRetrievalDocumentFingerprint(projection.documents)
-    || attestation.embedding.dimensions !== 2000) fail('attestation plan/seed/document/config mapping');
+  if (attestation.corpusVersion !== HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.corpusVersion
+    || attestation.planFingerprint !== HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.planFingerprint
+    || attestation.seedProjectionFingerprint !== HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.seedProjectionFingerprint
+    || attestation.documentSetFingerprint !== HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.retrievalDocumentFingerprint) {
+    fail('attestation approved plan/seed/document mapping');
+  }
+  assertApprovedEmbeddingIdentity(attestation.embedding);
   if (metadata.fixtureCorpusVersion !== attestation.corpusVersion
     || metadata.fixtureFingerprint !== historicalQualityAttestationRoot(attestation)) fail('metadata object/root mapping');
   return attestation;
@@ -248,6 +270,7 @@ export async function verifyHistoricalQualitySeedState(
   projection: HistoricalSharedPoolSeedProjection,
   dependencies: HistoricalQualityBaseDependencies = productionHistoricalQualityBaseDependencies,
 ): Promise<void> {
+  assertApprovedProjection(projection);
   const state = await dependencies.readState(db, projection);
   assertSeedRows(state, projection);
   if (state.documents.length !== 0) fail('candidate document', 'present in seed state');
@@ -260,6 +283,7 @@ export async function verifyHistoricalQualityPublishedState(
   projection: HistoricalSharedPoolSeedProjection,
   dependencies: HistoricalQualityBaseDependencies = productionHistoricalQualityBaseDependencies,
 ): Promise<void> {
+  assertApprovedProjection(projection);
   const state = await dependencies.readState(db, projection);
   let attestation: HistoricalQualityBaseAttestation;
   try {
@@ -289,17 +313,18 @@ function buildAttestation(
   identity: HistoricalQualityEmbeddingIdentity,
   rows: readonly { documentId: string; text: string; embedding: number[] }[],
 ): HistoricalQualityBaseAttestation {
-  if (identity.dimensions !== 2000) throw new Error('Historical quality embedding identity must use 2000 dimensions');
+  assertApprovedProjection(projection);
+  assertApprovedEmbeddingIdentity(identity);
   const expectedDocuments = sorted(projection.documents, (row) => row.documentId);
   const orderedRows = sorted(rows, (row) => row.documentId);
   assertExactIds('round-tripped vector', expectedDocuments.map((row) => row.documentId), orderedRows.map((row) => row.documentId));
   const expectedById = new Map(expectedDocuments.map((row) => [row.documentId, row]));
   const candidate: HistoricalQualityBaseAttestation = {
     version: 1,
-    corpusVersion: EXPECTED_CORPUS_VERSION,
-    planFingerprint: EXPECTED_PLAN_FINGERPRINT,
-    seedProjectionFingerprint: historicalSharedPoolSeedFingerprint(projection),
-    documentSetFingerprint: historicalRetrievalDocumentFingerprint(projection.documents),
+    corpusVersion: HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.corpusVersion,
+    planFingerprint: HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.planFingerprint,
+    seedProjectionFingerprint: HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.seedProjectionFingerprint,
+    documentSetFingerprint: HISTORICAL_QUALITY_APPROVED_FINGERPRINTS.retrievalDocumentFingerprint,
     embedding: { ...identity },
     vectors: orderedRows.map((row) => {
       const document = expectedById.get(row.documentId);
@@ -393,8 +418,6 @@ async function readProductionState(dbValue: unknown, projection: HistoricalShare
     db.select({ key: schema.evalMatrixMetadata.key, schemaMigrationFingerprint: schema.evalMatrixMetadata.schemaMigrationFingerprint, fixtureFingerprint: schema.evalMatrixMetadata.fixtureFingerprint, fixtureCorpusVersion: schema.evalMatrixMetadata.fixtureCorpusVersion, qualityAttestation: schema.evalMatrixMetadata.qualityAttestation }).from(schema.evalMatrixMetadata),
     db.select({ id: schema.opportunities.id, actors: schema.opportunities.actors }).from(schema.opportunities),
   ]);
-  const premiseProjection = new Map(projection.premises.map((row) => [row.id, row]));
-  const contextProjection = new Map(projection.contexts.map((row) => [row.id, row]));
   const documentProjection = new Map(projection.documents.map((row) => [row.documentId, row]));
   const qualityMetadata = metadata.find((row) => row.key === HISTORICAL_QUALITY_METADATA_KEY) ?? null;
   return {
@@ -403,9 +426,9 @@ async function readProductionState(dbValue: unknown, projection: HistoricalShare
     memberships,
     intents,
     intentNetworkAssignments: assignments,
-    premises: premises.map((row) => ({ ...row, ...premiseProjection.get(row.id) })),
+    premises,
     premiseNetworkAssignments: premiseAssignments,
-    contexts: contexts.map((row) => ({ ...row, ...contextProjection.get(row.id) })),
+    contexts,
     documents: documents.map((row) => {
       const expected = documentProjection.get(row.id);
       const context = row.context && typeof row.context === 'object' ? row.context as Record<string, unknown> : {};

@@ -3,11 +3,10 @@
  * Uses the shared OpenRouter + OpenAI embedding config from lib/embedding.
  */
 
-import { createHash } from 'node:crypto';
-
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
+import { embeddingConfigurationFingerprint } from '../lib/embedding/embedding.identity';
 import { traceAppOperation } from '../lib/sentry-performance';
 import * as schema from '../schemas/database.schema';
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,7 +138,7 @@ export class EmbedderAdapter {
     };
     this.identity = Object.freeze({
       ...configuration,
-      configurationFingerprint: createHash('sha256').update(JSON.stringify(configuration)).digest('hex'),
+      configurationFingerprint: embeddingConfigurationFingerprint(configuration),
     });
   }
 
