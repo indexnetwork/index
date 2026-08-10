@@ -18,14 +18,30 @@ private final class TransportCredentialStore: ConnectorCredentialStoring {
         if failDelete { throw ConnectorCredentialStoreError.verificationFailed }
         record = nil
     }
+    func compareAndSet(
+        expected: ConnectorCredentialRecord?,
+        replacement: ConnectorCredentialRecord?
+    ) throws -> Bool {
+        guard record == expected else { return false }
+        if let replacement { try putAndVerify(replacement) } else { try delete() }
+        return true
+    }
 }
 
 private final class TransportInstallationStore: ConnectorInstallationStoring {
-    let installationId: String
-    var recoveryPhase: ConnectorRecoveryPhase = .none
+    private var state: ConnectorInstallationState
     var failNextSet = false
+    var failPhase: ConnectorRecoveryPhase?
     var failClearCount = 0
-    init(installationId: String) { self.installationId = installationId }
+    init(installationId: String) {
+        state = ConnectorInstallationState(installationId: installationId, recoveryPhase: .none)
+    }
+    var installationId: String { state.installationId }
+    var recoveryPhase: ConnectorRecoveryPhase {
+        get { state.recoveryPhase }
+        set { state.recoveryPhase = newValue }
+    }
+    var stateSnapshot: ConnectorInstallationState { state }
     func setRecoveryPhase(_ phase: ConnectorRecoveryPhase) throws {
         if failNextSet {
             failNextSet = false
@@ -35,7 +51,28 @@ private final class TransportInstallationStore: ConnectorInstallationStoring {
             failClearCount -= 1
             throw ConnectorInstallationStoreError.invalidState
         }
-        recoveryPhase = phase
+        var replacement = state
+        replacement.recoveryPhase = phase
+        guard try compareAndSet(expected: state, replacement: replacement) else {
+            throw ConnectorInstallationStoreError.invalidState
+        }
+    }
+    func compareAndSet(
+        expected: ConnectorInstallationState,
+        replacement: ConnectorInstallationState
+    ) throws -> Bool {
+        guard state == expected else { return false }
+        if failNextSet || failPhase == replacement.recoveryPhase {
+            failNextSet = false
+            failPhase = nil
+            throw ConnectorInstallationStoreError.invalidState
+        }
+        if replacement.recoveryPhase == .none && failClearCount > 0 {
+            failClearCount -= 1
+            throw ConnectorInstallationStoreError.invalidState
+        }
+        state = replacement
+        return true
     }
 }
 
@@ -178,15 +215,7 @@ private func makeRuntime(
 ) throws -> ConnectorRuntime {
     let endpoints = try server.endpoints
     let http = ConnectorHTTPClient(endpoints: endpoints)
-    let authorization = BrowserAuthorization(
-        http: http,
-        credentialStore: credentialStore,
-        installationStore: installationStore,
-        processRecovery: processRecovery,
-        installationId: record.installationId,
-        endpoints: endpoints,
-        openBrowser: { _ in false }
-    )
+    let authorization = BrowserAuthorization(endpoints: endpoints, openBrowser: { _ in false })
     return ConnectorRuntime(
         endpoints: endpoints,
         installationStore: installationStore,
@@ -254,12 +283,7 @@ struct TransportFixture {
         let credentialStore = TransportCredentialStore(record: record)
         let installationStore = TransportInstallationStore(installationId: record.installationId)
         let processRecovery = ConnectorProcessRecoveryState()
-        let authorization = BrowserAuthorization(
-            http: http, credentialStore: credentialStore,
-            installationStore: installationStore, processRecovery: processRecovery,
-            installationId: record.installationId, endpoints: endpoints,
-            openBrowser: { _ in false }
-        )
+        let authorization = BrowserAuthorization(endpoints: endpoints, openBrowser: { _ in false })
         let runtime = ConnectorRuntime(
             endpoints: endpoints, installationStore: installationStore,
             credentialStore: credentialStore, http: http, authorization: authorization,
@@ -313,6 +337,46 @@ struct TransportFixture {
             payload: ["toolName": .string("read_docs"), "arguments": .object([:])]
         ))
         precondition(journalBlocked.error?.code == "recovery_only")
+
+        let initialRecoveryJournalFailure = "initialRecoveryJournalFailure"
+        let initialJournalServer = TransportFixtureServer()
+        let initialJournalCredentials = TransportCredentialStore(record: record)
+        let initialJournal = TransportInstallationStore(installationId: record.installationId)
+        initialJournal.failPhase = .revocationRequested
+        let initialJournalRuntime = try makeRuntime(
+            server: initialJournalServer, record: record,
+            credentialStore: initialJournalCredentials, installationStore: initialJournal
+        )
+        precondition(initialJournalRuntime.handle(disconnectRequest("initial-journal-failure")).result == .object(["status": .string("recovery_only")]))
+        precondition(initialJournalServer.disconnectCount == 0)
+        precondition(initialJournalCredentials.record?.recoveryPhase == .revocationRequested)
+        precondition(initialJournal.recoveryPhase == .none)
+
+        let serverReceiptJournalFailure = "serverReceiptJournalFailure"
+        let receiptJournalServer = TransportFixtureServer()
+        let receiptJournalCredentials = TransportCredentialStore(record: record)
+        let receiptJournal = TransportInstallationStore(installationId: record.installationId)
+        receiptJournal.failPhase = .serverReceiptConfirmed
+        let receiptJournalRuntime = try makeRuntime(
+            server: receiptJournalServer, record: record,
+            credentialStore: receiptJournalCredentials, installationStore: receiptJournal
+        )
+        precondition(receiptJournalRuntime.handle(disconnectRequest("receipt-journal-failure")).result == .object(["status": .string("recovery_only")]))
+        precondition(receiptJournalCredentials.record?.recoveryPhase == .serverReceiptConfirmed)
+        precondition(receiptJournal.recoveryPhase == .revocationRequested)
+
+        let probeConfirmedJournalFailure = "probeConfirmedJournalFailure"
+        let probeJournalServer = TransportFixtureServer()
+        let probeJournalCredentials = TransportCredentialStore(record: record)
+        let probeJournal = TransportInstallationStore(installationId: record.installationId)
+        probeJournal.failPhase = .revocationProbeConfirmed
+        let probeJournalRuntime = try makeRuntime(
+            server: probeJournalServer, record: record,
+            credentialStore: probeJournalCredentials, installationStore: probeJournal
+        )
+        precondition(probeJournalRuntime.handle(disconnectRequest("probe-journal-failure")).result == .object(["status": .string("recovery_only")]))
+        precondition(probeJournalCredentials.record?.recoveryPhase == .revocationProbeConfirmed)
+        precondition(probeJournal.recoveryPhase == .serverReceiptConfirmed)
 
         let firstRecoveryPersistenceFailure = "firstRecoveryPersistenceFailure"
         let persistenceServer = TransportFixtureServer()
@@ -380,7 +444,9 @@ struct TransportFixture {
 
         precondition([
             deniedRoute, deniedTool, endpointOverride, oversizedPayload, pendingRevocation,
-            firstRecoveryPersistenceFailure, receiptMismatch, activeProbeFailure,
+            initialRecoveryJournalFailure, serverReceiptJournalFailure,
+            probeConfirmedJournalFailure, firstRecoveryPersistenceFailure,
+            receiptMismatch, activeProbeFailure,
             serverUncertaintyKeyRetention, keychainDeletionFailure,
             journalClearFailureNoKeyConvergence,
         ].allSatisfy { !$0.isEmpty })

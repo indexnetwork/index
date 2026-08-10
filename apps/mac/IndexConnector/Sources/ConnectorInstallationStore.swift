@@ -3,14 +3,23 @@ import Foundation
 struct ConnectorInstallationState: Codable, Equatable {
     let installationId: String
     var recoveryPhase: ConnectorRecoveryPhase
+    var authorizationAttemptId: String?
+    var operationEpoch: UInt64
 
     private enum CodingKeys: String, CodingKey {
-        case installationId, recoveryPhase, revocationPending
+        case installationId, recoveryPhase, revocationPending, authorizationAttemptId, operationEpoch
     }
 
-    init(installationId: String, recoveryPhase: ConnectorRecoveryPhase) {
+    init(
+        installationId: String,
+        recoveryPhase: ConnectorRecoveryPhase,
+        authorizationAttemptId: String? = nil,
+        operationEpoch: UInt64 = 0
+    ) {
         self.installationId = installationId
         self.recoveryPhase = recoveryPhase
+        self.authorizationAttemptId = authorizationAttemptId
+        self.operationEpoch = operationEpoch
     }
 
     init(from decoder: Decoder) throws {
@@ -23,19 +32,28 @@ struct ConnectorInstallationState: Codable, Equatable {
         } else {
             recoveryPhase = .none
         }
+        authorizationAttemptId = try container.decodeIfPresent(String.self, forKey: .authorizationAttemptId)
+        operationEpoch = try container.decodeIfPresent(UInt64.self, forKey: .operationEpoch) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(installationId, forKey: .installationId)
         try container.encode(recoveryPhase, forKey: .recoveryPhase)
+        try container.encodeIfPresent(authorizationAttemptId, forKey: .authorizationAttemptId)
+        try container.encode(operationEpoch, forKey: .operationEpoch)
     }
 }
 
 protocol ConnectorInstallationStoring: AnyObject {
     var installationId: String { get }
     var recoveryPhase: ConnectorRecoveryPhase { get }
+    var stateSnapshot: ConnectorInstallationState { get }
     func setRecoveryPhase(_ phase: ConnectorRecoveryPhase) throws
+    func compareAndSet(
+        expected: ConnectorInstallationState,
+        replacement: ConnectorInstallationState
+    ) throws -> Bool
 }
 
 enum ConnectorInstallationStoreError: Error, Equatable {
@@ -60,6 +78,12 @@ final class ConnectorInstallationStore: ConnectorInstallationStoring {
         lock.lock()
         defer { lock.unlock() }
         return state.recoveryPhase
+    }
+
+    var stateSnapshot: ConnectorInstallationState {
+        lock.lock()
+        defer { lock.unlock() }
+        return state
     }
 
     init(
@@ -106,6 +130,18 @@ final class ConnectorInstallationStore: ConnectorInstallationStoring {
         replacement.recoveryPhase = phase
         try persist(replacement)
         state = replacement
+    }
+
+    func compareAndSet(
+        expected: ConnectorInstallationState,
+        replacement: ConnectorInstallationState
+    ) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard state == expected else { return false }
+        try persist(replacement)
+        state = replacement
+        return true
     }
 
     private func persist(_ value: ConnectorInstallationState) throws {

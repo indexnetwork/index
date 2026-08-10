@@ -209,6 +209,18 @@ test('authorize.start response is encoded without browser or setup details', () 
   }
 });
 
+test('runtime exclusively owns authorization side effects and epoch-CAS recovery', () => {
+  const browser = read('./Sources/BrowserAuthorization.swift');
+  const runtime = read('./Sources/ConnectorRuntime.swift');
+  expect(browser).not.toContain('credentialStore');
+  expect(browser).not.toContain('exchangeAuthorization');
+  expect(browser).not.toContain('.activate(');
+  expect(browser).toContain('BrowserAuthorizationCallback');
+  expect(runtime).toContain('operationEpoch');
+  expect(runtime).toContain('compareAndSet');
+  expect(runtime).toContain('staleAuthorization');
+});
+
 test('native fixtures cover callback replay, keychain ordering, transport bounds, and recovery mode', () => {
   const authorization = read('./Tests/AuthorizationFixture.swift');
   const transport = read('./Tests/TransportFixture.swift');
@@ -222,7 +234,11 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
     'firstRecoveryPersistenceFailure', 'activationTimeout', 'accountLabelFailure',
     'activeKeychainWriteFailure', 'receiptMismatch', 'activeProbeFailure',
     'serverUncertaintyKeyRetention', 'keychainDeletionFailure',
-    'journalClearFailureNoKeyConvergence',
+    'journalClearFailureNoKeyConvergence', 'initialRecoveryJournalFailure',
+    'serverReceiptJournalFailure', 'probeConfirmedJournalFailure',
+    'activationRequestedJournalFailure', 'labelUpdateKeychainFailure',
+    'disconnectBeforeCallback', 'callbackBeforeDisconnectBeforePoll',
+    'disconnectWhileActivationBlocked',
   ]) {
     expect(`${authorization}\n${transport}`).toContain(token);
   }

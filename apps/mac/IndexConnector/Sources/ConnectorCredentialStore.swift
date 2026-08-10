@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-enum ConnectorRecoveryPhase: String, Codable, Equatable {
+enum ConnectorRecoveryPhase: String, Codable, Equatable, Hashable {
     case none
     case activationRequested = "activation_requested"
     case revocationRequested = "revocation_requested"
@@ -49,6 +49,8 @@ struct ConnectorCredentialRecord: Codable, Equatable {
     let activationState: String
     let accountLabel: String
     let recoveryPhase: ConnectorRecoveryPhase
+    let authorizationAttemptId: String?
+    let operationEpoch: UInt64
 
     init(
         rawCredential: String,
@@ -61,7 +63,9 @@ struct ConnectorCredentialRecord: Codable, Equatable {
         expiresAt: Date,
         activationState: String,
         accountLabel: String,
-        recoveryPhase: ConnectorRecoveryPhase = .none
+        recoveryPhase: ConnectorRecoveryPhase = .none,
+        authorizationAttemptId: String? = nil,
+        operationEpoch: UInt64 = 0
     ) {
         self.rawCredential = rawCredential
         self.audience = audience
@@ -74,11 +78,14 @@ struct ConnectorCredentialRecord: Codable, Equatable {
         self.activationState = activationState
         self.accountLabel = accountLabel
         self.recoveryPhase = recoveryPhase
+        self.authorizationAttemptId = authorizationAttemptId
+        self.operationEpoch = operationEpoch
     }
 
     private enum CodingKeys: String, CodingKey {
         case rawCredential, audience, agentId, installationId, setupAttemptId
         case credentialId, actions, expiresAt, activationState, accountLabel, recoveryPhase
+        case authorizationAttemptId, operationEpoch
     }
 
     init(from decoder: Decoder) throws {
@@ -94,12 +101,16 @@ struct ConnectorCredentialRecord: Codable, Equatable {
         activationState = try container.decode(String.self, forKey: .activationState)
         accountLabel = try container.decodeIfPresent(String.self, forKey: .accountLabel) ?? ""
         recoveryPhase = try container.decodeIfPresent(ConnectorRecoveryPhase.self, forKey: .recoveryPhase) ?? .none
+        authorizationAttemptId = try container.decodeIfPresent(String.self, forKey: .authorizationAttemptId)
+        operationEpoch = try container.decodeIfPresent(UInt64.self, forKey: .operationEpoch) ?? 0
     }
 
     func replacing(
         activationState: String? = nil,
         accountLabel: String? = nil,
-        recoveryPhase: ConnectorRecoveryPhase? = nil
+        recoveryPhase: ConnectorRecoveryPhase? = nil,
+        authorizationAttemptId: String?? = nil,
+        operationEpoch: UInt64? = nil
     ) -> ConnectorCredentialRecord {
         ConnectorCredentialRecord(
             rawCredential: rawCredential,
@@ -112,7 +123,9 @@ struct ConnectorCredentialRecord: Codable, Equatable {
             expiresAt: expiresAt,
             activationState: activationState ?? self.activationState,
             accountLabel: accountLabel ?? self.accountLabel,
-            recoveryPhase: recoveryPhase ?? self.recoveryPhase
+            recoveryPhase: recoveryPhase ?? self.recoveryPhase,
+            authorizationAttemptId: authorizationAttemptId ?? self.authorizationAttemptId,
+            operationEpoch: operationEpoch ?? self.operationEpoch
         )
     }
 }
@@ -121,6 +134,10 @@ protocol ConnectorCredentialStoring {
     func putAndVerify(_ record: ConnectorCredentialRecord) throws
     func read() throws -> ConnectorCredentialRecord?
     func delete() throws
+    func compareAndSet(
+        expected: ConnectorCredentialRecord?,
+        replacement: ConnectorCredentialRecord?
+    ) throws -> Bool
 }
 
 enum ConnectorCredentialStoreError: Error, Equatable {
@@ -129,11 +146,12 @@ enum ConnectorCredentialStoreError: Error, Equatable {
     case accessGroupUnavailable
 }
 
-struct ConnectorCredentialStore: ConnectorCredentialStoring {
+final class ConnectorCredentialStore: ConnectorCredentialStoring {
     private let keychain: IndexKeychainStore
     private let descriptor: IndexKeychainItemDescriptor
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let lock = NSLock()
 
     init(
         installationId: String,
@@ -168,6 +186,39 @@ struct ConnectorCredentialStore: ConnectorCredentialStoring {
     }
 
     func putAndVerify(_ record: ConnectorCredentialRecord) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try putAndVerifyUnlocked(record)
+    }
+
+    func read() throws -> ConnectorCredentialRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+        return try readUnlocked()
+    }
+
+    func delete() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try keychain.delete(descriptor: descriptor)
+    }
+
+    func compareAndSet(
+        expected: ConnectorCredentialRecord?,
+        replacement: ConnectorCredentialRecord?
+    ) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard try readUnlocked() == expected else { return false }
+        if let replacement {
+            try putAndVerifyUnlocked(replacement)
+        } else {
+            try keychain.delete(descriptor: descriptor)
+        }
+        return true
+    }
+
+    private func putAndVerifyUnlocked(_ record: ConnectorCredentialRecord) throws {
         guard record.installationId == descriptor.account,
               record.rawCredential.hasPrefix("idxh_"),
               record.audience == "hermes-agent",
@@ -176,12 +227,12 @@ struct ConnectorCredentialStore: ConnectorCredentialStoring {
         }
         let encoded = try encoder.encode(record)
         try keychain.putAndVerify(encoded, descriptor: descriptor)
-        guard try read() == record else {
+        guard try readUnlocked() == record else {
             throw ConnectorCredentialStoreError.verificationFailed
         }
     }
 
-    func read() throws -> ConnectorCredentialRecord? {
+    private func readUnlocked() throws -> ConnectorCredentialRecord? {
         guard let data = try keychain.read(descriptor: descriptor) else { return nil }
         let record = try decoder.decode(ConnectorCredentialRecord.self, from: data)
         guard record.installationId == descriptor.account,
@@ -190,9 +241,5 @@ struct ConnectorCredentialStore: ConnectorCredentialStoring {
             throw ConnectorCredentialStoreError.invalidRecord
         }
         return record
-    }
-
-    func delete() throws {
-        try keychain.delete(descriptor: descriptor)
     }
 }

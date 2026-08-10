@@ -443,3 +443,141 @@ No native PASS is claimed. The macOS CI workflow remains the evidence gate for S
 - Native Swift compilation and all new fault-injection fixtures remain unexecuted locally because `swiftc` and Apple frameworks are unavailable. macOS CI must pass before acceptance.
 - No PostgreSQL behavior changed in this round. The existing Task 4 self-disconnect Drizzle transaction still awaits the previously documented guarded disposable-PostgreSQL execution.
 - Independent reviewer gate remains required.
+
+---
+
+## Fix round 2/5 — serialized authorization ownership and epoch fencing
+
+### Status
+
+Resolved the asynchronous authorization/disconnect blocker. `ConnectorRuntime` is now the sole owner of exchange, credential persistence, activation, recovery transitions, account-label persistence, and disconnect. `BrowserAuthorization` only owns the loopback listener and publishes one callback code tagged by the exact authorization-attempt UUID.
+
+### Changes
+
+- `authorize.start` creates and durably journals a fresh attempt UUID plus operation epoch before opening the browser. The URL-private response remains exactly `{status:"pending"}`.
+- The browser component now only prepares PKCE/listener state, opens the browser, validates one callback, and publishes `BrowserAuthorizationCallback { attemptId, code }`. It has no HTTP exchange/activation or Keychain/journal dependencies.
+- `authorize.poll` consumes the exact tagged callback and drives create/exchange, pending credential CAS, `activation_requested` CAS, activation, active credential CAS, optional account label, and exact attempt cleanup.
+- Credential records and the non-secret installation journal now carry exact attempt ownership and operation epochs. Live stores expose compare-and-set operations; runtime transitions run under a dedicated transition lock and recheck attempt/epoch ownership around network and persistence boundaries.
+- `disconnect` invalidates/cancels the attempt, advances the epoch, and persists that invalidation before considering no-record/no-journal convergence.
+- Stale callback/poll/activation work cannot clear or overwrite revocation state. A stale issued credential is retained in recovery when no newer credential exists. Late activation responses never write active/label state after epoch invalidation.
+- Confirmed no-key cleanup remains recovery-only while a credential-affecting authorization network request is in flight. This prevents a new authorization from starting until the stale request resolves; confirmed revocation then converges through a final disconnect cleanup.
+- REST/MCP admission checks the in-memory recovery latch, current/in-flight attempts, exact Keychain phase/activation state, and exact journal phase/attempt.
+- Added deterministic native concurrency fixtures for disconnect-before-callback, callback-before-disconnect-before-poll, blocked activation followed by disconnect and late response, stale-poll revocation preservation, and authorization restart denial during stale/recovery state.
+- Added actual phase-targeted journal failures at `activation_requested`, initial `revocation_requested`, `server_receipt_confirmed`, and `revocation_probe_confirmed`, plus active/label Keychain write faults and the prior receipt/probe/deletion/cleanup faults.
+
+### RED evidence
+
+Command:
+
+```bash
+bun test apps/mac/IndexConnector/connector-contract.spec.mjs
+```
+
+Observed after adding the round-2 ownership/concurrency/fault contract but before completing the missing fixture cases:
+
+```text
+11 pass
+1 fail
+124 expect() calls
+Ran 12 tests across 1 file.
+```
+
+The failing contract identified missing concrete recovery/concurrency fixture evidence, including the initial Keychain-before-activation marker and phase-specific journal failures.
+
+### GREEN evidence
+
+Provider-free/source connector contracts:
+
+```bash
+bun test apps/mac/IndexConnector/connector-contract.spec.mjs
+```
+
+```text
+12 pass
+0 fail
+148 expect() calls
+Ran 12 tests across 1 file.
+```
+
+Focused authorization/audience API contracts:
+
+```bash
+cd services/api
+bun test src/controllers/tests/hermes-authorization.controller.spec.ts \
+  src/guards/tests/hermes-agent-audience.spec.ts
+```
+
+```text
+39 pass
+0 fail
+245 expect() calls
+Ran 39 tests across 2 files.
+```
+
+API/protocol build and typecheck:
+
+```bash
+cd services/api
+bun run build
+```
+
+```text
+$ bun run --cwd ../../packages/protocol build && tsc
+$ rm -rf dist && tsc
+```
+
+Exit status `0`.
+
+Shell/static checks:
+
+```bash
+bash -n apps/mac/IndexConnector/build.sh
+git diff --check
+```
+
+Both exited `0` with no output.
+
+Native fixture attempts:
+
+```bash
+cd apps/mac/IndexConnector
+./build.sh --fixture AuthorizationFixture
+./build.sh --fixture TransportFixture
+```
+
+Both stopped before compilation on this Linux host:
+
+```text
+./build.sh: line 60: swiftc: command not found
+```
+
+No native concurrency/fault PASS is claimed. The configured macOS CI job remains the required Apple-framework compile/execution gate.
+
+### Files changed in round 2
+
+- `apps/mac/IndexConnector/Sources/BrowserAuthorization.swift`
+- `apps/mac/IndexConnector/Sources/ConnectorCredentialStore.swift`
+- `apps/mac/IndexConnector/Sources/ConnectorInstallationStore.swift`
+- `apps/mac/IndexConnector/Sources/ConnectorRuntime.swift`
+- `apps/mac/IndexConnector/Tests/AuthorizationFixture.swift`
+- `apps/mac/IndexConnector/Tests/TransportFixture.swift`
+- `apps/mac/IndexConnector/connector-contract.spec.mjs`
+- `.superpowers/sdd/2026-08-09-hermes-secure-standalone-connection/task-4-report.md`
+
+### Round-2 self-review
+
+- Browser code has no credential-store, exchange, activation, journal, or recovery transition dependency.
+- Attempt UUID and operation epoch are persisted before browser/network work and never emitted.
+- Disconnect invalidates memory/listener and advances/persists epoch before local convergence.
+- Authorization and disconnect transitions use exact expected-record and expected-journal CAS values. Transition-lock ordering ensures a disconnect stage follows and supersedes any write that began just before invalidation.
+- Authorization cleanup is restricted to its exact attempt/epoch and cannot clear a revocation phase.
+- Blocked activation concurrency retains revocation confirmation/no-key recovery until the in-flight activation returns; the stale result performs no active or label write, restart remains denied, and cleanup then converges.
+- Phase-targeted fault fixtures assert no server call before initial recovery durability, key retention on pre-confirmation uncertainty, exact confirmed phases on later faults, and no-key convergence only after server confirmation.
+- URL-private authorization output and all server request/response contracts remain unchanged.
+- No blocker found in the round-2 source diff by self-review.
+
+### Round-2 residual risks
+
+- Swift compiler and Apple frameworks are absent locally, so the substantial native refactor and deterministic concurrency fixtures require macOS CI evidence before acceptance.
+- The existing guarded PostgreSQL residual for the Task 4 self-disconnect transaction is unchanged; no server/database code changed in this round.
+- Independent reviewer gate remains required.

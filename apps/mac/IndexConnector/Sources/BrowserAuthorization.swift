@@ -16,13 +16,6 @@ enum BrowserAuthorizationError: Error, Equatable {
     case activationFailure
 }
 
-enum BrowserAuthorizationSnapshot: Equatable {
-    case idle
-    case pending
-    case connected(ConnectorCredentialRecord)
-    case failed(code: String, message: String)
-}
-
 private func secureRandomBytes(count: Int) throws -> Data {
     var data = Data(count: count)
     let status = data.withUnsafeMutableBytes { bytes in
@@ -199,240 +192,122 @@ final class LoopbackCallbackListener {
     }
 }
 
+struct BrowserAuthorizationPreparation: Equatable {
+    let attemptId: String
+    let state: String
+    let verifier: String
+    let codeChallenge: String
+    let redirectURI: String
+}
+
+struct BrowserAuthorizationCallback: Equatable {
+    let attemptId: String
+    let code: String
+}
+
 final class BrowserAuthorization {
     static let canonicalActions = [
         "manage:identity", "manage:premises", "manage:intents",
         "manage:networks", "manage:opportunities", "manage:negotiations",
     ]
 
-    private struct Attempt {
-        let requestId: String
-        let verifier: String
-        let redirectURI: String
-        let expiresAt: Date
+    private struct Session {
+        let state: String
         let listener: LoopbackCallbackListener
+        var callbackCode: String?
     }
 
-    private let http: ConnectorHTTPClient
-    private let credentialStore: ConnectorCredentialStoring
-    private let installationStore: ConnectorInstallationStoring
-    private let processRecovery: ConnectorProcessRecoveryState
-    private let installationId: String
     private let endpoints: ConnectorEndpoints
     private let openBrowser: (URL) -> Bool
     private let lock = NSLock()
-    private let workQueue = DispatchQueue(label: "network.index.connector.authorization")
-    private var attempt: Attempt?
-    private var currentSnapshot: BrowserAuthorizationSnapshot = .idle
+    private var sessions: [String: Session] = [:]
 
     init(
-        http: ConnectorHTTPClient,
-        credentialStore: ConnectorCredentialStoring,
-        installationStore: ConnectorInstallationStoring,
-        processRecovery: ConnectorProcessRecoveryState,
-        installationId: String,
         endpoints: ConnectorEndpoints = .embedded,
         openBrowser: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) {
-        self.http = http
-        self.credentialStore = credentialStore
-        self.installationStore = installationStore
-        self.processRecovery = processRecovery
-        self.installationId = installationId
         self.endpoints = endpoints
         self.openBrowser = openBrowser
     }
 
-    func start() throws {
-        lock.lock()
-        if case .pending = currentSnapshot {
-            lock.unlock()
-            throw BrowserAuthorizationError.alreadyInProgress
-        }
-        lock.unlock()
-
+    func prepare(attemptId: String) throws -> BrowserAuthorizationPreparation {
         let state = base64URL(try secureRandomBytes(count: 32))
         let verifier = base64URL(try secureRandomBytes(count: 32))
         let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
-        var callbackListener: LoopbackCallbackListener!
-        callbackListener = try LoopbackCallbackListener(expectedState: state) { [weak self] code in
-            self?.workQueue.async { self?.complete(code: code) }
+        let listener = try LoopbackCallbackListener(expectedState: state) { [weak self] code in
+            self?.publishCallback(attemptId: attemptId, code: code)
         }
-        do {
-            let created = try http.createAuthorization(
-                installationId: installationId,
-                redirectURI: callbackListener.redirectURI,
-                codeChallenge: challenge,
-                state: state,
-                actions: Self.canonicalActions
-            )
-            guard constantTimeEqual(created.state, state), created.expiresAt > Date() else {
-                callbackListener.close()
-                throw BrowserAuthorizationError.invalidAuthorizationResponse
-            }
-            var components = URLComponents(url: endpoints.web.appending(path: "hermes-authorize"), resolvingAgainstBaseURL: false)!
-            components.queryItems = [
-                URLQueryItem(name: "request_id", value: created.requestId),
-                URLQueryItem(name: "state", value: state),
-                URLQueryItem(name: "redirect_uri", value: callbackListener.redirectURI),
-            ]
-            guard let authorizationURL = components.url else {
-                callbackListener.close()
-                throw BrowserAuthorizationError.invalidAuthorizationResponse
-            }
-            lock.lock()
-            attempt = Attempt(
-                requestId: created.requestId,
-                verifier: verifier,
-                redirectURI: callbackListener.redirectURI,
-                expiresAt: created.expiresAt,
-                listener: callbackListener
-            )
-            currentSnapshot = .pending
+        lock.lock()
+        guard sessions[attemptId] == nil else {
             lock.unlock()
-            guard openBrowser(authorizationURL) else {
-                fail(code: "browser_open_failed", message: "The authorization page could not be opened.")
-                throw BrowserAuthorizationError.browserOpenFailed
-            }
-            return
-        } catch {
-            callbackListener.close()
-            throw error
+            listener.close()
+            throw BrowserAuthorizationError.alreadyInProgress
+        }
+        sessions[attemptId] = Session(state: state, listener: listener, callbackCode: nil)
+        lock.unlock()
+        return BrowserAuthorizationPreparation(
+            attemptId: attemptId,
+            state: state,
+            verifier: verifier,
+            codeChallenge: challenge,
+            redirectURI: listener.redirectURI
+        )
+    }
+
+    func open(
+        preparation: BrowserAuthorizationPreparation,
+        requestId: String,
+        expiresAt: Date
+    ) throws {
+        guard expiresAt > Date() else {
+            cancel(attemptId: preparation.attemptId)
+            throw BrowserAuthorizationError.authorizationExpired
+        }
+        lock.lock()
+        let session = sessions[preparation.attemptId]
+        lock.unlock()
+        guard let session, constantTimeEqual(session.state, preparation.state) else {
+            throw BrowserAuthorizationError.invalidAuthorizationResponse
+        }
+        var components = URLComponents(
+            url: endpoints.web.appending(path: "hermes-authorize"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "request_id", value: requestId),
+            URLQueryItem(name: "state", value: preparation.state),
+            URLQueryItem(name: "redirect_uri", value: preparation.redirectURI),
+        ]
+        guard let authorizationURL = components.url, openBrowser(authorizationURL) else {
+            cancel(attemptId: preparation.attemptId)
+            throw BrowserAuthorizationError.browserOpenFailed
         }
     }
 
-    func snapshot() -> BrowserAuthorizationSnapshot {
+    func takeCallback(attemptId: String) -> BrowserAuthorizationCallback? {
         lock.lock()
         defer { lock.unlock() }
-        if case .pending = currentSnapshot, let attempt, attempt.expiresAt <= Date() {
-            attempt.listener.close()
-            self.attempt = nil
-            currentSnapshot = .failed(
-                code: "authorization_expired",
-                message: "Authorization expired. Start again."
-            )
-        }
-        return currentSnapshot
+        guard var session = sessions[attemptId], let code = session.callbackCode else { return nil }
+        session.callbackCode = nil
+        sessions[attemptId] = session
+        return BrowserAuthorizationCallback(attemptId: attemptId, code: code)
     }
 
-    private func complete(code: String) {
+    func cancel(attemptId: String) {
         lock.lock()
-        guard let activeAttempt = attempt else {
+        let session = sessions.removeValue(forKey: attemptId)
+        lock.unlock()
+        session?.listener.close()
+    }
+
+    private func publishCallback(attemptId: String, code: String) {
+        lock.lock()
+        guard var session = sessions[attemptId], session.callbackCode == nil else {
             lock.unlock()
             return
         }
-        lock.unlock()
-        guard activeAttempt.expiresAt > Date() else {
-            fail(code: "authorization_expired", message: "Authorization expired. Start again.")
-            return
-        }
-        do {
-            let exchanged = try http.exchangeAuthorization(
-                requestId: activeAttempt.requestId,
-                code: code,
-                verifier: activeAttempt.verifier,
-                redirectURI: activeAttempt.redirectURI
-            )
-            guard exchanged.audience == "hermes-agent",
-                  exchanged.installationId == installationId,
-                  exchanged.activationState == "pending",
-                  exchanged.actions == Self.canonicalActions,
-                  exchanged.expiresAt > Date() else {
-                throw BrowserAuthorizationError.invalidCredentialMetadata
-            }
-            let pendingRecord = ConnectorCredentialRecord(
-                rawCredential: exchanged.credential,
-                audience: exchanged.audience,
-                agentId: exchanged.agentId,
-                installationId: exchanged.installationId,
-                setupAttemptId: exchanged.setupAttemptId,
-                credentialId: exchanged.credentialId,
-                actions: exchanged.actions,
-                expiresAt: exchanged.expiresAt,
-                activationState: exchanged.activationState,
-                accountLabel: ""
-            )
-            do {
-                try credentialStore.putAndVerify(pendingRecord)
-            } catch {
-                throw BrowserAuthorizationError.keychainFailure
-            }
-
-            // Fail-close this process first, then persist activation uncertainty
-            // to both authoritative Keychain state and the non-secret journal.
-            processRecovery.failClosed()
-            let activationRequested = pendingRecord.replacing(recoveryPhase: .activationRequested)
-            guard persistRecovery(record: activationRequested, phase: .activationRequested) else {
-                throw BrowserAuthorizationError.keychainFailure
-            }
-
-            let activated = try http.activate(credential: exchanged.credential)
-            guard activated.audience == exchanged.audience,
-                  activated.credentialId == exchanged.credentialId,
-                  activated.agentId == exchanged.agentId,
-                  activated.installationId == exchanged.installationId,
-                  activated.setupAttemptId == exchanged.setupAttemptId,
-                  activated.actions == exchanged.actions,
-                  activated.expiresAt == exchanged.expiresAt,
-                  activated.activationState == "active" else {
-                throw BrowserAuthorizationError.activationFailure
-            }
-
-            // Server activation is confirmed. Persist active authority before the
-            // optional account-label request so that lookup failure cannot regress it.
-            let activeRecord = pendingRecord.replacing(
-                activationState: "active",
-                recoveryPhase: .none
-            )
-            do {
-                try credentialStore.putAndVerify(activeRecord)
-            } catch {
-                throw BrowserAuthorizationError.keychainFailure
-            }
-            do {
-                try installationStore.setRecoveryPhase(.none)
-            } catch {
-                throw BrowserAuthorizationError.keychainFailure
-            }
-            processRecovery.clear()
-            setConnected(activeRecord)
-
-            guard let accountLabel = try? http.fetchAccountLabel(credential: exchanged.credential),
-                  !accountLabel.isEmpty else { return }
-            let labeledRecord = activeRecord.replacing(accountLabel: accountLabel)
-            if (try? credentialStore.putAndVerify(labeledRecord)) != nil {
-                setConnected(labeledRecord)
-            }
-        } catch BrowserAuthorizationError.keychainFailure {
-            fail(code: "credential_storage_failed", message: "Secure credential storage failed.")
-        } catch {
-            fail(code: "authorization_failed", message: "Authorization could not be completed.")
-        }
-    }
-
-    private func persistRecovery(
-        record: ConnectorCredentialRecord,
-        phase: ConnectorRecoveryPhase
-    ) -> Bool {
-        var keychainPersisted = true
-        var journalPersisted = true
-        do { try credentialStore.putAndVerify(record) } catch { keychainPersisted = false }
-        do { try installationStore.setRecoveryPhase(phase) } catch { journalPersisted = false }
-        return keychainPersisted && journalPersisted
-    }
-
-    private func setConnected(_ record: ConnectorCredentialRecord) {
-        lock.lock()
-        attempt = nil
-        currentSnapshot = .connected(record)
-        lock.unlock()
-    }
-
-    private func fail(code: String, message: String) {
-        lock.lock()
-        attempt?.listener.close()
-        attempt = nil
-        currentSnapshot = .failed(code: code, message: message)
+        session.callbackCode = code
+        sessions[attemptId] = session
         lock.unlock()
     }
 }

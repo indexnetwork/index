@@ -6,14 +6,29 @@ enum ConnectorRuntimeError: Error, Equatable {
     case reconnectRequired
     case recoveryOnly
     case alreadyConnected
+    case staleAuthorization
+}
+
+private struct ConnectorAuthorizationAttempt {
+    let id: String
+    let epoch: UInt64
+    var preparation: BrowserAuthorizationPreparation?
+    var requestId: String?
+    var expiresAt: Date?
 }
 
 final class ConnectorRuntime {
     private let installationStore: ConnectorInstallationStoring
     private let credentialStore: ConnectorCredentialStoring
     private let http: ConnectorHTTPClient
-    private let authorization: BrowserAuthorization
+    private let browser: BrowserAuthorization
     private let processRecovery: ConnectorProcessRecoveryState
+    private let stateLock = NSLock()
+    private let transitionLock = NSLock()
+    private var operationEpoch: UInt64
+    private var currentAttempt: ConnectorAuthorizationAttempt?
+    private var inFlightCredentialAttempts: Set<String> = []
+    private var lastAuthorizationFailure: (code: String, message: String)?
 
     init(
         endpoints: ConnectorEndpoints,
@@ -27,8 +42,9 @@ final class ConnectorRuntime {
         self.installationStore = installationStore
         self.credentialStore = credentialStore
         self.http = http
-        self.authorization = authorization
+        browser = authorization
         self.processRecovery = processRecovery
+        operationEpoch = installationStore.stateSnapshot.operationEpoch
     }
 
     convenience init(
@@ -38,32 +54,24 @@ final class ConnectorRuntime {
         let credentialStore = try ConnectorCredentialStore(installationId: installationStore.installationId)
         let http = ConnectorHTTPClient(endpoints: endpoints)
         let processRecovery = ConnectorProcessRecoveryState()
-        let authorization = BrowserAuthorization(
-            http: http,
-            credentialStore: credentialStore,
-            installationStore: installationStore,
-            processRecovery: processRecovery,
-            installationId: installationStore.installationId,
-            endpoints: endpoints
-        )
+        let browser = BrowserAuthorization(endpoints: endpoints)
         self.init(
             endpoints: endpoints,
             installationStore: installationStore,
             credentialStore: credentialStore,
             http: http,
-            authorization: authorization,
+            authorization: browser,
             processRecovery: processRecovery
         )
     }
 
     func handle(_ request: ConnectorRequest) -> ConnectorResponse {
         do {
-            let result = try dispatch(request)
             return ConnectorResponse(
                 protocolVersion: ConnectorProtocolVersion.current,
                 id: request.id,
                 success: true,
-                result: result,
+                result: try dispatch(request),
                 error: nil
             )
         } catch {
@@ -91,30 +99,10 @@ final class ConnectorRuntime {
             return statusValue()
         case .authorizeStart:
             try requireExactKeys(request.payload, allowed: [])
-            let record = try readCredentialFailClosed()
-            if processRecovery.isRecoveryOnly
-                || installationStore.recoveryPhase.requiresRecovery
-                || record?.recoveryPhase.requiresRecovery == true {
-                throw ConnectorRuntimeError.recoveryOnly
-            }
-            guard record == nil else { throw ConnectorRuntimeError.alreadyConnected }
-            try authorization.start()
-            return .object(["status": .string("pending")])
+            return try startAuthorization()
         case .authorizePoll:
             try requireExactKeys(request.payload, allowed: [])
-            switch authorization.snapshot() {
-            case .idle, .pending:
-                return .object(["status": .string("pending")])
-            case let .connected(record):
-                var result = statusObject(record: record, recoveryOnly: recoveryRequired(record: record))
-                result["status"] = .string("connected")
-                return .object(result)
-            case let .failed(code, message):
-                return .object([
-                    "status": .string("failed"),
-                    "error": .object(["code": .string(code), "message": .string(message)]),
-                ])
-            }
+            return pollAuthorization()
         case .rest:
             try requireExactKeys(request.payload, allowed: ["method", "path", "body"], required: ["method", "path"])
             guard case let .string(method)? = request.payload["method"],
@@ -122,12 +110,7 @@ final class ConnectorRuntime {
                 throw ConnectorRuntimeError.invalidPayload
             }
             let credential = try activeCredential()
-            let result = try http.rest(
-                method: method,
-                path: path,
-                body: request.payload["body"],
-                credential: credential
-            )
+            let result = try http.rest(method: method, path: path, body: request.payload["body"], credential: credential)
             return .object(["status": .number(Double(result.status)), "body": result.body])
         case .mcp:
             try requireExactKeys(request.payload, allowed: ["toolName", "arguments"], required: ["toolName", "arguments"])
@@ -142,19 +125,565 @@ final class ConnectorRuntime {
         }
     }
 
-    private func readCredentialFailClosed() throws -> ConnectorCredentialRecord? {
-        do {
-            return try credentialStore.read()
-        } catch {
-            processRecovery.failClosed()
+    private func startAuthorization() throws -> JSONValue {
+        let existing = try readCredentialFailClosed()
+        let journal = installationStore.stateSnapshot
+        stateLock.lock()
+        let hasAttempt = currentAttempt != nil
+        stateLock.unlock()
+        if processRecovery.isRecoveryOnly || journal.recoveryPhase.requiresRecovery
+            || journal.authorizationAttemptId != nil || existing?.recoveryPhase.requiresRecovery == true {
             throw ConnectorRuntimeError.recoveryOnly
+        }
+        guard existing == nil, !hasAttempt else { throw ConnectorRuntimeError.alreadyConnected }
+
+        let attemptId = UUID().uuidString.lowercased()
+        stateLock.lock()
+        operationEpoch &+= 1
+        let epoch = operationEpoch
+        currentAttempt = ConnectorAuthorizationAttempt(
+            id: attemptId, epoch: epoch, preparation: nil, requestId: nil, expiresAt: nil
+        )
+        lastAuthorizationFailure = nil
+        stateLock.unlock()
+
+        transitionLock.lock()
+        let persisted = installationStore.stateSnapshot
+        var attemptJournal = persisted
+        attemptJournal.authorizationAttemptId = attemptId
+        attemptJournal.operationEpoch = epoch
+        let journalStarted = (try? installationStore.compareAndSet(
+            expected: persisted, replacement: attemptJournal
+        )) == true
+        transitionLock.unlock()
+        guard journalStarted else {
+            failAuthorizationOwnership(attemptId: attemptId, epoch: epoch)
+            throw ConnectorRuntimeError.recoveryOnly
+        }
+
+        do {
+            let preparation = try browser.prepare(attemptId: attemptId)
+            try updateAttempt(attemptId: attemptId, epoch: epoch) { $0.preparation = preparation }
+            try assertAuthorizationOwned(attemptId: attemptId, epoch: epoch, allowedPhases: [.none])
+            let created = try http.createAuthorization(
+                installationId: installationStore.installationId,
+                redirectURI: preparation.redirectURI,
+                codeChallenge: preparation.codeChallenge,
+                state: preparation.state,
+                actions: BrowserAuthorization.canonicalActions
+            )
+            try assertAuthorizationOwned(attemptId: attemptId, epoch: epoch, allowedPhases: [.none])
+            guard created.state == preparation.state, created.expiresAt > Date() else {
+                throw BrowserAuthorizationError.invalidAuthorizationResponse
+            }
+            try updateAttempt(attemptId: attemptId, epoch: epoch) {
+                $0.requestId = created.requestId
+                $0.expiresAt = created.expiresAt
+            }
+            try browser.open(preparation: preparation, requestId: created.requestId, expiresAt: created.expiresAt)
+            try assertAuthorizationOwned(attemptId: attemptId, epoch: epoch, allowedPhases: [.none])
+            return .object(["status": .string("pending")])
+        } catch {
+            browser.cancel(attemptId: attemptId)
+            clearAttemptIfOwned(attemptId: attemptId, epoch: epoch)
+            throw error
         }
     }
 
-    private func activeCredential() throws -> ConnectorCredentialRecord {
-        guard let record = try readCredentialFailClosed() else {
-            throw ConnectorRuntimeError.notConnected
+    private func pollAuthorization() -> JSONValue {
+        stateLock.lock()
+        let attempt = currentAttempt
+        let failure = lastAuthorizationFailure
+        stateLock.unlock()
+        guard let attempt else {
+            if let failure {
+                return failedAuthorizationResult(code: failure.code, message: failure.message)
+            }
+            if let record = try? credentialStore.read(), record.activationState == "active",
+               record.recoveryPhase == .none {
+                var result = statusObject(record: record, recoveryOnly: recoveryRequired(record: record))
+                result["status"] = .string("connected")
+                return .object(result)
+            }
+            return .object(["status": .string("pending")])
         }
+        guard let callback = browser.takeCallback(attemptId: attempt.id), callback.attemptId == attempt.id else {
+            return .object(["status": .string("pending")])
+        }
+        do {
+            let active = try completeAuthorization(attempt: attempt, code: callback.code)
+            var result = statusObject(record: active, recoveryOnly: recoveryRequired(record: active))
+            result["status"] = .string("connected")
+            return .object(result)
+        } catch {
+            let sanitized = authorizationFailure(error)
+            stateLock.lock()
+            if currentAttempt?.id == attempt.id && currentAttempt?.epoch == attempt.epoch {
+                lastAuthorizationFailure = sanitized
+            }
+            stateLock.unlock()
+            return failedAuthorizationResult(code: sanitized.code, message: sanitized.message)
+        }
+    }
+
+    private func completeAuthorization(
+        attempt: ConnectorAuthorizationAttempt,
+        code: String
+    ) throws -> ConnectorCredentialRecord {
+        guard let preparation = attempt.preparation,
+              let requestId = attempt.requestId,
+              let expiresAt = attempt.expiresAt,
+              expiresAt > Date() else {
+            throw BrowserAuthorizationError.authorizationExpired
+        }
+        try assertAuthorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none])
+        markCredentialNetworkStarted(attempt.id)
+        let exchanged: ConnectorCredentialExchange
+        do {
+            exchanged = try http.exchangeAuthorization(
+                requestId: requestId,
+                code: code,
+                verifier: preparation.verifier,
+                redirectURI: preparation.redirectURI
+            )
+        } catch {
+            markCredentialNetworkFinished(attempt.id)
+            throw error
+        }
+        markCredentialNetworkFinished(attempt.id)
+
+        let pending = ConnectorCredentialRecord(
+            rawCredential: exchanged.credential,
+            audience: exchanged.audience,
+            agentId: exchanged.agentId,
+            installationId: exchanged.installationId,
+            setupAttemptId: exchanged.setupAttemptId,
+            credentialId: exchanged.credentialId,
+            actions: exchanged.actions,
+            expiresAt: exchanged.expiresAt,
+            activationState: exchanged.activationState,
+            accountLabel: "",
+            recoveryPhase: .none,
+            authorizationAttemptId: attempt.id,
+            operationEpoch: attempt.epoch
+        )
+        guard exchanged.audience == "hermes-agent",
+              exchanged.installationId == installationStore.installationId,
+              exchanged.activationState == "pending",
+              exchanged.actions == BrowserAuthorization.canonicalActions,
+              exchanged.expiresAt > Date() else {
+            retainStaleIssuedCredential(pending)
+            throw BrowserAuthorizationError.invalidCredentialMetadata
+        }
+        guard authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]) else {
+            retainStaleIssuedCredential(pending)
+            throw ConnectorRuntimeError.staleAuthorization
+        }
+
+        transitionLock.lock()
+        guard authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]) else {
+            transitionLock.unlock()
+            retainStaleIssuedCredential(pending)
+            throw ConnectorRuntimeError.staleAuthorization
+        }
+        let pendingStored = (try? credentialStore.compareAndSet(expected: nil, replacement: pending)) == true
+        transitionLock.unlock()
+        guard pendingStored else {
+            processRecovery.failClosed()
+            throw ConnectorRuntimeError.recoveryOnly
+        }
+
+        processRecovery.failClosed()
+        let activationRequested = pending.replacing(recoveryPhase: .activationRequested)
+        guard transitionAuthorization(
+            attemptId: attempt.id,
+            epoch: attempt.epoch,
+            expectedRecord: pending,
+            replacementRecord: activationRequested,
+            expectedPhase: .none,
+            replacementPhase: .activationRequested
+        ) else { throw ConnectorRuntimeError.recoveryOnly }
+
+        try assertAuthorizationOwned(
+            attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.activationRequested]
+        )
+        markCredentialNetworkStarted(attempt.id)
+        let activated: ConnectorActivatedCredential
+        do {
+            activated = try http.activate(credential: exchanged.credential)
+        } catch {
+            markCredentialNetworkFinished(attempt.id)
+            throw error
+        }
+        markCredentialNetworkFinished(attempt.id)
+        guard activated.audience == exchanged.audience,
+              activated.credentialId == exchanged.credentialId,
+              activated.agentId == exchanged.agentId,
+              activated.installationId == exchanged.installationId,
+              activated.setupAttemptId == exchanged.setupAttemptId,
+              activated.actions == exchanged.actions,
+              activated.expiresAt == exchanged.expiresAt,
+              activated.activationState == "active" else {
+            throw BrowserAuthorizationError.activationFailure
+        }
+        guard authorizationOwned(
+            attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.activationRequested]
+        ) else {
+            throw ConnectorRuntimeError.staleAuthorization
+        }
+
+        let active = activationRequested.replacing(activationState: "active", recoveryPhase: .none)
+        guard transitionAuthorization(
+            attemptId: attempt.id,
+            epoch: attempt.epoch,
+            expectedRecord: activationRequested,
+            replacementRecord: active,
+            expectedPhase: .activationRequested,
+            replacementPhase: .none
+        ) else { throw ConnectorRuntimeError.recoveryOnly }
+
+        var finalRecord = active
+        if authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]),
+           let label = try? http.fetchAccountLabel(credential: active.rawCredential),
+           authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]),
+           !label.isEmpty {
+            let labeled = active.replacing(accountLabel: label)
+            transitionLock.lock()
+            if authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]),
+               (try? credentialStore.compareAndSet(expected: active, replacement: labeled)) == true {
+                finalRecord = labeled
+            }
+            transitionLock.unlock()
+        }
+        guard finishAuthorization(attemptId: attempt.id, epoch: attempt.epoch) else {
+            throw ConnectorRuntimeError.staleAuthorization
+        }
+        return finalRecord
+    }
+
+    private func transitionAuthorization(
+        attemptId: String,
+        epoch: UInt64,
+        expectedRecord: ConnectorCredentialRecord,
+        replacementRecord: ConnectorCredentialRecord,
+        expectedPhase: ConnectorRecoveryPhase,
+        replacementPhase: ConnectorRecoveryPhase
+    ) -> Bool {
+        transitionLock.lock()
+        defer { transitionLock.unlock() }
+        guard authorizationOwned(attemptId: attemptId, epoch: epoch, allowedPhases: [expectedPhase]) else {
+            return false
+        }
+        let keychainPersisted = (try? credentialStore.compareAndSet(
+            expected: expectedRecord, replacement: replacementRecord
+        )) == true
+        let journal = installationStore.stateSnapshot
+        guard journal.authorizationAttemptId == attemptId,
+              journal.operationEpoch == epoch,
+              journal.recoveryPhase == expectedPhase else { return false }
+        var replacement = journal
+        replacement.recoveryPhase = replacementPhase
+        let journalPersisted: Bool
+        if replacementPhase == .none && !keychainPersisted {
+            journalPersisted = false
+        } else {
+            journalPersisted = (try? installationStore.compareAndSet(
+                expected: journal, replacement: replacement
+            )) == true
+        }
+        return keychainPersisted && journalPersisted
+            && authorizationOwned(attemptId: attemptId, epoch: epoch, allowedPhases: [replacementPhase])
+    }
+
+    private func finishAuthorization(attemptId: String, epoch: UInt64) -> Bool {
+        transitionLock.lock()
+        defer { transitionLock.unlock() }
+        guard authorizationOwned(attemptId: attemptId, epoch: epoch, allowedPhases: [.none]) else {
+            return false
+        }
+        let journal = installationStore.stateSnapshot
+        var replacement = journal
+        replacement.authorizationAttemptId = nil
+        guard (try? installationStore.compareAndSet(expected: journal, replacement: replacement)) == true else {
+            return false
+        }
+        stateLock.lock()
+        guard currentAttempt?.id == attemptId, currentAttempt?.epoch == epoch else {
+            stateLock.unlock()
+            return false
+        }
+        currentAttempt = nil
+        lastAuthorizationFailure = nil
+        stateLock.unlock()
+        browser.cancel(attemptId: attemptId)
+        processRecovery.clear()
+        return true
+    }
+
+    private func retainStaleIssuedCredential(_ issued: ConnectorCredentialRecord) {
+        processRecovery.failClosed()
+        transitionLock.lock()
+        defer { transitionLock.unlock() }
+        guard (try? credentialStore.read()) == nil else { return }
+        let journal = installationStore.stateSnapshot
+        var recovery = issued.replacing(
+            recoveryPhase: .activationRequested,
+            authorizationAttemptId: .some(nil),
+            operationEpoch: journal.operationEpoch
+        )
+        recovery = recovery.replacing(activationState: "pending")
+        guard (try? credentialStore.compareAndSet(expected: nil, replacement: recovery)) == true else { return }
+        var replacement = journal
+        replacement.authorizationAttemptId = nil
+        replacement.recoveryPhase = .activationRequested
+        _ = try? installationStore.compareAndSet(expected: journal, replacement: replacement)
+    }
+
+    private func disconnect() -> JSONValue {
+        let invalidatedAttempt: String?
+        let epoch: UInt64
+        stateLock.lock()
+        invalidatedAttempt = currentAttempt?.id
+        currentAttempt = nil
+        operationEpoch &+= 1
+        epoch = operationEpoch
+        lastAuthorizationFailure = nil
+        let credentialNetworkInFlight = !inFlightCredentialAttempts.isEmpty
+        stateLock.unlock()
+        processRecovery.failClosed()
+        if let invalidatedAttempt { browser.cancel(attemptId: invalidatedAttempt) }
+
+        transitionLock.lock()
+        let journal = installationStore.stateSnapshot
+        var invalidated = journal
+        invalidated.authorizationAttemptId = nil
+        invalidated.operationEpoch = epoch
+        if credentialNetworkInFlight && invalidated.recoveryPhase == .none {
+            invalidated.recoveryPhase = .activationRequested
+        }
+        let invalidationPersisted = (try? installationStore.compareAndSet(
+            expected: journal, replacement: invalidated
+        )) == true
+        transitionLock.unlock()
+        guard invalidationPersisted else { return recoveryOnlyResult }
+
+        let record: ConnectorCredentialRecord?
+        do { record = try credentialStore.read() } catch { return recoveryOnlyResult }
+        guard var working = record else {
+            if credentialNetworkInFlight { return recoveryOnlyResult }
+            if invalidated.recoveryPhase.confirmsServerRevocation {
+                return clearConfirmedNoKey(epoch: epoch)
+            }
+            if invalidated.recoveryPhase == .none {
+                processRecovery.clear()
+                return disconnectedResult
+            }
+            return recoveryOnlyResult
+        }
+
+        if !working.recoveryPhase.confirmsServerRevocation {
+            let requested = working.replacing(
+                recoveryPhase: .revocationRequested,
+                authorizationAttemptId: .some(nil),
+                operationEpoch: epoch
+            )
+            guard transitionDisconnect(
+                epoch: epoch,
+                expectedRecord: working,
+                replacementRecord: requested,
+                replacementPhase: .revocationRequested
+            ) else { return recoveryOnlyResult }
+            working = requested
+        } else if working.operationEpoch != epoch || working.authorizationAttemptId != nil {
+            let adopted = working.replacing(
+                authorizationAttemptId: .some(nil), operationEpoch: epoch
+            )
+            guard transitionDisconnect(
+                epoch: epoch,
+                expectedRecord: working,
+                replacementRecord: adopted,
+                replacementPhase: working.recoveryPhase
+            ) else { return recoveryOnlyResult }
+            working = adopted
+        }
+
+        if working.recoveryPhase == .revocationRequested {
+            guard disconnectOwned(epoch) else { return recoveryOnlyResult }
+            let receipt: ConnectorRevocationReceipt
+            do { receipt = try http.revoke(credential: working.rawCredential) }
+            catch { return recoveryOnlyResult }
+            guard disconnectOwned(epoch),
+                  receipt.credentialId == working.credentialId,
+                  receipt.setupAttemptId == working.setupAttemptId else {
+                return recoveryOnlyResult
+            }
+            let confirmed = working.replacing(recoveryPhase: .serverReceiptConfirmed)
+            guard transitionDisconnect(
+                epoch: epoch,
+                expectedRecord: working,
+                replacementRecord: confirmed,
+                replacementPhase: .serverReceiptConfirmed
+            ) else { return recoveryOnlyResult }
+            working = confirmed
+        }
+
+        if working.activationState == "active", working.expiresAt > Date(),
+           working.recoveryPhase != .revocationProbeConfirmed {
+            guard disconnectOwned(epoch) else { return recoveryOnlyResult }
+            do { try http.requireRevokedCredentialProbe(credential: working.rawCredential) }
+            catch { return recoveryOnlyResult }
+            guard disconnectOwned(epoch) else { return recoveryOnlyResult }
+            let probed = working.replacing(recoveryPhase: .revocationProbeConfirmed)
+            guard transitionDisconnect(
+                epoch: epoch,
+                expectedRecord: working,
+                replacementRecord: probed,
+                replacementPhase: .revocationProbeConfirmed
+            ) else { return recoveryOnlyResult }
+            working = probed
+        }
+
+        guard working.recoveryPhase.confirmsServerRevocation, disconnectOwned(epoch) else {
+            return recoveryOnlyResult
+        }
+        transitionLock.lock()
+        let deleted = disconnectOwned(epoch)
+            && (try? credentialStore.compareAndSet(expected: working, replacement: nil)) == true
+        transitionLock.unlock()
+        guard deleted else { return recoveryOnlyResult }
+        return clearConfirmedNoKey(epoch: epoch)
+    }
+
+    private func transitionDisconnect(
+        epoch: UInt64,
+        expectedRecord: ConnectorCredentialRecord,
+        replacementRecord: ConnectorCredentialRecord,
+        replacementPhase: ConnectorRecoveryPhase
+    ) -> Bool {
+        transitionLock.lock()
+        defer { transitionLock.unlock() }
+        guard disconnectOwned(epoch) else { return false }
+        let keychainPersisted = (try? credentialStore.compareAndSet(
+            expected: expectedRecord, replacement: replacementRecord
+        )) == true
+        let journal = installationStore.stateSnapshot
+        guard journal.operationEpoch == epoch, journal.authorizationAttemptId == nil else { return false }
+        var replacement = journal
+        replacement.recoveryPhase = replacementPhase
+        let journalPersisted = (try? installationStore.compareAndSet(
+            expected: journal, replacement: replacement
+        )) == true
+        return keychainPersisted && journalPersisted && disconnectOwned(epoch)
+    }
+
+    private func clearConfirmedNoKey(epoch: UInt64) -> JSONValue {
+        transitionLock.lock()
+        defer { transitionLock.unlock() }
+        guard disconnectOwned(epoch) else { return recoveryOnlyResult }
+        let journal = installationStore.stateSnapshot
+        guard journal.operationEpoch == epoch,
+              journal.authorizationAttemptId == nil,
+              journal.recoveryPhase.confirmsServerRevocation else {
+            return recoveryOnlyResult
+        }
+        stateLock.lock()
+        let credentialNetworkInFlight = !inFlightCredentialAttempts.isEmpty
+        stateLock.unlock()
+        guard !credentialNetworkInFlight else { return recoveryOnlyResult }
+        var cleared = journal
+        cleared.recoveryPhase = .none
+        guard (try? installationStore.compareAndSet(expected: journal, replacement: cleared)) == true else {
+            return recoveryOnlyResult
+        }
+        processRecovery.clear()
+        return disconnectedResult
+    }
+
+    private func disconnectOwned(_ epoch: UInt64) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return operationEpoch == epoch && currentAttempt == nil
+    }
+
+    private func authorizationOwned(
+        attemptId: String,
+        epoch: UInt64,
+        allowedPhases: Set<ConnectorRecoveryPhase>
+    ) -> Bool {
+        stateLock.lock()
+        let memoryOwned = currentAttempt?.id == attemptId
+            && currentAttempt?.epoch == epoch
+            && operationEpoch == epoch
+        stateLock.unlock()
+        guard memoryOwned else { return false }
+        let journal = installationStore.stateSnapshot
+        return journal.authorizationAttemptId == attemptId
+            && journal.operationEpoch == epoch
+            && allowedPhases.contains(journal.recoveryPhase)
+    }
+
+    private func assertAuthorizationOwned(
+        attemptId: String,
+        epoch: UInt64,
+        allowedPhases: Set<ConnectorRecoveryPhase>
+    ) throws {
+        guard authorizationOwned(attemptId: attemptId, epoch: epoch, allowedPhases: allowedPhases) else {
+            throw ConnectorRuntimeError.staleAuthorization
+        }
+    }
+
+    private func updateAttempt(
+        attemptId: String,
+        epoch: UInt64,
+        update: (inout ConnectorAuthorizationAttempt) -> Void
+    ) throws {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard var attempt = currentAttempt, attempt.id == attemptId, attempt.epoch == epoch else {
+            throw ConnectorRuntimeError.staleAuthorization
+        }
+        update(&attempt)
+        currentAttempt = attempt
+    }
+
+    private func clearAttemptIfOwned(attemptId: String, epoch: UInt64) {
+        transitionLock.lock()
+        let journal = installationStore.stateSnapshot
+        if journal.authorizationAttemptId == attemptId, journal.operationEpoch == epoch,
+           journal.recoveryPhase == .none {
+            var cleared = journal
+            cleared.authorizationAttemptId = nil
+            _ = try? installationStore.compareAndSet(expected: journal, replacement: cleared)
+        }
+        transitionLock.unlock()
+        stateLock.lock()
+        if currentAttempt?.id == attemptId, currentAttempt?.epoch == epoch {
+            currentAttempt = nil
+        }
+        stateLock.unlock()
+    }
+
+    private func failAuthorizationOwnership(attemptId: String, epoch: UInt64) {
+        processRecovery.failClosed()
+        stateLock.lock()
+        if currentAttempt?.id == attemptId, currentAttempt?.epoch == epoch { currentAttempt = nil }
+        stateLock.unlock()
+    }
+
+    private func markCredentialNetworkStarted(_ attemptId: String) {
+        stateLock.lock()
+        inFlightCredentialAttempts.insert(attemptId)
+        stateLock.unlock()
+    }
+
+    private func markCredentialNetworkFinished(_ attemptId: String) {
+        stateLock.lock()
+        inFlightCredentialAttempts.remove(attemptId)
+        stateLock.unlock()
+    }
+
+    private func activeCredential() throws -> ConnectorCredentialRecord {
+        guard let record = try readCredentialFailClosed() else { throw ConnectorRuntimeError.notConnected }
         guard !recoveryRequired(record: record), record.activationState == "active" else {
             throw ConnectorRuntimeError.recoveryOnly
         }
@@ -162,121 +691,28 @@ final class ConnectorRuntime {
         return record
     }
 
+    private func readCredentialFailClosed() throws -> ConnectorCredentialRecord? {
+        do { return try credentialStore.read() }
+        catch {
+            processRecovery.failClosed()
+            throw ConnectorRuntimeError.recoveryOnly
+        }
+    }
+
     private func recoveryRequired(record: ConnectorCredentialRecord?) -> Bool {
-        processRecovery.isRecoveryOnly
-            || installationStore.recoveryPhase.requiresRecovery
-            || record?.recoveryPhase.requiresRecovery == true
-            || record?.activationState == "pending"
-    }
-
-    private func disconnect() -> JSONValue {
-        processRecovery.failClosed()
-        let record: ConnectorCredentialRecord?
-        do {
-            record = try credentialStore.read()
-        } catch {
-            return recoveryOnlyResult
-        }
-
-        guard var workingRecord = record else {
-            if installationStore.recoveryPhase.confirmsServerRevocation {
-                do {
-                    try installationStore.setRecoveryPhase(.none)
-                    processRecovery.clear()
-                    return disconnectedResult
-                } catch {
-                    return recoveryOnlyResult
-                }
-            }
-            if installationStore.recoveryPhase == .none {
-                processRecovery.clear()
-                return disconnectedResult
-            }
-            return recoveryOnlyResult
-        }
-
-        if workingRecord.recoveryPhase == .none || workingRecord.recoveryPhase == .activationRequested {
-            workingRecord = workingRecord.replacing(recoveryPhase: .revocationRequested)
-            guard persistRecovery(record: workingRecord, phase: .revocationRequested) else {
-                return recoveryOnlyResult
-            }
-        } else if installationStore.recoveryPhase != workingRecord.recoveryPhase {
-            guard persistRecovery(record: workingRecord, phase: workingRecord.recoveryPhase) else {
-                return recoveryOnlyResult
-            }
-        }
-
-        if workingRecord.recoveryPhase == .revocationRequested {
-            do {
-                let receipt = try http.revoke(credential: workingRecord.rawCredential)
-                guard receipt.credentialId == workingRecord.credentialId,
-                      receipt.setupAttemptId == workingRecord.setupAttemptId else {
-                    return recoveryOnlyResult
-                }
-                workingRecord = workingRecord.replacing(recoveryPhase: .serverReceiptConfirmed)
-                guard persistRecovery(record: workingRecord, phase: .serverReceiptConfirmed) else {
-                    return recoveryOnlyResult
-                }
-            } catch {
-                return recoveryOnlyResult
-            }
-        }
-
-        if workingRecord.activationState == "active",
-           workingRecord.expiresAt > Date(),
-           workingRecord.recoveryPhase != .revocationProbeConfirmed {
-            do {
-                try http.requireRevokedCredentialProbe(credential: workingRecord.rawCredential)
-                workingRecord = workingRecord.replacing(recoveryPhase: .revocationProbeConfirmed)
-                guard persistRecovery(record: workingRecord, phase: .revocationProbeConfirmed) else {
-                    return recoveryOnlyResult
-                }
-            } catch {
-                return recoveryOnlyResult
-            }
-        }
-
-        guard workingRecord.recoveryPhase.confirmsServerRevocation else {
-            return recoveryOnlyResult
-        }
-        do {
-            try credentialStore.delete()
-        } catch {
-            return recoveryOnlyResult
-        }
-        do {
-            try installationStore.setRecoveryPhase(.none)
-            processRecovery.clear()
-            return disconnectedResult
-        } catch {
-            return recoveryOnlyResult
-        }
-    }
-
-    private func persistRecovery(
-        record: ConnectorCredentialRecord,
-        phase: ConnectorRecoveryPhase
-    ) -> Bool {
-        var keychainPersisted = true
-        var journalPersisted = true
-        do { try credentialStore.putAndVerify(record) } catch { keychainPersisted = false }
-        do { try installationStore.setRecoveryPhase(phase) } catch { journalPersisted = false }
-        return keychainPersisted && journalPersisted
-    }
-
-    private var disconnectedResult: JSONValue {
-        .object(["status": .string("disconnected")])
-    }
-
-    private var recoveryOnlyResult: JSONValue {
-        .object(["status": .string("recovery_only")])
+        stateLock.lock()
+        let attemptPending = currentAttempt != nil || !inFlightCredentialAttempts.isEmpty
+        stateLock.unlock()
+        let journal = installationStore.stateSnapshot
+        return processRecovery.isRecoveryOnly || attemptPending
+            || journal.recoveryPhase.requiresRecovery || journal.authorizationAttemptId != nil
+            || record?.recoveryPhase.requiresRecovery == true || record?.activationState == "pending"
     }
 
     private func statusValue() -> JSONValue {
         let record: ConnectorCredentialRecord?
-        do {
-            record = try credentialStore.read()
-        } catch {
+        do { record = try credentialStore.read() }
+        catch {
             processRecovery.failClosed()
             record = nil
         }
@@ -313,6 +749,26 @@ final class ConnectorRuntime {
         ]
     }
 
+    private var disconnectedResult: JSONValue { .object(["status": .string("disconnected")]) }
+    private var recoveryOnlyResult: JSONValue { .object(["status": .string("recovery_only")]) }
+
+    private func failedAuthorizationResult(code: String, message: String) -> JSONValue {
+        .object([
+            "status": .string("failed"),
+            "error": .object(["code": .string(code), "message": .string(message)]),
+        ])
+    }
+
+    private func authorizationFailure(_ error: Error) -> (code: String, message: String) {
+        if error is ConnectorRuntimeError {
+            return ("authorization_stale", "Authorization was superseded. Disconnect recovery is required.")
+        }
+        if error is ConnectorCredentialStoreError || error is ConnectorInstallationStoreError {
+            return ("credential_storage_failed", "Secure credential recovery is required.")
+        }
+        return ("authorization_failed", "Authorization could not be completed.")
+    }
+
     private func requireExactKeys(
         _ payload: [String: JSONValue],
         allowed: Set<String>,
@@ -333,15 +789,11 @@ final class ConnectorRuntime {
                 return ConnectorError(code: "not_connected", message: "Connect to Index first.")
             case .reconnectRequired:
                 return ConnectorError(code: "reconnect_required", message: "Reconnect to Index.")
-            case .recoveryOnly:
+            case .recoveryOnly, .staleAuthorization:
                 return ConnectorError(code: "recovery_only", message: "Only disconnect recovery is available.")
             case .alreadyConnected:
                 return ConnectorError(code: "already_connected", message: "Index is already connected.")
             }
-        }
-        if let authorizationError = error as? BrowserAuthorizationError,
-           authorizationError == .alreadyInProgress {
-            return ConnectorError(code: "authorization_in_progress", message: "Authorization is already pending.")
         }
         if let httpError = error as? ConnectorHTTPError {
             switch httpError {
