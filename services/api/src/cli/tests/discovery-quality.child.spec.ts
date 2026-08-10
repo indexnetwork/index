@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'bun:test';
 import { HydeGraphFactory } from '@indexnetwork/protocol';
+
+import { HistoricalQualityChildOutputSchema } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
+import { HISTORICAL_SHARED_POOL_PLAN } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
+import { fingerprintCanonicalJson, HistoricalQualityExecutionRunSchema, HistoricalQualityTransportRowSchema } from '../../../../../packages/protocol/eval/shared/index.js';
+import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger } from '../../queues/opportunity/discovery-trigger.builders';
 
 import { HISTORICAL_QUALITY_CHILD_RUNTIME_CONTRACT_VERSION, HistoricalQualityChildConfigurationSchema, HistoricalQualitySlotDispatchSchema, parseHistoricalQualityChildConfiguration, parseHistoricalQualitySlotDispatch, preflightHistoricalQualityChildRuntime, reattestExactSelectedChild, reconcileHistoricalQualityChildEmbedding, runHistoricalQualityChild, type HistoricalQualityChildDeps, type HistoricalQualitySlotDispatch } from '../discovery-quality.child';
 import { NamespacedHydeCache } from '../discovery-quality.cache';
@@ -132,6 +138,252 @@ function dependencies(events: string[] = []): HistoricalQualityChildDeps {
     },
   };
 }
+
+type Task7Runtime = {
+  executeHistoricalQualitySlot(input: {
+    dispatch: HistoricalQualitySlotDispatch;
+    configuration: Readonly<Record<string, string>>;
+    dependencies: {
+      verifyRestoredState(input: unknown): Promise<unknown>;
+      invokeGraph(input: unknown, options: { signal: AbortSignal }): Promise<unknown>;
+      withEnvironment?<T>(configuration: Readonly<Record<string, string>>, run: () => Promise<T>): Promise<T>;
+    };
+  }): Promise<unknown>;
+  projectHistoricalQualityGraphResult(input: { dispatch: HistoricalQualitySlotDispatch; result: unknown }): Promise<unknown>;
+  parseProjectedHistoricalQualityChildOutput(value: unknown): unknown;
+};
+
+const qualityCase = HISTORICAL_SHARED_POOL_PLAN.cases[0]!;
+const sourceParticipant = HISTORICAL_SHARED_POOL_PLAN.participants.find((row) => row.participantId === qualityCase.sourceParticipantId)!;
+const targetCandidate = qualityCase.candidates.find((row) => row.role === 'target')!;
+const targetParticipant = HISTORICAL_SHARED_POOL_PLAN.participants.find((row) => row.participantId === targetCandidate.participantId)!;
+const expectedSourceIntent = HISTORICAL_SHARED_POOL_PLAN.seedProjection.intents.find((row) => row.id === sourceParticipant.intentId)!;
+
+function qualityDispatch(trigger: 'intent' | 'enrichment'): HistoricalQualitySlotDispatch {
+  const identity = {
+    caseId: qualityCase.caseId,
+    trigger,
+    repetition: 0,
+    selectedSide: 'a',
+    configurationFingerprint: fullFingerprint,
+  } as const;
+  return { ...dispatch, slotId: `hq-slot-${fingerprintCanonicalJson(identity)}` };
+}
+
+function successfulGraphResult(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    candidates: [{
+      candidateUserId: targetParticipant.userId,
+      candidateIntentId: targetParticipant.intentId,
+      networkId: HISTORICAL_SHARED_POOL_PLAN.network.id,
+      similarity: 0.91,
+      lens: 'raw model lens must not escape',
+      candidatePayload: 'raw fixture/model text must not escape',
+    }],
+    trace: [{
+      node: 'candidate',
+      detail: 'raw evaluator narration must not escape',
+      data: {
+        userId: targetParticipant.userId,
+        score: 88,
+        reasoning: 'provider reasoning must not escape',
+        model: 'provider/model-must-not-escape',
+      },
+    }],
+    evaluatedOpportunities: [{
+      score: 88,
+      reasoning: 'final reason must not escape',
+      actors: [
+        { userId: sourceParticipant.userId, networkId: HISTORICAL_SHARED_POOL_PLAN.network.id },
+        { userId: targetParticipant.userId, networkId: HISTORICAL_SHARED_POOL_PLAN.network.id },
+      ],
+    }],
+    ...overrides,
+  };
+}
+
+async function task7Runtime(): Promise<Task7Runtime> {
+  return await import('../discovery-quality.child') as unknown as Task7Runtime;
+}
+
+function exactRestoredIntent(): Record<string, unknown> {
+  return {
+    id: expectedSourceIntent.id,
+    userId: expectedSourceIntent.userId,
+    payload: expectedSourceIntent.text,
+    summary: expectedSourceIntent.text,
+    sourceType: 'discovery_form',
+    sourceId: expectedSourceIntent.userId,
+    status: 'ACTIVE',
+    isIncognito: false,
+    archivedAt: null,
+    embedding: undefined,
+  };
+}
+
+describe('historical quality Task 7 execution contract', () => {
+  it('uses the exact intent builder, audited persisted query, parsed child configuration, and one strict attempt', async () => {
+    const runtime = await task7Runtime();
+    expect(runtime.executeHistoricalQualitySlot).toBeFunction();
+    expect(runtime.projectHistoricalQualityGraphResult).toBeFunction();
+    const slotDispatch = qualityDispatch('intent');
+    const configuration = Object.freeze({ DISCOVERY_ALLOWED_TYPES: 'intent', NEGOTIATOR_STANCE: 'parsed-child' });
+    const events: string[] = [];
+    let trigger: unknown;
+    let configured: Readonly<Record<string, string>> | undefined;
+    const output = await runtime.executeHistoricalQualitySlot({
+      dispatch: slotDispatch,
+      configuration,
+      dependencies: {
+        verifyRestoredState: async (expected) => {
+          events.push('verify-restored');
+          const serialized = JSON.stringify(expected);
+          expect(serialized).toContain(sourceParticipant.userId);
+          expect(serialized).toContain(sourceParticipant.intentId);
+          expect(serialized).toContain(sourceParticipant.contextId);
+          for (const premiseId of sourceParticipant.premiseIds) expect(serialized).toContain(premiseId);
+          expect(serialized).toContain(HISTORICAL_SHARED_POOL_PLAN.network.id);
+          expect(serialized).toContain(HISTORICAL_SHARED_POOL_PLAN.corpusVersion);
+          return exactRestoredIntent();
+        },
+        withEnvironment: async (received, run) => {
+          events.push('environment');
+          configured = received;
+          expect(received).toBe(configuration);
+          expect(received).toEqual({ DISCOVERY_ALLOWED_TYPES: 'intent', NEGOTIATOR_STANCE: 'parsed-child' });
+          return run();
+        },
+        invokeGraph: async (input, options) => {
+          events.push('graph');
+          trigger = input;
+          expect(options.signal).toBeInstanceOf(AbortSignal);
+          return successfulGraphResult();
+        },
+      },
+    }) as ReturnType<typeof HistoricalQualityChildOutputSchema.parse>;
+
+    expect(configured).toBe(configuration);
+    expect(events).toEqual(['verify-restored', 'environment', 'graph']);
+    expect(trigger).toEqual(buildIntentDiscoveryTrigger({
+      userId: sourceParticipant.userId,
+      searchQuery: expectedSourceIntent.text,
+      networkIds: [HISTORICAL_SHARED_POOL_PLAN.network.id],
+      triggerIntentId: sourceParticipant.intentId,
+    }));
+    expect(HistoricalQualityChildOutputSchema.safeParse(output).success).toBeTrue();
+    expect(HistoricalQualityTransportRowSchema.safeParse(output.transportRow).success).toBeTrue();
+    expect(HistoricalQualityExecutionRunSchema.safeParse(output.executionRun).success).toBeTrue();
+    expect(output.transportRow.participantMetrics).toHaveLength(24);
+    expect(output.transportRow.participantMetrics.map((metric) => metric.participantId))
+      .toEqual([...qualityCase.candidates.map((candidate) => candidate.participantId)].sort());
+    expect(output.executionRun).toMatchObject({ outcome: 'success', recovered: false, runIndex: 0 });
+    expect(output.executionRun.attempts).toHaveLength(1);
+    expect(output.executionRun.attempts[0]).toMatchObject({ outcome: 'success', retryable: false, backoffMs: 0 });
+    const serialized = JSON.stringify(output);
+    for (const sentinel of [
+      'raw model lens', 'raw fixture/model text', 'raw evaluator narration',
+      'provider reasoning', 'provider/model-must-not-escape', 'final reason',
+    ]) expect(serialized).not.toContain(sentinel);
+  });
+
+  it('uses the exact enrichment builder without query or trigger intent and never imports queue jobs', async () => {
+    const runtime = await task7Runtime();
+    let trigger: unknown;
+    const output = await runtime.executeHistoricalQualitySlot({
+      dispatch: qualityDispatch('enrichment'),
+      configuration: Object.freeze({ DISCOVERY_ALLOWED_TYPES: 'intent' }),
+      dependencies: {
+        verifyRestoredState: async () => exactRestoredIntent(),
+        invokeGraph: async (input) => { trigger = input; return successfulGraphResult(); },
+      },
+    }) as ReturnType<typeof HistoricalQualityChildOutputSchema.parse>;
+    expect(trigger).toEqual(buildEnrichmentDiscoveryTrigger({
+      userId: sourceParticipant.userId,
+      networkId: HISTORICAL_SHARED_POOL_PLAN.network.id,
+    }));
+    expect(trigger).not.toHaveProperty('searchQuery');
+    expect(trigger).not.toHaveProperty('triggerIntentId');
+    expect(output.transportRow.trigger).toBe('enrichment');
+
+    const source = await readFile(new URL('../discovery-quality.child.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/from-[^'"\n]*\.queue|\.queue['"]/);
+    expect(source).not.toMatch(/maybeMine|narrat|addJob|callback/i);
+  });
+
+  it('rejects unknown/source candidates, unplanned evidence, nonfinite values, duplicate finals, and finals absent from retrieval', async () => {
+    const runtime = await task7Runtime();
+    const base = successfulGraphResult();
+    const final = (base.evaluatedOpportunities as unknown[])[0]!;
+    const mutations: Array<[string, Record<string, unknown>]> = [
+      ['unknown user', successfulGraphResult({ candidates: [{ ...(base.candidates as Record<string, unknown>[])[0], candidateUserId: 'unknown-user' }] })],
+      ['source candidate', successfulGraphResult({ candidates: [{ ...(base.candidates as Record<string, unknown>[])[0], candidateUserId: sourceParticipant.userId }] })],
+      ['unplanned evidence', successfulGraphResult({ candidates: [{ ...(base.candidates as Record<string, unknown>[])[0], candidateIntentId: 'unplanned-intent' }] })],
+      ['nonfinite similarity', successfulGraphResult({ candidates: [{ ...(base.candidates as Record<string, unknown>[])[0], similarity: Number.NaN }] })],
+      ['nonfinite evaluator score', successfulGraphResult({ trace: [{ node: 'candidate', data: { userId: targetParticipant.userId, score: Number.POSITIVE_INFINITY } }] })],
+      ['duplicate final', successfulGraphResult({ evaluatedOpportunities: [final, structuredClone(final)] })],
+      ['final without retrieval', successfulGraphResult({ candidates: [] })],
+    ];
+    for (const [label, result] of mutations) {
+      await expect(runtime.projectHistoricalQualityGraphResult({ dispatch: qualityDispatch('intent'), result }), label).rejects.toThrow();
+    }
+  });
+
+  it('turns restored-state or provider failure into one sanitized terminal failure without retry', async () => {
+    const runtime = await task7Runtime();
+    let graphCalls = 0;
+    const output = await runtime.executeHistoricalQualitySlot({
+      dispatch: qualityDispatch('intent'),
+      configuration: Object.freeze({ DISCOVERY_ALLOWED_TYPES: 'intent' }),
+      dependencies: {
+        verifyRestoredState: async () => { throw new Error('Authorization: Bearer raw-provider-secret fixture prose https://secret.example/reason'); },
+        invokeGraph: async () => { graphCalls += 1; return successfulGraphResult(); },
+      },
+    }) as ReturnType<typeof HistoricalQualityChildOutputSchema.parse>;
+    expect(graphCalls).toBe(0);
+    expect(output.transportRow.completed).toBeFalse();
+    expect(output.transportRow.stageFunnel).toBeNull();
+    expect(output.transportRow.participantMetrics).toHaveLength(24);
+    expect(output.transportRow.participantMetrics.every((metric) => metric.failureStage === 'execution')).toBeTrue();
+    expect(output.executionRun).toMatchObject({ outcome: 'failed', recovered: false });
+    expect(output.executionRun.attempts).toHaveLength(1);
+    expect(output.executionRun.attempts[0]).toMatchObject({ outcome: 'failure', retryable: false, backoffMs: 0 });
+    const serialized = JSON.stringify(output);
+    for (const sentinel of ['raw-provider-secret', 'fixture prose', 'secret.example', '/reason', 'Bearer']) {
+      expect(serialized).not.toContain(sentinel);
+    }
+  });
+
+  it('rejects retry/recovery mutations and cross-inconsistent completion through the canonical output boundary', async () => {
+    const runtime = await task7Runtime();
+    const valid = await runtime.executeHistoricalQualitySlot({
+      dispatch: qualityDispatch('intent'),
+      configuration: Object.freeze({ DISCOVERY_ALLOWED_TYPES: 'intent' }),
+      dependencies: {
+        verifyRestoredState: async () => exactRestoredIntent(),
+        invokeGraph: async () => successfulGraphResult(),
+      },
+    }) as ReturnType<typeof HistoricalQualityChildOutputSchema.parse>;
+    expect(runtime.parseProjectedHistoricalQualityChildOutput(valid)).toEqual(valid);
+
+    const mutations: Array<[string, (value: typeof valid) => void]> = [
+      ['second attempt', (value) => { value.executionRun.attempts.push(structuredClone(value.executionRun.attempts[0]!)); }],
+      ['recovered', (value) => { value.executionRun.recovered = true; }],
+      ['retryable', (value) => { value.executionRun.attempts[0]!.retryable = true; }],
+      ['backoff', (value) => { value.executionRun.attempts[0]!.backoffMs = 1; }],
+      ['completed with failed attempt', (value) => {
+        value.executionRun.outcome = 'failed';
+        value.executionRun.attempts[0]!.outcome = 'failure';
+        value.executionRun.attempts[0]!.error = { class: 'historical_quality_execution_error', message: 'Historical quality slot execution failed' };
+      }],
+      ['failed with success attempt', (value) => { value.transportRow.completed = false; }],
+    ];
+    for (const [label, mutate] of mutations) {
+      const value = structuredClone(valid);
+      mutate(value);
+      expect(() => runtime.parseProjectedHistoricalQualityChildOutput(value), label).toThrow();
+    }
+  });
+});
 
 describe('historical quality child contract', () => {
   it('exports the exact version expected by the Task 5 loader', async () => {

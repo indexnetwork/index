@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
 import { DISCOVERY_ENV_KEYS, assertAbEnvConfig } from './discovery.flags';
+import { withDiscoveryEnvironment } from './discovery-env-matrix.runtime';
+import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger } from '../queues/opportunity/discovery-trigger.builders';
 import { HISTORICAL_QUALITY_CHILD_RUNTIME_CONTRACT_VERSION } from './discovery-quality.child-loader';
 import { parseHistoricalQualityRuntimeEnvironment, type HistoricalQualityChildEnvironment, type HistoricalQualityRuntimeEnvironment } from './discovery-quality.environment';
 import { NamespacedHydeCache } from './discovery-quality.cache';
@@ -206,6 +208,548 @@ export function reconcileHistoricalQualityChildEmbedding(
 interface HistoricalQualityVerifier {
   db: DrizzleDB;
   close(): Promise<void>;
+}
+
+type HistoricalQualityTrigger = 'intent' | 'enrichment';
+type HistoricalQualityCandidateRole = 'target' | 'semantic-negative' | 'background';
+type HistoricalQualityEvidenceType = 'intent' | 'premise' | 'user_context';
+
+interface HistoricalQualityPlanParticipant {
+  participantId: string;
+  userId: string;
+  intentId: string;
+  premiseIds: string[];
+  contextId: string;
+  retrievalDocumentIds: string[];
+}
+
+interface HistoricalQualityPlanCase {
+  caseId: string;
+  sourceParticipantId: string;
+  targetParticipantId: string;
+  candidates: Array<{ participantId: string; role: HistoricalQualityCandidateRole }>;
+}
+
+interface HistoricalQualityPlan {
+  corpusVersion: string;
+  network: { id: string; title: string; prompt: string };
+  participants: HistoricalQualityPlanParticipant[];
+  cases: HistoricalQualityPlanCase[];
+  seedProjection: {
+    memberships: Array<{ networkId: string; userId: string }>;
+    intents: Array<{ id: string; userId: string; text: string }>;
+    intentNetworkAssignments: Array<{ networkId: string; intentId: string }>;
+    premises: Array<{ id: string; participantId: string; userId: string; intentId: string; text: string; sourcePath: string }>;
+    contexts: Array<{ id: string; participantId: string; userId: string; text: string; sourcePaths: string[] }>;
+  };
+}
+
+interface HistoricalQualityMetric {
+  participantId: string;
+  role: HistoricalQualityCandidateRole;
+  retrieval: null | { rank: number; bestScore: number; evidenceIds: string[]; evidenceTypes: HistoricalQualityEvidenceType[] };
+  evaluator: { eligible: boolean; submitted: boolean; returned: boolean; score: number | null; errorClass?: string };
+  finalRank: number | null;
+  failureStage: string;
+}
+
+interface HistoricalExecutionAuthorities {
+  plan: HistoricalQualityPlan;
+  approvedFingerprints: {
+    corpusVersion: string;
+    planFingerprint: string;
+    seedProjectionFingerprint: string;
+    retrievalDocumentFingerprint: string;
+  };
+  fingerprintCanonicalJson(value: unknown): string;
+  dedupeHistoricalRetrieval(rows: readonly HistoricalRetrievalEvidence[]): Array<{ participantId: string }>;
+  buildHistoricalParticipantMetrics(input: {
+    completed: boolean;
+    candidates: ReadonlyArray<{ participantId: string; role: HistoricalQualityCandidateRole }>;
+    retrievalEvidence: readonly HistoricalRetrievalEvidence[];
+    evaluatorTraces: ReadonlyArray<{
+      participantId: string;
+      eligible: boolean;
+      submitted: boolean;
+      returned: boolean;
+      score: number | null;
+      errorClass?: string;
+    }>;
+    evaluatedOpportunities: readonly string[];
+  }): HistoricalQualityMetric[];
+  summarizeHistoricalQualitySlot(input: { completed: boolean; participantMetrics: readonly HistoricalQualityMetric[] }): {
+    completed: boolean;
+    summary: unknown;
+  };
+  executeRuns<T>(
+    invoke: (context: { signal: AbortSignal }) => Promise<T>,
+    runs: number,
+    options: {
+      caseId: string;
+      policy: 'strict';
+      maxAttempts: 1;
+      retryDelayMs: 0;
+      attemptTimeoutMs: number;
+      label: string;
+      isRetryable: () => false;
+    },
+  ): Promise<{
+    runs: Array<{
+      runId: string;
+      caseId: string;
+      runIndex: number;
+      outcome: 'success' | 'failed' | 'cancelled';
+      recovered: boolean;
+      output?: T;
+      attempts: Array<{
+        attemptId: string;
+        runId: string;
+        runIndex: number;
+        attemptNumber: number;
+        startedAt: string;
+        completedAt: string;
+        durationMs: number;
+        outcome: 'success' | 'failure' | 'timeout' | 'cancelled';
+        error?: unknown;
+        retryable: boolean;
+        backoffMs: number;
+      }>;
+    }>;
+  }>;
+  parseTransportRow(value: unknown): Readonly<Record<string, unknown>>;
+  parseExecutionRun(value: unknown): Readonly<Record<string, unknown>>;
+  parseChildOutput(value: unknown): HistoricalQualityChildOutput;
+}
+
+let historicalExecutionAuthoritiesPromise: Promise<HistoricalExecutionAuthorities> | undefined;
+
+async function loadHistoricalExecutionAuthorities(): Promise<HistoricalExecutionAuthorities> {
+  historicalExecutionAuthoritiesPromise ??= (async () => {
+    const fixtureSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
+    const metricsSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.metrics.js';
+    const sharedSpecifier = '../../../../packages/protocol/eval/shared/index.js';
+    const childOutputSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
+    const [fixture, metrics, shared, childOutput] = await Promise.all([
+      import(fixtureSpecifier), import(metricsSpecifier), import(sharedSpecifier), import(childOutputSpecifier),
+    ]);
+    return {
+      plan: fixture.HISTORICAL_SHARED_POOL_PLAN as HistoricalQualityPlan,
+      approvedFingerprints: fixture.HISTORICAL_SHARED_POOL_APPROVAL_RECORD as HistoricalExecutionAuthorities['approvedFingerprints'],
+      fingerprintCanonicalJson: shared.fingerprintCanonicalJson as HistoricalExecutionAuthorities['fingerprintCanonicalJson'],
+      dedupeHistoricalRetrieval: metrics.dedupeHistoricalRetrieval as HistoricalExecutionAuthorities['dedupeHistoricalRetrieval'],
+      buildHistoricalParticipantMetrics: metrics.buildHistoricalParticipantMetrics as HistoricalExecutionAuthorities['buildHistoricalParticipantMetrics'],
+      summarizeHistoricalQualitySlot: metrics.summarizeHistoricalQualitySlot as HistoricalExecutionAuthorities['summarizeHistoricalQualitySlot'],
+      executeRuns: shared.executeRuns as HistoricalExecutionAuthorities['executeRuns'],
+      parseTransportRow: (value) => shared.HistoricalQualityTransportRowSchema.parse(value) as Readonly<Record<string, unknown>>,
+      parseExecutionRun: (value) => shared.HistoricalQualityExecutionRunSchema.parse(value) as Readonly<Record<string, unknown>>,
+      parseChildOutput: (value) => childOutput.HistoricalQualityChildOutputSchema.parse(value) as HistoricalQualityChildOutput,
+    };
+  })();
+  return historicalExecutionAuthoritiesPromise;
+}
+
+interface ResolvedHistoricalQualitySlot {
+  case: HistoricalQualityPlanCase;
+  source: HistoricalQualityPlanParticipant;
+  trigger: HistoricalQualityTrigger;
+  repetition: number;
+}
+
+async function resolveHistoricalQualitySlot(dispatch: HistoricalQualitySlotDispatch): Promise<ResolvedHistoricalQualitySlot> {
+  const authorities = await loadHistoricalExecutionAuthorities();
+  const matches: ResolvedHistoricalQualitySlot[] = [];
+  for (const qualityCase of authorities.plan.cases) {
+    for (const trigger of ['intent', 'enrichment'] as const) {
+      for (let repetition = 0; repetition < 200; repetition += 1) {
+        const identity = {
+          caseId: qualityCase.caseId,
+          trigger,
+          repetition,
+          selectedSide: 'a',
+          configurationFingerprint: dispatch.configurationFingerprint,
+        } as const;
+        if (`hq-slot-${authorities.fingerprintCanonicalJson(identity)}` !== dispatch.slotId) continue;
+        const source = authorities.plan.participants.find((participant) => participant.participantId === qualityCase.sourceParticipantId);
+        if (!source) throw new Error('Historical quality slot source mapping is invalid');
+        matches.push({ case: qualityCase, source, trigger, repetition });
+      }
+    }
+  }
+  if (matches.length !== 1) throw new Error('Historical quality slot identity is not an approved planned slot');
+  return matches[0]!;
+}
+
+export interface HistoricalQualityRestoredStateExpectation {
+  readonly fingerprints: {
+    readonly corpusVersion: string;
+    readonly planFingerprint: string;
+    readonly seedProjectionFingerprint: string;
+    readonly retrievalDocumentFingerprint: string;
+  };
+  readonly network: { readonly id: string; readonly title: string; readonly prompt: string };
+  readonly source: {
+    readonly participantId: string;
+    readonly userId: string;
+    readonly intent: { readonly id: string; readonly userId: string; readonly text: string };
+    readonly membership: { readonly networkId: string; readonly userId: string };
+    readonly intentNetworkAssignment: { readonly networkId: string; readonly intentId: string };
+    readonly premises: ReadonlyArray<{ readonly id: string; readonly participantId: string; readonly userId: string; readonly intentId: string; readonly text: string; readonly sourcePath: string }>;
+    readonly context: { readonly id: string; readonly participantId: string; readonly userId: string; readonly text: string; readonly sourcePaths: readonly string[] };
+  };
+}
+
+function restoredStateExpectation(
+  authorities: HistoricalExecutionAuthorities,
+  slot: ResolvedHistoricalQualitySlot,
+): HistoricalQualityRestoredStateExpectation {
+  const intent = authorities.plan.seedProjection.intents.find((row) => row.id === slot.source.intentId);
+  const membership = authorities.plan.seedProjection.memberships.find((row) =>
+    row.networkId === authorities.plan.network.id && row.userId === slot.source.userId);
+  const assignment = authorities.plan.seedProjection.intentNetworkAssignments.find((row) =>
+    row.networkId === authorities.plan.network.id && row.intentId === slot.source.intentId);
+  const premises = authorities.plan.seedProjection.premises.filter((row) => slot.source.premiseIds.includes(row.id));
+  const context = authorities.plan.seedProjection.contexts.find((row) => row.id === slot.source.contextId);
+  if (!intent || !membership || !assignment || premises.length !== slot.source.premiseIds.length || !context) {
+    throw new Error('Historical quality source fixture mapping is incomplete');
+  }
+  return Object.freeze({
+    fingerprints: Object.freeze({
+      corpusVersion: authorities.approvedFingerprints.corpusVersion,
+      planFingerprint: authorities.approvedFingerprints.planFingerprint,
+      seedProjectionFingerprint: authorities.approvedFingerprints.seedProjectionFingerprint,
+      retrievalDocumentFingerprint: authorities.approvedFingerprints.retrievalDocumentFingerprint,
+    }),
+    network: Object.freeze({ ...authorities.plan.network }),
+    source: Object.freeze({
+      participantId: slot.source.participantId,
+      userId: slot.source.userId,
+      intent: Object.freeze({ ...intent }),
+      membership: Object.freeze({ ...membership }),
+      intentNetworkAssignment: Object.freeze({ ...assignment }),
+      premises: Object.freeze(premises.map((row) => Object.freeze({ ...row }))),
+      context: Object.freeze({ ...context, sourcePaths: Object.freeze([...context.sourcePaths]) }),
+    }),
+  });
+}
+
+interface PersistedHistoricalQualityIntent {
+  id?: unknown;
+  userId?: unknown;
+  payload?: unknown;
+  summary?: unknown;
+  sourceType?: unknown;
+  sourceId?: unknown;
+  status?: unknown;
+  isIncognito?: unknown;
+  archivedAt?: unknown;
+  embedding?: unknown;
+}
+
+function assertExactRestoredSourceIntent(
+  value: unknown,
+  expected: HistoricalQualityRestoredStateExpectation['source']['intent'],
+): asserts value is PersistedHistoricalQualityIntent & { payload: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Historical quality restored source intent is missing');
+  }
+  const intent = value as PersistedHistoricalQualityIntent;
+  if (intent.id !== expected.id || intent.userId !== expected.userId || intent.payload !== expected.text
+    || intent.summary !== expected.text || intent.sourceType !== 'discovery_form' || intent.sourceId !== expected.userId
+    || intent.status !== 'ACTIVE' || intent.isIncognito !== false || intent.archivedAt !== null
+    || intent.embedding !== undefined) {
+    throw new Error('Historical quality restored source intent ownership or lifecycle mismatch');
+  }
+}
+
+interface HistoricalRetrievalEvidence {
+  participantId: string;
+  score: number;
+  evidenceType: HistoricalQualityEvidenceType;
+  evidenceId: string;
+}
+
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} is invalid`);
+  return value as Record<string, unknown>;
+}
+
+function finiteNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} must be finite`);
+  return value;
+}
+
+/** Projects only stable IDs and finite scalars from the production graph state. */
+export async function projectHistoricalQualityGraphResult(input: {
+  dispatch: HistoricalQualitySlotDispatch;
+  result: unknown;
+}): Promise<HistoricalQualityMetric[]> {
+  const authorities = await loadHistoricalExecutionAuthorities();
+  const slot = await resolveHistoricalQualitySlot(input.dispatch);
+  const result = asRecord(input.result, 'Historical quality graph result');
+  if (result.error !== undefined && result.error !== null && result.error !== '') {
+    throw new Error('Historical quality graph returned a terminal error');
+  }
+  if (!Array.isArray(result.candidates) || !Array.isArray(result.trace) || !Array.isArray(result.evaluatedOpportunities)) {
+    throw new Error('Historical quality graph result is missing projection state');
+  }
+
+  const participantByUserId = new Map(authorities.plan.participants.map((participant) => [participant.userId, participant]));
+  const plannedCandidates = new Map(slot.case.candidates.map((candidate) => [candidate.participantId, candidate]));
+  const retrievalEvidence: HistoricalRetrievalEvidence[] = [];
+  for (const rawCandidate of result.candidates) {
+    const candidate = asRecord(rawCandidate, 'Historical quality retrieval candidate');
+    const participant = typeof candidate.candidateUserId === 'string' ? participantByUserId.get(candidate.candidateUserId) : undefined;
+    if (!participant || participant.participantId === slot.source.participantId || !plannedCandidates.has(participant.participantId)) {
+      throw new Error('Historical quality retrieval contains an unknown or source candidate');
+    }
+    if (candidate.networkId !== authorities.plan.network.id) {
+      throw new Error('Historical quality retrieval candidate is outside the exact shared network');
+    }
+    const score = finiteNumber(candidate.similarity, 'Historical quality retrieval similarity');
+    const evidence: Array<[HistoricalQualityEvidenceType, unknown, readonly string[]]> = [
+      ['intent', candidate.candidateIntentId, [participant.intentId]],
+      ['premise', candidate.candidatePremiseId, participant.premiseIds],
+      ['user_context', candidate.candidateContextId, [participant.contextId]],
+    ];
+    let evidenceCount = 0;
+    for (const [evidenceType, evidenceId, plannedIds] of evidence) {
+      if (evidenceId === undefined || evidenceId === null) continue;
+      if (typeof evidenceId !== 'string' || !plannedIds.includes(evidenceId)) {
+        throw new Error('Historical quality retrieval contains an unplanned evidence ID');
+      }
+      evidenceCount += 1;
+      retrievalEvidence.push({ participantId: participant.participantId, score, evidenceType, evidenceId });
+    }
+    if (evidenceCount === 0) throw new Error('Historical quality eligible candidate has no planned retrieval evidence');
+  }
+  const retrieved = authorities.dedupeHistoricalRetrieval(retrievalEvidence);
+  const eligibleIds = new Set(retrieved.map((row) => row.participantId));
+
+  const traceByParticipant = new Map<string, { score: number | null; errorClass?: string }>();
+  const failedParticipants = new Set<string>();
+  for (const rawTrace of result.trace) {
+    const trace = asRecord(rawTrace, 'Historical quality evaluator trace');
+    if (trace.node === 'evaluation_errors') {
+      const data = asRecord(trace.data, 'Historical quality evaluator failure trace data');
+      if (!Array.isArray(data.errors)) throw new Error('Historical quality evaluator failure trace is invalid');
+      for (const rawFailure of data.errors) {
+        const failure = asRecord(rawFailure, 'Historical quality evaluator candidate failure');
+        const participant = typeof failure.candidateUserId === 'string' ? participantByUserId.get(failure.candidateUserId) : undefined;
+        if (!participant || !plannedCandidates.has(participant.participantId)) {
+          throw new Error('Historical quality evaluator failure contains an unknown candidate');
+        }
+        failedParticipants.add(participant.participantId);
+      }
+      continue;
+    }
+    if (trace.node !== 'candidate') continue;
+    const data = asRecord(trace.data, 'Historical quality candidate trace data');
+    const participant = typeof data.userId === 'string' ? participantByUserId.get(data.userId) : undefined;
+    if (!participant || participant.participantId === slot.source.participantId || !plannedCandidates.has(participant.participantId)) {
+      throw new Error('Historical quality evaluator trace contains an unknown or source candidate');
+    }
+    if (traceByParticipant.has(participant.participantId)) {
+      throw new Error('Historical quality evaluator trace contains a duplicate candidate');
+    }
+    const score = data.score === undefined ? null : finiteNumber(data.score, 'Historical quality evaluator score');
+    traceByParticipant.set(participant.participantId, { score });
+  }
+  for (const participantId of failedParticipants) {
+    const prior = traceByParticipant.get(participantId);
+    if (prior?.score !== null && prior?.score !== undefined) {
+      throw new Error('Historical quality evaluator candidate both failed and returned');
+    }
+    traceByParticipant.set(participantId, { score: null, errorClass: 'evaluator_failure' });
+  }
+
+  const finalOrder: string[] = [];
+  const finalIds = new Set<string>();
+  for (const rawOpportunity of result.evaluatedOpportunities) {
+    const opportunity = asRecord(rawOpportunity, 'Historical quality thresholded opportunity');
+    const finalScore = finiteNumber(opportunity.score, 'Historical quality final evaluator score');
+    if (!Array.isArray(opportunity.actors)) throw new Error('Historical quality final opportunity actors are invalid');
+    const actors = opportunity.actors.map((actor) => asRecord(actor, 'Historical quality final opportunity actor'));
+    const sourceActors = actors.filter((actor) => actor.userId === slot.source.userId);
+    const counterparts = actors.filter((actor) => actor.userId !== slot.source.userId);
+    if (sourceActors.length !== 1 || counterparts.length !== 1
+      || actors.some((actor) => actor.networkId !== authorities.plan.network.id)) {
+      throw new Error('Historical quality final opportunity has invalid source/network actors');
+    }
+    const participant = typeof counterparts[0]!.userId === 'string' ? participantByUserId.get(counterparts[0]!.userId) : undefined;
+    if (!participant || !plannedCandidates.has(participant.participantId)) {
+      throw new Error('Historical quality final opportunity contains an unknown counterpart');
+    }
+    if (finalIds.has(participant.participantId)) throw new Error('Historical quality final opportunity duplicates a counterpart');
+    if (!eligibleIds.has(participant.participantId)) throw new Error('Historical quality final opportunity is absent from retrieval');
+    const trace = traceByParticipant.get(participant.participantId);
+    if (!trace || trace.score === null || trace.score !== finalScore) {
+      throw new Error('Historical quality final opportunity lacks an exact finite evaluator return');
+    }
+    finalIds.add(participant.participantId);
+    finalOrder.push(participant.participantId);
+  }
+
+  const evaluatorTraces = slot.case.candidates.map((candidate) => {
+    const trace = traceByParticipant.get(candidate.participantId);
+    const eligible = eligibleIds.has(candidate.participantId);
+    const submitted = trace !== undefined;
+    const returned = trace?.score !== null && trace?.score !== undefined;
+    return {
+      participantId: candidate.participantId,
+      eligible,
+      submitted,
+      returned,
+      score: returned ? trace!.score : null,
+      ...(trace?.errorClass === undefined ? {} : { errorClass: trace.errorClass }),
+    };
+  });
+  return authorities.buildHistoricalParticipantMetrics({
+    completed: true,
+    candidates: slot.case.candidates,
+    retrievalEvidence,
+    evaluatorTraces,
+    evaluatedOpportunities: finalOrder,
+  });
+}
+
+export const HISTORICAL_QUALITY_ATTEMPT_TIMEOUT_MS = 180_000;
+
+export interface HistoricalQualitySlotExecutionDependencies {
+  verifyRestoredState(input: HistoricalQualityRestoredStateExpectation): Promise<unknown>;
+  invokeGraph(input: unknown, options: { signal: AbortSignal }): Promise<unknown>;
+  withEnvironment?<T>(configuration: Readonly<Record<string, string>>, run: () => Promise<T>): Promise<T>;
+}
+
+function qualityTransportCaseId(slot: ResolvedHistoricalQualitySlot): string {
+  return `${encodeURIComponent(slot.case.caseId)}/${slot.trigger}/r${slot.repetition + 1}`;
+}
+
+function fixedAttemptError(outcome: string): { class: string; message: string } {
+  return outcome === 'timeout'
+    ? { class: 'historical_quality_timeout', message: 'Historical quality slot timed out' }
+    : { class: 'historical_quality_execution_error', message: 'Historical quality slot execution failed' };
+}
+
+/** Enforces Task 7's cross-schema one-attempt/completion invariant without redeclaring Task 5's schema. */
+export function parseProjectedHistoricalQualityChildOutput(value: unknown): HistoricalQualityChildOutput {
+  const output = asRecord(value, 'Historical quality projected child output') as unknown as HistoricalQualityChildOutput;
+  const transport = asRecord(output.transportRow, 'Historical quality projected transport row');
+  const execution = asRecord(output.executionRun, 'Historical quality projected execution run');
+  const attempts = execution.attempts;
+  if (!Array.isArray(attempts) || attempts.length !== 1 || execution.recovered !== false) {
+    throw new Error('Historical quality projected execution must contain one unrecovered attempt');
+  }
+  const attempt = asRecord(attempts[0], 'Historical quality projected attempt');
+  if (attempt.retryable !== false || attempt.backoffMs !== 0) {
+    throw new Error('Historical quality projected execution cannot retry or back off');
+  }
+  const completed = transport.completed === true;
+  if (completed !== (execution.outcome === 'success' && attempt.outcome === 'success')) {
+    throw new Error('Historical quality transport completion does not match execution evidence');
+  }
+  return output;
+}
+
+/** Executes exactly one approved slot and emits only canonical sanitized evidence. */
+export async function executeHistoricalQualitySlot(input: {
+  dispatch: HistoricalQualitySlotDispatch;
+  configuration: Readonly<Record<string, string>>;
+  dependencies: HistoricalQualitySlotExecutionDependencies;
+}): Promise<HistoricalQualityChildOutput> {
+  const authorities = await loadHistoricalExecutionAuthorities();
+  const slot = await resolveHistoricalQualitySlot(input.dispatch);
+  const expected = restoredStateExpectation(authorities, slot);
+  const transportCaseId = qualityTransportCaseId(slot);
+  const applyEnvironment = input.dependencies.withEnvironment ?? withDiscoveryEnvironment;
+  const batch = await authorities.executeRuns(async ({ signal }) => {
+    const persistedIntent = await input.dependencies.verifyRestoredState(expected);
+    assertExactRestoredSourceIntent(persistedIntent, expected.source.intent);
+    const trigger = slot.trigger === 'intent'
+      ? buildIntentDiscoveryTrigger({
+          userId: slot.source.userId,
+          searchQuery: persistedIntent.payload,
+          networkIds: [authorities.plan.network.id],
+          triggerIntentId: slot.source.intentId,
+        })
+      : buildEnrichmentDiscoveryTrigger({
+          userId: slot.source.userId,
+          networkId: authorities.plan.network.id,
+        });
+    const result = await applyEnvironment(input.configuration, () => input.dependencies.invokeGraph(trigger, { signal }));
+    return projectHistoricalQualityGraphResult({ dispatch: input.dispatch, result });
+  }, 1, {
+    caseId: transportCaseId,
+    policy: 'strict',
+    maxAttempts: 1,
+    retryDelayMs: 0,
+    attemptTimeoutMs: HISTORICAL_QUALITY_ATTEMPT_TIMEOUT_MS,
+    label: 'historical-quality',
+    isRetryable: () => false,
+  });
+  const run = batch.runs[0];
+  if (!run || run.attempts.length !== 1) throw new Error('Historical quality runner violated the one-attempt contract');
+  const completed = run.outcome === 'success' && run.output !== undefined;
+  const participantMetrics = completed
+    ? run.output!
+    : authorities.buildHistoricalParticipantMetrics({
+        completed: false,
+        candidates: slot.case.candidates,
+        retrievalEvidence: [],
+        evaluatorTraces: slot.case.candidates.map((candidate) => ({
+          participantId: candidate.participantId,
+          eligible: false,
+          submitted: false,
+          returned: false,
+          score: null,
+        })),
+        evaluatedOpportunities: [],
+      });
+  const slotSummary = completed
+    ? authorities.summarizeHistoricalQualitySlot({ completed: true, participantMetrics })
+    : { completed: false, summary: null };
+  if (completed && (!slotSummary.completed || slotSummary.summary === null)) {
+    throw new Error('Historical quality completed metrics did not produce a canonical funnel');
+  }
+  const transportRow = authorities.parseTransportRow({
+    kind: 'historical-quality-pilot',
+    logicalCaseId: slot.case.caseId,
+    trigger: slot.trigger,
+    repetition: slot.repetition,
+    configurationFingerprint: input.dispatch.configurationFingerprint,
+    completed,
+    participantMetrics,
+    stageFunnel: completed ? slotSummary.summary : null,
+  });
+  const sourceAttempt = run.attempts[0]!;
+  const executionRun = authorities.parseExecutionRun({
+    runId: run.runId,
+    caseId: run.caseId,
+    runIndex: 0,
+    outcome: run.outcome,
+    recovered: false,
+    attempts: [{
+      attemptId: sourceAttempt.attemptId,
+      runId: sourceAttempt.runId,
+      runIndex: 0,
+      attemptNumber: 1,
+      startedAt: sourceAttempt.startedAt,
+      completedAt: sourceAttempt.completedAt,
+      durationMs: sourceAttempt.durationMs,
+      outcome: sourceAttempt.outcome,
+      ...(sourceAttempt.outcome === 'success' ? {} : { error: fixedAttemptError(sourceAttempt.outcome) }),
+      retryable: false,
+      backoffMs: 0,
+    }],
+  });
+  const output = authorities.parseChildOutput({
+    schemaVersion: 1,
+    runId: input.dispatch.runId,
+    slotId: input.dispatch.slotId,
+    configurationId: input.dispatch.configurationId,
+    transportRow,
+    executionRun,
+  });
+  return parseProjectedHistoricalQualityChildOutput(output);
 }
 
 export interface HistoricalQualityConstructedDependencies {
@@ -433,13 +977,31 @@ function productionDependencies(environment: HistoricalQualityChildEnvironment):
         hydeGraph,
         new protocol.OpportunityEvaluator(),
       ).createGraph();
-      return { database, embedder, hydeGraph, opportunityGraph };
+      return { db: drizzleModule.default, database, embedder, hydeGraph, opportunityGraph };
     },
-    executeSlot: async () => {
-      // Task 7 supplies production-shaped trigger execution and the canonical
-      // HistoricalQualityChildOutput. Keeping this boundary explicit prevents
-      // Task 6 from inventing or weakening that schema.
-      throw new Error('Historical quality slot execution is unavailable');
+    executeSlot: async ({ dispatch, configuration, dependencies }) => {
+      const constructed = dependencies as {
+        db?: DrizzleDB;
+        database?: { getIntent(intentId: string): Promise<unknown> };
+        opportunityGraph?: { invoke(input: unknown, options?: { signal?: AbortSignal }): Promise<unknown> };
+      };
+      if (!constructed.db || !constructed.database || !constructed.opportunityGraph) {
+        throw new Error('Historical quality production dependencies are incomplete');
+      }
+      return executeHistoricalQualitySlot({
+        dispatch,
+        configuration,
+        dependencies: {
+          // Reuse the exact Task 6 verifier at the last pre-trigger boundary.
+          // It checks reviewed fingerprints plus every restored fixture owner,
+          // lifecycle, membership, assignment, premise, context and vector row.
+          verifyRestoredState: async (expected) => {
+            await verifyProductionPublishedState(constructed.db!);
+            return constructed.database!.getIntent(expected.source.intent.id);
+          },
+          invokeGraph: (trigger, options) => constructed.opportunityGraph!.invoke(trigger, { signal: options.signal }),
+        },
+      });
     },
   };
 }
