@@ -88,8 +88,8 @@ export class FromEnrichmentQueue {
     const invokeOpts: FromEnrichmentGraphInvokeOptions = networkId === undefined
       ? {
           userId,
-          operationMode: 'create',
           networkId: undefined,
+          operationMode: 'create',
           options: { initialStatus: 'latent' },
         }
       : buildEnrichmentDiscoveryTrigger({ userId, networkId });

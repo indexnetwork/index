@@ -15,6 +15,12 @@ const queueTriggerWithExplicitUndefined: FromEnrichmentGraphInvokeOptions = {
   networkId: undefined,
   options: { initialStatus: 'latent' },
 };
+// @ts-expect-error — queue invoke callers must include the networkId property.
+const queueTriggerMissingNetwork: FromEnrichmentGraphInvokeOptions = {
+  userId: 'legacy-user',
+  operationMode: 'create',
+  options: { initialStatus: 'latent' },
+};
 
 // @ts-expect-error — quality builder callers must provide networkId.
 const builderInputMissingNetwork: EnrichmentBuilderInput = { userId: 'quality-user' };
@@ -25,6 +31,7 @@ const builderInputWithUndefinedNetwork: EnrichmentBuilderInput = {
 };
 
 void queueTriggerWithExplicitUndefined;
+void queueTriggerMissingNetwork;
 void builderInputMissingNetwork;
 void builderInputWithUndefinedNetwork;
 

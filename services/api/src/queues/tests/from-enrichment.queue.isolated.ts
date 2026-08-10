@@ -104,7 +104,7 @@ describe('FromEnrichmentQueue', () => {
       });
       const call = invokeOpportunityGraph.mock.calls[0][0] as Record<string, unknown>;
       expect(Object.prototype.hasOwnProperty.call(call, 'networkId')).toBe(true);
-      expect(Object.keys(call)).toEqual(['userId', 'operationMode', 'networkId', 'options']);
+      expect(Object.keys(call)).toEqual(['userId', 'networkId', 'operationMode', 'options']);
       expect(call).not.toHaveProperty('searchQuery');
       expect(call).not.toHaveProperty('triggerIntentId');
     });
