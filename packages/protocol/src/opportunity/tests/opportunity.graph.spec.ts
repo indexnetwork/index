@@ -1171,6 +1171,40 @@ describe('Opportunity Graph', () => {
   });
 
   describe('Evaluation node: rejection cooldown', () => {
+    test('uses one bundled evaluator call for false or absent parallel configuration', async () => {
+      const previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+      try {
+        for (const configured of [undefined, 'false'] as const) {
+          if (configured === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+          else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = configured;
+          const evaluatorInputs: EvaluatorInput[] = [];
+          const evaluator: OpportunityEvaluatorLike = {
+            invokeEntityBundle: async (input) => {
+              evaluatorInputs.push(input);
+              return [];
+            },
+          };
+          const { compiledGraph, mockEmbedder } = createMockGraph({ evaluator });
+          spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+            { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+            { type: 'intent' as const, id: 'intent-carol', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.8, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+          ]);
+
+          await compiledGraph.invoke({
+            userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+            searchQuery: 'co-founder',
+            options: { minScore: 70 },
+          } as OpportunityGraphInvokeInput);
+
+          expect(evaluatorInputs, `configured=${String(configured)}`).toHaveLength(1);
+          expect(evaluatorInputs[0]!.entities.slice(1)).toHaveLength(2);
+        }
+      } finally {
+        if (previousParallelEvaluation === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+        else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEvaluation;
+      }
+    });
+
     test('applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates', async () => {
       const previousCooldown = process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
       const previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;

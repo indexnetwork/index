@@ -217,3 +217,10 @@ export function assertAbEnvConfig(config: AbEnvConfig): void {
     }
   }
 }
+
+/** Quality slots require one bundled evaluator call so one slot has one known cost. */
+export function assertHistoricalQualitySerialEvaluation(config: Readonly<Record<string, string>>): void {
+  if (config.RUN_OPPORTUNITY_EVAL_IN_PARALLEL === 'true') {
+    throw new Error('Historical quality refuses parallel opportunity evaluation; one bundled evaluator call is required per slot');
+  }
+}

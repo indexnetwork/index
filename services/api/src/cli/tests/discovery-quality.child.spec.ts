@@ -144,10 +144,11 @@ type Task7Runtime = {
     dispatch: HistoricalQualitySlotDispatch;
     configuration: Readonly<Record<string, string>>;
     dependencies: {
-      verifyRestoredState(input: unknown): Promise<unknown>;
+      verifyRestoredState(input: unknown, options: { signal: AbortSignal }): Promise<unknown>;
       invokeGraph(input: unknown, options: { signal: AbortSignal }): Promise<unknown>;
       withEnvironment?<T>(configuration: Readonly<Record<string, string>>, run: () => Promise<T>): Promise<T>;
     };
+    attemptTimeoutMs?: number;
   }): Promise<unknown>;
   projectHistoricalQualityGraphResult(input: { dispatch: HistoricalQualitySlotDispatch; result: unknown }): Promise<unknown>;
   parseProjectedHistoricalQualityChildOutput(value: unknown): unknown;
@@ -157,6 +158,10 @@ const qualityCase = HISTORICAL_SHARED_POOL_PLAN.cases[0]!;
 const sourceParticipant = HISTORICAL_SHARED_POOL_PLAN.participants.find((row) => row.participantId === qualityCase.sourceParticipantId)!;
 const targetCandidate = qualityCase.candidates.find((row) => row.role === 'target')!;
 const targetParticipant = HISTORICAL_SHARED_POOL_PLAN.participants.find((row) => row.participantId === targetCandidate.participantId)!;
+const candidateParticipants = qualityCase.candidates.map((candidate) => ({
+  candidate,
+  participant: HISTORICAL_SHARED_POOL_PLAN.participants.find((row) => row.participantId === candidate.participantId)!,
+}));
 const expectedSourceIntent = HISTORICAL_SHARED_POOL_PLAN.seedProjection.intents.find((row) => row.id === sourceParticipant.intentId)!;
 
 function qualityDispatch(trigger: 'intent' | 'enrichment'): HistoricalQualitySlotDispatch {
@@ -170,15 +175,32 @@ function qualityDispatch(trigger: 'intent' | 'enrichment'): HistoricalQualitySlo
   return { ...dispatch, slotId: `hq-slot-${fingerprintCanonicalJson(identity)}` };
 }
 
+function graphCandidate(participant: typeof targetParticipant, similarity: number): Record<string, unknown> {
+  return {
+    candidateUserId: participant.userId,
+    candidateIntentId: participant.intentId,
+    networkId: HISTORICAL_SHARED_POOL_PLAN.network.id,
+    similarity,
+    lens: 'raw model lens must not escape',
+    candidatePayload: 'raw fixture/model text must not escape',
+  };
+}
+
+function graphFinal(participant: typeof targetParticipant, score: number): Record<string, unknown> {
+  return {
+    score,
+    reasoning: 'final reason must not escape',
+    actors: [
+      { userId: sourceParticipant.userId, networkId: HISTORICAL_SHARED_POOL_PLAN.network.id },
+      { userId: participant.userId, networkId: HISTORICAL_SHARED_POOL_PLAN.network.id },
+    ],
+  };
+}
+
 function successfulGraphResult(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     candidates: [{
-      candidateUserId: targetParticipant.userId,
-      candidateIntentId: targetParticipant.intentId,
-      networkId: HISTORICAL_SHARED_POOL_PLAN.network.id,
-      similarity: 0.91,
-      lens: 'raw model lens must not escape',
-      candidatePayload: 'raw fixture/model text must not escape',
+      ...graphCandidate(targetParticipant, 0.91),
     }],
     trace: [{
       node: 'candidate',
@@ -190,14 +212,7 @@ function successfulGraphResult(overrides: Record<string, unknown> = {}): Record<
         model: 'provider/model-must-not-escape',
       },
     }],
-    evaluatedOpportunities: [{
-      score: 88,
-      reasoning: 'final reason must not escape',
-      actors: [
-        { userId: sourceParticipant.userId, networkId: HISTORICAL_SHARED_POOL_PLAN.network.id },
-        { userId: targetParticipant.userId, networkId: HISTORICAL_SHARED_POOL_PLAN.network.id },
-      ],
-    }],
+    evaluatedOpportunities: [graphFinal(targetParticipant, 88)],
     ...overrides,
   };
 }
@@ -286,6 +301,51 @@ describe('historical quality Task 7 execution contract', () => {
     ]) expect(serialized).not.toContain(sentinel);
   });
 
+  it('binds parsed-child configuration rather than distinguishable parent or planner-only values', async () => {
+    const runtime = await task7Runtime();
+    const parentValue = process.env.NEGOTIATOR_STANCE;
+    process.env.NEGOTIATOR_STANCE = 'advocate';
+    try {
+      const parsedJson = JSON.stringify({ DISCOVERY_ALLOWED_TYPES: 'intent', NEGOTIATOR_STANCE: 'skeptic' });
+      const parsedConfiguration = parseHistoricalQualityChildConfiguration({
+        raw: parsedJson,
+        expectedFingerprint: sha(parsedJson),
+      });
+      const plannerOnlyFingerprint = sha('planner-resolved-value');
+      const slotDispatch = { ...qualityDispatch('intent'), configurationFingerprint: plannerOnlyFingerprint };
+      const reboundIdentity = {
+        caseId: qualityCase.caseId,
+        trigger: 'intent',
+        repetition: 0,
+        selectedSide: 'a',
+        configurationFingerprint: plannerOnlyFingerprint,
+      } as const;
+      slotDispatch.slotId = `hq-slot-${fingerprintCanonicalJson(reboundIdentity)}`;
+      let applied: Readonly<Record<string, string>> | undefined;
+      await runtime.executeHistoricalQualitySlot({
+        dispatch: slotDispatch,
+        configuration: parsedConfiguration,
+        dependencies: {
+          verifyRestoredState: async () => exactRestoredIntent(),
+          withEnvironment: async (received, run) => {
+            applied = received;
+            return run();
+          },
+          invokeGraph: async () => successfulGraphResult(),
+        },
+      });
+      expect(applied).toBe(parsedConfiguration);
+      expect(applied).toEqual({ DISCOVERY_ALLOWED_TYPES: 'intent', NEGOTIATOR_STANCE: 'skeptic' });
+      expect(applied?.NEGOTIATOR_STANCE).not.toBe(process.env.NEGOTIATOR_STANCE);
+      expect(slotDispatch).not.toHaveProperty('configuration');
+      expect(slotDispatch.configurationFingerprint).toBe(plannerOnlyFingerprint);
+      expect(slotDispatch.configurationFingerprint).not.toBe(sha(parsedJson));
+    } finally {
+      if (parentValue === undefined) delete process.env.NEGOTIATOR_STANCE;
+      else process.env.NEGOTIATOR_STANCE = parentValue;
+    }
+  });
+
   it('uses the exact enrichment builder without query or trigger intent and never imports queue jobs', async () => {
     const runtime = await task7Runtime();
     let trigger: unknown;
@@ -310,6 +370,77 @@ describe('historical quality Task 7 execution contract', () => {
     expect(source).not.toMatch(/maybeMine|narrat|addJob|callback/i);
   });
 
+  it('projects actual eligible candidate and trace shapes into distinct retrieval, submission, return, error, threshold, and final-rank states', async () => {
+    const runtime = await task7Runtime();
+    const [rankTwo, belowThreshold, noReturn, parallelFailure, rankOne, eligibleOnly, absent] = candidateParticipants;
+    const result = {
+      candidates: [
+        graphCandidate(rankTwo!.participant, 0.91),
+        graphCandidate(belowThreshold!.participant, 0.87),
+        graphCandidate(noReturn!.participant, 0.83),
+        graphCandidate(parallelFailure!.participant, 0.79),
+        graphCandidate(rankOne!.participant, 0.75),
+        graphCandidate(eligibleOnly!.participant, 0.71),
+      ],
+      trace: [
+        { node: 'candidate', data: { userId: rankTwo!.participant.userId, score: 88 } },
+        { node: 'candidate', data: { userId: belowThreshold!.participant.userId, score: 42 } },
+        { node: 'candidate', data: { userId: noReturn!.participant.userId, score: undefined } },
+        { node: 'candidate', data: { userId: rankOne!.participant.userId, score: 95 } },
+        {
+          node: 'evaluation_errors',
+          data: {
+            failedCount: 1,
+            totalCandidates: 6,
+            errors: [{
+              candidateUserId: parallelFailure!.participant.userId,
+              candidateName: 'must not escape',
+              error: 'Authorization: Bearer must-not-escape',
+              durationMs: 12,
+            }],
+          },
+        },
+      ],
+      evaluatedOpportunities: [
+        graphFinal(rankOne!.participant, 95),
+        graphFinal(rankTwo!.participant, 88),
+      ],
+    };
+    const metrics = await runtime.projectHistoricalQualityGraphResult({
+      dispatch: qualityDispatch('intent'),
+      result,
+    }) as Array<{
+      participantId: string;
+      retrieval: null | { rank: number };
+      evaluator: { eligible: boolean; submitted: boolean; returned: boolean; score: number | null; errorClass?: string };
+      finalRank: number | null;
+      failureStage: string;
+    }>;
+    const byId = new Map(metrics.map((metric) => [metric.participantId, metric]));
+    expect(byId.get(rankOne!.participant.participantId)).toMatchObject({
+      retrieval: { rank: expect.any(Number) }, evaluator: { eligible: true, submitted: true, returned: true, score: 95 }, finalRank: 1,
+    });
+    expect(byId.get(rankTwo!.participant.participantId)).toMatchObject({
+      evaluator: { eligible: true, submitted: true, returned: true, score: 88 }, finalRank: 2,
+    });
+    expect(byId.get(belowThreshold!.participant.participantId)).toMatchObject({
+      evaluator: { eligible: true, submitted: true, returned: true, score: 42 }, finalRank: null, failureStage: 'finalization',
+    });
+    expect(byId.get(noReturn!.participant.participantId)).toMatchObject({
+      evaluator: { eligible: true, submitted: true, returned: false, score: null }, finalRank: null, failureStage: 'evaluation_rejection',
+    });
+    expect(byId.get(parallelFailure!.participant.participantId)).toMatchObject({
+      evaluator: { eligible: true, submitted: true, returned: false, score: null, errorClass: 'evaluator_failure' }, finalRank: null,
+    });
+    expect(byId.get(eligibleOnly!.participant.participantId)).toMatchObject({
+      retrieval: { rank: expect.any(Number) }, evaluator: { eligible: true, submitted: false, returned: false, score: null }, finalRank: null, failureStage: 'evaluation_admission',
+    });
+    expect(byId.get(absent!.participant.participantId)).toMatchObject({
+      retrieval: null, evaluator: { eligible: false, submitted: false, returned: false, score: null }, finalRank: null, failureStage: 'retrieval',
+    });
+    expect(JSON.stringify(metrics)).not.toContain('must-not-escape');
+  });
+
   it('rejects unknown/source candidates, unplanned evidence, nonfinite values, duplicate finals, and finals absent from retrieval', async () => {
     const runtime = await task7Runtime();
     const base = successfulGraphResult();
@@ -322,10 +453,81 @@ describe('historical quality Task 7 execution contract', () => {
       ['nonfinite evaluator score', successfulGraphResult({ trace: [{ node: 'candidate', data: { userId: targetParticipant.userId, score: Number.POSITIVE_INFINITY } }] })],
       ['duplicate final', successfulGraphResult({ evaluatedOpportunities: [final, structuredClone(final)] })],
       ['final without retrieval', successfulGraphResult({ candidates: [] })],
+      ['final score mismatch', successfulGraphResult({ evaluatedOpportunities: [graphFinal(targetParticipant, 87)] })],
+      ['duplicate evaluator trace', successfulGraphResult({ trace: [
+        { node: 'candidate', data: { userId: targetParticipant.userId, score: 88 } },
+        { node: 'candidate', data: { userId: targetParticipant.userId, score: 88 } },
+      ] })],
+      ['failed and returned', successfulGraphResult({ trace: [
+        { node: 'candidate', data: { userId: targetParticipant.userId, score: 88 } },
+        { node: 'evaluation_errors', data: { errors: [{ candidateUserId: targetParticipant.userId }] } },
+      ] })],
     ];
     for (const [label, result] of mutations) {
       await expect(runtime.projectHistoricalQualityGraphResult({ dispatch: qualityDispatch('intent'), result }), label).rejects.toThrow();
     }
+  });
+
+  it('aborts and drains timed-out restored-state verification before terminal evidence and never invokes the graph afterwards', async () => {
+    const runtime = await task7Runtime();
+    const events: string[] = [];
+    const output = await runtime.executeHistoricalQualitySlot({
+      dispatch: qualityDispatch('intent'),
+      configuration: Object.freeze({ DISCOVERY_ALLOWED_TYPES: 'intent' }),
+      attemptTimeoutMs: 5,
+      dependencies: {
+        verifyRestoredState: async (_expected, { signal }) => {
+          events.push('verify-start');
+          expect(signal.aborted).toBeFalse();
+          await new Promise<void>((resolve) => signal.addEventListener('abort', () => {
+            events.push('verify-aborted');
+            setTimeout(() => {
+              events.push('verify-drained');
+              resolve();
+            }, 5);
+          }, { once: true }));
+          return exactRestoredIntent();
+        },
+        invokeGraph: async () => {
+          events.push('graph');
+          return successfulGraphResult();
+        },
+      },
+    }) as ReturnType<typeof HistoricalQualityChildOutputSchema.parse>;
+    events.push('terminal-output');
+    expect(events).toEqual(['verify-start', 'verify-aborted', 'verify-drained', 'terminal-output']);
+    expect(output.executionRun.attempts[0]).toMatchObject({ outcome: 'timeout', retryable: false, backoffMs: 0 });
+    expect(output.transportRow.completed).toBeFalse();
+  });
+
+  it('drains a timed-out graph invocation before terminal timeout output', async () => {
+    const runtime = await task7Runtime();
+    const events: string[] = [];
+    const output = await runtime.executeHistoricalQualitySlot({
+      dispatch: qualityDispatch('intent'),
+      configuration: Object.freeze({ DISCOVERY_ALLOWED_TYPES: 'intent' }),
+      attemptTimeoutMs: 5,
+      dependencies: {
+        verifyRestoredState: async (_expected, { signal }) => {
+          expect(signal.aborted).toBeFalse();
+          return exactRestoredIntent();
+        },
+        invokeGraph: async (_trigger, { signal }) => {
+          events.push('graph-start');
+          await new Promise<void>((resolve) => signal.addEventListener('abort', () => {
+            events.push('graph-aborted');
+            setTimeout(() => {
+              events.push('graph-drained');
+              resolve();
+            }, 5);
+          }, { once: true }));
+          return successfulGraphResult();
+        },
+      },
+    }) as ReturnType<typeof HistoricalQualityChildOutputSchema.parse>;
+    events.push('terminal-output');
+    expect(events).toEqual(['graph-start', 'graph-aborted', 'graph-drained', 'terminal-output']);
+    expect(output.executionRun.attempts[0]?.outcome).toBe('timeout');
   });
 
   it('turns restored-state or provider failure into one sanitized terminal failure without retry', async () => {
@@ -447,6 +649,18 @@ describe('parseHistoricalQualityChildConfiguration', () => {
       .toThrow(/fingerprint/);
   });
 
+  it('fails closed on parallel evaluator mode in the child while accepting false or absence', () => {
+    const enabled = JSON.stringify({ RUN_OPPORTUNITY_EVAL_IN_PARALLEL: 'true' });
+    expect(() => parseHistoricalQualityChildConfiguration({ raw: enabled, expectedFingerprint: sha(enabled) }))
+      .toThrow(/parallel opportunity evaluation/i);
+    for (const raw of [
+      JSON.stringify({ RUN_OPPORTUNITY_EVAL_IN_PARALLEL: 'false' }),
+      JSON.stringify({ DISCOVERY_ALLOWED_TYPES: 'intent' }),
+    ]) {
+      expect(() => parseHistoricalQualityChildConfiguration({ raw, expectedFingerprint: sha(raw) })).not.toThrow();
+    }
+  });
+
   it('keeps the exported schema strict about string records', () => {
     expect(HistoricalQualityChildConfigurationSchema.parse({ DISCOVERY_ALLOWED_TYPES: 'intent' }))
       .toEqual({ DISCOVERY_ALLOWED_TYPES: 'intent' });
@@ -462,6 +676,23 @@ describe('runHistoricalQualityChild ordering and cleanup', () => {
       'attest', `open:${databaseUrl}`, 'verify', 'verifier-close',
       'resolve', 'cache-construct', 'create', 'execute', 'database-close', 'cache-close',
     ]);
+  });
+
+  it('refuses parallel evaluator mode before child attestation or dependency construction', async () => {
+    const events: string[] = [];
+    const raw = JSON.stringify({ RUN_OPPORTUNITY_EVAL_IN_PARALLEL: 'true' });
+    const fingerprint = sha(raw);
+    const deps = dependencies(events);
+    deps.environment = {
+      ...childEnvironment,
+      DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON: raw,
+      DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT: fingerprint,
+    };
+    await expect(runHistoricalQualityChild({
+      ...dispatch,
+      childEnvironmentFingerprint: fingerprint,
+    }, deps)).rejects.toThrow(/parallel opportunity evaluation/i);
+    expect(events).toEqual([]);
   });
 
   it('rejects child-config fingerprint mismatch before attestation or dependency construction', async () => {
@@ -541,6 +772,34 @@ describe('runHistoricalQualityChild ordering and cleanup', () => {
     expect(events.filter((event) => event === 'database-close' || event === 'cache-close')).toEqual(expectedCloses);
     expect(events.filter((event) => event === 'database-import')).toHaveLength(1);
     expect(events.filter((event) => event === 'provider-constructor')).toHaveLength(1);
+  });
+
+  it('waits for a timed-out graph invocation to drain before reverse-order resource cleanup', async () => {
+    const runtime = await task7Runtime();
+    const events: string[] = [];
+    const deps = dependencies(events);
+    deps.executeSlot = async ({ dispatch: slotDispatch, configuration }) => runtime.executeHistoricalQualitySlot({
+      dispatch: slotDispatch,
+      configuration,
+      attemptTimeoutMs: 5,
+      dependencies: {
+        verifyRestoredState: async () => exactRestoredIntent(),
+        invokeGraph: async (_trigger, { signal }) => {
+          events.push('graph-start');
+          await new Promise<void>((resolve) => signal.addEventListener('abort', () => {
+            events.push('graph-aborted');
+            setTimeout(() => {
+              events.push('graph-drained');
+              resolve();
+            }, 5);
+          }, { once: true }));
+          return successfulGraphResult();
+        },
+      },
+    }) as never;
+    await expect(runHistoricalQualityChild(qualityDispatch('intent'), deps)).resolves.toBeDefined();
+    expect(events.indexOf('graph-drained')).toBeLessThan(events.indexOf('database-close'));
+    expect(events.slice(-2)).toEqual(['database-close', 'cache-close']);
   });
 
   it('continues reverse-order cleanup after one close fails and preserves the primary failure', async () => {

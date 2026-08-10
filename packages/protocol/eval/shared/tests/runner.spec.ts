@@ -102,6 +102,36 @@ describe("executeRuns", () => {
     });
   });
 
+  it("aborts and drains a strict timed-out invocation before recording terminal evidence", async () => {
+    const events: string[] = [];
+    const batch = await executeRuns(
+      async ({ signal }) => {
+        events.push("invoke-start");
+        await new Promise<void>((resolve) => signal.addEventListener("abort", () => {
+          events.push("invoke-aborted");
+          setTimeout(() => {
+            events.push("invoke-drained");
+            resolve();
+          }, 5);
+        }, { once: true }));
+        return "late-output";
+      },
+      1,
+      {
+        caseId: "strict-timeout",
+        attemptTimeoutMs: 5,
+        maxAttempts: 1,
+        retryDelayMs: 0,
+        drainAttemptOnAbort: true,
+      },
+    );
+    events.push("terminal-evidence");
+
+    expect(events).toEqual(["invoke-start", "invoke-aborted", "invoke-drained", "terminal-evidence"]);
+    expect(batch.outputs).toEqual([]);
+    expect(batch.runs[0].attempts[0]).toMatchObject({ outcome: "timeout", backoffMs: 0 });
+  });
+
   it("records active cancellation and marks unstarted slots without fabricating attempts", async () => {
     const controller = new AbortController();
     const execution = executeRuns(

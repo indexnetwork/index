@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 
 import { classifyAbParentFailure, type AbRunStage } from './discovery.contract';
 import { assertAbConfirmation } from './discovery.gate';
+import { assertHistoricalQualitySerialEvaluation } from './discovery.flags';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
 import { buildHistoricalQualityChildEnvironment, type HistoricalQualityChildEnvironment } from './discovery-quality.environment';
@@ -457,6 +458,9 @@ export async function runHistoricalQualityRuntime(
   let stage: AbRunStage | null = null;
   let temporaryDirectory: string | undefined;
   try {
+    // Parallel mode spends once per candidate. Refuse it before even runtime
+    // preflight so the quality cost remains exactly one evaluator call per slot.
+    assertHistoricalQualitySerialEvaluation(request.configuration.config);
     // The real Task 6 module must prove its own availability before topology
     // attestation or any destructive/provider operation can be constructed.
     await deps.preflightChildRuntime();

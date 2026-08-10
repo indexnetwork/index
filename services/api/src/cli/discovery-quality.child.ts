@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
-import { DISCOVERY_ENV_KEYS, assertAbEnvConfig } from './discovery.flags';
+import { DISCOVERY_ENV_KEYS, assertAbEnvConfig, assertHistoricalQualitySerialEvaluation } from './discovery.flags';
 import { withDiscoveryEnvironment } from './discovery-env-matrix.runtime';
 import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger } from '../queues/opportunity/discovery-trigger.builders';
 import { HISTORICAL_QUALITY_CHILD_RUNTIME_CONTRACT_VERSION } from './discovery-quality.child-loader';
@@ -81,6 +81,7 @@ export function parseHistoricalQualityChildConfiguration(input: {
   try {
     parsed = HistoricalQualityChildConfigurationSchema.parse(decoded);
     assertAbEnvConfig(parsed);
+    assertHistoricalQualitySerialEvaluation(parsed);
   } catch (error) {
     if (error instanceof Error) throw error;
     throw new Error('Historical quality child configuration is invalid', { cause: error });
@@ -290,6 +291,7 @@ interface HistoricalExecutionAuthorities {
       maxAttempts: 1;
       retryDelayMs: 0;
       attemptTimeoutMs: number;
+      drainAttemptOnAbort: true;
       label: string;
       isRetryable: () => false;
     },
@@ -615,7 +617,10 @@ export async function projectHistoricalQualityGraphResult(input: {
 export const HISTORICAL_QUALITY_ATTEMPT_TIMEOUT_MS = 180_000;
 
 export interface HistoricalQualitySlotExecutionDependencies {
-  verifyRestoredState(input: HistoricalQualityRestoredStateExpectation): Promise<unknown>;
+  verifyRestoredState(
+    input: HistoricalQualityRestoredStateExpectation,
+    options: { signal: AbortSignal },
+  ): Promise<unknown>;
   invokeGraph(input: unknown, options: { signal: AbortSignal }): Promise<unknown>;
   withEnvironment?<T>(configuration: Readonly<Record<string, string>>, run: () => Promise<T>): Promise<T>;
 }
@@ -655,6 +660,7 @@ export async function executeHistoricalQualitySlot(input: {
   dispatch: HistoricalQualitySlotDispatch;
   configuration: Readonly<Record<string, string>>;
   dependencies: HistoricalQualitySlotExecutionDependencies;
+  attemptTimeoutMs?: number;
 }): Promise<HistoricalQualityChildOutput> {
   const authorities = await loadHistoricalExecutionAuthorities();
   const slot = await resolveHistoricalQualitySlot(input.dispatch);
@@ -662,7 +668,8 @@ export async function executeHistoricalQualitySlot(input: {
   const transportCaseId = qualityTransportCaseId(slot);
   const applyEnvironment = input.dependencies.withEnvironment ?? withDiscoveryEnvironment;
   const batch = await authorities.executeRuns(async ({ signal }) => {
-    const persistedIntent = await input.dependencies.verifyRestoredState(expected);
+    const persistedIntent = await input.dependencies.verifyRestoredState(expected, { signal });
+    if (signal.aborted) throw signal.reason ?? new Error('Historical quality slot aborted');
     assertExactRestoredSourceIntent(persistedIntent, expected.source.intent);
     const trigger = slot.trigger === 'intent'
       ? buildIntentDiscoveryTrigger({
@@ -675,14 +682,18 @@ export async function executeHistoricalQualitySlot(input: {
           userId: slot.source.userId,
           networkId: authorities.plan.network.id,
         });
-    const result = await applyEnvironment(input.configuration, () => input.dependencies.invokeGraph(trigger, { signal }));
+    const result = await applyEnvironment(input.configuration, () => {
+      if (signal.aborted) throw signal.reason ?? new Error('Historical quality slot aborted');
+      return input.dependencies.invokeGraph(trigger, { signal });
+    });
     return projectHistoricalQualityGraphResult({ dispatch: input.dispatch, result });
   }, 1, {
     caseId: transportCaseId,
     policy: 'strict',
     maxAttempts: 1,
     retryDelayMs: 0,
-    attemptTimeoutMs: HISTORICAL_QUALITY_ATTEMPT_TIMEOUT_MS,
+    attemptTimeoutMs: input.attemptTimeoutMs ?? HISTORICAL_QUALITY_ATTEMPT_TIMEOUT_MS,
+    drainAttemptOnAbort: true,
     label: 'historical-quality',
     isRetryable: () => false,
   });
@@ -891,7 +902,11 @@ async function openProductionVerifier(databaseUrl: string): Promise<HistoricalQu
   };
 }
 
-async function verifyProductionPublishedState(db: DrizzleDB): Promise<VerifiedHistoricalQualityBase> {
+async function verifyProductionPublishedState(
+  db: DrizzleDB,
+  signal?: AbortSignal,
+): Promise<VerifiedHistoricalQualityBase> {
+  if (signal?.aborted) throw signal.reason ?? new Error('Historical quality restored-state verification aborted');
   // Keep protocol eval source outside the API build's rootDir; Bun resolves it
   // only in the dedicated child after attestation has selected the verifier DB.
   const fixtureSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
@@ -904,6 +919,7 @@ async function verifyProductionPublishedState(db: DrizzleDB): Promise<VerifiedHi
     fixtureModule.HISTORICAL_SHARED_POOL_SEED_PROJECTION,
     baseModule.productionHistoricalQualityBaseDependencies,
   );
+  if (signal?.aborted) throw signal.reason ?? new Error('Historical quality restored-state verification aborted');
   return Object.freeze({
     version: 1 as const,
     embedding: Object.freeze({ ...attestation.embedding }),
@@ -995,9 +1011,12 @@ function productionDependencies(environment: HistoricalQualityChildEnvironment):
           // Reuse the exact Task 6 verifier at the last pre-trigger boundary.
           // It checks reviewed fingerprints plus every restored fixture owner,
           // lifecycle, membership, assignment, premise, context and vector row.
-          verifyRestoredState: async (expected) => {
-            await verifyProductionPublishedState(constructed.db!);
-            return constructed.database!.getIntent(expected.source.intent.id);
+          verifyRestoredState: async (expected, { signal }) => {
+            await verifyProductionPublishedState(constructed.db!, signal);
+            if (signal.aborted) throw signal.reason ?? new Error('Historical quality restored-state verification aborted');
+            const intent = await constructed.database!.getIntent(expected.source.intent.id);
+            if (signal.aborted) throw signal.reason ?? new Error('Historical quality restored-state verification aborted');
+            return intent;
           },
           invokeGraph: (trigger, options) => constructed.opportunityGraph!.invoke(trigger, { signal: options.signal }),
         },

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, type HistoricalQualityRequest } from '../discovery-quality.contract';
+import { DISCOVERY_ENV_KEYS } from '../discovery.flags';
 import { HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
 import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, historicalQualityChildResolvedProjection, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, type HistoricalQualityRuntimeDeps, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
 import { embeddingConfigurationFingerprint } from '../../lib/embedding/embedding.identity';
@@ -218,6 +219,32 @@ function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
 }
 
 describe('historical quality runtime acceptance order', () => {
+  it('refuses parallel evaluator configuration before preflight, attestation, restore, or spend without narrowing the generic allowlist', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { calls, deps } = runtimeDeps();
+    await expect(runHistoricalQualityRuntime({
+      ...request,
+      configuration: { id: 'a', config: { RUN_OPPORTUNITY_EVAL_IN_PARALLEL: 'true' } },
+    }, deps)).rejects.toThrow(/parallel opportunity evaluation/i);
+    expect(calls).toEqual([]);
+    expect(DISCOVERY_ENV_KEYS).toContain('RUN_OPPORTUNITY_EVAL_IN_PARALLEL');
+  });
+
+  it.each([undefined, 'false'] as const)('accepts serial evaluator configuration %p with exactly one child slot', async (value) => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { calls, deps } = runtimeDeps();
+    const result = await runHistoricalQualityRuntime({
+      ...request,
+      configuration: {
+        id: 'a',
+        config: value === undefined ? {} : { RUN_OPPORTUNITY_EVAL_IN_PARALLEL: value },
+      },
+    }, deps);
+    expect(result.outputs).toHaveLength(1);
+    expect(calls.filter((call) => call === 'restore')).toHaveLength(1);
+    expect(calls.filter((call) => call === 'spawn')).toHaveLength(1);
+  });
+
   it('attests, verifies and closes, resolves and plans, then restores/spawns/validates every slot serially', async () => {
     Object.assign(process.env, requiredParentEnvironment());
     const { calls, argv, deps } = runtimeDeps();
