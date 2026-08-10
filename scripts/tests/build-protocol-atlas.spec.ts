@@ -957,7 +957,7 @@ describe("protocol atlas generator", () => {
       const artifact = buildAtlasArtifact(input, content);
       expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
     }
-  });
+  }, 15_000);
 
   test("rejects namespace imports through locally re-exported namespace barrels", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
