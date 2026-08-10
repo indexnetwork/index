@@ -9,6 +9,8 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
     var failWrites = false
     var failNextActiveWrite = false
     var failNextLabelWrite = false
+    var failNextRecoveryWrite = false
+    var failNextRecoveryDeletion = false
 
     func putAndVerify(_ record: ConnectorCredentialRecord) throws {
         events.append("write:\(record.activationState):\(record.recoveryPhase.rawValue)")
@@ -37,6 +39,10 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
         return true
     }
     func putRecoveryAndVerify(_ record: ConnectorCredentialRecord) throws {
+        if failNextRecoveryWrite {
+            failNextRecoveryWrite = false
+            throw ConnectorCredentialStoreError.verificationFailed
+        }
         recoveryRecord = record
         guard try readRecovery() == record else { throw ConnectorCredentialStoreError.verificationFailed }
     }
@@ -45,6 +51,10 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
         expected: ConnectorCredentialRecord?, replacement: ConnectorCredentialRecord?
     ) throws -> Bool {
         guard recoveryRecord == expected else { return false }
+        if replacement == nil && failNextRecoveryDeletion {
+            failNextRecoveryDeletion = false
+            throw ConnectorCredentialStoreError.verificationFailed
+        }
         recoveryRecord = replacement
         return recoveryRecord == replacement
     }
@@ -92,11 +102,19 @@ private final class AuthorizationFixtureServer {
     private(set) var challenges: [String] = []
     private(set) var activationCount = 0
     private(set) var disconnectCount = 0
+    private(set) var probeCount = 0
     var activationAllowed: () -> Bool = { true }
     var rejectNextExchangeAsExpired = false
     var blockExchange = false
     var failNextDisconnect = false
     var mismatchNextDisconnectReceipt = false
+    var blockDisconnect = false
+    var failNextProbe = false
+    var blockProbe = false
+    let disconnectArrived = DispatchSemaphore(value: 0)
+    let releaseDisconnect = DispatchSemaphore(value: 0)
+    let probeArrived = DispatchSemaphore(value: 0)
+    let releaseProbe = DispatchSemaphore(value: 0)
     let exchangeArrived = DispatchSemaphore(value: 0)
     let releaseExchange = DispatchSemaphore(value: 0)
     var failNextActivation = false
@@ -227,6 +245,13 @@ private final class AuthorizationFixtureServer {
         case "/api/hermes-authorizations/disconnect":
             lock.lock()
             disconnectCount += 1
+            let shouldBlock = blockDisconnect
+            lock.unlock()
+            if shouldBlock {
+                disconnectArrived.signal()
+                _ = releaseDisconnect.wait(timeout: .now() + 5)
+            }
+            lock.lock()
             let fail = failNextDisconnect
             failNextDisconnect = false
             let mismatch = mismatchNextDisconnectReceipt
@@ -245,7 +270,22 @@ private final class AuthorizationFixtureServer {
                 ])
             }
         case "/api/auth/me":
-            if revoked {
+            lock.lock()
+            probeCount += 1
+            let shouldBlock = blockProbe
+            lock.unlock()
+            if shouldBlock {
+                probeArrived.signal()
+                _ = releaseProbe.wait(timeout: .now() + 5)
+            }
+            lock.lock()
+            let failProbe = failNextProbe
+            failNextProbe = false
+            let isRevoked = revoked
+            lock.unlock()
+            if failProbe {
+                respond(connection, status: 503, body: ["error": "unavailable"])
+            } else if isRevoked {
                 respond(connection, status: 401, body: ["error": "invalid_credential"])
             } else if failAccountLookup {
                 respond(connection, status: 503, body: ["error": "unavailable"])
@@ -420,6 +460,38 @@ struct AuthorizationFixture {
             ))
         }
 
+        func issuedRecovery(
+            phase: ConnectorRecoveryPhase,
+            epoch: UInt64,
+            installation: String? = nil,
+            credentialId: String = "55555555-5555-4555-8555-555555555555"
+        ) -> ConnectorCredentialRecord {
+            ConnectorCredentialRecord(
+                rawCredential: "idxh_fixture-credential", audience: "hermes-agent",
+                agentId: "22222222-2222-4222-8222-222222222222",
+                installationId: installation ?? installationId,
+                setupAttemptId: "44444444-4444-4444-8444-444444444444",
+                credentialId: credentialId,
+                actions: BrowserAuthorization.canonicalActions,
+                expiresAt: Date(timeIntervalSinceNow: 3600), activationState: "pending",
+                accountLabel: "", recoveryPhase: phase,
+                authorizationAttemptId: nil, operationEpoch: epoch
+            )
+        }
+
+        func seedJournal(
+            _ journal: AuthorizationInstallationStore,
+            phase: ConnectorRecoveryPhase,
+            epoch: UInt64
+        ) {
+            let current = journal.stateSnapshot
+            var replacement = current
+            replacement.authorizationAttemptId = nil
+            replacement.recoveryPhase = phase
+            replacement.operationEpoch = epoch
+            precondition((try? journal.compareAndSet(expected: current, replacement: replacement)) == true)
+        }
+
         let keychainWriteBeforeActivation = "keychainWriteBeforeActivation"
         let store = FixtureCredentialStore()
         let journal = AuthorizationInstallationStore(installationId: installationId)
@@ -521,8 +593,9 @@ struct AuthorizationFixture {
         )
         precondition(start(activationJournalRuntime, id: "activation-journal-start").success)
         _ = poll(activationJournalRuntime, id: "activation-journal-poll")
-        precondition(activationJournalStore.record?.recoveryPhase == .activationRequested)
-        precondition(activationJournal.recoveryPhase == .activationRequested)
+        precondition(activationJournalStore.record == nil)
+        precondition(activationJournalStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        precondition(activationJournal.recoveryPhase == .revocationRequested)
         precondition(activationJournalProcess.isRecoveryOnly)
 
         let accountLabelFailure = "accountLabelFailure"
@@ -656,83 +729,276 @@ struct AuthorizationFixture {
         precondition(server.disconnectCount == disconnectCountBeforeExchangeCleanup)
         precondition(exchangeStore.record == nil && exchangeJournal.recoveryPhase == .none)
 
-        let staleExchangeRevocationRecovery = "staleExchangeRevocationRecovery"
-        let staleExchangeReceiptMismatch = "staleExchangeReceiptMismatch"
-        for mismatch in [false, true] {
+        func beginStaleExchange(
+            suffix: String,
+            store: FixtureCredentialStore,
+            journal: AuthorizationInstallationStore,
+            process: ConnectorProcessRecoveryState
+        ) -> (ConnectorRuntime, DispatchSemaphore) {
             server.blockExchange = true
-            let recoveryStore = FixtureCredentialStore()
-            let recoveryJournal = AuthorizationInstallationStore(installationId: installationId)
-            let recoveryProcess = ConnectorProcessRecoveryState()
-            let recoveryRuntime = runtime(
-                store: recoveryStore, journal: recoveryJournal, process: recoveryProcess,
-                browser: automaticBrowser(code: mismatch ? "mismatch-exchange" : "failed-revoke-exchange")
+            let candidate = runtime(
+                store: store, journal: journal, process: process,
+                browser: automaticBrowser(code: "stale-\(suffix)")
             )
-            precondition(start(recoveryRuntime, id: "recovery-start-\(mismatch)").success)
-            let recoveryPollFinished = DispatchSemaphore(value: 0)
+            precondition(start(candidate, id: "stale-start-\(suffix)").success)
+            let finished = DispatchSemaphore(value: 0)
             DispatchQueue.global().async {
-                _ = poll(recoveryRuntime, id: "recovery-poll-\(mismatch)")
-                recoveryPollFinished.signal()
+                _ = poll(candidate, id: "stale-poll-\(suffix)")
+                finished.signal()
             }
             precondition(server.exchangeArrived.wait(timeout: .now() + 3) == .success)
-            precondition(recoveryRuntime.handle(disconnectRequest("recovery-disconnect-\(mismatch)")).result
+            precondition(candidate.handle(disconnectRequest("stale-disconnect-\(suffix)")).result
                 == .object(["status": .string("recovery_only")]))
-            if mismatch {
-                server.mismatchNextDisconnectReceipt = true
-            } else {
-                server.failNextDisconnect = true
-            }
-            server.releaseExchange.signal()
-            precondition(recoveryPollFinished.wait(timeout: .now() + 3) == .success)
-            server.blockExchange = false
-            let evidence = recoveryStore.recoveryRecord
-            precondition(recoveryStore.record == nil)
-            precondition(evidence?.rawCredential == "idxh_fixture-credential")
-            precondition(evidence?.agentId == "22222222-2222-4222-8222-222222222222")
-            precondition(evidence?.installationId == installationId)
-            precondition(evidence?.setupAttemptId == "44444444-4444-4444-8444-444444444444")
-            precondition(evidence?.credentialId == "55555555-5555-4555-8555-555555555555")
-            precondition(evidence?.activationState == "pending")
-            precondition(evidence?.recoveryPhase == .revocationRequested)
-            precondition(evidence?.authorizationAttemptId == nil)
-            precondition(recoveryJournal.recoveryPhase == .revocationRequested)
-            precondition(recoveryProcess.isRecoveryOnly)
-
-            // A fresh runtime reconstructs recovery from connector-only
-            // Keychain evidence and completes exact revoke, denial proof,
-            // verified deletion, and durable journal clear.
-            let restartedProcess = ConnectorProcessRecoveryState()
-            let restarted = runtime(
-                store: recoveryStore, journal: recoveryJournal, process: restartedProcess,
-                browser: automaticBrowser(code: "unused-restart")
-            )
-            guard case let .object(restartedStatus)? = restarted.handle(ConnectorRequest(
-                protocolVersion: 1, id: "recovery-status-\(mismatch)", operation: .status, payload: [:]
-            )).result else { preconditionFailure() }
-            precondition(restartedStatus["health"] == .string("recovery_only"))
-            precondition(restarted.handle(disconnectRequest("recovery-retry-\(mismatch)")).result
-                == .object(["status": .string("disconnected")]))
-            precondition(recoveryStore.recoveryRecord == nil && recoveryStore.record == nil)
-            precondition(recoveryJournal.recoveryPhase == .none)
+            return (candidate, finished)
         }
 
-        let newerGenerationRecoveryFence = "newerGenerationRecoveryFence"
-        server.blockExchange = true
-        let fencedStore = FixtureCredentialStore()
-        let fencedJournal = AuthorizationInstallationStore(installationId: installationId)
-        let fencedRuntime = runtime(
-            store: fencedStore, journal: fencedJournal,
-            process: ConnectorProcessRecoveryState(),
-            browser: automaticBrowser(code: "fenced-stale-exchange")
+        let staleIssuedPreparationFailureNoNetwork = "staleIssuedPreparationFailureNoNetwork"
+        let preparationStore = FixtureCredentialStore()
+        preparationStore.failNextRecoveryWrite = true
+        let preparationJournal = AuthorizationInstallationStore(installationId: installationId)
+        let preparationProcess = ConnectorProcessRecoveryState()
+        let (_, preparationFinished) = beginStaleExchange(
+            suffix: "preparation-failure", store: preparationStore,
+            journal: preparationJournal, process: preparationProcess
         )
-        precondition(start(fencedRuntime, id: "fenced-start").success)
-        let fencedPollFinished = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
-            _ = poll(fencedRuntime, id: "fenced-poll")
-            fencedPollFinished.signal()
-        }
-        precondition(server.exchangeArrived.wait(timeout: .now() + 3) == .success)
-        precondition(fencedRuntime.handle(disconnectRequest("fenced-disconnect")).result
+        let disconnectsBeforePreparationFailure = server.disconnectCount
+        server.releaseExchange.signal()
+        precondition(preparationFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(server.disconnectCount == disconnectsBeforePreparationFailure)
+        precondition(preparationStore.recoveryRecord == nil)
+        precondition(preparationJournal.recoveryPhase == .activationRequested)
+        precondition(preparationProcess.isRecoveryOnly)
+
+        let staleIssuedJournalPreparationFailureNoNetwork = "staleIssuedJournalPreparationFailureNoNetwork"
+        let journalPreparationStore = FixtureCredentialStore()
+        let journalPreparationJournal = AuthorizationInstallationStore(installationId: installationId)
+        let journalPreparationProcess = ConnectorProcessRecoveryState()
+        let (_, journalPreparationFinished) = beginStaleExchange(
+            suffix: "journal-preparation-failure", store: journalPreparationStore,
+            journal: journalPreparationJournal, process: journalPreparationProcess
+        )
+        journalPreparationJournal.failPhase = .revocationRequested
+        let disconnectsBeforeJournalPreparationFailure = server.disconnectCount
+        server.releaseExchange.signal()
+        precondition(journalPreparationFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(server.disconnectCount == disconnectsBeforeJournalPreparationFailure)
+        precondition(journalPreparationStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        precondition(journalPreparationJournal.recoveryPhase == .activationRequested)
+        let journalPreparationRestart = runtime(
+            store: journalPreparationStore, journal: journalPreparationJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(journalPreparationRestart.handle(disconnectRequest("journal-preparation-final")).result
+            == .object(["status": .string("disconnected")]))
+
+        let staleIssuedReceiptIdentityMismatch = "staleIssuedReceiptIdentityMismatch"
+        let receiptMismatchStore = FixtureCredentialStore()
+        let receiptMismatchJournal = AuthorizationInstallationStore(installationId: installationId)
+        let receiptMismatchProcess = ConnectorProcessRecoveryState()
+        let (_, receiptMismatchFinished) = beginStaleExchange(
+            suffix: "receipt-identity-mismatch", store: receiptMismatchStore,
+            journal: receiptMismatchJournal, process: receiptMismatchProcess
+        )
+        let probesBeforeReceiptMismatch = server.probeCount
+        server.mismatchNextDisconnectReceipt = true
+        server.releaseExchange.signal()
+        precondition(receiptMismatchFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(receiptMismatchStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        precondition(receiptMismatchJournal.recoveryPhase == .revocationRequested)
+        precondition(server.probeCount == probesBeforeReceiptMismatch)
+        let receiptMismatchRestart = runtime(
+            store: receiptMismatchStore, journal: receiptMismatchJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(receiptMismatchRestart.handle(disconnectRequest("receipt-mismatch-final")).result
+            == .object(["status": .string("disconnected")]))
+
+        let staleIssuedPreparedBeforeRevoke = "staleIssuedPreparedBeforeRevoke"
+        let revokeStore = FixtureCredentialStore()
+        let revokeJournal = AuthorizationInstallationStore(installationId: installationId)
+        let revokeProcess = ConnectorProcessRecoveryState()
+        let (_, revokeFinished) = beginStaleExchange(
+            suffix: "blocked-revoke", store: revokeStore,
+            journal: revokeJournal, process: revokeProcess
+        )
+        server.blockDisconnect = true
+        server.releaseExchange.signal()
+        precondition(server.disconnectArrived.wait(timeout: .now() + 3) == .success)
+        precondition(revokeStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        precondition(revokeJournal.recoveryPhase == .revocationRequested)
+        precondition(revokeStore.recoveryRecord?.rawCredential == "idxh_fixture-credential")
+        server.failNextDisconnect = true
+        server.blockDisconnect = false
+        server.releaseDisconnect.signal()
+        precondition(revokeFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        let requestedEpoch = revokeJournal.stateSnapshot.operationEpoch
+        let requestedRestart = runtime(
+            store: revokeStore, journal: revokeJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        server.failNextDisconnect = true
+        precondition(requestedRestart.handle(disconnectRequest("requested-adoption")).result
             == .object(["status": .string("recovery_only")]))
+        precondition(revokeStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        precondition(revokeStore.recoveryRecord?.operationEpoch == requestedEpoch + 1)
+        precondition(revokeJournal.recoveryPhase == .revocationRequested)
+        let requestedFinalRestart = runtime(
+            store: revokeStore, journal: revokeJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(requestedFinalRestart.handle(disconnectRequest("requested-final")).result
+            == .object(["status": .string("disconnected")]))
+        precondition(revokeStore.recoveryRecord == nil && revokeJournal.recoveryPhase == .none)
+
+        let staleIssuedReceiptBeforeProbe = "staleIssuedReceiptBeforeProbe"
+        let probeFailureAfterReceiptRestart = "probeFailureAfterReceiptRestart"
+        let receiptStore = FixtureCredentialStore()
+        let receiptJournal = AuthorizationInstallationStore(installationId: installationId)
+        let receiptProcess = ConnectorProcessRecoveryState()
+        let (_, receiptFinished) = beginStaleExchange(
+            suffix: "blocked-probe", store: receiptStore,
+            journal: receiptJournal, process: receiptProcess
+        )
+        server.blockProbe = true
+        server.releaseExchange.signal()
+        precondition(server.probeArrived.wait(timeout: .now() + 3) == .success)
+        precondition(receiptStore.recoveryRecord?.recoveryPhase == .serverReceiptConfirmed)
+        precondition(receiptJournal.recoveryPhase == .serverReceiptConfirmed)
+        server.failNextProbe = true
+        server.blockProbe = false
+        server.releaseProbe.signal()
+        precondition(receiptFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        let receiptDisconnectCount = server.disconnectCount
+        let receiptEpoch = receiptJournal.stateSnapshot.operationEpoch
+        let receiptRestart = runtime(
+            store: receiptStore, journal: receiptJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        server.failNextProbe = true
+        precondition(receiptRestart.handle(disconnectRequest("receipt-adoption")).result
+            == .object(["status": .string("recovery_only")]))
+        precondition(server.disconnectCount == receiptDisconnectCount)
+        precondition(receiptStore.recoveryRecord?.recoveryPhase == .serverReceiptConfirmed)
+        precondition(receiptStore.recoveryRecord?.operationEpoch == receiptEpoch + 1)
+        let receiptFinalRestart = runtime(
+            store: receiptStore, journal: receiptJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(receiptFinalRestart.handle(disconnectRequest("receipt-final")).result
+            == .object(["status": .string("disconnected")]))
+        precondition(server.disconnectCount == receiptDisconnectCount)
+        precondition(receiptStore.recoveryRecord == nil && receiptJournal.recoveryPhase == .none)
+
+        let recoveryDeletionFailureAfterProbe = "recoveryDeletionFailureAfterProbe"
+        let deletionStore = FixtureCredentialStore()
+        deletionStore.failNextRecoveryDeletion = true
+        let deletionJournal = AuthorizationInstallationStore(installationId: installationId)
+        let deletionProcess = ConnectorProcessRecoveryState()
+        let (_, deletionFinished) = beginStaleExchange(
+            suffix: "deletion-failure", store: deletionStore,
+            journal: deletionJournal, process: deletionProcess
+        )
+        server.releaseExchange.signal()
+        precondition(deletionFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(deletionStore.recoveryRecord?.recoveryPhase == .revocationProbeConfirmed)
+        precondition(deletionJournal.recoveryPhase == .revocationProbeConfirmed)
+        let deletionDisconnectCount = server.disconnectCount
+        let deletionProbeCount = server.probeCount
+        let deletionEpoch = deletionJournal.stateSnapshot.operationEpoch
+        deletionStore.failNextRecoveryDeletion = true
+        let deletionRestart = runtime(
+            store: deletionStore, journal: deletionJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(deletionRestart.handle(disconnectRequest("probe-adoption")).result
+            == .object(["status": .string("recovery_only")]))
+        precondition(deletionStore.recoveryRecord?.recoveryPhase == .revocationProbeConfirmed)
+        precondition(deletionStore.recoveryRecord?.operationEpoch == deletionEpoch + 1)
+        precondition(server.disconnectCount == deletionDisconnectCount)
+        precondition(server.probeCount == deletionProbeCount)
+        let deletionFinalRestart = runtime(
+            store: deletionStore, journal: deletionJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(deletionFinalRestart.handle(disconnectRequest("probe-final")).result
+            == .object(["status": .string("disconnected")]))
+        precondition(server.disconnectCount == deletionDisconnectCount)
+        precondition(server.probeCount == deletionProbeCount)
+        precondition(deletionStore.recoveryRecord == nil && deletionJournal.recoveryPhase == .none)
+
+        let immediateJournalClearFailureAfterProbe = "immediateJournalClearFailureAfterProbe"
+        let clearStore = FixtureCredentialStore()
+        let clearNewerPrimary = ConnectorCredentialRecord(
+            rawCredential: "idxh_clear-newer-fixture", audience: "hermes-agent",
+            agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            installationId: installationId,
+            setupAttemptId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            credentialId: "abababab-abab-4bab-8bab-abababababab",
+            actions: BrowserAuthorization.canonicalActions,
+            expiresAt: Date(timeIntervalSinceNow: 3600), activationState: "active",
+            accountLabel: "Newer After Clear", recoveryPhase: .none,
+            authorizationAttemptId: nil, operationEpoch: 1
+        )
+        let clearJournal = AuthorizationInstallationStore(installationId: installationId)
+        let clearProcess = ConnectorProcessRecoveryState()
+        let (_, clearFinished) = beginStaleExchange(
+            suffix: "journal-clear-failure", store: clearStore,
+            journal: clearJournal, process: clearProcess
+        )
+        clearStore.record = clearNewerPrimary
+        clearJournal.failPhase = .none
+        server.releaseExchange.signal()
+        precondition(clearFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(clearStore.recoveryRecord == nil)
+        precondition(clearStore.record == clearNewerPrimary)
+        precondition(clearJournal.recoveryPhase == .revocationProbeConfirmed)
+        let clearDisconnectCount = server.disconnectCount
+        let clearProbeCount = server.probeCount
+        let clearRestart = runtime(
+            store: clearStore, journal: clearJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(clearRestart.handle(disconnectRequest("clear-final")).result
+            == .object(["status": .string("connected")]))
+        precondition(server.disconnectCount == clearDisconnectCount)
+        precondition(server.probeCount == clearProbeCount)
+        precondition(clearJournal.recoveryPhase == .none)
+        precondition(clearStore.record == clearNewerPrimary)
+
+        let recoveryIdentityGenerationMismatch = "recoveryIdentityGenerationMismatch"
+        for invalidRecovery in [
+            issuedRecovery(phase: .revocationRequested, epoch: 99),
+            issuedRecovery(
+                phase: .revocationRequested, epoch: 30,
+                installation: "99999999-9999-4999-8999-999999999999"
+            ),
+        ] {
+            let mismatchStore = FixtureCredentialStore()
+            mismatchStore.recoveryRecord = invalidRecovery
+            let mismatchJournal = AuthorizationInstallationStore(installationId: installationId)
+            seedJournal(mismatchJournal, phase: .revocationRequested, epoch: 30)
+            let mismatchDisconnectCount = server.disconnectCount
+            let mismatchProbeCount = server.probeCount
+            let mismatchRuntime = runtime(
+                store: mismatchStore, journal: mismatchJournal,
+                process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+            )
+            precondition(mismatchRuntime.handle(disconnectRequest("identity-generation-mismatch")).result
+                == .object(["status": .string("recovery_only")]))
+            precondition(mismatchStore.recoveryRecord == invalidRecovery)
+            precondition(server.disconnectCount == mismatchDisconnectCount)
+            precondition(server.probeCount == mismatchProbeCount)
+        }
+
+        let recoveryEpochAdoption = "recoveryEpochAdoption"
+        let newerPrimaryRecoveryFence = "newerPrimaryRecoveryFence"
         let newer = ConnectorCredentialRecord(
             rawCredential: "idxh_newer-fixture", audience: "hermes-agent",
             agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -742,19 +1008,26 @@ struct AuthorizationFixture {
             actions: BrowserAuthorization.canonicalActions,
             expiresAt: Date(timeIntervalSinceNow: 3600), activationState: "active",
             accountLabel: "Newer Owner", recoveryPhase: .none,
-            authorizationAttemptId: nil, operationEpoch: fencedJournal.stateSnapshot.operationEpoch
+            authorizationAttemptId: nil, operationEpoch: 41
         )
-        fencedStore.record = newer
-        server.failNextDisconnect = true
-        server.releaseExchange.signal()
-        precondition(fencedPollFinished.wait(timeout: .now() + 3) == .success)
-        server.blockExchange = false
-        precondition(fencedStore.record == newer)
-        precondition(fencedStore.recoveryRecord?.credentialId
-            == "55555555-5555-4555-8555-555555555555")
-        precondition(fencedStore.recoveryRecord?.setupAttemptId
-            == "44444444-4444-4444-8444-444444444444")
-        precondition(fencedJournal.recoveryPhase == .revocationRequested)
+        let newerStore = FixtureCredentialStore()
+        newerStore.record = newer
+        newerStore.recoveryRecord = issuedRecovery(phase: .revocationProbeConfirmed, epoch: 40)
+        let newerJournal = AuthorizationInstallationStore(installationId: installationId)
+        seedJournal(newerJournal, phase: .revocationProbeConfirmed, epoch: 40)
+        let newerDisconnectCount = server.disconnectCount
+        let newerProbeCount = server.probeCount
+        let newerRuntime = runtime(
+            store: newerStore, journal: newerJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(newerRuntime.handle(disconnectRequest("newer-primary-fence")).result
+            == .object(["status": .string("connected")]))
+        precondition(newerStore.record == newer)
+        precondition(newerStore.recoveryRecord == nil)
+        precondition(newerJournal.recoveryPhase == .none)
+        precondition(server.disconnectCount == newerDisconnectCount)
+        precondition(server.probeCount == newerProbeCount)
 
         let disconnectWhileActivationBlocked = "disconnectWhileActivationBlocked"
         server.blockActivation = true
@@ -791,8 +1064,13 @@ struct AuthorizationFixture {
             activationRequestedJournalFailure, accountLabelFailure,
             activeKeychainWriteFailure, labelUpdateKeychainFailure,
             disconnectBeforeCallback, callbackBeforeDisconnectBeforePoll,
-            disconnectWhileExchangeBlocked, staleExchangeRevocationRecovery,
-            staleExchangeReceiptMismatch, newerGenerationRecoveryFence,
+            disconnectWhileExchangeBlocked, staleIssuedPreparationFailureNoNetwork,
+            staleIssuedJournalPreparationFailureNoNetwork,
+            staleIssuedReceiptIdentityMismatch, staleIssuedPreparedBeforeRevoke,
+            staleIssuedReceiptBeforeProbe,
+            probeFailureAfterReceiptRestart, recoveryDeletionFailureAfterProbe,
+            immediateJournalClearFailureAfterProbe, recoveryIdentityGenerationMismatch,
+            recoveryEpochAdoption, newerPrimaryRecoveryFence,
             disconnectWhileActivationBlocked,
         ].allSatisfy { !$0.isEmpty })
         print("Authorization fixture passed")

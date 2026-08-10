@@ -239,7 +239,8 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
   expect(runtime).toContain('clearAuthorizationFailure()');
   for (const token of [
     'putRecoveryAndVerify', 'readRecovery', 'compareAndSetRecovery',
-    'requireRevokedCredentialProbe', 'persistIssuedRecovery',
+    'requireRevokedCredentialProbe', 'prepareIssuedRecovery',
+    'normalizedIssuedRecoveryPhase', 'persistIssuedRecoveryPhase',
   ]) expect(runtime).toContain(token);
 });
 
@@ -331,6 +332,13 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
     'activationRequestedJournalFailure', 'labelUpdateKeychainFailure',
     'disconnectBeforeCallback', 'callbackBeforeDisconnectBeforePoll',
     'disconnectWhileActivationBlocked', 'disconnectWhileExchangeBlocked',
+    'staleIssuedPreparedBeforeRevoke', 'staleIssuedJournalPreparationFailureNoNetwork',
+    'staleIssuedReceiptBeforeProbe',
+    'probeFailureAfterReceiptRestart', 'recoveryDeletionFailureAfterProbe',
+    'immediateJournalClearFailureAfterProbe', 'recoveryEpochAdoption',
+    'recoveryIdentityGenerationMismatch', 'staleIssuedReceiptIdentityMismatch',
+    'newerPrimaryRecoveryFence',
+    'disconnectArrived', 'releaseDisconnect', 'probeArrived', 'releaseProbe',
     'exchangeArrived', 'releaseExchange', 'repeatedExpiredPoll',
     'repeatedAmbiguousFailurePoll',
   ]) {
