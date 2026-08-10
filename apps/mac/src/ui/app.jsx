@@ -296,7 +296,6 @@ function App() {
     intent: intent.title,
     edges: intent.edges,
     offLimits: intent.offLimits,
-    shape: intent.shape || "warm",
   });
   const pickExistingIntent = (intent) => {
     // The clarifier feed is app-level state; clear it so questions from the
@@ -337,7 +336,6 @@ function App() {
       intent: answers.intent,
       edges: answers.edges,
       offLimits: answers["off-limits"],
-      shape: answers.shape || "warm",
     });
     setScreen("main");
     seedField();

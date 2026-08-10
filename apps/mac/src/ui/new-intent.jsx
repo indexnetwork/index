@@ -1,8 +1,8 @@
 // NewIntent — the signal-creation flow. Mac System 6 chrome, conversational.
 // + Calibrating screen.
-// Live-only: the clarifying questions between the opening prompt and the
-// operating-mode choice come from the backend (the intake funnel or the chat
-// agent). There is no local scripted question set or canned example content.
+// Live-only: clarifying questions after the opening prompt come from the
+// backend (the intake funnel or the chat agent). There is no local scripted
+// question set or canned example content.
 
 // The opening prompt: the user's first answer IS the signal, handed to the
 // agent to clarify. No suggestion chips — whatever they type drives it.
@@ -12,23 +12,10 @@ const INTENT_STEP = {
   placeholder: "type what you're looking for…",
 };
 
-// The closing beat: how the agent should operate for you. A real product
-// choice, not scripted filler, so it stays.
-const SHAPE_STEP = {
-  id: "shape",
-  prompt: "how do you want me to operate?",
-  hint: "i can be a busybody, or i can sit quietly in the background.",
-  choices: [
-    { value: "quiet",  label: "quiet",  sub: "introduce 1–2 high-signal people a week; otherwise nothing." },
-    { value: "warm",   label: "warm",   sub: "surface a handful, ask before negotiating." },
-    { value: "active", label: "active", sub: "keep the radar busy; you can ignore most of it." },
-  ],
-};
-
-// How many dynamic follow-ups sit between the two beats. Caps the chat clarify
-// loop and drives the progress pips (opening + middle + operating-mode).
+// How many dynamic follow-ups follow the opening prompt. Caps the chat
+// clarify loop and drives the progress pips (opening + middle beats).
 const DYN_MAX = 2;
-const STEP_COUNT = 2 + DYN_MAX;
+const STEP_COUNT = 1 + DYN_MAX;
 
 function NewIntent({ onDone, onBack }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
@@ -257,20 +244,6 @@ function NewIntent({ onDone, onBack }) {
     });
   };
 
-  const toShape = () => {
-    awaitingRef.current = false;
-    setThinking(false);
-    setStep(SHAPE_STEP);
-  };
-
-  // Backend clarification is unavailable or errored: there is no local script to
-  // fall back to, so close out the guided beat and go to the operating-mode
-  // choice. finish() still creates the signal from whatever was answered.
-  const skipToShape = () => {
-    if (cancelledRef.current) return;
-    toShape();
-  };
-
   const confirmProposal = async (p) => {
     try {
       const res = await client.intents.confirm({
@@ -292,14 +265,39 @@ function NewIntent({ onDone, onBack }) {
     return rows[0] || null;
   };
 
+  const finish = (ans) => {
+    setCalibrating(true);
+    (async () => {
+      let created = createdRef.current;
+      if (client && !created) {
+        // The agent never created the signal (no proposal, or the guided beat
+        // was cut short), so create it from the composed answers.
+        try {
+          await window.IndexApp.createIntent(composeDescription(ans));
+          created = true;
+        } catch (_e) { /* fall through to the calibrating transition */ }
+      }
+      // Keep the calibrating beat visible even if the calls are fast.
+      await new Promise((r) => setTimeout(r, created ? 1200 : 2000));
+      onDone(ans, created);
+    })();
+  };
+
+  const endFlow = () => {
+    if (cancelledRef.current) return;
+    awaitingRef.current = false;
+    setThinking(false);
+    finish(answersRef.current);
+  };
+
   const handleDone = async (response) => {
     // Only act when the flow is waiting on this turn, a late `done` (e.g. the
     // question wait timed out while the user idles) must not clobber the step.
     if (cancelledRef.current || !awaitingRef.current) return;
     const proposal = (window.IndexApp.parseIntentProposals(response) || [])[0];
-    if (proposal) { await confirmProposal(proposal); toShape(); return; }
+    if (proposal) { await confirmProposal(proposal); endFlow(); return; }
     const fresh = await newestIntentSinceStart();
-    if (fresh) { intentIdRef.current = fresh.id; createdRef.current = true; toShape(); return; }
+    if (fresh) { intentIdRef.current = fresh.id; createdRef.current = true; endFlow(); return; }
     // The agent answered in prose. A short question becomes the next step;
     // anything else means the guided beat is over.
     const text = String(response || "").replace(/```[\s\S]*?```/g, "").trim();
@@ -315,7 +313,7 @@ function NewIntent({ onDone, onBack }) {
       });
       return;
     }
-    skipToShape();
+    endFlow();
   };
 
   // Open one chat turn and route its events back into the step machine.
@@ -340,10 +338,10 @@ function NewIntent({ onDone, onBack }) {
         } else if (ev.type === "done") {
           handleDone(ev.response || ev.fullResponse || "");
         } else if (ev.type === "error") {
-          if (awaitingRef.current) skipToShape();
+          if (awaitingRef.current) endFlow();
         }
       },
-    }).catch(() => { if (awaitingRef.current) skipToShape(); });
+    }).catch(() => { if (awaitingRef.current) endFlow(); });
   };
 
   const submit = (val) => {
@@ -369,8 +367,6 @@ function NewIntent({ onDone, onBack }) {
     }
     setAnswers(newAns);
     answersRef.current = newAns;
-
-    if (step.id === "shape") { finish(newAns); return; }
 
     // Fast-intake steps: each answer extends the resent rounds, exactly like
     // the web funnel.
@@ -431,27 +427,8 @@ function NewIntent({ onDone, onBack }) {
       return;
     }
 
-    // No live client to clarify against — go straight to the operating-mode
-    // choice; finish() creates the signal from what was answered.
-    toShape();
-  };
-
-  const finish = (ans) => {
-    setCalibrating(true);
-    (async () => {
-      let created = createdRef.current;
-      if (client && !created) {
-        // The agent never created the signal (no proposal, or the guided beat
-        // was cut short), so create it from the composed answers.
-        try {
-          await window.IndexApp.createIntent(composeDescription(ans));
-          created = true;
-        } catch (_e) { /* fall through to the calibrating transition */ }
-      }
-      // Keep the calibrating beat visible even if the calls are fast.
-      await new Promise((r) => setTimeout(r, created ? 1200 : 2000));
-      onDone(ans, created);
-    })();
+    // No live client to clarify against — finish from what was answered.
+    finish(newAns);
   };
 
   if (calibrating) return <Calibrating/>;
@@ -770,7 +747,6 @@ function NewIntentFieldPreview({ answers, stepIdx }) {
     answers.edges ? `noted: ${truncate(answers.edges, 40)}` : null,
     stepIdx >= 2 ? "marking what to steer you clear of…" : null,
     answers["off-limits"] ? `off-limits: ${truncate(answers["off-limits"], 40)}` : null,
-    stepIdx >= 3 ? "setting how i'll work for you…" : null,
   ].filter(Boolean);
 
   return (
