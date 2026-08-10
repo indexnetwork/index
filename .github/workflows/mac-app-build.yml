@@ -46,7 +46,7 @@ jobs:
         working-directory: apps/mac/IndexApp
         run: |
           bun test *.spec.mjs
-          bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh
+          bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh dmg.sh
 
       - name: Assemble web layer
         working-directory: apps/mac/IndexApp

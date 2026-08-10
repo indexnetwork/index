@@ -231,3 +231,15 @@ test('packages a signed fixture app into a styled DMG when SKIP_NOTARY=1', async
   // Packaging compiles the Swift generator and runs real hdiutil/osascript
   // work, far beyond bun's 5s default timeout.
 }, 180_000);
+
+const readme = await Bun.file(new URL('../README.md', import.meta.url)).text();
+const workflow = await Bun.file(new URL('../../../.github/workflows/mac-app-build.yml', import.meta.url)).text();
+
+test('README handoff documents the DMG packaging step', () => {
+  expect(readme).toContain('./dmg.sh');
+  expect(readme).toContain('xcrun stapler validate dist/Index.dmg');
+});
+
+test('macOS CI syntax-checks dmg.sh alongside the other scripts', () => {
+  expect(workflow).toContain('bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh dmg.sh');
+});
