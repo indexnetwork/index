@@ -20,6 +20,25 @@ export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 
 export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
+export interface HistoricalQualityBaseAttestation {
+  version: 1;
+  corpusVersion: string;
+  planFingerprint: string;
+  seedProjectionFingerprint: string;
+  documentSetFingerprint: string;
+  embedding: {
+    provider: string;
+    model: string;
+    dimensions: number;
+    configurationFingerprint: string;
+  };
+  vectors: Array<{
+    documentId: string;
+    textFingerprint: string;
+    vectorFingerprint: string;
+  }>;
+}
+
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
   networkId: string;
@@ -383,6 +402,7 @@ export const evalMatrixMetadata = pgTable('eval_matrix_metadata', {
   fixtureFingerprint: text('fixture_fingerprint').notNull(),
   fixtureCorpusVersion: text('fixture_corpus_version').notNull(),
   seededAt: timestamp('seeded_at', { withTimezone: true }).notNull(),
+  qualityAttestation: jsonb('quality_attestation').$type<HistoricalQualityBaseAttestation>(),
 });
 /** Precomputed fast-intake artifact: one row per user. */
 export const signalIntakePacks = pgTable('signal_intake_packs', {
