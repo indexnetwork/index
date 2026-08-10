@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { AgentRuntimeController } from '../agent-runtime.controller';
-import { authenticateApiKey, OwnerControlGuard, OwnerControlRequiredError } from '../../guards/auth.guard';
+import { authenticateApiKey, authenticateRequestApiKey, INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX, OwnerControlGuard, OwnerControlRequiredError, type IndexAppOwnerAuthenticationStore } from '../../guards/auth.guard';
 import { RuntimeConflictError, RuntimeNotFoundError, RuntimeValidationError } from '../../lib/agent/runtime-errors';
 import { recordRequestAuthContext } from '../../lib/request-auth-context';
 import { AgentRuntimeService } from '../../services/agent-runtime.service';
@@ -53,6 +53,38 @@ function jsonRequest(path: string, method: string, body: unknown): Request {
 }
 
 describe('OwnerControlGuard', () => {
+  it('admits the exact idxo reconcile route through authentication, owner guard, and controller', async () => {
+    const key = `${INDEX_APP_OWNER_CREDENTIAL_PREFIX}reconcile-secret`;
+    const ownerStore: IndexAppOwnerAuthenticationStore = {
+      async findCredentialByHash() {
+        return {
+          id: 'owner-credential-1', ownerId: OWNER.id, audience: INDEX_APP_OWNER_AUDIENCE,
+          installationId: INSTALLATION_ID, generation: SETUP_ATTEMPT_ID,
+          activationState: 'active', expiresAt: new Date(Date.now() + 60_000),
+        };
+      },
+      async findCurrentInstallationAuthority() {
+        return {
+          credentialId: 'owner-credential-1', ownerId: OWNER.id,
+          installationId: INSTALLATION_ID, generation: SETUP_ATTEMPT_ID,
+        };
+      },
+      async findUserById() { return OWNER; },
+    };
+    const body = {
+      agentId: EXECUTOR_ID, installationId: INSTALLATION_ID, setupAttemptId: SETUP_ATTEMPT_ID,
+    };
+    const req = jsonRequest('/api/agent-runtime/reconcile-index', 'POST', body);
+    req.headers.set('x-api-key', key);
+    const authenticated = await OwnerControlGuard(
+      req,
+      (request) => authenticateRequestApiKey(request, key, { indexAppOwner: ownerStore }),
+    );
+    const response = await controller().compareSelectIndex(req, authenticated);
+    expect(response.status).toBe(200);
+    expect(compareAndSelectIndex).toHaveBeenCalledWith(OWNER.id, body);
+  });
+
   it('accepts a JWT-authenticated session', async () => {
     const req = new Request('http://localhost/api/agent-runtime');
     const result = await OwnerControlGuard(req, async (request) => {

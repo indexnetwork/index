@@ -9,6 +9,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -155,6 +156,43 @@ def main() -> None:
     ctx = FakeContext()
     plugin.register(ctx)
     assert set(plugin.schemas.FORWARDED_MCP_TOOLS) == plugin.tools._FORWARDED_MCP_TOOLS
+    canonical_mcp_tools = (
+        "read_user_contexts", "preview_user_context", "confirm_user_context",
+        "create_user_context", "update_user_context", "get_enrichment_run",
+        "cancel_enrichment_run", "read_intents", "search_intents", "create_intent",
+        "update_intent", "read_intent_indexes", "create_intent_index", "list_negotiations",
+        "get_negotiation", "respond_to_negotiation", "read_networks",
+        "read_network_memberships", "create_network", "update_network",
+        "create_network_membership", "list_opportunities", "update_opportunity",
+        "confirm_opportunity_delivery", "read_premises", "create_premise",
+        "update_premise", "retract_premise", "read_pending_questions",
+        "read_activity_summary", "read_docs",
+    )
+    denied_wrappers = {
+        "register_agent", "list_agents", "update_agent", "delete_agent",
+        "grant_agent_permission", "revoke_agent_permission", "complete_onboarding",
+        "delete_intent", "delete_intent_index", "delete_network",
+        "delete_network_membership", "list_conversations", "get_conversation",
+    }
+    plugin_mcp_tools = ("read_intents", *plugin.schemas.FORWARDED_MCP_TOOLS)
+    assert len(plugin_mcp_tools) == 31
+    assert set(plugin_mcp_tools) == set(canonical_mcp_tools)
+    assert denied_wrappers.isdisjoint(plugin_mcp_tools)
+
+    protocol_path = ROOT.parent / "protocol/src/mcp/mcp.authorization-policy.ts"
+    connector_path = ROOT.parent.parent / "apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift"
+    # The monorepo CI proves three-way parity. The public plugin subtree does
+    # not contain its protocol/Mac siblings, so its self-test retains the exact
+    # local 31-name assertion above without attempting to read absent siblings.
+    if protocol_path.exists() and connector_path.exists():
+        protocol_source = protocol_path.read_text()
+        policy_block = protocol_source.split("HERMES_AGENT_MCP_TOOL_PERMISSIONS =", 1)[1].split("});", 1)[0]
+        protocol_tools = re.findall(r"^  ([a-z_]+): \{", policy_block, re.MULTILINE)
+        connector_source = connector_path.read_text()
+        connector_block = connector_source.split("static let allowedMCPTools", 1)[1].split("]", 1)[0]
+        connector_tools = re.findall(r'"([a-z_]+)"', connector_block)
+        assert set(protocol_tools) == set(canonical_mcp_tools) == set(connector_tools)
+        assert len(protocol_tools) == len(connector_tools) == 31
 
     tool_names = [entry["name"] for entry in ctx.tools]
     expected_tool_names = (

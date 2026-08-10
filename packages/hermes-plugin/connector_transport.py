@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import pathlib
+import select
 import stat
 import subprocess
 import threading
@@ -17,7 +18,18 @@ from typing import Any, Callable, Iterator
 
 DOWNLOAD_URL = "https://index.network/download"
 PROTOCOL_VERSION = 1
+EXPECTED_TEAM_ID = "LMQ3XNXLAD"
+EXPECTED_BUNDLE_ID = "network.index.connector"
+EXPECTED_DESIGNATED_REQUIREMENT = (
+    'anchor apple generic and certificate leaf[subject.OU] = "LMQ3XNXLAD" '
+    'and identifier "network.index.connector"'
+)
+# PR3 replaces this fail-closed sentinel with the SHA-256 of the exact signed
+# connector-release.cms DER shipped in the production package. Metadata signed
+# by any other identity is not allowed to become a replacement trust root.
+PINNED_CONNECTOR_RELEASE_CMS_SHA256: str | None = None
 _MAX_LINE_BYTES = 1_048_576
+_RESPONSE_DEADLINE_SECONDS = 15.0
 _MAX_UPLOAD_BYTES = 8_388_608
 _UPLOAD_CHUNK_BYTES = 131_072
 _RELEASE_KEYS = {
@@ -52,6 +64,8 @@ class ConnectorTransport:
         command_runner: Callable[..., Any] = subprocess.run,
         process_factory: Callable[..., Any] = subprocess.Popen,
         now: Callable[[], datetime] | None = None,
+        expected_cms_sha256: str | None = None,
+        response_deadline_seconds: float = _RESPONSE_DEADLINE_SECONDS,
     ) -> None:
         import platform as platform_module
 
@@ -61,6 +75,12 @@ class ConnectorTransport:
         self._command_runner = command_runner
         self._process_factory = process_factory
         self._now = now or (lambda: datetime.now(timezone.utc))
+        self._expected_cms_sha256 = (
+            expected_cms_sha256
+            if expected_cms_sha256 is not None
+            else PINNED_CONNECTOR_RELEASE_CMS_SHA256
+        )
+        self._response_deadline_seconds = response_deadline_seconds
         self._lock = threading.RLock()
         self._process = None
         self._verified_executable: pathlib.Path | None = None
@@ -105,16 +125,78 @@ class ConnectorTransport:
             raise TransportError("connector_unverified", "A verified Index Connector is required.", download_url=DOWNLOAD_URL)
         return info
 
+    def _verify_path_components(self, path: pathlib.Path) -> None:
+        absolute = path.absolute()
+        if ".." in absolute.parts:
+            raise self._unverified()
+        current = pathlib.Path(absolute.anchor)
+        for part in absolute.parts[1:-1]:
+            current /= part
+            try:
+                info = current.lstat()
+            except OSError as exc:
+                raise self._unverified() from exc
+            if (
+                stat.S_ISLNK(info.st_mode)
+                or not stat.S_ISDIR(info.st_mode)
+                or info.st_uid not in {0, os.getuid()}
+                or info.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+            ):
+                raise self._unverified()
+
+    @staticmethod
+    def _hash_descriptor(descriptor: int) -> str:
+        digest = hashlib.sha256()
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        while True:
+            chunk = os.read(descriptor, 131_072)
+            if not chunk:
+                break
+            digest.update(chunk)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        return digest.hexdigest()
+
+    @staticmethod
+    def _identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink, info.st_size)
+
     def _decode_release_metadata(self) -> dict[str, Any]:
         cms_path = self._plugin_root / "connector-release.cms"
+        self._verify_path_components(cms_path)
         self._secure_regular_file(cms_path, executable=False)
-        result = self._command_runner(
-            ["/usr/bin/security", "cms", "-D", "-i", str(cms_path)],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
+        expected_digest = self._expected_cms_sha256
+        if (
+            not isinstance(expected_digest, str)
+            or len(expected_digest) != 64
+            or any(character not in "0123456789abcdefABCDEF" for character in expected_digest)
+        ):
+            raise self._unverified()
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        try:
+            descriptor = os.open(cms_path, flags)
+        except OSError as exc:
+            raise self._unverified() from exc
+        try:
+            before = os.fstat(descriptor)
+            if self._identity(before) != self._identity(self._secure_regular_file(cms_path, executable=False)):
+                raise self._unverified()
+            if self._hash_descriptor(descriptor).lower() != expected_digest.lower():
+                raise self._unverified()
+            result = self._command_runner(
+                ["/usr/bin/security", "cms", "-D", "-i", f"/dev/fd/{descriptor}"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+                pass_fds=(descriptor,),
+            )
+            if (
+                self._identity(os.fstat(descriptor)) != self._identity(before)
+                or self._hash_descriptor(descriptor).lower() != expected_digest.lower()
+            ):
+                raise self._unverified()
+        finally:
+            os.close(descriptor)
         if result.returncode != 0:
             raise self._unverified()
         try:
@@ -125,14 +207,11 @@ class ConnectorTransport:
             raise self._unverified()
         exact = (
             metadata.get("schemaVersion") == 1
-            and metadata.get("bundleId") == "network.index.connector"
+            and metadata.get("teamId") == EXPECTED_TEAM_ID
+            and metadata.get("bundleId") == EXPECTED_BUNDLE_ID
+            and metadata.get("designatedRequirement") == EXPECTED_DESIGNATED_REQUIREMENT
             and metadata.get("connectorProtocolVersion") == PROTOCOL_VERSION
             and metadata.get("downloadUrl") == DOWNLOAD_URL
-            and isinstance(metadata.get("teamId"), str) and bool(metadata["teamId"])
-            and metadata["teamId"].upper() not in {"TEAMID", "TEAM_ID", "REPLACE_ME", "PLACEHOLDER"}
-            and isinstance(metadata.get("designatedRequirement"), str) and bool(metadata["designatedRequirement"])
-            and "placeholder" not in metadata["designatedRequirement"].lower()
-            and "replace_me" not in metadata["designatedRequirement"].lower()
             and isinstance(metadata.get("sha256"), str) and len(metadata["sha256"]) == 64
             and metadata["sha256"] != "0" * 64
         )
@@ -140,78 +219,108 @@ class ConnectorTransport:
             raise self._unverified()
         return metadata
 
-    def _verify_executable(self) -> pathlib.Path:
+    def _verify_executable(self) -> tuple[pathlib.Path, int | None]:
         if self._fixture_verified:
-            return pathlib.Path("/fixture/IndexConnector")
+            return pathlib.Path("/fixture/IndexConnector"), None
         if self._platform != "darwin":
             raise self._unverified()
         executable = next((path for path in self._paths() if path.exists()), None)
         if executable is None:
             raise self._unverified()
-        for component in (executable, executable.parent, executable.parent.parent, executable.parent.parent.parent):
-            if component.is_symlink():
-                raise self._unverified()
+        self._verify_path_components(executable)
         self._secure_regular_file(executable, executable=True)
-        metadata = self._decode_release_metadata()
-        verified = self._command_runner(
-            ["/usr/bin/codesign", "--verify", "--strict", str(executable)],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-        if verified.returncode != 0:
-            raise self._unverified()
-        result = self._command_runner(
-            ["/usr/bin/codesign", "-d", "-r-", "--verbose=4", str(executable)],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-        details = f"{result.stdout or ''}\n{result.stderr or ''}"
-        fields: dict[str, str] = {}
-        requirement = None
-        for raw in details.splitlines():
-            line = raw.strip()
-            if "=" in line:
-                key, value = line.split("=", 1)
-                fields[key.strip()] = value.strip()
-            if line.startswith("designated =>"):
-                requirement = line.removeprefix("designated =>").strip()
-        digest = hashlib.sha256(executable.read_bytes()).hexdigest()
-        if (
-            result.returncode != 0
-            or fields.get("TeamIdentifier") != metadata["teamId"]
-            or fields.get("Identifier") != metadata["bundleId"]
-            or requirement != metadata["designatedRequirement"]
-            or digest.lower() != metadata["sha256"].lower()
-        ):
-            raise self._unverified()
-        self._verified_executable = executable
-        return executable
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        try:
+            descriptor = os.open(executable, flags)
+        except OSError as exc:
+            raise self._unverified() from exc
+        try:
+            before = os.fstat(descriptor)
+            if self._identity(before) != self._identity(self._secure_regular_file(executable, executable=True)):
+                raise self._unverified()
+            metadata = self._decode_release_metadata()
+            verified = self._command_runner(
+                [
+                    "/usr/bin/codesign", "--verify", "--strict",
+                    f"-R={EXPECTED_DESIGNATED_REQUIREMENT}", str(executable),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if verified.returncode != 0:
+                raise self._unverified()
+            result = self._command_runner(
+                ["/usr/bin/codesign", "-d", "-r-", "--verbose=4", str(executable)],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            details = f"{result.stdout or ''}\n{result.stderr or ''}"
+            fields: dict[str, str] = {}
+            requirement = None
+            for raw in details.splitlines():
+                line = raw.strip()
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    fields[key.strip()] = value.strip()
+                if line.startswith("designated =>"):
+                    requirement = line.removeprefix("designated =>").strip()
+            after = os.fstat(descriptor)
+            path_after = self._secure_regular_file(executable, executable=True)
+            digest = self._hash_descriptor(descriptor)
+            if (
+                verified.returncode != 0
+                or result.returncode != 0
+                or self._identity(after) != self._identity(before)
+                or self._identity(path_after) != self._identity(after)
+                or fields.get("TeamIdentifier") != EXPECTED_TEAM_ID
+                or fields.get("Identifier") != EXPECTED_BUNDLE_ID
+                or requirement != EXPECTED_DESIGNATED_REQUIREMENT
+                or metadata["teamId"] != EXPECTED_TEAM_ID
+                or metadata["bundleId"] != EXPECTED_BUNDLE_ID
+                or metadata["designatedRequirement"] != EXPECTED_DESIGNATED_REQUIREMENT
+                or digest.lower() != metadata["sha256"].lower()
+            ):
+                raise self._unverified()
+            self._verified_executable = executable
+            return executable, descriptor
+        except Exception:
+            os.close(descriptor)
+            raise
 
     def _ensure_process(self):
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 return self._process
-            executable = self._verify_executable()
+            executable, descriptor = self._verify_executable()
             try:
                 child_environment = {
                     name: value
                     for name in ("HOME", "TMPDIR", "LANG", "LC_ALL")
                     if (value := os.environ.get(name)) is not None
                 }
+                command = [str(executable)]
+                descriptor_options: dict[str, Any] = {}
+                if descriptor is not None:
+                    command = [f"/dev/fd/{descriptor}"]
+                    descriptor_options["pass_fds"] = (descriptor,)
                 self._process = self._process_factory(
-                    [str(executable)],
+                    command,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
-                    text=True,
-                    bufsize=1,
+                    text=False,
+                    bufsize=0,
                     close_fds=True,
                     env=child_environment,
+                    **descriptor_options,
                 )
+                if descriptor is not None:
+                    os.close(descriptor)
+                    descriptor = None
                 self._handshake()
             except TransportError:
                 self._stop_process()
@@ -219,15 +328,65 @@ class ConnectorTransport:
             except Exception as exc:  # noqa: BLE001
                 self._stop_process()
                 raise TransportError("connector_unavailable", "Index Connector could not be started.") from exc
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
             return self._process
 
     def _stop_process(self) -> None:
         process, self._process = self._process, None
-        if process is not None and process.poll() is None:
+        if process is None:
+            return
+        if process.poll() is None:
             try:
                 process.terminate()
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                finally:
+                    try:
+                        process.wait(timeout=1)
+                    except Exception:  # noqa: BLE001
+                        pass
             except Exception:  # noqa: BLE001
-                pass
+                try:
+                    process.kill()
+                    process.wait(timeout=1)
+                except Exception:  # noqa: BLE001
+                    pass
+        for stream_name in ("stdin", "stdout"):
+            stream = getattr(process, stream_name, None)
+            close = getattr(stream, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _read_response_line(self, process: Any) -> bytes:
+        descriptor = process.stdout.fileno()
+        deadline = time.monotonic() + self._response_deadline_seconds
+        output = bytearray()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("connector response deadline exceeded")
+            readable, _, _ = select.select([descriptor], [], [], remaining)
+            if not readable:
+                raise TimeoutError("connector response deadline exceeded")
+            chunk = os.read(descriptor, min(65_536, _MAX_LINE_BYTES + 1 - len(output)))
+            if not chunk:
+                raise EOFError("connector response ended before a complete line")
+            newline = chunk.find(b"\n")
+            if newline >= 0:
+                output.extend(chunk[:newline + 1])
+                if len(output) > _MAX_LINE_BYTES:
+                    raise OverflowError("connector response exceeded maximum line size")
+                return bytes(output)
+            output.extend(chunk)
+            if len(output) > _MAX_LINE_BYTES:
+                raise OverflowError("connector response exceeded maximum line size")
 
     def _handshake(self) -> None:
         hello = self._request("hello", {}, ensure=False)
@@ -274,25 +433,21 @@ class ConnectorTransport:
             if len(encoded.encode("utf-8")) > 262_144:
                 raise TransportError("request_too_large", "The connector request is too large.")
             try:
-                process.stdin.write(encoded + "\n")
+                process.stdin.write((encoded + "\n").encode("utf-8"))
                 process.stdin.flush()
-                line = process.stdout.readline(_MAX_LINE_BYTES + 1)
             except Exception as exc:  # noqa: BLE001
                 self._stop_process()
                 raise TransportError("connector_unavailable", "Index Connector communication failed.") from exc
-            if not line:
-                self._stop_process()
-                raise self._invalid_response_error(
-                    operation, payload, commit_uncertain=False
-                )
-            if len(line.encode("utf-8")) > _MAX_LINE_BYTES:
+            try:
+                line = self._read_response_line(process)
+            except (TimeoutError, EOFError, OverflowError, OSError) as exc:
                 self._stop_process()
                 raise self._invalid_response_error(
                     operation, payload, commit_uncertain=True
-                )
+                ) from exc
             try:
-                response = json.loads(line)
-            except json.JSONDecodeError as exc:
+                response = json.loads(line.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 self._stop_process()
                 raise self._invalid_response_error(
                     operation, payload, commit_uncertain=True
@@ -418,6 +573,7 @@ class ConnectorTransport:
         upload_id = started.get("uploadId") if isinstance(started, dict) else None
         if not isinstance(upload_id, str):
             raise TransportError("connector_invalid_response", "Index Connector did not start the upload.")
+        upload_process = self._process
         try:
             for sequence, offset in enumerate(range(0, len(content), _UPLOAD_CHUNK_BYTES)):
                 chunk = content[offset:offset + _UPLOAD_CHUNK_BYTES]
@@ -427,10 +583,11 @@ class ConnectorTransport:
                 })
             return self._rest_body(self._request("rest", {"kind": "upload.finish", "uploadId": upload_id}))
         except Exception:
-            try:
-                self._request("rest", {"kind": "upload.abort", "uploadId": upload_id})
-            except Exception:  # noqa: BLE001
-                pass
+            if self._process is upload_process:
+                try:
+                    self._request("rest", {"kind": "upload.abort", "uploadId": upload_id})
+                except Exception:  # noqa: BLE001
+                    pass
             raise
 
     def stream_sse(self, path: str) -> Iterator[bytes]:
@@ -438,6 +595,7 @@ class ConnectorTransport:
         stream_id = started.get("streamId") if isinstance(started, dict) else None
         if not isinstance(stream_id, str):
             raise TransportError("connector_invalid_response", "Index Connector did not start the stream.")
+        stream_process = self._process
         try:
             while True:
                 polled = self._request("rest", {
@@ -461,7 +619,8 @@ class ConnectorTransport:
                         yield f"data: {payload}\n\n".encode("utf-8")
                     return
         finally:
-            try:
-                self._request("rest", {"kind": "sse.close", "streamId": stream_id})
-            except Exception:  # noqa: BLE001
-                pass
+            if self._process is stream_process:
+                try:
+                    self._request("rest", {"kind": "sse.close", "streamId": stream_id})
+                except Exception:  # noqa: BLE001
+                    pass

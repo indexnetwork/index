@@ -608,31 +608,21 @@ struct AuthorizationFixture {
         server.releaseExchange.signal()
         precondition(exchangePollFinished.wait(timeout: .now() + 3) == .success)
         server.blockExchange = false
-        precondition(exchangeStore.record?.activationState == "pending")
-        precondition(exchangeStore.record?.recoveryPhase == .activationRequested)
-        precondition(exchangeStore.record?.authorizationAttemptId == nil)
-        precondition(exchangeJournal.recoveryPhase == .activationRequested)
-        precondition(exchangeProcess.isRecoveryOnly)
+        // The newer disconnect epoch remains authoritative. The stale exchange
+        // credential is revoked directly and is never installed in Keychain.
+        precondition(exchangeStore.record == nil)
+        precondition(exchangeJournal.recoveryPhase == .none)
+        precondition(!exchangeProcess.isRecoveryOnly)
         precondition(server.activationCount == activationCountBeforeExchangeRace)
         guard case let .object(exchangeStatus)? = exchangeRuntime.handle(ConnectorRequest(
             protocolVersion: 1, id: "exchange-status", operation: .status, payload: [:]
         )).result else { preconditionFailure() }
-        precondition(exchangeStatus["health"] == .string("recovery_only"))
-        let exchangeDeniedREST = exchangeRuntime.handle(ConnectorRequest(
-            protocolVersion: 1, id: "exchange-rest", operation: .rest,
-            payload: ["method": .string("GET"), "path": .string("/v1/account")]
-        ))
-        precondition(exchangeDeniedREST.error?.code == "recovery_only")
-        let exchangeDeniedMCP = exchangeRuntime.handle(ConnectorRequest(
-            protocolVersion: 1, id: "exchange-mcp", operation: .mcp,
-            payload: ["toolName": .string("search"), "arguments": .object([:])]
-        ))
-        precondition(exchangeDeniedMCP.error?.code == "recovery_only")
+        precondition(exchangeStatus["health"] == .string("disconnected"))
         let disconnectCountBeforeExchangeCleanup = server.disconnectCount
         precondition(exchangeRuntime.handle(disconnectRequest("exchange-cleanup")).result == .object([
             "status": .string("disconnected")
         ]))
-        precondition(server.disconnectCount == disconnectCountBeforeExchangeCleanup + 1)
+        precondition(server.disconnectCount == disconnectCountBeforeExchangeCleanup)
         precondition(exchangeStore.record == nil && exchangeJournal.recoveryPhase == .none)
 
         let disconnectWhileActivationBlocked = "disconnectWhileActivationBlocked"

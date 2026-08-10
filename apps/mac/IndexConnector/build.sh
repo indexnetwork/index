@@ -494,6 +494,7 @@ case "${1:-}" in
       KeychainIntegrationFixture) compile_keychain_fixture ;;
       AuthorizationFixture) compile_runtime_fixture AuthorizationFixture ;;
       TransportFixture) compile_runtime_fixture TransportFixture ;;
+      InstallationStoreMultiprocessFixture) compile_runtime_fixture InstallationStoreMultiprocessFixture ;;
       *) echo "unknown fixture: ${2:-}" >&2; exit 64 ;;
     esac
     ;;
@@ -515,7 +516,7 @@ case "${1:-}" in
     build_connector production
     ;;
   *)
-    echo "usage: $0 [--nonproduction] | --fixture ConnectorProtocolFixture|KeychainIntegrationFixture|AuthorizationFixture|TransportFixture | --validate-profile-pair-fixture ... | --signed-access-fixture" >&2
+    echo "usage: $0 [--nonproduction] | --fixture ConnectorProtocolFixture|KeychainIntegrationFixture|AuthorizationFixture|TransportFixture|InstallationStoreMultiprocessFixture | --validate-profile-pair-fixture ... | --signed-access-fixture" >&2
     exit 64
     ;;
 esac

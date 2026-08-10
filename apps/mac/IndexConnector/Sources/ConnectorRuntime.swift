@@ -258,8 +258,9 @@ final class ConnectorRuntime {
         guard existing == nil, !hasAttempt else { throw ConnectorRuntimeError.alreadyConnected }
 
         let attemptId = UUID().uuidString.lowercased()
+        let durableEpoch = journal.operationEpoch
         stateLock.lock()
-        operationEpoch &+= 1
+        operationEpoch = max(operationEpoch, durableEpoch) &+ 1
         let epoch = operationEpoch
         currentAttempt = ConnectorAuthorizationAttempt(
             id: attemptId, epoch: epoch, preparation: nil, requestId: nil, expiresAt: nil
@@ -400,29 +401,31 @@ final class ConnectorRuntime {
             throw ConnectorRuntimeError.staleAuthorization
         }
 
+        // Claim the durable journal before installing the exchanged credential.
+        // Across processes this CAS orders the exchange before a disconnect; a
+        // newer disconnect wins first and the stale process never writes Keychain.
+        let activationRequested = pending.replacing(recoveryPhase: .activationRequested)
         transitionLock.lock()
-        guard authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]) else {
-            transitionLock.unlock()
+        let journal = installationStore.stateSnapshot
+        var reserved = journal
+        reserved.recoveryPhase = .activationRequested
+        let journalReserved = journal.authorizationAttemptId == attempt.id
+            && journal.operationEpoch == attempt.epoch
+            && journal.recoveryPhase == .none
+            && (try? installationStore.compareAndSet(expected: journal, replacement: reserved)) == true
+        let pendingStored = journalReserved
+            && (try? credentialStore.compareAndSet(expected: nil, replacement: activationRequested)) == true
+        transitionLock.unlock()
+        guard journalReserved else {
             retainStaleIssuedCredential(pending)
             throw ConnectorRuntimeError.staleAuthorization
         }
-        let pendingStored = (try? credentialStore.compareAndSet(expected: nil, replacement: pending)) == true
-        transitionLock.unlock()
         guard pendingStored else {
             processRecovery.failClosed()
             throw ConnectorRuntimeError.recoveryOnly
         }
 
         processRecovery.failClosed()
-        let activationRequested = pending.replacing(recoveryPhase: .activationRequested)
-        guard transitionAuthorization(
-            attemptId: attempt.id,
-            epoch: attempt.epoch,
-            expectedRecord: pending,
-            replacementRecord: activationRequested,
-            expectedPhase: .none,
-            replacementPhase: .activationRequested
-        ) else { throw ConnectorRuntimeError.recoveryOnly }
 
         try assertAuthorizationOwned(
             attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.activationRequested]
@@ -546,27 +549,55 @@ final class ConnectorRuntime {
         defer { transitionLock.unlock() }
         guard (try? credentialStore.read()) == nil else { return }
         let journal = installationStore.stateSnapshot
-        var recovery = issued.replacing(
-            recoveryPhase: .activationRequested,
-            authorizationAttemptId: .some(nil),
-            operationEpoch: journal.operationEpoch
-        )
-        recovery = recovery.replacing(activationState: "pending")
-        guard (try? credentialStore.compareAndSet(expected: nil, replacement: recovery)) == true else { return }
+        if journal.operationEpoch >= issued.operationEpoch,
+           journal.authorizationAttemptId == nil,
+           journal.recoveryPhase == .activationRequested {
+            // A disconnect won the durable epoch while exchange was in flight.
+            // Revoke the returned pending credential directly; never install a
+            // credential after that newer disconnect has become authority.
+            guard let receipt = try? http.revoke(credential: issued.rawCredential),
+                  receipt.credentialId == issued.credentialId,
+                  receipt.setupAttemptId == issued.setupAttemptId else { return }
+            let current = installationStore.stateSnapshot
+            guard current.operationEpoch == journal.operationEpoch,
+                  current.authorizationAttemptId == nil,
+                  current.recoveryPhase == .activationRequested else { return }
+            var cleared = current
+            cleared.recoveryPhase = .none
+            guard (try? installationStore.compareAndSet(expected: current, replacement: cleared)) == true else {
+                return
+            }
+            processRecovery.clear()
+            clearAuthorizationFailure()
+            return
+        }
+        guard journal.authorizationAttemptId == issued.authorizationAttemptId,
+              journal.operationEpoch == issued.operationEpoch,
+              journal.recoveryPhase == .none else { return }
         var replacement = journal
         replacement.authorizationAttemptId = nil
         replacement.recoveryPhase = .activationRequested
-        _ = try? installationStore.compareAndSet(expected: journal, replacement: replacement)
+        guard (try? installationStore.compareAndSet(expected: journal, replacement: replacement)) == true else {
+            return
+        }
+        var recovery = issued.replacing(
+            recoveryPhase: .activationRequested,
+            authorizationAttemptId: .some(nil),
+            operationEpoch: issued.operationEpoch
+        )
+        recovery = recovery.replacing(activationState: "pending")
+        _ = try? credentialStore.compareAndSet(expected: nil, replacement: recovery)
     }
 
     private func disconnect() -> JSONValue {
         http.closeResources()
+        let durableEpoch = installationStore.stateSnapshot.operationEpoch
         let invalidatedAttempt: String?
         let epoch: UInt64
         stateLock.lock()
         invalidatedAttempt = currentAttempt?.id
         currentAttempt = nil
-        operationEpoch &+= 1
+        operationEpoch = max(operationEpoch, durableEpoch) &+ 1
         epoch = operationEpoch
         let credentialNetworkInFlight = !inFlightCredentialAttempts.isEmpty
         stateLock.unlock()

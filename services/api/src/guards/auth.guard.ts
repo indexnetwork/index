@@ -311,7 +311,8 @@ export type IndexAppOwnerRouteDecision =
 const INDEX_APP_OWNER_STATIC_ROUTES = new Set([
   'GET /auth/me', 'PATCH /auth/profile/update',
   'GET /agent-runtime', 'PUT /agent-runtime',
-  'POST /agent-runtime/hermes/prepare', 'POST /agent-runtime/rollback',
+  'POST /agent-runtime/hermes/prepare', 'POST /agent-runtime/reconcile-index',
+  'POST /agent-runtime/rollback',
   'GET /networks', 'POST /networks', 'GET /networks/discovery/public',
   'GET /network-requests', 'POST /network-requests',
   'GET /agents', 'POST /intents/list',

@@ -14,6 +14,7 @@ const allowed = [
   ['POST', '/api/storage/avatars'],
   ['GET', '/api/agent-runtime?installationId=i1'],
   ['PUT', '/api/agent-runtime'],
+  ['POST', '/api/agent-runtime/reconcile-index'],
 ] as const;
 
 const denied = [
@@ -27,6 +28,9 @@ const denied = [
   ['POST', '/api/tools/delete_agent'],
   ['POST', '/mcp'],
   ['POST', '/mcp/extra'],
+  ['POST', '/api/agent-runtime/reconcile-index/extra'],
+  ['GET', '/api/agent-runtime/reconcile-index'],
+  ['POST', '/api/agent-runtime/security/reconcile-index'],
   ['POST', '/api/billing/checkout'],
   ['GET', '/api/debug'],
 ] as const;

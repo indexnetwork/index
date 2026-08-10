@@ -180,6 +180,7 @@ test('authorization, transport, persistence, and serialized runtime remain bound
   const authorization = read('./Sources/BrowserAuthorization.swift');
   const transport = read('./Sources/ConnectorHTTPClient.swift');
   const installation = read('./Sources/ConnectorInstallationStore.swift');
+  const installationFixture = read('./Tests/InstallationStoreMultiprocessFixture.swift');
   const main = read('./Sources/main.swift');
   expect(authorization).toContain('SecRandomCopyBytes');
   expect(authorization).toContain('127.0.0.1');
@@ -191,7 +192,12 @@ test('authorization, transport, persistence, and serialized runtime remain bound
   expect(transport).toContain('hermes-authorizations/disconnect');
   expect(transport).toContain('auth/me');
   expect(installation).toContain('Application Support');
-  expect(installation).toContain('.atomic');
+  for (const token of ['flock(descriptor, LOCK_EX)', 'O_NOFOLLOW', 'readDurableState()', 'fsync(descriptor)', 'rename(temporaryURL.path']) {
+    expect(installation).toContain(token);
+  }
+  for (const token of ['Process()', 'authorization', 'exchange', 'staleWriteAccepted', 'second.stateSnapshot == disconnected']) {
+    expect(installationFixture).toContain(token);
+  }
   expect(main).toContain('readLine(strippingNewline: true)');
   for (const source of [authorization, transport, installation, main]) {
     expect(source).not.toMatch(/print\(.*(?:credential|verifier|authorizationCode|code\b)/i);

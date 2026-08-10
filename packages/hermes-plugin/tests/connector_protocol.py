@@ -7,8 +7,10 @@ import json
 import os
 import pathlib
 import stat
+import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -16,41 +18,98 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from connector_transport import ConnectorTransport, DOWNLOAD_URL, TransportError  # noqa: E402
+from connector_transport import (  # noqa: E402
+    ConnectorTransport,
+    DOWNLOAD_URL,
+    EXPECTED_BUNDLE_ID,
+    EXPECTED_DESIGNATED_REQUIREMENT,
+    EXPECTED_TEAM_ID,
+    PINNED_CONNECTOR_RELEASE_CMS_SHA256,
+    TransportError,
+)
 from transport import build_transport  # noqa: E402
+
+
+class _PipeReader:
+    def __init__(self, descriptor):
+        self.descriptor = descriptor
+
+    def fileno(self):
+        return self.descriptor
+
+    def readline(self, limit=-1):
+        output = bytearray()
+        while limit < 0 or len(output) < limit:
+            chunk = os.read(self.descriptor, 1)
+            if not chunk:
+                break
+            output.extend(chunk)
+            if chunk == b"\n":
+                break
+        return output.decode("utf-8")
+
+    def close(self):
+        try:
+            os.close(self.descriptor)
+        except OSError:
+            pass
 
 
 class FakeProcess:
     def __init__(self, responses):
         self.responses = iter(responses)
         self.stdin = self
-        self.stdout = self
+        self._read_fd, self._write_fd = os.pipe()
+        self.stdout = _PipeReader(self._read_fd)
         self.writes = []
         self.returncode = None
 
     def write(self, value):
-        self.writes.append(json.loads(value))
+        raw = value.decode("utf-8") if isinstance(value, bytes) else value
+        request = json.loads(raw)
+        self.writes.append(request)
+        response = next(self.responses)
+        if response == "<eof>":
+            os.close(self._write_fd)
+            self._write_fd = -1
+        elif response is not None:
+            if isinstance(response, dict):
+                response = {
+                    "protocolVersion": 1,
+                    "id": request["id"],
+                    "result": None,
+                    "error": None,
+                    **response,
+                }
+                response = json.dumps(response) + "\n"
+            encoded = response.encode("utf-8") if isinstance(response, str) else response
+            if len(encoded) > 65_536:
+                threading.Thread(target=os.write, args=(self._write_fd, encoded), daemon=True).start()
+            else:
+                os.write(self._write_fd, encoded)
         return len(value)
 
     def flush(self):
         pass
 
-    def readline(self, _limit=-1):
-        response = next(self.responses)
-        request = self.writes[-1]
-        response = {"protocolVersion": 1, "id": request["id"], "result": None, "error": None, **response}
-        return json.dumps(response) + "\n"
-
     def poll(self):
         return self.returncode
 
     def terminate(self):
-        self.returncode = 0
+        self.returncode = -15
+
+    def kill(self):
+        self.returncode = -9
+
+    def wait(self, timeout=None):
+        del timeout
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
 
 
 class RawProcess(FakeProcess):
-    def readline(self, _limit=-1):
-        return next(self.responses)
+    pass
 
 
 class ConnectorProtocolTests(unittest.TestCase):
@@ -83,7 +142,7 @@ class ConnectorProtocolTests(unittest.TestCase):
         self.assertNotIn("install", missing.exception.as_payload())
 
     def test_verified_connector_handshake_and_status_expiry_boundary(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=pathlib.Path.home()) as directory:
             root = pathlib.Path(directory)
             executable = root / "IndexConnector"
             executable.write_bytes(b"signed connector fixture")
@@ -91,15 +150,16 @@ class ConnectorProtocolTests(unittest.TestCase):
             digest = hashlib.sha256(executable.read_bytes()).hexdigest()
             metadata = {
                 "schemaVersion": 1,
-                "teamId": "TEAM123",
-                "bundleId": "network.index.connector",
-                "designatedRequirement": 'identifier "network.index.connector" and anchor apple generic',
+                "teamId": EXPECTED_TEAM_ID,
+                "bundleId": EXPECTED_BUNDLE_ID,
+                "designatedRequirement": EXPECTED_DESIGNATED_REQUIREMENT,
                 "connectorProtocolVersion": 1,
                 "sha256": digest,
                 "downloadUrl": DOWNLOAD_URL,
             }
             cms = root / "connector-release.cms"
-            cms.write_text("fixture")
+            cms.write_bytes(b"fixture cms der")
+            cms_digest = hashlib.sha256(cms.read_bytes()).hexdigest()
             now = datetime(2026, 8, 9, tzinfo=timezone.utc)
             expires = now + timedelta(days=7)
             process = FakeProcess([
@@ -127,9 +187,9 @@ class ConnectorProtocolTests(unittest.TestCase):
                         returncode=0,
                         stdout="",
                         stderr=(
-                            "Identifier=network.index.connector\n"
-                            "TeamIdentifier=TEAM123\n"
-                            'designated => identifier "network.index.connector" and anchor apple generic\n'
+                            f"Identifier={EXPECTED_BUNDLE_ID}\n"
+                            f"TeamIdentifier={EXPECTED_TEAM_ID}\n"
+                            f"designated => {EXPECTED_DESIGNATED_REQUIREMENT}\n"
                         ),
                     )
                 raise AssertionError(command)
@@ -141,12 +201,209 @@ class ConnectorProtocolTests(unittest.TestCase):
                 command_runner=run,
                 process_factory=lambda *_args, **_kwargs: process,
                 now=lambda: now,
+                expected_cms_sha256=cms_digest,
             )
             status = transport.status()
             self.assertTrue(status["reconnectSoon"])
             self.assertFalse(status["reconnectRequired"])
             self.assertEqual([entry["operation"] for entry in process.writes], ["hello", "status"])
             self.assertNotIn("INDEX_API_KEY", json.dumps(process.writes))
+
+    def test_release_metadata_cannot_replace_local_team_requirement_or_cms_pin(self):
+        self.assertEqual(EXPECTED_TEAM_ID, "LMQ3XNXLAD")
+        self.assertEqual(EXPECTED_BUNDLE_ID, "network.index.connector")
+        self.assertEqual(
+            EXPECTED_DESIGNATED_REQUIREMENT,
+            'anchor apple generic and certificate leaf[subject.OU] = "LMQ3XNXLAD" and identifier "network.index.connector"',
+        )
+        production_cms = ROOT / "connector-release.cms"
+        if PINNED_CONNECTOR_RELEASE_CMS_SHA256 is None:
+            self.assertFalse(production_cms.exists(), "an unpinned CMS artifact must not ship")
+        else:
+            self.assertRegex(PINNED_CONNECTOR_RELEASE_CMS_SHA256, r"^[0-9a-f]{64}$")
+            self.assertEqual(
+                hashlib.sha256(production_cms.read_bytes()).hexdigest(),
+                PINNED_CONNECTOR_RELEASE_CMS_SHA256,
+            )
+        self.assertNotIn("os.environ", "\n".join(
+            line for line in (ROOT / "connector_transport.py").read_text().splitlines()
+            if "PINNED_CONNECTOR_RELEASE_CMS_SHA256" in line
+        ))
+        with tempfile.TemporaryDirectory(dir=pathlib.Path.home()) as directory:
+            root = pathlib.Path(directory)
+            executable = root / "IndexConnector"
+            executable.write_bytes(b"signed connector fixture")
+            executable.chmod(0o700)
+            cms = root / "connector-release.cms"
+            cms.write_bytes(b"fixture cms der")
+            cms_digest = hashlib.sha256(cms.read_bytes()).hexdigest()
+            executable_digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+
+            def attempt(*, team=EXPECTED_TEAM_ID, requirement=EXPECTED_DESIGNATED_REQUIREMENT, pinned=cms_digest):
+                metadata = {
+                    "schemaVersion": 1, "teamId": team, "bundleId": EXPECTED_BUNDLE_ID,
+                    "designatedRequirement": requirement, "connectorProtocolVersion": 1,
+                    "sha256": executable_digest, "downloadUrl": DOWNLOAD_URL,
+                }
+
+                def run(command, **_kwargs):
+                    if command[:4] == ["/usr/bin/security", "cms", "-D", "-i"]:
+                        return mock.Mock(returncode=0, stdout=json.dumps(metadata), stderr="")
+                    if command[:3] == ["/usr/bin/codesign", "--verify", "--strict"]:
+                        return mock.Mock(returncode=0, stdout="", stderr="")
+                    if command[:3] == ["/usr/bin/codesign", "-d", "-r-"]:
+                        return mock.Mock(
+                            returncode=0, stdout="",
+                            stderr=(
+                                f"Identifier={EXPECTED_BUNDLE_ID}\nTeamIdentifier={team}\n"
+                                f"designated => {requirement}\n"
+                            ),
+                        )
+                    raise AssertionError(command)
+
+                transport = ConnectorTransport(
+                    plugin_root=root, platform="darwin", candidate_paths=[executable],
+                    command_runner=run, expected_cms_sha256=pinned,
+                )
+                with self.assertRaises(TransportError) as denied:
+                    transport.status()
+                self.assertEqual(denied.exception.code, "connector_unverified")
+                self.assertEqual(denied.exception.download_url, DOWNLOAD_URL)
+
+            attempt(team="EVILTEAM01")
+            attempt(requirement='identifier "network.index.connector" and anchor apple generic')
+            attempt(pinned="f" * 64)
+
+    def test_descriptor_bound_launch_retains_verified_vnode_after_path_replacement(self):
+        with tempfile.TemporaryDirectory(dir=pathlib.Path.home()) as directory:
+            root = pathlib.Path(directory)
+            executable = root / "IndexConnector"
+            response_status = {
+                "connected": False, "accountLabel": None, "installationId": "installation-1",
+                "agentId": None, "setupAttemptId": None, "actions": [], "expiresAt": None,
+                "health": "disconnected", "revocationPending": False,
+            }
+            verified_script = (
+                "#!/usr/bin/python3\nimport json,sys\n"
+                "for line in sys.stdin:\n"
+                " r=json.loads(line); op=r['operation']\n"
+                f" result={{'protocolVersion':1,'buildMode':'production','apiEnvironment':'production'}} if op=='hello' else {response_status!r}\n"
+                " print(json.dumps({'protocolVersion':1,'id':r['id'],'success':True,'result':result,'error':None}),flush=True)\n"
+            ).encode()
+            executable.write_bytes(verified_script)
+            executable.chmod(0o700)
+            cms = root / "connector-release.cms"
+            cms.write_bytes(b"fixture cms der")
+            metadata = {
+                "schemaVersion": 1, "teamId": EXPECTED_TEAM_ID, "bundleId": EXPECTED_BUNDLE_ID,
+                "designatedRequirement": EXPECTED_DESIGNATED_REQUIREMENT, "connectorProtocolVersion": 1,
+                "sha256": hashlib.sha256(verified_script).hexdigest(), "downloadUrl": DOWNLOAD_URL,
+            }
+
+            def run(command, **_kwargs):
+                if command[:4] == ["/usr/bin/security", "cms", "-D", "-i"]:
+                    return mock.Mock(returncode=0, stdout=json.dumps(metadata), stderr="")
+                if command[:3] == ["/usr/bin/codesign", "--verify", "--strict"]:
+                    return mock.Mock(returncode=0, stdout="", stderr="")
+                if command[:3] == ["/usr/bin/codesign", "-d", "-r-"]:
+                    return mock.Mock(
+                        returncode=0, stdout="",
+                        stderr=(f"Identifier={EXPECTED_BUNDLE_ID}\nTeamIdentifier={EXPECTED_TEAM_ID}\n"
+                                f"designated => {EXPECTED_DESIGNATED_REQUIREMENT}\n"),
+                    )
+                raise AssertionError(command)
+
+            def spawn(command, **kwargs):
+                self.assertRegex(command[0], r"^/dev/fd/[0-9]+$")
+                descriptor = int(command[0].rsplit("/", 1)[1])
+                self.assertIn(descriptor, kwargs["pass_fds"])
+                self.assertNotIn("shell", kwargs)
+                replacement = root / "replacement"
+                replacement.write_text("#!/bin/sh\nexit 91\n")
+                replacement.chmod(0o700)
+                os.replace(replacement, executable)
+                return subprocess.Popen(command, **kwargs)
+
+            transport = ConnectorTransport(
+                plugin_root=root, platform="darwin", candidate_paths=[executable],
+                command_runner=run, process_factory=spawn,
+                expected_cms_sha256=hashlib.sha256(cms.read_bytes()).hexdigest(),
+            )
+            status = transport.status()
+            self.assertEqual(status["health"], "disconnected")
+            transport._stop_process()
+
+    def test_bounded_response_timeout_partial_oversize_and_clean_restart(self):
+        hello = {"success": True, "result": {"protocolVersion": 1, "buildMode": "production", "apiEnvironment": "production"}}
+        status = {"success": True, "result": {
+            "connected": False, "accountLabel": None, "installationId": "installation-1",
+            "agentId": None, "setupAttemptId": None, "actions": [], "expiresAt": None,
+            "health": "disconnected", "revocationPending": False,
+        }}
+        for bad_response in (None, "{\"partial\"", "<eof>", "x" * 1_048_577):
+            first = FakeProcess([bad_response])
+            second = FakeProcess([hello, status])
+            processes = iter([second])
+            transport = ConnectorTransport(
+                platform="darwin", candidate_paths=[], process_factory=lambda *_a, **_k: next(processes),
+                response_deadline_seconds=0.05,
+            )
+            transport._fixture_verified = True
+            transport._process = first
+            with self.assertRaises(TransportError) as failed:
+                transport.status()
+            self.assertEqual(failed.exception.code, "connector_invalid_response")
+            self.assertIsNotNone(first.returncode)
+            self.assertEqual(transport.status()["health"], "disconnected")
+
+        mutation = FakeProcess([None])
+        transport = ConnectorTransport(platform="darwin", candidate_paths=[], response_deadline_seconds=0.05)
+        transport._fixture_verified = True
+        transport._process = mutation
+        with self.assertRaises(TransportError) as ambiguous:
+            transport.request_rest("POST", "/agents/agent/negotiations/pickup")
+        self.assertEqual(ambiguous.exception.code, "upstream_ambiguous_response")
+
+        hung = FakeProcess([None])
+        restarted = FakeProcess([
+            hello,
+            {"success": True, "result": {"status": "disconnected"}},
+        ])
+        transport = ConnectorTransport(
+            platform="darwin", candidate_paths=[], process_factory=lambda *_a, **_k: restarted,
+            response_deadline_seconds=0.05,
+        )
+        transport._fixture_verified = True
+        transport._process = hung
+        with self.assertRaises(TransportError):
+            transport.status()
+        self.assertEqual(transport.disconnect(), {"status": "disconnected"})
+        self.assertEqual([entry["operation"] for entry in restarted.writes], ["hello", "disconnect"])
+
+    def test_abandoned_upload_and_sse_state_is_not_replayed_into_restarted_process(self):
+        hello = {"success": True, "result": {"protocolVersion": 1, "buildMode": "production", "apiEnvironment": "production"}}
+        status = {"success": True, "result": {
+            "connected": False, "accountLabel": None, "installationId": "installation-1",
+            "agentId": None, "setupAttemptId": None, "actions": [], "expiresAt": None,
+            "health": "disconnected", "revocationPending": False,
+        }}
+        for initial, invoke in (
+            (FakeProcess([{"success": True, "result": {"uploadId": "upload-1"}}, None]),
+             lambda transport: transport.upload("/storage", "file", "a.txt", b"content", "text/plain")),
+            (FakeProcess([{"success": True, "result": {"streamId": "stream-1"}}, None]),
+             lambda transport: list(transport.stream_sse("/events"))),
+        ):
+            clean = FakeProcess([hello, status])
+            transport = ConnectorTransport(
+                platform="darwin", candidate_paths=[], process_factory=lambda *_a, **_k: clean,
+                response_deadline_seconds=0.05,
+            )
+            transport._fixture_verified = True
+            transport._process = initial
+            with self.assertRaises(TransportError):
+                invoke(transport)
+            self.assertEqual(transport.status()["health"], "disconnected")
+            self.assertEqual([entry["operation"] for entry in clean.writes], ["hello", "status"])
 
     def test_production_surfaces_have_no_direct_key_or_http_credential_path(self):
         for relative in ("tools.py", "dashboard/plugin_api.py", "dashboard/auth_login.py"):

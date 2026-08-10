@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct ConnectorInstallationState: Codable, Equatable {
     let installationId: String
@@ -61,29 +62,27 @@ enum ConnectorInstallationStoreError: Error, Equatable {
     case invalidState
 }
 
+/// A cross-process durable CAS journal. The lock file is a stable inode (unlike
+/// the atomically replaced journal), so every reader and writer serializes on
+/// the same OS lock and rereads the durable file while holding that lock.
 final class ConnectorInstallationStore: ConnectorInstallationStoring {
+    private static let maximumJournalBytes = 65_536
     private let fileManager: FileManager
     private let directoryURL: URL
     private let fileURL: URL
-    private let lock = NSLock()
-    private var state: ConnectorInstallationState
+    private let lockURL: URL
 
-    var installationId: String {
-        lock.lock()
-        defer { lock.unlock() }
-        return state.installationId
-    }
-
-    var recoveryPhase: ConnectorRecoveryPhase {
-        lock.lock()
-        defer { lock.unlock() }
-        return state.recoveryPhase
-    }
-
+    var installationId: String { stateSnapshot.installationId }
+    var recoveryPhase: ConnectorRecoveryPhase { stateSnapshot.recoveryPhase }
     var stateSnapshot: ConnectorInstallationState {
-        lock.lock()
-        defer { lock.unlock() }
-        return state
+        do {
+            return try withFileLock { try readDurableState() }
+        } catch {
+            // The protocol's historical getter cannot throw. Crashing the
+            // connector is fail-closed; returning an init-time cache would let
+            // a stale process become authorization authority.
+            preconditionFailure("Connector installation journal is unavailable: \(error)")
+        }
     }
 
     init(
@@ -98,81 +97,235 @@ final class ConnectorInstallationStore: ConnectorInstallationStoring {
             appropriateFor: nil,
             create: true
         )
-        // ~/Library/Application Support/network.index.connector/ contains only
-        // the stable UUID and non-secret staged recovery journal.
+        // ~/Library/Application Support/network.index.connector stores only
+        // the stable UUID and non-secret recovery/CAS journal.
         directoryURL = base.appendingPathComponent("network.index.connector", isDirectory: true)
         fileURL = directoryURL.appendingPathComponent("installation-\(environment).json", isDirectory: false)
+        lockURL = directoryURL.appendingPathComponent("installation-\(environment).lock", isDirectory: false)
         try Self.prepareDirectory(directoryURL, fileManager: fileManager)
-        if fileManager.fileExists(atPath: fileURL.path) {
-            try Self.rejectSymbolicLink(fileURL)
-            let decoded = try JSONDecoder().decode(
-                ConnectorInstallationState.self,
-                from: Data(contentsOf: fileURL, options: [.mappedIfSafe])
-            )
-            guard UUID(uuidString: decoded.installationId)?.uuidString.lowercased()
-                    == decoded.installationId.lowercased() else {
-                throw ConnectorInstallationStoreError.invalidState
+        try withFileLock {
+            if try pathExistsWithoutFollowing(fileURL) {
+                _ = try readDurableState()
+            } else {
+                try persist(ConnectorInstallationState(
+                    installationId: UUID().uuidString.lowercased(),
+                    recoveryPhase: .none
+                ))
             }
-            state = decoded
-        } else {
-            state = ConnectorInstallationState(
-                installationId: UUID().uuidString.lowercased(),
-                recoveryPhase: .none
-            )
-            try persist(state)
         }
     }
 
     func setRecoveryPhase(_ phase: ConnectorRecoveryPhase) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        var replacement = state
-        replacement.recoveryPhase = phase
-        try persist(replacement)
-        state = replacement
+        try withFileLock {
+            let current = try readDurableState()
+            var replacement = current
+            replacement.recoveryPhase = phase
+            try validateTransition(current: current, replacement: replacement)
+            try persist(replacement)
+        }
     }
 
     func compareAndSet(
         expected: ConnectorInstallationState,
         replacement: ConnectorInstallationState
     ) throws -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard state == expected else { return false }
-        try persist(replacement)
-        state = replacement
-        return true
+        try withFileLock {
+            let current = try readDurableState()
+            guard current == expected else { return false }
+            try validateTransition(current: current, replacement: replacement)
+            try persist(replacement)
+            return true
+        }
+    }
+
+    private func validateTransition(
+        current: ConnectorInstallationState,
+        replacement: ConnectorInstallationState
+    ) throws {
+        guard replacement.installationId == current.installationId,
+              replacement.operationEpoch >= current.operationEpoch,
+              replacement.authorizationAttemptId == nil
+                || UUID(uuidString: replacement.authorizationAttemptId!) != nil else {
+            throw ConnectorInstallationStoreError.invalidState
+        }
+    }
+
+    private func withFileLock<T>(_ body: () throws -> T) throws -> T {
+        try Self.validateDirectory(directoryURL)
+        let descriptor = Darwin.open(
+            lockURL.path,
+            O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW,
+            S_IRUSR | S_IWUSR
+        )
+        guard descriptor >= 0 else { throw ConnectorInstallationStoreError.unsafePath }
+        defer { Darwin.close(descriptor) }
+        try Self.validateDescriptor(descriptor, type: S_IFREG, permissions: 0o600)
+        try Self.validatePathIdentity(lockURL, descriptor: descriptor)
+        guard Darwin.flock(descriptor, LOCK_EX) == 0 else {
+            throw ConnectorInstallationStoreError.unsafePath
+        }
+        defer { _ = Darwin.flock(descriptor, LOCK_UN) }
+        // Revalidate after acquisition so a path manipulation cannot be hidden
+        // behind time spent waiting for another process's lock.
+        try Self.validateDirectory(directoryURL)
+        try Self.validatePathIdentity(lockURL, descriptor: descriptor)
+        return try body()
+    }
+
+    private func readDurableState() throws -> ConnectorInstallationState {
+        let descriptor = Darwin.open(fileURL.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else { throw ConnectorInstallationStoreError.unsafePath }
+        defer { Darwin.close(descriptor) }
+        try Self.validateDescriptor(descriptor, type: S_IFREG, permissions: 0o600)
+        try Self.validatePathIdentity(fileURL, descriptor: descriptor)
+        var info = Darwin.stat()
+        guard Darwin.fstat(descriptor, &info) == 0,
+              info.st_size >= 0,
+              info.st_size <= off_t(Self.maximumJournalBytes) else {
+            throw ConnectorInstallationStoreError.invalidState
+        }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = Darwin.read(descriptor, &buffer, buffer.count)
+            guard count >= 0 else { throw ConnectorInstallationStoreError.invalidState }
+            if count == 0 { break }
+            data.append(buffer, count: count)
+            guard data.count <= Self.maximumJournalBytes else {
+                throw ConnectorInstallationStoreError.invalidState
+            }
+        }
+        let decoded = try JSONDecoder().decode(ConnectorInstallationState.self, from: data)
+        guard UUID(uuidString: decoded.installationId)?.uuidString.lowercased()
+                == decoded.installationId.lowercased(),
+              decoded.authorizationAttemptId == nil
+                || UUID(uuidString: decoded.authorizationAttemptId!) != nil else {
+            throw ConnectorInstallationStoreError.invalidState
+        }
+        return decoded
     }
 
     private func persist(_ value: ConnectorInstallationState) throws {
-        try Self.rejectSymbolicLinkIfPresent(fileURL, fileManager: fileManager)
         let data = try JSONEncoder().encode(value)
-        try data.write(to: fileURL, options: [.atomic])
-        try Self.rejectSymbolicLink(fileURL)
-        try fileManager.setAttributes([.posixPermissions: 0o600], atPath: fileURL.path)
+        guard data.count <= Self.maximumJournalBytes else {
+            throw ConnectorInstallationStoreError.invalidState
+        }
+        if try pathExistsWithoutFollowing(fileURL) {
+            try Self.validatePath(fileURL, type: S_IFREG, permissions: 0o600)
+        }
+        let temporaryURL = directoryURL.appendingPathComponent(".installation-\(UUID().uuidString).tmp")
+        let descriptor = Darwin.open(
+            temporaryURL.path,
+            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+            S_IRUSR | S_IWUSR
+        )
+        guard descriptor >= 0 else { throw ConnectorInstallationStoreError.unsafePath }
+        var renamed = false
+        defer {
+            Darwin.close(descriptor)
+            if !renamed { _ = Darwin.unlink(temporaryURL.path) }
+        }
+        try Self.validateDescriptor(descriptor, type: S_IFREG, permissions: 0o600)
+        try data.withUnsafeBytes { rawBuffer in
+            guard let base = rawBuffer.baseAddress else { return }
+            var offset = 0
+            while offset < rawBuffer.count {
+                let written = Darwin.write(descriptor, base.advanced(by: offset), rawBuffer.count - offset)
+                guard written > 0 else { throw ConnectorInstallationStoreError.invalidState }
+                offset += written
+            }
+        }
+        guard Darwin.fsync(descriptor) == 0 else {
+            throw ConnectorInstallationStoreError.invalidState
+        }
+        if try pathExistsWithoutFollowing(fileURL) {
+            try Self.validatePath(fileURL, type: S_IFREG, permissions: 0o600)
+        }
+        guard Darwin.rename(temporaryURL.path, fileURL.path) == 0 else {
+            throw ConnectorInstallationStoreError.unsafePath
+        }
+        renamed = true
+        try Self.validatePath(fileURL, type: S_IFREG, permissions: 0o600)
+        try Self.fsyncDirectory(directoryURL)
+    }
+
+    private func pathExistsWithoutFollowing(_ url: URL) throws -> Bool {
+        var info = Darwin.stat()
+        if Darwin.lstat(url.path, &info) == 0 { return true }
+        if errno == ENOENT { return false }
+        throw ConnectorInstallationStoreError.unsafePath
     }
 
     private static func prepareDirectory(_ url: URL, fileManager: FileManager) throws {
-        if fileManager.fileExists(atPath: url.path) {
-            try rejectSymbolicLink(url)
-            let values = try url.resourceValues(forKeys: [.isDirectoryKey])
-            guard values.isDirectory == true else { throw ConnectorInstallationStoreError.unsafePath }
-        } else {
+        var info = Darwin.stat()
+        if Darwin.lstat(url.path, &info) == 0 {
+            guard (info.st_mode & S_IFMT) == S_IFDIR, info.st_uid == getuid() else {
+                throw ConnectorInstallationStoreError.unsafePath
+            }
+        } else if errno == ENOENT {
             try fileManager.createDirectory(
                 at: url,
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
+        } else {
+            throw ConnectorInstallationStoreError.unsafePath
         }
-        try fileManager.setAttributes([.posixPermissions: 0o700], atPath: url.path)
+        guard Darwin.chmod(url.path, 0o700) == 0 else {
+            throw ConnectorInstallationStoreError.unsafePath
+        }
+        try validateDirectory(url)
     }
 
-    private static func rejectSymbolicLinkIfPresent(_ url: URL, fileManager: FileManager) throws {
-        if fileManager.fileExists(atPath: url.path) { try rejectSymbolicLink(url) }
+    private static func validateDirectory(_ url: URL) throws {
+        try validatePath(url, type: S_IFDIR, permissions: 0o700)
     }
 
-    private static func rejectSymbolicLink(_ url: URL) throws {
-        let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey])
-        guard values.isSymbolicLink != true else { throw ConnectorInstallationStoreError.unsafePath }
+    private static func validatePath(_ url: URL, type: mode_t, permissions: mode_t) throws {
+        var info = Darwin.stat()
+        guard Darwin.lstat(url.path, &info) == 0,
+              (info.st_mode & S_IFMT) == type,
+              info.st_uid == getuid(),
+              info.st_nlink == 1 || type == S_IFDIR,
+              (info.st_mode & 0o777) == permissions else {
+            throw ConnectorInstallationStoreError.unsafePath
+        }
+    }
+
+    private static func validatePathIdentity(_ url: URL, descriptor: Int32) throws {
+        var pathInfo = Darwin.stat()
+        var descriptorInfo = Darwin.stat()
+        guard Darwin.lstat(url.path, &pathInfo) == 0,
+              Darwin.fstat(descriptor, &descriptorInfo) == 0,
+              pathInfo.st_dev == descriptorInfo.st_dev,
+              pathInfo.st_ino == descriptorInfo.st_ino,
+              pathInfo.st_mode == descriptorInfo.st_mode else {
+            throw ConnectorInstallationStoreError.unsafePath
+        }
+    }
+
+    private static func validateDescriptor(
+        _ descriptor: Int32,
+        type: mode_t,
+        permissions: mode_t
+    ) throws {
+        var info = Darwin.stat()
+        guard Darwin.fstat(descriptor, &info) == 0,
+              (info.st_mode & S_IFMT) == type,
+              info.st_uid == getuid(),
+              info.st_nlink == 1 || type == S_IFDIR,
+              (info.st_mode & 0o777) == permissions else {
+            throw ConnectorInstallationStoreError.unsafePath
+        }
+    }
+
+    private static func fsyncDirectory(_ url: URL) throws {
+        let descriptor = Darwin.open(url.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else { throw ConnectorInstallationStoreError.unsafePath }
+        defer { Darwin.close(descriptor) }
+        try validateDescriptor(descriptor, type: S_IFDIR, permissions: 0o700)
+        guard Darwin.fsync(descriptor) == 0 else {
+            throw ConnectorInstallationStoreError.invalidState
+        }
     }
 }
