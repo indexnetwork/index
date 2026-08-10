@@ -8,6 +8,11 @@ const RETENTION_OPTIONS = ["1 week", "2 weeks", "1 month", "3 months", "never"];
 // readable, the radar steps aside for the third window instead.
 const THREE_COLUMN_MIN = 1020;
 
+// How long the radar describes discovery before accepting that a signal simply
+// has not matched anyone yet. Long enough to cover a slow first pass, short
+// enough that an empty radar stops pretending to be busy.
+const DISCOVERY_GIVE_UP_MS = 120000;
+
 // Inline privacy note: chats auto-delete after a window you can change.
 function RetentionNote({ retention, onChange }) {
   return (
@@ -37,9 +42,20 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Live-only: these demo sim feeds no longer exist, so they default to empty.
   // The simulation loops below stay wired but idle on empty arrays.
   const { CLARIFIERS = [], FIELD_EVENTS = [], AMBIENT_NOTES = [] } = window.INDEX_DATA;
-  // "awaiting you" is the default tab: it is the only stage the user can act
-  // on, so the radar opens on the decisions rather than the whole field.
-  const [tab, setTab] = useState("awaiting you");
+  // "all" opens the radar on the whole field with no stage selected, so the
+  // negotiating rows are visible next to the ones awaiting you and a status
+  // changing under the agents can be watched as it happens. Selecting a stage
+  // still filters; nothing starts filtered.
+  const [tab, setTab] = useState("all");
+  // Counterparty discovery is what the radar shows while it has nothing to show
+  // yet: the window between a signal going live and the first counterparty
+  // landing. Deliberately not tied to having just created the signal, because
+  // reopening a young signal lands in exactly the same empty state and "no one
+  // here right now" is the wrong thing to say while the agents are still out.
+  const [discoveryMetrics, setDiscoveryMetrics] = useState({});
+  // A signal can legitimately match nobody, so discovery is not allowed to spin
+  // forever: past this it gives up and the ordinary empty state takes over.
+  const [discoveryExpired, setDiscoveryExpired] = useState(false);
   const [paused, setPaused] = useState(false);
   const [pipelineMode, setPipelineMode] = useState("broad");
   const modeTimerRef = useRef(null);
@@ -259,19 +275,48 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
       setPeople(mapped);
+      // The radar answering fills the step counters in. It does not by itself
+      // end discovery: an empty radar means the agents have not landed anyone
+      // yet, which is the state discovery exists to describe.
+      //
+      // found/scored/advanced are three real and genuinely different numbers:
+      // everything the radar returned, the subset the backend actually scored
+      // (read off the raw items, before the mapper's 0.7 default hides which
+      // ones carried a score), and the subset that reached a stage the user
+      // can see.
+      setDiscoveryMetrics((prev) => ({
+        ...prev,
+        found: items.length,
+        scored: items.filter((it) => typeof (it && it.score) === "number").length,
+        advanced: mapped.filter((p) => opportunityBucket(p) !== null).length,
+      }));
     }
     if (answeredR) injectAnsweredClarifiers(window.IndexApp.normalizeList(answeredR, "questions"));
     if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
   }, [live, client, intentId, setPeople, injectClarifiers, injectAnsweredClarifiers]);
 
+  // Reach is the one stage number that does not come from the radar, so it is
+  // asked for once while discovery is on screen.
   useEffect(() => {
-    if (!live) return;
-    refreshRadar();
-    const t = setInterval(refreshRadar, 45000);
-    return () => clearInterval(t);
-  }, [live, refreshRadar]);
+    if (!live || !client || !discovering) return;
+    let alive = true;
+    client.networks.list()
+      .then((r) => {
+        if (!alive) return;
+        const networks = window.IndexApp.normalizeList(r, "networks");
+        setDiscoveryMetrics((prev) => ({ ...prev, networks: networks.length }));
+      })
+      .catch(() => { /* the line stays unlit rather than showing a guess */ });
+    return () => { alive = false; };
+  }, [live, client, discovering]);
 
   const visiblePeople = useMemo(() => people.filter(p => !p.hidden), [people]);
+  // What the radar actually lists, which is what "empty" has to mean here: a
+  // person filtered out of every stage is not something the user can see.
+  const shownPeople = useMemo(
+    () => visiblePeople.filter(p => opportunityBucket(p) !== null),
+    [visiblePeople]
+  );
   const filtered = useMemo(() => [...visiblePeople].sort((a, b) => b.score - a.score), [visiblePeople]);
 
   // People you're still in negotiation with, anyone not yet ready/accepted/gone.
@@ -279,6 +324,36 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     () => visiblePeople.filter(p => !["accepted", "ready", "expired", "passed"].includes(p.status)),
     [visiblePeople]
   );
+  // Nothing on the radar and not yet given up: the agents are still out.
+  const discovering = live && shownPeople.length === 0 && !discoveryExpired;
+
+  // The clock starts per signal, and a signal that lands someone stops it for
+  // good: the give-up state only exists for the empty case.
+  useEffect(() => {
+    setDiscoveryExpired(false);
+    setDiscoveryMetrics({});
+  }, [intentId]);
+
+  useEffect(() => {
+    if (!live || shownPeople.length > 0) return;
+    const t = setTimeout(() => setDiscoveryExpired(true), DISCOVERY_GIVE_UP_MS);
+    return () => clearTimeout(t);
+  }, [live, shownPeople.length]);
+
+  // 45s is fine for a settled radar, but far too slow to watch a status turn
+  // while the agents are mid-negotiation, so the poll tightens while discovery
+  // is running or anyone is still negotiating, and relaxes once it settles.
+  // Declared here rather than beside refreshRadar because it reads
+  // negotiatingPeople, which is derived above.
+  const pollMs = discovering ? 4000 : (negotiatingPeople.length > 0 ? 12000 : 45000);
+
+  useEffect(() => {
+    if (!live) return;
+    refreshRadar();
+    const t = setInterval(refreshRadar, pollMs);
+    return () => clearInterval(t);
+  }, [live, refreshRadar, pollMs]);
+
   // The four states an opportunity can be in for you, in the order they happen:
   // it needs you, agents are still talking, you took it, it ran out.
   // "awaiting you" leads because it is the only one you can act on.
@@ -696,6 +771,8 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             onProfile={openProfile}
             unread={unread}
             chatIds={chatIds}
+            discovering={discovering}
+            discoveryMetrics={discoveryMetrics}
           />
         </MacWindow>
         )}
