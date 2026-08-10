@@ -1,8 +1,9 @@
 import Cocoa
 
-// Generates the branded DMG window background from the Amiga Workbench palette
-// used by the app CSS (--amiga-bg #0055AA, --amiga-accent #FF8A00). White text
-// on the blue field matches Workbench window chrome.
+// Generates the branded DMG window background as a Workbench-window motif:
+// white 'paper' field (--amiga-paper #FFFFFF), orange title-bar strip
+// (--amiga-accent #FF8A00) at the top, black text, and a dark-gray arrow
+// guiding the drag from the app icon to the Applications alias.
 //
 // Usage: dmg-background <output-dir>
 // Writes <output-dir>/dmg-background.png (540x380) and
@@ -21,8 +22,8 @@ let fontURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     .appendingPathComponent("src/fonts/ibm-plex-sans-latin-var.woff2")
 CTFontManagerRegisterFontsForURL(fontURL as CFURL, .process, nil)
 
-let desktopBlue = NSColor(calibratedRed: 0, green: CGFloat(0x55) / 255, blue: CGFloat(0xAA) / 255, alpha: 1)
 let accentOrange = NSColor(calibratedRed: 1, green: CGFloat(0x8A) / 255, blue: 0, alpha: 1)
+let arrowGray = NSColor(calibratedRed: CGFloat(0x55) / 255, green: CGFloat(0x55) / 255, blue: CGFloat(0x55) / 255, alpha: 1)
 
 func render(scale: CGFloat, to path: String) {
     let size = CGSize(width: 540, height: 380)
@@ -43,25 +44,52 @@ func render(scale: CGFloat, to path: String) {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 
-    desktopBlue.setFill()
+    // Workbench 'paper' field.
+    NSColor.white.setFill()
     NSRect(origin: .zero, size: size).fill()
 
-    // Workbench title-bar strip across the top (Cocoa y-up coordinates).
-    accentOrange.setFill()
-    NSRect(x: 0, y: size.height - 28, width: size.width, height: 28).fill()
-    NSColor.white.setFill()
-    NSRect(x: 0, y: size.height - 30, width: size.width, height: 2).fill()
+    let font = NSFont(name: "IBM Plex Sans", size: 15)
+        ?? NSFont.systemFont(ofSize: 15, weight: .medium)
 
-    let font = NSFont(name: "IBM Plex Sans", size: 16)
-        ?? NSFont.systemFont(ofSize: 16, weight: .medium)
+    // Title-bar strip across the top (Cocoa y-up coordinates: y 352..380),
+    // with a black hairline separator underneath (y 350..352).
+    accentOrange.setFill()
+    NSRect(x: 0, y: 352, width: size.width, height: 28).fill()
+    NSColor.black.setFill()
+    NSRect(x: 0, y: 350, width: size.width, height: 2).fill()
+
+    let title = "Index"
+    let titleAttributes: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: NSColor.black,
+    ]
+    let titleSize = title.size(withAttributes: titleAttributes)
+    title.draw(
+        at: NSPoint(x: 12, y: 352 + (28 - titleSize.height) / 2),
+        withAttributes: titleAttributes
+    )
+
+    // Arrow guiding the drag: the Finder layout (dmg.sh) puts icon centers at
+    // {140, 190} and {400, 190} in top-left coordinates with 128pt icons, so
+    // the icon row sits at y = 380 - 190 = 190 here, between the app icon's
+    // right edge (~x=204) and the alias's left edge (~x=336).
+    arrowGray.setFill()
+    NSRect(x: 216, y: 188, width: 94, height: 4).fill() // shaft x 216..310
+    let head = NSBezierPath()
+    head.move(to: NSPoint(x: 310, y: 182))
+    head.line(to: NSPoint(x: 328, y: 190))
+    head.line(to: NSPoint(x: 310, y: 198))
+    head.close()
+    head.fill()
+
     let text = "Drag Index to Applications"
     let attributes: [NSAttributedString.Key: Any] = [
         .font: font,
-        .foregroundColor: NSColor.white,
+        .foregroundColor: NSColor.black,
     ]
     let textSize = text.size(withAttributes: attributes)
     text.draw(
-        at: NSPoint(x: (size.width - textSize.width) / 2, y: 24),
+        at: NSPoint(x: (size.width - textSize.width) / 2, y: 120),
         withAttributes: attributes
     )
 
