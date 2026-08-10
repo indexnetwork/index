@@ -147,3 +147,54 @@ Neither Minor is represented as fixed or otherwise resolved by this receipt.
 This provider-free PR-A checkpoint is validation evidence, not merge authorization. The implementation establishes the shared-pool authority, planner, production-shaped trigger projection, quality metrics/artifacts, fail-closed CLI contract, and Eval Ops rendering/exclusion behavior. It does not implement or validate the PR-B runtime.
 
 Residual risks are: the two Minor findings above; medium pooled recognizability; warning-only lint and toolchain notices; and all explicitly deferred PR-B provider, database, Redis, Neon, protected-base, process-isolation, and live-evaluation behavior. PR B must retain whole-group planner/runtime admission and the fixed safe diagnostic projection. The approved shared wire intentionally keeps `logicalCaseId` as a nonempty string rather than duplicating the five-case corpus enum.
+
+## Post-PR CI repair addendum
+
+This addendum records the credential-free validation and independent review of a CI-only repair made after the original receipt. It preserves the original receipt evidence and does not claim that the later commit which adds this addendum validates itself.
+
+```text
+priorReceiptCommit=d3f9007975839fa020cb1102806258af2819cf5d
+priorValidatedCodeHead=cee496de7f79ac0ab696cf581f6c4da585f88bd8
+ciRepairValidatedHead=915b8551ec18585a56472a805e0cc1a1f65261f8
+validationCompletedAtUtc=2026-08-10T10:55:10Z
+```
+
+The repair addressed two CI root causes. First, the eval-verification job's shallow checkout lacked the immutable approval receipt's parent commit object, so the unchanged provenance test could not resolve it; only that job now requests full checkout history. Second, architecture tests still scanned the wrapper source after executable capability authority had moved, producing false negatives; the tests now assert the executable authority directly. The repair changes no production behavior or production content, including the approved shared content.
+
+The exact post-receipt delta from `d3f9007975839fa020cb1102806258af2819cf5d` through the validated repair head contains only these three paths:
+
+```text
+.github/workflows/lint.yml
+packages/protocol/src/architecture/tests/capability-facades.spec.ts
+packages/protocol/src/architecture/tests/runtime-shells.spec.ts
+```
+
+That delta is 3 files with 44 insertions and 28 deletions; its complete diff is 131 lines and 6,205 bytes with SHA-256 `ccd7c4d1c77cfac011ac4e6dbcc26512d7411dacf575e7a0c80b3ece52e965a2`. The complete base-to-repair delta is 57 files with 5,695 insertions and 220 deletions; its complete diff is 7,112 lines and 345,953 bytes with SHA-256 `3bd47346265cca607dd33af5a1832f10ac14ae4e42c51bf4083e162087d27a2f`.
+
+The prior receipt commit has exact parent `cee496de7f79ac0ab696cf581f6c4da585f88bd8`, remains an ancestor of the validated repair head, and adds only this receipt path. The receipt blob is `7a6ce42b3c9d2179507995003f1233197c511fcd` at both the prior receipt commit and the validated repair head, proving that the previous receipt text was unchanged while the repair itself was validated.
+
+Exact credential-free repair validation passed:
+
+- Protocol architecture tests: 28 pass, 0 fail, 100 expectations across 5 files.
+- Full isolated protocol tests with `TEST_CONCURRENCY=4`: 2,172 pass, 0 fail, 0 errors across 211 provider-free files; the runner excluded 5 explicit live-model specs.
+- Eval verification: all 13 of 13 suites typechecked and tested provider-free.
+- Protocol build: passed with no diagnostics.
+- Static checks: 412 exports (404 stable and 8 experimental), consumer compilation, host isolation, 43 capability directions, 0 cyclic strongly connected components across 359 runtime modules, and the 783-file package-artifact inventory all passed.
+- Frozen install and subtree parity passed; 9 dependency ranges across 4 mirrored packages were exact-pinned and matching.
+- YAML baseline-to-repair machine checks passed: both workflow revisions parsed, exactly 8 checkout steps exist, eval verification is the sole changed checkout and has only numeric `fetch-depth: 0`, and the other 7 checkout steps retain byte-structure-equivalent defaults.
+- Both applicable diff checks passed, and the post-receipt added-line unfinished-marker scan found no prohibited markers.
+
+All validation ran with `DATABASE_URL`, `NEON_API_KEY`, `REDIS_URL`, `REDIS_HOST`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GOOGLE_API_KEY` unset; ignored environment symlinks were moved outside the worktree during Bun commands and restored afterward. The first local eval-verification attempt used a `bash -lc` login shell whose `PATH` omitted `bunx`, so it exited before suite validation. The exact repository command was immediately rerun with the normal credential-scrubbed `PATH` and passed all 13 suites. This was a validation-harness mistake, not a product or CI failure.
+
+The independent CI-repair review recorded these exact fields:
+
+```text
+reviewerIdentity=Pi reviewer subagent (AI_AGENT=pi; PI_INTERCOM_STABLE_ID=subagent-reviewer-d737b5f8-1; PI_SESSION_ID=019feb59-071b-745b-a5a3-7d9a6e6ff49b; PI_SUBAGENT_RUN_ID=d737b5f8)
+reviewedRevision=915b8551ec18585a56472a805e0cc1a1f65261f8
+reviewedAtUtc=2026-08-10T11:06:42Z
+verdict=READY
+```
+
+The review found no Critical or Important issue. It retained two non-blocking Minor findings without representing either as fixed: duplicate candidate-role authority at `packages/protocol/eval/discovery-env-matrix/historical-quality.metrics.ts:93`, which remains a maintainability/drift risk, and the standalone funnel schema's fixed-population rank-sum bound at `packages/protocol/eval/shared/artifact.ts:323`, while full transport-row validation still rejects malformed artifacts. Medium pooled recognizability also remains unchanged. A warning-only GitHub runner fallback from the checkout action's Node.js 20 target to Node.js 24 is unrelated to this repair.
+
+A fresh hosted CI run at the exact validated repair head was not observed and remains pending; this addendum does not claim hosted CI success. No provider, database, Redis, Neon, protected-base, live-evaluation, process-isolation, or PR-B runtime behavior was exercised or validated. No push, merge, or other live behavior was performed.
