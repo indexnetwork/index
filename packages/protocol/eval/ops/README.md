@@ -238,7 +238,10 @@ queue holds in memory and writes nowhere:
   own environment. The four scorecard harnesses have nothing pre-checked, and say so.
   `discovery` names four keys in two groups. `keys` is what its own gate
   (`assertAbConfirmation`, services/api/src/cli/discovery.gate.ts) refuses to run
-  without: `NEON_API_KEY` and `DISCOVERY_TARGETS`. `runtimeKeys` is what no gate
+  without: `NEON_API_KEY` and `DISCOVERY_TARGETS`. The server-held manifest uses
+  strict v2 after IND-638 migration, but this launch remains legacy A/B: the API
+  parser projects only project/base and the two writable children and never
+  binds or receives the base read replica. `runtimeKeys` is what no gate
   mentions and the child cannot finish without: `OPENROUTER_API_KEY` (every model and
   embedding the discovery graph runs on) and `REDIS_URL` (the HyDE cache the graph writes
   through, uncaught on the write path). The server adds `DISCOVERY_CONFIRM=1` and
@@ -257,6 +260,32 @@ queue holds in memory and writes nowhere:
   question the script had already answered.
   `server.spec.ts` pins the table against `assertAbConfirmation`'s own source, so a fifth
   variable added to the gate fails here instead of resurfacing as a child that dies at it.
+
+### Atomic manifest-v2 secret migration
+
+Historical quality remains CLI-only and absent from `OPS_HARNESSES` and
+`HARNESS_REGISTRY`; migrating this server's secret does not add a launch control.
+Use the full [IND-638 operator runbook](../../../../docs/guides/ind-638-historical-quality-pilot.md).
+The mandatory order is:
+
+1. Separately confirm, provision, and control-plane attest exactly one
+   `read_only` endpoint on the non-primary `eval-discovery-base`; retain its
+   mode-0600 secure record.
+2. Construct strict manifest v2 locally and validate both its quality shape and
+   its legacy child projection without printing the value.
+3. Save the current Eval Ops `DISCOVERY_TARGETS` in encrypted operator rollback
+   storage, labelled by environment/revision/time.
+4. Replace `DISCOVERY_TARGETS` in one secret-manager update. Never delete then
+   recreate it or update JSON fields piecemeal.
+5. Verify the replacement by digest and provider-free parsing. Then, only under
+   separate authorization, run one legacy A/B smoke.
+6. Keep the previous secret until all validation and that smoke pass. Rollback
+   is one replacement operation restoring the retained old value, followed by
+   digest verification and a stop — it never authorizes an automatic rerun.
+
+The v2 value and its previous value both contain database credentials. Neither
+belongs in run records, browser responses, logs, receipts, or this repository.
+No quality command is exposed through the Ops HTTP API or launch form.
 
 ### One `discovery` run at a time
 

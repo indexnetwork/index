@@ -9,6 +9,7 @@ import { fingerprintHistoricalQualityVector, historicalQualityAttestationRoot, H
 import { HISTORICAL_QUALITY_APPROVED_FINGERPRINTS } from './discovery-quality.contract';
 import { createNeonControlPlane, type NeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget, type AttestedWritableQualityBaseTarget } from './discovery-quality-refresh-target';
+import { attestHistoricalQualityTargets, parseHistoricalQualityManifest } from './discovery.neon';
 
 export interface HistoricalQualitySeedDocument {
   readonly documentId: string;
@@ -550,9 +551,10 @@ function verifierEnvironment(env: NodeJS.ProcessEnv, databaseUrl: string): NodeJ
   return clean;
 }
 
-/** Starts the already-attested runtime in a fresh process. */
-export async function handoffHistoricalQualityBaseRuntime(input: {
-  target: AttestedWritableQualityBaseTarget;
+interface HistoricalQualityDatabaseRuntimeTarget { databaseUrl: string }
+
+async function handoffHistoricalQualityDatabaseRuntime(input: {
+  target: HistoricalQualityDatabaseRuntimeTarget;
   args: readonly string[];
   env?: NodeJS.ProcessEnv;
   runtimePath?: string;
@@ -580,19 +582,43 @@ export async function handoffHistoricalQualityBaseRuntime(input: {
   return stdout;
 }
 
+/** Starts refresh only from the branded read-write protected-base target. */
+export async function handoffHistoricalQualityBaseRuntime(input: {
+  target: AttestedWritableQualityBaseTarget;
+  args: readonly string[];
+  env?: NodeJS.ProcessEnv;
+  runtimePath?: string;
+  spawn?: QualityBaseRuntimeSpawn;
+}): Promise<string> {
+  return handoffHistoricalQualityDatabaseRuntime(input);
+}
+
 /** Parses and attests the writable target before binding any database runtime. */
 export async function runHistoricalQualityBaseBootstrap(input: {
   args: readonly string[];
   env?: NodeJS.ProcessEnv;
   controlPlane?: NeonControlPlane;
   handoff?: (target: AttestedWritableQualityBaseTarget, args: readonly string[]) => Promise<string>;
+  verifyHandoff?: (target: { endpointId: string; databaseUrl: string }, args: readonly string[]) => Promise<string>;
 }): Promise<string> {
   const env = input.env ?? process.env;
+  const controlPlane = input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? '');
   const target = parseQualityBaseRefreshTarget(env.DISCOVERY_QUALITY_BASE_REFRESH_TARGET);
-  const attested = await attestWritableQualityBaseTarget({
-    target,
-    controlPlane: input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? ''),
-  });
+  const attested = await attestWritableQualityBaseTarget({ target, controlPlane });
+  if (input.args.includes('--verify')) {
+    const manifest = parseHistoricalQualityManifest(env.DISCOVERY_TARGETS);
+    const qualityTargets = await attestHistoricalQualityTargets({
+      manifest,
+      writableRefreshTarget: attested,
+      controlPlane,
+    });
+    const replica = qualityTargets.baseReadReplica;
+    return (input.verifyHandoff ?? ((boundTarget, args) => handoffHistoricalQualityDatabaseRuntime({
+      target: boundTarget,
+      args,
+      env,
+    })))(replica, input.args);
+  }
   return (input.handoff ?? ((boundTarget, args) => handoffHistoricalQualityBaseRuntime({ target: boundTarget, args, env })))(attested, input.args);
 }
 

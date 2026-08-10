@@ -33,17 +33,22 @@ const AB_GATE_SOURCE = path.resolve(import.meta.dir, "../../../../../services/ap
  * connection strings, passwords included — so the tests below assert on these
  * exact strings never appearing in anything the server returns, stores or logs.
  *
- * The manifest is shaped the way `parseAbManifest` (discovery.neon.ts)
- * actually requires: `projectId`, `baseBranchId` and a two-element `targets`
- * array of `{ sideId, branchId, endpointId, databaseUrl }`. This server treats
- * the value as opaque and would not notice a different shape — which is exactly
- * why the fixture must be real, since this file is where a reader learns what
- * the server is holding. "guard parity with the engine" below pins it.
+ * The server-held secret now uses strict manifest v2. Legacy A/B launch still
+ * consumes only its `projectId`, `baseBranchId`, and two writable child targets;
+ * the protected-base read replica remains unreachable from that launch path.
+ * This server treats the value as opaque and would not notice a different shape,
+ * so "guard parity with the engine" below exercises both strict parsing and the
+ * legacy projection.
  */
 const NEON_API_KEY = "napi_test_key_that_must_never_leave_the_server";
 const AB_MANIFEST = {
+  version: 2 as const,
   projectId: "eval-project-id",
   baseBranchId: "br-eval-discovery-base",
+  baseReadReplica: {
+    endpointId: "ep-base-readonly",
+    databaseUrl: "postgres://u:pw-base-readonly@ep-base-readonly.neon.tech/protocol_eval",
+  },
   targets: [
     { sideId: "a", branchId: "br-eval-ab-a", endpointId: "ep-a", databaseUrl: "postgres://u:pw-side-a@ep-a.neon.tech/protocol_eval" },
     { sideId: "b", branchId: "br-eval-ab-b", endpointId: "ep-b", databaseUrl: "postgres://u:pw-side-b@ep-b.neon.tech/protocol_eval" },
@@ -692,26 +697,20 @@ describe("guard parity with the engine's own gate", () => {
     expect(HARNESS_CREDENTIALS["discovery"].asserts).toEqual(constants);
   });
 
-  it("holds the manifest in the shape parseAbManifest requires", async () => {
-    // The server treats DISCOVERY_TARGETS as opaque, so a wrong-shaped fixture
-    // would pass every other test in this file while documenting something the
-    // engine would refuse.
-    const source = await readFile(AB_NEON_SOURCE, "utf8");
-    const parser = source.match(/export function parseAbManifest\([\s\S]*?\n\}/);
-    if (!parser) throw new Error(`parseAbManifest not found in ${AB_NEON_SOURCE}`);
-    const target = source.match(/function parseTarget\([\s\S]*?\n\}/);
-    if (!target) throw new Error(`parseTarget not found in ${AB_NEON_SOURCE}`);
-
-    const rootFields = [...new Set([...parser[0].matchAll(/root\.([A-Za-z]+)/g)].map((match) => match[1]!))];
-    const targetFields = [...new Set([...target[0].matchAll(/entry\.([A-Za-z]+)/g)].map((match) => match[1]!))];
-    expect(rootFields.length).toBeGreaterThan(0);
-    expect(targetFields.length).toBeGreaterThan(0);
-
-    expect(Object.keys(AB_MANIFEST).sort()).toEqual([...rootFields].sort());
-    for (const entry of AB_MANIFEST.targets) expect(Object.keys(entry).sort()).toEqual([...targetFields].sort());
-    // The two things parseAbManifest checks beyond field names.
-    expect(AB_MANIFEST.targets.map((entry) => entry.sideId)).toEqual(["a", "b"]);
-    expect(AB_MANIFEST.targets.map((entry) => entry.branchId)).not.toContain(AB_MANIFEST.baseBranchId);
+  it("holds a strict v2 manifest whose child projection remains legacy A/B compatible", async () => {
+    // The server treats DISCOVERY_TARGETS as opaque. Exercise the engine parser
+    // itself so the server-held v2 secret cannot drift from either the strict
+    // quality shape or the legacy launch projection it still supplies.
+    const engine = await import(AB_NEON_SOURCE) as {
+      parseHistoricalQualityManifest(raw: string): unknown;
+      parseLegacyAbManifest(raw: string): unknown;
+    };
+    expect(engine.parseHistoricalQualityManifest(DISCOVERY_TARGETS)).toEqual(AB_MANIFEST);
+    expect(engine.parseLegacyAbManifest(DISCOVERY_TARGETS)).toEqual({
+      projectId: AB_MANIFEST.projectId,
+      baseBranchId: AB_MANIFEST.baseBranchId,
+      targets: AB_MANIFEST.targets,
+    });
   });
 });
 
@@ -804,7 +803,7 @@ describe("launching discovery", () => {
     await context.queue.drain();
 
     const surfaces = `${body}\n${await readableSurfaces(record.id)}`;
-    for (const secret of [NEON_API_KEY, DISCOVERY_TARGETS, OPENROUTER_API_KEY, REDIS_URL, "pw-side-a", "pw-side-b", "eval-ab-a"]) {
+    for (const secret of [NEON_API_KEY, DISCOVERY_TARGETS, OPENROUTER_API_KEY, REDIS_URL, "pw-base-readonly", "pw-side-a", "pw-side-b", "eval-ab-a"]) {
       expect(surfaces).not.toContain(secret);
     }
     // Not even the names: a record that mentioned them would invite an operator

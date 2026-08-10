@@ -162,7 +162,7 @@ describe('historical quality writable refresh target', () => {
     }
   });
 
-  it('parses, attests, and then binds the runtime from the brand', async () => {
+  it('parses, attests, and then binds refresh runtime from the writable brand', async () => {
     const calls: string[] = [];
     await runHistoricalQualityBaseBootstrap({
       args: [],
@@ -174,5 +174,49 @@ describe('historical quality writable refresh target', () => {
       },
     });
     expect(calls).toEqual(['read_write:']);
+  });
+
+  it('strictly attests v2 and binds verify only to the base read replica', async () => {
+    const replicaUrl = 'postgresql://reader:replica-secret@ep-quality-readonly.neon.tech/protocol_eval';
+    const manifest = {
+      version: 2 as const,
+      projectId: target.projectId,
+      baseBranchId: target.branchId,
+      baseReadReplica: { endpointId: 'ep-quality-readonly', databaseUrl: replicaUrl },
+      targets: [
+        { sideId: 'a' as const, branchId: 'br-a', endpointId: 'ep-a', databaseUrl: 'postgresql://a:a-secret@ep-a.neon.tech/protocol_eval' },
+        { sideId: 'b' as const, branchId: 'br-b', endpointId: 'ep-b', databaseUrl: 'postgresql://b:b-secret@ep-b.neon.tech/protocol_eval' },
+      ],
+    };
+    const richControlPlane: NeonControlPlane = {
+      getBranch: async (_projectId, branchId) => {
+        if (branchId === target.branchId) return { id: branchId, name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: false };
+        return { id: branchId, name: branchId === 'br-a' ? 'eval-ab-a' : 'eval-ab-b', parentId: target.branchId, expiresAt: null, primary: false };
+      },
+      listEndpoints: async (_projectId, branchId) => {
+        if (branchId === target.branchId) return [
+          { id: target.endpointId, branchId, host: 'ep-quality-base.neon.tech', type: 'read_write' },
+          { id: manifest.baseReadReplica.endpointId, branchId, host: 'ep-quality-readonly.neon.tech', type: 'read_only' },
+        ];
+        const side = branchId === 'br-a' ? manifest.targets[0] : manifest.targets[1];
+        return [{ id: side.endpointId, branchId, host: `${side.endpointId}.neon.tech`, type: 'read_write' }];
+      },
+    };
+    const seen: string[] = [];
+    await runHistoricalQualityBaseBootstrap({
+      args: ['--verify'],
+      env: {
+        DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(target),
+        DISCOVERY_TARGETS: JSON.stringify(manifest),
+      },
+      controlPlane: richControlPlane,
+      handoff: async () => { throw new Error('verify must not use writable refresh handoff'); },
+      verifyHandoff: async (attested, args) => {
+        seen.push(attested.databaseUrl, ...args);
+        return 'identifier-only output';
+      },
+    });
+    expect(seen).toEqual([replicaUrl, '--verify']);
+    expect(seen).not.toContain(target.databaseUrl);
   });
 });
