@@ -243,7 +243,11 @@ struct HermesPersistenceCompatibilityFixture {
                 }
             }
         }
-        guard spawned == 0 else { throw FixtureFailure.assertion("descriptor spawn failed") }
+        guard spawned == 0 else {
+            throw FixtureFailure.assertion(
+                "descriptor spawn failed: \(spawned) \(String(cString: strerror(spawned)))"
+            )
+        }
         _ = Darwin.close(output[1]); output[1] = -1
         var status: Int32 = 0
         guard Darwin.waitpid(child, &status, 0) == child, status & 0x7f == 0,
