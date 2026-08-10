@@ -31,7 +31,10 @@ test('background generator emits 1x and 2x PNGs with expected dimensions', async
   } finally {
     await rm(work, { recursive: true, force: true });
   }
-});
+  // Cold CI runners take >5s (the bun default) for the first swiftc invoke;
+  // without this the timeout kills the compile and its late assertion error
+  // cascades into an unrelated test failure.
+}, 180_000);
 
 const dmg = await Bun.file(new URL('./dmg.sh', import.meta.url)).text();
 
