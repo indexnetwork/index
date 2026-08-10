@@ -4,6 +4,10 @@
 // How long conversations are kept before auto-deleting. Adjustable inline.
 const RETENTION_OPTIONS = ["1 week", "2 weeks", "1 month", "3 months", "never"];
 
+// Live radar + clarifier poll cadence. Short enough that accept/pass and new
+// matches feel current; applyRadarPeople keeps identical polls from flinching.
+const RADAR_POLL_MS = 3000;
+
 // Width of the window row below which three side-by-side windows stop being
 // readable, the radar steps aside for the third window instead.
 const THREE_COLUMN_MIN = 1020;
@@ -61,6 +65,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     () => (live && window.IndexApp.getClient ? window.IndexApp.getClient() : null),
     [live],
   );
+  // Latest intent id for in-flight poll checks (closure intentId is fixed per call).
+  const intentIdRef = useRef(intentId);
+  intentIdRef.current = intentId;
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
@@ -77,6 +84,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const chatKey = chatPersona ? `${chatPersona}:${intentId}` : intentId;
   const chatSessionRef = useRef(chatSessions[chatKey] || null);
   const seenQuestionIds = useRef(new Set());   // question ids already in the feed
+  const radarSeqRef = useRef(0);               // drops stale radar responses
   const convByPerson = useRef({});             // opportunityId -> conversationId
   const personByConv = useRef({});             // conversationId -> opportunityId
 
@@ -240,8 +248,19 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation((prev) => [...items, ...prev]);
   }, [setConversation]);
 
+  // Intent switches keep MainView mounted; wipe the previous signal's radar
+  // and clarifier dedupe set before the next poll lands.
+  useEffect(() => {
+    if (!live) return;
+    radarSeqRef.current += 1;
+    seenQuestionIds.current = new Set();
+    setPeople([]);
+  }, [live, intentId, setPeople]);
+
   const refreshRadar = React.useCallback(async () => {
-    if (!live || !client) return;
+    if (!live || !client || !intentId) return;
+    const seq = ++radarSeqRef.current;
+    const forIntent = intentId;
     // Intent radar asks for the full lifecycle (like the web app's RADAR_STATUSES),
     // otherwise the home endpoint only returns actionable rows and the
     // accepted/missed tabs stay empty. `rejected` is deliberately excluded:
@@ -249,16 +268,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
     const [radarR, qR, answeredR] = await Promise.all([
-      (intentId ? client.opportunities.radarForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.radar()).catch(() => null),
-      (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
-      (intentId ? client.questions.answeredForIntent(intentId) : client.questions.answered()).catch(() => null),
+      client.opportunities.radarForIntent(forIntent, { statuses: radarStatuses }).catch(() => null),
+      client.questions.pendingForIntent(forIntent).catch(() => null),
+      client.questions.answeredForIntent(forIntent).catch(() => null),
     ]);
+    if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
     if (radarR) {
       const items = window.IndexApp.normalizeList(radarR, "items");
       const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
-      setPeople(mapped);
+      const apply = window.IndexApi.applyRadarPeople || ((prev, next) => next);
+      setPeople((prev) => apply(prev, mapped));
     }
     if (answeredR) injectAnsweredClarifiers(window.IndexApp.normalizeList(answeredR, "questions"));
     if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
@@ -267,7 +288,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   useEffect(() => {
     if (!live) return;
     refreshRadar();
-    const t = setInterval(refreshRadar, 45000);
+    const t = setInterval(refreshRadar, RADAR_POLL_MS);
     return () => clearInterval(t);
   }, [live, refreshRadar]);
 

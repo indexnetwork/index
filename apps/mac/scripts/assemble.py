@@ -18,13 +18,14 @@ API_DIR = ROOT / "api"
 # ones that use it. Their cross-imports are stripped below: sharing a scope is
 # what replaces them here, while the files keep real imports so `bun test api/`
 # can load any of them on its own.
-API_MODULES = ("socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs")
+API_MODULES = ("socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "radar-state.mjs")
 API_EXPORTS = [
     "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
+    "sameRadarPeople", "applyRadarPeople",
     "parseDeepLink", "isIndexDeepLink",
     "SOCIAL_PREFIX", "EDITABLE_PLATFORMS", "parseSocial", "firstSocialValue",
     "socialPlatformOf", "socialHandleOf", "socialHrefOf", "socialApiLabelOf",

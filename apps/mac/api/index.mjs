@@ -19,3 +19,5 @@ export {
   mapPeopleFromRadarItems,
   mapPersonFromRadarCard,
 } from './mappers.mjs';
+
+export { applyRadarPeople, sameRadarPeople } from './radar-state.mjs';
