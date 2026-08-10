@@ -103,7 +103,6 @@ function BlogIndexPage() {
                   >
                     <span className="blog-date">{formatPostDate(entry.date)}</span>
                     <span className="blog-title">{entry.title}</span>
-                    <span className="spacer" aria-hidden="true" />
                     <span className="blog-arrow">→</span>
                   </Link>
                 );

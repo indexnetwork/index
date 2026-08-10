@@ -43,6 +43,12 @@ pin a supported release, use `latest`.
   enrichment are unchanged.
 
 ### Added
+- Add the protocol-only Guided Atlas, deterministic architecture inventory
+  generator, and source-evidenced Configuration Lab. The atlas explains
+  normative concepts, the current `packages/protocol` reference implementation,
+  and counterfactual behavior-gate changes, while live environment values and
+  concrete API or host implementations remain outside its scope. Tooling-only
+  public-package change; no root export or runtime behavior changes.
 - Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`
   precomputes a per-user intake brief plus round-1 question, and
   `SignalIntakeOrchestrator` drives the funnel as a deterministic state machine
@@ -53,6 +59,11 @@ pin a supported release, use `latest`.
   `IntakePack` / `IntakePackInput` / `IntakePackQuestion` /
   `IntakePackQuestionOption` / `IntakeAnswer` / `SynthesisInput` /
   `SynthesisResult` types. Minor bump: additive surface only.
+
+### Changed
+- Share capability classification metadata between the existing architecture
+  boundary gate and the protocol atlas generator; allowed dependency directions
+  are unchanged.
 
 ### Fixed
 - Add an independent complete-payload golden digest and stronger audit/report leak
