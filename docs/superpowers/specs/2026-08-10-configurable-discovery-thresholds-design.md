@@ -124,9 +124,11 @@ Lower-level generic embedder defaults remain unchanged. The opportunity graph al
 
 ### Evaluation flow
 
-The resolved evaluator score replaces `state.options.minScore ?? 50` in the evaluation node. It is supplied to `OpportunityEvaluator.invokeEntityBundle` and used by the graph's deterministic post-evaluation score filtering.
+For semantic runs, the resolved evaluator score replaces `state.options.minScore ?? 50` in the evaluation node. It is supplied to `OpportunityEvaluator.invokeEntityBundle` and used by the graph's deterministic post-evaluation score filtering.
 
-Admission order remains:
+Non-semantic direct-target runs keep their existing score behavior: the direct-target discovery path retains a `50` floor, while the separate human-curated `create_introduction` path retains its existing `minScore: 0` and fallback behavior. Neither path reads the new semantic-discovery threshold variables.
+
+Admission order for semantic runs remains:
 
 1. evaluator categorical verdict (`accepted`);
 2. claim-safety and actor-shape guards;
@@ -193,7 +195,7 @@ Add focused graph tests proving:
 - configured evaluator value is supplied to evaluation and deterministic filtering;
 - constructor overrides take precedence in eval/test graph composition;
 - invalid constructor overrides fail graph construction;
-- direct introduction paths remain unchanged;
+- direct-target runs retain their existing `50` floor and human-curated introductions retain their existing `minScore: 0` behavior;
 - trace detail and structured trace data report the effective values;
 - an evaluator verdict with `accepted: false` remains rejected regardless of the numeric threshold.
 
@@ -219,7 +221,7 @@ After deployment, absence of both variables preserves existing behavior. Any lat
 ## Acceptance criteria
 
 - Production semantic retrieval uses `DISCOVERY_MIN_SIMILARITY`, defaulting to `0.30`.
-- Production semantic evaluator admission uses `DISCOVERY_EVALUATOR_MIN_SCORE`, defaulting to `50`.
+- Production semantic evaluator admission uses `DISCOVERY_EVALUATOR_MIN_SCORE`, defaulting to `50`; non-semantic direct-target and human-curated introduction paths remain unchanged.
 - Invalid values fail startup instead of falling back or clamping.
 - All semantic opportunity-discovery strategies receive the same resolved retrieval threshold.
 - Categorical evaluator rejection and safety guards remain authoritative.
