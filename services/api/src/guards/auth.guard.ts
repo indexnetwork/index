@@ -1,15 +1,17 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import { eq } from 'drizzle-orm/sql';
+import { and, eq } from 'drizzle-orm/sql';
 
 import { hashApiKey } from '../lib/apikey/credential';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
-import { apikeys, users } from '../schemas/database.schema';
+import { agents, agentPermissions, apikeys, hermesAgentCredentials, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { getRequestAuthContext, recordRequestAuthContext } from '../lib/request-auth-context';
-import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
+import { HERMES_AGENT_AUDIENCE, hashHermesSecret } from '../lib/agent/hermes-authorization';
+import { HERMES_CANONICAL_ACTIONS, type HermesCapability } from '../lib/agent/hermes-capabilities';
+import { HERMES_AGENT_CREDENTIAL_PREFIX, HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
-export { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND } from '../lib/agent/hermes-credential';
+export { HERMES_AGENT_CREDENTIAL_PREFIX, HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND } from '../lib/agent/hermes-credential';
 export type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
 const logger = log.server.from('auth.guard');
@@ -34,6 +36,48 @@ export interface ApiKeyAuthenticationStore {
   findCredentialByHash(hash: string): Promise<ApiKeyAuthenticationCredential | null>;
   findUserById(userId: string): Promise<AuthenticatedUser | null>;
 }
+
+export interface HermesAgentAuthenticationCredential {
+  id: string;
+  ownerId: string;
+  audience: string;
+  agentId: string;
+  installationId: string;
+  setupAttemptId: string;
+  actions: readonly string[];
+  activationState: 'pending' | 'active' | 'revoked';
+  expiresAt: Date;
+}
+
+export interface HermesAgentAuthenticationAuthority {
+  id: string;
+  ownerId: string;
+  runtimeKind: 'hermes' | null;
+  installationId: string | null;
+  setupAttemptId: string | null;
+  status: 'active' | 'inactive';
+  deletedAt: Date | null;
+  actions: readonly string[] | null;
+}
+
+/** Dedicated active-row persistence boundary. It never reads legacy `apikey`. */
+export interface HermesAgentAuthenticationStore {
+  findCredentialByHash(hash: string): Promise<HermesAgentAuthenticationCredential | null>;
+  findAgentAuthority(agentId: string, ownerId: string): Promise<HermesAgentAuthenticationAuthority | null>;
+  findUserById(userId: string): Promise<AuthenticatedUser | null>;
+}
+
+export type HermesAgentPrincipal = {
+  ownerId: string;
+  credentialId: string;
+  audience: typeof HERMES_AGENT_AUDIENCE;
+  agentId: string;
+  installationId: string;
+  setupAttemptId: string;
+  actions: readonly HermesCapability[];
+  expiresAt: Date;
+  activationState: 'active';
+};
 
 const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', API_URL)
@@ -199,6 +243,110 @@ export function assertApiKeyAudienceRoute(
   throw new HermesNegotiatorRouteDeniedError();
 }
 
+export class HermesAgentRouteDeniedError extends HermesNegotiatorRouteDeniedError {
+  constructor(message = 'This Hermes agent credential is not authorized for this endpoint') {
+    super(message);
+    this.name = 'HermesAgentRouteDeniedError';
+  }
+}
+
+export type HermesAgentRouteDecision =
+  | { allowed: true }
+  | { allowed: false; reason: 'dedicated_principal_route_denied' };
+
+const HERMES_AGENT_STATIC_ROUTES: ReadonlySet<string> = new Set([
+  'POST /mcp',
+  'GET /agents/me',
+  'GET /auth/me',
+  'PATCH /auth/profile/update',
+  'POST /intents/list',
+  'GET /opportunities',
+  'GET /questions',
+  'GET /networks',
+  'GET /networks/discovery/public',
+  'GET /network-requests',
+  'POST /network-requests',
+  'POST /tools/read_user_contexts',
+  'POST /tools/confirm_user_context',
+  'POST /storage/avatars',
+  'POST /storage/index-images',
+  'POST /enrichment/sync',
+  'POST /enrichment/enrich',
+  'GET /conversations',
+  'GET /conversations/stream',
+  'POST /conversations/dm',
+]);
+
+function hasExactCanonicalHermesActions(actions: readonly string[]): actions is readonly HermesCapability[] {
+  return actions.length === HERMES_CANONICAL_ACTIONS.length
+    && HERMES_CANONICAL_ACTIONS.every((action, index) => actions[index] === action);
+}
+
+function normalizeAudiencePath(rawPath: string): string {
+  try {
+    const path = new URL(rawPath, 'http://localhost').pathname;
+    return path === '/api' ? '/' : path.replace(/^\/api(?=\/)/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** Exact method/path matrix for the active full standalone principal. */
+export function authorizeHermesAgent(input: {
+  method: string;
+  path: string;
+  agentId?: string;
+  actions: readonly string[];
+}): HermesAgentRouteDecision {
+  if (!hasExactCanonicalHermesActions(input.actions)) {
+    return { allowed: false, reason: 'dedicated_principal_route_denied' };
+  }
+  const method = input.method.toUpperCase();
+  const path = normalizeAudiencePath(input.path);
+  if (HERMES_AGENT_STATIC_ROUTES.has(`${method} ${path}`)) return { allowed: true };
+
+  const segment = '[^/]+';
+  const dynamicRoutes: ReadonlyArray<readonly [string, RegExp]> = [
+    ['PATCH', new RegExp(`^/intents/${segment}/(?:status|archive)$`)],
+    ['PATCH', new RegExp(`^/opportunities/${segment}/status$`)],
+    ['POST', new RegExp(`^/opportunities/${segment}/start-chat$`)],
+    ['POST', new RegExp(`^/questions/${segment}/(?:answer|dismiss)$`)],
+    ['GET', new RegExp(`^/users/${segment}$`)],
+    ['POST', new RegExp(`^/networks/${segment}/join$`)],
+    ['PATCH', new RegExp(`^/network-requests/${segment}$`)],
+    ['DELETE', new RegExp(`^/network-requests/${segment}$`)],
+    ['GET', new RegExp(`^/conversations/${segment}/messages$`)],
+    ['POST', new RegExp(`^/conversations/${segment}/messages$`)],
+  ];
+  if (dynamicRoutes.some(([allowedMethod, pattern]) => method === allowedMethod && pattern.test(path))) {
+    return { allowed: true };
+  }
+
+  if (input.agentId) {
+    const escapedAgentId = input.agentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const negotiationRoute = new RegExp(
+      `^/agents/${escapedAgentId}/negotiations/(?:pickup|${segment}/(?:respond|consult))$`,
+    );
+    if (method === 'POST' && negotiationRoute.test(path)) return { allowed: true };
+  }
+  return { allowed: false, reason: 'dedicated_principal_route_denied' };
+}
+
+/** Assert the full-principal route matrix after exact credential validation. */
+export function assertHermesAgentAudienceRoute(
+  context: Pick<HermesAgentPrincipal, 'audience' | 'agentId' | 'actions'>,
+  request: Request,
+): void {
+  if (context.audience !== HERMES_AGENT_AUDIENCE) return;
+  const decision = authorizeHermesAgent({
+    method: request.method,
+    path: request.url,
+    agentId: context.agentId,
+    actions: context.actions,
+  });
+  if (!decision.allowed) throw new HermesAgentRouteDeniedError();
+}
+
 /** Read the exact authenticated principal required by negotiation mutations. */
 export function requireNegotiationCredentialPrincipal(req: Request): NegotiationCredentialPrincipal {
   const context = getRequestAuthContext(req);
@@ -214,6 +362,8 @@ export function requireNegotiationCredentialPrincipal(req: Request): Negotiation
     agentId: context.agentId,
     audience: context.audience ?? null,
     setupAttemptId: context.setupAttemptId ?? null,
+    ...(context.installationId ? { installationId: context.installationId } : {}),
+    ...(context.actions ? { actions: context.actions } : {}),
   };
 }
 
@@ -247,6 +397,9 @@ export const isSessionAuthenticated = (req: Request): boolean =>
 export type AgentPrincipalResolver = (request: Request) => Promise<string | null>;
 
 export const resolveApiKeyAgentId = async (req: Request): Promise<string | null> => {
+  const authenticated = getRequestAuthContext(req);
+  if (authenticated?.kind === 'api_key') return authenticated.agentId;
+
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) return null;
   const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
@@ -291,6 +444,101 @@ export async function authorizeNegotiationRespondPrincipal(
   resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
 ): Promise<boolean> {
   return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
+}
+
+function nonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function invalidHermesAgentCredential(reason: string, hash: string): Error {
+  logger.warn('Hermes agent credential rejected', {
+    reason,
+    keyHashPrefix: hash.slice(0, 8),
+  });
+  return new Error('Invalid API key');
+}
+
+/** Resolve one exact active dedicated principal without admitting a route. */
+export async function resolveHermesAgentCredential(
+  rawCredential: string,
+  store: HermesAgentAuthenticationStore = databaseHermesAgentAuthenticationStore,
+): Promise<{ user: AuthenticatedUser; principal: HermesAgentPrincipal }> {
+  if (
+    !rawCredential.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)
+    || rawCredential.length <= HERMES_AGENT_CREDENTIAL_PREFIX.length
+  ) throw new Error('Invalid API key');
+
+  const hash = await hashHermesSecret(rawCredential);
+  const row = await store.findCredentialByHash(hash);
+  if (
+    !row
+    || !nonemptyString(row.id)
+    || !nonemptyString(row.ownerId)
+    || row.audience !== HERMES_AGENT_AUDIENCE
+    || !nonemptyString(row.agentId)
+    || !nonemptyString(row.installationId)
+    || !nonemptyString(row.setupAttemptId)
+    || row.activationState !== 'active'
+    || !(row.expiresAt instanceof Date)
+    || !Number.isFinite(row.expiresAt.getTime())
+    || row.expiresAt.getTime() <= Date.now()
+    || !Array.isArray(row.actions)
+    || !hasExactCanonicalHermesActions(row.actions)
+  ) throw invalidHermesAgentCredential('malformed_or_inactive_row', hash);
+
+  const authority = await store.findAgentAuthority(row.agentId, row.ownerId);
+  if (
+    !authority
+    || authority.id !== row.agentId
+    || authority.ownerId !== row.ownerId
+    || authority.runtimeKind !== 'hermes'
+    || authority.installationId !== row.installationId
+    || authority.setupAttemptId !== row.setupAttemptId
+    || authority.status !== 'active'
+    || authority.deletedAt !== null
+    || !Array.isArray(authority.actions)
+    || !hasExactCanonicalHermesActions(authority.actions)
+  ) throw invalidHermesAgentCredential('stale_agent_authority', hash);
+
+  const user = await store.findUserById(row.ownerId);
+  if (!user || user.id !== row.ownerId) {
+    throw invalidHermesAgentCredential('owner_not_found', hash);
+  }
+
+  return {
+    user,
+    principal: {
+      ownerId: row.ownerId,
+      credentialId: row.id,
+      audience: HERMES_AGENT_AUDIENCE,
+      agentId: row.agentId,
+      installationId: row.installationId,
+      setupAttemptId: row.setupAttemptId,
+      actions: [...HERMES_CANONICAL_ACTIONS],
+      expiresAt: new Date(row.expiresAt),
+      activationState: 'active',
+    },
+  };
+}
+
+/** Authenticate and route-admit one active full standalone credential. */
+export async function authenticateHermesAgentCredential(
+  req: Request,
+  rawCredential: string,
+  store: HermesAgentAuthenticationStore = databaseHermesAgentAuthenticationStore,
+): Promise<AuthenticatedUser> {
+  const { user, principal } = await resolveHermesAgentCredential(rawCredential, store);
+  recordRequestAuthContext(req, {
+    kind: 'api_key',
+    agentId: principal.agentId,
+    audience: principal.audience,
+    credentialId: principal.credentialId,
+    setupAttemptId: principal.setupAttemptId,
+    installationId: principal.installationId,
+    actions: principal.actions,
+  });
+  assertHermesAgentAudienceRoute(principal, req);
+  return user;
 }
 
 export async function authenticateApiKey(
@@ -365,6 +613,25 @@ export async function authenticateApiKey(
   };
 }
 
+/** Prefix dispatcher that keeps dedicated hashes out of the frozen legacy lookup. */
+export function authenticateRequestApiKey(
+  req: Request,
+  apiKey: string,
+  stores: {
+    legacy?: ApiKeyAuthenticationStore;
+    hermesAgent?: HermesAgentAuthenticationStore;
+  } = {},
+): Promise<AuthenticatedUser> {
+  if (apiKey.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)) {
+    return authenticateHermesAgentCredential(
+      req,
+      apiKey,
+      stores.hermesAgent ?? databaseHermesAgentAuthenticationStore,
+    );
+  }
+  return authenticateApiKey(req, apiKey, stores.legacy ?? databaseApiKeyAuthenticationStore);
+}
+
 /**
  * AuthGuard: verifies genuine JWTs first, then accepts normal `x-api-key`
  * credentials. TEMPORARY: a failed Bearer JWT may fall back only to a
@@ -398,7 +665,57 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     throw new Error('Access token or API key required');
   }
 
-  return authenticateApiKey(req, apiKey);
+  return authenticateRequestApiKey(req, apiKey);
+};
+
+const databaseHermesAgentAuthenticationStore: HermesAgentAuthenticationStore = {
+  async findCredentialByHash(hash) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database.select({
+      id: hermesAgentCredentials.id,
+      ownerId: hermesAgentCredentials.ownerId,
+      audience: hermesAgentCredentials.audience,
+      agentId: hermesAgentCredentials.agentId,
+      installationId: hermesAgentCredentials.installationId,
+      setupAttemptId: hermesAgentCredentials.setupAttemptId,
+      actions: hermesAgentCredentials.actions,
+      activationState: hermesAgentCredentials.activationState,
+      expiresAt: hermesAgentCredentials.expiresAt,
+    }).from(hermesAgentCredentials)
+      .where(eq(hermesAgentCredentials.secretHash, hash))
+      .limit(1);
+    return row ?? null;
+  },
+  async findAgentAuthority(agentId, ownerId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database.select({
+      id: agents.id,
+      ownerId: agents.ownerId,
+      runtimeKind: agents.runtimeKind,
+      installationId: agents.installationId,
+      setupAttemptId: agents.runtimeSetupAttemptId,
+      status: agents.status,
+      deletedAt: agents.deletedAt,
+      actions: agentPermissions.actions,
+    }).from(agents)
+      .leftJoin(agentPermissions, and(
+        eq(agentPermissions.agentId, agents.id),
+        eq(agentPermissions.userId, ownerId),
+        eq(agentPermissions.scope, 'global'),
+      ))
+      .where(and(eq(agents.id, agentId), eq(agents.ownerId, ownerId)))
+      .limit(1);
+    return row ?? null;
+  },
+  async findUserById(userId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [user] = await database
+      .select({ id: users.id, email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
+  },
 };
 
 const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {

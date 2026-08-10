@@ -48,7 +48,8 @@ import { negotiatorMemoryWriteService } from '../services/negotiator-memory.serv
 import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
-import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
+import { HERMES_AGENT_CREDENTIAL_PREFIX, isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
+import { resolveHermesAgentCredential } from '../guards/auth.guard';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
@@ -564,6 +565,21 @@ const authResolver: McpAuthResolver = {
     }
 
     if (input.apiKey) {
+      if (input.apiKey.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)) {
+        try {
+          const { user, principal } = await resolveHermesAgentCredential(input.apiKey);
+          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
+            userId: user.id,
+            agentId: principal.agentId,
+            isHermesAgent: true,
+            networkScopeId: null,
+          });
+        } catch (err) {
+          if (err instanceof TelegramIdentityError) throw err;
+          throw new Error('Invalid API key', { cause: err });
+        }
+      }
+
       let sessionUserId: string | undefined;
 
       try {

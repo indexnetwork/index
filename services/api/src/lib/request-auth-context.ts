@@ -1,4 +1,7 @@
-export type ApiKeyAudience = 'hermes-negotiator' | null;
+import type { HermesCapability } from './agent/hermes-capabilities';
+import type { HermesCredentialAudience } from './agent/hermes-credential';
+
+export type ApiKeyAudience = HermesCredentialAudience | null;
 
 export type RequestAuthContext =
   | { kind: 'session' }
@@ -11,6 +14,10 @@ export type RequestAuthContext =
       credentialId?: string | null;
       /** Hermes setup generation carried by the authenticated credential. */
       setupAttemptId?: string | null;
+      /** Dedicated standalone installation identity. */
+      installationId?: string | null;
+      /** Exact canonical actions on an active dedicated credential. */
+      actions?: readonly HermesCapability[];
     };
 
 const requestAuthContexts = new WeakMap<Request, RequestAuthContext>();

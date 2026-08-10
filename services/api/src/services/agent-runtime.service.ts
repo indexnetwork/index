@@ -1,6 +1,7 @@
 import type { AgentWithRelations } from '../adapters/agent.database.adapter';
 import { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
+import { HERMES_CANONICAL_ACTIONS } from '../lib/agent/hermes-capabilities';
 
 export { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 
@@ -131,6 +132,13 @@ export class AgentRuntimeService {
       expectedSetupAttemptId: input.setupAttemptId,
     });
     if (!selected) throw new RuntimeConflictError();
+    const globalPermission = selected.permissions.find((permission) =>
+      permission.userId === ownerId && permission.scope === 'global');
+    const actions = globalPermission?.actions ?? [];
+    const negotiationOnly = actions.length === 1 && actions[0] === 'manage:negotiations';
+    const fullStandalone = actions.length === HERMES_CANONICAL_ACTIONS.length
+      && HERMES_CANONICAL_ACTIONS.every((action, index) => actions[index] === action);
+    if (!negotiationOnly && !fullStandalone) throw new RuntimeConflictError();
     return this.toView(selected);
   }
 

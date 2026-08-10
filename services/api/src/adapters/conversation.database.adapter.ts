@@ -14,7 +14,7 @@ import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker'
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 import { consultationActorSetMatchesBinding, externalConsultationCoordinatesFor } from '../lib/negotiation/consultation';
 import { authorizeNegotiationMutationInTransaction } from '../lib/agent/negotiation-runtime-authority';
-import type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
+import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import { digestHermesRunId, issueHermesRunCapability, parseHermesRunCapabilityBinding, verifyHermesRunCapability, type HermesRunOutcome } from '../lib/agent/hermes-negotiation-run';
 
 export type AtomicNegotiationPickupResult =
@@ -2010,7 +2010,7 @@ export class ConversationDatabaseAdapter {
         ), ${schema.tasks.metadata}->>'sourceUserId' = ${input.ownerId})
         ELSE FALSE
       END`;
-      const dedicated = input.principal.audience === 'hermes-negotiator';
+      const dedicated = isDedicatedHermesNegotiationAudience(input.principal.audience);
       if (dedicated && !input.runId) return { kind: 'unauthorized' };
       if (dedicated) {
         const [priorRun] = await tx.select({ id: schema.tasks.id }).from(schema.tasks).where(and(
@@ -2226,7 +2226,7 @@ export class ConversationDatabaseAdapter {
 
       const now = new Date();
       let metadata = current.metadata;
-      if (principal?.audience === 'hermes-negotiator') {
+      if (principal && isDedicatedHermesNegotiationAudience(principal.audience)) {
         if (!runAuthority || runAuthority.outcome !== 'responded') return null;
         const consumed = consumeHermesRunCapabilityMetadata({
           metadata,
@@ -2958,7 +2958,7 @@ export class ConversationDatabaseAdapter {
     )) throw new Error('Hermes response fault injection requires the guarded disposable database test gate');
     if (
       input.principal.agentId !== input.agentId
-      || input.principal.audience !== 'hermes-negotiator'
+      || !isDedicatedHermesNegotiationAudience(input.principal.audience)
       || input.authority.outcome !== 'responded'
     ) return { kind: 'unauthorized' };
 
@@ -3228,7 +3228,7 @@ export class ConversationDatabaseAdapter {
   ): Promise<PendingHermesResponseOutbox[]> {
     if (
       principal.agentId !== agentId
-      || principal.audience !== 'hermes-negotiator'
+      || !isDedicatedHermesNegotiationAudience(principal.audience)
     ) return [];
     const rows = await db.select({ id: schema.tasks.id, metadata: schema.tasks.metadata })
       .from(schema.tasks)
@@ -3579,7 +3579,7 @@ export class ConversationDatabaseAdapter {
       ) return null;
       const now = new Date();
       let mutationMetadata: Record<string, unknown> = metadata;
-      if (input.principal?.audience === 'hermes-negotiator') {
+      if (input.principal && isDedicatedHermesNegotiationAudience(input.principal.audience)) {
         if (!input.runAuthority || input.runAuthority.outcome !== 'consulted') return null;
         const consumed = consumeHermesRunCapabilityMetadata({
           metadata,
