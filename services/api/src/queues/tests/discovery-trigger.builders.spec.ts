@@ -99,11 +99,11 @@ describe('production discovery trigger builders', () => {
 
     expect(trigger).toEqual({
       userId: 'u1',
-      networkId: 'idx1',
       operationMode: 'create',
+      networkId: 'idx1',
       options: { initialStatus: 'latent' },
     });
-    expect(Object.keys(trigger)).toEqual(['userId', 'networkId', 'operationMode', 'options']);
+    expect(Object.keys(trigger)).toEqual(['userId', 'operationMode', 'networkId', 'options']);
     expect(trigger).not.toHaveProperty('searchQuery');
     expect(trigger).not.toHaveProperty('triggerIntentId');
     expect(trigger).not.toHaveProperty('indexScope');

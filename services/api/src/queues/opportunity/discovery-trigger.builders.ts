@@ -43,8 +43,8 @@ export function buildEnrichmentDiscoveryTrigger(input: {
 }): EnrichmentDiscoveryTrigger {
   return {
     userId: input.userId,
-    networkId: input.networkId,
     operationMode: 'create',
+    networkId: input.networkId,
     options: { initialStatus: 'latent' },
   };
 }
