@@ -298,10 +298,11 @@ function App() {
     offLimits: intent.offLimits,
   });
   const pickExistingIntent = (intent) => {
-    // The clarifier feed is app-level state; clear it so questions from the
-    // previously opened signal don't leak into this one.
+    // App-level feeds persist across signals; clear them so the previous
+    // signal's questions and radar never flash into the next open.
     setConversation([]);
     setField([]);
+    setPeople([]);
     setProfile(profileFromIntent(intent));
     setScreen("main");
     seedField();
@@ -310,6 +311,7 @@ function App() {
   const finishNewIntent = async (answers, created) => {
     setConversation([]);
     setField([]);
+    setPeople([]);
     setFreshUser(false);   // they've created a signal, hub is no longer empty
 
     // When the intent was created live, reload the snapshot and open the main

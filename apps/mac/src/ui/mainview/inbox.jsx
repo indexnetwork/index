@@ -196,7 +196,9 @@ function profileContent(person) {
   // to keep it from reappearing through another field.
   block(person.blurb);
   const bio = take(person.bio);
-  const note = take(person.pitchFromAgent);
+  // Prefer the presenter mainText (`detail`) for "why surfaced"; the short
+  // narrator chip is the fallback when detail is missing or identical.
+  const note = take(person.detail) || take(person.pitchFromAgent);
   // An entry that resolves to no address is left out rather than drawn as a
   // link that goes nowhere. See api/socials.mjs for what fails to resolve.
   const socials = (person.socials || []).filter(s => s && socialHrefOf(s));

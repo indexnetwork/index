@@ -77,6 +77,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     () => (live && window.IndexApp.getClient ? window.IndexApp.getClient() : null),
     [live],
   );
+  // Latest intent id for in-flight poll checks (closure intentId is fixed per call).
+  const intentIdRef = useRef(intentId);
+  intentIdRef.current = intentId;
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
@@ -93,6 +96,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const chatKey = chatPersona ? `${chatPersona}:${intentId}` : intentId;
   const chatSessionRef = useRef(chatSessions[chatKey] || null);
   const seenQuestionIds = useRef(new Set());   // question ids already in the feed
+  const radarSeqRef = useRef(0);               // drops stale radar responses
   const convByPerson = useRef({});             // opportunityId -> conversationId
   const personByConv = useRef({});             // conversationId -> opportunityId
 
@@ -256,8 +260,19 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation((prev) => [...items, ...prev]);
   }, [setConversation]);
 
+  // Intent switches keep MainView mounted; wipe the previous signal's radar
+  // and clarifier dedupe set before the next poll lands.
+  useEffect(() => {
+    if (!live) return;
+    radarSeqRef.current += 1;
+    seenQuestionIds.current = new Set();
+    setPeople([]);
+  }, [live, intentId, setPeople]);
+
   const refreshRadar = React.useCallback(async () => {
-    if (!live || !client) return;
+    if (!live || !client || !intentId) return;
+    const seq = ++radarSeqRef.current;
+    const forIntent = intentId;
     // Intent radar asks for the full lifecycle (like the web app's RADAR_STATUSES),
     // otherwise the home endpoint only returns actionable rows and the
     // accepted/missed tabs stay empty. `rejected` is deliberately excluded:
@@ -265,16 +280,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
     const [radarR, qR, answeredR] = await Promise.all([
-      (intentId ? client.opportunities.radarForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.radar()).catch(() => null),
-      (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
-      (intentId ? client.questions.answeredForIntent(intentId) : client.questions.answered()).catch(() => null),
+      client.opportunities.radarForIntent(forIntent, { statuses: radarStatuses }).catch(() => null),
+      client.questions.pendingForIntent(forIntent).catch(() => null),
+      client.questions.answeredForIntent(forIntent).catch(() => null),
     ]);
+    if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
     if (radarR) {
       const items = window.IndexApp.normalizeList(radarR, "items");
       const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
-      setPeople(mapped);
+      const apply = window.IndexApi.applyRadarPeople || ((prev, next) => next);
+      setPeople((prev) => apply(prev, mapped));
       // The radar answering fills the step counters in. It does not by itself
       // end discovery: an empty radar means the agents have not landed anyone
       // yet, which is the state discovery exists to describe.
@@ -294,21 +311,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (answeredR) injectAnsweredClarifiers(window.IndexApp.normalizeList(answeredR, "questions"));
     if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
   }, [live, client, intentId, setPeople, injectClarifiers, injectAnsweredClarifiers]);
-
-  // Reach is the one stage number that does not come from the radar, so it is
-  // asked for once while discovery is on screen.
-  useEffect(() => {
-    if (!live || !client || !discovering) return;
-    let alive = true;
-    client.networks.list()
-      .then((r) => {
-        if (!alive) return;
-        const networks = window.IndexApp.normalizeList(r, "networks");
-        setDiscoveryMetrics((prev) => ({ ...prev, networks: networks.length }));
-      })
-      .catch(() => { /* the line stays unlit rather than showing a guess */ });
-    return () => { alive = false; };
-  }, [live, client, discovering]);
 
   const visiblePeople = useMemo(() => people.filter(p => !p.hidden), [people]);
   // What the radar actually lists, which is what "empty" has to mean here: a
@@ -339,6 +341,21 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const t = setTimeout(() => setDiscoveryExpired(true), DISCOVERY_GIVE_UP_MS);
     return () => clearTimeout(t);
   }, [live, shownPeople.length]);
+
+  // Reach is the one stage number that does not come from the radar, so it is
+  // asked for once while discovery is on screen.
+  useEffect(() => {
+    if (!live || !client || !discovering) return;
+    let alive = true;
+    client.networks.list()
+      .then((r) => {
+        if (!alive) return;
+        const networks = window.IndexApp.normalizeList(r, "networks");
+        setDiscoveryMetrics((prev) => ({ ...prev, networks: networks.length }));
+      })
+      .catch(() => { /* the line stays unlit rather than showing a guess */ });
+    return () => { alive = false; };
+  }, [live, client, discovering]);
 
   // 45s is fine for a settled radar, but far too slow to watch a status turn
   // while the agents are mid-negotiation, so the poll tightens while discovery

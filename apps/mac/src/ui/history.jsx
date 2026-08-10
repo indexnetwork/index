@@ -153,7 +153,7 @@ function NegotiationHistory({ onClose }) {
       if (!dead) setThreads((prev) => prev || []);
     };
     load();
-    const t = setInterval(load, 45000);   // same cadence as the radar
+    const t = setInterval(load, 3000);   // same cadence as the radar
     return () => { dead = true; clearInterval(t); };
   }, [live, myId]);
 
