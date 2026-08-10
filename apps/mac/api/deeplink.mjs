@@ -1,5 +1,5 @@
 /**
- * Pure deep-link parser for the macOS/iOS shells.
+ * Pure deep-link parser for the macOS shell.
  *
  * The native side does no routing: it receives a URL from macOS (a universal
  * link handed over as an NSUserActivity, or an `index://` scheme open) and

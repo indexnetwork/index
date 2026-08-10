@@ -1,9 +1,9 @@
 /**
- * Standalone Index API client for the macOS/iOS prototypes.
+ * Standalone Index API client for the macOS prototype.
  *
- * This module is intentionally not imported by IndexApp or IndexApp-iOS yet. It
- * gives the mac subtree a dedicated place to evolve API consumption without
- * coupling live transport to the current fake-data prototype screens.
+ * Assembled into IndexApp as `window.IndexApi`. Gives the mac subtree a
+ * dedicated place to evolve API consumption without coupling live transport
+ * to browser-preview fake-data screens.
  */
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
@@ -16,7 +16,7 @@ const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
  *   Keychain and inject it into the web layer.
  * @property {() => (string | Promise<string | null | undefined>)} [getApiKey]
  *   Optional API-key provider, sent as the `x-api-key` header. Used by the
- *   native macOS/iOS shells whose credential is a CLI API key, not a session.
+ *   native macOS shell whose credential is a CLI API key, not a session.
  * @property {typeof fetch} [fetchImpl] Optional fetch implementation for tests.
  */
 

@@ -1,8 +1,8 @@
 # Mac API client boundary
 
-This folder is the standalone API-consumption boundary for the native macOS/iOS prototypes under `apps/mac`.
+This folder is the standalone API-consumption boundary for the native macOS prototype under `apps/mac`.
 
-It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappers.mjs` + `deeplink.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/index-amiga/api.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data. `IndexApp-iOS` is not wired yet.
+It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappers.mjs` + `deeplink.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/index-amiga/api.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data.
 
 ## Role
 
