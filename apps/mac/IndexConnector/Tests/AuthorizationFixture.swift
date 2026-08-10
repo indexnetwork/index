@@ -628,7 +628,7 @@ struct AuthorizationFixture {
         _ = poll(labelRuntime, id: "label-poll")
         precondition(labelStore.record?.activationState == "active")
         precondition(labelStore.record?.accountLabel == "")
-        precondition(labelStore.record?.recoveryPhase == .none)
+        precondition(labelStore.record?.recoveryPhase == ConnectorRecoveryPhase.none)
         precondition(labelJournal.recoveryPhase == .none && !labelProcess.isRecoveryOnly)
         server.failAccountLookup = false
 
@@ -659,7 +659,7 @@ struct AuthorizationFixture {
         _ = poll(labelWriteRuntime, id: "label-write-poll")
         precondition(labelWriteStore.record?.activationState == "active")
         precondition(labelWriteStore.record?.accountLabel == "")
-        precondition(labelWriteStore.record?.recoveryPhase == .none)
+        precondition(labelWriteStore.record?.recoveryPhase == ConnectorRecoveryPhase.none)
 
         let disconnectBeforeCallback = "disconnectBeforeCallback"
         var deferredURL: URL?
@@ -1093,7 +1093,7 @@ struct AuthorizationFixture {
             journal: clearJournal, process: clearProcess
         )
         clearStore.record = clearNewerPrimary
-        clearJournal.failPhase = .none
+        clearJournal.failPhase = ConnectorRecoveryPhase.none
         server.releaseExchange.signal()
         precondition(clearFinished.wait(timeout: .now() + 3) == .success)
         server.blockExchange = false

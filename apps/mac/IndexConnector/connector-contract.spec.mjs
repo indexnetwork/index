@@ -351,10 +351,13 @@ test('structured Hermes run authority renders only exact negotiation headers', (
 test('native Swift fixtures evaluate throwing calls before assertion autoclosures', () => {
   for (const fixture of [
     read('../Security/Tests/IndexKeychainIntegrationFixture.swift'),
+    read('./Tests/AuthorizationFixture.swift'),
     read('./Tests/TransportFixture.swift'),
     read('./Tests/InstallationStoreMultiprocessFixture.swift'),
   ]) {
     expect(fixture).not.toMatch(/(?:precondition|assert)\(\s*try/s);
+    expect(fixture).not.toMatch(/\?\.recoveryPhase\s*==\s*\.none/);
+    expect(fixture).not.toContain('failPhase = .none');
   }
 });
 
