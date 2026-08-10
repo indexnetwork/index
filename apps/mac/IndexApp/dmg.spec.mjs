@@ -102,6 +102,81 @@ test('validation runs before any hdiutil packaging', () => {
   expect(dmg.indexOf('stapler validate "$APP_PATH"')).toBeLessThan(dmg.indexOf('hdiutil create'));
 });
 
+test('guards volume-name collisions and parses the real mountpoint', () => {
+  // Fail-fast before attach when the volume name is already taken.
+  const precheck = dmg.indexOf('[ -e "/Volumes/$VOLUME_NAME" ]');
+  expect(precheck).toBeGreaterThan(-1);
+  expect(precheck).toBeLessThan(dmg.indexOf('hdiutil attach'));
+  // The real mountpoint comes from attach -plist, not an assumed path.
+  expect(dmg).toContain('hdiutil attach "$RW_DMG" -readwrite -noverify -plist');
+  expect(dmg).toContain('/usr/libexec/PlistBuddy');
+  expect(dmg).not.toContain('MOUNT="/Volumes/$VOLUME_NAME"');
+});
+
+test('populates the mountpoint reported by hdiutil attach -plist, not an assumed path', async () => {
+  const fixture = await makeSignedApp();
+  const fakeMount = `${fixture.root}/fake-volumes/Index-1`;
+  const dmgPath = `${fixture.root}/Index.dmg`;
+  // Same PATH-stub pattern as the e2e below (xcrun/spctl fake only the
+  // notary-dependent checks), plus a minimal hdiutil stub whose `attach -plist`
+  // reports a collision-style mountpoint under TMPDIR. If dmg.sh assumed
+  // /Volumes/$VOLUME_NAME, the populate step would fail or land elsewhere.
+  const stubBin = `${fixture.root}/bin`;
+  await mkdir(stubBin, { recursive: true });
+  await writeFile(`${stubBin}/xcrun`, '#!/bin/sh\nif [ "${1:-}" = "stapler" ]; then exit 0; fi\nexec /usr/bin/xcrun "$@"\n');
+  await writeFile(`${stubBin}/spctl`, '#!/bin/sh\nexit 0\n');
+  await writeFile(`${stubBin}/osascript`, '#!/bin/sh\nexit 0\n');
+  await writeFile(`${stubBin}/hdiutil`, `#!/bin/sh
+case "$1" in
+  create|convert)
+    out=""; prev=""
+    for a in "$@"; do if [ "$prev" = "-o" ]; then out="$a"; fi; prev="$a"; done
+    : > "$out"
+    ;;
+  attach)
+    mkdir -p "$FAKE_MOUNT"
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+      '<plist version="1.0"><dict><key>system-entities</key><array>' \
+      '<dict><key>dev-entry</key><string>/dev/disk9</string></dict>' \
+      "<dict><key>dev-entry</key><string>/dev/disk9s1</string><key>mount-point</key><string>$FAKE_MOUNT</string></dict>" \
+      '</array></dict></plist>'
+    ;;
+  detach)
+    exit 0
+    ;;
+  *)
+    echo "stub hdiutil: unexpected subcommand $1" >&2
+    exit 1
+    ;;
+esac
+`);
+  await chmod(`${stubBin}/xcrun`, 0o755);
+  await chmod(`${stubBin}/spctl`, 0o755);
+  await chmod(`${stubBin}/osascript`, 0o755);
+  await chmod(`${stubBin}/hdiutil`, 0o755);
+  try {
+    const result = Bun.spawnSync(['bash', new URL('./dmg.sh', import.meta.url).pathname], {
+      cwd: root,
+      env: {
+        ...Bun.env,
+        PATH: `${stubBin}:${Bun.env.PATH}`,
+        FAKE_MOUNT: fakeMount,
+        APP_PATH: fixture.app,
+        DMG_PATH: dmgPath,
+        SKIP_NOTARY: '1',
+      },
+    });
+    // codesign --verify logs to stderr even on success, so only the exit
+    // code and the produced artifacts are meaningful assertions here.
+    expect(result.exitCode).toBe(0);
+    await access(`${fakeMount}/index.app/Contents/MacOS/index`);
+    await access(`${fakeMount}/.background/dmg-background.png`);
+    expect(await Bun.file(dmgPath).exists()).toBe(true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
 test('packages a signed fixture app into a styled DMG when SKIP_NOTARY=1', async () => {
   const fixture = await makeSignedApp();
   const mount = `${fixture.root}/mount`;

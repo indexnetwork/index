@@ -40,15 +40,40 @@ swiftc -O -o "$WORK/dmg-background" "$SCRIPT_DIR/dmg-background.swift"
 APP_BASENAME="$(basename "$APP_PATH")"
 SIZE_KB=$(( $(du -sk "$APP_PATH" | awk '{print $1}') + 20480 ))
 
+# Fail fast before attaching: if a volume with this name is already mounted,
+# hdiutil would mount our image at /Volumes/<name>-1 while Finder's `tell disk`
+# resolves by NAME — we could populate, style, or force-detach a volume we do
+# not own. Collisions are an operator error, not something to paper over.
+if [ -e "/Volumes/$VOLUME_NAME" ]; then
+    echo "==> ERROR: /Volumes/$VOLUME_NAME already exists; another volume uses the name '$VOLUME_NAME'." >&2
+    echo "    Detach it or set VOLUME_NAME to a free name." >&2
+    exit 1
+fi
+
 echo "==> Creating read-write image (${SIZE_KB}K)"
 RW_DMG="$WORK/index-rw.dmg"
 hdiutil create -size "${SIZE_KB}k" -fs HFS+ -volname "$VOLUME_NAME" -o "$RW_DMG"
 
 # Finder's AppleScript `tell disk` only resolves volumes mounted under
 # /Volumes, so attach at the default location rather than a temp mountpoint.
-hdiutil attach "$RW_DMG" -readwrite -noverify >/dev/null
-MOUNT="/Volumes/$VOLUME_NAME"
-[ -d "$MOUNT" ] || { echo "==> ERROR: expected mount at $MOUNT" >&2; exit 1; }
+# Parse the REAL mountpoint from `attach -plist` instead of assuming
+# /Volumes/$VOLUME_NAME: the pre-check above makes a collision unlikely, but
+# only the reported path is safe to populate and detach.
+ATTACH_PLIST="$WORK/attach.plist"
+hdiutil attach "$RW_DMG" -readwrite -noverify -plist > "$ATTACH_PLIST"
+MOUNT=""
+ENTITY=0
+while /usr/libexec/PlistBuddy -c "Print :system-entities:$ENTITY" "$ATTACH_PLIST" >/dev/null 2>&1; do
+    MP="$(/usr/libexec/PlistBuddy -c "Print :system-entities:$ENTITY:mount-point" "$ATTACH_PLIST" 2>/dev/null || true)"
+    if [ -n "$MP" ]; then
+        MOUNT="$MP"
+    fi
+    ENTITY=$((ENTITY + 1))
+done
+if [ -z "$MOUNT" ]; then
+    echo "==> ERROR: could not determine the mountpoint of $RW_DMG" >&2
+    exit 1
+fi
 
 echo "==> Populating DMG"
 ditto "$APP_PATH" "$MOUNT/$APP_BASENAME"
@@ -60,7 +85,7 @@ chflags hidden "$MOUNT/.background"
 
 echo "==> Styling Finder window"
 attempt=0
-until /usr/bin/osascript <<APPLESCRIPT
+until osascript <<APPLESCRIPT
 tell application "Finder"
     tell disk "${VOLUME_NAME}"
         open
