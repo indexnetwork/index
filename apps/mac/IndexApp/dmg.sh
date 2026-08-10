@@ -74,6 +74,13 @@ if [ -z "$MOUNT" ]; then
     echo "==> ERROR: could not determine the mountpoint of $RW_DMG" >&2
     exit 1
 fi
+# Finder styling resolves the disk by NAME, not mountpoint. If a same-named
+# volume won the race between the pre-check and attach, our image landed at a
+# suffixed path and 'tell disk' would style the foreign volume — abort instead.
+if [ "$MOUNT" != "/Volumes/$VOLUME_NAME" ]; then
+    echo "==> ERROR: mounted at unexpected $MOUNT (volume-name race)" >&2
+    exit 1
+fi
 
 echo "==> Populating DMG"
 ditto "$APP_PATH" "$MOUNT/$APP_BASENAME"

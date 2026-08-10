@@ -111,16 +111,19 @@ test('guards volume-name collisions and parses the real mountpoint', () => {
   expect(dmg).toContain('hdiutil attach "$RW_DMG" -readwrite -noverify -plist');
   expect(dmg).toContain('/usr/libexec/PlistBuddy');
   expect(dmg).not.toContain('MOUNT="/Volumes/$VOLUME_NAME"');
+  // A mount anywhere but /Volumes/$VOLUME_NAME aborts (Finder styles by name).
+  expect(dmg).toContain('volume-name race');
 });
 
-test('populates the mountpoint reported by hdiutil attach -plist, not an assumed path', async () => {
+test('aborts safely when the volume-name race mounts us at a suffixed path', async () => {
   const fixture = await makeSignedApp();
   const fakeMount = `${fixture.root}/fake-volumes/Index-1`;
   const dmgPath = `${fixture.root}/Index.dmg`;
   // Same PATH-stub pattern as the e2e below (xcrun/spctl fake only the
   // notary-dependent checks), plus a minimal hdiutil stub whose `attach -plist`
-  // reports a collision-style mountpoint under TMPDIR. If dmg.sh assumed
-  // /Volumes/$VOLUME_NAME, the populate step would fail or land elsewhere.
+  // reports a collision-style mountpoint under TMPDIR. Finder styling resolves
+  // the disk by NAME, so a mount anywhere but /Volumes/$VOLUME_NAME means a
+  // same-named foreign volume exists and dmg.sh must abort, not populate it.
   const stubBin = `${fixture.root}/bin`;
   await mkdir(stubBin, { recursive: true });
   await writeFile(`${stubBin}/xcrun`, '#!/bin/sh\nif [ "${1:-}" = "stapler" ]; then exit 0; fi\nexec /usr/bin/xcrun "$@"\n');
@@ -166,12 +169,11 @@ esac
         SKIP_NOTARY: '1',
       },
     });
-    // codesign --verify logs to stderr even on success, so only the exit
-    // code and the produced artifacts are meaningful assertions here.
-    expect(result.exitCode).toBe(0);
-    await access(`${fakeMount}/index.app/Contents/MacOS/index`);
-    await access(`${fakeMount}/.background/dmg-background.png`);
-    expect(await Bun.file(dmgPath).exists()).toBe(true);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('volume-name race');
+    // The foreign mountpoint must not be populated, and no DMG is produced.
+    expect(await Bun.file(`${fakeMount}/index.app/Contents/MacOS/index`).exists()).toBe(false);
+    expect(await Bun.file(dmgPath).exists()).toBe(false);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
