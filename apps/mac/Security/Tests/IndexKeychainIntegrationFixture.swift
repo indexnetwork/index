@@ -78,14 +78,17 @@ private func runRealCRUDFixture() throws {
 
     let fixtureSecret = Data("fixture-secret".utf8)
     try store.putAndVerify(fixtureSecret, descriptor: descriptor)
-    precondition(try store.read(descriptor: descriptor) == fixtureSecret)
+    let storedFixtureSecret = try store.read(descriptor: descriptor)
+    precondition(storedFixtureSecret == fixtureSecret)
 
     let replacementSecret = Data("fixture-secret-replaced".utf8)
     try store.putAndVerify(replacementSecret, descriptor: descriptor)
-    precondition(try store.read(descriptor: descriptor) == replacementSecret)
+    let storedReplacementSecret = try store.read(descriptor: descriptor)
+    precondition(storedReplacementSecret == replacementSecret)
 
     try store.delete(descriptor: descriptor)
-    precondition(try store.read(descriptor: descriptor) == nil)
+    let deletedSecret = try store.read(descriptor: descriptor)
+    precondition(deletedSecret == nil)
 }
 
 private func runInjectedFailureFixtures() throws {
@@ -100,7 +103,8 @@ private func runInjectedFailureFixtures() throws {
     let newSecret = Data("new-secret".utf8)
     try duplicateStore.putAndVerify(newSecret, descriptor: descriptor)
     precondition(duplicateBackend.updateCount == 1)
-    precondition(try duplicateStore.read(descriptor: descriptor) == newSecret)
+    let storedDuplicateReplacement = try duplicateStore.read(descriptor: descriptor)
+    precondition(storedDuplicateReplacement == newSecret)
     precondition(errSecDuplicateItem != errSecSuccess)
 
     let interactionBackend = FakeKeychainBackend()
@@ -184,9 +188,8 @@ private func runSignedAccessFixture() throws {
     case "seed":
         try store.putAndVerify(Data("\(role)-secret".utf8), descriptor: ownDescriptor)
     case "check":
-        precondition(
-            try store.read(descriptor: ownDescriptor) == Data("\(role)-secret".utf8)
-        )
+        let ownSecret = try store.read(descriptor: ownDescriptor)
+        precondition(ownSecret == Data("\(role)-secret".utf8))
         expectStoreError(.securityStatus(errSecMissingEntitlement)) {
             _ = try store.read(descriptor: otherDescriptor)
         }

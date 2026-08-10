@@ -98,10 +98,12 @@ struct InstallationStoreMultiprocessFixture {
         disconnected.authorizationAttemptId = nil
         disconnected.recoveryPhase = .none
         disconnected.operationEpoch += 1
-        precondition(try first.compareAndSet(expected: initial, replacement: disconnected))
+        let disconnectedAccepted = try first.compareAndSet(expected: initial, replacement: disconnected)
+        precondition(disconnectedAccepted)
         // A second store must reread durable authority, never return its init cache.
         precondition(second.stateSnapshot == disconnected)
-        precondition(try !second.compareAndSet(expected: initial, replacement: initial))
+        let staleAccepted = try second.compareAndSet(expected: initial, replacement: initial)
+        precondition(!staleAccepted)
 
         try Data("release".utf8).write(to: release)
         authorization.waitUntilExit()

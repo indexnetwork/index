@@ -345,9 +345,10 @@ struct TransportFixture {
             contentType: "image/png", totalBytes: 2,
             sha256: String(repeating: "0", count: 64)
         )
-        precondition(try http.appendUpload(
+        let nextUploadSequence = try http.appendUpload(
             uploadId: sequenceId, sequence: 0, base64Data: Data([1]).base64EncodedString()
-        ) == 1)
+        )
+        precondition(nextUploadSequence == 1)
         expectHTTPError(.uploadSequenceMismatch) {
             _ = try http.appendUpload(
                 uploadId: sequenceId, sequence: 2, base64Data: Data([2]).base64EncodedString()
