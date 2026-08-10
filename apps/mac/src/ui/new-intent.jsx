@@ -35,8 +35,8 @@ function NewIntent({ onDone, onBack }) {
   const client = live ? window.IndexApp.getClient() : null;
   const env = useIndexEnv();
   // The web app's deterministic intake funnel (/intents/intake/*), gated by the
-  // backend FAST_SIGNAL_INTAKE flag. When off (or start fails) the chat flow
-  // below stays the path.
+  // backend FAST_SIGNAL_INTAKE flag. When off, the chat flow below runs with
+  // persona: "signal". When on, start failure shows retry — never chat fallback.
   const fastEnabled = !!(client && env.features && env.features.fastSignalIntake);
 
   // Completed turns drive the progress bar and the faded history; the current
@@ -77,8 +77,6 @@ function NewIntent({ onDone, onBack }) {
     if (a["off-limits"]) parts.push(`off-limits: ${String(a["off-limits"]).trim()}`);
     return parts.filter(Boolean).join(" · ");
   };
-
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ---- fast intake (the web app's /intents/intake funnel) ------------------
   //
@@ -130,6 +128,24 @@ function NewIntent({ onDone, onBack }) {
       prompt: "couldn't build your signal.",
       choices: [{ value: "retry", label: "try again", sub: "your answers are kept" }],
     });
+  };
+
+  const showFastStartRetry = () => {
+    setThinking(false);
+    setStep({
+      id: `fast-start-retry-${Date.now()}`,
+      fast: "start-retry",
+      prompt: "couldn't start your signal.",
+      choices: [{ value: "retry", label: "try again", sub: "check your connection and retry" }],
+    });
+  };
+
+  const loadFastStart = () => {
+    if (!client) return;
+    setThinking(true);
+    client.intents.intake.start()
+      .then(({ question }) => { if (!cancelledRef.current) showFastQuestion(question); })
+      .catch(() => { if (!cancelledRef.current) showFastStartRetry(); });
   };
 
   // Next follow-up from the queue or the server; once the budget is spent,
@@ -204,11 +220,7 @@ function NewIntent({ onDone, onBack }) {
 
   useEffect(() => {
     if (!fastEnabled) return;
-    client.intents.intake.start()
-      .then(({ question }) => { if (!cancelledRef.current) showFastQuestion(question); })
-      // Start failed (flag raced off, network): the scripted first step is
-      // still in place, so the chat flow takes over untouched.
-      .catch(() => { if (!cancelledRef.current) setThinking(false); });
+    loadFastStart();
   }, []);
 
   // ---- chat-driven clarification (same machinery as the web app) ----------
@@ -220,16 +232,13 @@ function NewIntent({ onDone, onBack }) {
   // confirm through POST /intents/confirm.
 
   // Resolve a user_question event id into the persisted chat question row.
+  // One conversation-scoped read, like web — SSE only carries opaque ids.
   const fetchQuestion = async (id) => {
-    for (let i = 0; i < 5 && !cancelledRef.current; i++) {
-      const res = await client.questions.pending(
-        { mode: "chat", conversationId: sessionRef.current },
-      ).catch(() => null);
-      const q = window.IndexApp.normalizeList(res, "questions").find((r) => r && r.id === id);
-      if (q) return q;
-      await sleep(800);
-    }
-    return null;
+    if (!sessionRef.current) return null;
+    const res = await client.questions.pending(
+      { mode: "chat", conversationId: sessionRef.current },
+    ).catch(() => null);
+    return window.IndexApp.normalizeList(res, "questions").find((r) => r && r.id === id) || null;
   };
 
   const showQuestion = (q) => {
@@ -316,6 +325,7 @@ function NewIntent({ onDone, onBack }) {
     window.IndexApp.streamChat({
       message,
       sessionId: sessionRef.current,
+      persona: "signal",
       onSession: (sid) => { sessionRef.current = sid; },
       onEvent: (ev) => {
         if (cancelledRef.current || !ev) return;
@@ -386,6 +396,8 @@ function NewIntent({ onDone, onBack }) {
         fastConfirm(newAns);
       } else if (step.fast === "retry") {
         fastResolve();
+      } else if (step.fast === "start-retry") {
+        loadFastStart();
       }
       return;
     }
@@ -409,9 +421,9 @@ function NewIntent({ onDone, onBack }) {
     // A prose question from the agent, the answer is the next chat message.
     if (step.chatTurn && client) { startTurn(v); return; }
 
-    // The first answer IS the signal, hand it to the agent, which clarifies
-    // and proposes, exactly like the web app's guided intake.
-    if (step.id === "intent" && client) {
+    // The first answer IS the signal, hand it to the agent when fast intake
+    // is off. When fast intake is on, /start owns round 1 — never chat here.
+    if (step.id === "intent" && client && !fastEnabled) {
       startTurn(
         `I'm setting up my first signal. Here's what I'm looking for: ${v}. `
         + "Ask me clarifying questions if anything important is missing, then create the signal.",
