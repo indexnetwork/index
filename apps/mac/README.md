@@ -37,7 +37,6 @@ IndexApp/                    # macOS app (Swift + WKWebView)
 └── Info.plist          # macOS app metadata
 
 api/                     # API client library
-design_bundle/           # Design system reference files
 ```
 
 ## Building
@@ -327,6 +326,5 @@ ticked.** The authoritative copy of this list lives beside the code, in the
 
 ## Next Steps
 
-- See `design_bundle/` for design system and component reference
 - Check `api/` for the API client boundary
 - Refer to `IndexApp/src/index-amiga/` component files for example patterns
