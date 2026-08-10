@@ -555,7 +555,11 @@ final class ConnectorRuntime {
             // stale-issued cleanup. Persist it and canonical revocation intent
             // before any external effect; preparation uncertainty does no network I/O.
             guard let prepared = prepareIssuedRecovery(issued, journal: journal) else { return }
-            if recoverIssuedCredential(prepared, epoch: journal.operationEpoch) {
+            if recoverIssuedCredential(
+                prepared,
+                epoch: journal.operationEpoch,
+                acceptedEntryMaximum: journal.operationEpoch
+            ) {
                 processRecovery.clear()
                 clearAuthorizationFailure()
             }
@@ -625,8 +629,21 @@ final class ConnectorRuntime {
     }
 
     private func disconnect() -> JSONValue {
+        let entryJournal = installationStore.stateSnapshot
+        let entryRecovery: ConnectorCredentialRecord?
+        do { entryRecovery = try credentialStore.readRecovery() }
+        catch {
+            processRecovery.failClosed()
+            return recoveryOnlyResult
+        }
+        if let entryRecovery,
+           !validateIssuedRecovery(entryRecovery, acceptedEntryMaximum: entryJournal.operationEpoch) {
+            processRecovery.failClosed()
+            return recoveryOnlyResult
+        }
+
         http.closeResources()
-        let durableEpoch = installationStore.stateSnapshot.operationEpoch
+        let durableEpoch = entryJournal.operationEpoch
         let invalidatedAttempt: String?
         let epoch: UInt64
         stateLock.lock()
@@ -640,15 +657,14 @@ final class ConnectorRuntime {
         if let invalidatedAttempt { browser.cancel(attemptId: invalidatedAttempt) }
 
         transitionLock.lock()
-        let journal = installationStore.stateSnapshot
-        var invalidated = journal
+        var invalidated = entryJournal
         invalidated.authorizationAttemptId = nil
         invalidated.operationEpoch = epoch
         if credentialNetworkInFlight && invalidated.recoveryPhase == .none {
             invalidated.recoveryPhase = .activationRequested
         }
         let invalidationPersisted = (try? installationStore.compareAndSet(
-            expected: journal, replacement: invalidated
+            expected: entryJournal, replacement: invalidated
         )) == true
         transitionLock.unlock()
         guard invalidationPersisted else { return recoveryOnlyResult }
@@ -657,9 +673,11 @@ final class ConnectorRuntime {
         do { issuedRecovery = try credentialStore.readRecovery() }
         catch { return recoveryOnlyResult }
         if let issuedRecovery {
-            guard recoverIssuedCredential(issuedRecovery, epoch: epoch) else {
-                return recoveryOnlyResult
-            }
+            guard recoverIssuedCredential(
+                issuedRecovery,
+                epoch: epoch,
+                acceptedEntryMaximum: durableEpoch
+            ) else { return recoveryOnlyResult }
             processRecovery.clear()
             clearAuthorizationFailure()
             let newerPrimary: ConnectorCredentialRecord?
@@ -671,8 +689,14 @@ final class ConnectorRuntime {
         let record: ConnectorCredentialRecord?
         do { record = try credentialStore.read() } catch { return recoveryOnlyResult }
         let postRecoveryJournal = installationStore.stateSnapshot
+        let primaryIsAbsentOrHealthy: Bool
+        if let primary = record {
+            primaryIsAbsentOrHealthy = primary.recoveryPhase == ConnectorRecoveryPhase.none
+        } else {
+            primaryIsAbsentOrHealthy = true
+        }
         if postRecoveryJournal.recoveryPhase == .revocationProbeConfirmed,
-           record?.recoveryPhase == .none {
+           primaryIsAbsentOrHealthy {
             let cleared = clearConfirmedNoKey(epoch: epoch)
             guard cleared == disconnectedResult else { return cleared }
             return record == nil ? disconnectedResult : connectedResult
@@ -765,19 +789,10 @@ final class ConnectorRuntime {
 
     private func recoverIssuedCredential(
         _ record: ConnectorCredentialRecord,
-        epoch: UInt64
+        epoch: UInt64,
+        acceptedEntryMaximum: UInt64
     ) -> Bool {
-        guard record.installationId == installationStore.installationId,
-              record.rawCredential.hasPrefix("idxh_"),
-              record.audience == "hermes-agent",
-              !record.agentId.isEmpty,
-              !record.setupAttemptId.isEmpty,
-              !record.credentialId.isEmpty,
-              record.actions == BrowserAuthorization.canonicalActions,
-              record.activationState == "pending",
-              record.authorizationAttemptId == nil,
-              record.operationEpoch <= epoch,
-              record.recoveryPhase.requiresRecovery,
+        guard validateIssuedRecovery(record, acceptedEntryMaximum: acceptedEntryMaximum),
               let adoptedPhase = normalizedIssuedRecoveryPhase(record.recoveryPhase) else { return false }
         var working = record
         if working.operationEpoch != epoch || working.recoveryPhase != adoptedPhase {
@@ -824,6 +839,24 @@ final class ConnectorRuntime {
         var cleared = journal
         cleared.recoveryPhase = .none
         return (try? installationStore.compareAndSet(expected: journal, replacement: cleared)) == true
+    }
+
+    private func validateIssuedRecovery(
+        _ record: ConnectorCredentialRecord,
+        acceptedEntryMaximum: UInt64
+    ) -> Bool {
+        record.installationId == installationStore.installationId
+            && record.rawCredential.hasPrefix("idxh_")
+            && record.audience == "hermes-agent"
+            && !record.agentId.isEmpty
+            && !record.setupAttemptId.isEmpty
+            && !record.credentialId.isEmpty
+            && record.actions == BrowserAuthorization.canonicalActions
+            && record.activationState == "pending"
+            && record.authorizationAttemptId == nil
+            && record.operationEpoch <= acceptedEntryMaximum
+            && record.recoveryPhase.requiresRecovery
+            && normalizedIssuedRecoveryPhase(record.recoveryPhase) != nil
     }
 
     private func normalizedIssuedRecoveryPhase(

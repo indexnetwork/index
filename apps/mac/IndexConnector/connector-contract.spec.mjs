@@ -241,7 +241,18 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
     'putRecoveryAndVerify', 'readRecovery', 'compareAndSetRecovery',
     'requireRevokedCredentialProbe', 'prepareIssuedRecovery',
     'normalizedIssuedRecoveryPhase', 'persistIssuedRecoveryPhase',
+    'validateIssuedRecovery', 'acceptedEntryMaximum',
   ]) expect(runtime).toContain(token);
+  expect(runtime).not.toContain('record?.recoveryPhase == .none');
+  expect(runtime).toContain('primary.recoveryPhase == ConnectorRecoveryPhase.none');
+  const disconnectBlock = runtime.match(
+    /private func disconnect\(\)[\s\S]*?private func recoverIssuedCredential/
+  )?.[0] ?? '';
+  expect(disconnectBlock.indexOf('validateIssuedRecovery')).toBeLessThan(
+    disconnectBlock.indexOf('operationEpoch =')
+  );
+  expect(disconnectBlock).toContain('expected: entryJournal');
+  expect(disconnectBlock).toContain('acceptedEntryMaximum: durableEpoch');
 });
 
 test('rest variants bound uploads and poll connector-owned SSE streams', () => {
@@ -336,7 +347,8 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
     'staleIssuedReceiptBeforeProbe',
     'probeFailureAfterReceiptRestart', 'recoveryDeletionFailureAfterProbe',
     'immediateJournalClearFailureAfterProbe', 'recoveryEpochAdoption',
-    'recoveryIdentityGenerationMismatch', 'staleIssuedReceiptIdentityMismatch',
+    'recoveryIdentityGenerationMismatch', 'futureRecoveryBoundaryFence',
+    'legitimateRecoveryEpochAdoption', 'staleIssuedReceiptIdentityMismatch',
     'newerPrimaryRecoveryFence',
     'disconnectArrived', 'releaseDisconnect', 'probeArrived', 'releaseProbe',
     'exchangeArrived', 'releaseExchange', 'repeatedExpiredPoll',

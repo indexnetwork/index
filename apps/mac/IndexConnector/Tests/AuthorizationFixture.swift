@@ -11,8 +11,11 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
     var failNextLabelWrite = false
     var failNextRecoveryWrite = false
     var failNextRecoveryDeletion = false
+    private(set) var primaryMutationCount = 0
+    private(set) var recoveryMutationCount = 0
 
     func putAndVerify(_ record: ConnectorCredentialRecord) throws {
+        primaryMutationCount += 1
         events.append("write:\(record.activationState):\(record.recoveryPhase.rawValue)")
         if failWrites { throw ConnectorCredentialStoreError.verificationFailed }
         if failNextActiveWrite && record.activationState == "active" {
@@ -29,7 +32,10 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
     }
 
     func read() throws -> ConnectorCredentialRecord? { record }
-    func delete() throws { record = nil }
+    func delete() throws {
+        primaryMutationCount += 1
+        record = nil
+    }
     func compareAndSet(
         expected: ConnectorCredentialRecord?,
         replacement: ConnectorCredentialRecord?
@@ -39,6 +45,7 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
         return true
     }
     func putRecoveryAndVerify(_ record: ConnectorCredentialRecord) throws {
+        recoveryMutationCount += 1
         if failNextRecoveryWrite {
             failNextRecoveryWrite = false
             throw ConnectorCredentialStoreError.verificationFailed
@@ -50,6 +57,7 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
     func compareAndSetRecovery(
         expected: ConnectorCredentialRecord?, replacement: ConnectorCredentialRecord?
     ) throws -> Bool {
+        recoveryMutationCount += 1
         guard recoveryRecord == expected else { return false }
         if replacement == nil && failNextRecoveryDeletion {
             failNextRecoveryDeletion = false
@@ -64,6 +72,7 @@ private final class AuthorizationInstallationStore: ConnectorInstallationStoring
     private var state: ConnectorInstallationState
     var failNextSet = false
     var failPhase: ConnectorRecoveryPhase?
+    private(set) var compareAndSetCount = 0
 
     init(installationId: String) {
         state = ConnectorInstallationState(installationId: installationId, recoveryPhase: .none)
@@ -82,6 +91,7 @@ private final class AuthorizationInstallationStore: ConnectorInstallationStoring
         expected: ConnectorInstallationState,
         replacement: ConnectorInstallationState
     ) throws -> Bool {
+        compareAndSetCount += 1
         guard state == expected else { return false }
         if failNextSet || failPhase == replacement.recoveryPhase {
             failNextSet = false
@@ -945,6 +955,7 @@ struct AuthorizationFixture {
             accountLabel: "Newer After Clear", recoveryPhase: .none,
             authorizationAttemptId: nil, operationEpoch: 1
         )
+        let clearNewerPrimaryBytes = try JSONEncoder().encode(clearNewerPrimary)
         let clearJournal = AuthorizationInstallationStore(installationId: installationId)
         let clearProcess = ConnectorProcessRecoveryState()
         let (_, clearFinished) = beginStaleExchange(
@@ -971,9 +982,23 @@ struct AuthorizationFixture {
         precondition(server.probeCount == clearProbeCount)
         precondition(clearJournal.recoveryPhase == .none)
         precondition(clearStore.record == clearNewerPrimary)
+        guard let retainedClearPrimary = clearStore.record else { preconditionFailure() }
+        let retainedClearPrimaryBytes = try JSONEncoder().encode(retainedClearPrimary)
+        precondition(retainedClearPrimaryBytes == clearNewerPrimaryBytes)
+        guard case let .object(clearConnectedStatus)? = clearRestart.handle(ConnectorRequest(
+            protocolVersion: 1, id: "clear-connected-status", operation: .status, payload: [:]
+        )).result else { preconditionFailure() }
+        precondition(clearConnectedStatus["connected"] == .bool(true))
+        precondition(clearConnectedStatus["health"] == .string("active"))
+        precondition(clearConnectedStatus["agentId"] == .string(clearNewerPrimary.agentId))
+        precondition(clearConnectedStatus["setupAttemptId"] == .string(clearNewerPrimary.setupAttemptId))
+        precondition(server.disconnectCount == clearDisconnectCount)
+        precondition(server.probeCount == clearProbeCount)
 
         let recoveryIdentityGenerationMismatch = "recoveryIdentityGenerationMismatch"
+        let futureRecoveryBoundaryFence = "futureRecoveryBoundaryFence"
         for invalidRecovery in [
+            issuedRecovery(phase: .revocationRequested, epoch: 31),
             issuedRecovery(phase: .revocationRequested, epoch: 99),
             issuedRecovery(
                 phase: .revocationRequested, epoch: 30,
@@ -981,9 +1006,14 @@ struct AuthorizationFixture {
             ),
         ] {
             let mismatchStore = FixtureCredentialStore()
+            mismatchStore.record = clearNewerPrimary
             mismatchStore.recoveryRecord = invalidRecovery
             let mismatchJournal = AuthorizationInstallationStore(installationId: installationId)
             seedJournal(mismatchJournal, phase: .revocationRequested, epoch: 30)
+            let entryJournal = mismatchJournal.stateSnapshot
+            let journalCASCount = mismatchJournal.compareAndSetCount
+            let primaryMutationCount = mismatchStore.primaryMutationCount
+            let recoveryMutationCount = mismatchStore.recoveryMutationCount
             let mismatchDisconnectCount = server.disconnectCount
             let mismatchProbeCount = server.probeCount
             let mismatchRuntime = runtime(
@@ -992,10 +1022,39 @@ struct AuthorizationFixture {
             )
             precondition(mismatchRuntime.handle(disconnectRequest("identity-generation-mismatch")).result
                 == .object(["status": .string("recovery_only")]))
+            precondition(mismatchJournal.stateSnapshot == entryJournal)
+            precondition(mismatchJournal.compareAndSetCount == journalCASCount)
+            precondition(mismatchStore.record == clearNewerPrimary)
             precondition(mismatchStore.recoveryRecord == invalidRecovery)
+            precondition(mismatchStore.primaryMutationCount == primaryMutationCount)
+            precondition(mismatchStore.recoveryMutationCount == recoveryMutationCount)
             precondition(server.disconnectCount == mismatchDisconnectCount)
             precondition(server.probeCount == mismatchProbeCount)
         }
+
+        let legitimateRecoveryEpochAdoption = "legitimateRecoveryEpochAdoption"
+        let adoptionStore = FixtureCredentialStore()
+        adoptionStore.recoveryRecord = issuedRecovery(phase: .revocationRequested, epoch: 30)
+        let adoptionJournal = AuthorizationInstallationStore(installationId: installationId)
+        seedJournal(adoptionJournal, phase: .revocationRequested, epoch: 30)
+        let adoptionRuntime = runtime(
+            store: adoptionStore, journal: adoptionJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        server.failNextDisconnect = true
+        precondition(adoptionRuntime.handle(disconnectRequest("legitimate-epoch-adoption")).result
+            == .object(["status": .string("recovery_only")]))
+        precondition(adoptionJournal.stateSnapshot.operationEpoch == 31)
+        precondition(adoptionJournal.recoveryPhase == .revocationRequested)
+        precondition(adoptionStore.recoveryRecord?.operationEpoch == 31)
+        precondition(adoptionStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        let adoptionFinalRuntime = runtime(
+            store: adoptionStore, journal: adoptionJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        precondition(adoptionFinalRuntime.handle(disconnectRequest("legitimate-epoch-final")).result
+            == .object(["status": .string("disconnected")]))
+        precondition(adoptionStore.recoveryRecord == nil && adoptionJournal.recoveryPhase == .none)
 
         let recoveryEpochAdoption = "recoveryEpochAdoption"
         let newerPrimaryRecoveryFence = "newerPrimaryRecoveryFence"
@@ -1070,6 +1129,7 @@ struct AuthorizationFixture {
             staleIssuedReceiptBeforeProbe,
             probeFailureAfterReceiptRestart, recoveryDeletionFailureAfterProbe,
             immediateJournalClearFailureAfterProbe, recoveryIdentityGenerationMismatch,
+            futureRecoveryBoundaryFence, legitimateRecoveryEpochAdoption,
             recoveryEpochAdoption, newerPrimaryRecoveryFence,
             disconnectWhileActivationBlocked,
         ].allSatisfy { !$0.isEmpty })
