@@ -11,6 +11,7 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
     var failNextLabelWrite = false
     var failNextRecoveryWrite = false
     var failNextRecoveryDeletion = false
+    var failNextRecoveryRead = false
     private(set) var primaryMutationCount = 0
     private(set) var recoveryMutationCount = 0
 
@@ -53,7 +54,13 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
         recoveryRecord = record
         guard try readRecovery() == record else { throw ConnectorCredentialStoreError.verificationFailed }
     }
-    func readRecovery() throws -> ConnectorCredentialRecord? { recoveryRecord }
+    func readRecovery() throws -> ConnectorCredentialRecord? {
+        if failNextRecoveryRead {
+            failNextRecoveryRead = false
+            throw ConnectorCredentialStoreError.verificationFailed
+        }
+        return recoveryRecord
+    }
     func compareAndSetRecovery(
         expected: ConnectorCredentialRecord?, replacement: ConnectorCredentialRecord?
     ) throws -> Bool {
@@ -739,6 +746,129 @@ struct AuthorizationFixture {
         precondition(server.disconnectCount == disconnectCountBeforeExchangeCleanup)
         precondition(exchangeStore.record == nil && exchangeJournal.recoveryPhase == .none)
 
+        let recoveryReadErrorWithoutAttempt = "recoveryReadErrorWithoutAttempt"
+        let readErrorIdleStore = FixtureCredentialStore()
+        let readErrorIdleJournal = AuthorizationInstallationStore(installationId: installationId)
+        let readErrorIdleProcess = ConnectorProcessRecoveryState()
+        let readErrorIdleRuntime = runtime(
+            store: readErrorIdleStore, journal: readErrorIdleJournal,
+            process: readErrorIdleProcess, browser: automaticBrowser(code: "unused")
+        )
+        let idleDisconnectCount = server.disconnectCount
+        let idleProbeCount = server.probeCount
+        readErrorIdleStore.failNextRecoveryRead = true
+        precondition(readErrorIdleRuntime.handle(disconnectRequest("recovery-read-error-idle")).result
+            == .object(["status": .string("recovery_only")]))
+        precondition(readErrorIdleJournal.stateSnapshot.authorizationAttemptId == nil)
+        precondition(readErrorIdleJournal.stateSnapshot.operationEpoch == 1)
+        precondition(readErrorIdleJournal.recoveryPhase == .activationRequested)
+        precondition(readErrorIdleStore.record == nil && readErrorIdleStore.recoveryRecord == nil)
+        precondition(server.disconnectCount == idleDisconnectCount)
+        precondition(server.probeCount == idleProbeCount)
+        precondition(readErrorIdleProcess.isRecoveryOnly)
+
+        let recoveryReadErrorPreservesProof = "recoveryReadErrorPreservesProof"
+        let proofErrorStore = FixtureCredentialStore()
+        let proofErrorJournal = AuthorizationInstallationStore(installationId: installationId)
+        seedJournal(proofErrorJournal, phase: .serverReceiptConfirmed, epoch: 5)
+        let proofErrorRuntime = runtime(
+            store: proofErrorStore, journal: proofErrorJournal,
+            process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+        )
+        proofErrorStore.failNextRecoveryRead = true
+        precondition(proofErrorRuntime.handle(disconnectRequest("recovery-read-error-proof")).result
+            == .object(["status": .string("recovery_only")]))
+        precondition(proofErrorJournal.stateSnapshot.operationEpoch == 6)
+        precondition(proofErrorJournal.recoveryPhase == .serverReceiptConfirmed)
+        precondition(proofErrorJournal.stateSnapshot.authorizationAttemptId == nil)
+        precondition(server.disconnectCount == idleDisconnectCount)
+        precondition(server.probeCount == idleProbeCount)
+
+        let recoveryReadErrorDuringExchange = "recoveryReadErrorDuringExchange"
+        server.blockExchange = true
+        let readErrorStore = FixtureCredentialStore()
+        let readErrorJournal = AuthorizationInstallationStore(installationId: installationId)
+        let readErrorProcess = ConnectorProcessRecoveryState()
+        let readErrorRuntime = runtime(
+            store: readErrorStore, journal: readErrorJournal, process: readErrorProcess,
+            browser: automaticBrowser(code: "read-error-exchange")
+        )
+        precondition(start(readErrorRuntime, id: "read-error-start").success)
+        let readErrorPollFinished = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            _ = poll(readErrorRuntime, id: "read-error-poll")
+            readErrorPollFinished.signal()
+        }
+        precondition(server.exchangeArrived.wait(timeout: .now() + 3) == .success)
+        let readErrorEntryJournal = readErrorJournal.stateSnapshot
+        let activationBeforeReadError = server.activationCount
+        let disconnectBeforeReadError = server.disconnectCount
+        let probesBeforeReadError = server.probeCount
+        readErrorStore.failNextRecoveryRead = true
+        precondition(readErrorRuntime.handle(disconnectRequest("read-error-disconnect")).result
+            == .object(["status": .string("recovery_only")]))
+        precondition(readErrorJournal.stateSnapshot.authorizationAttemptId == nil)
+        precondition(readErrorJournal.stateSnapshot.operationEpoch == readErrorEntryJournal.operationEpoch + 1)
+        precondition(readErrorJournal.recoveryPhase == .activationRequested)
+        precondition(start(readErrorRuntime, id: "read-error-restart-blocked").error?.code == "recovery_only")
+        precondition(readErrorStore.record == nil)
+        server.failNextDisconnect = true
+        server.releaseExchange.signal()
+        precondition(readErrorPollFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(server.activationCount == activationBeforeReadError)
+        precondition(server.disconnectCount == disconnectBeforeReadError + 1)
+        precondition(server.probeCount == probesBeforeReadError)
+        precondition(readErrorStore.record == nil)
+        precondition(readErrorStore.recoveryRecord?.rawCredential == "idxh_fixture-credential")
+        precondition(readErrorStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        precondition(readErrorJournal.recoveryPhase == .revocationRequested)
+        guard case let .object(readErrorStatus)? = readErrorRuntime.handle(ConnectorRequest(
+            protocolVersion: 1, id: "read-error-status", operation: .status, payload: [:]
+        )).result else { preconditionFailure() }
+        precondition(readErrorStatus["connected"] == .bool(false))
+        precondition(readErrorStatus["health"] == .string("recovery_only"))
+
+        let recoveryReadErrorCASFailureRace = "recoveryReadErrorCASFailureRace"
+        server.blockExchange = true
+        let readErrorRaceStore = FixtureCredentialStore()
+        let readErrorRaceJournal = AuthorizationInstallationStore(installationId: installationId)
+        let readErrorRaceProcess = ConnectorProcessRecoveryState()
+        let readErrorRaceRuntime = runtime(
+            store: readErrorRaceStore, journal: readErrorRaceJournal,
+            process: readErrorRaceProcess, browser: automaticBrowser(code: "read-error-race")
+        )
+        precondition(start(readErrorRaceRuntime, id: "read-error-race-start").success)
+        let readErrorRacePollFinished = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            _ = poll(readErrorRaceRuntime, id: "read-error-race-poll")
+            readErrorRacePollFinished.signal()
+        }
+        precondition(server.exchangeArrived.wait(timeout: .now() + 3) == .success)
+        let readErrorRaceEntryJournal = readErrorRaceJournal.stateSnapshot
+        let activationBeforeReadErrorRace = server.activationCount
+        let disconnectBeforeReadErrorRace = server.disconnectCount
+        let probesBeforeReadErrorRace = server.probeCount
+        readErrorRaceStore.failNextRecoveryRead = true
+        readErrorRaceJournal.failNextSet = true
+        precondition(readErrorRaceRuntime.handle(disconnectRequest("read-error-race-disconnect")).result
+            == .object(["status": .string("recovery_only")]))
+        precondition(readErrorRaceJournal.stateSnapshot == readErrorRaceEntryJournal)
+        precondition(readErrorRaceProcess.isRecoveryOnly)
+        precondition(start(readErrorRaceRuntime, id: "read-error-race-restart-blocked").error?.code
+            == "recovery_only")
+        server.releaseExchange.signal()
+        precondition(readErrorRacePollFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(server.activationCount == activationBeforeReadErrorRace)
+        precondition(server.disconnectCount == disconnectBeforeReadErrorRace)
+        precondition(server.probeCount == probesBeforeReadErrorRace)
+        precondition(readErrorRaceStore.record == nil)
+        precondition(readErrorRaceStore.recoveryRecord?.rawCredential == "idxh_fixture-credential")
+        precondition(readErrorRaceStore.recoveryRecord?.recoveryPhase == .revocationRequested)
+        precondition(readErrorRaceJournal.stateSnapshot.authorizationAttemptId == nil)
+        precondition(readErrorRaceJournal.recoveryPhase == .revocationRequested)
+
         func beginStaleExchange(
             suffix: String,
             store: FixtureCredentialStore,
@@ -1016,9 +1146,10 @@ struct AuthorizationFixture {
             let recoveryMutationCount = mismatchStore.recoveryMutationCount
             let mismatchDisconnectCount = server.disconnectCount
             let mismatchProbeCount = server.probeCount
+            let mismatchProcess = ConnectorProcessRecoveryState()
             let mismatchRuntime = runtime(
                 store: mismatchStore, journal: mismatchJournal,
-                process: ConnectorProcessRecoveryState(), browser: automaticBrowser(code: "unused")
+                process: mismatchProcess, browser: automaticBrowser(code: "unused")
             )
             precondition(mismatchRuntime.handle(disconnectRequest("identity-generation-mismatch")).result
                 == .object(["status": .string("recovery_only")]))
@@ -1028,6 +1159,7 @@ struct AuthorizationFixture {
             precondition(mismatchStore.recoveryRecord == invalidRecovery)
             precondition(mismatchStore.primaryMutationCount == primaryMutationCount)
             precondition(mismatchStore.recoveryMutationCount == recoveryMutationCount)
+            precondition(!mismatchProcess.isRecoveryOnly)
             precondition(server.disconnectCount == mismatchDisconnectCount)
             precondition(server.probeCount == mismatchProbeCount)
         }
@@ -1123,7 +1255,10 @@ struct AuthorizationFixture {
             activationRequestedJournalFailure, accountLabelFailure,
             activeKeychainWriteFailure, labelUpdateKeychainFailure,
             disconnectBeforeCallback, callbackBeforeDisconnectBeforePoll,
-            disconnectWhileExchangeBlocked, staleIssuedPreparationFailureNoNetwork,
+            disconnectWhileExchangeBlocked, recoveryReadErrorWithoutAttempt,
+            recoveryReadErrorPreservesProof, recoveryReadErrorDuringExchange,
+            recoveryReadErrorCASFailureRace,
+            staleIssuedPreparationFailureNoNetwork,
             staleIssuedJournalPreparationFailureNoNetwork,
             staleIssuedReceiptIdentityMismatch, staleIssuedPreparedBeforeRevoke,
             staleIssuedReceiptBeforeProbe,

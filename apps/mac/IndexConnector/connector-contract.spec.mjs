@@ -242,6 +242,7 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
     'requireRevokedCredentialProbe', 'prepareIssuedRecovery',
     'normalizedIssuedRecoveryPhase', 'persistIssuedRecoveryPhase',
     'validateIssuedRecovery', 'acceptedEntryMaximum',
+    'invalidateAuthorizationAfterRecoveryReadError',
   ]) expect(runtime).toContain(token);
   expect(runtime).not.toContain('record?.recoveryPhase == .none');
   expect(runtime).toContain('primary.recoveryPhase == ConnectorRecoveryPhase.none');
@@ -253,6 +254,17 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
   );
   expect(disconnectBlock).toContain('expected: entryJournal');
   expect(disconnectBlock).toContain('acceptedEntryMaximum: durableEpoch');
+  const readErrorInvalidation = runtime.match(
+    /private func invalidateAuthorizationAfterRecoveryReadError[\s\S]*?private func recoverIssuedCredential/
+  )?.[0] ?? '';
+  expect(readErrorInvalidation.indexOf('currentAttempt = nil')).toBeLessThan(
+    readErrorInvalidation.indexOf('installationStore.compareAndSet')
+  );
+  expect(readErrorInvalidation).toContain('expected: entryJournal');
+  expect(readErrorInvalidation).toContain('http.closeResources()');
+  expect(readErrorInvalidation).toContain('browser.cancel(attemptId: attemptToCancel)');
+  expect(runtime).toContain('let journalReserved = authorizationOwned(');
+  expect(runtime).toMatch(/guard keychainPersisted,[\s\S]*?authorizationOwned\(/);
 });
 
 test('rest variants bound uploads and poll connector-owned SSE streams', () => {
@@ -349,7 +361,10 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
     'immediateJournalClearFailureAfterProbe', 'recoveryEpochAdoption',
     'recoveryIdentityGenerationMismatch', 'futureRecoveryBoundaryFence',
     'legitimateRecoveryEpochAdoption', 'staleIssuedReceiptIdentityMismatch',
-    'newerPrimaryRecoveryFence',
+    'newerPrimaryRecoveryFence', 'recoveryReadErrorDuringExchange',
+    'recoveryReadErrorWithoutAttempt', 'recoveryReadErrorPreservesProof',
+    'recoveryReadErrorCASFailureRace',
+    'failNextRecoveryRead',
     'disconnectArrived', 'releaseDisconnect', 'probeArrived', 'releaseProbe',
     'exchangeArrived', 'releaseExchange', 'repeatedExpiredPoll',
     'repeatedAmbiguousFailurePoll',

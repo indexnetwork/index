@@ -411,7 +411,10 @@ final class ConnectorRuntime {
         let journal = installationStore.stateSnapshot
         var reserved = journal
         reserved.recoveryPhase = .activationRequested
-        let journalReserved = journal.authorizationAttemptId == attempt.id
+        let journalReserved = authorizationOwned(
+                attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]
+            )
+            && journal.authorizationAttemptId == attempt.id
             && journal.operationEpoch == attempt.epoch
             && journal.recoveryPhase == .none
             && (try? installationStore.compareAndSet(expected: journal, replacement: reserved)) == true
@@ -429,9 +432,12 @@ final class ConnectorRuntime {
 
         processRecovery.failClosed()
 
-        try assertAuthorizationOwned(
+        guard authorizationOwned(
             attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.activationRequested]
-        )
+        ) else {
+            retainStaleIssuedCredential(pending)
+            throw ConnectorRuntimeError.staleAuthorization
+        }
         markCredentialNetworkStarted(attempt.id)
         let activated: ConnectorActivatedCredential
         do {
@@ -475,7 +481,8 @@ final class ConnectorRuntime {
             let labeled = active.replacing(accountLabel: label)
             transitionLock.lock()
             if authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]),
-               (try? credentialStore.compareAndSet(expected: active, replacement: labeled)) == true {
+               (try? credentialStore.compareAndSet(expected: active, replacement: labeled)) == true,
+               authorizationOwned(attemptId: attempt.id, epoch: attempt.epoch, allowedPhases: [.none]) {
                 finalRecord = labeled
             }
             transitionLock.unlock()
@@ -502,6 +509,10 @@ final class ConnectorRuntime {
         let keychainPersisted = (try? credentialStore.compareAndSet(
             expected: expectedRecord, replacement: replacementRecord
         )) == true
+        guard keychainPersisted,
+              authorizationOwned(
+                attemptId: attemptId, epoch: epoch, allowedPhases: [expectedPhase]
+              ) else { return false }
         let journal = installationStore.stateSnapshot
         guard journal.authorizationAttemptId == attemptId,
               journal.operationEpoch == epoch,
@@ -633,12 +644,11 @@ final class ConnectorRuntime {
         let entryRecovery: ConnectorCredentialRecord?
         do { entryRecovery = try credentialStore.readRecovery() }
         catch {
-            processRecovery.failClosed()
+            invalidateAuthorizationAfterRecoveryReadError(entryJournal: entryJournal)
             return recoveryOnlyResult
         }
         if let entryRecovery,
            !validateIssuedRecovery(entryRecovery, acceptedEntryMaximum: entryJournal.operationEpoch) {
-            processRecovery.failClosed()
             return recoveryOnlyResult
         }
 
@@ -785,6 +795,44 @@ final class ConnectorRuntime {
         transitionLock.unlock()
         guard deleted else { return recoveryOnlyResult }
         return clearConfirmedNoKey(epoch: epoch)
+    }
+
+    private func invalidateAuthorizationAfterRecoveryReadError(
+        entryJournal: ConnectorInstallationState
+    ) {
+        let invalidatedAttempt: String?
+        let epoch: UInt64
+        let credentialNetworkInFlight: Bool
+        stateLock.lock()
+        invalidatedAttempt = currentAttempt?.id
+        currentAttempt = nil
+        operationEpoch = max(operationEpoch, entryJournal.operationEpoch) &+ 1
+        epoch = operationEpoch
+        credentialNetworkInFlight = !inFlightCredentialAttempts.isEmpty
+        stateLock.unlock()
+
+        processRecovery.failClosed()
+        http.closeResources()
+        if let attemptToCancel = invalidatedAttempt ?? entryJournal.authorizationAttemptId {
+            browser.cancel(attemptId: attemptToCancel)
+        }
+
+        transitionLock.lock()
+        var invalidated = entryJournal
+        invalidated.authorizationAttemptId = nil
+        invalidated.operationEpoch = epoch
+        if credentialNetworkInFlight && invalidated.recoveryPhase == .none {
+            // Exchange/activation may already have issued pending authority.
+            invalidated.recoveryPhase = .activationRequested
+        } else if invalidated.recoveryPhase == .none {
+            // With no observed credential network, activationRequested remains
+            // the least recovery-required state after an unreadable Keychain.
+            invalidated.recoveryPhase = .activationRequested
+        }
+        _ = try? installationStore.compareAndSet(
+            expected: entryJournal, replacement: invalidated
+        )
+        transitionLock.unlock()
     }
 
     private func recoverIssuedCredential(
