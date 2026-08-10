@@ -1,11 +1,16 @@
 import { fingerprintCanonicalJson } from "../shared/index.js";
 
-import type { HistoricalResolvedConfig } from "./historical-quality.experiment.js";
+import { assertHistoricalResolvedConfig, type HistoricalResolvedConfig } from "./historical-quality.experiment.js";
+import { HISTORICAL_SHARED_POOL_PLAN } from "./historical-quality.shared-pool.fixture.js";
 
 export const HISTORICAL_QUALITY_PILOT_TRIGGERS = ["intent", "enrichment"] as const;
 export type HistoricalQualityPilotTrigger = typeof HISTORICAL_QUALITY_PILOT_TRIGGERS[number];
 export const HISTORICAL_QUALITY_PILOT_MAX_ATTEMPTS = 1;
 export const HISTORICAL_QUALITY_PILOT_MAX_GRAPH_INVOCATIONS = 200;
+
+const APPROVED_SHARED_POOL_CASE_IDS = new Set(
+  HISTORICAL_SHARED_POOL_PLAN.cases.map(({ caseId }) => caseId),
+);
 
 export interface HistoricalQualityPilotConfiguration {
   id: "a";
@@ -52,6 +57,11 @@ function assertPilotInput(input: HistoricalQualityPilotInput): void {
   if (new Set(input.caseIds).size !== input.caseIds.length) {
     throw new Error("Historical quality pilot case IDs must be unique");
   }
+  for (const caseId of input.caseIds) {
+    if (!APPROVED_SHARED_POOL_CASE_IDS.has(caseId)) {
+      throw new Error(`${caseId} is not an approved shared-pool case`);
+    }
+  }
   if (input.triggers.length === 0) throw new Error("Historical quality pilot requires at least one trigger");
   const seen = new Set<HistoricalQualityPilotTrigger>();
   for (const trigger of input.triggers) {
@@ -67,6 +77,7 @@ function assertPilotInput(input: HistoricalQualityPilotInput): void {
   if (input.configuration.id !== "a") {
     throw new Error("Historical quality pilot configuration must be side a");
   }
+  assertHistoricalResolvedConfig(input.configuration.config);
 }
 
 /**

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 
-import { HISTORICAL_QUALITY_CASES } from "../../matching/matching.historical.js";
 import { fingerprintCanonicalJson } from "../../shared/index.js";
 import { buildHistoricalQualityPilotPlan, type HistoricalQualityPilotInput } from "../historical-quality.pilot.js";
+import { HISTORICAL_SHARED_POOL_PLAN } from "../historical-quality.shared-pool.fixture.js";
 
-const approvedCaseIds = HISTORICAL_QUALITY_CASES.map((historicalCase) => historicalCase.id);
+const approvedCaseIds = HISTORICAL_SHARED_POOL_PLAN.cases.map(({ caseId }) => caseId);
 const resolvedConfig = {
   models: { opportunityEvaluator: "model-a", lensInferrer: "lens-a" },
   env: { DISCOVERY_ALLOWED_TYPES: "intent,profile" },
@@ -31,6 +31,15 @@ describe("historical quality pilot planner", () => {
     expect(plan.graphInvocations).toBe(10);
     expect(plan.evaluatorCalls).toBe(10);
     expect(plan.maxAttempts).toBe(1);
+  });
+
+  it.each([
+    ["one case", approvedCaseIds.slice(0, 1)],
+    ["a subset", approvedCaseIds.slice(1, 4)],
+    ["all five cases", approvedCaseIds],
+  ])("accepts %s from the approved shared pool", (_label, caseIds) => {
+    const plan = buildHistoricalQualityPilotPlan(input({ caseIds, triggers: ["intent"] }));
+    expect(plan.slots.map((slot) => slot.caseId)).toEqual(caseIds);
   });
 
   it("plans exactly 30 graph and evaluator calls at the default three repetitions", () => {
@@ -88,6 +97,8 @@ describe("historical quality pilot planner", () => {
   it.each([
     [input({ caseIds: [] }), /requires at least one case/],
     [input({ caseIds: [approvedCaseIds[0]!, approvedCaseIds[0]!] }), /case IDs must be unique/],
+    [input({ caseIds: ["historical/not-approved"] }), /not an approved shared-pool case/],
+    [input({ caseIds: [...approvedCaseIds, "historical/sixth-case"] }), /not an approved shared-pool case/],
     [input({ triggers: [] }), /requires at least one trigger/],
     [input({ triggers: ["intent", "intent"] }), /duplicate trigger intent/],
     [input({ triggers: ["invalid" as "intent"] }), /invalid trigger invalid/],
@@ -98,5 +109,22 @@ describe("historical quality pilot planner", () => {
     [input({ caseIds: [approvedCaseIds[0]!], triggers: ["intent"], repetitions: 201 }), /201 graph invocations exceeds hard cap 200/],
   ])("rejects an invalid pilot shape", (value, expected) => {
     expect(() => buildHistoricalQualityPilotPlan(value)).toThrow(expected);
+  });
+
+  it.each([
+    ["EVAL_MODEL_OVERRIDES", { ...resolvedConfig, env: { EVAL_MODEL_OVERRIDES: '{"opportunityEvaluator":"model-a"}' } }, /EVAL_MODEL_OVERRIDES.*resolved models map/],
+    ["credential env key", { ...resolvedConfig, env: { OPENROUTER_API_KEY: "secret" } }, /credential key OPENROUTER_API_KEY/],
+    ["blank model key", { ...resolvedConfig, models: { " ": "model-a" } }, /model assignments must be non-empty/],
+    ["blank model value", { ...resolvedConfig, models: { opportunityEvaluator: " " } }, /model assignments must be non-empty/],
+    ["blank env value", { ...resolvedConfig, env: { DISCOVERY_ALLOWED_TYPES: " " } }, /resolved env DISCOVERY_ALLOWED_TYPES must be non-empty/],
+    ...Object.keys(resolvedConfig.fixed).map((key) => [
+      `blank fixed ${key}`,
+      { ...resolvedConfig, fixed: { ...resolvedConfig.fixed, [key]: " " } },
+      new RegExp(`fixed resource ${key} must be non-empty`),
+    ] as const),
+  ])("rejects an invalid resolved config: %s", (_label, config, expected) => {
+    expect(() => buildHistoricalQualityPilotPlan(input({
+      configuration: { id: "a", config },
+    }))).toThrow(expected);
   });
 });

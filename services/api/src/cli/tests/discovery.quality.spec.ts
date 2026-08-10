@@ -55,6 +55,10 @@ describe('historical quality argument contract', () => {
     [['--historical-quality'], /--env KEY=VALUE is required/],
     [['--historical-quality', '--env', 'X=1', '--env', 'Y=2'], /exactly one --env/],
     [['--historical-quality', '--env', 'X'], /--env expects KEY=VALUE/],
+    [['--historical-quality', '--env', 'NOT_READ_BY_DISCOVERY=1'], /not readable by the discovery graph/],
+    [['--historical-quality', '--env', 'OPENROUTER_API_KEY=secret'], /is a credential/],
+    [['--historical-quality', '--env', 'CHAT_MODEL=   '], /empty value/],
+    [['--historical-quality', '--env', 'DISCOVERY_PROFILE_SOURCE=user-context'], /falls back to its default/],
     [['--historical-quality', '--env', 'X=1', '--update-baseline'], /does not read, write, or update a baseline/],
     [['--historical-quality', '--env', 'X=1', '--baseline', 'old.json'], /does not read, write, or update a baseline/],
     [['--historical-quality', '--env', 'X=1', '--trigger', 'other'], /--trigger must be intent or enrichment/],
@@ -62,7 +66,7 @@ describe('historical quality argument contract', () => {
     [['--historical-quality', '--env', 'X=1', '--case', HISTORICAL_QUALITY_APPROVED_CASE_IDS[0]!, '--case', HISTORICAL_QUALITY_APPROVED_CASE_IDS[0]!], /same case twice/],
     [['--historical-quality', '--env', 'X=1', '--case', 'historical/not-approved'], /not an approved historical quality case/],
     [['--historical-quality', '--env', 'X=1', '--runs', '0'], /positive integer/],
-    [['--historical-quality', '--env', 'X=1', '--runs', '201', '--case', HISTORICAL_QUALITY_APPROVED_CASE_IDS[0]!, '--trigger', 'intent'], /201 graph invocations exceeds hard cap 200/],
+    [['--historical-quality', '--env', 'DISCOVERY_ALLOWED_TYPES=intent', '--runs', '201', '--case', HISTORICAL_QUALITY_APPROVED_CASE_IDS[0]!, '--trigger', 'intent'], /201 graph invocations exceeds hard cap 200/],
     [['--historical-quality', '--env', 'X=1', '--mystery'], /Unknown historical quality flag: --mystery/],
   ])('refuses invalid quality argv %p', (args, message) => {
     expect(() => parseHistoricalQualityArgs(args)).toThrow(message);
@@ -120,7 +124,7 @@ describe('historical quality provider-free contract', () => {
     });
   }, 30_000);
 
-  it('refuses through the production bootstrap seam before every gate and runtime operation', async () => {
+  const instrumentBootstrap = () => {
     const calls = {
       confirmation: 0,
       manifestParsing: 0,
@@ -154,6 +158,11 @@ describe('historical quality provider-free contract', () => {
         };
       },
     };
+    return { calls, dependencies };
+  };
+
+  it('refuses through the production bootstrap seam before every gate and runtime operation', async () => {
+    const { calls, dependencies } = instrumentBootstrap();
     const stdout: string[] = [];
     const stderr: string[] = [];
     const request = parseHistoricalQualityArgs([...fullArgs, '--runs', '1']);
@@ -171,16 +180,24 @@ describe('historical quality provider-free contract', () => {
     expect(exitCode).toBe(2);
     expect(stdout).toEqual([formatHistoricalQualityCost(request)]);
     expect(stderr).toEqual([HISTORICAL_QUALITY_PR_A_REFUSAL]);
-    expect(calls).toEqual({
-      confirmation: 0,
-      manifestParsing: 0,
-      neonAttestation: 0,
-      neonNetwork: 0,
-      databaseComposition: 0,
-      providerComposition: 0,
-      redisComposition: 0,
-      graphComposition: 0,
-      dynamicRuntimeImport: 0,
-    });
+    expect(Object.values(calls)).toEqual(Array(9).fill(0));
+  });
+
+  it.each([
+    ['unknown key', 'NOT_READ_BY_DISCOVERY=1', /not readable by the discovery graph/],
+    ['credential key', 'OPENROUTER_API_KEY=secret', /is a credential/],
+    ['blank value', 'CHAT_MODEL=   ', /empty value/],
+    ['fallback-inducing value', 'DISCOVERY_PROFILE_SOURCE=user-context', /falls back to its default/],
+  ])('rejects an invalid %s before every gate and runtime operation', async (_label, assignment, expected) => {
+    const { calls, dependencies } = instrumentBootstrap();
+
+    await expect(runDiscoveryBootstrap(
+      ['--historical-quality', '--env', assignment],
+      {},
+      { log: () => {}, error: () => {} },
+      dependencies,
+    )).rejects.toThrow(expected);
+
+    expect(Object.values(calls)).toEqual(Array(9).fill(0));
   });
 });

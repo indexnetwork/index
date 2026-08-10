@@ -1,8 +1,9 @@
 /**
  * Provider- and infrastructure-free PR A contract for the historical quality
- * pilot. This module deliberately has no imports so the bootstrap can parse,
- * explain, cost, and refuse a quality request before entering the legacy gate.
+ * pilot. Its sole import is the pure discovery configuration authority, so the
+ * bootstrap can validate, explain, cost, and refuse before entering the legacy gate.
  */
+import { assertAbEnvConfig } from './discovery.flags';
 
 export const HISTORICAL_QUALITY_APPROVED_CASE_IDS = Object.freeze([
   'historical/builder-and-operator',
@@ -129,6 +130,7 @@ export function parseHistoricalQualityArgs(args: readonly string[]): HistoricalQ
   const assignment = ENV_ASSIGNMENT.exec(environments[0]!);
   if (!assignment) throw new Error(`--env expects KEY=VALUE (received ${environments[0]})`);
   const [, key, value] = assignment as unknown as [string, string, string];
+  assertAbEnvConfig({ [key]: value });
 
   const reports = valuesFor(args, '--report');
   if (reports.length > 1) throw new Error('--report may be given at most once');
