@@ -44,50 +44,139 @@ function ensureAssets() {
   return assetsPromise
 }
 
-// Native OS alerts for newly actionable opportunities, via the ctx.os door
-// (hermes-agent#78685). Fires only while the user is away from Hermes and is
-// gated by Settings ▸ Notifications ▸ "Plugin notifications"; on older desktop
-// shells without ctx.os it silently no-ops.
-const SEEN_OPPORTUNITIES_KEY = 'notifiedOpportunityIds'
-const OPPORTUNITY_POLL_MS = 30 * 1000
+// Native OS alerts via Hermes ctx.os door (hermes-agent#78685). Events arrive on
+// plugin SSE relays (notifications + conversations). Gated by Settings ▸ Plugin
+// notifications; no-op without ctx.os.
+const PLUGIN_STREAM_PREFIX = '/api/plugins/index-network'
+const NOTIFIED_IDS_KEY = 'notifiedStreamIds'
+const MAX_NOTIFIED_IDS = 200
 
-function collectPendingOpportunities(data) {
-  const lists = [(data.general && data.general.opportunities) || []]
-  ;(data.intents || []).forEach(function (intent) { lists.push(intent.opportunities || []) })
-  const pending = []
-  lists.forEach(function (list) {
-    list.forEach(function (item) {
-      if (item.opportunityId && (item.status === 'pending' || item.status === 'latent')) pending.push(item)
-    })
-  })
-  return pending
+function rememberNotified(ctx, key) {
+  const seen = ctx.storage.get(NOTIFIED_IDS_KEY, []) || []
+  if (seen.indexOf(key) !== -1) return false
+  ctx.storage.set(NOTIFIED_IDS_KEY, seen.concat(key).slice(-MAX_NOTIFIED_IDS))
+  return true
 }
 
-function checkOpportunities(ctx) {
-  restCall('/summary', { method: 'GET' })
-    .then(function (data) {
-      if (!data || data.success === false) return
-      const pending = collectPendingOpportunities(data)
-      const seen = ctx.storage.get(SEEN_OPPORTUNITIES_KEY, null)
-      const ids = pending.map(function (item) { return item.opportunityId })
-      if (seen === null) {
-        ctx.storage.set(SEEN_OPPORTUNITIES_KEY, ids) // first run — baseline silently
-        return
+function questionNewTitle(event) {
+  if (event.opportunityLabel) return 'Your agent has a question about ' + event.opportunityLabel + '\'s fit'
+  if (event.intentLabel) return 'Your agent has a question about your ' + event.intentLabel
+  return 'Your agent has a question'
+}
+
+function composeNotification(event) {
+  if (!event || !event.type) return null
+  if (event.type === 'question.new') {
+    return { title: questionNewTitle(event), body: event.prompt || 'Open Index to answer.' }
+  }
+  if (event.type === 'question.attention') {
+    return {
+      title: 'Your agent needs your input',
+      body: 'A negotiation with ' + (event.peerName || 'someone') + ' is waiting for your answer.',
+    }
+  }
+  if (event.type === 'opportunity.new') {
+    return {
+      title: event.headline || 'Index Network',
+      body: event.summary || ('New opportunity' + (event.counterpartyName ? ' with ' + event.counterpartyName : '')),
+    }
+  }
+  if (event.type === 'message') {
+    const msg = event.message || {}
+    const sender = (msg.senderName || msg.senderId || 'Someone').toString()
+    let text = ''
+    if (Array.isArray(msg.parts)) {
+      for (let i = 0; i < msg.parts.length; i++) {
+        const part = msg.parts[i]
+        if (part && part.type === 'text' && part.text) { text = part.text; break }
       }
-      const fresh = pending.filter(function (item) { return seen.indexOf(item.opportunityId) === -1 })
-      if (!fresh.length) return
-      ctx.storage.set(SEEN_OPPORTUNITIES_KEY, seen.concat(ids).filter(function (id, i, all) {
-        return all.indexOf(id) === i
-      }).slice(-200))
-      if (!ctx.os || !ctx.os.notify) return
-      ctx.os.notify({
-        title: 'Index Network',
-        body: fresh.length === 1
-          ? 'New opportunity: ' + fresh[0].name
-          : fresh.length + ' new opportunities are waiting'
+    }
+    return { title: 'New message from ' + sender, body: text || 'Open Index to read the message.' }
+  }
+  return null
+}
+
+function notifyFromEvent(ctx, event) {
+  if (!ctx.os || !ctx.os.notify) return
+  const copy = composeNotification(event)
+  if (!copy) return
+  const entityId = event.questionId || event.opportunityId || (event.message && event.message.id) || ''
+  if (entityId) {
+    const dedupeKey = event.type + ':' + entityId
+    if (!rememberNotified(ctx, dedupeKey)) return
+  }
+  ctx.os.notify(copy)
+}
+
+function connectPluginStream(path, onEvent) {
+  let stopped = false
+  let reader = null
+  let retryTimer = null
+  let retries = 0
+
+  function scheduleRetry() {
+    if (stopped) return
+    retries += 1
+    if (retries > 10) return
+    const delay = Math.min(5000 * Math.pow(2, retries - 1), 60000)
+    retryTimer = window.setTimeout(connect, delay)
+  }
+
+  function connect() {
+    const url = PLUGIN_STREAM_PREFIX + path
+    window.fetch(url, { headers: { Accept: 'text/event-stream' }, credentials: 'include' })
+      .then(function (response) {
+        if (!response || !response.ok || !response.body || !response.body.getReader) throw new Error('stream unavailable')
+        retries = 0
+        reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        function pump() {
+          return reader.read().then(function (result) {
+            if (stopped) { try { reader.cancel() } catch (e) { /* noop */ } return }
+            if (result.done) { scheduleRetry(); return }
+            buffer += decoder.decode(result.value, { stream: true })
+            let sep
+            while ((sep = buffer.indexOf('\n\n')) >= 0) {
+              const frame = buffer.slice(0, sep)
+              buffer = buffer.slice(sep + 2)
+              const lines = frame.split('\n')
+              for (let i = 0; i < lines.length; i++) {
+                if (lines[i].indexOf('data:') !== 0) continue
+                const dataStr = lines[i].slice(5).trim()
+                if (!dataStr) continue
+                let data
+                try { data = JSON.parse(dataStr) } catch (e) { continue }
+                if (data && data.type !== 'connected') onEvent(data)
+              }
+            }
+            return pump()
+          })
+        }
+        return pump()
       })
-    })
-    .catch(function () { /* backend not reachable — the next poll retries */ })
+      .catch(function () { if (!stopped) scheduleRetry() })
+  }
+
+  connect()
+  return function dispose() {
+    stopped = true
+    if (retryTimer) window.clearTimeout(retryTimer)
+    if (reader) { try { reader.cancel() } catch (e) { /* noop */ } }
+  }
+}
+
+function startDesktopNotifications(ctx) {
+  const stopNotifications = connectPluginStream('/notifications/stream', function (event) {
+    notifyFromEvent(ctx, event)
+  })
+  const stopMessages = connectPluginStream('/conversations/stream', function (event) {
+    notifyFromEvent(ctx, event)
+  })
+  return function dispose() {
+    stopNotifications()
+    stopMessages()
+  }
 }
 
 function DesktopPage() {
@@ -116,9 +205,8 @@ export default {
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
 
-    const opportunityTimer = window.setInterval(function () { checkOpportunities(ctx) }, OPPORTUNITY_POLL_MS)
-    checkOpportunities(ctx)
-    ctx.onDispose(function () { window.clearInterval(opportunityTimer) })
+    const stopNotifications = startDesktopNotifications(ctx)
+    ctx.onDispose(stopNotifications)
 
     ctx.registerMany([
       {

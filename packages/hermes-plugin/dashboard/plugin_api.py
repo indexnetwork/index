@@ -2056,3 +2056,44 @@ def conversations_stream():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+
+def _notification_stream():
+    """Relay the upstream notifications SSE stream (Redis pub/sub) to Hermes clients."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
+        return
+    headers = dict(tools._headers(api_key))
+    headers["Accept"] = "text/event-stream"
+    base_url = tools._api_url().rstrip("/")
+    request = urllib.request.Request(f"{base_url}/notifications/stream", headers=headers, method="GET")
+    try:
+        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        message = json.dumps({"type": "error", "error": str(exc)})
+        yield f"data: {message}\n\n".encode("utf-8")
+        return
+    try:
+        for line in response:
+            if line:
+                yield line
+    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
+        return
+    finally:
+        try:
+            response.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+@router.get("/notifications/stream")
+def notifications_stream():
+    """SSE proxy for realtime notification events (questions, opportunities)."""
+    if StreamingResponse is None:
+        return {"success": False, "error": "Streaming is not available in this environment."}
+    return StreamingResponse(
+        _notification_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
