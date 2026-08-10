@@ -4127,7 +4127,7 @@ function composeNotification(event) {
         if (part && part.type === 'text' && part.text) { text = part.text; break }
       }
     }
-    return { title: 'New message from ' + sender, body: text || 'Open Index to read the message.' }
+    return { title: `New message from ${sender}`, body: text || 'Open Index to read the message.' }
   }
   return null
 }
