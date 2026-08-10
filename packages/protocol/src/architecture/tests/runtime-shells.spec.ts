@@ -111,10 +111,13 @@ describe("capability-boundaries script classifies outer shells", () => {
     );
   });
 
-  test("classifies runtime/background as ambient-background", () => {
+  test("classifies runtime/background as ambient-background with core capability directions", () => {
     expect(capabilityForSourcePath("runtime/background/index.ts")).toBe(
       "ambient-background",
     );
+    expect(ALLOWED_CAPABILITY_DIRECTIONS["ambient-background"]).toEqual([
+      ...coreCapabilities,
+    ]);
   });
 
   test("classifies platform as neutral-platform with no allowed directions", () => {
