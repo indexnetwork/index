@@ -40,7 +40,10 @@ struct OwnerCredentialFileOperations {
     let isRegularNonSymlink: (URL) throws -> Bool
 
     static let live = OwnerCredentialFileOperations(
-        read: { try Data(contentsOf: $0, options: [.mappedIfSafe]) },
+        // The migration zeroes the mutable buffer after use. A memory-mapped
+        // read can be read-only and may SIGBUS after the plaintext file is
+        // unlinked, so materialize owned bytes before decoding and wiping.
+        read: { try Data(contentsOf: $0) },
         writeAtomic: { data, url in try data.write(to: url, options: [.atomic]) },
         remove: { try FileManager.default.removeItem(at: $0) },
         exists: { FileManager.default.fileExists(atPath: $0.path) },

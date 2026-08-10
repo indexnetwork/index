@@ -95,6 +95,7 @@ describe('native owner migration and transport source contracts', () => {
     expect(ownerStore).toContain('owner-credential-migration.json');
     expect(ownerStore).toContain('verifyLegacyCredentialAbsent');
     expect(ownerStore).toContain('Set(object.keys) == Self.legacyCredentialKeys');
+    expect(ownerStore).not.toContain('.mappedIfSafe');
     expect(ownerStore).toContain('^[A-Za-z0-9_-]+$');
     expect(ownerStore).not.toContain('removeItem(at: applicationSupportDirectory)');
     expect(mainSwift).not.toContain('removeItem(at: applicationSupportDirectory)');
