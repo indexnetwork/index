@@ -223,6 +223,27 @@ def _pause_owned_schedule(
                 raise MigrationError("Owned Hermes scheduling pause could not be verified.")
 
 
+def _verify_owned_schedule_paused_at_authorization_boundary(
+    jobs_path: pathlib.Path,
+) -> None:
+    """Perform the final authoritative check while the caller holds `.jobs.lock`."""
+    raw = _secure_read(jobs_path)
+    if raw is None:
+        return
+    try:
+        document = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MigrationError("Owned Hermes scheduling could not be verified at authorization.") from exc
+    jobs = document.get("jobs") if isinstance(document, dict) else None
+    if not isinstance(jobs, list):
+        raise MigrationError("Owned Hermes scheduling could not be verified at authorization.")
+    attributable = _attributable_indices(jobs)
+    for index in attributable:
+        job = jobs[index]
+        if job.get("enabled") is not False or str(job.get("state", "")).lower() != "paused":
+            raise MigrationError("Owned Hermes scheduling was not paused at authorization.")
+
+
 @contextmanager
 def _migration_lock(env_path: pathlib.Path):
     env_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -296,4 +317,9 @@ def migrate_before_authorization(
     except Exception as exc:  # noqa: BLE001
         raise MigrationError("Secure Index migration did not complete; owned scheduling remains paused.") from exc
 
-    return transport.start_authorization()
+    # Close the cooperative-writer gap at the exact connector acceptance boundary.
+    # The connector call starts an attempt only; browser/user completion happens later.
+    with _canonical_jobs_lock(resolved_jobs):
+        _verify_owned_schedule_paused_at_authorization_boundary(resolved_jobs)
+        notify("authorization.boundary.verified")
+        return transport.start_authorization()

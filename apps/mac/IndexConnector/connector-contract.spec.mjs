@@ -255,6 +255,11 @@ test('ambiguous upstream response processing has one stable retry signal', () =>
   expect(pythonTransport).toContain('"upstream_ambiguous_response"');
   expect(tools).toContain('"connector_invalid_response"');
   expect(tools).toContain('"upstream_ambiguous_response"');
+  expect(transport).toContain('resolveCompletedResponse');
+  for (const token of [
+    'known400ThenTimeout', 'known500ThenNetworkFailure',
+    'successfulMalformedMutation', 'successfulTimedOutMutation',
+  ]) expect(read('./Tests/TransportFixture.swift')).toContain(token);
 });
 
 test('resource caps and independent idle timer are exact and fixture-controlled', () => {

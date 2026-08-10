@@ -236,6 +236,9 @@ def run_connector_ambiguous_replay_test(tools):
                 "connector-pickup": ("neg-pickup", "cap-pickup"),
                 "connector-consult": ("neg-consult", "cap-consult"),
                 "connector-denied": ("neg-denied", "cap-denied"),
+                "known-400-timeout": ("neg-400", "cap-400"),
+                "known-500-network": ("neg-500", "cap-500"),
+                "successful-timeout": ("neg-timeout", "cap-timeout"),
             }
 
         def request_rest(self, method, path, body=None, *, hermes_run=None):
@@ -250,6 +253,10 @@ def run_connector_ambiguous_replay_test(tools):
                     task for task, state in tools._NEGOTIATION_RUN_STATES.items()
                     if state.run_id == hermes_run["runId"]
                 )
+                if task_id == "known-400-timeout":
+                    return {"success": False, "status": 400, "error": "definitive 400"}
+                if task_id == "known-500-network":
+                    return {"success": False, "status": 500, "error": "definitive 500"}
                 negotiation, capability = self.pickups[task_id]
                 return {"negotiationId": negotiation, "runCapability": capability}
             return {"success": True, "status": "recorded"}
@@ -259,12 +266,52 @@ def run_connector_ambiguous_replay_test(tools):
     tools.set_transport_for_tests(fake)
     try:
         pickup_path = "/agents/agent/negotiations/pickup"
+        known400 = decode(tools.index_pickup_negotiation(
+            {"agentId": "agent"}, task_id="known-400-timeout"
+        ))
+        assert known400["status"] == 400 and known400["success"] is False
+        assert len([
+            call for call in fake.calls
+            if call[1] == pickup_path and call[3]["runId"]
+                == tools._NEGOTIATION_RUN_STATES["known-400-timeout"].run_id
+        ]) == 1
+        known500 = decode(tools.index_pickup_negotiation(
+            {"agentId": "agent"}, task_id="known-500-network"
+        ))
+        assert known500["status"] == 500 and known500["success"] is False
+        assert len([
+            call for call in fake.calls
+            if call[1] == pickup_path and call[3]["runId"]
+                == tools._NEGOTIATION_RUN_STATES["known-500-network"].run_id
+        ]) == 1
+
+        timedPickup = decode(tools.index_pickup_negotiation(
+            {"agentId": "agent"}, task_id="successful-timeout"
+        ))
+        assert timedPickup["negotiationId"] == "neg-timeout"
+        timeout_path = "/agents/agent/negotiations/neg-timeout/respond"
+        fake.failures[timeout_path] = ["timeout"]
+        timeout_args = {
+            "agentId": "agent", "negotiationId": "neg-timeout",
+            "action": "continue", "roleAlignment": "peers",
+        }
+        timedOut = decode(tools.index_respond_negotiation(
+            timeout_args, task_id="successful-timeout"
+        ))
+        assert timedOut["success"] is True
+        timeout_calls = [call for call in fake.calls if call[1] == timeout_path]
+        assert len(timeout_calls) == 2 and timeout_calls[0] == timeout_calls[1]
+
         fake.failures[pickup_path] = ["connector_invalid_response"]
         picked = decode(tools.index_pickup_negotiation(
             {"agentId": "agent"}, task_id="connector-pickup"
         ))
         assert picked["negotiationId"] == "neg-pickup"
-        pickup_calls = [call for call in fake.calls if call[1] == pickup_path]
+        pickup_calls = [
+            call for call in fake.calls
+            if call[1] == pickup_path and call[3]["runId"]
+                == tools._NEGOTIATION_RUN_STATES["connector-pickup"].run_id
+        ]
         assert len(pickup_calls) == 2 and pickup_calls[0] == pickup_calls[1]
 
         respond_path = "/agents/agent/negotiations/neg-pickup/respond"

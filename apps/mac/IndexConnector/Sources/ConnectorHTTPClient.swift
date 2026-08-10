@@ -112,6 +112,7 @@ enum ConnectorHTTPError: Error, Equatable {
 private final class BoundedRequestDelegate: NSObject, URLSessionDataDelegate {
     private let maximumBytes: Int
     private let completion: (HTTPURLResponse?, Data?, ConnectorHTTPError?) -> Void
+    private let responseLock = NSLock()
     private var response: HTTPURLResponse?
     private var data = Data()
     private var exceededLimit = false
@@ -134,7 +135,9 @@ private final class BoundedRequestDelegate: NSObject, URLSessionDataDelegate {
             completionHandler(.cancel)
             return
         }
+        responseLock.lock()
         self.response = http
+        responseLock.unlock()
         if response.expectedContentLength > Int64(maximumBytes) {
             exceededLimit = true
             completionHandler(.cancel)
@@ -151,6 +154,9 @@ private final class BoundedRequestDelegate: NSObject, URLSessionDataDelegate {
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
         // Never forward the dedicated credential to a redirected origin.
+        responseLock.lock()
+        self.response = response
+        responseLock.unlock()
         completionHandler(nil)
     }
 
@@ -164,11 +170,18 @@ private final class BoundedRequestDelegate: NSObject, URLSessionDataDelegate {
         data.append(bytes)
     }
 
+    func knownResponse() -> HTTPURLResponse? {
+        responseLock.lock()
+        defer { responseLock.unlock() }
+        return response
+    }
+
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         didCompleteWithError error: Error?
     ) {
+        let response = knownResponse()
         if exceededLimit {
             completion(response, nil, .responseTooLarge)
         } else if let urlError = error as? URLError, urlError.code == .timedOut {
@@ -849,28 +862,38 @@ final class ConnectorHTTPClient {
         let task = session.dataTask(with: request)
         task.resume()
         guard semaphore.wait(timeout: .now() + Self.timeoutInterval + 1) == .success else {
+            let knownResponse = delegate.knownResponse()
             task.cancel()
             session.invalidateAndCancel()
-            throw ConnectorHTTPError.timedOut
+            return try resolveCompletedResponse(
+                method: method, response: knownResponse, data: nil, error: .timedOut
+            )
         }
         session.finishTasksAndInvalidate()
-        if let completedError {
-            if completedError == .responseTooLarge,
-               let response = completedResponse,
-               !(200..<300).contains(response.statusCode) {
+        return try resolveCompletedResponse(
+            method: method, response: completedResponse,
+            data: completedData, error: completedError
+        )
+    }
+
+    func resolveCompletedResponse(
+        method: String,
+        response: HTTPURLResponse?,
+        data: Data?,
+        error: ConnectorHTTPError?
+    ) throws -> ConnectorRESTResult {
+        if let error {
+            // Once a non-2xx status exists, later body failure cannot make dispatch ambiguous.
+            if let response, !(200..<300).contains(response.statusCode) {
                 return ConnectorRESTResult(status: response.statusCode, body: .null)
             }
-            if completedError == .responseTooLarge,
-               Self.methodMayCommit(method),
-               completedResponse.map({ (200..<300).contains($0.statusCode) }) != false {
+            if error == .responseTooLarge, Self.methodMayCommit(method) {
                 throw ConnectorHTTPError.upstreamAmbiguousResponse
             }
-            throw completedError
+            throw error
         }
-        guard let response = completedResponse else {
-            throw ConnectorHTTPError.invalidResponse
-        }
-        guard let data = completedData else {
+        guard let response else { throw ConnectorHTTPError.invalidResponse }
+        guard let data else {
             if !(200..<300).contains(response.statusCode) {
                 return ConnectorRESTResult(status: response.statusCode, body: .null)
             }

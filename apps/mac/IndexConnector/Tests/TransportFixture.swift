@@ -403,6 +403,49 @@ struct TransportFixture {
         precondition(definitiveMalformedDenial.status == 400)
         precondition(definitiveMalformedDenial.body == .null)
         precondition(!upstreamAmbiguousResponse.isEmpty)
+
+        let responseURL = URL(string: "https://api.index.network/agents/agent-1/negotiations/pickup")!
+        let known400ThenTimeout = "known400ThenTimeout"
+        let response400 = HTTPURLResponse(
+            url: responseURL, statusCode: 400, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        let definitive400 = try http.resolveCompletedResponse(
+            method: "POST", response: response400, data: nil, error: .timedOut
+        )
+        precondition(definitive400.status == 400 && definitive400.body == .null)
+
+        let known500ThenNetworkFailure = "known500ThenNetworkFailure"
+        let response500 = HTTPURLResponse(
+            url: responseURL, statusCode: 500, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        let definitive500 = try http.resolveCompletedResponse(
+            method: "POST", response: response500, data: nil, error: .networkFailure
+        )
+        precondition(definitive500.status == 500 && definitive500.body == .null)
+
+        let response200 = HTTPURLResponse(
+            url: responseURL, statusCode: 200, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        let successfulMalformedMutation = "successfulMalformedMutation"
+        expectHTTPError(.upstreamAmbiguousResponse) {
+            _ = try http.resolveCompletedResponse(
+                method: "POST", response: response200,
+                data: Data("not-json".utf8), error: nil
+            )
+        }
+        let successfulTimedOutMutation = "successfulTimedOutMutation"
+        expectHTTPError(.timedOut) {
+            _ = try http.resolveCompletedResponse(
+                method: "POST", response: response200, data: nil, error: .timedOut
+            )
+        }
+        precondition(![
+            known400ThenTimeout, known500ThenNetworkFailure,
+            successfulMalformedMutation, successfulTimedOutMutation,
+        ].contains(""))
         expectHTTPError(.hermesRunDenied) {
             _ = try http.rest(
                 method: "GET", path: "/agents/me", body: nil,

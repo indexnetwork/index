@@ -8,6 +8,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -85,7 +86,12 @@ class MigrationTests(unittest.TestCase):
                 self.assertNotIn("INDEX_API_KEY", os.environ)
             self.assertEqual(result, {"status": "pending"})
             self.assertLess(events.index("schedule.verified"), events.index("env.verified"))
-            self.assertLess(events.index("env.verified"), events.index("authorize.start"))
+            self.assertLess(
+                events.index("env.verified"), events.index("authorization.boundary.verified")
+            )
+            self.assertLess(
+                events.index("authorization.boundary.verified"), events.index("authorize.start")
+            )
             self.assertEqual(json.loads(state_path.read_text()), {
                 "installationId": "installation-old",
                 "legacyKeyId": "key-old",
@@ -223,6 +229,104 @@ class MigrationTests(unittest.TestCase):
                     state_path=root / "migration.json", replace_jobs=racing_replace,
                 )
             self.assertNotIn("authorize.start", events)
+
+    def test_final_boundary_reread_rejects_reactivation_after_env_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            env_path = root / ".env"
+            env_path.write_text("INDEX_API_KEY=old-secret\n")
+            jobs_path = root / "cron" / "jobs.json"
+            jobs_path.parent.mkdir()
+            jobs_path.write_text(json.dumps({"jobs": [{
+                "id": "cron-1", "index_app_owner_id": "owner-1",
+                "enabled": True, "state": "active",
+            }]}))
+            events = []
+
+            def reactivate_after_cleanup(stage):
+                events.append(stage)
+                if stage == "env.verified":
+                    document = json.loads(jobs_path.read_text())
+                    document["jobs"][0]["enabled"] = True
+                    document["jobs"][0]["state"] = "active"
+                    jobs_path.write_text(json.dumps(document))
+
+            with self.assertRaises(MigrationError):
+                migrate_before_authorization(
+                    FakeTransport(events), env_path=env_path, jobs_path=jobs_path,
+                    state_path=root / "migration.json", observer=reactivate_after_cleanup,
+                )
+            self.assertNotIn("authorize.start", events)
+            self.assertNotIn("authorization.boundary.verified", events)
+
+    def test_authorization_start_is_fenced_from_queued_cooperative_writer(self):
+        if _migration.fcntl is None:
+            self.skipTest("fcntl unavailable")
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            env_path = root / ".env"
+            env_path.write_text("INDEX_API_KEY=old-secret\n")
+            jobs_path = root / "cron" / "jobs.json"
+            jobs_path.parent.mkdir()
+            jobs_path.write_text(json.dumps({"jobs": [{
+                "id": "cron-1", "index_app_owner_id": "owner-1",
+                "enabled": True, "state": "active",
+            }]}))
+            attempted = threading.Event()
+            acquired = threading.Event()
+            authorization_returning = threading.Event()
+            writer_acquired_before_return = []
+            authorization_snapshots = []
+            acquired_during_start = []
+
+            def cooperative_writer():
+                attempted.set()
+                with _migration._canonical_jobs_lock(jobs_path):
+                    writer_acquired_before_return.append(not authorization_returning.is_set())
+                    acquired.set()
+                    document = json.loads(jobs_path.read_text())
+                    document["jobs"][0]["enabled"] = True
+                    document["jobs"][0]["state"] = "active"
+                    _migration._atomic_replace(
+                        jobs_path,
+                        (json.dumps(document, sort_keys=True) + "\n").encode("utf-8"),
+                    )
+
+            class FencedTransport:
+                def __init__(self):
+                    self.writer = None
+
+                def start_authorization(self):
+                    self.writer = threading.Thread(target=cooperative_writer)
+                    self.writer.start()
+                    self.assert_writer_attempted()
+                    acquired_during_start.append(acquired.wait(timeout=0.1))
+                    authorization_snapshots.append(json.loads(jobs_path.read_text()))
+                    authorization_returning.set()
+                    return {"status": "pending"}
+
+                @staticmethod
+                def assert_writer_attempted():
+                    if not attempted.wait(timeout=1):
+                        raise AssertionError("cooperative writer did not queue")
+
+
+            transport = FencedTransport()
+            result = migrate_before_authorization(
+                transport, env_path=env_path, jobs_path=jobs_path,
+                state_path=root / "migration.json",
+            )
+            self.assertEqual(result, {"status": "pending"})
+            transport.writer.join(timeout=1)
+            self.assertFalse(transport.writer.is_alive())
+            self.assertEqual(acquired_during_start, [False])
+            self.assertEqual(writer_acquired_before_return, [False])
+            during = authorization_snapshots[0]["jobs"][0]
+            self.assertFalse(during["enabled"])
+            self.assertEqual(during["state"], "paused")
+            after = json.loads(jobs_path.read_text())["jobs"][0]
+            self.assertTrue(after["enabled"])
+            self.assertEqual(after["state"], "active")
 
     def test_canonical_jobs_lock_wraps_pause_and_verification(self):
         if _migration.fcntl is None:
