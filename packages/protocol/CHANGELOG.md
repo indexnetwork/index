@@ -20,6 +20,18 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 10.2.0 - 2026-08-10
+
+### Changed
+
+- Refined the canonical V2 historical-quality artifact contract so execution
+  completeness is independent of verdict availability: complete filtered
+  case/trigger selections are valid descriptive evidence with
+  `completeness.complete: true` and
+  `measurement.qualityVerdictAvailable: false`; only complete full-corpus,
+  full-trigger selections may publish a quality verdict. Legacy and canonical
+  parser selection remain unchanged.
+
 ## 10.1.0 - 2026-08-07
 
 ### Added
