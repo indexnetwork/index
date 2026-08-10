@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  createIndexApiClient, createPinnedIndexApiClient, IndexApiError, normalizeApiBaseUrl, toQueryString,
+  createIndexApiClient, IndexApiError, normalizeApiBaseUrl, toQueryString,
 } from './client.mjs';
 
 const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
@@ -46,17 +46,20 @@ describe('mac Index API client endpoint contract', () => {
     expect(toQueryString({ status: 'pending', empty: '', nil: null, missing: undefined, limit: 20 })).toBe('?status=pending&limit=20');
   });
 
-  it('pins one owner credential instead of rereading a mutable native source', async () => {
-    const { calls, fetchImpl } = createRecordingFetch();
-    let nativeCredential = 'owner-A';
-    const client = createPinnedIndexApiClient({
-      apiBaseUrl: 'https://protocol.example/api', fetchImpl,
-    }, nativeCredential);
-    nativeCredential = 'owner-B';
-    expect(nativeCredential).toBe('owner-B');
+  it('routes owner operations through credential-free native structured requests', async () => {
+    const operations = [];
+    const client = createIndexApiClient({
+      nativeRequest: async (operation) => {
+        operations.push(operation);
+        return { status: 200, body: { ok: true }, headers: {} };
+      },
+    });
     await client.getRuntimeBinding('installation-1');
     await client.rollbackHermesRuntime('setup-1');
-    expect(calls.map((call) => call.init.headers['x-api-key'])).toEqual(['owner-A', 'owner-A']);
+    expect(operations).toEqual([
+      { kind: 'http', method: 'GET', path: '/agent-runtime?installationId=installation-1' },
+      { kind: 'http', method: 'POST', path: '/agent-runtime/rollback', body: { setupAttemptId: 'setup-1' } },
+    ]);
   });
 
   it('uses generation-fenced owner-control runtime endpoints', async () => {
@@ -84,13 +87,11 @@ describe('mac Index API client endpoint contract', () => {
   });
 
   it('preserves disconnect 404 as authorization/not-found rather than guessing absence', async () => {
-    const client = createPinnedIndexApiClient({
-      apiBaseUrl: 'https://protocol.example/api',
-      fetchImpl: async () => new Response(JSON.stringify({ error: 'runtime_not_found' }), {
-        status: 404,
-        headers: { 'content-type': 'application/json' },
+    const client = createIndexApiClient({
+      nativeRequest: async () => ({
+        status: 404, body: { error: 'runtime_not_found' }, headers: {},
       }),
-    }, 'owner-key');
+    });
 
     await expect(client.disconnectHermesRuntime('installation-other-owner'))
       .rejects.toBeInstanceOf(IndexApiError);

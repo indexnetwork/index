@@ -18,7 +18,7 @@ OUT = ROOT / "Resources" / "index.html"
 API_DIR = ROOT.parent / "api"
 # Symbols the app bundle consumes off window.IndexApi.
 API_EXPORTS = [
-    "createIndexApiClient", "createPinnedIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
+    "createIndexApiClient", "createNativeAPIRequestBridge", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",

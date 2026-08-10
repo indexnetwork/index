@@ -48,6 +48,7 @@ jobs:
             api/agent-runtime.spec.mjs \
             api/agent-runtime-saga.spec.mjs \
             api/client.spec.mjs \
+            api/native-api-bridge.spec.mjs \
             api/deeplink.spec.mjs \
             IndexConnector/connector-contract.spec.mjs
 
@@ -86,6 +87,10 @@ jobs:
         run: |
           bun test *.spec.mjs
           bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh
+
+      - name: Native owner credential migration and Keychain failure fixture
+        working-directory: apps/mac/IndexApp
+        run: ./build.sh --fixture OwnerCredentialMigrationFixture
 
       - name: Native historical Hermes persistence compatibility
         working-directory: apps/mac/IndexApp

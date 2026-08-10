@@ -848,6 +848,13 @@
       "when": 1786350427344,
       "tag": "0120_add_hermes_authorizations",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1786366934585,
+      "tag": "0121_add_index_app_owner_authorizations",
+      "breakpoints": true
     }
   ]
 }

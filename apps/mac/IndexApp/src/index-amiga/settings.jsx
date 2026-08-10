@@ -391,18 +391,10 @@ const KEYS = [
   { id:"k2", label:"raycast script",  key:"idx_live_2b77…40dd", used:"6 days ago" },
 ];
 
-function maskKey(key) {
-  if (!key) return "";
-  return key.length > 12 ? `${key.slice(0, 8)}…${key.slice(-4)}` : key;
-}
-
-// Live pane: the mac authenticates with a single CLI API key held in the
-// Keychain. It can't be listed/rotated from here (those routes are
-// session-only), so we surface the injected key masked and offer revoke, which
-// deletes the Keychain credential and signs out via the native bridge.
+// Live pane exposes status and revocation only. Credential values and metadata
+// remain native and are never projected into WebKit.
 function LiveApiKeyPane() {
-  const native = (window.IndexApp && window.IndexApp.native && window.IndexApp.native()) || {};
-  const masked = maskKey(native.apiKey);
+  const signedIn = !!(window.IndexApp && window.IndexApp.isAuthed && window.IndexApp.isAuthed());
   const revoke = () => { if (window.IndexApp) window.IndexApp.logout(); };
   return (
     <div>
@@ -424,7 +416,7 @@ function LiveApiKeyPane() {
           }}>this mac</div>
           <div style={{
             marginTop:3, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-          }}>{masked || "no key"}</div>
+          }}>{signedIn ? "stored securely · value hidden" : "signed out"}</div>
         </div>
         <button
           onClick={revoke}

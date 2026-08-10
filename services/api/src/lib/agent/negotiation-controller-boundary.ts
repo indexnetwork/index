@@ -42,6 +42,7 @@ export async function pickupNegotiationAtControllerBoundary<Result>(input: {
     context?.kind !== 'api_key'
     || context.agentId !== input.agentId
     || !context.credentialId
+    || context.audience === 'index-app-owner'
   ) {
     return { kind: 'forbidden' };
   }

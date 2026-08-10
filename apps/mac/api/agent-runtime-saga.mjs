@@ -877,13 +877,8 @@ export function createAgentRuntimeCoordinator({
     abortCurrent();
     owner = nextOwner
       && nonemptyString(nextOwner.ownerId)
-      && nonemptyString(nextOwner.ownerCredential)
       && nextOwner.api
-      ? {
-          ownerId: nextOwner.ownerId,
-          ownerCredential: nextOwner.ownerCredential,
-          api: nextOwner.api,
-        }
+      ? { ownerId: nextOwner.ownerId, api: nextOwner.api }
       : null;
     state = { binding: null, localState: null, operation: null, installationId: null };
     if (!disposed) onState({ ...state, authEpoch, operationRevision });

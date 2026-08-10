@@ -12,11 +12,9 @@ const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
  * @typedef {Object} IndexApiClientOptions
  * @property {string} [apiBaseUrl] Absolute API base URL, including `/api`.
  * @property {() => (string | Promise<string | null | undefined>)} [getToken]
- *   Optional bearer-token provider. Native shells can later source this from
- *   Keychain and inject it into the web layer.
- * @property {() => (string | Promise<string | null | undefined>)} [getApiKey]
- *   Optional API-key provider, sent as the `x-api-key` header. Used by the
- *   native macOS/iOS shells whose credential is a CLI API key, not a session.
+ *   Optional bearer-token provider for non-native clients.
+ * @property {(operation: Record<string, unknown>, options?: {signal?: AbortSignal, onEvent?: (event: unknown) => void}) => Promise<{status: number, body: unknown, headers?: Record<string, string>}>} [nativeRequest]
+ *   Credential-free native structured transport. Swift supplies authentication.
  * @property {typeof fetch} [fetchImpl] Optional fetch implementation for tests.
  */
 
@@ -26,6 +24,7 @@ const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
  * @property {unknown} [body]
  * @property {boolean} [auth]
  * @property {AbortSignal} [signal]
+ * @property {number} [timeoutMs]
  */
 
 /** Error thrown for non-2xx API responses. */
@@ -57,16 +56,107 @@ export function normalizeApiBaseUrl(value) {
  * Create a resource-oriented client for services/api.
  * @param {IndexApiClientOptions} [options]
  */
-export function createPinnedIndexApiClient(options = {}, apiKey) {
-  if (!apiKey) throw new Error('Pinned owner API key is required');
-  return createIndexApiClient({ ...options, getApiKey: () => apiKey });
+export function createNativeAPIRequestBridge(options) {
+  if (!options || typeof options.postMessage !== 'function' || typeof options.createRequestId !== 'function') {
+    throw new Error('native bridge requires postMessage and createRequestId');
+  }
+  const waiters = new Map();
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const maximumPending = 32;
+  const maximumEvents = 256;
+
+  function request(operation, requestOptions = {}) {
+    if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
+      return Promise.reject(new Error('invalid native operation'));
+    }
+    if (waiters.size >= maximumPending) return Promise.reject(new Error('native bridge busy'));
+    const requestId = options.createRequestId();
+    if (typeof requestId !== 'string' || requestId.length < 1 || requestId.length > 128) {
+      return Promise.reject(new Error('invalid native request id'));
+    }
+    return new Promise((resolve, reject) => {
+      const requestedTimeout = Number(requestOptions.timeoutMs ?? timeoutMs);
+      const boundedTimeout = Number.isFinite(requestedTimeout)
+        ? Math.min(300_000, Math.max(1_000, requestedTimeout))
+        : timeoutMs;
+      const timer = setTimeout(() => {
+        if (!waiters.delete(requestId)) return;
+        options.postMessage({
+          requestId: options.createRequestId(),
+          operation: { kind: 'cancel', targetRequestId: requestId },
+        });
+        reject(new Error('native request timed out'));
+      }, boundedTimeout);
+      const waiter = { resolve, reject, timer, onEvent: requestOptions.onEvent, events: 0, abort: null, signal: requestOptions.signal, started: false };
+      waiters.set(requestId, waiter);
+      if (requestOptions.signal) {
+        waiter.abort = () => {
+          if (!waiters.delete(requestId)) return;
+          clearTimeout(timer);
+          const error = new Error('The operation was aborted');
+          error.name = 'AbortError';
+          reject(error);
+          if (waiter.started) options.postMessage({
+            requestId: options.createRequestId(),
+            operation: { kind: 'cancel', targetRequestId: requestId },
+          });
+        };
+        if (requestOptions.signal.aborted) { waiter.abort(); return; }
+        requestOptions.signal.addEventListener('abort', waiter.abort, { once: true });
+      }
+      waiter.started = true;
+      try {
+        options.postMessage({ requestId, operation });
+      } catch (error) {
+        waiters.delete(requestId);
+        clearTimeout(timer);
+        requestOptions.signal?.removeEventListener('abort', waiter.abort);
+        reject(error);
+      }
+    });
+  }
+
+  function receive(result) {
+    if (!result || typeof result.requestId !== 'string') return false;
+    const waiter = waiters.get(result.requestId);
+    if (!waiter) return false;
+    waiters.delete(result.requestId);
+    clearTimeout(waiter.timer);
+    if (waiter.abort) waiter.signal?.removeEventListener('abort', waiter.abort);
+    if (result.ok) waiter.resolve({
+      status: Number(result.status) || 200,
+      body: result.body ?? {},
+      headers: result.headers && typeof result.headers === 'object' ? result.headers : {},
+    });
+    else {
+      const error = new IndexApiError(
+        String(result.errorCode || 'native_request_failed'),
+        Number(result.status) || 0,
+        result.body ?? null,
+      );
+      waiter.reject(error);
+    }
+    return true;
+  }
+
+  function receiveEvent(event) {
+    if (!event || typeof event.requestId !== 'string') return false;
+    const waiter = waiters.get(event.requestId);
+    if (!waiter || typeof waiter.onEvent !== 'function' || waiter.events >= maximumEvents
+        || event.sequence !== waiter.events) return false;
+    waiter.events += 1;
+    waiter.onEvent(event.event);
+    return true;
+  }
+
+  return { request, receive, receiveEvent };
 }
 
 export function createIndexApiClient(options = {}) {
   const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
-  if (typeof fetchImpl !== 'function') {
-    throw new Error('createIndexApiClient requires a fetch implementation');
+  if (!options.nativeRequest && typeof fetchImpl !== 'function') {
+    throw new Error('createIndexApiClient requires a fetch or native implementation');
   }
 
   /**
@@ -77,12 +167,19 @@ export function createIndexApiClient(options = {}) {
    */
   async function request(endpoint, requestOptions = {}) {
     const { method = 'GET', body, auth = true, signal } = requestOptions;
-    const headers = { 'Content-Type': 'application/json' };
-
-    if (auth && options.getApiKey) {
-      const apiKey = await options.getApiKey();
-      if (apiKey) headers['x-api-key'] = apiKey;
+    if (options.nativeRequest) {
+      const operation = { kind: 'http', method, path: endpoint };
+      if (body !== undefined) operation.body = body;
+      const native = await options.nativeRequest(operation, { signal });
+      if (native.status < 200 || native.status >= 300) {
+        const message = native.body && typeof native.body === 'object' && 'error' in native.body
+          ? String(native.body.error) : `HTTP ${native.status}`;
+        throw new IndexApiError(message, native.status, native.body);
+      }
+      return /** @type {T} */ (native.body || {});
     }
+
+    const headers = { 'Content-Type': 'application/json' };
     if (auth && options.getToken) {
       const token = await options.getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
@@ -121,6 +218,18 @@ export function createIndexApiClient(options = {}) {
    */
   async function uploadDataUrl(endpoint, dataUrl, fieldName, basename, requestOptions = {}) {
     const { auth = true, signal } = requestOptions;
+    if (options.nativeRequest) {
+      const native = await options.nativeRequest({
+        kind: 'upload', path: endpoint, fieldName, basename, dataUrl,
+      }, { signal });
+      if (native.status < 200 || native.status >= 300) {
+        const message = native.body && typeof native.body === 'object' && 'error' in native.body
+          ? String(native.body.error) : `HTTP ${native.status}`;
+        throw new IndexApiError(message, native.status, native.body);
+      }
+      return /** @type {Record<string, unknown>} */ (native.body || {});
+    }
+
     const blob = await (await fetchImpl(dataUrl)).blob();
     const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
     const file = new File([blob], `${basename}.${ext}`, { type: blob.type || 'image/jpeg' });
@@ -129,10 +238,6 @@ export function createIndexApiClient(options = {}) {
 
     /** @type {Record<string, string>} */
     const headers = {};
-    if (auth && options.getApiKey) {
-      const apiKey = await options.getApiKey();
-      if (apiKey) headers['x-api-key'] = apiKey;
-    }
     if (auth && options.getToken) {
       const token = await options.getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
@@ -187,10 +292,6 @@ export function createIndexApiClient(options = {}) {
     auth: {
       me: (options = {}) => request('/auth/me', options),
       updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),
-      revokeCliCredential: (keyId, targetKey, options = {}) => request(
-        '/auth/cli-credential/revoke',
-        { ...options, method: 'POST', body: { keyId, targetKey } },
-      ),
     },
 
     storage: {

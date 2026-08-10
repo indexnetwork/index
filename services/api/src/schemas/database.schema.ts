@@ -1130,6 +1130,57 @@ export const agents = pgTable('agents', {
     .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
 }));
 
+export const indexAppOwnerAuthorizations = pgTable('index_app_owner_authorizations', {
+  requestId: text('request_id').primaryKey(),
+  ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
+  installationId: text('installation_id').notNull(),
+  redirectUri: text('redirect_uri').notNull(),
+  state: text('state').notNull(),
+  codeChallenge: text('code_challenge').notNull(),
+  codeChallengeMethod: text('code_challenge_method').notNull(),
+  legacyKeyId: text('legacy_key_id'),
+  codeHash: text('code_hash'),
+  replayReceipt: text('replay_receipt'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+}, (table) => ({
+  methodS256: check('index_app_owner_authorizations_s256_check', sql`${table.codeChallengeMethod} = 'S256'`),
+  positiveExpiry: check('index_app_owner_authorizations_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+  stateUnique: uniqueIndex('index_app_owner_authorization_state_unique').on(table.state),
+  codeHashUnique: uniqueIndex('index_app_owner_authorization_code_hash_unique')
+    .on(table.codeHash).where(sql`${table.codeHash} IS NOT NULL`),
+  installationIdx: index('index_app_owner_authorizations_installation_idx').on(table.installationId),
+  expiryIdx: index('index_app_owner_authorizations_expiry_idx').on(table.expiresAt),
+}));
+
+export const indexAppOwnerCredentials = pgTable('index_app_owner_credentials', {
+  id: text('id').primaryKey(),
+  secretHash: text('secret_hash').notNull(),
+  activationProofHash: text('activation_proof_hash'),
+  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  installationId: text('installation_id').notNull(),
+  generation: text('generation').notNull(),
+  audience: text('audience').notNull(),
+  activationState: text('activation_state').notNull().$type<'pending' | 'active' | 'revoked'>(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  audienceCheck: check('index_app_owner_credentials_audience_check', sql`${table.audience} = 'index-app-owner'`),
+  stateCheck: check('index_app_owner_credentials_state_check', sql`${table.activationState} IN ('pending', 'active', 'revoked')`),
+  positiveExpiry: check('index_app_owner_credentials_expiry_check', sql`${table.expiresAt} > ${table.issuedAt}`),
+  secretHashUnique: uniqueIndex('index_app_owner_credentials_secret_hash_unique').on(table.secretHash),
+  liveInstallationUnique: uniqueIndex('index_app_owner_credentials_live_installation_unique')
+    .on(table.ownerId, table.installationId)
+    .where(sql`${table.activationState} IN ('pending', 'active')`),
+  generationUnique: uniqueIndex('index_app_owner_credentials_generation_unique')
+    .on(table.ownerId, table.installationId, table.generation),
+  expiryIdx: index('index_app_owner_credentials_expiry_idx').on(table.expiresAt),
+}));
+
 export const hermesAuthorizations = pgTable('hermes_authorizations', {
   requestId: text('request_id').primaryKey(),
   ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
@@ -1592,6 +1643,10 @@ export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
 export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
+export type IndexAppOwnerAuthorization = typeof indexAppOwnerAuthorizations.$inferSelect;
+export type NewIndexAppOwnerAuthorization = typeof indexAppOwnerAuthorizations.$inferInsert;
+export type IndexAppOwnerCredential = typeof indexAppOwnerCredentials.$inferSelect;
+export type NewIndexAppOwnerCredential = typeof indexAppOwnerCredentials.$inferInsert;
 export type HermesAuthorization = typeof hermesAuthorizations.$inferSelect;
 export type NewHermesAuthorization = typeof hermesAuthorizations.$inferInsert;
 export type HermesAgentCredential = typeof hermesAgentCredentials.$inferSelect;

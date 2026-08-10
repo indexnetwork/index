@@ -1,10 +1,9 @@
 // api.jsx, live backend bridge for the mac app.
 //
 // Defines the single window.IndexApp façade the screens talk to. It builds an
-// IndexApi client from window.INDEX_NATIVE (injected by the Swift shell:
-// { apiBaseUrl, apiKey }), exposes a parallel snapshot load, native
-// login/logout + an auth-changed subscription, fetch-based SSE for chat and the
-// conversation inbox (EventSource can't set the x-api-key header), and a single
+// IndexApi client from the credential-free native indexAPI bridge, exposes a
+// parallel snapshot load, native login/logout + an auth-changed subscription,
+// bounded native SSE for chat and the conversation inbox, and a single native
 // MCP tools/call for intent creation (which has no plain REST POST).
 //
 // window.IndexApi is the inlined client+mappers bundle (assemble.py);
@@ -14,8 +13,7 @@
 
 window.IndexApp = (function () {
   function native() { return window.INDEX_NATIVE || {}; }
-  function apiKey() { return native().apiKey || null; }
-  function isAuthed() { return !!apiKey(); }
+  function isAuthed() { return native().authenticated === true; }
 
   function apiBaseUrl() {
     const raw = native().apiBaseUrl || "http://localhost:3001/api";
@@ -35,25 +33,31 @@ window.IndexApp = (function () {
     return `${apiBaseUrl()}/storage/${String(avatar).replace(/^\/+/, "")}`;
   }
 
-  function getClient() {
-    if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
-    return window.IndexApi.createIndexApiClient({
-      apiBaseUrl: native().apiBaseUrl,
-      getApiKey: () => native().apiKey,
-    });
+  function nativeRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+    if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+    }
+    throw new Error("secure native request ids unavailable");
   }
+  function hasAPIBridge() {
+    return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAPI);
+  }
+  const nativeAPIBridge = window.IndexApi.createNativeAPIRequestBridge({
+    createRequestId: nativeRequestId,
+    postMessage: (message) => {
+      if (!hasAPIBridge()) throw new Error("no native Index API bridge");
+      window.webkit.messageHandlers.indexAPI.postMessage(message);
+    },
+  });
+  window.__indexAPIResponse = (result) => nativeAPIBridge.receive(result);
+  window.__indexAPIEvent = (event) => nativeAPIBridge.receiveEvent(event);
 
-  // Runtime sagas pin one owner credential for their entire lifetime. Logout
-  // or owner replacement may update INDEX_NATIVE while compensation is still
-  // running; this client deliberately never rereads that mutable global.
-  function getOwnerClient(ownerCredential) {
-    if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
-    if (!ownerCredential) return null;
-    // The API base is public configuration; the credential is the exact value
-    // captured by AgentRuntimeProvider and is never reread from INDEX_NATIVE.
-    return window.IndexApi.createPinnedIndexApiClient({
-      apiBaseUrl: native().apiBaseUrl,
-    }, ownerCredential);
+  function getClient() {
+    if (!window.IndexApi || !window.IndexApi.createIndexApiClient || !hasAPIBridge()) return null;
+    return window.IndexApi.createIndexApiClient({ nativeRequest: nativeAPIBridge.request });
   }
 
   // ---- native auth bridge --------------------------------------------------
@@ -142,12 +146,11 @@ window.IndexApp = (function () {
     return hermesRuntimeBridge.request(command, payload || {}, options || {});
   }
 
-  // Swift calls window.__indexAuthChanged(apiKeyOrNull) after it updates
-  // window.INDEX_NATIVE. Fan that out to any React subscribers.
+  // Swift publishes only an authentication-state boolean, never credential material.
   const authSubscribers = new Set();
-  window.__indexAuthChanged = function (key) {
-    if (!key) logoutInFlight = false;
-    authSubscribers.forEach((cb) => { try { cb(key); } catch (e) { /* ignore */ } });
+  window.__indexAuthChanged = function (authenticated) {
+    if (!authenticated) logoutInFlight = false;
+    authSubscribers.forEach((cb) => { try { cb(authenticated === true); } catch (e) { /* ignore */ } });
   };
   function onAuthChanged(cb) {
     authSubscribers.add(cb);
@@ -262,7 +265,7 @@ window.IndexApp = (function () {
   // ---- tools + enrichment -------------------------------------------------
 
   // Invoke a protocol tool over REST (POST /tools/:name). Onboarding-allowed
-  // tools (preview_user_context, confirm_user_context) work with the x-api-key.
+  // tools (preview_user_context, confirm_user_context) use native owner authority.
   // Resolves the parsed tool result envelope ({ success, data } | { success:false, ... }).
   function invokeTool(toolName, query) {
     const c = getClient();
@@ -279,34 +282,7 @@ window.IndexApp = (function () {
     return c.enrichment.trigger();
   }
 
-  // ---- fetch-based SSE ----------------------------------------------------
-
-  // Read an SSE body, invoking onEvent(parsedJson) for every `data:` payload.
-  async function readSSE(response, onEvent) {
-    if (!response.body || !response.body.getReader) return;
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      // SSE frames are separated by a blank line.
-      let idx;
-      while ((idx = buffer.indexOf("\n\n")) !== -1) {
-        const frame = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        const data = frame
-          .split("\n")
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trim())
-          .join("");
-        if (!data) continue;
-        try { onEvent(JSON.parse(data)); }
-        catch (e) { /* keepalive / non-JSON frame */ }
-      }
-    }
-  }
+  // ---- bounded native SSE -------------------------------------------------
 
   // POST /chat/stream. `persona` selects the server persona (e.g. "negotiator");
   // api-key callers fall back to the orchestrator when omitted. Resolves with
@@ -314,79 +290,38 @@ window.IndexApp = (function () {
   // onSession fires as soon as headers arrive, so mid-stream events (e.g.
   // user_question) can be resolved against the conversation right away.
   async function streamChat({ message, sessionId, scopeType, scopeId, persona, onEvent, onSession, signal }) {
-    const headers = { "Content-Type": "application/json" };
-    const key = apiKey();
-    if (key) headers["x-api-key"] = key;
     const body = { message };
     if (sessionId) body.sessionId = sessionId;
     if (scopeType && scopeId) { body.scopeType = scopeType; body.scopeId = scopeId; }
     if (persona) body.persona = persona;
 
-    const response = await fetch(`${apiBaseUrl()}/chat/stream`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
-    const resolvedSession = response.headers.get("X-Session-Id") || sessionId || null;
+    const response = await nativeAPIBridge.request(
+      { kind:"sse", method:"POST", path:"/chat/stream", body },
+      { signal, onEvent, timeoutMs:300000 },
+    );
+    const resolvedSession = response.headers["x-session-id"] || sessionId || null;
     if (resolvedSession && onSession) { try { onSession(resolvedSession); } catch (e) { /* ignore */ } }
-    if (!response.ok) {
-      let detail = `HTTP ${response.status}`;
-      try { const j = await response.json(); if (j && j.error) detail = j.error; } catch (e) { /* ignore */ }
-      if (onEvent) onEvent({ type: "error", error: detail });
-      return resolvedSession;
-    }
-    await readSSE(response, (event) => { if (onEvent) onEvent(event); });
     return resolvedSession;
   }
 
   // GET /conversations/stream, live inbox events. Returns an abort handle.
   function streamInbox(onEvent) {
     const controller = new AbortController();
-    const headers = {};
-    const key = apiKey();
-    if (key) headers["x-api-key"] = key;
-    fetch(`${apiBaseUrl()}/conversations/stream`, { headers, signal: controller.signal })
-      .then((response) => { if (response.ok) return readSSE(response, onEvent); })
-      .catch((e) => { /* aborted or network drop; caller may retry */ });
+    nativeAPIBridge.request(
+      { kind:"sse", method:"GET", path:"/conversations/stream" },
+      { signal:controller.signal, onEvent, timeoutMs:300000 },
+    ).catch((e) => { /* aborted or network drop; caller may retry */ });
     return { close: () => controller.abort() };
   }
 
   // ---- MCP tools/call -----------------------------------------------------
 
-  // Single JSON-RPC tools/call against /mcp (stateless, x-api-key auth). Used
-  // for intent creation, which has no plain REST POST. Handles both a direct
-  // application/json response and an SSE-framed one.
+  // Single structured tools/call through native /mcp. Used for intent creation,
+  // which has no plain REST POST.
   async function mcpCall(tool, args) {
-    const base = apiBaseUrl().replace(/\/api$/, "");
-    const headers = {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    };
-    const key = apiKey();
-    if (key) headers["x-api-key"] = key;
-
-    const response = await fetch(`${base}/mcp`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: Math.random().toString(36).slice(2),
-        method: "tools/call",
-        params: { name: tool, arguments: args || {} },
-      }),
-    });
-
-    const contentType = response.headers.get("content-type") || "";
-    let rpc;
-    if (contentType.includes("text/event-stream")) {
-      let last = null;
-      await readSSE(response, (event) => { last = event; });
-      rpc = last;
-    } else {
-      rpc = await response.json().catch(() => null);
-    }
-    if (!rpc) throw new Error(`MCP ${tool} returned no response (HTTP ${response.status})`);
+    const response = await nativeAPIBridge.request({ kind:"mcp", tool, arguments:args || {} });
+    const rpc = response.body;
+    if (!rpc) throw new Error(`MCP ${tool} returned no response`);
     if (rpc.error) throw new Error(rpc.error.message || `MCP ${tool} failed`);
 
     const result = rpc.result || {};
@@ -436,12 +371,10 @@ window.IndexApp = (function () {
 
   return {
     native,
-    apiKey,
     isAuthed,
     apiBaseUrl,
     avatarUrl,
     getClient,
-    getOwnerClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,
     normalizeList,

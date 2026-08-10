@@ -4,6 +4,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "OwnerCredentialMigrationFixture" ] && [ "$#" -eq 2 ]; then
+    OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owner-credential-migration-fixture"
+    swiftc -parse-as-library -framework Foundation -framework Security \
+        ../Security/Sources/IndexKeychainStore.swift \
+        Sources/OwnerCredentialStore.swift \
+        Tests/OwnerCredentialMigrationFixture.swift \
+        -o "$OUT"
+    "$OUT"
+    exit 0
+fi
+if [ "$#" -ne 0 ]; then
+    echo "usage: $0 [--fixture OwnerCredentialMigrationFixture]" >&2
+    exit 64
+fi
+
 source "$(dirname "$0")/link-host.sh"
 source "$(dirname "$0")/provisioning-profile.sh"
 LINK_HOST="$(resolve_link_host)"
@@ -35,14 +50,25 @@ rm -rf dist
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 
 echo "==> Compiling Swift (host arch)"
-swiftc -Onone \
-    -framework Cocoa -framework WebKit \
+SWIFT_DEFINES=()
+if [ "${INDEX_DEVELOPMENT_BUILD:-0}" = "1" ]; then
+    SWIFT_DEFINES+=("-DINDEX_DEVELOPMENT_BUILD")
+fi
+swiftc -Onone "${SWIFT_DEFINES[@]}" \
+    -target "$(uname -m)-apple-macosx13.0" \
+    -framework Cocoa -framework WebKit -framework Network -framework Security \
     -o "${CONTENTS}/MacOS/${APP_NAME}" \
+    ../Security/Sources/IndexKeychainStore.swift \
+    Sources/OwnerCredentialStore.swift \
+    Sources/NativeAPIRequestBridge.swift \
     Sources/HermesRuntime.swift \
     Sources/main.swift
 
 echo "==> Copying resources"
 cp Info.plist "${CONTENTS}/Info.plist"
+if [ -n "$APP_KEYCHAIN_GROUP" ]; then
+    /usr/libexec/PlistBuddy -c "Set :IndexOwnerKeychainAccessGroup ${APP_KEYCHAIN_GROUP}" "${CONTENTS}/Info.plist"
+fi
 /usr/libexec/PlistBuddy -c "Delete :IndexDeepLinkHost" "${CONTENTS}/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :IndexDeepLinkHost string ${LINK_HOST}" "${CONTENTS}/Info.plist"
 cp Resources/index.html "${CONTENTS}/Resources/index.html"
@@ -55,18 +81,9 @@ cp Resources/index.html "${CONTENTS}/Resources/index.html"
 cp Resources/AppIcon.icns "${CONTENTS}/Resources/AppIcon.icns"
 cp Resources/Assets.car "${CONTENTS}/Resources/Assets.car"
 
-# Signing identity. An ad-hoc signature (`--sign -`) has no stable identity: the
-# app's code requirement is its exact binary hash, so every rebuild looks like a
-# different application to macOS. That is fine for a local dev loop now that the
-# API credential lives in a file rather than the login keychain (whose per-binary
-# ACL is what used to re-prompt for the login password on every launch, see the
-# CredentialStore block in Sources/main.swift).
-#
-# It is NOT fine for anything distributed. Shipping needs a Developer ID
-# Application certificate, the hardened runtime, notarization, and the keychain
-# restored. The prod checklist in Sources/main.swift has the full list.
-#
-# Set CODESIGN_IDENTITY to sign with a real identity when you have one.
+# Ad-hoc builds intentionally receive no Keychain access group and remain signed
+# out. Developer ID builds embed the profile-authorized app-only owner group.
+# Set CODESIGN_IDENTITY and the validated profile inputs for usable sign-in.
 
 # Associated domains (universal links). The entitlement is only honoured for a
 # Developer ID-signed, notarized build whose team id matches the appIDs in the

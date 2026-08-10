@@ -1,7 +1,8 @@
 import type { HermesCapability } from './agent/hermes-capabilities';
 import type { HermesCredentialAudience } from './agent/hermes-credential';
+import type { INDEX_APP_OWNER_AUDIENCE } from './agent/index-app-owner-authorization';
 
-export type ApiKeyAudience = HermesCredentialAudience | null;
+export type ApiKeyAudience = HermesCredentialAudience | typeof INDEX_APP_OWNER_AUDIENCE | null;
 
 export type RequestAuthContext =
   | { kind: 'session' }
