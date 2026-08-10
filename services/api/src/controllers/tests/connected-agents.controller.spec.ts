@@ -9,6 +9,7 @@ const OWNER = { id: 'owner-1', email: 'owner@example.com', name: 'Owner' };
 const INSTALLATION_ID = '11111111-1111-4111-8111-111111111111';
 const connection = {
   installationId: INSTALLATION_ID,
+  installationName: 'Hermes on macOS',
   agentId: '22222222-2222-4222-8222-222222222222',
   actions: ['manage:identity'],
   activationState: 'active' as const,

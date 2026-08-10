@@ -1,4 +1,4 @@
-import type { HermesActivationState } from '../lib/agent/hermes-authorization';
+import { HERMES_INSTALLATION_NAME, type HermesActivationState } from '../lib/agent/hermes-authorization';
 import type { HermesCapability } from '../lib/agent/hermes-capabilities';
 import { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 
@@ -16,6 +16,7 @@ export type HermesConnectionRecord = {
 
 export type ConnectedHermesAgentView = {
   installationId: string;
+  installationName: typeof HERMES_INSTALLATION_NAME;
   agentId: string;
   actions: readonly HermesCapability[];
   activationState: HermesActivationState;
@@ -92,6 +93,7 @@ export class ConnectedAgentsService {
       && record.expiresAt > now;
     return {
       installationId: record.installationId,
+      installationName: HERMES_INSTALLATION_NAME,
       agentId: record.agentId,
       actions: [...record.actions],
       activationState: record.activationState,

@@ -34,11 +34,13 @@ function HermesAuthorizePage() {
           return;
         }
 
-        const metadata = await hermesAuthorizationService.getRequest(input.requestId, input.state);
+        const metadata = await hermesAuthorizationService.getRequest(
+          input.requestId,
+          input.state,
+          input.redirectUri,
+        );
         if (
           metadata.requestId !== input.requestId
-          || metadata.state !== input.state
-          || metadata.redirectUri !== input.redirectUri
           || !hasExactHermesCapabilities(metadata.actions)
         ) {
           throw new Error('Authorization metadata mismatch');
@@ -66,12 +68,12 @@ function HermesAuthorizePage() {
         request.state,
         request.redirectUri,
       );
-      if (approved.state !== request.state || approved.redirectUri !== request.redirectUri || !approved.code) {
+      if (approved.requestId !== request.requestId || approved.state !== request.state || !approved.code) {
         throw new Error('Authorization approval mismatch');
       }
       const callback = buildHermesAuthorizationCallbackUrl({
-        redirectUri: approved.redirectUri,
-        requestId: request.requestId,
+        redirectUri: request.redirectUri,
+        requestId: approved.requestId,
         code: approved.code,
         state: approved.state,
       });
@@ -114,6 +116,7 @@ function HermesAuthorizePage() {
 
             <div className="rounded-sm bg-gray-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Installation</p>
+              <p className="mt-1 text-sm font-semibold text-gray-900">{authorization.installationName}</p>
               <code className="mt-1 block break-all text-sm text-gray-800">{authorization.installationId}</code>
             </div>
 
@@ -132,7 +135,7 @@ function HermesAuthorizePage() {
             <div className="space-y-2 text-sm text-gray-600">
               <p>This connection expires after 30 days. Reconnecting always requires a new authorization.</p>
               <p className="font-medium text-gray-800">
-                Hermes cannot manage your sign-in methods, API keys, connected agents, billing, or account deletion.
+                Hermes cannot manage login or sign-in methods, account security, credentials or API keys, permissions, billing, account deletion, connected or other agents, or other agents&apos; data or control.
               </p>
             </div>
 
@@ -158,9 +161,12 @@ function HermesAuthorizePage() {
           <div className="text-center">
             <h1 className="text-xl font-semibold text-gray-900">Authorization unavailable</h1>
             <p className="mt-2 text-sm text-gray-500">{message}</p>
-            <a href="/download" className="mt-5 inline-block text-sm font-medium text-gray-900 underline">
-              Hermes connection instructions
-            </a>
+            <p className="mt-3 text-sm text-gray-500">
+              If this tab does not close, close it manually. Then open the Hermes dashboard, select Index, and choose Connect.
+            </p>
+            <Button className="mt-5" onClick={() => window.close()}>
+              Close this tab and retry in Hermes
+            </Button>
           </div>
         ) : null}
       </div>

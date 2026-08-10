@@ -39,7 +39,13 @@ describe('parseHermesAuthorizationQuery', () => {
     '?request_id=req&state=s&state=other&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback',
     '?request_id=req&state=s&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback&redirect_uri=http%3A%2F%2F127.0.0.1%3A49153%2Fcallback',
     '?request_id=&state=s&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback',
-  ])('rejects missing, duplicate, empty, or extra query fields: %s', (query) => {
+    '?%72equest_id=req&state=s&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback',
+    '?request_id=req&&state=s&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback',
+    '?request_id=req&state=s&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback&',
+    '?request_id=req+alias&state=s&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback',
+    '?request_id=req%ZZ&state=s&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback',
+    '?request_id=req&state=s&redirect_uri=http%3a%2F%2F127.0.0.1%3A49152%2Fcallback',
+  ])('rejects noncanonical raw query grammar: %s', (query) => {
     expect(parseHermesAuthorizationQuery(query)).toBeNull();
   });
 });

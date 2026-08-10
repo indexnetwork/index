@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { Component as ConnectedAgentsPage } from '@/app/agents/connected/page';
+import { HERMES_CAPABILITIES } from '@/lib/hermes-auth';
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@/services/connected-agents', () => ({
 
 const active = {
   installationId: '11111111-1111-4111-8111-111111111111',
+  installationName: 'Hermes on macOS',
   agentId: '22222222-2222-4222-8222-222222222222',
   actions: ['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities', 'manage:negotiations'],
   activationState: 'active' as const,
@@ -47,11 +49,15 @@ describe('connected Hermes owner controls', () => {
     vi.unstubAllGlobals();
   });
 
-  test('lists status, heartbeat, expiry, runtime health, and fallback state', async () => {
+  test('lists installation name and id, all six granted capabilities, health, and fallback state', async () => {
     render(<ConnectedAgentsPage />);
 
     expect(await screen.findByText('Connected Hermes agents')).toBeTruthy();
+    expect(screen.getByText(active.installationName)).toBeTruthy();
     expect(screen.getByText(active.installationId)).toBeTruthy();
+    for (const capability of HERMES_CAPABILITIES) {
+      expect(screen.getByText(capability.label)).toBeTruthy();
+    }
     expect(screen.getByText('Active')).toBeTruthy();
     expect(screen.getByText(/Last heartbeat/)).toBeTruthy();
     expect(screen.getByText(/Expires/)).toBeTruthy();
@@ -70,7 +76,7 @@ describe('connected Hermes owner controls', () => {
     expect(await screen.findByText(/Index is covering negotiations/)).toBeTruthy();
   });
 
-  test('confirms revoke, refreshes, and points reconnect back to Hermes', async () => {
+  test('confirms revoke, refreshes, and opens no-request reconnect instructions', async () => {
     mocks.list.mockResolvedValueOnce([]);
     render(<ConnectedAgentsPage />);
 
@@ -79,9 +85,14 @@ describe('connected Hermes owner controls', () => {
     expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/revoke/i));
     await waitFor(() => expect(mocks.revoke).toHaveBeenCalledWith(active.installationId));
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
-    const reconnect = screen.getByRole('link', { name: 'Reconnect in Hermes' });
-    expect(reconnect.getAttribute('href')).toBe('/download');
-    expect(screen.getByText(/start a new authorization from the Index dashboard in Hermes/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Reconnect in Hermes' }));
+    expect(screen.getByRole('dialog', { name: 'Reconnect Hermes securely' })).toBeTruthy();
+    expect(screen.getByText(/open the Hermes dashboard/i)).toBeTruthy();
+    expect(screen.getByText(/select Index/i)).toBeTruthy();
+    expect(screen.getByText(/choose Connect/i)).toBeTruthy();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(mocks.list).toHaveBeenCalledTimes(2);
+    expect(mocks.pause).not.toHaveBeenCalled();
   });
 
   test('does nothing when confirmation is declined', async () => {

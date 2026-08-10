@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { HERMES_CAPABILITIES } from '@/lib/hermes-auth';
 import { connectedAgentsService, type ConnectedHermesAgent } from '@/services/connected-agents';
 
 const healthLabels: Record<ConnectedHermesAgent['health'], string> = {
@@ -24,6 +25,7 @@ function ConnectedAgentsPage() {
   const [loading, setLoading] = useState(true);
   const [busyInstallation, setBusyInstallation] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [showReconnectInstructions, setShowReconnectInstructions] = useState(false);
 
   const refresh = useCallback(async () => {
     const next = await connectedAgentsService.list();
@@ -102,6 +104,7 @@ function ConnectedAgentsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Installation</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">{connection.installationName}</p>
                     <code className="mt-1 block break-all text-sm text-gray-800">{connection.installationId}</code>
                   </div>
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
@@ -132,6 +135,15 @@ function ConnectedAgentsPage() {
                   </div>
                 </dl>
 
+                <section className="mt-5" aria-label={`Granted capabilities for ${connection.installationName}`}>
+                  <h3 className="text-sm font-semibold text-gray-900">Granted capabilities</h3>
+                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                    {HERMES_CAPABILITIES.filter((capability) => connection.actions.includes(capability.action)).map((capability) => (
+                      <li key={capability.action}>{capability.label}</li>
+                    ))}
+                  </ul>
+                </section>
+
                 <div className="mt-5 flex flex-wrap justify-end gap-3">
                   <Button
                     variant="outline"
@@ -156,11 +168,39 @@ function ConnectedAgentsPage() {
         <aside className="rounded-sm border border-blue-100 bg-blue-50 p-5">
           <h2 className="font-semibold text-gray-900">Reconnect securely</h2>
           <p className="mt-2 text-sm text-gray-600">
-            To reconnect, start a new authorization from the Index dashboard in Hermes. Reconnect never extends an existing credential.
+            Reconnecting starts a fresh browser authorization. It never mints or extends a credential from this page.
           </p>
-          <a href="/download" className="mt-3 inline-block text-sm font-semibold text-gray-900 underline">
+          <Button
+            variant="outline"
+            className="mt-3"
+            onClick={() => setShowReconnectInstructions(true)}
+          >
             Reconnect in Hermes
-          </a>
+          </Button>
+          {showReconnectInstructions ? (
+            <div
+              role="dialog"
+              aria-labelledby="reconnect-hermes-heading"
+              className="mt-4 rounded-sm border border-blue-200 bg-white p-4"
+            >
+              <h3 id="reconnect-hermes-heading" className="font-semibold text-gray-900">Reconnect Hermes securely</h3>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-gray-700">
+                <li>Open the Hermes dashboard.</li>
+                <li>Select Index.</li>
+                <li>Choose Connect.</li>
+              </ol>
+              <p className="mt-3 text-sm text-gray-600">
+                Hermes will initiate a fresh PKCE browser attempt. This page makes no authorization request.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-3"
+                onClick={() => setShowReconnectInstructions(false)}
+              >
+                Close instructions
+              </Button>
+            </div>
+          ) : null}
         </aside>
       </div>
     </main>

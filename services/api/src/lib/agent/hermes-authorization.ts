@@ -1,6 +1,7 @@
 import type { HermesCapability } from './hermes-capabilities';
 
 export const HERMES_AGENT_AUDIENCE = 'hermes-agent' as const;
+export const HERMES_INSTALLATION_NAME = 'Hermes on macOS' as const;
 export const HERMES_AUTHORIZATION_REQUEST_TTL_MS = 10 * 60 * 1000;
 export const HERMES_AUTHORIZATION_CODE_TTL_MS = 5 * 60 * 1000;
 export const HERMES_CREDENTIAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;

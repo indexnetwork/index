@@ -1,4 +1,4 @@
-import { AuthorizationInvalidGrantError, HERMES_AGENT_AUDIENCE, HERMES_AUTHORIZATION_CODE_TTL_MS, HERMES_AUTHORIZATION_REQUEST_TTL_MS, HERMES_CREDENTIAL_TTL_MS, InvalidHermesCredentialError, derivePkceS256Challenge, hashHermesSecret, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
+import { AuthorizationInvalidGrantError, HERMES_AGENT_AUDIENCE, HERMES_AUTHORIZATION_CODE_TTL_MS, HERMES_AUTHORIZATION_REQUEST_TTL_MS, HERMES_CREDENTIAL_TTL_MS, HERMES_INSTALLATION_NAME, InvalidHermesCredentialError, derivePkceS256Challenge, hashHermesSecret, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
 import { isExactHermesCapabilitySet, type HermesCapability } from '../lib/agent/hermes-capabilities';
 
 export type HermesAuthorizationServiceDependencies = {
@@ -57,9 +57,17 @@ export class HermesAuthorizationService {
     });
   }
 
-  /** Resolve only pending, unexpired metadata admitted by the request's secret state. */
-  async getAuthorization(requestId: string, state: string) {
-    return this.store.getAuthorization({ requestId, state, now: this.dependencies.now() });
+  /** Resolve only narrow pending metadata bound to the request's secret state and callback. */
+  async getAuthorization(requestId: string, state: string, redirectUri: string) {
+    const pending = await this.store.getAuthorization({ requestId, state, now: this.dependencies.now() });
+    if (pending.redirectUri !== redirectUri) throw new AuthorizationInvalidGrantError();
+    return {
+      requestId: pending.requestId,
+      installationId: pending.installationId,
+      installationName: HERMES_INSTALLATION_NAME,
+      actions: [...pending.actions],
+      expiresAt: pending.expiresAt,
+    };
   }
 
   /** Owner-approve one state/redirect-bound request and return its raw five-minute code exactly once. */
@@ -78,7 +86,7 @@ export class HermesAuthorizationService {
       now,
       expiresAt: new Date(now.getTime() + HERMES_AUTHORIZATION_CODE_TTL_MS),
     });
-    return { ...approved, code };
+    return { requestId, code, state: approved.state };
   }
 
   /** Atomically consume one PKCE code and return one pending 30-day credential. */

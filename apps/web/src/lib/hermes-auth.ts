@@ -38,19 +38,31 @@ export function isHermesLoopbackRedirect(value: string): boolean {
   return Number.isInteger(port) && port >= 49152 && port <= 65535;
 }
 
-/** Parse exactly the three fields admitted by the standalone Hermes browser bridge. */
+/** Parse exactly the three canonically encoded fields admitted by the Hermes browser bridge. */
 export function parseHermesAuthorizationQuery(query: string): HermesAuthorizationQuery | null {
   if (!query || query.includes('#')) return null;
 
-  const params = new URLSearchParams(query.startsWith('?') ? query.slice(1) : query);
+  const rawQuery = query.startsWith('?') ? query.slice(1) : query;
+  const segments = rawQuery.split('&');
   const allowed = new Set(['request_id', 'state', 'redirect_uri']);
-  const entries = [...params.entries()];
-  if (entries.length !== 3 || entries.some(([name]) => !allowed.has(name))) return null;
+  const seen = new Set<string>();
+  if (segments.length !== 3 || segments.some((segment) => segment.length === 0)) return null;
 
-  for (const name of allowed) {
-    if (params.getAll(name).length !== 1) return null;
+  for (const segment of segments) {
+    const separator = segment.indexOf('=');
+    if (separator <= 0 || separator === segment.length - 1) return null;
+    const rawName = segment.slice(0, separator);
+    const rawValue = segment.slice(separator + 1);
+    if (!allowed.has(rawName) || seen.has(rawName)) return null;
+    try {
+      if (encodeURIComponent(decodeURIComponent(rawValue)) !== rawValue) return null;
+    } catch {
+      return null;
+    }
+    seen.add(rawName);
   }
 
+  const params = new URLSearchParams(rawQuery);
   const requestId = params.get('request_id');
   const state = params.get('state');
   const redirectUri = params.get('redirect_uri');

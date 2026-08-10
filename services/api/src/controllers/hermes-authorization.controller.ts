@@ -107,18 +107,27 @@ export class HermesAuthorizationController {
   @UseGuards(RateLimit('read'), SessionOnlyGuard)
   async get(request: Request, _user: AuthenticatedUser, params?: RouteParams): Promise<Response> {
     const requestId = uuid.safeParse(params?.id);
-    const entries = [...new URL(request.url).searchParams.entries()];
-    const stateValues = new URL(request.url).searchParams.getAll('state');
+    const searchParams = new URL(request.url).searchParams;
+    const entries = [...searchParams.entries()];
+    const stateValues = searchParams.getAll('state');
+    const redirectValues = searchParams.getAll('redirect_uri');
     const state = authorizationState.safeParse(stateValues[0]);
+    const callback = redirectUri.safeParse(redirectValues[0]);
     if (
       !requestId.success
-      || entries.length !== 1
-      || entries[0]?.[0] !== 'state'
+      || entries.length !== 2
+      || entries.some(([name]) => name !== 'state' && name !== 'redirect_uri')
       || stateValues.length !== 1
+      || redirectValues.length !== 1
       || !state.success
+      || !callback.success
     ) return authorizationResponse(new AuthorizationInvalidRequestError());
     try {
-      return Response.json(serialize(await this.authorization.getAuthorization(requestId.data, state.data)));
+      return Response.json(serialize(await this.authorization.getAuthorization(
+        requestId.data,
+        state.data,
+        callback.data,
+      )));
     } catch (error) {
       return this.handleError(error, 'get');
     }
@@ -131,12 +140,12 @@ export class HermesAuthorizationController {
     if (!requestId.success) return authorizationResponse(new AuthorizationInvalidRequestError());
     try {
       const body = await parseBody(request, approveSchema);
-      return Response.json(serialize(await this.authorization.approveAuthorization(
+      return Response.json(await this.authorization.approveAuthorization(
         user.id,
         requestId.data,
         body.state,
         body.redirectUri,
-      )));
+      ));
     } catch (error) {
       return this.handleError(error, 'approve');
     }

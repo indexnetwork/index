@@ -205,7 +205,7 @@ async function createAuthorization(overrides: Record<string, unknown> = {}) {
   }));
 }
 
-async function readAuthorization(path = `/hermes-authorizations/${REQUEST_ID}?state=${STATE}`) {
+async function readAuthorization(path = `/hermes-authorizations/${REQUEST_ID}?state=${STATE}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`) {
   return controller.get(
     new Request(`http://localhost/api${path}`),
     OWNER,
@@ -320,16 +320,19 @@ describe('HermesAuthorizationController provider-free contract', () => {
     expect(await response.json()).toEqual({
       requestId: REQUEST_ID,
       installationId: INSTALLATION_ID,
-      redirectUri: REDIRECT_URI,
-      state: STATE,
+      installationName: 'Hermes on macOS',
       actions: HERMES_CANONICAL_ACTIONS,
       expiresAt: '2026-08-09T12:10:00.000Z',
     });
 
     expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}`)).status).toBe(400);
-    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&state=${STATE}`)).status).toBe(400);
-    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&extra=1`)).status).toBe(400);
-    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=wrong`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?redirect_uri=${encodeURIComponent(REDIRECT_URI)}`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&state=${STATE}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&extra=1`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=wrong&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`)).status).toBe(400);
+    expect((await readAuthorization(`/hermes-authorizations/${REQUEST_ID}?state=${STATE}&redirect_uri=${encodeURIComponent('http://127.0.0.1:49153/callback')}`)).status).toBe(400);
   });
 
   it('approves under owner authority only when state and redirect byte-match, then emits a five-minute code', async () => {
@@ -342,10 +345,9 @@ describe('HermesAuthorizationController provider-free contract', () => {
     const response = await approveAuthorization();
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      redirectUri: REDIRECT_URI,
+      requestId: REQUEST_ID,
       code: 'authorization-code-secret',
       state: STATE,
-      expiresAt: '2026-08-09T12:05:00.000Z',
     });
     expect(store.selectedRuntime).toBe('index');
     expect(store.priorInstallationCredentialRevoked).toBe(true);

@@ -64,6 +64,8 @@ describe('ConnectedAgentsService', () => {
     expect(connections.map(({ health }) => health)).toEqual([
       'active', 'pending', 'stale', 'never_seen', 'expired', 'revoked',
     ]);
+    expect(connections[0]?.installationName).toBe('Hermes on macOS');
+    expect(connections[0]?.actions).toEqual(HERMES_CANONICAL_ACTIONS);
     expect(connections[0]?.indexCovering).toBe(false);
     expect(connections[1]?.indexCovering).toBe(true);
     expect(connections[2]?.indexCovering).toBe(true);

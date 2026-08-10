@@ -4,21 +4,20 @@ import type { HermesCapabilityAction } from '@/lib/hermes-auth';
 export type HermesAuthorizationRequestView = {
   requestId: string;
   installationId: string;
-  redirectUri: string;
-  state: string;
+  installationName: string;
   actions: HermesCapabilityAction[];
   expiresAt: string;
 };
 
 export type HermesAuthorizationApproval = {
-  redirectUri: string;
+  requestId: string;
   code: string;
   state: string;
-  expiresAt: string;
 };
 
 export type ConnectedHermesAgent = {
   installationId: string;
+  installationName: string;
   agentId: string;
   actions: HermesCapabilityAction[];
   activationState: 'pending' | 'active' | 'revoked';
@@ -30,8 +29,8 @@ export type ConnectedHermesAgent = {
 };
 
 export const hermesAuthorizationService = {
-  getRequest(requestId: string, state: string): Promise<HermesAuthorizationRequestView> {
-    return apiClient.get(`/hermes-authorizations/${encodeURIComponent(requestId)}?state=${encodeURIComponent(state)}`);
+  getRequest(requestId: string, state: string, redirectUri: string): Promise<HermesAuthorizationRequestView> {
+    return apiClient.get(`/hermes-authorizations/${encodeURIComponent(requestId)}?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`);
   },
 
   approve(requestId: string, state: string, redirectUri: string): Promise<HermesAuthorizationApproval> {
