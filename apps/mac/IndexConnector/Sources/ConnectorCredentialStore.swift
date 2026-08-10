@@ -4,9 +4,28 @@ import Security
 enum ConnectorRecoveryPhase: String, Codable, Equatable, Hashable {
     case none
     case activationRequested = "activation_requested"
-    case revocationRequested = "revocation_requested"
+    case revocationRequested = "revocation_pending"
     case serverReceiptConfirmed = "server_receipt_confirmed"
     case revocationProbeConfirmed = "revocation_probe_confirmed"
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if raw == "revocation_requested" {
+            self = .revocationRequested
+        } else if let phase = Self(rawValue: raw) {
+            self = phase
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container, debugDescription: "Unknown connector recovery phase"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 
     var requiresRecovery: Bool { self != .none }
     var confirmsServerRevocation: Bool {
@@ -138,6 +157,12 @@ protocol ConnectorCredentialStoring {
         expected: ConnectorCredentialRecord?,
         replacement: ConnectorCredentialRecord?
     ) throws -> Bool
+    func putRecoveryAndVerify(_ record: ConnectorCredentialRecord) throws
+    func readRecovery() throws -> ConnectorCredentialRecord?
+    func compareAndSetRecovery(
+        expected: ConnectorCredentialRecord?,
+        replacement: ConnectorCredentialRecord?
+    ) throws -> Bool
 }
 
 enum ConnectorCredentialStoreError: Error, Equatable {
@@ -149,6 +174,7 @@ enum ConnectorCredentialStoreError: Error, Equatable {
 final class ConnectorCredentialStore: ConnectorCredentialStoring {
     private let keychain: IndexKeychainStore
     private let descriptor: IndexKeychainItemDescriptor
+    private let recoveryDescriptor: IndexKeychainItemDescriptor
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let lock = NSLock()
@@ -160,10 +186,16 @@ final class ConnectorCredentialStore: ConnectorCredentialStoring {
         accessGroup: String? = nil
     ) throws {
         self.keychain = keychain
+        let resolvedAccessGroup = try accessGroup ?? Self.signedConnectorAccessGroup()
         descriptor = IndexKeychainItemDescriptor(
             service: "network.index.connector.credentials.\(environment)",
             account: installationId,
-            accessGroup: try accessGroup ?? Self.signedConnectorAccessGroup()
+            accessGroup: resolvedAccessGroup
+        )
+        recoveryDescriptor = IndexKeychainItemDescriptor(
+            service: "network.index.connector.credentials.recovery.\(environment)",
+            account: installationId,
+            accessGroup: resolvedAccessGroup
         )
         encoder = JSONEncoder()
         decoder = JSONDecoder()
@@ -188,13 +220,13 @@ final class ConnectorCredentialStore: ConnectorCredentialStoring {
     func putAndVerify(_ record: ConnectorCredentialRecord) throws {
         lock.lock()
         defer { lock.unlock() }
-        try putAndVerifyUnlocked(record)
+        try putAndVerifyUnlocked(record, descriptor: descriptor, recoveryOnly: false)
     }
 
     func read() throws -> ConnectorCredentialRecord? {
         lock.lock()
         defer { lock.unlock() }
-        return try readUnlocked()
+        return try readUnlocked(descriptor: descriptor)
     }
 
     func delete() throws {
@@ -209,33 +241,74 @@ final class ConnectorCredentialStore: ConnectorCredentialStoring {
     ) throws -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        guard try readUnlocked() == expected else { return false }
+        guard try readUnlocked(descriptor: descriptor) == expected else { return false }
         if let replacement {
-            try putAndVerifyUnlocked(replacement)
+            try putAndVerifyUnlocked(replacement, descriptor: descriptor, recoveryOnly: false)
         } else {
             try keychain.delete(descriptor: descriptor)
         }
         return true
     }
 
-    private func putAndVerifyUnlocked(_ record: ConnectorCredentialRecord) throws {
-        guard record.installationId == descriptor.account,
+    func putRecoveryAndVerify(_ record: ConnectorCredentialRecord) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try putAndVerifyUnlocked(record, descriptor: recoveryDescriptor, recoveryOnly: true)
+    }
+
+    func readRecovery() throws -> ConnectorCredentialRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+        return try readUnlocked(descriptor: recoveryDescriptor)
+    }
+
+    func compareAndSetRecovery(
+        expected: ConnectorCredentialRecord?,
+        replacement: ConnectorCredentialRecord?
+    ) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard try readUnlocked(descriptor: recoveryDescriptor) == expected else { return false }
+        if let replacement {
+            try putAndVerifyUnlocked(replacement, descriptor: recoveryDescriptor, recoveryOnly: true)
+        } else {
+            try keychain.delete(descriptor: recoveryDescriptor)
+            guard try readUnlocked(descriptor: recoveryDescriptor) == nil else {
+                throw ConnectorCredentialStoreError.verificationFailed
+            }
+        }
+        return true
+    }
+
+    private func putAndVerifyUnlocked(
+        _ record: ConnectorCredentialRecord,
+        descriptor target: IndexKeychainItemDescriptor,
+        recoveryOnly: Bool
+    ) throws {
+        guard record.installationId == target.account,
               record.rawCredential.hasPrefix("idxh_"),
               record.audience == "hermes-agent",
-              record.activationState == "pending" || record.activationState == "active" else {
+              record.activationState == "pending" || record.activationState == "active",
+              !recoveryOnly || (
+                record.activationState == "pending"
+                && record.recoveryPhase.requiresRecovery
+                && record.authorizationAttemptId == nil
+              ) else {
             throw ConnectorCredentialStoreError.invalidRecord
         }
         let encoded = try encoder.encode(record)
-        try keychain.putAndVerify(encoded, descriptor: descriptor)
-        guard try readUnlocked() == record else {
+        try keychain.putAndVerify(encoded, descriptor: target)
+        guard try readUnlocked(descriptor: target) == record else {
             throw ConnectorCredentialStoreError.verificationFailed
         }
     }
 
-    private func readUnlocked() throws -> ConnectorCredentialRecord? {
-        guard let data = try keychain.read(descriptor: descriptor) else { return nil }
+    private func readUnlocked(
+        descriptor target: IndexKeychainItemDescriptor
+    ) throws -> ConnectorCredentialRecord? {
+        guard let data = try keychain.read(descriptor: target) else { return nil }
         let record = try decoder.decode(ConnectorCredentialRecord.self, from: data)
-        guard record.installationId == descriptor.account,
+        guard record.installationId == target.account,
               record.rawCredential.hasPrefix("idxh_"),
               record.audience == "hermes-agent" else {
             throw ConnectorCredentialStoreError.invalidRecord

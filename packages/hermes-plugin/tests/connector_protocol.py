@@ -19,6 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from connector_transport import (  # noqa: E402
+    CONNECTOR_REQUEST_DEADLINE_SECONDS,
     ConnectorTransport,
     DOWNLOAD_URL,
     EXPECTED_BUNDLE_ID,
@@ -110,6 +111,45 @@ class FakeProcess:
 
 class RawProcess(FakeProcess):
     pass
+
+
+class _Descriptor:
+    def __init__(self, descriptor):
+        self.descriptor = descriptor
+
+    def fileno(self):
+        return self.descriptor
+
+    def close(self):
+        pass
+
+
+class DescriptorProcess:
+    def __init__(self, stdin_fd, stdout_fd):
+        self.stdin = _Descriptor(stdin_fd)
+        self.stdout = _Descriptor(stdout_fd)
+        self.returncode = None
+        self.terminated = False
+        self.killed = False
+        self.reaped = False
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+        self.returncode = -9
+
+    def wait(self, timeout=None):
+        self.reaped = True
+        if self.returncode is None:
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("fixture", timeout)
+            self.returncode = 0
+        return self.returncode
 
 
 class ConnectorProtocolTests(unittest.TestCase):
@@ -404,6 +444,131 @@ class ConnectorProtocolTests(unittest.TestCase):
                 invoke(transport)
             self.assertEqual(transport.status()["health"], "disconnected")
             self.assertEqual([entry["operation"] for entry in clean.writes], ["hello", "status"])
+
+    def test_one_deadline_bounds_nonblocking_partial_write_and_response(self):
+        self.assertEqual(CONNECTOR_REQUEST_DEADLINE_SECONDS, 40.0)
+        self.assertGreater(CONNECTOR_REQUEST_DEADLINE_SECONDS, 30.0)
+        status_result = {
+            "connected": False, "accountLabel": None, "installationId": "installation-1",
+            "agentId": None, "setupAttemptId": None, "actions": [], "expiresAt": None,
+            "health": "disconnected", "revocationPending": False,
+        }
+
+        def attempt(response_delay):
+            read_fd, write_fd = os.pipe()
+            process = DescriptorProcess(91, read_fd)
+            clock = [0.0]
+
+            def write_func(_descriptor, data):
+                request = json.loads(data.decode("utf-8"))
+                response = {
+                    "protocolVersion": 1, "id": request["id"], "success": True,
+                    "result": status_result, "error": None,
+                }
+                os.write(write_fd, (json.dumps(response) + "\n").encode())
+                return len(data)
+
+            def select_func(readers, writers, _errors, timeout):
+                if writers:
+                    return [], writers, []
+                if response_delay > timeout:
+                    clock[0] += timeout
+                    return [], [], []
+                clock[0] += response_delay
+                return readers, [], []
+
+            transport = ConnectorTransport(
+                platform="darwin", candidate_paths=[], response_deadline_seconds=40,
+                monotonic=lambda: clock[0], select_fn=select_func, write_fn=write_func,
+                set_blocking_fn=lambda *_args: None,
+            )
+            transport._fixture_verified = True
+            transport._process = process
+            try:
+                return transport, process, transport.status(), clock[0]
+            finally:
+                os.close(write_fd)
+                os.close(read_fd)
+
+        transport, process, status, elapsed = attempt(20)
+        self.assertEqual(status["health"], "disconnected")
+        self.assertEqual(elapsed, 20)
+        self.assertFalse(process.terminated)
+
+        with self.assertRaises(TransportError) as timed_out:
+            attempt(41)
+        self.assertEqual(timed_out.exception.code, "connector_invalid_response")
+
+        read_fd, write_fd = os.pipe()
+        process = DescriptorProcess(92, read_fd)
+        writes = iter([5, BrokenPipeError("closed")])
+
+        def partial_write(_descriptor, _data):
+            outcome = next(writes)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        transport = ConnectorTransport(
+            platform="darwin", candidate_paths=[], response_deadline_seconds=0.05,
+            select_fn=lambda _r, writers, _e, _t: ([], writers, []),
+            write_fn=partial_write, set_blocking_fn=lambda *_args: None,
+        )
+        transport._fixture_verified = True
+        transport._process = process
+        with self.assertRaises(TransportError) as broken:
+            transport.status()
+        self.assertEqual(broken.exception.code, "connector_unavailable")
+        self.assertTrue(process.terminated and process.killed and process.reaped)
+        os.close(write_fd)
+        os.close(read_fd)
+
+        # The line cap includes the terminating newline, so a JSON body that is
+        # exactly 262144 bytes before newline is rejected before any write.
+        read_fd, write_fd = os.pipe()
+        process = DescriptorProcess(93, read_fd)
+        correlation_id = "a" * 32
+        empty = {
+            "protocolVersion": 1, "id": correlation_id,
+            "operation": "rest", "payload": {"blob": ""},
+        }
+        base_size = len(json.dumps(empty, separators=(",", ":")).encode())
+        payload = {"blob": "x" * (262_144 - base_size)}
+        transport = ConnectorTransport(platform="darwin", candidate_paths=[])
+        transport._fixture_verified = True
+        transport._process = process
+        with mock.patch("connector_transport.uuid.uuid4", return_value=mock.Mock(hex=correlation_id)):
+            with self.assertRaises(TransportError) as oversized:
+                transport._request("rest", payload)
+        self.assertEqual(oversized.exception.code, "request_too_large")
+        self.assertFalse(process.terminated)
+        os.close(write_fd)
+        os.close(read_fd)
+
+    def test_pipe_filling_upload_write_times_out_reaps_and_releases_lock(self):
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        hello = {"success": True, "result": {"protocolVersion": 1, "buildMode": "production", "apiEnvironment": "production"}}
+        status = {"success": True, "result": {
+            "connected": False, "accountLabel": None, "installationId": "installation-1",
+            "agentId": None, "setupAttemptId": None, "actions": [], "expiresAt": None,
+            "health": "disconnected", "revocationPending": False,
+        }}
+        clean = FakeProcess([hello, status])
+        transport = ConnectorTransport(
+            platform="darwin", candidate_paths=[], process_factory=lambda *_a, **_k: clean,
+            response_deadline_seconds=0.05,
+        )
+        transport._fixture_verified = True
+        transport._process = child
+        with self.assertRaises(TransportError) as timed_out:
+            transport._request("rest", {"kind": "upload.chunk", "uploadId": "u", "sequence": 0, "data": "x" * 200_000})
+        self.assertEqual(timed_out.exception.code, "connector_invalid_response")
+        self.assertIsNotNone(child.returncode)
+        self.assertEqual(transport.status()["health"], "disconnected")
+        self.assertEqual([entry["operation"] for entry in clean.writes], ["hello", "status"])
 
     def test_production_surfaces_have_no_direct_key_or_http_credential_path(self):
         for relative in ("tools.py", "dashboard/plugin_api.py", "dashboard/auth_login.py"):

@@ -29,7 +29,11 @@ EXPECTED_DESIGNATED_REQUIREMENT = (
 # by any other identity is not allowed to become a replacement trust root.
 PINNED_CONNECTOR_RELEASE_CMS_SHA256: str | None = None
 _MAX_LINE_BYTES = 1_048_576
-_RESPONSE_DEADLINE_SECONDS = 15.0
+_MAX_REQUEST_LINE_BYTES = 262_144
+# Native Connector HTTP calls are bounded at 30 seconds. The outer protocol
+# owns one 40-second write+response budget so a valid 20-30 second native
+# response is never killed by a shorter plugin pipe deadline.
+CONNECTOR_REQUEST_DEADLINE_SECONDS = 40.0
 _MAX_UPLOAD_BYTES = 8_388_608
 _UPLOAD_CHUNK_BYTES = 131_072
 _RELEASE_KEYS = {
@@ -65,7 +69,12 @@ class ConnectorTransport:
         process_factory: Callable[..., Any] = subprocess.Popen,
         now: Callable[[], datetime] | None = None,
         expected_cms_sha256: str | None = None,
-        response_deadline_seconds: float = _RESPONSE_DEADLINE_SECONDS,
+        response_deadline_seconds: float = CONNECTOR_REQUEST_DEADLINE_SECONDS,
+        monotonic: Callable[[], float] = time.monotonic,
+        select_fn: Callable[..., Any] = select.select,
+        write_fn: Callable[[int, bytes], int] = os.write,
+        read_fn: Callable[[int, int], bytes] = os.read,
+        set_blocking_fn: Callable[[int, bool], None] = os.set_blocking,
     ) -> None:
         import platform as platform_module
 
@@ -81,6 +90,11 @@ class ConnectorTransport:
             else PINNED_CONNECTOR_RELEASE_CMS_SHA256
         )
         self._response_deadline_seconds = response_deadline_seconds
+        self._monotonic = monotonic
+        self._select = select_fn
+        self._write = write_fn
+        self._read = read_fn
+        self._set_blocking = set_blocking_fn
         self._lock = threading.RLock()
         self._process = None
         self._verified_executable: pathlib.Path | None = None
@@ -321,6 +335,12 @@ class ConnectorTransport:
                 if descriptor is not None:
                     os.close(descriptor)
                     descriptor = None
+                try:
+                    self._set_blocking(self._process.stdin.fileno(), False)
+                except (AttributeError, OSError):
+                    # Injectable in-memory process factories have no OS pipe;
+                    # production subprocess.PIPE always does.
+                    pass
                 self._handshake()
             except TransportError:
                 self._stop_process()
@@ -364,18 +384,45 @@ class ConnectorTransport:
                 except Exception:  # noqa: BLE001
                     pass
 
-    def _read_response_line(self, process: Any) -> bytes:
+    def _write_request(self, process: Any, wire: bytes, deadline: float) -> None:
+        try:
+            descriptor = process.stdin.fileno()
+        except AttributeError:
+            # Legacy in-memory fixtures only. Production Popen pipes always use
+            # the descriptor-bound nonblocking path above.
+            process.stdin.write(wire)
+            flush = getattr(process.stdin, "flush", None)
+            if callable(flush):
+                flush()
+            return
+        self._set_blocking(descriptor, False)
+        offset = 0
+        while offset < len(wire):
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                raise TimeoutError("connector request deadline exceeded during write")
+            _, writable, _ = self._select([], [descriptor], [], remaining)
+            if not writable:
+                raise TimeoutError("connector request deadline exceeded during write")
+            try:
+                written = self._write(descriptor, wire[offset:])
+            except BlockingIOError:
+                continue
+            if written <= 0:
+                raise BrokenPipeError("connector stdin closed during write")
+            offset += written
+
+    def _read_response_line(self, process: Any, deadline: float) -> bytes:
         descriptor = process.stdout.fileno()
-        deadline = time.monotonic() + self._response_deadline_seconds
         output = bytearray()
         while True:
-            remaining = deadline - time.monotonic()
+            remaining = deadline - self._monotonic()
             if remaining <= 0:
                 raise TimeoutError("connector response deadline exceeded")
-            readable, _, _ = select.select([descriptor], [], [], remaining)
+            readable, _, _ = self._select([descriptor], [], [], remaining)
             if not readable:
                 raise TimeoutError("connector response deadline exceeded")
-            chunk = os.read(descriptor, min(65_536, _MAX_LINE_BYTES + 1 - len(output)))
+            chunk = self._read(descriptor, min(65_536, _MAX_LINE_BYTES + 1 - len(output)))
             if not chunk:
                 raise EOFError("connector response ended before a complete line")
             newline = chunk.find(b"\n")
@@ -430,16 +477,22 @@ class ConnectorTransport:
                 "payload": payload,
             }
             encoded = json.dumps(message, separators=(",", ":"), ensure_ascii=False)
-            if len(encoded.encode("utf-8")) > 262_144:
+            wire = (encoded + "\n").encode("utf-8")
+            if len(wire) > _MAX_REQUEST_LINE_BYTES:
                 raise TransportError("request_too_large", "The connector request is too large.")
+            deadline = self._monotonic() + self._response_deadline_seconds
             try:
-                process.stdin.write((encoded + "\n").encode("utf-8"))
-                process.stdin.flush()
-            except Exception as exc:  # noqa: BLE001
+                self._write_request(process, wire, deadline)
+            except TimeoutError as exc:
+                self._stop_process()
+                raise self._invalid_response_error(
+                    operation, payload, commit_uncertain=False
+                ) from exc
+            except (BrokenPipeError, OSError) as exc:
                 self._stop_process()
                 raise TransportError("connector_unavailable", "Index Connector communication failed.") from exc
             try:
-                line = self._read_response_line(process)
+                line = self._read_response_line(process, deadline)
             except (TimeoutError, EOFError, OverflowError, OSError) as exc:
                 self._stop_process()
                 raise self._invalid_response_error(

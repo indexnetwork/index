@@ -237,6 +237,10 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
   expect(runtime).toContain('staleAuthorization');
   expect(runtime).toContain('if let failure {');
   expect(runtime).toContain('clearAuthorizationFailure()');
+  for (const token of [
+    'putRecoveryAndVerify', 'readRecovery', 'compareAndSetRecovery',
+    'requireRevokedCredentialProbe', 'persistIssuedRecovery',
+  ]) expect(runtime).toContain(token);
 });
 
 test('rest variants bound uploads and poll connector-owned SSE streams', () => {

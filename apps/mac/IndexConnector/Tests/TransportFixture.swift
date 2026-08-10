@@ -4,6 +4,7 @@ import Foundation
 
 private final class TransportCredentialStore: ConnectorCredentialStoring {
     var record: ConnectorCredentialRecord?
+    var recoveryRecord: ConnectorCredentialRecord?
     var failNextPut = false
     var failDelete = false
     init(record: ConnectorCredentialRecord?) { self.record = record }
@@ -25,6 +26,15 @@ private final class TransportCredentialStore: ConnectorCredentialStoring {
     ) throws -> Bool {
         guard record == expected else { return false }
         if let replacement { try putAndVerify(replacement) } else { try delete() }
+        return true
+    }
+    func putRecoveryAndVerify(_ record: ConnectorCredentialRecord) throws { recoveryRecord = record }
+    func readRecovery() throws -> ConnectorCredentialRecord? { recoveryRecord }
+    func compareAndSetRecovery(
+        expected: ConnectorCredentialRecord?, replacement: ConnectorCredentialRecord?
+    ) throws -> Bool {
+        guard recoveryRecord == expected else { return false }
+        recoveryRecord = replacement
         return true
     }
 }
