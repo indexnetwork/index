@@ -665,11 +665,11 @@ struct TransportFixture {
         let activeProbeFailure = "activeProbeFailure"
         let probeServer = TransportFixtureServer(); probeServer.forceProbeFailure = true
         let probeCredentials = TransportCredentialStore(record: record)
-        let probeJournal = TransportInstallationStore(installationId: record.installationId)
-        let probeRuntime = try makeRuntime(server: probeServer, record: record, credentialStore: probeCredentials, installationStore: probeJournal)
+        let probeFailureJournal = TransportInstallationStore(installationId: record.installationId)
+        let probeRuntime = try makeRuntime(server: probeServer, record: record, credentialStore: probeCredentials, installationStore: probeFailureJournal)
         precondition(probeRuntime.handle(disconnectRequest("probe-failure")).result == .object(["status": .string("recovery_only")]))
         precondition(probeCredentials.record?.recoveryPhase == .serverReceiptConfirmed)
-        precondition(probeJournal.recoveryPhase == .serverReceiptConfirmed)
+        precondition(probeFailureJournal.recoveryPhase == .serverReceiptConfirmed)
 
         let serverUncertaintyKeyRetention = "serverUncertaintyKeyRetention"
         let uncertainServer = TransportFixtureServer(); uncertainServer.failDisconnect = true
