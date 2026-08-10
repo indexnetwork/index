@@ -463,7 +463,10 @@ final class ConnectorRuntime {
             throw ConnectorRuntimeError.staleAuthorization
         }
 
-        let active = activationRequested.replacing(activationState: "active", recoveryPhase: .none)
+        let active = activationRequested.replacing(
+            activationState: "active",
+            recoveryPhase: ConnectorRecoveryPhase.none
+        )
         guard transitionAuthorization(
             attemptId: attempt.id,
             epoch: attempt.epoch,
@@ -1131,17 +1134,14 @@ final class ConnectorRuntime {
     }
 
     private func statusValue() -> JSONValue {
-        let record: ConnectorCredentialRecord?
-        let recovery: ConnectorCredentialRecord?
+        let credentials: (primary: ConnectorCredentialRecord?, recovery: ConnectorCredentialRecord?)
         do {
-            record = try credentialStore.read()
-            recovery = try credentialStore.readRecovery()
+            credentials = (try credentialStore.read(), try credentialStore.readRecovery())
         } catch {
             processRecovery.failClosed()
-            record = nil
-            recovery = nil
+            credentials = (nil, nil)
         }
-        let displayed = record ?? recovery
+        let displayed = credentials.primary ?? credentials.recovery
         return .object(statusObject(record: displayed, recoveryOnly: recoveryRequired(record: displayed)))
     }
 

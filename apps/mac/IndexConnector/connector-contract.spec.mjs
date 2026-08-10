@@ -253,6 +253,9 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
     'invalidateAuthorizationAfterRecoveryReadError',
   ]) expect(runtime).toContain(token);
   expect(runtime).not.toContain('record?.recoveryPhase == .none');
+  expect(runtime).not.toContain('replacing(activationState: "active", recoveryPhase: .none)');
+  expect(runtime).toContain('recoveryPhase: ConnectorRecoveryPhase.none');
+  expect(runtime).toContain('let credentials: (primary: ConnectorCredentialRecord?, recovery: ConnectorCredentialRecord?)');
   expect(runtime).toContain('primary.recoveryPhase == ConnectorRecoveryPhase.none');
   const disconnectBlock = runtime.match(
     /private func disconnect\(\)[\s\S]*?private func recoverIssuedCredential/
