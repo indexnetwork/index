@@ -2,13 +2,40 @@ import Foundation
 
 struct ConnectorInstallationState: Codable, Equatable {
     let installationId: String
-    var revocationPending: Bool
+    var recoveryPhase: ConnectorRecoveryPhase
+
+    private enum CodingKeys: String, CodingKey {
+        case installationId, recoveryPhase, revocationPending
+    }
+
+    init(installationId: String, recoveryPhase: ConnectorRecoveryPhase) {
+        self.installationId = installationId
+        self.recoveryPhase = recoveryPhase
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        installationId = try container.decode(String.self, forKey: .installationId)
+        if let phase = try container.decodeIfPresent(ConnectorRecoveryPhase.self, forKey: .recoveryPhase) {
+            recoveryPhase = phase
+        } else if try container.decodeIfPresent(Bool.self, forKey: .revocationPending) == true {
+            recoveryPhase = .revocationRequested
+        } else {
+            recoveryPhase = .none
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(installationId, forKey: .installationId)
+        try container.encode(recoveryPhase, forKey: .recoveryPhase)
+    }
 }
 
 protocol ConnectorInstallationStoring: AnyObject {
     var installationId: String { get }
-    var revocationPending: Bool { get }
-    func setRevocationPending(_ pending: Bool) throws
+    var recoveryPhase: ConnectorRecoveryPhase { get }
+    func setRecoveryPhase(_ phase: ConnectorRecoveryPhase) throws
 }
 
 enum ConnectorInstallationStoreError: Error, Equatable {
@@ -29,10 +56,10 @@ final class ConnectorInstallationStore: ConnectorInstallationStoring {
         return state.installationId
     }
 
-    var revocationPending: Bool {
+    var recoveryPhase: ConnectorRecoveryPhase {
         lock.lock()
         defer { lock.unlock() }
-        return state.revocationPending
+        return state.recoveryPhase
     }
 
     init(
@@ -48,7 +75,7 @@ final class ConnectorInstallationStore: ConnectorInstallationStoring {
             create: true
         )
         // ~/Library/Application Support/network.index.connector/ contains only
-        // the stable UUID and recovery metadata; credentials remain in Keychain.
+        // the stable UUID and non-secret staged recovery journal.
         directoryURL = base.appendingPathComponent("network.index.connector", isDirectory: true)
         fileURL = directoryURL.appendingPathComponent("installation-\(environment).json", isDirectory: false)
         try Self.prepareDirectory(directoryURL, fileManager: fileManager)
@@ -66,17 +93,17 @@ final class ConnectorInstallationStore: ConnectorInstallationStoring {
         } else {
             state = ConnectorInstallationState(
                 installationId: UUID().uuidString.lowercased(),
-                revocationPending: false
+                recoveryPhase: .none
             )
             try persist(state)
         }
     }
 
-    func setRevocationPending(_ pending: Bool) throws {
+    func setRecoveryPhase(_ phase: ConnectorRecoveryPhase) throws {
         lock.lock()
         defer { lock.unlock() }
         var replacement = state
-        replacement.revocationPending = pending
+        replacement.recoveryPhase = phase
         try persist(replacement)
         state = replacement
     }

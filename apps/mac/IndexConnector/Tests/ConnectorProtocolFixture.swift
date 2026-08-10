@@ -82,6 +82,22 @@ struct ConnectorProtocolFixture {
             }
         }
 
+        let authorizeStartPendingResponse = ConnectorResponse(
+            protocolVersion: ConnectorProtocolVersion.current,
+            id: "authorize-start-1",
+            success: true,
+            result: .object(["status": .string("pending")]),
+            error: nil
+        )
+        let authorizeStartData = try StrictConnectorEncoder.encode(authorizeStartPendingResponse)
+        let authorizeStartJSON = String(decoding: authorizeStartData, as: UTF8.self)
+        precondition(authorizeStartJSON.contains(#""status":"pending""#))
+        precondition(!authorizeStartJSON.contains("authorizationUrl"))
+        precondition(!authorizeStartJSON.contains("requestId"))
+        precondition(!authorizeStartJSON.contains("state"))
+        precondition(!authorizeStartJSON.contains("redirectUri"))
+        precondition(!authorizeStartJSON.contains("redirect_uri"))
+
         print("Connector protocol fixture passed")
     }
 }

@@ -198,6 +198,17 @@ test('authorization, transport, persistence, and serialized runtime remain bound
   }
 });
 
+test('authorize.start response is encoded without browser or setup details', () => {
+  const runtime = read('./Sources/ConnectorRuntime.swift');
+  const fixture = read('./Tests/ConnectorProtocolFixture.swift');
+  expect(runtime).not.toContain('authorizationUrl');
+  expect(fixture).toContain('authorizeStartPendingResponse');
+  expect(fixture).toContain('"status":"pending"');
+  for (const forbidden of ['authorizationUrl', 'requestId', 'state', 'redirectUri', 'redirect_uri']) {
+    expect(fixture).toContain(`!authorizeStartJSON.contains("${forbidden}")`);
+  }
+});
+
 test('native fixtures cover callback replay, keychain ordering, transport bounds, and recovery mode', () => {
   const authorization = read('./Tests/AuthorizationFixture.swift');
   const transport = read('./Tests/TransportFixture.swift');
@@ -206,5 +217,13 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
   }
   for (const token of ['deniedRoute', 'deniedTool', 'oversizedPayload', 'endpointOverride', 'pendingRevocation', 'recovery_only']) {
     expect(transport).toContain(token);
+  }
+  for (const token of [
+    'firstRecoveryPersistenceFailure', 'activationTimeout', 'accountLabelFailure',
+    'activeKeychainWriteFailure', 'receiptMismatch', 'activeProbeFailure',
+    'serverUncertaintyKeyRetention', 'keychainDeletionFailure',
+    'journalClearFailureNoKeyConvergence',
+  ]) {
+    expect(`${authorization}\n${transport}`).toContain(token);
   }
 });

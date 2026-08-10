@@ -215,6 +215,8 @@ final class BrowserAuthorization {
 
     private let http: ConnectorHTTPClient
     private let credentialStore: ConnectorCredentialStoring
+    private let installationStore: ConnectorInstallationStoring
+    private let processRecovery: ConnectorProcessRecoveryState
     private let installationId: String
     private let endpoints: ConnectorEndpoints
     private let openBrowser: (URL) -> Bool
@@ -226,18 +228,22 @@ final class BrowserAuthorization {
     init(
         http: ConnectorHTTPClient,
         credentialStore: ConnectorCredentialStoring,
+        installationStore: ConnectorInstallationStoring,
+        processRecovery: ConnectorProcessRecoveryState,
         installationId: String,
         endpoints: ConnectorEndpoints = .embedded,
         openBrowser: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) {
         self.http = http
         self.credentialStore = credentialStore
+        self.installationStore = installationStore
+        self.processRecovery = processRecovery
         self.installationId = installationId
         self.endpoints = endpoints
         self.openBrowser = openBrowser
     }
 
-    func start() throws -> URL {
+    func start() throws {
         lock.lock()
         if case .pending = currentSnapshot {
             lock.unlock()
@@ -288,7 +294,7 @@ final class BrowserAuthorization {
                 fail(code: "browser_open_failed", message: "The authorization page could not be opened.")
                 throw BrowserAuthorizationError.browserOpenFailed
             }
-            return authorizationURL
+            return
         } catch {
             callbackListener.close()
             throw error
@@ -334,8 +340,6 @@ final class BrowserAuthorization {
                   exchanged.expiresAt > Date() else {
                 throw BrowserAuthorizationError.invalidCredentialMetadata
             }
-            // Keychain write/read verification is intentionally completed before
-            // the server is ever told that native storage succeeded.
             let pendingRecord = ConnectorCredentialRecord(
                 rawCredential: exchanged.credential,
                 audience: exchanged.audience,
@@ -353,6 +357,15 @@ final class BrowserAuthorization {
             } catch {
                 throw BrowserAuthorizationError.keychainFailure
             }
+
+            // Fail-close this process first, then persist activation uncertainty
+            // to both authoritative Keychain state and the non-secret journal.
+            processRecovery.failClosed()
+            let activationRequested = pendingRecord.replacing(recoveryPhase: .activationRequested)
+            guard persistRecovery(record: activationRequested, phase: .activationRequested) else {
+                throw BrowserAuthorizationError.keychainFailure
+            }
+
             let activated = try http.activate(credential: exchanged.credential)
             guard activated.audience == exchanged.audience,
                   activated.credentialId == exchanged.credentialId,
@@ -364,29 +377,55 @@ final class BrowserAuthorization {
                   activated.activationState == "active" else {
                 throw BrowserAuthorizationError.activationFailure
             }
-            let accountLabel = try http.fetchAccountLabel(credential: exchanged.credential)
-            let activeRecord = ConnectorCredentialRecord(
-                rawCredential: exchanged.credential,
-                audience: exchanged.audience,
-                agentId: exchanged.agentId,
-                installationId: exchanged.installationId,
-                setupAttemptId: exchanged.setupAttemptId,
-                credentialId: exchanged.credentialId,
-                actions: exchanged.actions,
-                expiresAt: exchanged.expiresAt,
+
+            // Server activation is confirmed. Persist active authority before the
+            // optional account-label request so that lookup failure cannot regress it.
+            let activeRecord = pendingRecord.replacing(
                 activationState: "active",
-                accountLabel: accountLabel
+                recoveryPhase: .none
             )
-            try credentialStore.putAndVerify(activeRecord)
-            lock.lock()
-            attempt = nil
-            currentSnapshot = .connected(activeRecord)
-            lock.unlock()
+            do {
+                try credentialStore.putAndVerify(activeRecord)
+            } catch {
+                throw BrowserAuthorizationError.keychainFailure
+            }
+            do {
+                try installationStore.setRecoveryPhase(.none)
+            } catch {
+                throw BrowserAuthorizationError.keychainFailure
+            }
+            processRecovery.clear()
+            setConnected(activeRecord)
+
+            guard let accountLabel = try? http.fetchAccountLabel(credential: exchanged.credential),
+                  !accountLabel.isEmpty else { return }
+            let labeledRecord = activeRecord.replacing(accountLabel: accountLabel)
+            if (try? credentialStore.putAndVerify(labeledRecord)) != nil {
+                setConnected(labeledRecord)
+            }
         } catch BrowserAuthorizationError.keychainFailure {
             fail(code: "credential_storage_failed", message: "Secure credential storage failed.")
         } catch {
             fail(code: "authorization_failed", message: "Authorization could not be completed.")
         }
+    }
+
+    private func persistRecovery(
+        record: ConnectorCredentialRecord,
+        phase: ConnectorRecoveryPhase
+    ) -> Bool {
+        var keychainPersisted = true
+        var journalPersisted = true
+        do { try credentialStore.putAndVerify(record) } catch { keychainPersisted = false }
+        do { try installationStore.setRecoveryPhase(phase) } catch { journalPersisted = false }
+        return keychainPersisted && journalPersisted
+    }
+
+    private func setConnected(_ record: ConnectorCredentialRecord) {
+        lock.lock()
+        attempt = nil
+        currentSnapshot = .connected(record)
+        lock.unlock()
     }
 
     private func fail(code: String, message: String) {

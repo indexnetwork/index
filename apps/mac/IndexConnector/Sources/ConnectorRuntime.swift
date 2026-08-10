@@ -9,24 +9,26 @@ enum ConnectorRuntimeError: Error, Equatable {
 }
 
 final class ConnectorRuntime {
-    private let endpoints: ConnectorEndpoints
     private let installationStore: ConnectorInstallationStoring
     private let credentialStore: ConnectorCredentialStoring
     private let http: ConnectorHTTPClient
     private let authorization: BrowserAuthorization
+    private let processRecovery: ConnectorProcessRecoveryState
 
     init(
         endpoints: ConnectorEndpoints,
         installationStore: ConnectorInstallationStoring,
         credentialStore: ConnectorCredentialStoring,
         http: ConnectorHTTPClient,
-        authorization: BrowserAuthorization
+        authorization: BrowserAuthorization,
+        processRecovery: ConnectorProcessRecoveryState
     ) {
-        self.endpoints = endpoints
+        _ = endpoints
         self.installationStore = installationStore
         self.credentialStore = credentialStore
         self.http = http
         self.authorization = authorization
+        self.processRecovery = processRecovery
     }
 
     convenience init(
@@ -35,9 +37,12 @@ final class ConnectorRuntime {
     ) throws {
         let credentialStore = try ConnectorCredentialStore(installationId: installationStore.installationId)
         let http = ConnectorHTTPClient(endpoints: endpoints)
+        let processRecovery = ConnectorProcessRecoveryState()
         let authorization = BrowserAuthorization(
             http: http,
             credentialStore: credentialStore,
+            installationStore: installationStore,
+            processRecovery: processRecovery,
             installationId: installationStore.installationId,
             endpoints: endpoints
         )
@@ -46,7 +51,8 @@ final class ConnectorRuntime {
             installationStore: installationStore,
             credentialStore: credentialStore,
             http: http,
-            authorization: authorization
+            authorization: authorization,
+            processRecovery: processRecovery
         )
     }
 
@@ -61,24 +67,17 @@ final class ConnectorRuntime {
                 error: nil
             )
         } catch {
-            let sanitized = sanitize(error)
             return ConnectorResponse(
                 protocolVersion: ConnectorProtocolVersion.current,
                 id: request.id,
                 success: false,
                 result: nil,
-                error: sanitized
+                error: sanitize(error)
             )
         }
     }
 
     private func dispatch(_ request: ConnectorRequest) throws -> JSONValue {
-        if installationStore.revocationPending,
-           request.operation != .hello,
-           request.operation != .status,
-           request.operation != .disconnect {
-            throw ConnectorRuntimeError.recoveryOnly
-        }
         switch request.operation {
         case .hello:
             try requireExactKeys(request.payload, allowed: [])
@@ -89,21 +88,25 @@ final class ConnectorRuntime {
             ])
         case .status:
             try requireExactKeys(request.payload, allowed: [])
-            return try statusValue()
+            return statusValue()
         case .authorizeStart:
             try requireExactKeys(request.payload, allowed: [])
-            if let record = try credentialStore.read(), record.activationState == "active", record.expiresAt > Date() {
-                throw ConnectorRuntimeError.alreadyConnected
+            let record = try readCredentialFailClosed()
+            if processRecovery.isRecoveryOnly
+                || installationStore.recoveryPhase.requiresRecovery
+                || record?.recoveryPhase.requiresRecovery == true {
+                throw ConnectorRuntimeError.recoveryOnly
             }
-            let url = try authorization.start()
-            return .object(["status": .string("pending"), "authorizationUrl": .string(url.absoluteString)])
+            guard record == nil else { throw ConnectorRuntimeError.alreadyConnected }
+            try authorization.start()
+            return .object(["status": .string("pending")])
         case .authorizePoll:
             try requireExactKeys(request.payload, allowed: [])
             switch authorization.snapshot() {
             case .idle, .pending:
                 return .object(["status": .string("pending")])
             case let .connected(record):
-                var result = statusObject(record: record, revocationPending: false)
+                var result = statusObject(record: record, recoveryOnly: recoveryRequired(record: record))
                 result["status"] = .string("connected")
                 return .object(result)
             case let .failed(code, message):
@@ -135,55 +138,158 @@ final class ConnectorRuntime {
             return try http.callMCP(toolName: toolName, arguments: arguments, credential: activeCredential())
         case .disconnect:
             try requireExactKeys(request.payload, allowed: [])
-            return try disconnect()
+            return disconnect()
+        }
+    }
+
+    private func readCredentialFailClosed() throws -> ConnectorCredentialRecord? {
+        do {
+            return try credentialStore.read()
+        } catch {
+            processRecovery.failClosed()
+            throw ConnectorRuntimeError.recoveryOnly
         }
     }
 
     private func activeCredential() throws -> ConnectorCredentialRecord {
-        guard let record = try credentialStore.read(), record.activationState == "active" else {
+        guard let record = try readCredentialFailClosed() else {
             throw ConnectorRuntimeError.notConnected
+        }
+        guard !recoveryRequired(record: record), record.activationState == "active" else {
+            throw ConnectorRuntimeError.recoveryOnly
         }
         guard record.expiresAt > Date() else { throw ConnectorRuntimeError.reconnectRequired }
         return record
     }
 
-    private func disconnect() throws -> JSONValue {
-        guard let record = try credentialStore.read() else {
-            if installationStore.revocationPending {
-                return .object(["status": .string("recovery_only")])
-            }
-            return .object(["status": .string("disconnected")])
-        }
-        try installationStore.setRevocationPending(true)
+    private func recoveryRequired(record: ConnectorCredentialRecord?) -> Bool {
+        processRecovery.isRecoveryOnly
+            || installationStore.recoveryPhase.requiresRecovery
+            || record?.recoveryPhase.requiresRecovery == true
+            || record?.activationState == "pending"
+    }
+
+    private func disconnect() -> JSONValue {
+        processRecovery.failClosed()
+        let record: ConnectorCredentialRecord?
         do {
-            let receipt = try http.revoke(credential: record.rawCredential)
-            guard receipt.credentialId == record.credentialId,
-                  receipt.setupAttemptId == record.setupAttemptId else {
-                throw ConnectorHTTPError.revocationUnconfirmed
-            }
-            if record.activationState == "active", record.expiresAt > Date() {
-                try http.requireRevokedCredentialProbe(credential: record.rawCredential)
-            }
-            try credentialStore.delete()
-            try installationStore.setRevocationPending(false)
-            return .object(["status": .string("disconnected")])
+            record = try credentialStore.read()
         } catch {
-            return .object(["status": .string("recovery_only")])
+            return recoveryOnlyResult
+        }
+
+        guard var workingRecord = record else {
+            if installationStore.recoveryPhase.confirmsServerRevocation {
+                do {
+                    try installationStore.setRecoveryPhase(.none)
+                    processRecovery.clear()
+                    return disconnectedResult
+                } catch {
+                    return recoveryOnlyResult
+                }
+            }
+            if installationStore.recoveryPhase == .none {
+                processRecovery.clear()
+                return disconnectedResult
+            }
+            return recoveryOnlyResult
+        }
+
+        if workingRecord.recoveryPhase == .none || workingRecord.recoveryPhase == .activationRequested {
+            workingRecord = workingRecord.replacing(recoveryPhase: .revocationRequested)
+            guard persistRecovery(record: workingRecord, phase: .revocationRequested) else {
+                return recoveryOnlyResult
+            }
+        } else if installationStore.recoveryPhase != workingRecord.recoveryPhase {
+            guard persistRecovery(record: workingRecord, phase: workingRecord.recoveryPhase) else {
+                return recoveryOnlyResult
+            }
+        }
+
+        if workingRecord.recoveryPhase == .revocationRequested {
+            do {
+                let receipt = try http.revoke(credential: workingRecord.rawCredential)
+                guard receipt.credentialId == workingRecord.credentialId,
+                      receipt.setupAttemptId == workingRecord.setupAttemptId else {
+                    return recoveryOnlyResult
+                }
+                workingRecord = workingRecord.replacing(recoveryPhase: .serverReceiptConfirmed)
+                guard persistRecovery(record: workingRecord, phase: .serverReceiptConfirmed) else {
+                    return recoveryOnlyResult
+                }
+            } catch {
+                return recoveryOnlyResult
+            }
+        }
+
+        if workingRecord.activationState == "active",
+           workingRecord.expiresAt > Date(),
+           workingRecord.recoveryPhase != .revocationProbeConfirmed {
+            do {
+                try http.requireRevokedCredentialProbe(credential: workingRecord.rawCredential)
+                workingRecord = workingRecord.replacing(recoveryPhase: .revocationProbeConfirmed)
+                guard persistRecovery(record: workingRecord, phase: .revocationProbeConfirmed) else {
+                    return recoveryOnlyResult
+                }
+            } catch {
+                return recoveryOnlyResult
+            }
+        }
+
+        guard workingRecord.recoveryPhase.confirmsServerRevocation else {
+            return recoveryOnlyResult
+        }
+        do {
+            try credentialStore.delete()
+        } catch {
+            return recoveryOnlyResult
+        }
+        do {
+            try installationStore.setRecoveryPhase(.none)
+            processRecovery.clear()
+            return disconnectedResult
+        } catch {
+            return recoveryOnlyResult
         }
     }
 
-    private func statusValue() throws -> JSONValue {
-        let record = try credentialStore.read()
-        return .object(statusObject(record: record, revocationPending: installationStore.revocationPending))
+    private func persistRecovery(
+        record: ConnectorCredentialRecord,
+        phase: ConnectorRecoveryPhase
+    ) -> Bool {
+        var keychainPersisted = true
+        var journalPersisted = true
+        do { try credentialStore.putAndVerify(record) } catch { keychainPersisted = false }
+        do { try installationStore.setRecoveryPhase(phase) } catch { journalPersisted = false }
+        return keychainPersisted && journalPersisted
+    }
+
+    private var disconnectedResult: JSONValue {
+        .object(["status": .string("disconnected")])
+    }
+
+    private var recoveryOnlyResult: JSONValue {
+        .object(["status": .string("recovery_only")])
+    }
+
+    private func statusValue() -> JSONValue {
+        let record: ConnectorCredentialRecord?
+        do {
+            record = try credentialStore.read()
+        } catch {
+            processRecovery.failClosed()
+            record = nil
+        }
+        return .object(statusObject(record: record, recoveryOnly: recoveryRequired(record: record)))
     }
 
     private func statusObject(
         record: ConnectorCredentialRecord?,
-        revocationPending: Bool
+        recoveryOnly: Bool
     ) -> [String: JSONValue] {
         let health: String
         let connected: Bool
-        if revocationPending {
+        if recoveryOnly {
             health = "recovery_only"
             connected = false
         } else if let record, record.expiresAt <= Date() {
@@ -203,7 +309,7 @@ final class ConnectorRuntime {
             "actions": .array(record?.actions.map(JSONValue.string) ?? []),
             "expiresAt": record.map { .string(Self.iso8601($0.expiresAt)) } ?? .null,
             "health": .string(health),
-            "revocationPending": .bool(revocationPending),
+            "revocationPending": .bool(recoveryOnly),
         ]
     }
 

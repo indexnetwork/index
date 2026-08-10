@@ -6,10 +6,15 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
     var record: ConnectorCredentialRecord?
     var events: [String] = []
     var failWrites = false
+    var failNextActiveWrite = false
 
     func putAndVerify(_ record: ConnectorCredentialRecord) throws {
-        events.append("write")
+        events.append("write:\(record.activationState):\(record.recoveryPhase.rawValue)")
         if failWrites { throw ConnectorCredentialStoreError.verificationFailed }
+        if failNextActiveWrite && record.activationState == "active" {
+            failNextActiveWrite = false
+            throw ConnectorCredentialStoreError.verificationFailed
+        }
         self.record = record
         events.append("read")
         guard try read() == record else { throw ConnectorCredentialStoreError.verificationFailed }
@@ -17,6 +22,21 @@ private final class FixtureCredentialStore: ConnectorCredentialStoring {
 
     func read() throws -> ConnectorCredentialRecord? { record }
     func delete() throws { record = nil }
+}
+
+private final class AuthorizationInstallationStore: ConnectorInstallationStoring {
+    let installationId: String
+    var recoveryPhase: ConnectorRecoveryPhase = .none
+    var failNextSet = false
+
+    init(installationId: String) { self.installationId = installationId }
+    func setRecoveryPhase(_ phase: ConnectorRecoveryPhase) throws {
+        if failNextSet {
+            failNextSet = false
+            throw ConnectorInstallationStoreError.invalidState
+        }
+        recoveryPhase = phase
+    }
 }
 
 private final class AuthorizationFixtureServer {
@@ -29,6 +49,8 @@ private final class AuthorizationFixtureServer {
     private(set) var activationCount = 0
     var activationAllowed: () -> Bool = { true }
     var rejectNextExchangeAsExpired = false
+    var failNextActivation = false
+    var failAccountLookup = false
 
     init() throws {
         descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
@@ -129,10 +151,19 @@ private final class AuthorizationFixtureServer {
             respond(connection, status: 200, body: credentialBody(state: "pending", includeCredential: true))
         case "/api/hermes-authorizations/activate":
             precondition(activationAllowed())
-            lock.lock(); activationCount += 1; lock.unlock()
+            lock.lock()
+            activationCount += 1
+            let failActivation = failNextActivation
+            failNextActivation = false
+            lock.unlock()
+            if failActivation { return }
             respond(connection, status: 200, body: credentialBody(state: "active", includeCredential: false))
         case "/api/auth/me":
-            respond(connection, status: 200, body: ["user": ["name": "Fixture Owner"]])
+            if failAccountLookup {
+                respond(connection, status: 503, body: ["error": "unavailable"])
+            } else {
+                respond(connection, status: 200, body: ["user": ["name": "Fixture Owner"]])
+            }
         default:
             respond(connection, status: 404, body: ["error": "not_found"])
         }
@@ -241,13 +272,18 @@ struct AuthorizationFixture {
         let server = try AuthorizationFixtureServer()
         let endpoints = try server.endpoints
         let http = ConnectorHTTPClient(endpoints: endpoints)
+        let installationId = "11111111-1111-4111-8111-111111111111"
         let store = FixtureCredentialStore()
+        let installationStore = AuthorizationInstallationStore(installationId: installationId)
+        let processRecovery = ConnectorProcessRecoveryState()
         let keychainWriteBeforeActivation = "keychainWriteBeforeActivation"
-        server.activationAllowed = { store.events.suffix(2) == ["write", "read"] }
+        server.activationAllowed = { store.record?.recoveryPhase == .activationRequested }
         let authorization = BrowserAuthorization(
             http: http,
             credentialStore: store,
-            installationId: "11111111-1111-4111-8111-111111111111",
+            installationStore: installationStore,
+            processRecovery: processRecovery,
+            installationId: installationId,
             endpoints: endpoints,
             openBrowser: { url in
                 let query = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
@@ -262,7 +298,26 @@ struct AuthorizationFixture {
                 )
             }
         )
-        _ = try authorization.start()
+        let authorizationRuntime = ConnectorRuntime(
+            endpoints: endpoints,
+            installationStore: installationStore,
+            credentialStore: store,
+            http: http,
+            authorization: authorization,
+            processRecovery: processRecovery
+        )
+        let startResponse = authorizationRuntime.handle(ConnectorRequest(
+            protocolVersion: 1,
+            id: "authorize-start-fixture",
+            operation: .authorizeStart,
+            payload: [:]
+        ))
+        precondition(startResponse.result == .object(["status": .string("pending")]))
+        let encodedStart = try StrictConnectorEncoder.encode(startResponse)
+        let encodedStartText = String(decoding: encodedStart, as: UTF8.self)
+        for forbidden in ["authorizationUrl", "requestId", "state", "redirectUri", "redirect_uri"] {
+            precondition(!encodedStartText.contains(forbidden))
+        }
         waitFor { if case .connected = authorization.snapshot() { return true }; return false }
         precondition(store.record?.accountLabel == "Fixture Owner")
         precondition(server.activationCount == 1)
@@ -270,10 +325,13 @@ struct AuthorizationFixture {
 
         let failedStore = FixtureCredentialStore(); failedStore.failWrites = true
         let activationOmittedAfterKeychainFailure = "activationOmittedAfterKeychainFailure"
+        let failedInstallationStore = AuthorizationInstallationStore(installationId: installationId)
         let failedAuthorization = BrowserAuthorization(
             http: http,
             credentialStore: failedStore,
-            installationId: "11111111-1111-4111-8111-111111111111",
+            installationStore: failedInstallationStore,
+            processRecovery: ConnectorProcessRecoveryState(),
+            installationId: installationId,
             endpoints: endpoints,
             openBrowser: { url in
                 let query = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
@@ -281,7 +339,7 @@ struct AuthorizationFixture {
                 return sendRawCallback(port: UInt16(callback.port!), target: "/callback?state=\(query["state"]!)&code=authorization-code-2", host: "127.0.0.1:\(callback.port!)")
             }
         )
-        _ = try failedAuthorization.start()
+        try failedAuthorization.start()
         waitFor { if case .failed = failedAuthorization.snapshot() { return true }; return false }
         precondition(server.activationCount == 1)
         precondition(activationOmittedAfterKeychainFailure == "activationOmittedAfterKeychainFailure")
@@ -290,7 +348,9 @@ struct AuthorizationFixture {
         let expiredAuthorization = BrowserAuthorization(
             http: http,
             credentialStore: FixtureCredentialStore(),
-            installationId: "11111111-1111-4111-8111-111111111111",
+            installationStore: AuthorizationInstallationStore(installationId: installationId),
+            processRecovery: ConnectorProcessRecoveryState(),
+            installationId: installationId,
             endpoints: endpoints,
             openBrowser: { url in
                 let query = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
@@ -298,8 +358,84 @@ struct AuthorizationFixture {
                 return sendRawCallback(port: UInt16(callback.port!), target: "/callback?state=\(query["state"]!)&code=expired-code", host: "127.0.0.1:\(callback.port!)")
             }
         )
-        _ = try expiredAuthorization.start()
+        try expiredAuthorization.start()
         waitFor { if case .failed = expiredAuthorization.snapshot() { return true }; return false }
+
+        server.activationAllowed = { true }
+        let activationTimeout = "activationTimeout"
+        server.failNextActivation = true
+        let timeoutStore = FixtureCredentialStore()
+        let timeoutJournal = AuthorizationInstallationStore(installationId: installationId)
+        let timeoutProcess = ConnectorProcessRecoveryState()
+        let timeoutAuthorization = BrowserAuthorization(
+            http: http,
+            credentialStore: timeoutStore,
+            installationStore: timeoutJournal,
+            processRecovery: timeoutProcess,
+            installationId: installationId,
+            endpoints: endpoints,
+            openBrowser: { url in
+                let query = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
+                let callback = URL(string: query["redirect_uri"]!)!
+                return sendRawCallback(port: UInt16(callback.port!), target: "/callback?state=\(query["state"]!)&code=activation-timeout", host: "127.0.0.1:\(callback.port!)")
+            }
+        )
+        try timeoutAuthorization.start()
+        waitFor { if case .failed = timeoutAuthorization.snapshot() { return true }; return false }
+        precondition(timeoutStore.record?.recoveryPhase == .activationRequested)
+        precondition(timeoutJournal.recoveryPhase == .activationRequested)
+        precondition(timeoutProcess.isRecoveryOnly)
+
+        let accountLabelFailure = "accountLabelFailure"
+        server.failAccountLookup = true
+        let labelStore = FixtureCredentialStore()
+        let labelJournal = AuthorizationInstallationStore(installationId: installationId)
+        let labelProcess = ConnectorProcessRecoveryState()
+        let labelAuthorization = BrowserAuthorization(
+            http: http,
+            credentialStore: labelStore,
+            installationStore: labelJournal,
+            processRecovery: labelProcess,
+            installationId: installationId,
+            endpoints: endpoints,
+            openBrowser: { url in
+                let query = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
+                let callback = URL(string: query["redirect_uri"]!)!
+                return sendRawCallback(port: UInt16(callback.port!), target: "/callback?state=\(query["state"]!)&code=account-label-failure", host: "127.0.0.1:\(callback.port!)")
+            }
+        )
+        try labelAuthorization.start()
+        waitFor { if case .connected = labelAuthorization.snapshot() { return true }; return false }
+        precondition(labelStore.record?.activationState == "active")
+        precondition(labelStore.record?.accountLabel == "")
+        precondition(labelStore.record?.recoveryPhase == .none)
+        precondition(labelJournal.recoveryPhase == .none && !labelProcess.isRecoveryOnly)
+        server.failAccountLookup = false
+
+        let activeKeychainWriteFailure = "activeKeychainWriteFailure"
+        let activeFailureStore = FixtureCredentialStore(); activeFailureStore.failNextActiveWrite = true
+        let activeFailureJournal = AuthorizationInstallationStore(installationId: installationId)
+        let activeFailureProcess = ConnectorProcessRecoveryState()
+        let activeFailureAuthorization = BrowserAuthorization(
+            http: http,
+            credentialStore: activeFailureStore,
+            installationStore: activeFailureJournal,
+            processRecovery: activeFailureProcess,
+            installationId: installationId,
+            endpoints: endpoints,
+            openBrowser: { url in
+                let query = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
+                let callback = URL(string: query["redirect_uri"]!)!
+                return sendRawCallback(port: UInt16(callback.port!), target: "/callback?state=\(query["state"]!)&code=active-write-failure", host: "127.0.0.1:\(callback.port!)")
+            }
+        )
+        try activeFailureAuthorization.start()
+        waitFor { if case .failed = activeFailureAuthorization.snapshot() { return true }; return false }
+        precondition(activeFailureStore.record?.activationState == "pending")
+        precondition(activeFailureStore.record?.recoveryPhase == .activationRequested)
+        precondition(activeFailureJournal.recoveryPhase == .activationRequested)
+        precondition(activeFailureProcess.isRecoveryOnly)
+        precondition([activationTimeout, accountLabelFailure, activeKeychainWriteFailure].allSatisfy { !$0.isEmpty })
         print("Authorization fixture passed")
     }
 }
