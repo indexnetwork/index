@@ -54,13 +54,6 @@ export interface SignupPayload {
   socials?: { label: string; value: string }[];
 }
 
-export interface ExperimentEnrichmentQueue {
-  addEnrichUserJob(data: { userId: string; networkId?: string; reason?: string }): Promise<unknown>;
-  addEnrichUserJobBulk(
-    items: Array<{ userId: string; networkId?: string; reason?: string }>,
-  ): Promise<unknown[]>;
-}
-
 export interface ExperimentSignupResult {
   user: { id: string; email: string };
   apiKey: string;
@@ -73,7 +66,6 @@ export interface ExperimentSignupResult {
 }
 
 export class ExperimentService {
-  constructor(private readonly enrichment?: ExperimentEnrichmentQueue) {}
 
   async signup(networkId: string, payload: SignupPayload): Promise<ExperimentSignupResult> {
     const normalizedEmail = payload.email.toLowerCase().trim();
@@ -105,14 +97,6 @@ export class ExperimentService {
       location: payload.location,
       socials: payload.socials ?? [],
     }, 'experiment_signup');
-
-    // Enqueue profile enrichment so the user gets a profile + HyDE.
-    try {
-      const enrichment = this.enrichment ?? (await import('../queues/enrichment.queue')).enrichmentQueue;
-      await enrichment.addEnrichUserJob({ userId: result.user.id, networkId, reason: 'experiment_signup' });
-    } catch (err) {
-      logger.warn('Failed to enqueue profile enrichment (non-fatal)', { error: err });
-    }
 
     logger.info('Signup complete', {
       userId: result.user.id,
@@ -178,7 +162,6 @@ export class ExperimentService {
     // email. After the loop, a single summary email is sent to the network's
     // owner(s) with all minted keys as an inline CSV — the experimental-network
     // policy bypasses per-user invitation emails entirely.
-    const importedUserIdSet = new Set<string>();
     for (const row of rows) {
       try {
         const email = row.email.toLowerCase().trim();
@@ -189,7 +172,6 @@ export class ExperimentService {
         });
         await this.applyProfileData(result.user.id, row);
         await this.stageProfileSeed(result.user.id, networkId, row, 'experiment_csv_import');
-        importedUserIdSet.add(result.user.id);
         credentials.push({
           email: result.user.email,
           name: row.name,
@@ -199,20 +181,6 @@ export class ExperimentService {
       } catch (err) {
         logger.warn('Import row failed', { email: row.email, error: err });
         skipped++;
-      }
-    }
-
-    const importedUserIds = [...importedUserIdSet];
-
-    // Enqueue profile enrichment: the profile graph reads name, intro, location,
-    // and socials from the users/user_socials tables (written by applyProfileData above).
-    if (importedUserIds.length > 0) {
-      try {
-        const enrichment = this.enrichment ?? (await import('../queues/enrichment.queue')).enrichmentQueue;
-        await enrichment.addEnrichUserJobBulk(importedUserIds.map(id => ({ userId: id, networkId, reason: 'experiment_import' })));
-        logger.info('Enqueued profile enrichment', { count: importedUserIds.length });
-      } catch (err) {
-        logger.warn('Failed to enqueue profile enrichment (non-fatal)', { error: err });
       }
     }
 
