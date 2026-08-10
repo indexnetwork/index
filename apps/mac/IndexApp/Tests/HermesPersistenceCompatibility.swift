@@ -39,7 +39,7 @@ private struct FixtureLayout {
 }
 
 private final class FixtureConnectorStatus: HermesConnectorStatusProviding {
-    func activeStatus() throws -> HermesConnectorStatus {
+    func status() throws -> HermesConnectorStatus {
         HermesConnectorStatus(
             connected: true,
             health: "active",
@@ -135,6 +135,9 @@ struct HermesPersistenceCompatibilityFixture {
     static let historicalCronID = "owned-cron-old"
 
     static func main() throws {
+        trace("checking descriptor-bound connector execution")
+        try descriptorBoundExecutionFixture()
+
         trace("starting historical rebind")
         try runHistoricalRebind()
 
@@ -173,6 +176,85 @@ struct HermesPersistenceCompatibilityFixture {
         }
 
         print("macOS native Hermes historical persistence compatibility passed")
+    }
+
+    /// Opens one vnode, replaces its pathname, and proves posix_spawn executes
+    /// the inherited descriptor rather than reopening the replacement path.
+    private static func descriptorBoundExecutionFixture() throws {
+        guard let runnerTemp = ProcessInfo.processInfo.environment["RUNNER_TEMP"] else {
+            throw FixtureFailure.assertion("RUNNER_TEMP is required for descriptor fixture")
+        }
+        let root = URL(fileURLWithPath: runnerTemp, isDirectory: true)
+            .appendingPathComponent("index-descriptor-fixture-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let candidate = root.appendingPathComponent("connector")
+        let replacement = root.appendingPathComponent("replacement")
+        try FileManager.default.copyItem(
+            at: URL(fileURLWithPath: "/bin/echo"), to: candidate
+        )
+        try FileManager.default.copyItem(
+            at: URL(fileURLWithPath: "/usr/bin/false"), to: replacement
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: candidate.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: replacement.path)
+
+        let opened = Darwin.open(candidate.path, O_RDONLY | O_NOFOLLOW)
+        guard opened >= 0 else { throw FixtureFailure.assertion("descriptor open failed") }
+        defer { _ = Darwin.close(opened) }
+        try FileManager.default.removeItem(at: candidate)
+        try FileManager.default.moveItem(at: replacement, to: candidate)
+        let inherited: Int32 = 198
+        let descriptorPath = "/dev/fd/\(inherited)"
+
+        var output = [Int32](repeating: -1, count: 2)
+        guard output.withUnsafeMutableBufferPointer({ Darwin.pipe($0.baseAddress!) }) == 0 else {
+            throw FixtureFailure.assertion("descriptor fixture pipe failed")
+        }
+        defer { output.filter { $0 >= 0 }.forEach { _ = Darwin.close($0) } }
+        var actions: posix_spawn_file_actions_t? = nil
+        guard posix_spawn_file_actions_init(&actions) == 0 else {
+            throw FixtureFailure.assertion("descriptor fixture actions failed")
+        }
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        guard posix_spawn_file_actions_adddup2(&actions, opened, inherited) == 0,
+              posix_spawn_file_actions_adddup2(&actions, output[1], STDOUT_FILENO) == 0,
+              posix_spawn_file_actions_addclose(&actions, output[0]) == 0 else {
+            throw FixtureFailure.assertion("descriptor fixture actions failed")
+        }
+        var arguments = [descriptorPath.withCString { strdup($0) }, nil]
+        var environment: [UnsafeMutablePointer<CChar>?] = [nil]
+        defer { arguments.compactMap { $0 }.forEach { free($0) } }
+        var attributes: posix_spawnattr_t? = nil
+        guard posix_spawnattr_init(&attributes) == 0,
+              posix_spawnattr_setflags(
+                &attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)
+              ) == 0 else {
+            throw FixtureFailure.assertion("descriptor fixture attributes failed")
+        }
+        defer { posix_spawnattr_destroy(&attributes) }
+        var child = pid_t()
+        let spawned = descriptorPath.withCString { path in
+            arguments.withUnsafeMutableBufferPointer { argv in
+                environment.withUnsafeMutableBufferPointer { envp in
+                    posix_spawn(
+                        &child, path, &actions, &attributes, argv.baseAddress, envp.baseAddress
+                    )
+                }
+            }
+        }
+        guard spawned == 0 else { throw FixtureFailure.assertion("descriptor spawn failed") }
+        _ = Darwin.close(output[1]); output[1] = -1
+        var status: Int32 = 0
+        guard Darwin.waitpid(child, &status, 0) == child, status & 0x7f == 0,
+              (status >> 8) & 0xff == 0 else {
+            throw FixtureFailure.assertion("descriptor child failed")
+        }
+        let handle = FileHandle(fileDescriptor: output[0], closeOnDealloc: false)
+        let observed = try handle.readToEnd() ?? Data()
+        _ = Darwin.close(output[0]); output[0] = -1
+        try require(String(data: observed, encoding: .utf8) == "\n",
+                    "path replacement changed descriptor-bound execution")
     }
 
     private static func trace(_ message: String) {

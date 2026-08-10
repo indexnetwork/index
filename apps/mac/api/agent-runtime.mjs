@@ -75,9 +75,7 @@ function containsForbiddenRuntimeField(value) {
   if (!value || typeof value !== 'object') return false;
   return Object.entries(value).some(([key, child]) => {
     const canonical = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-    const forbidden = [...FORBIDDEN_RUNTIME_KEYS].some((term) => (
-      canonical === term || canonical.startsWith(term) || canonical.endsWith(term)
-    ));
+    const forbidden = [...FORBIDDEN_RUNTIME_KEYS].some((term) => canonical.includes(term));
     return forbidden || containsForbiddenRuntimeField(child);
   });
 }
@@ -85,6 +83,9 @@ function containsForbiddenRuntimeField(value) {
 function validateRuntimePayload(command, payload) {
   if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
     return 'Hermes runtime payload must be an object';
+  }
+  if (containsForbiddenRuntimeField(payload)) {
+    return 'Hermes runtime payload must not contain credential material';
   }
   if (command === 'loadOperation' || command === 'connectorStatus') {
     return hasExactKeys(payload, []) ? null : `Hermes ${command} payload must be empty`;
@@ -106,9 +107,6 @@ function validateRuntimePayload(command, payload) {
       || (typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)
       ? null
       : 'Hermes logout generation must be nonempty or explicitly null';
-  }
-  if (containsForbiddenRuntimeField(payload)) {
-    return 'Hermes runtime payload must not contain credential material';
   }
   if (command !== 'inspect' && !(typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)) {
     return 'Hermes runtime generation is required';

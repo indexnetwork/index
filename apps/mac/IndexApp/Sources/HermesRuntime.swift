@@ -367,6 +367,32 @@ private final class HermesBoundedOutputBuffer {
     }
 }
 
+private final class HermesExactBoundedCapture {
+    private let lock = NSLock()
+    private let limit: Int
+    private var data = Data()
+    private var overflow = false
+
+    init(limit: Int) { self.limit = limit }
+
+    func append(_ chunk: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !overflow else { return }
+        guard data.count + chunk.count <= limit else {
+            overflow = true
+            return
+        }
+        data.append(chunk)
+    }
+
+    func result() -> (data: Data, overflow: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (data, overflow)
+    }
+}
+
 final class HermesCommandRunner: HermesCommandRunning {
     private let commandDeadline: TimeInterval
     private let terminationGrace: TimeInterval
@@ -484,6 +510,41 @@ private final class HermesDirectoryDescriptor {
 
     init(rawValue: Int32) { self.rawValue = rawValue }
     deinit { _ = Darwin.close(rawValue) }
+}
+
+/// Retained capability for an already-opened regular vnode. Connector launch
+/// inherits this descriptor; it never resolves the staged executable path.
+private final class HermesRegularFileDescriptor {
+    let rawValue: Int32
+
+    init(rawValue: Int32) { self.rawValue = rawValue }
+    deinit { _ = Darwin.close(rawValue) }
+
+    func snapshot() throws -> HermesFileSnapshot {
+        var before = stat()
+        guard Darwin.fstat(rawValue, &before) == 0,
+              before.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
+            throw HermesRuntimeFailure.connectorUnverified
+        }
+        let duplicate = Darwin.dup(rawValue)
+        guard duplicate >= 0 else { throw HermesRuntimeFailure.connectorUnverified }
+        let handle = FileHandle(fileDescriptor: duplicate, closeOnDealloc: true)
+        do {
+            try handle.seek(toOffset: 0)
+            let data = try handle.readToEnd() ?? Data()
+            try handle.close()
+            var after = stat()
+            guard Darwin.fstat(rawValue, &after) == 0,
+                  HermesFileIdentity(before) == HermesFileIdentity(after),
+                  data.count == Int(before.st_size) else {
+                throw HermesRuntimeFailure.connectorUnverified
+            }
+            return HermesFileSnapshot(data: data, identity: HermesFileIdentity(after))
+        } catch {
+            try? handle.close()
+            throw error
+        }
+    }
 }
 
 /// Descriptor-oriented boundary checks used by every sensitive read, publish,
@@ -611,6 +672,39 @@ private enum HermesFilesystem {
         }
         guard errno == 0 else { throw HermesRuntimeFailure.localCleanupFailed }
         return result
+    }
+
+    static func openRegularFileDescriptor(_ url: URL) throws -> HermesRegularFileDescriptor? {
+        guard let parent = try openDirectory(
+            url.deletingLastPathComponent(), createMissing: false
+        ) else { return nil }
+        var before = stat()
+        let observed = url.lastPathComponent.withCString {
+            Darwin.fstatat(parent.rawValue, $0, &before, AT_SYMLINK_NOFOLLOW)
+        }
+        if observed < 0, errno == ENOENT { return nil }
+        guard observed == 0,
+              before.st_mode & fileTypeMask == regularType else {
+            throw HermesRuntimeFailure.connectorUnverified
+        }
+        let descriptor = url.lastPathComponent.withCString {
+            Darwin.openat(parent.rawValue, $0, O_RDONLY | O_NOFOLLOW)
+        }
+        guard descriptor >= 0 else { throw HermesRuntimeFailure.connectorUnverified }
+        var opened = stat()
+        var after = stat()
+        let observedAfter = url.lastPathComponent.withCString {
+            Darwin.fstatat(parent.rawValue, $0, &after, AT_SYMLINK_NOFOLLOW)
+        }
+        guard Darwin.fstat(descriptor, &opened) == 0,
+              observedAfter == 0,
+              opened.st_mode & fileTypeMask == regularType,
+              HermesFileIdentity(before) == HermesFileIdentity(opened),
+              HermesFileIdentity(opened) == HermesFileIdentity(after) else {
+            _ = Darwin.close(descriptor)
+            throw HermesRuntimeFailure.connectorUnverified
+        }
+        return HermesRegularFileDescriptor(rawValue: descriptor)
     }
 
     static func readRegularFile(_ url: URL) throws -> HermesFileSnapshot? {
@@ -1585,7 +1679,7 @@ private enum HermesGatewayState {
 }
 
 protocol HermesConnectorStatusProviding {
-    func activeStatus() throws -> HermesConnectorStatus
+    func status() throws -> HermesConnectorStatus
     func disconnect(
         installationId: String,
         agentId: String,
@@ -1643,22 +1737,18 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
         self.now = now
     }
 
-    func activeStatus() throws -> HermesConnectorStatus {
-        try withVerifiedConnector { executable, identity in
+    func status() throws -> HermesConnectorStatus {
+        try withVerifiedConnector { descriptor, identity in
             let helloID = UUID().uuidString.lowercased()
             let statusID = UUID().uuidString.lowercased()
-            let responses = try launch(executable: executable, expectedIdentity: identity, requests: [
+            let responses = try launch(
+                executableDescriptor: descriptor, expectedIdentity: identity, requests: [
                 request(id: helloID, operation: "hello"),
                 request(id: statusID, operation: "status"),
             ])
             guard responses.count == 2 else { throw HermesRuntimeFailure.connectorStatusFailed }
             try validateHello(try result(responses[0], id: helloID))
-            let status = try parseStatus(try result(responses[1], id: statusID))
-            guard status.connected, status.health == "active", !status.revocationPending,
-                  status.agentId != nil, status.setupAttemptId != nil else {
-                throw HermesRuntimeFailure.connectorStatusFailed
-            }
-            return status
+            return try parseStatus(try result(responses[1], id: statusID))
         }
     }
 
@@ -1672,12 +1762,13 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
               UUID(uuidString: setupAttemptId) != nil else {
             throw HermesRuntimeFailure.invalidArguments
         }
-        return try withVerifiedConnector { executable, identity in
+        return try withVerifiedConnector { descriptor, identity in
             let helloID = UUID().uuidString.lowercased()
             let beforeID = UUID().uuidString.lowercased()
             let disconnectID = UUID().uuidString.lowercased()
             let afterID = UUID().uuidString.lowercased()
-            let responses = try launch(executable: executable, expectedIdentity: identity, requests: [
+            let responses = try launch(
+                executableDescriptor: descriptor, expectedIdentity: identity, requests: [
                 request(id: helloID, operation: "hello"),
                 request(id: beforeID, operation: "status"),
                 request(id: disconnectID, operation: "disconnect"),
@@ -1809,7 +1900,7 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
     }
 
     private func withVerifiedConnector<T>(
-        _ body: (URL, HermesFileIdentity) throws -> T
+        _ body: (HermesRegularFileDescriptor, HermesFileIdentity) throws -> T
     ) throws -> T {
         var selected: URL?
         for bundle in candidateBundles() {
@@ -1847,22 +1938,27 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
             throw HermesRuntimeFailure.connectorUnverified
         }
         let executable = stage.appendingPathComponent("Contents/MacOS/IndexConnector")
-        guard let stagedExecutable = try HermesFilesystem.readRegularFile(executable),
-              stagedExecutable.data == sourceBefore.data else {
+        guard let executableDescriptor = try HermesFilesystem.openRegularFileDescriptor(executable) else {
+            throw HermesRuntimeFailure.connectorUnverified
+        }
+        let stagedExecutable = try executableDescriptor.snapshot()
+        guard stagedExecutable.data == sourceBefore.data else {
             throw HermesRuntimeFailure.connectorUnverified
         }
         try verifyStagedBundle(
             stage, executable: executable, cms: stagedCMS, executableSnapshot: stagedExecutable
         )
-        guard let immediatelyBefore = try HermesFilesystem.readRegularFile(executable),
-              immediatelyBefore.identity == stagedExecutable.identity,
-              immediatelyBefore.data == stagedExecutable.data else {
+        let descriptorSnapshot = try executableDescriptor.snapshot()
+        guard descriptorSnapshot.identity == stagedExecutable.identity,
+              descriptorSnapshot.data == stagedExecutable.data,
+              let immediatelyBeforeExecution = try HermesFilesystem.readRegularFile(executable),
+              immediatelyBeforeExecution.identity == stagedExecutable.identity else {
             throw HermesRuntimeFailure.connectorUnverified
         }
-        let value = try body(executable, immediatelyBefore.identity)
-        guard let afterExecution = try HermesFilesystem.readRegularFile(executable),
-              afterExecution.identity == immediatelyBefore.identity,
-              afterExecution.data == immediatelyBefore.data else {
+        let value = try body(executableDescriptor, stagedExecutable.identity)
+        let afterExecution = try executableDescriptor.snapshot()
+        guard afterExecution.identity == stagedExecutable.identity,
+              afterExecution.data == stagedExecutable.data else {
             throw HermesRuntimeFailure.connectorUnverified
         }
         return value
@@ -1975,9 +2071,7 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
                 let canonical = String(key.unicodeScalars.filter {
                     CharacterSet.alphanumerics.contains($0)
                 }).lowercased()
-                return Self.forbiddenCanonicalKeys.contains(where: {
-                    canonical == $0 || canonical.hasPrefix($0) || canonical.hasSuffix($0)
-                })
+                return Self.forbiddenCanonicalKeys.contains(where: canonical.contains)
             }) { return true }
             return object.values.contains(where: containsForbiddenField)
         }
@@ -1985,13 +2079,17 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
         return false
     }
 
+    /// Spawn through an inherited descriptor capability. `/dev/fd/N` resolves
+    /// the already-open vnode in the child; replacing the staged pathname after
+    /// verification cannot redirect execution. The kernel validates signed
+    /// Mach-O pages as they are faulted from that vnode.
     private func launch(
-        executable: URL,
+        executableDescriptor: HermesRegularFileDescriptor,
         expectedIdentity: HermesFileIdentity,
         requests: [[String: Any]]
     ) throws -> [[String: Any]] {
-        guard let before = try HermesFilesystem.readRegularFile(executable),
-              before.identity == expectedIdentity else {
+        let immediatelyBeforeExecution = try executableDescriptor.snapshot()
+        guard immediatelyBeforeExecution.identity == expectedIdentity else {
             throw HermesRuntimeFailure.connectorUnverified
         }
         let input = try requests.map {
@@ -2001,31 +2099,126 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
         }.reduce(into: Data()) { buffer, line in
             buffer.append(line); buffer.append(0x0a)
         }
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = []
-        process.environment = Self.allowedChildEnvironmentKeys.reduce(into: [:]) { result, key in
-            if let value = ProcessInfo.processInfo.environment[key] { result[key] = value }
-        }
-        let stdin = Pipe(); let stdout = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        process.standardError = FileHandle.nullDevice
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in finished.signal() }
-        try process.run()
-        try stdin.fileHandleForWriting.write(contentsOf: input)
-        try stdin.fileHandleForWriting.close()
-        guard finished.wait(timeout: .now() + Self.timeout) == .success else {
-            process.terminate()
+
+        let inheritedDescriptor: Int32 = 198
+        let descriptorPath = "/dev/fd/\(inheritedDescriptor)"
+        var inputPipe = [Int32](repeating: -1, count: 2)
+        var outputPipe = [Int32](repeating: -1, count: 2)
+        guard inputPipe.withUnsafeMutableBufferPointer({ Darwin.pipe($0.baseAddress!) }) == 0,
+              outputPipe.withUnsafeMutableBufferPointer({ Darwin.pipe($0.baseAddress!) }) == 0 else {
+            if inputPipe[0] >= 0 { _ = Darwin.close(inputPipe[0]); _ = Darwin.close(inputPipe[1]) }
             throw HermesRuntimeFailure.connectorStatusFailed
         }
-        let output = try stdout.fileHandleForReading.readToEnd() ?? Data()
-        guard process.terminationStatus == 0,
-              output.count <= Self.maximumConnectorResponseBytes,
-              let text = String(data: output, encoding: .utf8),
-              let after = try HermesFilesystem.readRegularFile(executable),
-              after.identity == expectedIdentity else {
+        defer {
+            for descriptor in inputPipe + outputPipe where descriptor >= 0 {
+                _ = Darwin.close(descriptor)
+            }
+        }
+
+        var actions: posix_spawn_file_actions_t? = nil
+        guard posix_spawn_file_actions_init(&actions) == 0 else {
+            throw HermesRuntimeFailure.connectorStatusFailed
+        }
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        let stderrAction = "/dev/null".withCString {
+            posix_spawn_file_actions_addopen(
+                &actions, STDERR_FILENO, $0, O_WRONLY, mode_t(0)
+            )
+        }
+        guard posix_spawn_file_actions_adddup2(
+                &actions, executableDescriptor.rawValue, inheritedDescriptor
+              ) == 0,
+              posix_spawn_file_actions_adddup2(&actions, inputPipe[0], STDIN_FILENO) == 0,
+              posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDOUT_FILENO) == 0,
+              stderrAction == 0,
+              posix_spawn_file_actions_addclose(&actions, inputPipe[1]) == 0,
+              posix_spawn_file_actions_addclose(&actions, outputPipe[0]) == 0 else {
+            throw HermesRuntimeFailure.connectorStatusFailed
+        }
+
+        let environment = Self.allowedChildEnvironmentKeys.compactMap { key -> String? in
+            guard let value = ProcessInfo.processInfo.environment[key] else { return nil }
+            return "\(key)=\(value)"
+        }
+        var arguments = [descriptorPath.withCString { strdup($0) }, nil]
+        var environmentPointers = environment.map { value in
+            value.withCString { strdup($0) }
+        } + [nil]
+        defer {
+            arguments.compactMap { $0 }.forEach { free($0) }
+            environmentPointers.compactMap { $0 }.forEach { free($0) }
+        }
+        var attributes: posix_spawnattr_t? = nil
+        guard posix_spawnattr_init(&attributes) == 0,
+              posix_spawnattr_setflags(
+                &attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)
+              ) == 0 else {
+            throw HermesRuntimeFailure.connectorStatusFailed
+        }
+        defer { posix_spawnattr_destroy(&attributes) }
+        var child = pid_t()
+        let spawnStatus = descriptorPath.withCString { path in
+            arguments.withUnsafeMutableBufferPointer { argv in
+                environmentPointers.withUnsafeMutableBufferPointer { envp in
+                    posix_spawn(
+                        &child, path, &actions, &attributes, argv.baseAddress, envp.baseAddress
+                    )
+                }
+            }
+        }
+        guard spawnStatus == 0 else { throw HermesRuntimeFailure.connectorStatusFailed }
+
+        _ = Darwin.close(inputPipe[0]); inputPipe[0] = -1
+        _ = Darwin.close(outputPipe[1]); outputPipe[1] = -1
+        let outputReadDescriptor = outputPipe[0]; outputPipe[0] = -1
+        let inputWriteDescriptor = inputPipe[1]; inputPipe[1] = -1
+        let capture = HermesExactBoundedCapture(limit: Self.maximumConnectorResponseBytes)
+        let io = DispatchGroup()
+        io.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let handle = FileHandle(fileDescriptor: outputReadDescriptor, closeOnDealloc: true)
+            defer { try? handle.close(); io.leave() }
+            do {
+                while let chunk = try handle.read(upToCount: 16_384), !chunk.isEmpty {
+                    capture.append(chunk)
+                }
+            } catch { capture.append(Data(repeating: 0, count: Self.maximumConnectorResponseBytes + 1)) }
+        }
+        io.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let handle = FileHandle(fileDescriptor: inputWriteDescriptor, closeOnDealloc: true)
+            defer { try? handle.close(); io.leave() }
+            do { try handle.write(contentsOf: input) } catch {}
+        }
+
+        var waitStatus: Int32 = 0
+        var timedOut = false
+        let deadline = DispatchTime.now().uptimeNanoseconds
+            + UInt64(Self.timeout * 1_000_000_000)
+        while true {
+            let waited = Darwin.waitpid(child, &waitStatus, WNOHANG)
+            if waited == child { break }
+            if waited < 0 {
+                _ = Darwin.kill(child, SIGKILL)
+                _ = Darwin.waitpid(child, &waitStatus, 0)
+                throw HermesRuntimeFailure.connectorStatusFailed
+            }
+            if DispatchTime.now().uptimeNanoseconds >= deadline {
+                timedOut = true
+                _ = Darwin.kill(child, SIGKILL)
+                _ = Darwin.waitpid(child, &waitStatus, 0)
+                break
+            }
+            Darwin.usleep(10_000)
+        }
+        let ioCompleted = io.wait(timeout: .now() + 2) == .success
+        let captured = capture.result()
+        let afterExecution = try executableDescriptor.snapshot()
+        let exitedNormally = waitStatus & 0x7f == 0
+        let exitStatus = (waitStatus >> 8) & 0xff
+        guard !timedOut, ioCompleted, exitedNormally, exitStatus == 0, !captured.overflow,
+              afterExecution.identity == expectedIdentity,
+              let text = String(data: captured.data, encoding: .utf8) else {
             throw HermesRuntimeFailure.connectorStatusFailed
         }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
@@ -2228,7 +2421,7 @@ final class HermesRuntimeManager {
             ok: true,
             stage: "connector_status",
             state: nil,
-            connectorStatus: try connectorStatusProvider.activeStatus(),
+            connectorStatus: try connectorStatusProvider.status(),
             errorCode: nil,
             retryable: false
         )
@@ -2670,7 +2863,7 @@ final class HermesRuntimeManager {
             executor: executorId, cronJobId: installation.currentCronJobId, store: store
         )
 
-        let connectorActivationConfirmed = try connectorStatusProvider.activeStatus()
+        let connectorActivationConfirmed = try connectorStatusProvider.status()
         guard connectorActivationConfirmed.installationId == requestedInstallationId,
               connectorActivationConfirmed.agentId == executorId,
               connectorActivationConfirmed.setupAttemptId == setupAttemptId else {

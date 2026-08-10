@@ -305,12 +305,33 @@ describe('queue-aware Hermes bridge bounds', () => {
       ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
       setupAttemptId: 'setup-current', credential: 'must-never-cross',
     })).rejects.toThrow('credential');
-    for (const key of ['raw-credential', 'credential.id', 'API---KEY', 'auth_token', 'pass-word', 'chal.lenge']) {
+    for (const key of [
+      'raw-credential', 'credential.id', 'credential-id', 'raw.credential', 'API---KEY',
+      'auth_token', 'pass-word', 'chal.lenge',
+    ]) {
       await expect(h.bridge.request('configureDisabled', {
         ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
         setupAttemptId: 'setup-current', safe: [{ nested: { [key]: 'must-never-cross' } }],
       })).rejects.toThrow('credential');
     }
+    const middleSubstring = h.bridge.request('configureDisabled', {
+      ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
+      setupAttemptId: 'setup-current', safe: [{ nested: { 'user.token.value': 'must-never-cross' } }],
+    });
+    const wronglyPostedMiddle = h.messages.at(-1);
+    if (wronglyPostedMiddle) h.bridge.receive({
+      requestId: wronglyPostedMiddle.requestId, ok: true, stage: 'configured',
+    });
+    await expect(middleSubstring).rejects.toThrow('credential');
+    const injectedLogout = h.bridge.request('prepareLogout', {
+      ownerId: 'owner-1', setupAttemptId: null,
+      safe: [{ nested: { 'user.token.value': 'must-never-cross' } }],
+    });
+    const wronglyPosted = h.messages.at(-1);
+    if (wronglyPosted) h.bridge.receive({
+      requestId: wronglyPosted.requestId, ok: true, stage: 'logout_prepared',
+    });
+    await expect(injectedLogout).rejects.toThrow('credential');
     await expect(h.bridge.request('connectorDisconnect', {
       installationId: 'installation-local', executorId: 'executor-hermes',
       setupAttemptId: 'setup-current', extra: true,
@@ -338,7 +359,7 @@ describe('queue-aware Hermes bridge bounds', () => {
         ownerId: 'owner-1', installationId: 'installation-local',
         setupAttemptId: null, executorId: null, credential: 'not-allowed',
       },
-    })).rejects.toThrow('strict operation journal payload');
+    })).rejects.toThrow('credential material');
     expect(h.messages).toHaveLength(1);
   });
 

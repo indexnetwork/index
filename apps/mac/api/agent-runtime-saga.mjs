@@ -128,6 +128,36 @@ function requireConnectorAuthority(result, now = Date.now()) {
   return status;
 }
 
+function requireConnectorLogoutStatus(result) {
+  const successful = requireSuccessfulNativeResult(result, 'connectorStatus');
+  const status = successful.connectorStatus;
+  if (successful.stage !== 'connector_status'
+    || !nonemptyString(status?.installationId)
+    || typeof status?.connected !== 'boolean'
+    || typeof status?.revocationPending !== 'boolean') {
+    throw generationMismatch('connectorStatus', successful);
+  }
+  const exactAuthority = nonemptyString(status.agentId) && nonemptyString(status.setupAttemptId);
+  if (status.connected === true && status.revocationPending === false
+    && status.health === 'active' && exactAuthority) {
+    return { state: 'active', status };
+  }
+  if (status.connected === false && status.revocationPending === true
+    && status.health === 'recovery_only' && exactAuthority) {
+    return { state: 'revocation_pending', status };
+  }
+  if (status.connected === false && status.revocationPending === false
+    && status.health === 'disconnected'
+    && status.agentId == null && status.setupAttemptId == null) {
+    return { state: 'disconnected', status };
+  }
+  const error = new Error('Connector logout authority is unavailable or ambiguous');
+  error.code = 'connector_status_ambiguous';
+  error.stage = 'connectorStatus';
+  error.retryable = true;
+  throw error;
+}
+
 function requireInstallationBinding(binding, authority) {
   const installation = binding?.installation;
   if (installation?.status === 'active'
@@ -516,7 +546,7 @@ export async function runHermesSelectionSaga({
     requireActivatedBinding(await api.setRuntimeBinding({
       runtime: 'hermes', installationId, executorId, setupAttemptId,
     }, { signal }), authority);
-    requireInstallationBinding(
+    requireActivatedBinding(
       await api.getRuntimeBinding(installationId, { signal }), authority,
     );
 
@@ -620,31 +650,67 @@ export async function selectIndexRuntime({
 
 async function performDisconnect({
   api, nativeRuntime, operationStore, journal, signal, retainLogoutEvidence = false,
+  localSetupAttemptId = journal.setupAttemptId,
 }) {
   throwIfAborted(signal);
+  let recovery = journal;
+  if (!nonemptyString(localSetupAttemptId)) {
+    const observed = requireConnectorLogoutStatus(
+      await nativeRuntime('connectorStatus', {}, { signal }),
+    );
+    if (observed.state === 'disconnected' && (!journal.setupAttemptId || !journal.executorId)) {
+      const paused = requireSuccessfulNativeResult(await nativeRuntime('prepareLogout', {
+        ownerId: journal.ownerId, setupAttemptId: null,
+      }, { signal }), 'prepareLogout');
+      if (paused.stage !== 'logout_prepared'
+        || paused.state?.scheduleEnabled !== false
+        || paused.state?.negotiatorMode !== false) {
+        throw generationMismatch('prepareLogout', paused);
+      }
+      const binding = await api.getRuntimeBinding(observed.status.installationId, { signal });
+      if (binding?.selectedRuntime !== 'index' || binding?.executor != null) {
+        throw generationMismatch('disconnect', paused);
+      }
+      const serverComplete = {
+        ...journal, installationId: observed.status.installationId, stage: 'server-complete',
+      };
+      await operationStore?.save(serverComplete);
+      if (!retainLogoutEvidence) await operationStore?.clear(serverComplete);
+      return { binding, localState: paused.state || null };
+    }
+    if (observed.state !== 'disconnected') {
+      recovery = operationJournal('disconnect', 'server-pending', {
+        ownerId: journal.ownerId,
+        installationId: observed.status.installationId,
+        setupAttemptId: observed.status.setupAttemptId,
+        executorId: observed.status.agentId,
+      });
+      await operationStore?.save(recovery);
+    }
+  }
+
+  throwIfAborted(signal);
   const paused = requireSuccessfulNativeResult(await nativeRuntime('prepareLogout', {
-    ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
+    ownerId: recovery.ownerId,
+    setupAttemptId: nonemptyString(localSetupAttemptId) ? localSetupAttemptId : null,
   }, { signal }), 'prepareLogout');
   if (paused.stage !== 'logout_prepared'
     || paused.state?.scheduleEnabled !== false
     || paused.state?.negotiatorMode !== false) {
     throw generationMismatch('prepareLogout', paused);
   }
-  if (!journal.setupAttemptId || !journal.executorId) {
-    const binding = await api.getRuntimeBinding(journal.installationId, { signal });
-    if (binding?.selectedRuntime !== 'index' || binding?.executor != null) {
-      throw generationMismatch('disconnect', paused);
-    }
-    const serverComplete = { ...journal, stage: 'server-complete' };
-    await operationStore?.save(serverComplete);
-    if (!retainLogoutEvidence) await operationStore?.clear(serverComplete);
-    return { binding, localState: paused.state || null };
+  if (!recovery.setupAttemptId || !recovery.executorId) {
+    const error = new Error('Connector authority is required before logout can complete');
+    error.code = 'connector_authority_missing';
+    error.stage = 'connectorStatus';
+    error.retryable = true;
+    throw error;
   }
 
   const authority = {
-    installationId: journal.installationId,
-    agentId: journal.executorId,
-    setupAttemptId: journal.setupAttemptId,
+    installationId: recovery.installationId,
+    agentId: recovery.executorId,
+    setupAttemptId: recovery.setupAttemptId,
   };
   throwIfAborted(signal);
   requireConnectorDisconnectResult(await nativeRuntime('connectorDisconnect', {
@@ -657,14 +723,21 @@ async function performDisconnect({
   // Only its terminal proof permits this owner-locked exact-generation CAS.
   throwIfAborted(signal);
   const binding = await compareSelectExactIndex(api, authority, { signal });
-  const serverComplete = { ...journal, stage: 'server-complete' };
+  const serverComplete = { ...recovery, stage: 'server-complete' };
   await operationStore?.save(serverComplete);
+
+  // Missing local generation state has already passed native pause/scrub
+  // postconditions. Never invent a generation merely to clear it.
+  if (!nonemptyString(localSetupAttemptId)) {
+    if (!retainLogoutEvidence) await operationStore?.clear(serverComplete);
+    return { binding, localState: paused.state || null };
+  }
 
   // Local evidence clears only after connector and server authority proofs.
   throwIfAborted(signal);
   const disconnected = requireGenerationCleanupResult(await nativeRuntime('disconnect', {
-    ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
-  }, { signal }), 'disconnect', journal.setupAttemptId);
+    ownerId: recovery.ownerId, setupAttemptId: recovery.setupAttemptId,
+  }, { signal }), 'disconnect', recovery.setupAttemptId);
   if (!retainLogoutEvidence) await operationStore?.clear(serverComplete);
   return { binding, localState: disconnected.state || null };
 }
@@ -699,17 +772,25 @@ export async function prepareHermesLogout({
 
   const hasExactGeneration = nonemptyString(localState?.setupAttemptId)
     && nonemptyString(localState?.executorId);
+  const hasExactPendingRecovery = !hasExactGeneration
+    && existing?.operation === 'disconnect'
+    && existing?.stage === 'server-pending'
+    && nonemptyString(existing.setupAttemptId)
+    && nonemptyString(existing.executorId);
   const journal = operationJournal('disconnect', 'server-pending', {
     ownerId,
-    installationId,
-    setupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
-    executorId: hasExactGeneration ? localState.executorId : null,
+    installationId: hasExactPendingRecovery ? existing.installationId : installationId,
+    setupAttemptId: hasExactGeneration
+      ? localState.setupAttemptId : hasExactPendingRecovery ? existing.setupAttemptId : null,
+    executorId: hasExactGeneration
+      ? localState.executorId : hasExactPendingRecovery ? existing.executorId : null,
   });
   await operationStore?.save(journal);
 
   try {
     const result = await performDisconnect({
       api, nativeRuntime, operationStore, journal, retainLogoutEvidence: true,
+      localSetupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
     });
     return { ownerId, ...result, serverUncertain: false };
   } catch (caught) {
@@ -739,7 +820,10 @@ export async function disconnectHermesSaga({
   });
   await operationStore?.save(journal); // durable before server-first mutation
   try {
-    return await performDisconnect({ api, nativeRuntime, operationStore, journal, signal });
+    return await performDisconnect({
+      api, nativeRuntime, operationStore, journal, signal,
+      localSetupAttemptId: setupAttemptId || null,
+    });
   } catch (error) {
     if (aborted(error)) {
       return performDisconnect({ api, nativeRuntime, operationStore, journal });
@@ -748,7 +832,7 @@ export async function disconnectHermesSaga({
   }
 }
 
-async function resumeSagaOperation({ api, nativeRuntime, operationStore, journal }) {
+async function resumeSagaOperation({ api, nativeRuntime, operationStore, journal, localState = null }) {
   if (journal.operation === 'select-hermes' && journal.stage.startsWith('connector-')) {
     const binding = await compareSelectExactIndex(api, {
       agentId: journal.executorId,
@@ -765,7 +849,10 @@ async function resumeSagaOperation({ api, nativeRuntime, operationStore, journal
     return performSelectIndex({ api, nativeRuntime, operationStore, journal });
   }
   if (journal.operation === 'disconnect') {
-    return performDisconnect({ api, nativeRuntime, operationStore, journal });
+    return performDisconnect({
+      api, nativeRuntime, operationStore, journal,
+      localSetupAttemptId: localState?.setupAttemptId || null,
+    });
   }
   return cleanupPreparedGeneration({ api, nativeRuntime, operationStore, journal });
 }
@@ -795,7 +882,7 @@ export async function reconcileHermesSaga({
 
   if (pendingOperation) {
     return resumeSagaOperation({
-      api, nativeRuntime, operationStore, journal: pendingOperation,
+      api, nativeRuntime, operationStore, journal: pendingOperation, localState,
     });
   }
 

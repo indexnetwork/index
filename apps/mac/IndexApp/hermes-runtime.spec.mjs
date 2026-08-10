@@ -440,7 +440,8 @@ test('uses a verified credential-free connector status boundary for runtime auth
     'forbiddenCanonicalKeys', 'connectorDisconnect',
     'stagingRoot', 'copyItem', 'hardenAndRejectSymlinks',
     'sourceAfter.identity == sourceBefore.identity',
-    'afterExecution.identity == immediatelyBefore.identity',
+    'openRegularFileDescriptor', 'O_RDONLY | O_NOFOLLOW', 'posix_spawn',
+    '/dev/fd/', 'expectedIdentity',
   ]) expect(runtime).toContain(token);
   expect(runtime).toContain('CharacterSet.alphanumerics.contains');
   expect(runtime).toContain('status.st_mode & mode_t(S_IFMT) != mode_t(S_IFLNK)');
@@ -449,6 +450,14 @@ test('uses a verified credential-free connector status boundary for runtime auth
   expect(build).toContain('production connector trust pins missing or mismatched');
   expect(runtime).not.toContain('credentialId');
   expect(runtime).not.toContain('CommandLine.arguments');
+  expect(nativeCompatibility).toContain('descriptorBoundExecutionFixture');
+  expect(nativeCompatibility).toContain('posix_spawn');
+  expect(nativeCompatibility).toContain('/dev/fd/');
+  const connectorBoundary = runtime.slice(
+    runtime.indexOf('final class HermesVerifiedConnectorStatusProvider'),
+    runtime.indexOf('final class HermesRuntimeManager'),
+  );
+  expect(connectorBoundary).not.toContain('process.executableURL = executable');
 });
 
 test('connector staging rejects ancestor links, source replacement, and staged mutation', () => {
@@ -471,7 +480,9 @@ test('connector staging rejects ancestor links, source replacement, and staged m
   })).toThrow('connector_unverified');
   expect(runtime).toContain('HermesFilesystem.openDirectory(bundle, createMissing: false)');
   expect(runtime).toContain('sourceAfter.data == sourceBefore.data');
-  expect(runtime).toContain('afterExecution.data == immediatelyBefore.data');
+  expect(runtime).toContain('descriptorSnapshot.identity == stagedExecutable.identity');
+  expect(runtime).toContain('immediatelyBeforeExecution.identity == stagedExecutable.identity');
+  expect(runtime).toContain('afterExecution.identity == stagedExecutable.identity');
 });
 
 test('connector response secret keys are canonicalized recursively across separator variants', () => {
@@ -485,13 +496,13 @@ test('connector response secret keys are canonicalized recursively across separa
       ? Object.entries(value).some(([key, child]) => (
         [...forbidden].some((term) => {
           const canonical = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-          return canonical === term || canonical.startsWith(term) || canonical.endsWith(term);
+          return canonical.includes(term);
         }) || rejects(child)
       ))
       : false;
   for (const key of [
     'raw-credential', 'raw_credential', 'credential.id', 'API---KEY', 'auth_token',
-    'pass-word', 'veri_fier', 'chal.lenge', 'se-cret',
+    'pass-word', 'veri_fier', 'chal.lenge', 'se-cret', 'user.token.value',
   ]) expect(rejects({ safe: [{ nested: { [key]: 'redacted-fixture' } }] })).toBe(true);
   expect(rejects({ accountLabel: null, installationId: 'safe' })).toBe(false);
   expect(runtime).toContain('Set(payload.keys) == Self.statusKeys');
