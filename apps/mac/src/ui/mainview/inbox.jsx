@@ -197,7 +197,9 @@ function profileContent(person) {
   block(person.blurb);
   const bio = take(person.bio);
   const note = take(person.pitchFromAgent);
-  const socials = (person.socials || []).filter(s => s && s.handle);
+  // An entry that resolves to no address is left out rather than drawn as a
+  // link that goes nowhere. See api/socials.mjs for what fails to resolve.
+  const socials = (person.socials || []).filter(s => s && socialHrefOf(s));
 
   // `location` and `distance` are not what they sound like on a home card: the
   // mapper fills them with the section heading the card was grouped under and

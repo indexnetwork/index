@@ -58,41 +58,80 @@ function TextField({ label, required, value, onChange, disabled, placeholder, ri
   );
 }
 
-// Prefix sits in its own raised cell so the editable part is unambiguous.
-// The left cell is the platform's mark, and the field holds the username on its
-// own. The url prefix it replaced was both blank for API-sourced rows (which
-// carry no prefix) and redundant next to the logo: an X mark followed by
-// "x.com/seren" says the platform twice. The full address is rebuilt on save.
-// A row can be removed outright, which is the only way to take a link off a
-// profile.
-function SocialField({ social, value, onChange, onRemove }) {
+/* One social field: [mark][x.com/][username][×].
+
+   The prefix is its own locked cell rather than a hint inside the input, so
+   there is nothing to decide before typing. A placeholder reading
+   "x.com/username" left the question open — write the whole thing, or just the
+   name? — and the field is only ever the part that differs between people.
+
+   The row belongs to its platform and stays put: × empties it rather than
+   taking it away, because a row that can be deleted is a row the person cannot
+   get back; there is no "add github" to undo it with. Only the extra websites,
+   which they added themselves, can actually go.
+
+   A whole URL pasted from a browser is still welcome: it is trimmed back to the
+   handle on blur, and left alone while being typed so the field never fights
+   the keyboard. */
+function SocialField({ platform, value, onChange, onReset, onRemove }) {
   const [hot, setHot] = useState(false);
-  const platform = socialPlatformOf(social);
   const isWeb = platform === "website";
+  // A website is a whole domain rather than a name under someone else's, so
+  // only the scheme is fixed for it.
+  const prefix = isWeb ? "https://" : (SOCIAL_PREFIX[platform] || "");
+  const text = String(value || "");
+  // Says so in place rather than saving quietly and leaving a dead link on the
+  // profile: a bare word under "website" names no host anyone can reach.
+  const unresolved = !!text.trim() && !buildSocialHref(platform, text);
+  const clear = onRemove || onReset;
+  const normalize = (raw) => {
+    const parsed = parseSocial({ id: platform, handle: raw });
+    // A URL for some other platform keeps its full text, since that is where
+    // it goes and where it will be filed; only this row's own gets shortened.
+    return parsed.platform === platform ? parsed.handle : raw.trim();
+  };
   return (
-    <div style={{ display:"flex", border:"1px solid #000", background:"#fff" }}>
+    <div style={{
+      display:"flex", background:"#fff",
+      border:`1px solid ${unresolved ? "var(--ink-warn)" : "#000"}`,
+    }}>
       <span
         title={platform}
         style={{
           background:"#EDEAE1", padding:"0 9px",
-          borderRight:"1px solid #000",
           display:"flex", alignItems:"center", flex:"0 0 auto",
         }}>
-        <SocialGlyph id={platform} size={15}/>
+        <SocialGlyph id={platform} size={15} color={unresolved ? "var(--ink-warn)" : undefined}/>
       </span>
+      {/* Locked, and undivided from the mark beside it: one grey shoulder that
+          is plainly fixed, so the white part is plainly the only thing to fill. */}
+      <span
+        aria-hidden="true"
+        style={{
+          background:"#EDEAE1", padding:"0 8px 0 0",
+          borderRight:`1px solid ${unresolved ? "var(--ink-warn)" : "#000"}`,
+          display:"flex", alignItems:"center", flex:"0 0 auto",
+          fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:0.2,
+          color:"var(--ink-2)", whiteSpace:"nowrap", userSelect:"none",
+        }}>{prefix}</span>
       <input
-        value={value}
+        value={text}
         placeholder={isWeb ? "your-site.com" : "username"}
-        onChange={e => onChange && onChange(socialHandleOf({ ...social, handle: e.target.value }))}
+        aria-label={isWeb ? "website domain" : `${platform} username`}
+        title={unresolved
+          ? `“${text.trim()}” is not an address yet — paste the full link, or just the ${isWeb ? "domain" : "username"}`
+          : undefined}
+        onChange={e => onChange && onChange(e.target.value)}
+        onBlur={e => onChange && onChange(normalize(e.target.value))}
         style={{ ...inputReset(false), padding:"8px 10px" }}
       />
-      {onRemove && (
+      {clear && !!text && (
         <button
-          onClick={onRemove}
+          onClick={clear}
           onMouseEnter={() => setHot(true)}
           onMouseLeave={() => setHot(false)}
-          title={`remove ${platform}`}
-          aria-label={`remove ${platform}`}
+          title={onRemove ? `remove ${platform}` : `clear ${platform}`}
+          aria-label={onRemove ? `remove ${platform}` : `clear ${platform}`}
           style={{
             flex:"0 0 auto", width:30, cursor:"pointer",
             borderLeft:"1px solid #000",
@@ -206,25 +245,27 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
         marginTop:12,
         display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"9px 14px",
       }}>
-        {form.socials.map((s, i) => (
+        {EDITABLE_PLATFORMS.map(platform => (
           <SocialField
-            key={s.id || s.label || i}
-            social={s}
-            value={socialHandleOf(s)}
-            onChange={v => set("socials", form.socials.map(
-              (x, j) => j === i ? { ...x, handle: v } : x
-            ))}
-            onRemove={() => set("socials", form.socials.filter((_, j) => j !== i))}
+            key={platform}
+            platform={platform}
+            value={form.socials[platform] || ""}
+            onChange={v => set("socials", { ...form.socials, [platform]: v })}
+            onReset={() => set("socials", { ...form.socials, [platform]: "" })}
           />
         ))}
 
+        {/* The first website is a standing field like the platforms above;
+            the ones after it were added by hand, so those can go again. */}
         {form.websites.map((w, i) => (
           <SocialField
             key={`w${i}`}
-            social={{ id:"website", prefix:"https://" }}
+            platform="website"
             value={w}
             onChange={v => set("websites", form.websites.map((x, j) => j === i ? v : x))}
-            onRemove={() => set("websites", form.websites.filter((_, j) => j !== i))}
+            {...(form.websites.length > 1
+              ? { onRemove: () => set("websites", form.websites.filter((_, j) => j !== i)) }
+              : { onReset: () => set("websites", [""]) })}
           />
         ))}
 
@@ -495,6 +536,21 @@ function usableEnriched(res) {
   return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
 }
 
+/** Always one website row to type into, even before there is a website. */
+function websiteRows(sites) {
+  const kept = (sites || []).filter(s => String(s || "").trim());
+  return kept.length ? kept : [""];
+}
+
+/** Enrichment fills the blanks; whatever the person typed themselves stands. */
+function fillBlankHandles(current, found) {
+  const merged = { ...current };
+  for (const platform of EDITABLE_PLATFORMS) {
+    if (!String(merged[platform] || "").trim()) merged[platform] = found[platform] || "";
+  }
+  return merged;
+}
+
 function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false, enrich = false, enriched = null }) {
   const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
   // The signed-in user, mirrored onto INDEX_DATA.ME once the snapshot loads.
@@ -506,11 +562,14 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // What the agent assembled, the baseline "reset" restores to.
   // Socials are normalized on the way in so the fields hold a bare username:
   // the API returns {label, value} with value as a whole URL.
+  const stored = splitProfileSocials(ME.socials);
   const assembled = useRef({
     name: ME.name || "", email: ME.email || "", location: ME.location || "",
     intro: ME.intro || "",
-    socials: (ME.socials || []).map(normalizeSocial),
-    websites: ME.websites || [],
+    // Keyed by platform, not a list: every field is always on screen so it can
+    // be emptied and filled again. `websites` always keeps one row to type in.
+    socials: stored.handles,
+    websites: websiteRows(stored.websites),
     photo: ME.photo || null,
   });
   const [form, setForm] = useState(assembled.current);
@@ -544,13 +603,9 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         const res = enriched;
         const p = res && res.profile;
         if (p && (String(p.intro || "").trim() || (p.socials && p.socials.length))) {
-          const list = p.socials || [];
-          const isSite = (s) => /^(custom|website)$/i.test(String(s.label || ""));
-          const known = list.filter((s) => !isSite(s)).map(normalizeSocial);
-          const sites = list
-            .filter(isSite)
-            .map((s) => String(s.value || "").replace(/^https?:\/\//i, "").replace(/\/+$/, ""))
-            .filter(Boolean);
+          // Enrichment labels a linkedin URL 'custom' as often as not, so the
+          // sorting is done on the values themselves rather than on the labels.
+          const found = splitProfileSocials(p.socials);
           const intro = p.intro || "";
           const location = p.location || "";
           draftRef.current = {
@@ -562,8 +617,10 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             name: assembled.current.name || p.name || "",
             location: assembled.current.location || location,
             intro: assembled.current.intro || intro,
-            socials: known.length ? known : assembled.current.socials,
-            websites: sites.length ? sites : assembled.current.websites,
+            socials: fillBlankHandles(assembled.current.socials, found.handles),
+            websites: websiteRows(
+              found.websites.length ? found.websites : assembled.current.websites
+            ),
           });
           if (!cancelled) setDrafting(false);
           return;
@@ -661,25 +718,21 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         photo = window.IndexApp.avatarUrl(avatarKey);
       } catch (e) { /* keep the local preview; profile text still saves */ }
     }
+    // The fields hold a handle or a pasted URL; buildProfileSocials turns both
+    // into whole addresses under the labels the rest of the platform reads, and
+    // drops the empty ones. ME keeps that same stored shape, so reopening this
+    // screen reads its own save exactly as it would read a fresh /auth/me.
+    const socials = buildProfileSocials(form.socials, form.websites);
     Object.assign(ME, {
       name: form.name,
       location: form.location,
       intro: form.intro,
-      socials: form.socials,
-      websites: form.websites,
+      socials,
+      websites: (form.websites || []).filter((w) => String(w || "").trim()),
       photo,
       notify,
     });
     if (live && client) {
-      // The fields hold a bare username, so the full address is rebuilt here.
-      // Extra websites go up as 'custom', the one label the schema's per-user
-      // uniqueness index deliberately exempts, so more than one can be stored.
-      const socials = (form.socials || [])
-        .filter((s) => s && String(s.handle || "").trim())
-        .map((s) => ({ label: s.id || "link", value: socialHrefOf(s) }));
-      const sites = (form.websites || [])
-        .filter((w) => String(w || "").trim())
-        .map((w) => ({ label: "custom", value: socialHrefOf({ id: "website", handle: w }) }));
       // First-run enrichment gate: persist the approved profile through
       // confirm_user_context, which durably records onboarding.profileConfirmedAt
       // (so this screen doesn't reappear) and decomposes premises. The
@@ -701,7 +754,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         name: form.name,
         intro: form.intro,
         location: form.location,
-        socials: [...socials, ...sites],
+        socials,
         ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch(() => {});
     }

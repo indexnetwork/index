@@ -14,6 +14,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 OUT = ROOT / "Resources" / "index.html"
 API_DIR = ROOT / "api"
+# Concatenated in this order into one IIFE, so a module must come before the
+# ones that use it. Their cross-imports are stripped below: sharing a scope is
+# what replaces them here, while the files keep real imports so `bun test api/`
+# can load any of them on its own.
+API_MODULES = ("socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs")
 API_EXPORTS = [
     "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
@@ -21,7 +26,16 @@ API_EXPORTS = [
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
     "parseDeepLink", "isIndexDeepLink",
+    "SOCIAL_PREFIX", "EDITABLE_PLATFORMS", "parseSocial", "firstSocialValue",
+    "socialPlatformOf", "socialHandleOf", "socialHrefOf", "socialApiLabelOf",
+    "buildSocialHref", "normalizeSocial", "splitProfileSocials", "buildProfileSocials",
 ]
+
+# `import { x } from './y.mjs';` — dropped, since y.mjs is already in scope.
+LOCAL_IMPORT = re.compile(
+    r"^import\s+[^;]*?\s+from\s+['\"]\./[^'\"]+\.mjs['\"];?[ \t]*\n",
+    re.MULTILINE,
+)
 
 VENDOR = {
     "https://unpkg.com/react@18.3.1/umd/react.development.js": "react.development.js",
@@ -50,10 +64,13 @@ for url, fname in VENDOR.items():
 
 def build_index_api() -> str:
     parts = []
-    for fname in ("client.mjs", "mappers.mjs", "deeplink.mjs"):
+    for fname in API_MODULES:
         code = (API_DIR / fname).read_text()
         if "</script" in code:
             raise SystemExit(f"refusing to inline {fname}: contains </script")
+        code = LOCAL_IMPORT.sub("", code)
+        if re.search(r"^\s*import\s", code, flags=re.MULTILINE):
+            raise SystemExit(f"{fname} has an import the bundle cannot resolve")
         code = re.sub(r'^export\s+', '', code, flags=re.MULTILINE)
         parts.append(code)
     assigns = ", ".join(f"{name}: {name}" for name in API_EXPORTS)

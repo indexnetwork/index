@@ -537,7 +537,9 @@ function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
 Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, BoringAvatar,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
-  SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
+  SOCIAL_PREFIX, EDITABLE_PLATFORMS, parseSocial, socialPlatformOf, socialHandleOf,
+  socialHrefOf, socialApiLabelOf, buildSocialHref, normalizeSocial,
+  splitProfileSocials, buildProfileSocials,
   AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval, useNarrow,
