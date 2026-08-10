@@ -1,6 +1,6 @@
 import { safeFallbackSummary, DEFAULT_FALLBACK_HEADLINE } from '@indexnetwork/protocol';
 
-import type { OpportunityRow } from '../adapters/database.shared';
+import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
 import { buildProfileFromUser, db, eq } from '../adapters/database.shared';
 import { intents } from '../schemas/database.schema';
 import type { QuestionCreatedPayload } from '../events/question.event';
@@ -12,8 +12,8 @@ import type { OpportunityDatabaseAdapter } from '../adapters/opportunity.databas
 
 const logger = log.service.from('NotificationDelivery');
 
-function displayName(profile: { name: string | null } | null | undefined, fallback = 'Someone'): string {
-  const name = profile?.name?.trim();
+function displayName(profile: UserIdentity | null | undefined, fallback = 'Someone'): string {
+  const name = profile?.identity?.name?.trim();
   return name || fallback;
 }
 

@@ -278,7 +278,7 @@ export { presentOpportunity } from "./capabilities/opportunities.facade.js";
 export type { UserInfo } from "./capabilities/opportunities.facade.js";
 export { stripUuids, truncateAtBoundary } from "./capabilities/opportunities.facade.js";
 export { stripUnsupportedOpportunityClaims } from "./capabilities/opportunities.facade.js";
-export { safeFallbackSummary } from "./capabilities/opportunities.facade.js";
+export { safeFallbackSummary, DEFAULT_FALLBACK_HEADLINE } from "./capabilities/opportunities.facade.js";
 export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "./capabilities/opportunities.facade.js";
 export { getOrCreateDeliveryCardBatch } from "./capabilities/opportunities.facade.js";
 
