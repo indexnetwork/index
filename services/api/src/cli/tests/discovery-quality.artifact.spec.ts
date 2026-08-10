@@ -1,15 +1,23 @@
 import { describe, expect, it } from 'bun:test';
 
 import { HistoricalQualityArtifactEnvelopeSchema } from '../../../../../packages/protocol/eval/shared/artifact.js';
-import { makeHistoricalQualityArtifact } from '../../../../../packages/protocol/eval/shared/tests/artifact.fixtures.js';
+import { makeHistoricalQualityArtifact, reassignHistoricalQualitySlot } from '../../../../../packages/protocol/eval/shared/tests/artifact.fixtures.js';
 import { HistoricalQualityChildOutputSchema } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
+import { HISTORICAL_QUALITY_APPROVED_CASE_IDS } from '../discovery-quality.contract';
 import { aggregateHistoricalQualityChildren, writeOperationalDiagnosticBestEffort, type HistoricalQualityArtifactWriter, type HistoricalQualityParentDiagnostic } from '../discovery-quality.runtime';
 
 const runId = 'hq-run-11111111111111111111111111111111';
 
-function fixture(input: { slots?: number; failedSlot?: number } = {}) {
-  const slots = input.slots ?? 2;
+function fixture(input: { slots?: number; failedSlot?: number; fullSelection?: boolean } = {}) {
+  const slots = input.fullSelection ? HISTORICAL_QUALITY_APPROVED_CASE_IDS.length * 2 : input.slots ?? 2;
   const source = makeHistoricalQualityArtifact({ emittedSlots: slots, requestedSlots: slots, failedSlot: input.failedSlot });
+  if (input.fullSelection) {
+    source.payload.cases.forEach((_row, index) => reassignHistoricalQualitySlot(source, index, {
+      logicalCaseId: HISTORICAL_QUALITY_APPROVED_CASE_IDS[Math.floor(index / 2)]!,
+      trigger: index % 2 === 0 ? 'intent' : 'enrichment',
+      repetition: 0,
+    }));
+  }
   const planSlots = source.payload.cases.map((row, index) => ({
     slotId: `hq-slot-${String(index + 1).padStart(64, '0')}`,
     caseId: row.logicalCaseId,
@@ -52,23 +60,34 @@ const diagnostic = (failureClass: HistoricalQualityParentDiagnostic['failureClas
 });
 
 describe('historical quality strict aggregation', () => {
-  it('builds a real strict V2 artifact and a full-plan quality summary from exact unique outputs', async () => {
-    const { plan, outputs } = fixture();
+  it('builds a real strict V2 artifact and a full-corpus quality summary from exact unique outputs', async () => {
+    const { plan, outputs } = fixture({ fullSelection: true });
     const result = await aggregateHistoricalQualityChildren({ plan, outputs, diagnostics: [] });
 
     expect(HistoricalQualityArtifactEnvelopeSchema.safeParse(result.artifact).success).toBeTrue();
     expect(result.artifact.measurement).toMatchObject({
-      requestedSlots: 2,
-      completedSlots: 2,
+      requestedSlots: 10,
+      completedSlots: 10,
       qualityVerdictAvailable: true,
     });
     expect(result.qualitySummary).toMatchObject({
       qualityVerdictAvailable: true,
-      requestedSlots: 2,
-      completedSlots: 2,
+      requestedSlots: 10,
+      completedSlots: 10,
     });
-    expect(result.artifact.payload.cases).toHaveLength(2);
-    expect(result.artifact.execution.runs).toHaveLength(2);
+    expect(result.artifact.payload.cases).toHaveLength(10);
+    expect(result.artifact.execution.runs).toHaveLength(10);
+  });
+
+  it('accepts complete filtered evidence while withholding the verdict and quality summary', async () => {
+    const { plan, outputs } = fixture();
+    const result = await aggregateHistoricalQualityChildren({ plan, outputs, diagnostics: [] });
+
+    expect(HistoricalQualityArtifactEnvelopeSchema.safeParse(result.artifact).success).toBeTrue();
+    expect(result.artifact.selection.fullCorpus).toBeFalse();
+    expect(result.artifact.completeness).toMatchObject({ complete: true });
+    expect(result.artifact.measurement).toMatchObject({ completedSlots: 2, requestedSlots: 2, qualityVerdictAvailable: false });
+    expect(result.qualitySummary).toBeNull();
   });
 
   it('keeps all terminal failed rows but suppresses the complete quality summary instead of averaging the subset', async () => {
@@ -77,13 +96,7 @@ describe('historical quality strict aggregation', () => {
 
     expect(HistoricalQualityArtifactEnvelopeSchema.safeParse(result.artifact).success).toBeTrue();
     expect(result.artifact.measurement).toMatchObject({ completedSlots: 1, requestedSlots: 2, qualityVerdictAvailable: false });
-    expect(result.qualitySummary).toEqual({
-      qualityVerdictAvailable: false,
-      completedSlots: 1,
-      requestedSlots: 2,
-      groups: null,
-      message: 'no quality verdict',
-    });
+    expect(result.qualitySummary).toBeNull();
     expect(result.artifact.payload.aggregatePassRate).toBe(0.5);
   });
 

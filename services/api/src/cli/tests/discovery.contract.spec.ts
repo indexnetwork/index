@@ -322,6 +322,19 @@ describe('classifyAbParentFailure', () => {
     expect(describeAbFailure(classified).message).not.toContain('hunter2secret');
   });
 
+  it('reports cumulative prior-slot spend while preserving the current restore stage', () => {
+    const failure = new HistoricalQualitySpentRunError(
+      'resetting',
+      'restore-failure',
+      undefined,
+      { shape: 'single', priorSideStarted: true },
+    );
+    const report = describeAbFailure(failure);
+    expect(report.message).toContain('while restoring eval-ab-a');
+    expect(report.message).toContain('a prior slot side process was started');
+    expect(report.message).not.toContain('no side was confirmed started');
+  });
+
   it('reports historical primary and artifact-write failures as separate opaque classes at exit 4', () => {
     const cause = new Error('Authorization: Bearer raw-secret');
     const failure = new HistoricalQualitySpentRunError(

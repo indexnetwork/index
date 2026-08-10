@@ -225,23 +225,31 @@ export class HistoricalQualitySpentRunError extends AbSpentRunError {
   readonly primaryFailureClass: string;
   readonly artifactFailureClass?: string;
   readonly diagnosticReportPath?: string;
+  readonly priorSideStarted: boolean;
 
   constructor(
     stage: AbRunStage,
     primaryFailureClass: string,
     artifactFailureClass?: string,
-    options?: ErrorOptions & AbSpentRunDetail & { diagnosticReportPath?: string },
+    options?: ErrorOptions & AbSpentRunDetail & { diagnosticReportPath?: string; priorSideStarted?: boolean },
   ) {
     super(stage, options);
     this.name = 'HistoricalQualitySpentRunError';
     this.primaryFailureClass = primaryFailureClass;
     if (artifactFailureClass !== undefined) this.artifactFailureClass = artifactFailureClass;
     if (options?.diagnosticReportPath !== undefined) this.diagnosticReportPath = options.diagnosticReportPath;
-    const operation = stage === 'resetting'
-      ? `while restoring ${AB_BRANCH_NAMES.a}; the branch may have been overwritten and no side was confirmed started`
+    this.priorSideStarted = options?.priorSideStarted === true;
+    const currentStage = stage === 'resetting'
+      ? `while restoring ${AB_BRANCH_NAMES.a}; the branch may have been overwritten`
       : stage === 'reset'
-        ? `after restoring ${AB_BRANCH_NAMES.a} and before a side was confirmed started`
-        : `after restoring ${AB_BRANCH_NAMES.a} and starting the side process`;
+        ? `after restoring ${AB_BRANCH_NAMES.a} and before the current side was confirmed started`
+        : `after restoring ${AB_BRANCH_NAMES.a} and starting the current side process`;
+    const cumulativeSpend = this.priorSideStarted
+      ? '; a prior slot side process was started, so provider spend and wall-clock time may already be gone'
+      : stage === 'resetting'
+        ? ' and no side was confirmed started'
+        : '';
+    const operation = `${currentStage}${cumulativeSpend}`;
     const artifact = this.diagnosticReportPath === undefined
       ? 'No diagnostic run report was written.'
       : `Diagnostic unavailable-verdict report written: ${this.diagnosticReportPath}.`;

@@ -109,6 +109,8 @@ export interface HistoricalQualityRuntimeDeps {
   ): Promise<HistoricalQualityChildOutput>;
   prepareArtifactWrite?(reportPath: string, force: boolean): Promise<void>;
   artifactWriter?: HistoricalQualityArtifactWriter;
+  createTemporaryDirectory?(): Promise<string>;
+  cleanupTemporaryDirectory?(directory: string): Promise<void>;
   log?(message: string): void;
 }
 
@@ -141,6 +143,7 @@ export interface HistoricalQualityRunSummary {
 }
 
 export interface HistoricalQualityArtifactView extends Record<string, unknown> {
+  completeness: { complete: boolean } & Record<string, unknown>;
   measurement: {
     requestedSlots: number;
     completedSlots: number;
@@ -153,7 +156,7 @@ export interface HistoricalQualityArtifactView extends Record<string, unknown> {
 
 export interface HistoricalQualityAggregation {
   artifact: HistoricalQualityArtifactView;
-  qualitySummary: HistoricalQualityRunSummary;
+  qualitySummary: HistoricalQualityRunSummary | null;
 }
 
 export interface HistoricalQualityParentResult extends HistoricalQualityAggregation {
@@ -442,6 +445,55 @@ async function productionAttest(): Promise<AttestedHistoricalQualityManifest> {
 }
 
 export const HISTORICAL_QUALITY_SUPERVISOR_TIMEOUT_MS = 210_000;
+export const HISTORICAL_QUALITY_SUPERVISOR_KILL_GRACE_MS = 5_000;
+
+export interface HistoricalQualitySupervisorClock {
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+export interface HistoricalQualitySupervisedChild {
+  exited: Promise<number>;
+  kill(signal: string): void;
+}
+
+const productionSupervisorClock: HistoricalQualitySupervisorClock = {
+  setTimeout: (callback, delayMs) => {
+    const timer = setTimeout(callback, delayMs);
+    timer.unref?.();
+    return timer;
+  },
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+/** Production supervision seam: deadline TERM, bounded grace, then KILL. */
+export async function superviseHistoricalQualityChild(
+  child: HistoricalQualitySupervisedChild,
+  options: {
+    clock?: HistoricalQualitySupervisorClock;
+    timeoutMs?: number;
+    killGraceMs?: number;
+  } = {},
+): Promise<number> {
+  const clock = options.clock ?? productionSupervisorClock;
+  let deadline: unknown;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    deadline = clock.setTimeout(() => resolve('timeout'), options.timeoutMs ?? HISTORICAL_QUALITY_SUPERVISOR_TIMEOUT_MS);
+  });
+  const exit = child.exited.then((exitCode) => ({ kind: 'exit' as const, exitCode }));
+  const supervised = await Promise.race([exit, timeout]);
+  if (deadline !== undefined) clock.clearTimeout(deadline);
+  if (supervised !== 'timeout') return supervised.exitCode;
+
+  child.kill('SIGTERM');
+  const escalation = clock.setTimeout(
+    () => child.kill('SIGKILL'),
+    options.killGraceMs ?? HISTORICAL_QUALITY_SUPERVISOR_KILL_GRACE_MS,
+  );
+  await child.exited.catch(() => undefined);
+  clock.clearTimeout(escalation);
+  throw new HistoricalQualitySlotOperationalError('supervisor-timeout');
+}
 
 async function productionSpawnSlot(input: {
   dispatch: HistoricalQualitySlotDispatch;
@@ -477,25 +529,18 @@ async function productionSpawnSlot(input: {
   // Drain immediately so a verbose child cannot block on a full pipe before exit.
   const stdout = consume(child.stdout);
   const stderr = consume(child.stderr);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => resolve('timeout'), HISTORICAL_QUALITY_SUPERVISOR_TIMEOUT_MS);
-    timer.unref?.();
-  });
-  const exit = child.exited.then((exitCode) => ({ kind: 'exit' as const, exitCode }));
-  const supervised = await Promise.race([exit, timeout]);
-  if (timer) clearTimeout(timer);
-  if (supervised === 'timeout') {
-    child.kill('SIGTERM');
-    const escalation = setTimeout(() => child.kill('SIGKILL'), 5_000);
-    escalation.unref?.();
-    await child.exited.catch(() => undefined);
-    clearTimeout(escalation);
+  let exitCode: number;
+  try {
+    exitCode = await superviseHistoricalQualityChild({
+      exited: child.exited,
+      kill: (signal) => child.kill(signal === 'SIGTERM' ? 'SIGTERM' : 'SIGKILL'),
+    });
+  } catch (error) {
     await Promise.all([stdout, stderr]);
-    throw new HistoricalQualitySlotOperationalError('supervisor-timeout');
+    throw error;
   }
   await Promise.all([stdout, stderr]);
-  if (supervised.exitCode !== 0) throw new HistoricalQualitySlotOperationalError('spawn-failure');
+  if (exitCode !== 0) throw new HistoricalQualitySlotOperationalError('spawn-failure');
   const file = Bun.file(dispatch.outputPath);
   if (!(await file.exists())) throw new HistoricalQualitySlotOperationalError('missing-child-output');
   try {
@@ -731,7 +776,8 @@ export async function aggregateHistoricalQualityChildren(input: {
   }
   if (failureClass !== undefined) filters.operationalFailureClass = failureClass;
   const rate = cases.length === 0 ? 0 : completedSlots / cases.length;
-  const verdict = qualitySummary.qualityVerdictAvailable === true && failureClass === undefined;
+  const completeSelection = qualitySummary.qualityVerdictAvailable === true && failureClass === undefined;
+  const verdict = completeSelection && fullSelection;
   const models = [...new Set(input.models ?? ['configured runtime models'])];
   const model = input.model ?? models[0] ?? 'configured runtime models';
   if (models.length === 0 || models.some((value) => value.trim() === '') || model.trim() === '') {
@@ -763,7 +809,7 @@ export async function aggregateHistoricalQualityChildren(input: {
       failedRuns: executionRuns.length - successRuns,
       recoveredRuns,
       totalAttempts,
-      complete: verdict,
+      complete: completeSelection,
     },
     measurement: {
       kind: 'historical-quality-pilot' as const,
@@ -783,7 +829,10 @@ export async function aggregateHistoricalQualityChildren(input: {
       cases,
     },
   };
-  return { artifact: authorities.parseHistoricalQualityArtifact(artifact), qualitySummary };
+  return {
+    artifact: authorities.parseHistoricalQualityArtifact(artifact),
+    qualitySummary: verdict ? qualitySummary : null,
+  };
 }
 
 export async function writeOperationalDiagnosticBestEffort(input: {
@@ -842,6 +891,7 @@ export async function runHistoricalQualityRuntime(
   let reportPath: string | undefined;
   let artifactModels: string[] | undefined;
   let artifactModel: string | undefined;
+  let priorSideStarted = false;
   const outputs: HistoricalQualityChildOutput[] = [];
   try {
     // Parallel mode spends once per candidate. Refuse it before even runtime
@@ -886,7 +936,9 @@ export async function runHistoricalQualityRuntime(
     await deps.prepareArtifactWrite?.(reportPath, request.force);
 
     const runId = `hq-run-${randomBytes(16).toString('hex')}`;
-    temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'historical-quality-'));
+    temporaryDirectory = deps.createTemporaryDirectory === undefined
+      ? await mkdtemp(path.join(tmpdir(), 'historical-quality-'))
+      : await deps.createTemporaryDirectory();
 
     for (const slot of plan.slots) {
       stage = 'resetting';
@@ -912,12 +964,14 @@ export async function runHistoricalQualityRuntime(
           environment: childEnvironment,
           markSpawned: () => { stage = 'spawned'; },
         });
+        stage = 'spawned';
       } catch (error) {
         if (error instanceof HistoricalQualitySlotOperationalError) throw error;
         throw new HistoricalQualitySlotOperationalError('spawn-failure', { cause: error });
       }
       try {
         outputs.push(await deps.validateSlotOutput(slot, dispatch, output, forbiddenValues));
+        priorSideStarted = true;
       } catch (error) {
         throw new HistoricalQualitySlotOperationalError('malformed-child-output', { cause: error });
       }
@@ -936,9 +990,9 @@ export async function runHistoricalQualityRuntime(
     } catch (error) {
       throw new HistoricalQualitySlotOperationalError('artifact-write-failure', { cause: error });
     }
-    const exitCode = aggregation.qualitySummary.qualityVerdictAvailable === true ? 0 as const : 3 as const;
+    const exitCode = aggregation.artifact.completeness.complete ? 0 as const : 3 as const;
     deps.log?.(`Historical quality artifact written: ${reportPath}`);
-    if (exitCode === 3) {
+    if (aggregation.qualitySummary === null) {
       deps.log?.('no quality verdict');
     } else {
       deps.log?.(`Historical quality summary: ${JSON.stringify(aggregation.qualitySummary)}`);
@@ -983,6 +1037,7 @@ export async function runHistoricalQualityRuntime(
         {
           shape: 'single',
           cause: error,
+          priorSideStarted,
           ...(diagnosticReportPath === undefined ? {} : { diagnosticReportPath }),
         },
       );
@@ -991,7 +1046,12 @@ export async function runHistoricalQualityRuntime(
   } finally {
     // Child files are removed only after aggregation/report handling has either
     // succeeded or been classified. Cleanup never replaces the primary result.
-    if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
+    if (temporaryDirectory) {
+      const cleanup = deps.cleanupTemporaryDirectory === undefined
+        ? rm(temporaryDirectory, { recursive: true, force: true })
+        : deps.cleanupTemporaryDirectory(temporaryDirectory);
+      await cleanup.catch(() => undefined);
+    }
   }
 }
 

@@ -222,6 +222,26 @@ describe('historical quality PR B dispatch acceptance', () => {
     expect(calls).toEqual(['quality-child-preflight']);
   });
 
+  it.each([0, 3] as const)('preserves historical quality runtime exit %i through the top-level bootstrap', async (exitCode) => {
+    const previous = process.exitCode;
+    process.exitCode = undefined;
+    const dependencies: DiscoveryBootstrapDependencies = {
+      assertConfirmation: () => { throw new Error('legacy gate must not run'); },
+      parseManifest: () => { throw new Error('legacy manifest must not parse'); },
+      attestTargets: async () => { throw new Error('legacy attestation must not run'); },
+      importRuntime: async () => { throw new Error('legacy runtime must not load'); },
+      importQualityRuntime: async () => ({
+        runHistoricalQualityRuntime: async () => { process.exitCode = exitCode; },
+      }),
+    };
+    try {
+      expect(await runDiscoveryBootstrap(fullArgs, {}, { log: () => {}, error: () => {} }, dependencies)).toBeUndefined();
+      expect(Number(process.exitCode)).toBe(exitCode);
+    } finally {
+      process.exitCode = previous;
+    }
+  });
+
   it('passes the parsed request to the dedicated quality runtime instead of legacy A/B', async () => {
     const calls: string[] = [];
     let dispatchedRequest: HistoricalQualityRequest | undefined;
