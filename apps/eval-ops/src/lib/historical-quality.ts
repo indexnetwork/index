@@ -85,7 +85,15 @@ function aggregateFunnels(funnels: readonly HistoricalStageFunnel[]): Historical
 /** Groups already schema-validated artifact rows without importing protocol or zod at runtime. */
 export function groupHistoricalQualityCases(
   cases: readonly HistoricalQualityCase[],
+  requested: { requestedSlots: number; repetitionsRequested: number },
 ): HistoricalQualityCaseGroup[] {
+  if (!Number.isInteger(requested.requestedSlots) || requested.requestedSlots < 1
+    || !Number.isInteger(requested.repetitionsRequested) || requested.repetitionsRequested < 1) {
+    throw new Error('Historical quality grouping requires positive requested-slot and repetition counts');
+  }
+  if (cases.length !== requested.requestedSlots) {
+    throw new Error('Historical quality grouping row count does not match requested slots');
+  }
   const grouped = new Map<string, HistoricalQualityCase[]>();
   const tuples = new Set<string>();
   for (const row of cases) {
@@ -99,6 +107,16 @@ export function groupHistoricalQualityCases(
     const members = grouped.get(key) ?? [];
     members.push(row);
     grouped.set(key, members);
+  }
+  if (grouped.size * requested.repetitionsRequested !== requested.requestedSlots) {
+    throw new Error('Historical quality grouping failed requested-slot math');
+  }
+  for (const members of grouped.values()) {
+    const repetitions = members.map(({ repetition }) => repetition).sort((left, right) => left - right);
+    if (repetitions.length !== requested.repetitionsRequested
+      || !repetitions.every((repetition, index) => repetition === index)) {
+      throw new Error('Historical quality grouping requires exact repetition coverage');
+    }
   }
 
   return [...grouped.values()]
@@ -116,8 +134,8 @@ export function groupHistoricalQualityCases(
         logicalCaseId: rows[0]!.logicalCaseId,
         trigger: rows[0]!.trigger,
         repetitions: rows.map(({ repetition }) => repetition),
-        completedRepetitions: rows.length,
-        requestedRepetitions: rows.length,
+        completedRepetitions: requested.repetitionsRequested,
+        requestedRepetitions: requested.repetitionsRequested,
         stageFunnel: aggregateFunnels(rows.map((row) => row.stageFunnel!)),
         targetRetrievalRanks: targetRanks.map(({ retrieval }) => retrieval),
         targetFinalRanks: targetRanks.map(({ final }) => final),

@@ -217,6 +217,27 @@ export function makeHistoricalQualityArtifact(options: { emittedSlots?: number; 
   };
 }
 
+/** Reassigns one emitted slot while preserving deterministic row/execution identities. */
+export function reassignHistoricalQualitySlot(
+  artifact: ReturnType<typeof makeHistoricalQualityArtifact>,
+  rowIndex: number,
+  identity: { logicalCaseId: string; trigger: "intent" | "enrichment"; repetition: number },
+): void {
+  const row = artifact.payload.cases[rowIndex]!;
+  const run = artifact.execution.runs[rowIndex]!;
+  const caseId = `${encodeURIComponent(identity.logicalCaseId)}/${identity.trigger}/r${identity.repetition + 1}`;
+  const runId = `${encodeURIComponent(caseId)}::run:1`;
+  row.logicalCaseId = identity.logicalCaseId;
+  row.trigger = identity.trigger;
+  row.repetition = identity.repetition;
+  row.caseId = caseId;
+  row.scoredRunIds = row.completed ? [runId] : [];
+  run.caseId = caseId;
+  run.runId = runId;
+  run.attempts[0]!.runId = runId;
+  run.attempts[0]!.attemptId = `${runId}::attempt:1`;
+}
+
 /** Ten emitted slots with one terminal failure and no quality verdict. */
 export function makeIncompleteHistoricalQualityArtifact() {
   return makeHistoricalQualityArtifact({ failedSlot: 9 });

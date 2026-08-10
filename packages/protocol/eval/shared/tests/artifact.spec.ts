@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { EVAL_ARTIFACT_SCHEMA_VERSION, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_LEGACY_UNAVAILABLE, EVAL_RUN_REPORT_ARTIFACT_TYPE, HistoricalQualityExecutionRunSchema, HistoricalQualityMeasurementSchema, HistoricalQualityTransportRowSchema, buildEvalArtifact, canonicalizeForFingerprint, fingerprintCanonicalJson, fingerprintEvalConfig, fingerprintEvalCorpus, getExecutionEvidence, isEvalArtifactV2, isHistoricalQualityArtifact, looksLikeLegacyScorecard, migrateLegacyBaseline, parseEvalArtifact, readEvalGitProvenance } from "../artifact.js";
 import { buildScorecard } from "../scorecard.js";
 import type { CaseResultLike, ScorecardLike } from "../types.js";
-import { TEST_REVISION, makeHistoricalQualityArtifact, makeIncompleteHistoricalQualityArtifact, makeSuccessfulExecution, makeTestMeta } from "./artifact.fixtures.js";
+import { TEST_REVISION, makeHistoricalQualityArtifact, makeIncompleteHistoricalQualityArtifact, makeSuccessfulExecution, makeTestMeta, reassignHistoricalQualitySlot } from "./artifact.fixtures.js";
 
 const caseResult = (caseId: string, rule: string, passes: number, runs = 3): CaseResultLike => ({
   caseId,
@@ -270,11 +270,22 @@ describe("historical quality artifact governance", () => {
     expect(HistoricalQualityExecutionRunSchema.safeParse(artifact.execution.runs[0]).success).toBeTrue();
   });
 
-  it("binds both quality completeness indicators exactly to full requested evidence", () => {
+  it("binds both quality completeness indicators to exact generic repetition coverage and requested-slot math", () => {
+    const uneven = makeHistoricalQualityArtifact({ repetitions: 3 });
+    reassignHistoricalQualitySlot(uneven, 2, {
+      logicalCaseId: "historical/safe-replacement",
+      trigger: "intent",
+      repetition: 0,
+    });
+    uneven.measurement.qualityVerdictAvailable = false;
+    uneven.completeness.complete = false;
+
     const diagnostics = [
       { name: "complete", artifact: makeHistoricalQualityArtifact(), expected: true },
+      { name: "partial group", artifact: makeHistoricalQualityArtifact({ repetitions: 3, emittedSlots: 29, requestedSlots: 30 }), expected: false },
       { name: "ten of eleven emitted", artifact: makeHistoricalQualityArtifact({ requestedSlots: 11 }), expected: false },
       { name: "zero of eleven emitted", artifact: makeHistoricalQualityArtifact({ emittedSlots: 0, requestedSlots: 11 }), expected: false },
+      { name: "count-preserving uneven replacement", artifact: uneven, expected: false },
     ];
 
     for (const { name, artifact, expected } of diagnostics) {
@@ -288,6 +299,20 @@ describe("historical quality artifact governance", () => {
       wrongVerdict.measurement.qualityVerdictAvailable = !expected;
       expect(() => parseQuality(wrongVerdict), `${name}: measurement.qualityVerdictAvailable`).toThrow(/quality verdict availability/);
     }
+  });
+
+  it("rejects complete claims for holes, uneven groups, count-preserving replacement, and invalid group-count math", () => {
+    const replacement = makeHistoricalQualityArtifact({ repetitions: 3 });
+    reassignHistoricalQualitySlot(replacement, 2, {
+      logicalCaseId: "historical/safe-replacement",
+      trigger: "intent",
+      repetition: 0,
+    });
+    expect(() => parseQuality(replacement)).toThrow(/repetition coverage|requested-slot math/i);
+
+    const invalidMath = makeHistoricalQualityArtifact();
+    invalidMath.measurement.repetitionsRequested = 3;
+    expect(() => parseQuality(invalidMath)).toThrow(/repetition coverage|requested-slot math/i);
   });
 
   it("accepts complete and incomplete diagnostics, identifies quality, and forbids baselines/V1", () => {

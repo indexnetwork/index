@@ -550,10 +550,14 @@ function isValidRunSlotIdentity(slot: HistoricalQualityRunSlotInput): boolean {
 
 export function summarizeHistoricalQualityRun(
   slots: readonly (HistoricalQualityRunSlotInput | null | undefined)[],
-  requestedSlots = slots.length,
+  requestedSlots: number,
+  repetitionsRequested: number,
 ): HistoricalQualityRunSummary {
   if (!Number.isInteger(requestedSlots) || requestedSlots < 1) {
     throw new Error("Historical quality run requires a positive requested slot count");
+  }
+  if (!Number.isInteger(repetitionsRequested) || repetitionsRequested < 1) {
+    throw new Error("Historical quality run requires a positive requested repetition count");
   }
   const completedSlots = slots.filter((slot) => slot?.slotSummary.qualityVerdictAvailable === true
     && slot.slotSummary.completed === true
@@ -566,9 +570,22 @@ export function summarizeHistoricalQualityRun(
     && isValidSingleSlotFunnel(slot.slotSummary.summary));
   const tupleKeys = complete.map(({ logicalCaseId, trigger, repetition }) =>
     JSON.stringify([logicalCaseId, trigger, repetition]));
+  const grouped = new Map<string, HistoricalQualityRunSlotInput[]>();
+  for (const slot of complete) {
+    const key = JSON.stringify([slot.logicalCaseId, slot.trigger]);
+    const members = grouped.get(key) ?? [];
+    members.push(slot);
+    grouped.set(key, members);
+  }
+  const exactRepetitionCoverage = [...grouped.values()].every((members) =>
+    members.length === repetitionsRequested
+      && [...members].sort((left, right) => left.repetition - right.repetition)
+        .every(({ repetition }, index) => repetition === index));
   if (slots.length !== requestedSlots
     || complete.length !== requestedSlots
-    || new Set(tupleKeys).size !== tupleKeys.length) {
+    || new Set(tupleKeys).size !== tupleKeys.length
+    || !exactRepetitionCoverage
+    || grouped.size * repetitionsRequested !== requestedSlots) {
     return {
       qualityVerdictAvailable: false,
       completedSlots,
@@ -578,13 +595,6 @@ export function summarizeHistoricalQualityRun(
     };
   }
 
-  const grouped = new Map<string, HistoricalQualityRunSlotInput[]>();
-  for (const slot of complete) {
-    const key = JSON.stringify([slot.logicalCaseId, slot.trigger]);
-    const members = grouped.get(key) ?? [];
-    members.push(slot);
-    grouped.set(key, members);
-  }
   const groups = [...grouped.values()]
     .map((members): HistoricalQualityRunGroup => {
       members.sort((left, right) => left.repetition - right.repetition);
@@ -601,8 +611,8 @@ export function summarizeHistoricalQualityRun(
         logicalCaseId,
         trigger,
         repetitions: members.map(({ repetition }) => repetition),
-        completedRepetitions: members.length,
-        requestedRepetitions: members.length,
+        completedRepetitions: repetitionsRequested,
+        requestedRepetitions: repetitionsRequested,
         stageFunnel: aggregateFunnels(funnels),
         targetRetrievalRanks: funnels.map((funnel) => targetRank(funnel, "retrieval")),
         targetFinalRanks: funnels.map((funnel) => targetRank(funnel, "final")),

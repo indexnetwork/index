@@ -806,13 +806,28 @@ function refineHistoricalQualityArtifactEnvelope(
   if (measurement.completedSlots !== completedSlots) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "completedSlots"], message: "completedSlots must equal completed emitted transport rows" });
   }
+  const repetitionsByGroup = new Map<string, number[]>();
+  for (const row of artifact.payload.cases) {
+    const key = JSON.stringify([row.logicalCaseId, row.trigger]);
+    const repetitions = repetitionsByGroup.get(key) ?? [];
+    repetitions.push(row.repetition);
+    repetitionsByGroup.set(key, repetitions);
+  }
+  const exactRepetitionCoverage = [...repetitionsByGroup.values()].every((repetitions) =>
+    repetitions.length === measurement.repetitionsRequested
+      && [...repetitions].sort((left, right) => left - right)
+        .every((repetition, index) => repetition === index));
+  const requestedSlotMath = repetitionsByGroup.size * measurement.repetitionsRequested
+    === measurement.requestedSlots;
   const completeEvidence = artifact.payload.cases.length === measurement.requestedSlots
-    && completedSlots === measurement.requestedSlots;
+    && completedSlots === measurement.requestedSlots
+    && exactRepetitionCoverage
+    && requestedSlotMath;
   if (measurement.qualityVerdictAvailable !== completeEvidence) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "qualityVerdictAvailable"], message: "quality verdict availability must exactly match complete requested evidence" });
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "qualityVerdictAvailable"], message: "quality verdict availability must exactly match complete requested evidence with exact repetition coverage and requested-slot math" });
   }
   if (artifact.completeness.complete !== completeEvidence) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", "complete"], message: "quality completeness must exactly match complete requested evidence" });
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", "complete"], message: "quality completeness must exactly match complete requested evidence with exact repetition coverage and requested-slot math" });
   }
 }
 export const HistoricalQualityArtifactEnvelopeSchema = historicalQualityArtifactEnvelopeBaseSchema

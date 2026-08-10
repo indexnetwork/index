@@ -9,7 +9,10 @@ export function HistoricalQualityReport({
 }) {
   const { measurement } = artifact;
   const groups = measurement.qualityVerdictAvailable
-    ? groupHistoricalQualityCases(artifact.payload.cases)
+    ? groupHistoricalQualityCases(artifact.payload.cases, {
+        requestedSlots: measurement.requestedSlots,
+        repetitionsRequested: measurement.repetitionsRequested,
+      })
     : [];
 
   return (
@@ -22,11 +25,11 @@ export function HistoricalQualityReport({
             </span>
             <span className="text-term-dim ml-2">completed/requested</span>
           </ReportRow>
-          <ReportRow label="quality verdict">
+          <ReportRow label="quality evidence">
             {measurement.qualityVerdictAvailable ? (
-              <span className="text-term-green">evidence available</span>
+              <span className="text-term-green">available</span>
             ) : (
-              <span className="text-term-yellow">quality verdict unavailable</span>
+              <span className="text-term-yellow">unavailable</span>
             )}
           </ReportRow>
           <p className="text-term-dim">

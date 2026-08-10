@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { HistoricalQualityReport } from '../src/components/HistoricalQualityReport';
 import { groupHistoricalQualityCases } from '../src/lib/historical-quality';
 import type { HistoricalQualityArtifact } from '../src/api/client';
-import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, UNEVEN_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 afterEach(cleanup);
 
@@ -32,7 +32,10 @@ function expectForbiddenQualityPresentationAbsent(container: HTMLElement) {
 describe('HistoricalQualityReport', () => {
   it('groups schema-validated rows deterministically by logical case and trigger', () => {
     const rows = [...COMPLETE_HISTORICAL_QUALITY_ARTIFACT.payload.cases].reverse();
-    const groups = groupHistoricalQualityCases(rows);
+    const groups = groupHistoricalQualityCases(rows, {
+      requestedSlots: COMPLETE_HISTORICAL_QUALITY_ARTIFACT.measurement.requestedSlots,
+      repetitionsRequested: COMPLETE_HISTORICAL_QUALITY_ARTIFACT.measurement.repetitionsRequested,
+    });
 
     expect(groups).toHaveLength(10);
     expect(groups.map(({ logicalCaseId, trigger }) => `${logicalCaseId}:${trigger}`)).toEqual([
@@ -62,6 +65,21 @@ describe('HistoricalQualityReport', () => {
         failureStages: { none: 72 },
       },
     });
+  });
+
+  it('rejects holes, uneven groups, count-preserving replacement, and invalid requested-slot math', () => {
+    const rows = structuredClone(COMPLETE_HISTORICAL_QUALITY_ARTIFACT.payload.cases);
+    const measurement = { requestedSlots: 30, repetitionsRequested: 3 };
+    const replacement = structuredClone(rows);
+    replacement[2]!.logicalCaseId = 'historical/safe-replacement';
+
+    for (const [candidate, requested] of [
+      [rows.slice(0, 29), measurement],
+      [replacement, measurement],
+      [rows, { requestedSlots: 31, repetitionsRequested: 3 }],
+    ] as const) {
+      expect(() => groupHistoricalQualityCases(candidate, requested)).toThrow(/coverage|requested-slot math|row count/i);
+    }
   });
 
   it('renders one complete group per case and trigger with per-repetition participant evidence', () => {
@@ -102,18 +120,20 @@ describe('HistoricalQualityReport', () => {
     expectForbiddenQualityPresentationAbsent(container);
   });
 
-  it('renders incomplete execution as unavailable without any funnel or participant rollup', () => {
-    const { container } = render(
-      <HistoricalQualityReport
-        artifact={INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT as HistoricalQualityArtifact}
-      />,
-    );
+  it('renders schema-valid incomplete and uneven execution as unavailable without rollups', () => {
+    for (const artifact of [INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, UNEVEN_HISTORICAL_QUALITY_ARTIFACT]) {
+      const { container, unmount } = render(
+        <HistoricalQualityReport artifact={artifact as HistoricalQualityArtifact} />,
+      );
 
-    expect(screen.getByText('29/30')).toBeInTheDocument();
-    expect(screen.getByText(/quality verdict unavailable/i)).toBeInTheDocument();
-    expect(screen.queryByTestId('quality-group')).toBeNull();
-    expect(screen.queryByText('stage funnel')).toBeNull();
-    expect(screen.queryByTestId('participant-metric')).toBeNull();
-    expectForbiddenQualityPresentationAbsent(container);
+      expect(screen.getByText(`${artifact.measurement.completedSlots}/30`)).toBeInTheDocument();
+      expect(screen.getByText('quality evidence:')).toBeInTheDocument();
+      expect(screen.getByText('unavailable')).toBeInTheDocument();
+      expect(screen.queryByTestId('quality-group')).toBeNull();
+      expect(screen.queryByText('stage funnel')).toBeNull();
+      expect(screen.queryByTestId('participant-metric')).toBeNull();
+      expectForbiddenQualityPresentationAbsent(container);
+      unmount();
+    }
   });
 });

@@ -356,7 +356,7 @@ describe("historical quality metrics", () => {
       { slots: [complete, { ...runSlot("historical/case-a", "intent", 1), repetition: -1 }], completedSlots: 2 },
       { slots: [complete, { ...runSlot("historical/case-a", "intent", 1), repetition: 0.5 }], completedSlots: 2 },
     ]) {
-      expect(summarizeHistoricalQualityRun(slots)).toEqual({
+      expect(summarizeHistoricalQualityRun(slots, 2, 2)).toEqual({
         qualityVerdictAvailable: false,
         completedSlots,
         requestedSlots: 2,
@@ -364,7 +364,7 @@ describe("historical quality metrics", () => {
         message: "no quality verdict",
       });
     }
-    expect(summarizeHistoricalQualityRun([complete], 2)).toEqual({
+    expect(summarizeHistoricalQualityRun([complete], 2, 2)).toEqual({
       qualityVerdictAvailable: false,
       completedSlots: 1,
       requestedSlots: 2,
@@ -385,7 +385,7 @@ describe("historical quality metrics", () => {
     }
 
     for (const slot of [forgedRetrievalRank, forgedFinalRank]) {
-      expect(summarizeHistoricalQualityRun([slot])).toEqual({
+      expect(summarizeHistoricalQualityRun([slot], 1, 1)).toEqual({
         qualityVerdictAvailable: false,
         completedSlots: 0,
         requestedSlots: 1,
@@ -395,59 +395,79 @@ describe("historical quality metrics", () => {
     }
   });
 
-  it("groups two and three repetitions deterministically with additive stage and failure counts and null-preserving target ranks", () => {
+  it("groups valid three-repetition subsets deterministically with additive counts and aligned ranks", () => {
     const slots = [
       runSlot("historical/case-b", "intent", 2, missedTargetInput()),
       runSlot("historical/case-a", "intent", 1, transitionInput()),
-      runSlot("historical/case-b", "enrichment", 0),
+      runSlot("historical/case-a", "intent", 2, missedTargetInput()),
       runSlot("historical/case-a", "intent", 0),
       runSlot("historical/case-b", "intent", 1, transitionInput()),
       runSlot("historical/case-b", "intent", 0),
     ];
 
-    const run = summarizeHistoricalQualityRun(slots);
+    const run = summarizeHistoricalQualityRun(slots, 6, 3);
     expect(run.qualityVerdictAvailable).toBe(true);
     if (!run.qualityVerdictAvailable) throw new Error("expected quality evidence");
     expect(run.completedSlots).toBe(6);
     expect(run.requestedSlots).toBe(6);
     expect(run.groups.map(({ logicalCaseId, trigger }) => `${logicalCaseId}:${trigger}`)).toEqual([
       "historical/case-a:intent",
-      "historical/case-b:enrichment",
       "historical/case-b:intent",
     ]);
+    for (const group of run.groups) {
+      expect(group).toMatchObject({
+        repetitions: [0, 1, 2],
+        completedRepetitions: 3,
+        requestedRepetitions: 3,
+        targetRetrievalRanks: [1, 1, null],
+        targetFinalRanks: [1, 2, null],
+        stageFunnel: {
+          slots: 3,
+          participants: 72,
+          target: { total: 3, retrieved: 2, finalIncluded: 2 },
+          failureStages: { retrieval: 2, evaluation_admission: 2, evaluation_rejection: 1, finalization: 1, none: 66 },
+        },
+      });
+    }
+  });
 
-    expect(run.groups[0]).toEqual({
-      logicalCaseId: "historical/case-a",
-      trigger: "intent",
-      repetitions: [0, 1],
-      completedRepetitions: 2,
-      requestedRepetitions: 2,
-      stageFunnel: {
-        slots: 2,
-        participants: 48,
-        target: { total: 2, retrieved: 2, evaluatorEligible: 2, evaluatorSubmitted: 2, evaluatorReturned: 2, finalIncluded: 2 },
-        semanticNegatives: { total: 6, retrieved: 6, evaluatorEligible: 6, evaluatorSubmitted: 5, evaluatorReturned: 4, finalIncluded: 3 },
-        backgrounds: { total: 40, retrieved: 39, evaluatorEligible: 38, evaluatorSubmitted: 38, evaluatorReturned: 38, finalIncluded: 38 },
-        targetRetrievalRank: { count: 2, sum: 2, mean: 1 },
-        targetFinalRank: { count: 2, sum: 3, mean: 1.5 },
-        failureStages: { execution: 0, retrieval: 1, evaluation_admission: 2, evaluation_rejection: 1, finalization: 1, none: 43 },
+  it("suppresses holes, uneven groups, count-preserving replacements, and requested-slot math mismatches", () => {
+    const invalidRuns = [
+      { slots: [runSlot("historical/a", "intent", 0), runSlot("historical/a", "intent", 2)], requestedSlots: 2, repetitions: 2 },
+      { slots: [runSlot("historical/a", "intent", 0), runSlot("historical/b", "intent", 0)], requestedSlots: 2, repetitions: 2 },
+      {
+        slots: [
+          runSlot("historical/a", "intent", 0),
+          runSlot("historical/b", "intent", 0),
+          runSlot("historical/b", "intent", 1),
+          runSlot("historical/safe-replacement", "intent", 0),
+        ],
+        requestedSlots: 4,
+        repetitions: 2,
       },
-      targetRetrievalRanks: [1, 1],
-      targetFinalRanks: [1, 2],
-    });
-    expect(run.groups[2]).toMatchObject({
-      repetitions: [0, 1, 2],
-      completedRepetitions: 3,
-      requestedRepetitions: 3,
-      targetRetrievalRanks: [1, 1, null],
-      targetFinalRanks: [1, 2, null],
-      stageFunnel: {
-        slots: 3,
-        participants: 72,
-        target: { total: 3, retrieved: 2, finalIncluded: 2 },
-        failureStages: { retrieval: 2, evaluation_admission: 2, evaluation_rejection: 1, finalization: 1, none: 66 },
+      {
+        slots: [runSlot("historical/a", "intent", 0), runSlot("historical/a", "intent", 1), runSlot("historical/b", "intent", 0)],
+        requestedSlots: 3,
+        repetitions: 2,
       },
-    });
+    ];
+
+    for (const { slots, requestedSlots, repetitions } of invalidRuns) {
+      expect(summarizeHistoricalQualityRun(slots, requestedSlots, repetitions)).toEqual({
+        qualityVerdictAvailable: false,
+        completedSlots: slots.length,
+        requestedSlots,
+        groups: null,
+        message: "no quality verdict",
+      });
+    }
+  });
+
+  it("requires explicit positive requested slots and repetitions", () => {
+    const complete = runSlot("historical/a", "intent", 0);
+    expect(() => summarizeHistoricalQualityRun([complete], 0, 1)).toThrow(/positive requested slot count/);
+    expect(() => summarizeHistoricalQualityRun([complete], 1, 0)).toThrow(/positive requested repetition count/);
+    expect(() => (summarizeHistoricalQualityRun as unknown as (slots: unknown[]) => unknown)([complete])).toThrow();
   });
 
   it("isolates triggers and ignores transport passes in grouped quality evidence", () => {
@@ -455,7 +475,7 @@ describe("historical quality metrics", () => {
     const failingTransport = runSlot("historical/case-a", "enrichment", 0, completeInput(), 0);
     expect(failingTransport.slotSummary).toEqual(passingTransport.slotSummary);
 
-    const run = summarizeHistoricalQualityRun([failingTransport, passingTransport]);
+    const run = summarizeHistoricalQualityRun([failingTransport, passingTransport], 2, 1);
     expect(run.qualityVerdictAvailable).toBe(true);
     if (!run.qualityVerdictAvailable) throw new Error("expected quality evidence");
     expect(run.groups).toHaveLength(2);
