@@ -62,7 +62,7 @@ test('connector protocol is exact, bounded, and credential-free', () => {
 
 - [ ] **Step 2: Run the contract test and verify RED**
 
-Run: `bun test apps/mac/IndexConnector/connector-contract.spec.mjs`  
+Run: `bun test apps/mac/IndexConnector/connector-contract.spec.mjs`
 Expected: FAIL because the connector protocol files do not exist.
 
 - [ ] **Step 3: Implement exact Swift request/response types and strict decoding**
@@ -123,7 +123,7 @@ Expected: PASS for add/read/update/delete, duplicate replacement, injected `errS
 
 `IndexConnector.entitlements` must contain only the connector access group. The app's generated entitlements must contain only the app owner-credential access group plus associated domains. Add a fixture that signs two small app bundles and asserts each receives `errSecItemNotFound` for the other descriptor; gate the protected signed run on `INDEX_KEYCHAIN_SIGNING_FIXTURE=1`.
 
-Run: `bun test apps/mac/IndexConnector/connector-contract.spec.mjs`  
+Run: `bun test apps/mac/IndexConnector/connector-contract.spec.mjs`
 Expected: PASS and no shared access-group string between app and connector contracts.
 
 - [ ] **Step 6: Commit**
