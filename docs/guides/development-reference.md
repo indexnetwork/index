@@ -150,9 +150,13 @@ descriptive, not a pass/fail comparison.
 `--help` remains provider-free. A confirmed execution requires strict manifest
 v2, a separately attested writable protected-base refresh target, the approved
 read-only base replica, provider/Redis runtime configuration, and a parent-only
-provider-account fingerprint. Before any reset, the parent jointly attests the
-roles and verifies published base state in a fresh read-only process. It then
-runs slots serially: restore existing side `a`, re-attest and verify, invoke one
+provider-account fingerprint. Before child preflight or any control-plane call,
+the parent atomically acquires a fail-closed host-local filesystem lease keyed
+by strict manifest-v2 project and side-`a` branch identity; crash-left leases are
+never automatically removed, and operators must not launch from another host.
+Before any reset, the parent jointly attests the roles and verifies published
+base state in a fresh read-only process. It then runs slots serially: restore
+existing side `a`, re-attest and verify, invoke one
 trigger attempt, validate one identifier-only child result, and clean up. Side
 `b` remains untouched. Failed terminal rows continue without retry and suppress
 the whole quality verdict; restore/spawn/malformed/supervisor failures stop

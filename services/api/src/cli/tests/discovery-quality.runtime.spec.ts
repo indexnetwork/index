@@ -7,7 +7,7 @@ import { makeHistoricalQualityArtifact } from '../../../../../packages/protocol/
 import { HistoricalQualityChildOutputSchema } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
 import { DISCOVERY_ENV_KEYS } from '../discovery.flags';
 import { HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
-import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, HistoricalQualitySlotOperationalError, historicalQualityChildResolvedProjection, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, superviseHistoricalQualityChild, type HistoricalQualityRuntimeDeps, type HistoricalQualitySupervisorClock, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
+import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, HistoricalQualitySlotOperationalError, historicalQualityChildResolvedProjection, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, superviseHistoricalQualityChild, verifyBaseInFreshProcess, type HistoricalQualityRuntimeDeps, type HistoricalQualitySupervisorClock, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
 import { HistoricalQualitySpentRunError, describeAbFailure } from '../discovery.contract';
 import { embeddingConfigurationFingerprint } from '../../lib/embedding/embedding.identity';
 
@@ -206,6 +206,13 @@ function runtimeDeps(input: { verifierFailure?: Error; failedSlots?: Set<number>
   const written: Array<{ path: string; artifact: unknown }> = [];
   const logs: string[] = [];
   const deps: HistoricalQualityRuntimeDeps = {
+    acquireOperationLease: async () => {
+      calls.push('lease-acquire');
+      return {
+        identifier: 'quality-lease-test',
+        release: async () => { calls.push('lease-release'); return true; },
+      };
+    },
     preflightChildRuntime: async () => { calls.push('child-preflight'); },
     attest: async () => {
       calls.push('attest');
@@ -263,7 +270,61 @@ function runtimeDeps(input: { verifierFailure?: Error; failedSlots?: Set<number>
   return { calls, argv, written, logs, deps };
 }
 
+describe('historical quality production base verifier handoff', () => {
+  it('spawns with exactly the attested replica URL and forced read-only PGOPTIONS', async () => {
+    Object.assign(process.env, requiredParentEnvironment(), {
+      DATABASE_URL: 'postgresql://parent:database-secret@wrong.neon.tech/protocol_eval',
+      DISCOVERY_QUALITY_BASE_REFRESH_TARGET: 'writable-target-secret-sentinel',
+      PGOPTIONS: '-c statement_timeout=0',
+      INHERITED_SENTINEL: 'inherited-secret-sentinel',
+    });
+    const replicaUrl = 'postgresql://replica:replica-secret@replica.neon.tech/protocol_eval';
+    const manifest = {
+      version: 2,
+      projectId: 'project',
+      baseBranchId: 'base',
+      baseReadReplica: { endpointId: 'replica', databaseUrl: replicaUrl },
+      targets: [
+        { sideId: 'a', branchId: 'branch-a', endpointId: 'endpoint-a', databaseUrl: 'postgresql://a:side-a-write-secret-sentinel@a.neon.tech/protocol_eval' },
+        { sideId: 'b', branchId: 'branch-b', endpointId: 'endpoint-b', databaseUrl: 'postgresql://b:side-b-write-secret-sentinel@b.neon.tech/protocol_eval' },
+      ],
+    } as never;
+    let childEnvironment: NodeJS.ProcessEnv | undefined;
+    const result = await verifyBaseInFreshProcess(manifest, (options) => {
+      childEnvironment = options.env;
+      return {
+        stdout: new Response(`${JSON.stringify(verifiedBase)}\n`).body,
+        stderr: new Response('').body,
+        exited: Promise.resolve(0),
+      };
+    });
+
+    expect(result).toEqual(verifiedBase);
+    expect(childEnvironment).toEqual({
+      DATABASE_URL: replicaUrl,
+      PGOPTIONS: '-c transaction_read_only=on',
+    });
+    expect(Object.keys(childEnvironment!).sort()).toEqual(['DATABASE_URL', 'PGOPTIONS']);
+    for (const sentinel of [
+      'manifest-secret-sentinel', 'writable-target-secret-sentinel', 'neon-secret-sentinel',
+      'openrouter-secret-sentinel', 'redis-secret-sentinel', 'inherited-secret-sentinel',
+      'database-secret', 'side-a-write-secret-sentinel', 'side-b-write-secret-sentinel',
+    ]) expect(JSON.stringify(childEnvironment)).not.toContain(sentinel);
+  });
+});
+
 describe('historical quality runtime acceptance order', () => {
+  it('refuses lease contention before preflight, control-plane attestation, restore, or spend', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { calls, deps } = runtimeDeps();
+    deps.acquireOperationLease = async () => {
+      calls.push('lease-acquire');
+      throw new Error('Historical quality operation lease is already held (identifier-only)');
+    };
+    await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow(/lease is already held/);
+    expect(calls).toEqual(['lease-acquire']);
+  });
+
   it('refuses parallel evaluator configuration before preflight, attestation, restore, or spend without narrowing the generic allowlist', async () => {
     Object.assign(process.env, requiredParentEnvironment());
     const { calls, deps } = runtimeDeps();
@@ -297,9 +358,9 @@ describe('historical quality runtime acceptance order', () => {
     const result = await runHistoricalQualityRuntime(tenSlots, deps);
     expect(result.outputs).toHaveLength(10);
     expect(calls).toEqual([
-      'child-preflight', 'attest', 'verify', 'verifier-closed', 'prepare-write',
+      'lease-acquire', 'child-preflight', 'attest', 'verify', 'verifier-closed', 'prepare-write',
       ...Array.from({ length: 10 }, () => ['restore', 'spawn', 'validate']).flat(),
-      'write',
+      'write', 'lease-release',
     ]);
     expect(argv.flat().join(' ')).not.toContain('DISCOVERY_ALLOWED_TYPES');
     for (const sentinel of ['manifest-secret-sentinel', 'neon-secret-sentinel', 'openrouter-secret-sentinel', 'redis-secret-sentinel', providerFingerprint]) {
@@ -312,7 +373,7 @@ describe('historical quality runtime acceptance order', () => {
     const failure = new Error('sanitized verifier failure');
     const { calls, deps } = runtimeDeps({ verifierFailure: failure });
     await expect(runHistoricalQualityRuntime(request, deps)).rejects.toBe(failure);
-    expect(calls).toEqual(['child-preflight', 'attest', 'verify']);
+    expect(calls).toEqual(['lease-acquire', 'child-preflight', 'attest', 'verify', 'lease-release']);
   });
 
   it('validates the minimal child environment before the first destructive restore', async () => {
@@ -320,7 +381,7 @@ describe('historical quality runtime acceptance order', () => {
     delete process.env.REDIS_URL;
     const { calls, deps } = runtimeDeps();
     await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow();
-    expect(calls).toEqual(['child-preflight', 'attest', 'verify', 'verifier-closed']);
+    expect(calls).toEqual(['lease-acquire', 'child-preflight', 'attest', 'verify', 'verifier-closed', 'lease-release']);
   });
 
   it('performs zero attest, verifier, restore, or spawn work when the child runtime is unavailable', async () => {
@@ -331,7 +392,7 @@ describe('historical quality runtime acceptance order', () => {
       throw new Error('Historical quality child runtime is unavailable');
     };
     await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow(/child runtime is unavailable/);
-    expect(calls).toEqual(['child-preflight']);
+    expect(calls).toEqual(['lease-acquire', 'child-preflight', 'lease-release']);
   });
 
   it('rejects arbitrary or extra verifier embedding identity metadata before the first restore', async () => {
@@ -347,7 +408,7 @@ describe('historical quality runtime acceptance order', () => {
         return invalidBase as never;
       };
       await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow(/invalid metadata/);
-      expect(calls).toEqual(['child-preflight', 'attest', 'verify', 'verifier-closed']);
+      expect(calls).toEqual(['lease-acquire', 'child-preflight', 'attest', 'verify', 'verifier-closed', 'lease-release']);
     }
   });
 
@@ -355,7 +416,7 @@ describe('historical quality runtime acceptance order', () => {
     Object.assign(process.env, requiredParentEnvironment(), { EMBEDDING_MODEL: 'other/model', EMBEDDING_DIMENSIONS: '2000' });
     const { calls, deps } = runtimeDeps();
     await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow(/embedding identity/);
-    expect(calls).toEqual(['child-preflight', 'attest', 'verify', 'verifier-closed']);
+    expect(calls).toEqual(['lease-acquire', 'child-preflight', 'attest', 'verify', 'verifier-closed', 'lease-release']);
   });
 
   it('dispatches distinct full, child-resolved, and child-environment fingerprints without the provider digest', async () => {
@@ -414,7 +475,7 @@ describe('historical quality runtime acceptance order', () => {
     expect(result.qualitySummary?.qualityVerdictAvailable).toBeTrue();
     expect(result.artifact.measurement.qualityVerdictAvailable).toBeTrue();
     expect(written).toHaveLength(1);
-    expect(calls.at(-1)).toBe('write');
+    expect(calls.slice(-2)).toEqual(['write', 'lease-release']);
     expect(logs).toContain('Historical quality artifact written: /tmp/quality-complete.json');
     expect(logs.some((line) => line.startsWith('Historical quality summary: '))).toBeTrue();
   });
@@ -547,6 +608,25 @@ describe('historical quality runtime acceptance order', () => {
     expect(custom.written[0]!.path).toBe('/tmp/custom-quality.json');
   });
 
+  it.each(['success', 'preflight', 'attest', 'verify', 'restore', 'spawn', 'artifact'] as const)(
+    'releases its operation lease after the complete %s path is handled',
+    async (outcome) => {
+      Object.assign(process.env, requiredParentEnvironment());
+      const { deps, calls } = runtimeDeps();
+      if (outcome === 'preflight') deps.preflightChildRuntime = async () => { calls.push('child-preflight'); throw new Error('preflight failed'); };
+      if (outcome === 'attest') deps.attest = async () => { calls.push('attest'); throw new Error('attest failed'); };
+      if (outcome === 'verify') deps.verifyBase = async () => { calls.push('verify'); throw new Error('verify failed'); };
+      if (outcome === 'restore') deps.restoreSelectedChild = async () => { calls.push('restore'); throw new Error('restore failed'); };
+      if (outcome === 'spawn') deps.spawnSlot = async () => { calls.push('spawn'); throw new Error('spawn failed'); };
+      if (outcome === 'artifact') deps.artifactWriter = async () => { calls.push('write'); throw new Error('artifact failed'); };
+
+      if (outcome === 'success') await runHistoricalQualityRuntime(request, deps);
+      else await runHistoricalQualityRuntime(request, deps).catch(() => undefined);
+      expect(calls.filter((call) => call === 'lease-release')).toHaveLength(1);
+      expect(calls.at(-1)).toBe('lease-release');
+    },
+  );
+
   it.each(['success', 'operational-failure'] as const)('cleans temporary child files only after %s handling finishes', async (outcome) => {
     Object.assign(process.env, requiredParentEnvironment());
     const { deps, calls } = runtimeDeps();
@@ -564,8 +644,9 @@ describe('historical quality runtime acceptance order', () => {
     } else {
       await runHistoricalQualityRuntime(request, deps);
     }
-    expect(calls.at(-1)).toBe('temp-cleanup');
+    expect(calls.slice(-2)).toEqual(['temp-cleanup', 'lease-release']);
     expect(calls.indexOf('temp-cleanup')).toBeGreaterThan(calls.lastIndexOf('write'));
+    expect(calls.indexOf('lease-release')).toBeGreaterThan(calls.indexOf('temp-cleanup'));
   });
 });
 

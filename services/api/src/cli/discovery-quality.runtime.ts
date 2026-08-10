@@ -9,6 +9,8 @@ import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
 import { buildHistoricalQualityChildEnvironment, type HistoricalQualityChildEnvironment } from './discovery-quality.environment';
 import { preflightHistoricalQualityChildRuntime } from './discovery-quality.child-loader';
+import { acquireHistoricalQualityOperationLease, type HistoricalQualityOperationLease } from './discovery-quality-operation-lease';
+import { buildHistoricalQualityBaseVerifierEnvironment } from './discovery-quality-verifier.environment';
 import { embeddingConfigurationFingerprint, HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY } from '../lib/embedding/embedding.identity';
 import { attestHistoricalQualityTargets, parseHistoricalQualityManifest, restoreHistoricalQualitySelectedChild, type AttestedHistoricalQualityManifest } from './discovery.neon';
 
@@ -91,6 +93,7 @@ export interface HistoricalQualityChildOutput {
 }
 
 export interface HistoricalQualityRuntimeDeps {
+  acquireOperationLease(): Promise<Pick<HistoricalQualityOperationLease, 'identifier' | 'release'>>;
   preflightChildRuntime(): Promise<void>;
   attest(): Promise<AttestedHistoricalQualityManifest>;
   verifyBase(manifest: AttestedHistoricalQualityManifest): Promise<VerifiedHistoricalQualityBase>;
@@ -406,16 +409,34 @@ function reconcileHistoricalQualityEmbedding(
   };
 }
 
-async function verifyBaseInFreshProcess(manifest: AttestedHistoricalQualityManifest): Promise<VerifiedHistoricalQualityBase> {
-  const child = Bun.spawn({
+export interface HistoricalQualityBaseVerifierSpawnOptions {
+  cmd: string[];
+  env: NodeJS.ProcessEnv;
+  stdout: 'pipe';
+  stderr: 'pipe';
+}
+
+export interface HistoricalQualityBaseVerifierChild {
+  stdout: ReadableStream<Uint8Array> | null;
+  stderr: ReadableStream<Uint8Array> | null;
+  exited: Promise<number>;
+}
+
+export type HistoricalQualityBaseVerifierSpawn = (
+  options: HistoricalQualityBaseVerifierSpawnOptions,
+) => HistoricalQualityBaseVerifierChild;
+
+export async function verifyBaseInFreshProcess(
+  manifest: AttestedHistoricalQualityManifest,
+  spawn?: HistoricalQualityBaseVerifierSpawn,
+): Promise<VerifiedHistoricalQualityBase> {
+  const options: HistoricalQualityBaseVerifierSpawnOptions = {
     cmd: [process.execPath, new URL('./discovery-quality-base.runtime.ts', import.meta.url).pathname, '--verify'],
-    env: {
-      DATABASE_URL: manifest.baseReadReplica.databaseUrl,
-      ...(process.env.NODE_ENV ? { NODE_ENV: process.env.NODE_ENV } : {}),
-    },
+    env: buildHistoricalQualityBaseVerifierEnvironment(manifest.baseReadReplica.databaseUrl),
     stdout: 'pipe',
     stderr: 'pipe',
-  });
+  };
+  const child = spawn ? spawn(options) : Bun.spawn(options) as HistoricalQualityBaseVerifierChild;
   const [stdout, _stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -855,9 +876,10 @@ export async function writeOperationalDiagnosticBestEffort(input: {
 }
 
 const productionDependencies: HistoricalQualityRuntimeDeps = {
+  acquireOperationLease: async () => acquireHistoricalQualityOperationLease(process.env.DISCOVERY_TARGETS),
   preflightChildRuntime: async () => {
-    // Consent stays the first production gate, while child availability still
-    // precedes topology attestation and every destructive operation.
+    // Consent remains the first runtime authorization inside the held lease;
+    // child availability still precedes topology attestation and destruction.
     assertAbConfirmation(process.env);
     await preflightHistoricalQualityChildRuntime(process.env);
   },
@@ -891,11 +913,15 @@ export async function runHistoricalQualityRuntime(
   let artifactModels: string[] | undefined;
   let artifactModel: string | undefined;
   let priorSideStarted = false;
+  let operationLease: Pick<HistoricalQualityOperationLease, 'identifier' | 'release'> | undefined;
   const outputs: HistoricalQualityChildOutput[] = [];
   try {
     // Parallel mode spends once per candidate. Refuse it before even runtime
     // preflight so the quality cost remains exactly one evaluator call per slot.
     assertHistoricalQualitySerialEvaluation(request.configuration.config);
+    // Parse strict manifest v2 and acquire the shared side-a identity before
+    // preflight, control-plane calls, restore, provider spend, or artifacts.
+    operationLease = await deps.acquireOperationLease();
     // The real Task 6 module must prove its own availability before topology
     // attestation or any destructive/provider operation can be constructed.
     await deps.preflightChildRuntime();
@@ -1051,6 +1077,9 @@ export async function runHistoricalQualityRuntime(
         : deps.cleanupTemporaryDirectory(temporaryDirectory);
       await cleanup.catch(() => undefined);
     }
+    // Release only through the random token-bound lease handle, and only after
+    // success/error artifact handling and temporary child cleanup have ended.
+    if (operationLease) await operationLease.release();
   }
 }
 

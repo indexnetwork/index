@@ -10,6 +10,7 @@ import { HISTORICAL_QUALITY_APPROVED_FINGERPRINTS } from './discovery-quality.co
 import { createNeonControlPlane, type NeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget, type AttestedWritableQualityBaseTarget } from './discovery-quality-refresh-target';
 import { attestHistoricalQualityTargets, parseHistoricalQualityManifest } from './discovery.neon';
+import { buildHistoricalQualityBaseVerifierEnvironment } from './discovery-quality-verifier.environment';
 
 export interface HistoricalQualitySeedDocument {
   readonly documentId: string;
@@ -539,15 +540,6 @@ async function discardRuntimeOutput(stream: ReadableStream<Uint8Array> | null): 
   while (!(await reader.read()).done) { /* discard untrusted output */ }
 }
 
-function verifierEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
-  // Deliberately construct from nothing. The verifier imports and queries by
-  // absolute process/runtime paths, so it needs no inherited shell state.
-  return {
-    DATABASE_URL: databaseUrl,
-    PGOPTIONS: '-c transaction_read_only=on',
-  };
-}
-
 interface HistoricalQualityDatabaseRuntimeTarget { databaseUrl: string }
 
 async function handoffHistoricalQualityDatabaseRuntime(input: {
@@ -561,7 +553,7 @@ async function handoffHistoricalQualityDatabaseRuntime(input: {
   const sourceEnv = input.env ?? process.env;
   const { NEON_API_KEY: _neonApiKey, DISCOVERY_QUALITY_BASE_REFRESH_TARGET: _target, ...refreshEnv } = sourceEnv;
   const env = verifyOnly
-    ? verifierEnvironment(input.target.databaseUrl)
+    ? buildHistoricalQualityBaseVerifierEnvironment(input.target.databaseUrl)
     : { ...refreshEnv, DATABASE_URL: input.target.databaseUrl };
   const options: QualityBaseRuntimeSpawnOptions = {
     cmd: [process.execPath, input.runtimePath ?? QUALITY_BASE_RUNTIME_PATH, ...input.args],

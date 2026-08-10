@@ -12,6 +12,27 @@ Historical quality is intentionally absent from the Eval Ops launch registry. Ev
 - Never paste a database URL, provider key, manifest, or secure record into a ticket, log, report, or command output.
 - `eval-discovery-base` is non-primary. Its writable refresh endpoint and read-only verification endpoint are different roles. Refresh may use only `DISCOVERY_QUALITY_BASE_REFRESH_TARGET`; verify may use only `DISCOVERY_TARGETS.baseReadReplica`.
 - Side `a` is the disposable selected child. Side `b` remains untouched by quality.
+- **Run exactly one historical-quality invocation globally.** Do not overlap a smoke, pilot, retry, or any other historical-quality CLI process, regardless of checkout, terminal, user, launcher, or report path.
+- The runtime acquires a host-local atomic lease before child preflight, control-plane attestation, restore, provider spend, or artifact preparation. A contention refusal is a stop: it has performed none of those operations.
+- The lease does not coordinate filesystems on another machine. **Never run historical quality from a remote/parallel host**, even when that host shows no local lease.
+
+## Historical-quality operation lease
+
+The stable host-local lease directory is `~/.indexnetwork/historical-quality-leases/`. The filename is an opaque SHA-256 identifier derived only from the strict manifest-v2 `projectId` and side-`a` `branchId`: `<identifier>.lease`. The file is created atomically with mode `0600`, contains identifier/ownership metadata only, and never contains a manifest, URL, credential, writable target, or provider configuration. A normal process removes only the lease carrying its own random ownership token, in `finally`, after report/diagnostic handling and child-file cleanup.
+
+A killed or crashed process deliberately leaves its lease in place. There is no timeout, PID-based expiry, stale detection, takeover, or automatic deletion. Every later invocation must continue to refuse before control-plane, restore, or spend until an operator reconciles it.
+
+For identifier-only inspection, with the strict v2 manifest loaded without printing it:
+
+```bash
+cd services/api
+LEASE_PATH="$(bun -e 'import { historicalQualityOperationLeasePath } from "./src/cli/discovery-quality-operation-lease.ts"; process.stdout.write(historicalQualityOperationLeasePath(process.env.DISCOVERY_TARGETS))')"
+LEASE_IDENTIFIER="$(basename "$LEASE_PATH" .lease)"
+printf 'historical-quality lease identifier: %s\n' "$LEASE_IDENTIFIER"
+stat "$LEASE_PATH"
+```
+
+Do not `cat` the lease or print any environment value. The path and identifier do not establish that an operation is safe to resume. If a lease remains, stop and manually reconcile the originating host/process, surviving child process, Neon side-`a` operation state, and any report/diagnostic. Explicit manual removal is permitted only with separate recorded authorization **after proving that no historical-quality parent, child, restore, or other side-`a` operation is still running on any host**. Then remove exactly the inspected path with `rm -- "$LEASE_PATH"`; never use a wildcard, cleanup job, age rule, or retry wrapper. Removal does not authorize a rerun.
 
 ## Secret inputs
 
