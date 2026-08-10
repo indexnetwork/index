@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { ALLOWED_CAPABILITY_DIRECTIONS } from "../../../scripts/architecture/capability-model.ts";
+
 const sourceRoot = resolve(import.meta.dir, "../..");
 const capabilities = [
   "signals",
@@ -28,9 +30,8 @@ describe("capability facades", () => {
 
   test("documents interaction composition as the sole all-capability seam", async () => {
     const boundaryTool = await readFile(resolve(sourceRoot, "../scripts/architecture/capability-boundaries.ts"), "utf8");
-    expect(boundaryTool).toContain('"interaction-composition"');
+    expect(ALLOWED_CAPABILITY_DIRECTIONS["interaction-composition"]).toEqual(capabilities);
     expect(boundaryTool).toContain("direct implementation imports");
     expect(boundaryTool).toContain("root exports must use a capability facade");
-    for (const capability of capabilities) expect(boundaryTool).toContain(`"${capability}"`);
   });
 });

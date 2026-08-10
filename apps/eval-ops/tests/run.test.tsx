@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, act, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { parseEvalArtifact } from '../../../packages/protocol/eval/shared/artifact';
 import { Run } from '../src/routes/Run';
-import type { Artifact, ArtifactCase, ArtifactConfigDelta, ArtifactRule, RunRecord } from '../src/api/client';
+import { encodeArtifactId, type Artifact, type ArtifactCase, type ArtifactConfigDelta, type ArtifactRule, type RunRecord } from '../src/api/client';
 import { DISCOVERY_RUN_REPORT } from './fixtures/discovery-run-report';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, NON_DISCOVERY_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 const RUN: RunRecord = {
   id: 'run-1',
@@ -735,6 +736,178 @@ function unpairedRowsReport(): Artifact {
     { caseId: BUILDER, side: 'a', repetition: 1, outcome: 'passed', literalCaseId: BUILDER },
   ]);
 }
+
+describe('Run · historical quality', () => {
+  const qualityRun: RunRecord = {
+    ...AB_RUN,
+    spec: {
+      kind: 'eval',
+      harness: 'discovery',
+      profile: 'default',
+      flags: { runs: 1, case: 'ordinary/non-quality-looking-case-id' },
+    },
+    argv: ['bun', 'run', 'eval:discovery', '--', '--env', 'DISCOVERY_ALLOWED_TYPES=intent'],
+    workload: 10,
+  };
+
+  it('renders only neutral loading while non-discovery quality classification is delayed, then suppresses generic result content', async () => {
+    let resolveArtifact!: (response: Response) => void;
+    const artifactResponse = new Promise<Response>((resolve) => {
+      resolveArtifact = resolve;
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/artifacts/')) return artifactResponse;
+      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+    }));
+    const router = createMemoryRouter(
+      [{ path: '/r/:runId', element: <Run /> }],
+      { initialEntries: ['/r/run-1'] },
+    );
+    render(<RouterProvider router={router} />);
+    await act(async () => {
+      mockEventSource._emit('log', 'SECRET QUALITY RAW LOG');
+      mockEventSource._emit('status', {
+        ...qualityRun,
+        spec: { kind: 'eval', harness: 'matching', profile: 'default', flags: { runs: 1 } },
+        experimental: true,
+        env: { EVAL_MODEL_OVERRIDES: '{"judge":"test/model"}' },
+      });
+    });
+
+    expect(screen.getByText(/Loading result classification/i)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/SECRET QUALITY RAW LOG|profile:|overrides:|experimental configuration|baseline|scorecard/i);
+
+    await act(async () => {
+      resolveArtifact(new Response(JSON.stringify(NON_DISCOVERY_HISTORICAL_QUALITY_ARTIFACT)));
+    });
+    expect(await screen.findByText('30/30')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/SECRET QUALITY RAW LOG|profile:|overrides:|experimental configuration|baseline|scorecard/i);
+    expect(screen.queryByRole('button', { name: /raw output/i })).toBeNull();
+  });
+
+  it('renders only a neutral unavailable state when completed artifact resolution fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/artifacts/')) {
+        return new Response(JSON.stringify({ error: 'artifact parse failed' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+    }));
+    renderRun({
+      ...qualityRun,
+      spec: { kind: 'eval', harness: 'matching', profile: 'default', flags: { runs: 1 } },
+      experimental: true,
+      env: { EVAL_MODEL_OVERRIDES: '{"judge":"test/model"}' },
+    });
+
+    expect(await screen.findByText(/Result unavailable/i)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/artifact parse failed|profile:|overrides:|experimental configuration|baseline|scorecard|SECRET/i);
+  });
+
+  it('clears the prior run and classification immediately when the route id changes', async () => {
+    const sources = new Map<string, MockEventSource>();
+    vi.stubGlobal('EventSource', class {
+      constructor(url: string) {
+        const source = new MockEventSource();
+        sources.set(url, source);
+        return source;
+      }
+    } as never);
+    stubArtifactFetch(COMPLETE_HISTORICAL_QUALITY_ARTIFACT);
+    const router = createMemoryRouter(
+      [{ path: '/r/:runId', element: <Run /> }],
+      { initialEntries: ['/r/run-1'] },
+    );
+    render(<RouterProvider router={router} />);
+    await act(async () => {
+      sources.get('/api/runs/run-1/stream')!._emit('status', qualityRun);
+    });
+    expect(await screen.findByText('30/30')).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate('/r/run-2');
+    });
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.queryByText('30/30')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/quality measurement|quality verdict/i);
+  });
+
+  it('does not carry a rejected scorecard comparison into a quality route', async () => {
+    const sources = new Map<string, MockEventSource>();
+    vi.stubGlobal('EventSource', class {
+      constructor(url: string) {
+        const source = new MockEventSource();
+        sources.set(url, source);
+        return source;
+      }
+    } as never);
+    const scorePath = '.ops-runs/run-1/report.json';
+    const qualityPath = '.ops-runs/run-2/report.json';
+    const baselineId = encodeArtifactId('matching/baselines/baseline.json');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const href = String(url);
+      if (href === '/api/artifacts') {
+        return new Response(JSON.stringify({
+          refs: [{ id: baselineId, harness: 'matching', kind: 'baseline', createdAt: '2026-01-01T00:00:00.000Z' }],
+          issues: [],
+        }));
+      }
+      if (href.includes(encodeArtifactId(qualityPath))) {
+        return new Response(JSON.stringify(COMPLETE_HISTORICAL_QUALITY_ARTIFACT));
+      }
+      if (href.startsWith('/api/artifacts/')) {
+        return new Response(JSON.stringify(withRepetitions()));
+      }
+      if (href.startsWith('/api/compare')) {
+        return new Response(JSON.stringify({ error: 'stale comparison failure' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+    }));
+    const router = createMemoryRouter(
+      [{ path: '/r/:runId', element: <Run /> }],
+      { initialEntries: ['/r/run-1'] },
+    );
+    render(<RouterProvider router={router} />);
+    const scoreRun: RunRecord = {
+      ...qualityRun,
+      spec: { kind: 'eval', harness: 'matching', profile: 'default', flags: { runs: 1 } },
+      artifactPath: scorePath,
+    };
+    await act(async () => {
+      sources.get('/api/runs/run-1/stream')!._emit('status', scoreRun);
+    });
+    expect(await screen.findByText(/stale comparison failure/i)).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate('/r/run-2');
+    });
+    await waitFor(() => expect(sources.has('/api/runs/run-2/stream')).toBe(true));
+    await act(async () => {
+      sources.get('/api/runs/run-2/stream')!._emit('status', {
+        ...qualityRun,
+        id: 'run-2',
+        artifactPath: qualityPath,
+      });
+    });
+    expect(await screen.findByText('30/30')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/baseline|stale comparison failure/i);
+  });
+
+  it.each([
+    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '30/30'],
+    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '29/30'],
+  ])('routes a %s measurement by artifact discriminator', async (_kind, report, completeness) => {
+    stubArtifactFetch(report);
+    renderRun(qualityRun);
+
+    expect(await screen.findByText(completeness)).toBeInTheDocument();
+    expect(screen.queryByText(/aggregate pass rate/i)).toBeNull();
+    expect(screen.queryByTestId('ab-side-a')).toBeNull();
+    expect(screen.queryByText(/baseline diff/i)).toBeNull();
+    expect(screen.queryByText(/^profile:$/i)).toBeNull();
+    expect(document.body.textContent).not.toContain('%');
+    expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner|citation|reviewer/i);
+  });
+});
 
 describe('Run · discovery', () => {
   it('renders a single run as a scorecard, not as a pair with one side', async () => {

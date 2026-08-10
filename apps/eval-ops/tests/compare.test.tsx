@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 
 import { Compare } from '../src/routes/Compare';
 import type { RunRecord } from '../src/api/client';
+import { historicalQualityRef } from './historical-quality.fixture';
 
 /** One MockEventSource per stream URL, so a pair page's two subscriptions are
  * addressable independently by run id. */
@@ -152,6 +153,7 @@ const REFS = {
       models: ['google/gemini-2.5-flash'],
       path: 'z',
     },
+    historicalQualityRef(undefined, 'quality'),
   ],
   issues: [],
 };
@@ -242,6 +244,21 @@ describe('Compare', () => {
     await waitFor(() =>
       expect(compareCalls(fetchMock).at(-1)).toContain('reference=a&subject=b'),
     );
+  });
+
+  it('excludes quality measurements from both selectors and never submits them', async () => {
+    const fetchMock = stub({ comparable: false, findings: [] });
+    render(
+      <MemoryRouter initialEntries={['/?reference=quality&subject=a']}>
+        <Compare />
+      </MemoryRouter>,
+    );
+
+    const reference = await screen.findByLabelText('Reference');
+    expect(within(reference).queryByRole('option', { name: /historical quality/i })).toBeNull();
+    expect(within(reference).queryByRole('option', { name: /quality/i })).toBeNull();
+    expect(within(screen.getByLabelText('Subject')).queryByRole('option', { name: /quality/i })).toBeNull();
+    await waitFor(() => expect(compareCalls(fetchMock)).toEqual([]));
   });
 
   it('clears a subject the new reference cannot be compared against', async () => {

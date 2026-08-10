@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
+import { QualityCompleteness } from '../components/QualityCompleteness';
 import { api, type ArtifactRef, type HarnessDescriptor, type IndexIssue } from '../api/client';
 
 interface HarnessState {
@@ -127,9 +128,16 @@ function ArtifactList({ artifacts }: { artifacts: ArtifactRef[] }) {
           >
             {artifact.kind}
           </span>
-          <span className="w-16 text-right">
-            {(artifact.aggregatePassRate * 100).toFixed(1)}%
-          </span>
+          {artifact.measurementKind === 'historical-quality-pilot' ? (
+            <QualityCompleteness
+              completeness={artifact.qualityCompleteness}
+              className="text-right"
+            />
+          ) : (
+            <span className="w-16 text-right">
+              {(artifact.aggregatePassRate * 100).toFixed(1)}%
+            </span>
+          )}
           <span className="text-term-dim">{formatDate(artifact.createdAt)}</span>
         </div>
       ))}
