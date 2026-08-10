@@ -141,35 +141,43 @@ private func runSignedAccessFixture() throws {
     precondition(appGroup != connectorGroup)
 
     let ownGroup: String
+    let otherGroup: String
     let ownService: String
     let otherService: String
+    let ownAccount: String
+    let otherAccount: String
     switch role {
     case "app":
         ownGroup = appGroup
+        otherGroup = connectorGroup
         ownService = "network.index.system6.owner-credentials.cross-identity-fixture"
         otherService = "network.index.connector.credentials.cross-identity-fixture"
+        ownAccount = "app-cross-identity-fixture"
+        otherAccount = "connector-cross-identity-fixture"
     case "connector":
         ownGroup = connectorGroup
+        otherGroup = appGroup
         ownService = "network.index.connector.credentials.cross-identity-fixture"
         otherService = "network.index.system6.owner-credentials.cross-identity-fixture"
+        ownAccount = "connector-cross-identity-fixture"
+        otherAccount = "app-cross-identity-fixture"
     default:
         preconditionFailure("Unknown signed fixture role: \(role)")
     }
 
-    let account = "cross-identity-fixture"
     let store = IndexKeychainStore()
     let ownDescriptor = IndexKeychainItemDescriptor(
         service: ownService,
-        account: account,
+        account: ownAccount,
         accessGroup: ownGroup
     )
-    // Query the other identity's descriptor inside this identity's only allowed
-    // group. Once both seeds exist, errSecItemNotFound proves no cross-identity
-    // item is visible without requesting an unauthorized access group.
+    // Query the actual descriptor seeded by the other identity, including its
+    // inaccessible group. Security.framework must fail closed rather than
+    // converting a missing entitlement into an ordinary not-found result.
     let otherDescriptor = IndexKeychainItemDescriptor(
         service: otherService,
-        account: account,
-        accessGroup: ownGroup
+        account: otherAccount,
+        accessGroup: otherGroup
     )
 
     switch action {
@@ -179,7 +187,9 @@ private func runSignedAccessFixture() throws {
         precondition(
             try store.read(descriptor: ownDescriptor) == Data("\(role)-secret".utf8)
         )
-        precondition(try store.read(descriptor: otherDescriptor) == nil)
+        expectStoreError(.securityStatus(errSecMissingEntitlement)) {
+            _ = try store.read(descriptor: otherDescriptor)
+        }
     case "cleanup":
         try store.delete(descriptor: ownDescriptor)
     default:

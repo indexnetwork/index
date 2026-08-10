@@ -68,20 +68,6 @@ write_connector_entitlements() {
 EOF
 }
 
-write_app_entitlements() {
-  local destination="$1" app_group="$2"
-  cat >"$destination" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>keychain-access-groups</key>
-  <array><string>${app_group}</string></array>
-  <key>com.apple.developer.associated-domains</key>
-  <array><string>applinks:index.network</string></array>
-</dict></plist>
-EOF
-}
-
 write_fixture_app_entitlements() {
   local destination="$1" app_group="$2"
   cat >"$destination" <<EOF
@@ -109,6 +95,24 @@ if entitlements != expected:
 PY
 }
 
+validate_generated_app_entitlements() {
+  local entitlements="$1" expected_group="$2" expected_host="$3"
+  python3 - "$entitlements" "$expected_group" "$expected_host" <<'PY'
+import plistlib
+import sys
+
+path, expected_group, expected_host = sys.argv[1:]
+with open(path, 'rb') as source:
+    entitlements = plistlib.load(source)
+expected = {
+    'keychain-access-groups': [expected_group],
+    'com.apple.developer.associated-domains': [f'applinks:{expected_host}'],
+}
+if entitlements != expected:
+    raise SystemExit('generated Index app entitlements do not match the owner-group/domain contract')
+PY
+}
+
 signing_team_id() {
   local identity="$1"
   security find-certificate -c "$identity" -p 2>/dev/null \
@@ -116,60 +120,138 @@ signing_team_id() {
     | awk -F'OU=' 'NF > 1 { split($2, parts, ","); print parts[1]; exit }'
 }
 
-validate_fixture_profile() {
-  local profile="$1" identity="$2" bundle_id="$3" access_group="$4"
-  local expected_team="${INDEX_APP_IDENTIFIER_PREFIX%.}"
-  local identity_team
-  [[ -f "$profile" ]] || { echo "fixture provisioning profile does not exist: $profile" >&2; exit 64; }
-  identity_team="$(signing_team_id "$identity")"
-  if [[ -z "$identity_team" || "$identity_team" != "$expected_team" ]]; then
-    echo "fixture signing identity does not match INDEX_APP_IDENTIFIER_PREFIX" >&2
-    exit 64
-  fi
+canonical_profile_file() {
+  python3 - "$1" <<'PY'
+import os
+import sys
 
-  local decoded
-  decoded="$(mktemp "${TMPDIR:-/tmp}/index-fixture-profile.XXXXXX.plist")"
-  if ! security cms -D -i "$profile" -o "$decoded" >/dev/null 2>&1; then
-    rm -f "$decoded"
-    echo "fixture provisioning profile could not be decoded" >&2
+path = os.path.realpath(sys.argv[1])
+if not os.path.isfile(path):
+    raise SystemExit(f'fixture provisioning profile does not exist: {sys.argv[1]}')
+print(path)
+PY
+}
+
+validate_profile_files_distinct() {
+  local app_profile connector_profile
+  app_profile="$(canonical_profile_file "$1")" || exit 64
+  connector_profile="$(canonical_profile_file "$2")" || exit 64
+  if [[ "$app_profile" == "$connector_profile" || "$app_profile" -ef "$connector_profile" ]]; then
+    echo "app and connector provisioning profiles must be distinct canonical files" >&2
     exit 64
   fi
-  if ! python3 - "$decoded" "$expected_team" "$bundle_id" "$access_group" <<'PY'
+}
+
+validate_decoded_profile_pair() {
+  local app_profile="$1" connector_profile="$2" identifier_prefix="$3"
+  local app_group="$4" connector_group="$5"
+  local expected_team="${identifier_prefix%.}"
+  python3 - \
+    "$app_profile" "$connector_profile" "$expected_team" \
+    "$APP_BUNDLE_ID" "$CONNECTOR_BUNDLE_ID" "$app_group" "$connector_group" <<'PY'
 import fnmatch
 import plistlib
 import sys
 from datetime import datetime, timezone
 
-profile_path, expected_team, bundle_id, access_group = sys.argv[1:]
-with open(profile_path, 'rb') as source:
-    profile = plistlib.load(source)
+(
+    app_path, connector_path, expected_team, app_bundle_id,
+    connector_bundle_id, app_group, connector_group,
+) = sys.argv[1:]
 
-expiration = profile.get('ExpirationDate')
-if not isinstance(expiration, datetime) or expiration <= datetime.now(timezone.utc).replace(tzinfo=None):
-    raise SystemExit('fixture provisioning profile is expired')
-if expected_team not in profile.get('TeamIdentifier', []):
-    raise SystemExit('fixture provisioning profile has the wrong team')
-if expected_team not in profile.get('ApplicationIdentifierPrefix', []):
-    raise SystemExit('fixture provisioning profile has the wrong application identifier prefix')
-entitlements = profile.get('Entitlements')
-if not isinstance(entitlements, dict):
-    raise SystemExit('fixture provisioning profile has no entitlements')
-application_id = entitlements.get('com.apple.application-identifier') or entitlements.get('application-identifier')
-expected_application_id = f'{expected_team}.{bundle_id}'
-if not isinstance(application_id, str) or not fnmatch.fnmatchcase(expected_application_id, application_id):
-    raise SystemExit('fixture provisioning profile does not authorize the bundle identifier')
-groups = entitlements.get('keychain-access-groups')
-if not isinstance(groups, list) or not any(
-    isinstance(pattern, str) and fnmatch.fnmatchcase(access_group, pattern)
-    for pattern in groups
-):
-    raise SystemExit('fixture provisioning profile does not authorize the Keychain access group')
+
+def load(path):
+    with open(path, 'rb') as source:
+        profile = plistlib.load(source)
+    expiration = profile.get('ExpirationDate')
+    if not isinstance(expiration, datetime) or expiration <= datetime.now(timezone.utc).replace(tzinfo=None):
+        raise SystemExit('fixture provisioning profile is expired')
+    if expected_team not in profile.get('TeamIdentifier', []):
+        raise SystemExit('fixture provisioning profile has the wrong team')
+    if expected_team not in profile.get('ApplicationIdentifierPrefix', []):
+        raise SystemExit('fixture provisioning profile has the wrong application identifier prefix')
+    entitlements = profile.get('Entitlements')
+    if not isinstance(entitlements, dict):
+        raise SystemExit('fixture provisioning profile has no entitlements')
+    application_id = (
+        entitlements.get('com.apple.application-identifier')
+        or entitlements.get('application-identifier')
+    )
+    groups = entitlements.get('keychain-access-groups')
+    if not isinstance(application_id, str):
+        raise SystemExit('fixture provisioning profile has no application identifier authorization')
+    if not isinstance(groups, list) or not all(isinstance(group, str) for group in groups):
+        raise SystemExit('fixture provisioning profile has no Keychain access-group authorization')
+    return application_id, groups
+
+
+def authorizes(value, patterns):
+    return any(fnmatch.fnmatchcase(value, pattern) for pattern in patterns)
+
+
+app_application_id, app_groups = load(app_path)
+connector_application_id, connector_groups = load(connector_path)
+expected_app_id = f'{expected_team}.{app_bundle_id}'
+expected_connector_id = f'{expected_team}.{connector_bundle_id}'
+
+if not fnmatch.fnmatchcase(expected_app_id, app_application_id):
+    raise SystemExit('app fixture profile does not authorize the expected application identifier')
+if fnmatch.fnmatchcase(expected_connector_id, app_application_id):
+    raise SystemExit('app fixture profile also authorizes the connector application identifier')
+if not fnmatch.fnmatchcase(expected_connector_id, connector_application_id):
+    raise SystemExit('connector fixture profile does not authorize the expected application identifier')
+if fnmatch.fnmatchcase(expected_app_id, connector_application_id):
+    raise SystemExit('connector fixture profile also authorizes the app application identifier')
+if not authorizes(app_group, app_groups):
+    raise SystemExit('app fixture profile does not authorize the expected Keychain access group')
+if authorizes(connector_group, app_groups):
+    raise SystemExit('app fixture profile also authorizes the connector Keychain access group')
+if not authorizes(connector_group, connector_groups):
+    raise SystemExit('connector fixture profile does not authorize the expected Keychain access group')
+if authorizes(app_group, connector_groups):
+    raise SystemExit('connector fixture profile also authorizes the app Keychain access group')
+if app_application_id == connector_application_id:
+    raise SystemExit('fixture profiles must carry distinct application identifier authorizations')
+if app_groups == connector_groups:
+    raise SystemExit('fixture profiles must carry distinct Keychain access-group authorizations')
 PY
-  then
-    rm -f "$decoded"
+}
+
+decode_fixture_profile() {
+  local profile="$1" identity="$2" destination="$3"
+  local expected_team="${INDEX_APP_IDENTIFIER_PREFIX%.}"
+  local identity_team
+  identity_team="$(signing_team_id "$identity")"
+  if [[ -z "$identity_team" || "$identity_team" != "$expected_team" ]]; then
+    echo "fixture signing identity does not match INDEX_APP_IDENTIFIER_PREFIX" >&2
     exit 64
   fi
-  rm -f "$decoded"
+  if ! security cms -D -i "$profile" -o "$destination" >/dev/null 2>&1; then
+    echo "fixture provisioning profile could not be decoded" >&2
+    exit 64
+  fi
+}
+
+verify_designated_requirements() {
+  local app_bundle="$1" connector_bundle="$2"
+  local app_requirement="$3" connector_requirement="$4"
+  codesign -d -r- "$app_bundle" > /dev/null 2>"$app_requirement"
+  codesign -d -r- "$connector_bundle" > /dev/null 2>"$connector_requirement"
+  python3 - \
+    "$app_requirement" "$connector_requirement" "$APP_BUNDLE_ID" "$CONNECTOR_BUNDLE_ID" <<'PY'
+import re
+import sys
+
+app_path, connector_path, app_id, connector_id = sys.argv[1:]
+app_requirement = open(app_path, encoding='utf-8').read()
+connector_requirement = open(connector_path, encoding='utf-8').read()
+if not re.search(rf'identifier\s+"{re.escape(app_id)}"', app_requirement):
+    raise SystemExit('signed app designated requirement does not contain its bundle identifier')
+if not re.search(rf'identifier\s+"{re.escape(connector_id)}"', connector_requirement):
+    raise SystemExit('signed connector designated requirement does not contain its bundle identifier')
+if app_requirement == connector_requirement:
+    raise SystemExit('signed designated requirements must differ by bundle identifier')
+PY
 }
 
 run_signed_access_fixture() {
@@ -208,6 +290,9 @@ run_signed_access_fixture() {
     echo "signed fixture access groups must be distinct" >&2
     exit 64
   fi
+  validate_profile_files_distinct \
+    "$INDEX_TEST_APP_PROVISIONING_PROFILE" \
+    "$INDEX_TEST_CONNECTOR_PROVISIONING_PROFILE"
 
   local fixture_root="dist/signed-access-fixture"
   local app_bundle="${fixture_root}/Index.app"
@@ -216,6 +301,9 @@ run_signed_access_fixture() {
   local connector_contents="${connector_bundle}/Contents"
   local app_entitlements="${fixture_root}/app.entitlements"
   local connector_entitlements="${fixture_root}/connector.entitlements"
+  local generated_app_entitlements="${fixture_root}/generated-index-app.entitlements"
+  local decoded_app_profile="${fixture_root}/decoded-app-profile.plist"
+  local decoded_connector_profile="${fixture_root}/decoded-connector-profile.plist"
 
   rm -rf "$fixture_root"
   mkdir -p "${app_contents}/MacOS" "${connector_contents}/MacOS"
@@ -225,20 +313,27 @@ run_signed_access_fixture() {
   write_fixture_app_entitlements "$app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP"
   write_connector_entitlements \
     "$connector_entitlements" "$INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP"
+  bash ../IndexApp/link-host.sh --write-entitlements \
+    index.network "$generated_app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP"
   validate_minimal_fixture_entitlements \
     "$app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP"
   validate_minimal_fixture_entitlements \
     "$connector_entitlements" "$INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP"
-  validate_fixture_profile \
+  validate_generated_app_entitlements \
+    "$generated_app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP" index.network
+  decode_fixture_profile \
     "$INDEX_TEST_APP_PROVISIONING_PROFILE" \
     "$INDEX_TEST_APP_CODESIGN_IDENTITY" \
-    "$APP_BUNDLE_ID" \
-    "$INDEX_TEST_APP_KEYCHAIN_GROUP"
-  validate_fixture_profile \
+    "$decoded_app_profile"
+  decode_fixture_profile \
     "$INDEX_TEST_CONNECTOR_PROVISIONING_PROFILE" \
     "$INDEX_TEST_CONNECTOR_CODESIGN_IDENTITY" \
-    "$CONNECTOR_BUNDLE_ID" \
-    "$INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP"
+    "$decoded_connector_profile"
+  validate_decoded_profile_pair \
+    "$decoded_app_profile" "$decoded_connector_profile" \
+    "$INDEX_APP_IDENTIFIER_PREFIX" \
+    "$INDEX_TEST_APP_KEYCHAIN_GROUP" "$INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP"
+  rm -f "$decoded_app_profile" "$decoded_connector_profile"
   cp "$INDEX_TEST_APP_PROVISIONING_PROFILE" "${app_contents}/embedded.provisionprofile"
   cp "$INDEX_TEST_CONNECTOR_PROVISIONING_PROFILE" "${connector_contents}/embedded.provisionprofile"
 
@@ -262,6 +357,10 @@ run_signed_access_fixture() {
     "$signed_app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP"
   validate_minimal_fixture_entitlements \
     "$signed_connector_entitlements" "$INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP"
+  verify_designated_requirements \
+    "$app_bundle" "$connector_bundle" \
+    "${fixture_root}/app.designated-requirement" \
+    "${fixture_root}/connector.designated-requirement"
 
   run_role() {
     local role="$1" action="$2" executable="$3"
@@ -292,6 +391,14 @@ case "${1:-}" in
       *) echo "unknown fixture: ${2:-}" >&2; exit 64 ;;
     esac
     ;;
+  --validate-profile-pair-fixture)
+    if [[ "$#" -ne 6 ]]; then
+      echo "usage: $0 --validate-profile-pair-fixture <app-plist> <connector-plist> <identifier-prefix> <app-group> <connector-group>" >&2
+      exit 64
+    fi
+    validate_profile_files_distinct "$2" "$3"
+    validate_decoded_profile_pair "$2" "$3" "$4" "$5" "$6"
+    ;;
   --signed-access-fixture)
     run_signed_access_fixture
     ;;
@@ -300,7 +407,7 @@ case "${1:-}" in
     exit 64
     ;;
   *)
-    echo "usage: $0 --fixture ConnectorProtocolFixture|KeychainIntegrationFixture | --signed-access-fixture" >&2
+    echo "usage: $0 --fixture ConnectorProtocolFixture|KeychainIntegrationFixture | --validate-profile-pair-fixture ... | --signed-access-fixture" >&2
     exit 64
     ;;
 esac

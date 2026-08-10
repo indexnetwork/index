@@ -1,7 +1,38 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { rm, symlink, writeFile } from 'node:fs/promises';
+
+const temporaryPaths = [];
 
 const read = (relativePath) => readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+const connectorRoot = new URL('.', import.meta.url).pathname;
+const buildPath = `${connectorRoot}build.sh`;
+
+async function writeDecodedProfile(applicationIdentifier, accessGroups) {
+  const path = `${process.env.TMPDIR ?? '/tmp'}/index-connector-profile-${crypto.randomUUID()}.plist`;
+  temporaryPaths.push(path);
+  await writeFile(path, `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>ExpirationDate</key><date>2099-01-01T00:00:00Z</date>
+  <key>TeamIdentifier</key><array><string>TEAM123</string></array>
+  <key>ApplicationIdentifierPrefix</key><array><string>TEAM123</string></array>
+  <key>Entitlements</key><dict>
+    <key>com.apple.application-identifier</key><string>${applicationIdentifier}</string>
+    <key>keychain-access-groups</key><array>${accessGroups.map((group) => `<string>${group}</string>`).join('')}</array>
+  </dict>
+</dict></plist>`);
+  return path;
+}
+
+function validateProfilePair(appProfile, connectorProfile, connectorGroup = 'TEAM123.network.index.connector.credentials') {
+  return Bun.spawnSync([
+    'bash', buildPath, '--validate-profile-pair-fixture',
+    appProfile, connectorProfile, 'TEAM123.',
+    'TEAM123.network.index.system6.owner-credentials', connectorGroup,
+  ]);
+}
+
+afterEach(async () => Promise.all(temporaryPaths.splice(0).map((path) => rm(path, { force: true }))));
 
 test('connector protocol is exact, bounded, and credential-free', () => {
   const source = read('./Sources/ConnectorProtocol.swift');
@@ -38,6 +69,10 @@ test('keychain fixture covers real CRUD and injected Security failures', () => {
   expect(fixture).toContain('errSecInteractionNotAllowed');
   expect(fixture).toContain('verificationFailed');
   expect(fixture).toContain('INDEX_TEST_KEYCHAIN_GROUP');
+  expect(fixture).toContain('service: otherService');
+  expect(fixture).toContain('account: otherAccount');
+  expect(fixture).toContain('accessGroup: otherGroup');
+  expect(fixture).toContain('errSecMissingEntitlement');
 });
 
 test('bundle and entitlement contracts keep app and connector credentials distinct', () => {
@@ -55,16 +90,13 @@ test('bundle and entitlement contracts keep app and connector credentials distin
   expect(build).toContain('network.index.connector.credentials');
   const connectorEntitlementWriter = build
     .split('write_connector_entitlements() {')[1]
-    .split('write_app_entitlements() {')[0];
-  const appEntitlementWriter = build
-    .split('write_app_entitlements() {')[1]
     .split('write_fixture_app_entitlements() {')[0];
   expect(connectorEntitlementWriter).toContain('${connector_group}');
   expect(connectorEntitlementWriter).not.toContain('${app_group}');
   expect(connectorEntitlementWriter).not.toContain('associated-domains');
-  expect(appEntitlementWriter).toContain('${app_group}');
-  expect(appEntitlementWriter).not.toContain('${connector_group}');
-  expect(appEntitlementWriter).toContain('com.apple.developer.associated-domains');
+  expect(build).not.toContain('write_app_entitlements()');
+  expect(build).toContain('../IndexApp/link-host.sh --write-entitlements');
+  expect(build).toContain('validate_generated_app_entitlements');
   expect(build).toContain('INDEX_APP_IDENTIFIER_PREFIX');
   expect(build).toContain('INDEX_TEST_APP_KEYCHAIN_GROUP');
   expect(build).toContain('INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP');
@@ -76,6 +108,34 @@ test('bundle and entitlement contracts keep app and connector credentials distin
   expect(build).toContain('--signed-access-fixture');
   expect(build).toContain('INDEX_KEYCHAIN_SIGNING_FIXTURE');
   expect(build).toContain('IndexConnector.app/Contents/MacOS/IndexConnector');
+  expect(build).toContain('validate_profile_files_distinct');
+  expect(build).toContain('validate_decoded_profile_pair');
+  expect(build).toContain('verify_designated_requirements');
+  expect(build).toContain('--sign "$INDEX_TEST_APP_CODESIGN_IDENTITY"');
+  expect(build).toContain('--sign "$INDEX_TEST_CONNECTOR_CODESIGN_IDENTITY"');
+  expect(build).not.toContain('INDEX_TEST_APP_CODESIGN_IDENTITY" == "$INDEX_TEST_CONNECTOR_CODESIGN_IDENTITY');
+});
+
+test('profile pair contract rejects canonical reuse and wrong group authorization', async () => {
+  const appGroup = 'TEAM123.network.index.system6.owner-credentials';
+  const connectorGroup = 'TEAM123.network.index.connector.credentials';
+  const appProfile = await writeDecodedProfile('TEAM123.network.index.system6', [appGroup]);
+  const connectorProfile = await writeDecodedProfile('TEAM123.network.index.connector', [connectorGroup]);
+
+  const valid = validateProfilePair(appProfile, connectorProfile);
+  expect(valid.exitCode).toBe(0);
+
+  const alias = `${appProfile}.alias`;
+  temporaryPaths.push(alias);
+  await symlink(appProfile, alias);
+  const equalProfile = validateProfilePair(appProfile, alias);
+  expect(equalProfile.exitCode).not.toBe(0);
+  expect(equalProfile.stderr.toString()).toContain('distinct canonical files');
+
+  const wrongGroupProfile = await writeDecodedProfile('TEAM123.network.index.connector', [appGroup]);
+  const wrongGroup = validateProfilePair(appProfile, wrongGroupProfile);
+  expect(wrongGroup.exitCode).not.toBe(0);
+  expect(wrongGroup.stderr.toString()).toContain('does not authorize the expected Keychain access group');
 });
 
 test('macOS CI runs native fixtures and keeps signed identity verification gated', () => {

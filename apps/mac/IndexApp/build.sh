@@ -13,6 +13,15 @@ if [ -n "$IDENTITY" ] && [ -z "$PROFILE" ]; then
     echo "==> ERROR: set PROVISIONING_PROFILE for Developer ID signing" >&2
     exit 1
 fi
+APP_KEYCHAIN_GROUP=""
+if [ -n "$IDENTITY" ]; then
+    IDENTIFIER_PREFIX="${INDEX_APP_IDENTIFIER_PREFIX:-}"
+    if [[ ! "$IDENTIFIER_PREFIX" =~ ^[A-Za-z0-9]+\.$ ]]; then
+        echo "==> ERROR: INDEX_APP_IDENTIFIER_PREFIX must be set with a trailing period for Developer ID signing" >&2
+        exit 1
+    fi
+    APP_KEYCHAIN_GROUP="${IDENTIFIER_PREFIX}network.index.system6.owner-credentials"
+fi
 
 APP_NAME="Index"
 APP="dist/${APP_NAME}.app"
@@ -65,7 +74,7 @@ cp Resources/Assets.car "${CONTENTS}/Resources/Assets.car"
 # it (strict below); ad-hoc must never be broken by it, see the retry there.
 ENTITLEMENTS="$(mktemp "${TMPDIR:-/tmp}/index-entitlements.XXXXXX.plist")"
 trap 'rm -f "$ENTITLEMENTS"' EXIT
-write_associated_domains_entitlements "$LINK_HOST" "$ENTITLEMENTS"
+write_associated_domains_entitlements "$LINK_HOST" "$ENTITLEMENTS" "$APP_KEYCHAIN_GROUP"
 
 sign_ad_hoc() {
     echo "==> Ad-hoc code signing (local dev only, not distributable)"
