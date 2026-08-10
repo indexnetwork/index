@@ -47,6 +47,42 @@ function fmtCount(n) {
   return Number(n || 0).toLocaleString("en-US");
 }
 
+/* How long a step is shown working before the next one can start.
+
+   The data does not arrive one step at a time: the radar answers in one go, so
+   found/scored/ranked all become true in the same tick and the list jumped
+   straight to the fourth row. This walks the checklist forward one row at a
+   time so each step is legible as its own step. It is pacing, not fiction: the
+   walk can never pass what the data supports, so a step is only ever checked
+   once the thing it describes has actually happened. */
+const STEP_DWELL_MS = 700;
+
+/* How many steps the data supports, counted in order. Sequential on purpose: a
+   later step cannot be complete while an earlier one is not, which is what put
+   a checkmark on "ranking counterparties" while "mapping reach" was still
+   spinning. */
+function reachedStepCount(metrics) {
+  let reached = 0;
+  for (const step of DISCOVERY_STEPS) {
+    if (!step.done(metrics)) break;
+    reached += 1;
+  }
+  return reached;
+}
+
+/* The number of steps shown complete, walking toward `reached` one per dwell.
+   Clamped to `reached` on every render, so if the metrics reset (a different
+   signal) the checklist walks again from the top rather than staying lit. */
+function useWalkedProgress(reached) {
+  const [walked, setWalked] = useState(0);
+  useEffect(() => {
+    if (walked >= reached) return;
+    const t = setTimeout(() => setWalked((n) => n + 1), STEP_DWELL_MS);
+    return () => clearTimeout(t);
+  }, [walked, reached]);
+  return Math.min(walked, reached);
+}
+
 // Advances only while something is actually spinning, so a settled radar is not
 // re-rendering ten times a second in the background.
 function useSpinnerFrame(active) {
@@ -78,9 +114,11 @@ function LiveDot({ label }) {
 }
 
 function DiscoveryStages({ metrics = {}, art }) {
-  const states = DISCOVERY_STEPS.map((step) => step.done(metrics));
-  // The first step that has not happened is the one being worked on.
-  const activeIndex = states.indexOf(false);
+  // Everything before `walked` is done, `walked` itself is the row being worked
+  // on, everything after is still pending. One index, so the three states can
+  // never disagree the way independent per-step checks did.
+  const walked = useWalkedProgress(reachedStepCount(metrics));
+  const activeIndex = walked < DISCOVERY_STEPS.length ? walked : -1;
   const spinner = useSpinnerFrame(activeIndex !== -1);
 
   return (
@@ -106,7 +144,7 @@ function DiscoveryStages({ metrics = {}, art }) {
         fontFamily:"var(--mac-mono)", fontSize:13,
       }}>
         {DISCOVERY_STEPS.map((step, i) => {
-          const isDone = states[i];
+          const isDone = i < walked;
           const isActive = i === activeIndex;
           const mark = isDone ? "✓" : (isActive ? spinner : "·");
           // Detail is for active and done rows only; a pending row is bare.
