@@ -4,17 +4,23 @@ const NEON_API_ORIGIN = 'https://console.neon.tech/api/v2';
 const BASE_NAME = 'eval-discovery-base';
 
 export type NeonBranch = { id: string; name: string; parentId: string | null; expiresAt: string | null; primary: boolean };
+export type NeonEndpointType = 'read_only' | 'read_write';
 export type NeonEndpoint = {
   id: string;
   branchId: string;
   host: string;
-  type: 'read_only' | 'read_write';
+  type: NeonEndpointType;
 };
 
-/** Narrow, injectable control-plane port. Database/protocol dependencies must never be imported here. */
+/** Narrow, injectable read-only control-plane port. Database/protocol dependencies must never be imported here. */
 export interface NeonControlPlane {
   getBranch(projectId: string, branchId: string): Promise<NeonBranch>;
   listEndpoints(projectId: string, branchId: string): Promise<NeonEndpoint[]>;
+}
+
+/** The sole additional control-plane capability used by explicit replica provisioning. */
+export interface NeonReadReplicaControlPlane extends NeonControlPlane {
+  createReadOnlyEndpoint(projectId: string, branchId: string): Promise<NeonEndpoint>;
 }
 
 export type AttestedBase = { projectId: string; branchId: string; endpointId: string; databaseName: 'protocol_eval'; databaseUrl: string };
@@ -46,37 +52,60 @@ function decodeBranch(value: unknown): NeonBranch {
   if (expiry !== undefined && expiry !== null && typeof expiry !== 'string') throw new Error('Neon control-plane branch response has an invalid expires_at');
   return { id: asString(branch.id, 'Neon control-plane branch response is missing id'), name: asString(branch.name, 'Neon control-plane branch response is missing name'), parentId: parent, expiresAt: typeof expiry === 'string' ? expiry : null, primary };
 }
+function decodeEndpoint(value: unknown): NeonEndpoint {
+  const endpoint = asRecord(value, 'Neon control-plane returned an invalid endpoint');
+  const host = endpoint.host ?? endpoint.host_name;
+  const type = endpoint.type;
+  if (type !== 'read_only' && type !== 'read_write') {
+    throw new Error('Neon control-plane endpoint response has an invalid type');
+  }
+  return {
+    id: asString(endpoint.id, 'Neon control-plane endpoint response is missing id'),
+    branchId: asString(endpoint.branch_id, 'Neon control-plane endpoint response is missing branch_id'),
+    host: asString(host, 'Neon control-plane endpoint response is missing host'),
+    type,
+  };
+}
+
 function decodeEndpoints(value: unknown): NeonEndpoint[] {
   const record = Array.isArray(value) ? null : asRecord(value, 'Neon control-plane returned an invalid endpoint response');
   const raw = Array.isArray(value) ? value : record!.endpoints;
   if (!Array.isArray(raw)) throw new Error('Neon control-plane endpoint response is missing endpoints');
-  return raw.map((value) => {
-    const endpoint = asRecord(value, 'Neon control-plane returned an invalid endpoint');
-    const host = endpoint.host ?? endpoint.host_name;
-    const type = endpoint.type;
-    if (type !== 'read_only' && type !== 'read_write') {
-      throw new Error('Neon control-plane endpoint response has an invalid type');
-    }
-    return {
-      id: asString(endpoint.id, 'Neon control-plane endpoint response is missing id'),
-      branchId: asString(endpoint.branch_id, 'Neon control-plane endpoint response is missing branch_id'),
-      host: asString(host, 'Neon control-plane endpoint response is missing host'),
-      type,
-    };
-  });
+  return raw.map(decodeEndpoint);
+}
+
+function decodeCreatedEndpoint(value: unknown): NeonEndpoint {
+  const record = asRecord(value, 'Neon control-plane returned an invalid endpoint response');
+  return decodeEndpoint(record.endpoint);
 }
 
 /** Production Neon v2 client. It follows no redirects and never includes credentials in errors. */
-export function createNeonControlPlane(apiKey: string, fetchFn: typeof fetch = fetch): NeonControlPlane {
+export function createNeonControlPlane(apiKey: string, fetchFn: typeof fetch = fetch): NeonReadReplicaControlPlane {
   if (!apiKey) throw new Error('NEON_API_KEY is required for Neon control-plane attestation');
-  const request = async (path: string): Promise<unknown> => {
-    const response = await fetchFn(`${NEON_API_ORIGIN}${path}`, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, redirect: 'error' });
+  const request = async (path: string, init: RequestInit = {}): Promise<unknown> => {
+    const response = await fetchFn(`${NEON_API_ORIGIN}${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', ...init.headers },
+      redirect: 'error',
+    });
     if (!response.ok) throw new Error(`Neon control-plane request failed with status ${response.status}`);
-    return response.json();
+    try {
+      return await response.json();
+    } catch {
+      throw new Error('Neon control-plane response was not valid JSON');
+    }
   };
   return {
     getBranch: async (projectId, branchId) => decodeBranch(await request(`/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(branchId)}`)),
     listEndpoints: async (projectId, branchId) => decodeEndpoints(await request(`/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(branchId)}/endpoints`)),
+    createReadOnlyEndpoint: async (projectId, branchId) => decodeCreatedEndpoint(await request(
+      `/projects/${encodeURIComponent(projectId)}/endpoints`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: { branch_id: branchId, type: 'read_only' } }),
+      },
+    )),
   };
 }
 

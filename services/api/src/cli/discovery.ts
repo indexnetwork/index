@@ -18,7 +18,7 @@
  * imports nothing that can compose a database: an operator has to be able to
  * read what the command requires *before* they have any of it.
  */
-import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } from './discovery.neon';
+import { AB_BRANCH_NAMES, attestAbTargets, parseLegacyAbManifest, type AbManifest } from './discovery.neon';
 import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery.gate';
 import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
@@ -82,7 +82,7 @@ export interface DiscoveryBootstrapDependencies {
 
 const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
   assertConfirmation: assertAbConfirmation,
-  parseManifest: parseAbManifest,
+  parseManifest: parseLegacyAbManifest,
   attestTargets: attestOrRefuse,
   importRuntime: async () => await import('./discovery.main'),
 };

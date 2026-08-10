@@ -31,7 +31,17 @@ const DEFAULT_POLL_TIMEOUT_MS = 120_000;
 export const AB_BRANCH_NAMES = { a: 'eval-ab-a', b: 'eval-ab-b' } as const;
 
 export interface AbTarget { sideId: 'a' | 'b'; branchId: string; endpointId: string; databaseUrl: string }
-export interface AbManifest { projectId: string; baseBranchId: string; targets: readonly [AbTarget, AbTarget] }
+export interface LegacyAbManifest { projectId: string; baseBranchId: string; targets: readonly [AbTarget, AbTarget] }
+/** Backwards-compatible name retained for every existing A/B caller. */
+export type AbManifest = LegacyAbManifest;
+export interface DiscoveryManifestV2 {
+  version: 2;
+  projectId: string;
+  baseBranchId: string;
+  baseReadReplica: { endpointId: string; databaseUrl: string };
+  targets: readonly [AbTarget, AbTarget];
+}
+export type DiscoveryManifest = LegacyAbManifest | DiscoveryManifestV2;
 
 /**
  * Module-private brand. It is `declare`d, so it exists only in the type system
@@ -47,6 +57,9 @@ declare const ATTESTED: unique symbol;
  * rather than a convention. The runtime membership check is kept as well.
  */
 export type AttestedAbManifest = AbManifest & { readonly [ATTESTED]: true };
+
+declare const QUALITY_ATTESTED: unique symbol;
+export type AttestedHistoricalQualityManifest = DiscoveryManifestV2 & { readonly [QUALITY_ATTESTED]: true };
 
 function asRecord(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(message);
@@ -90,8 +103,17 @@ function assertNeonPostgresUrl(value: string, field: string): void {
   }
 }
 
-function parseTarget(value: unknown, index: number): AbTarget {
+function assertExactKeys(value: Record<string, unknown>, expected: readonly string[], label: string): void {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+    throw new Error(`Discovery manifest ${label} must contain exactly the documented fields`);
+  }
+}
+
+function parseTarget(value: unknown, index: number, strict = false): AbTarget {
   const entry = asRecord(value, `Discovery manifest target ${index} must be an object`);
+  if (strict) assertExactKeys(entry, ['sideId', 'branchId', 'endpointId', 'databaseUrl'], `target ${index}`);
   const sideId = entry.sideId;
   if (sideId !== 'a' && sideId !== 'b') throw new Error(`Discovery manifest target ${index} sideId must be "a" or "b"`);
   const target: AbTarget = {
@@ -113,7 +135,7 @@ function parseTarget(value: unknown, index: number): AbTarget {
  * The two sides are returned in canonical order (a, then b) so callers can index
  * them without re-sorting.
  */
-export function parseAbManifest(raw: string | undefined): AbManifest {
+function parseJsonManifest(raw: string | undefined): Record<string, unknown> {
   if (raw === undefined || raw.trim() === '') throw new Error('Discovery manifest is required');
   let parsed: unknown;
   try {
@@ -121,13 +143,14 @@ export function parseAbManifest(raw: string | undefined): AbManifest {
   } catch {
     throw new Error('Discovery manifest must be valid JSON');
   }
-  const root = asRecord(parsed, 'Discovery manifest must be an object');
-  const projectId = asString(root.projectId, 'projectId');
-  const baseBranchId = asString(root.baseBranchId, 'baseBranchId');
+  return asRecord(parsed, 'Discovery manifest must be an object');
+}
+
+function parseTargets(root: Record<string, unknown>, baseBranchId: string, strict: boolean): readonly [AbTarget, AbTarget] {
   if (!Array.isArray(root.targets) || root.targets.length !== 2) {
     throw new Error('Discovery manifest must name exactly two sides');
   }
-  const targets = root.targets.map(parseTarget);
+  const targets = root.targets.map((value, index) => parseTarget(value, index, strict));
   const sideA = targets.find((target) => target.sideId === 'a');
   const sideB = targets.find((target) => target.sideId === 'b');
   if (!sideA || !sideB) throw new Error('Discovery manifest must name one side a and one side b');
@@ -137,7 +160,94 @@ export function parseAbManifest(raw: string | undefined): AbManifest {
   if (sideA.branchId === baseBranchId || sideB.branchId === baseBranchId) {
     throw new Error('Discovery manifest sides must not name the base branch');
   }
-  return { projectId, baseBranchId, targets: [sideA, sideB] };
+  return [sideA, sideB];
+}
+
+/**
+ * Parses legacy/unversioned A/B input. A strict v2 document is accepted by
+ * projecting only its two durable child targets, so existing A/B execution
+ * never receives the read-replica URL.
+ */
+export function parseLegacyAbManifest(raw: string | undefined): LegacyAbManifest {
+  const root = parseJsonManifest(raw);
+  if (root.version === 2) {
+    const quality = parseHistoricalQualityManifest(raw);
+    return { projectId: quality.projectId, baseBranchId: quality.baseBranchId, targets: quality.targets };
+  }
+  const projectId = asString(root.projectId, 'projectId');
+  const baseBranchId = asString(root.baseBranchId, 'baseBranchId');
+  return { projectId, baseBranchId, targets: parseTargets(root, baseBranchId, false) };
+}
+
+/** Backwards-compatible parser export used by legacy callers. */
+export function parseAbManifest(raw: string | undefined): AbManifest {
+  return parseLegacyAbManifest(raw);
+}
+
+/** Parses the exact historical-quality v2 declaration, rejecting all extras. */
+export function parseHistoricalQualityManifest(raw: string | undefined): DiscoveryManifestV2 {
+  const root = parseJsonManifest(raw);
+  assertExactKeys(root, ['version', 'projectId', 'baseBranchId', 'baseReadReplica', 'targets'], 'v2 root');
+  if (root.version !== 2) throw new Error('Historical quality discovery manifest must use version 2');
+  const projectId = asString(root.projectId, 'projectId');
+  const baseBranchId = asString(root.baseBranchId, 'baseBranchId');
+  const replica = asRecord(root.baseReadReplica, 'Discovery manifest baseReadReplica must be an object');
+  assertExactKeys(replica, ['endpointId', 'databaseUrl'], 'baseReadReplica');
+  const baseReadReplica = {
+    endpointId: asString(replica.endpointId, 'baseReadReplica endpointId'),
+    databaseUrl: asString(replica.databaseUrl, 'baseReadReplica databaseUrl'),
+  };
+  assertNeonPostgresUrl(baseReadReplica.databaseUrl, 'baseReadReplica databaseUrl');
+  const targets = parseTargets(root, baseBranchId, true);
+  if (targets.some((target) => target.endpointId === baseReadReplica.endpointId)) {
+    throw new Error('Discovery manifest child endpoints must be distinct from the base read replica');
+  }
+  const urls = [baseReadReplica.databaseUrl, ...targets.map((target) => target.databaseUrl)];
+  if (new Set(urls).size !== urls.length) {
+    throw new Error('Discovery manifest endpoint URL roles must be distinct');
+  }
+  return { version: 2, projectId, baseBranchId, baseReadReplica, targets };
+}
+
+/**
+ * Strict quality attestation: one read-only endpoint on the exact protected
+ * base plus two read-write endpoints on the exact durable child branches.
+ * Provider/control-plane errors are collapsed so response bodies and URL
+ * credentials never enter an operator-visible error.
+ */
+export async function attestHistoricalQualityTargets(input: {
+  manifest: DiscoveryManifestV2;
+  controlPlane: NeonControlPlane;
+}): Promise<AttestedHistoricalQualityManifest> {
+  try {
+    const { manifest, controlPlane } = input;
+    const base = await controlPlane.getBranch(manifest.projectId, manifest.baseBranchId);
+    if (base.id !== manifest.baseBranchId || base.name !== BASE_NAME || base.primary) throw new Error('base');
+    const baseUrl = parseUrl(manifest.baseReadReplica.databaseUrl);
+    const baseEndpoints = await controlPlane.listEndpoints(manifest.projectId, manifest.baseBranchId);
+    const replica = baseEndpoints.find((candidate) => candidate.id === manifest.baseReadReplica.endpointId);
+    if (!baseUrl || !replica || replica.branchId !== base.id || replica.type !== 'read_only'
+      || !isEndpointHost(baseUrl.hostname, replica.host)) throw new Error('replica');
+    const childEndpointIds = new Set(manifest.targets.map((target) => target.endpointId));
+    if (baseEndpoints.some((endpoint) => childEndpointIds.has(endpoint.id))) throw new Error('base/child endpoint crossing');
+    const endpointHosts = new Set([replica.host]);
+
+    for (const target of manifest.targets) {
+      if (target.branchId === base.id || target.endpointId === replica.id) throw new Error('crossed role');
+      const branch = await controlPlane.getBranch(manifest.projectId, target.branchId);
+      if (branch.id !== target.branchId || branch.name !== AB_BRANCH_NAMES[target.sideId]
+        || branch.parentId !== base.id || branch.primary) throw new Error('child branch');
+      const url = parseUrl(target.databaseUrl);
+      const endpoints = await controlPlane.listEndpoints(manifest.projectId, target.branchId);
+      const endpoint = endpoints.find((candidate) => candidate.id === target.endpointId);
+      if (!url || !endpoint || endpoint.branchId !== branch.id || endpoint.type !== 'read_write'
+        || !isEndpointHost(url.hostname, endpoint.host) || endpointHosts.has(endpoint.host)) throw new Error('child endpoint');
+      endpointHosts.add(endpoint.host);
+    }
+    return manifest as AttestedHistoricalQualityManifest;
+  } catch {
+    throw new Error('Historical quality discovery targets failed control-plane attestation');
+  }
 }
 
 /**

@@ -53,6 +53,34 @@ describe('Neon matrix control-plane attestation', () => {
     await expect(malformed.listEndpoints('proj', 'br-base')).rejects.toThrow('invalid type');
   });
 
+  it('creates only an explicitly read-only endpoint and strictly decodes the response', async () => {
+    const calls: Array<{ url: string; method: string; body: unknown }> = [];
+    const client = createNeonControlPlane('secret', (async (url: string, init?: RequestInit) => {
+      calls.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return new Response(JSON.stringify({
+        endpoint: { id: 'ep-replica', branch_id: 'br-base', host: 'ep-replica.neon.tech', type: 'read_only' },
+      }), { status: 201 });
+    }) as typeof fetch);
+
+    await expect(client.createReadOnlyEndpoint('proj', 'br-base')).resolves.toEqual({
+      id: 'ep-replica', branchId: 'br-base', host: 'ep-replica.neon.tech', type: 'read_only',
+    });
+    expect(calls).toEqual([{
+      url: 'https://console.neon.tech/api/v2/projects/proj/endpoints',
+      method: 'POST',
+      body: { endpoint: { branch_id: 'br-base', type: 'read_only' } },
+    }]);
+
+    const malformed = createNeonControlPlane('secret', (async () => new Response(JSON.stringify({
+      endpoint: { id: 'ep-replica', branch_id: 'br-base', host: 'ep-replica.neon.tech', type: 'reader' },
+    }), { status: 201 })) as typeof fetch);
+    await expect(malformed.createReadOnlyEndpoint('proj', 'br-base')).rejects.toThrow('invalid type');
+  });
+
   it('rejects a non-5432 target before a control-plane port can be created', () => {
     expect(() => parseAttestedManifest(JSON.stringify({ version: 1, base, children: [{ ...child, databaseUrl: 'postgresql://owner:secret@ep-child.neon.tech:6543/protocol_eval' }] }), [child.childKey])).toThrow('port must be exactly 5432');
   });
@@ -61,6 +89,20 @@ describe('Neon matrix control-plane attestation', () => {
     expect(() => parseAttestedManifest(JSON.stringify({ version: 1, base: { ...base, endpointId: undefined }, children: [child] }), [child.childKey])).toThrow('endpointId');
     const manifest = parseAttestedManifest(JSON.stringify({ version: 1, base, children: [child] }), [child.childKey]);
     await expect(attestMatrixTargets({ manifest, controlPlane, now })).resolves.toEqual(manifest);
+  });
+
+  it('keeps v1 matrix endpoint-type behavior unchanged and ignores read_only versus read_write', async () => {
+    const manifest = parseAttestedManifest(JSON.stringify({ version: 1, base, children: [child] }), [child.childKey]);
+    await expect(attestMatrixTargets({
+      manifest,
+      now,
+      controlPlane: {
+        ...controlPlane,
+        listEndpoints: async (_projectId, branchId) => branchId === 'br-base'
+          ? [{ id: 'ep-base', branchId: 'br-base', host: 'ep-base.neon.tech', type: 'read_only' }]
+          : [{ id: 'ep-child', branchId: 'br-child', host: 'ep-child.neon.tech', type: 'read_only' }],
+      },
+    })).resolves.toEqual(manifest);
   });
 
   it('accepts only the exact pooled host corresponding to an attested endpoint', async () => {

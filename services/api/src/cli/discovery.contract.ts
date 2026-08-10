@@ -318,6 +318,8 @@ export function abUsage(): string {
     '  TEST_DATABASE_SAFE=1',
     '  NEON_API_KEY=<neon api key>',
     `  DISCOVERY_TARGETS='${manifest}'`,
+    '  A strict version-2 historical-quality manifest is also accepted here; legacy',
+    '  A/B projects only its two child targets and never binds the base read replica.',
     '',
     'This command never creates or deletes Neon branches. It resets the attested',
     `branch of every side it runs from ${AB_BASE_BRANCH} before it spawns anything:`,

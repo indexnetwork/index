@@ -43,6 +43,8 @@
     "eval:discovery-quality-base": "bun ./src/cli/discovery-quality-base.ts",
     "eval:discovery-quality-base:verify": "bun ./src/cli/discovery-quality-base.ts --verify",
     "eval:discovery-quality-base-refresh-target:attest": "bun ./src/cli/discovery-quality-refresh-target.ts",
+    "eval:discovery-quality-read-replica:provision": "bun ./src/cli/discovery-quality-read-replica.ts --provision",
+    "eval:discovery-quality-read-replica:attest": "bun ./src/cli/discovery-quality-read-replica.ts --attest",
     "eval:discovery-env-matrix": "bun --env-file=../../.env.test ./src/cli/discovery-env-matrix.ts",
     "eval:discovery": "bun --env-file=../../.env.test ./src/cli/discovery.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",

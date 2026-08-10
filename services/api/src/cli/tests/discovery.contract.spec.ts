@@ -114,10 +114,12 @@ describe('discovery --help', () => {
 describe('abUsage', () => {
   const usage = abUsage();
 
-  it('states the manifest shape, so an operator can build one from the help alone', () => {
+  it('states the manifest shape and v2 projection compatibility, so an operator can build one from the help alone', () => {
     expect(usage).toContain('DISCOVERY_TARGETS');
     expect(usage).toContain('"sideId":"a"');
     expect(usage).toContain('"baseBranchId":"br-..."');
+    expect(usage).toContain('strict version-2 historical-quality manifest');
+    expect(usage).toContain('projects only its two child targets');
   });
 
   it('states every flag', () => {
