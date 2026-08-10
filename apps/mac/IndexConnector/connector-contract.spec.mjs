@@ -199,9 +199,10 @@ test('authorization, transport, persistence, and serialized runtime remain bound
   expect(transport).toContain('hermes-authorizations/disconnect');
   expect(transport).toContain('auth/me');
   expect(installation).toContain('Application Support');
-  for (const token of ['flock(descriptor, LOCK_EX)', 'O_NOFOLLOW', 'readDurableState()', 'fsync(descriptor)', 'rename(temporaryURL.path']) {
+  for (const token of ['@_silgen_name("flock")', 'connectorFlock(descriptor, LOCK_EX)', 'O_NOFOLLOW', 'readDurableState()', 'fsync(descriptor)', 'rename(temporaryURL.path']) {
     expect(installation).toContain(token);
   }
+  expect(installation).not.toContain('Darwin.flock');
   for (const token of ['Process()', 'authorization', 'exchange', 'staleWriteAccepted', 'second.stateSnapshot == disconnected']) {
     expect(installationFixture).toContain(token);
   }

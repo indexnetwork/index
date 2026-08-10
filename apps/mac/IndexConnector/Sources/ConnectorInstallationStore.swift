@@ -1,6 +1,12 @@
 import Foundation
 import Darwin
 
+// Darwin's Swift overlay imports `struct flock` under the same name as the
+// flock(2) function. Bind the stable libc syscall explicitly rather than
+// accidentally resolving the struct initializer.
+@_silgen_name("flock")
+private func connectorFlock(_ descriptor: CInt, _ operation: CInt) -> CInt
+
 struct ConnectorInstallationState: Codable, Equatable {
     let installationId: String
     var recoveryPhase: ConnectorRecoveryPhase
@@ -161,10 +167,10 @@ final class ConnectorInstallationStore: ConnectorInstallationStoring {
         defer { Darwin.close(descriptor) }
         try Self.validateDescriptor(descriptor, type: S_IFREG, permissions: 0o600)
         try Self.validatePathIdentity(lockURL, descriptor: descriptor)
-        guard Darwin.flock(descriptor, LOCK_EX) == 0 else {
+        guard connectorFlock(descriptor, LOCK_EX) == 0 else {
             throw ConnectorInstallationStoreError.unsafePath
         }
-        defer { _ = Darwin.flock(descriptor, LOCK_UN) }
+        defer { _ = connectorFlock(descriptor, LOCK_UN) }
         // Revalidate after acquisition so a path manipulation cannot be hidden
         // behind time spent waiting for another process's lock.
         try Self.validateDirectory(directoryURL)
