@@ -269,6 +269,9 @@ def main() -> None:
     assert "Invitation link" in dashboard_js
     assert "/permissions" in dashboard_js
     assert "regenerate_network_invitation" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    plugin_api_src = (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/notifications/stream" in plugin_api_src
+    assert "_notification_stream" in plugin_api_src
     assert "/networks/search-users" in dashboard_js
     assert "/members/invite" in dashboard_js
     assert "Your Signals" in dashboard_js
@@ -291,6 +294,9 @@ def main() -> None:
     assert "SettingUpScreen" in desktop_js
     assert "index-dashboard__setting-up" in desktop_js
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
+    assert "startDesktopNotifications" in desktop_js
+    assert "/notifications/stream" in desktop_js
+    assert "checkOpportunities" not in desktop_js
     # Hermes Desktop ships the same browser-login gate via the built bundle.
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js

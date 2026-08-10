@@ -109,6 +109,6 @@ export type {
 export { presentOpportunity, stripUuids, truncateAtBoundary } from "../opportunity/domain/opportunity.presentation.js";
 export type { UserInfo } from "../opportunity/domain/opportunity.presentation.js";
 export { stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText } from "../opportunity/domain/opportunity.claim-safety.js";
-export { safeFallbackSummary } from "../opportunity/domain/opportunity.safe-presentation.js";
+export { safeFallbackSummary, DEFAULT_FALLBACK_HEADLINE } from "../opportunity/domain/opportunity.safe-presentation.js";
 export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "../opportunity/domain/opportunity.presentation-cache.js";
 export { getOrCreateDeliveryCardBatch } from "../opportunity/application/delivery-card.cache.js";
