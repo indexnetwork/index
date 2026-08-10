@@ -1085,7 +1085,9 @@ struct AuthorizationFixture {
             accountLabel: "Newer After Clear", recoveryPhase: .none,
             authorizationAttemptId: nil, operationEpoch: 1
         )
-        let clearNewerPrimaryBytes = try JSONEncoder().encode(clearNewerPrimary)
+        let primaryEncoder = JSONEncoder()
+        primaryEncoder.outputFormatting = [.sortedKeys]
+        let clearNewerPrimaryBytes = try primaryEncoder.encode(clearNewerPrimary)
         let clearJournal = AuthorizationInstallationStore(installationId: installationId)
         let clearProcess = ConnectorProcessRecoveryState()
         let (_, clearFinished) = beginStaleExchange(
@@ -1113,7 +1115,7 @@ struct AuthorizationFixture {
         precondition(clearJournal.recoveryPhase == .none)
         precondition(clearStore.record == clearNewerPrimary)
         guard let retainedClearPrimary = clearStore.record else { preconditionFailure() }
-        let retainedClearPrimaryBytes = try JSONEncoder().encode(retainedClearPrimary)
+        let retainedClearPrimaryBytes = try primaryEncoder.encode(retainedClearPrimary)
         precondition(retainedClearPrimaryBytes == clearNewerPrimaryBytes)
         guard case let .object(clearConnectedStatus)? = clearRestart.handle(ConnectorRequest(
             protocolVersion: 1, id: "clear-connected-status", operation: .status, payload: [:]

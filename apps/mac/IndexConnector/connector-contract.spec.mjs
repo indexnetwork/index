@@ -379,6 +379,7 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
     'journalClearFailureNoKeyConvergence', 'initialRecoveryJournalFailure',
     'serverReceiptJournalFailure', 'probeConfirmedJournalFailure',
     'failNoneTransitionNumber = 2',
+    'primaryEncoder.outputFormatting = [.sortedKeys]',
     'activationRequestedJournalFailure', 'labelUpdateKeychainFailure',
     'disconnectBeforeCallback', 'callbackBeforeDisconnectBeforePoll',
     'disconnectWhileActivationBlocked', 'disconnectWhileExchangeBlocked',
