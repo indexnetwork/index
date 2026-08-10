@@ -93,6 +93,8 @@ export interface HistoricalQualityChildOutput {
 }
 
 export interface HistoricalQualityRuntimeDeps {
+  /** Parent-only consent gate; optional to preserve isolated runtime seam tests. */
+  assertHistoricalQualityAuthorization?(): void;
   acquireOperationLease(): Promise<Pick<HistoricalQualityOperationLease, 'identifier' | 'release'>>;
   preflightChildRuntime(): Promise<void>;
   attest(): Promise<AttestedHistoricalQualityManifest>;
@@ -876,11 +878,10 @@ export async function writeOperationalDiagnosticBestEffort(input: {
 }
 
 const productionDependencies: HistoricalQualityRuntimeDeps = {
+  assertHistoricalQualityAuthorization: () => assertAbConfirmation(process.env),
   acquireOperationLease: async () => acquireHistoricalQualityOperationLease(process.env.DISCOVERY_TARGETS),
   preflightChildRuntime: async () => {
-    // Consent remains the first runtime authorization inside the held lease;
-    // child availability still precedes topology attestation and destruction.
-    assertAbConfirmation(process.env);
+    // Child availability still precedes topology attestation and destruction.
     await preflightHistoricalQualityChildRuntime(process.env);
   },
   attest: productionAttest,
@@ -922,6 +923,9 @@ export async function runHistoricalQualityRuntime(
     // Parallel mode spends once per candidate. Refuse it before even runtime
     // preflight so the quality cost remains exactly one evaluator call per slot.
     assertHistoricalQualitySerialEvaluation(request.configuration.config);
+    // Parent-only consent must refuse before parsing the manifest to acquire a
+    // lease, while isolated runtime seams may deliberately omit this legacy gate.
+    deps.assertHistoricalQualityAuthorization?.();
     // Parse strict manifest v2 and acquire the shared side-a identity before
     // preflight, control-plane calls, restore, provider spend, or artifacts.
     operationLease = await deps.acquireOperationLease();

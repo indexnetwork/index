@@ -314,6 +314,18 @@ describe('historical quality production base verifier handoff', () => {
 });
 
 describe('historical quality runtime acceptance order', () => {
+  it('authorizes before lease acquisition and refusal prevents lease, attestation, restore, or spend', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { calls, deps } = runtimeDeps();
+    deps.assertHistoricalQualityAuthorization = () => {
+      calls.push('authorization');
+      throw new Error('Refusing to mutate: set DISCOVERY_CONFIRM=1');
+    };
+
+    await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow('Refusing to mutate: set DISCOVERY_CONFIRM=1');
+    expect(calls).toEqual(['authorization']);
+  });
+
   it('refuses lease contention before preflight, control-plane attestation, restore, or spend', async () => {
     Object.assign(process.env, requiredParentEnvironment());
     const { calls, deps } = runtimeDeps();
