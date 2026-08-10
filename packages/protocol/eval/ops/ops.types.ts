@@ -134,7 +134,7 @@ export interface HarnessResets {
   sides: string;
 }
 
-export interface ArtifactRef {
+interface ArtifactRefBase {
   /** base64url of the path relative to eval/. Stable and addressable without a database. */
   id: string;
   harness: OpsHarness;
@@ -153,16 +153,27 @@ export interface ArtifactRef {
   caseCount: number;
   /** True only for v2 artifacts that recorded complete execution evidence. */
   complete: boolean | null;
-  /** Indexed discriminator for descriptive measurement artifacts; null for scorecards. */
-  measurementKind: "historical-quality-pilot" | null;
-  /** Exact execution completeness, present only for indexed historical-quality artifacts. */
-  qualityCompleteness?: {
-    requestedSlots: number;
-    completedSlots: number;
-  };
   sizeBytes: number;
   mtimeMs: number;
 }
+
+/** An indexed strict historical-quality artifact and its validated slot counts. */
+export interface HistoricalQualityArtifactRef extends ArtifactRefBase {
+  measurementKind: "historical-quality-pilot";
+  qualityCompleteness: {
+    requestedSlots: number;
+    completedSlots: number;
+  };
+}
+
+/** A generic scorecard ref. Its JSON wire shape remains discriminator-only. */
+export interface GenericArtifactRef extends ArtifactRefBase {
+  measurementKind: null;
+  qualityCompleteness?: never;
+}
+
+/** Public browser/server wire ref, narrowed exclusively by measurementKind. */
+export type ArtifactRef = HistoricalQualityArtifactRef | GenericArtifactRef;
 
 export interface IndexIssue {
   /** Path relative to eval/. */

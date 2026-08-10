@@ -22,6 +22,8 @@ interface RunState {
   comparison: CompareResult | null;
   comparisonError: string | null;
   error: string | null;
+  /** Artifact classification completed without a usable artifact. */
+  artifactUnavailable: boolean;
   /** Set when the stream fails before any status frame arrives. */
   streamError: string | null;
 }
@@ -53,6 +55,7 @@ function RunDetail({ runId }: { runId: string }) {
     comparison: null,
     comparisonError: null,
     error: null,
+    artifactUnavailable: false,
     streamError: null,
   });
   const [cancelling, setCancelling] = useState(false);
@@ -143,7 +146,7 @@ function RunDetail({ runId }: { runId: string }) {
 
     async function fetchArtifactAndComparison(record: RunRecord) {
       const { artifactPath, spec } = record;
-      if (!artifactPath || spec.kind !== 'eval') return;
+      if (!artifactPath) return;
 
       const artifactId = encodeArtifactId(artifactPath);
 
@@ -162,11 +165,14 @@ function RunDetail({ runId }: { runId: string }) {
             baseline: null,
             comparison: null,
             comparisonError: null,
+            artifactUnavailable: false,
           }));
           return;
         }
 
-        setState((prev) => ({ ...prev, artifact }));
+        setState((prev) => ({ ...prev, artifact, artifactUnavailable: false }));
+
+        if (spec.kind !== 'eval') return;
 
         // Only compare if non-experimental, and never for a harness that runs
         // operator-chosen configurations: it has no committed baseline and never
@@ -211,11 +217,16 @@ function RunDetail({ runId }: { runId: string }) {
             }
           }
         }
-      } catch (error) {
+      } catch {
         if (mounted) {
+          setShowRawLog(false);
           setState((prev) => ({
             ...prev,
-            error: error instanceof Error ? error.message : String(error),
+            artifact: null,
+            baseline: null,
+            comparison: null,
+            comparisonError: null,
+            artifactUnavailable: true,
           }));
         }
       }
@@ -275,16 +286,17 @@ function RunDetail({ runId }: { runId: string }) {
 
   const run = state.run;
   const classificationPending =
-    run.spec.kind === 'eval'
-    && run.spec.harness === 'discovery'
-    && isTerminalStatus(run.status)
+    isTerminalStatus(run.status)
     && run.artifactPath !== null
-    && state.artifact === null;
+    && state.artifact === null
+    && !state.artifactUnavailable;
 
-  if (classificationPending) {
+  if (classificationPending || state.artifactUnavailable) {
     return (
       <div className="p-4">
-        <p className="text-term-dim">Loading result classification...</p>
+        <p className="text-term-dim">
+          {classificationPending ? 'Loading result classification...' : 'Result unavailable.'}
+        </p>
       </div>
     );
   }

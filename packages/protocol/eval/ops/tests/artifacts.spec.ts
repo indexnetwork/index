@@ -212,19 +212,23 @@ describe("FsArtifactSource", () => {
     expect(refs[0].kind).toBe("run");
   });
 
-  it("indexes measurementKind for quality artifacts without changing scorecard refs", async () => {
+  it("projects a non-discovery quality artifact into the discriminated ref branch", async () => {
     const runId = "quality-run";
     await mkdir(path.join(evalDir, ".ops-runs", runId), { recursive: true });
     await writeFile(
       path.join(evalDir, ".ops-runs", runId, "report.json"),
-      JSON.stringify(makeHistoricalQualityArtifact()),
+      JSON.stringify({ ...makeHistoricalQualityArtifact(), harness: "matching" }),
     );
 
     const { refs, issues } = await new FsArtifactSource({ evalDir }).list();
 
     expect(issues).toEqual([]);
     expect(refs).toHaveLength(1);
+    expect(refs[0].harness).toBe("matching");
     expect(refs[0].measurementKind).toBe("historical-quality-pilot");
+    if (refs[0].measurementKind !== "historical-quality-pilot") {
+      throw new Error("quality ref did not preserve its discriminator");
+    }
     expect(refs[0].qualityCompleteness).toEqual({
       requestedSlots: 10,
       completedSlots: 10,

@@ -6,7 +6,7 @@ import { parseEvalArtifact } from '../../../packages/protocol/eval/shared/artifa
 import { Run } from '../src/routes/Run';
 import { encodeArtifactId, type Artifact, type ArtifactCase, type ArtifactConfigDelta, type ArtifactRule, type RunRecord } from '../src/api/client';
 import { DISCOVERY_RUN_REPORT } from './fixtures/discovery-run-report';
-import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, NON_DISCOVERY_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 const RUN: RunRecord = {
   id: 'run-1',
@@ -750,7 +750,7 @@ describe('Run · historical quality', () => {
     workload: 10,
   };
 
-  it('renders only neutral loading while quality classification is delayed, then suppresses logs and experimental language', async () => {
+  it('renders only neutral loading while non-discovery quality classification is delayed, then suppresses generic result content', async () => {
     let resolveArtifact!: (response: Response) => void;
     const artifactResponse = new Promise<Response>((resolve) => {
       resolveArtifact = resolve;
@@ -768,20 +768,39 @@ describe('Run · historical quality', () => {
       mockEventSource._emit('log', 'SECRET QUALITY RAW LOG');
       mockEventSource._emit('status', {
         ...qualityRun,
+        spec: { kind: 'eval', harness: 'matching', profile: 'default', flags: { runs: 1 } },
         experimental: true,
-        env: { DISCOVERY_ALLOWED_TYPES: 'intent' },
+        env: { EVAL_MODEL_OVERRIDES: '{"judge":"test/model"}' },
       });
     });
 
     expect(screen.getByText(/Loading result classification/i)).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/SECRET QUALITY RAW LOG|profile:|environment:|experimental configuration|baseline/i);
+    expect(document.body.textContent).not.toMatch(/SECRET QUALITY RAW LOG|profile:|overrides:|experimental configuration|baseline|scorecard/i);
 
     await act(async () => {
-      resolveArtifact(new Response(JSON.stringify(COMPLETE_HISTORICAL_QUALITY_ARTIFACT)));
+      resolveArtifact(new Response(JSON.stringify(NON_DISCOVERY_HISTORICAL_QUALITY_ARTIFACT)));
     });
     expect(await screen.findByText('10/10')).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/SECRET QUALITY RAW LOG|profile:|environment:|experimental configuration|baseline/i);
+    expect(document.body.textContent).not.toMatch(/SECRET QUALITY RAW LOG|profile:|overrides:|experimental configuration|baseline|scorecard/i);
     expect(screen.queryByRole('button', { name: /raw output/i })).toBeNull();
+  });
+
+  it('renders only a neutral unavailable state when completed artifact resolution fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/artifacts/')) {
+        return new Response(JSON.stringify({ error: 'artifact parse failed' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+    }));
+    renderRun({
+      ...qualityRun,
+      spec: { kind: 'eval', harness: 'matching', profile: 'default', flags: { runs: 1 } },
+      experimental: true,
+      env: { EVAL_MODEL_OVERRIDES: '{"judge":"test/model"}' },
+    });
+
+    expect(await screen.findByText(/Result unavailable/i)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/artifact parse failed|profile:|overrides:|experimental configuration|baseline|scorecard|SECRET/i);
   });
 
   it('clears the prior run and classification immediately when the route id changes', async () => {

@@ -19,6 +19,12 @@ export const INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT = parseQualityFixture(
   makeIncompleteHistoricalQualityArtifact(),
 );
 
+/** Proves quality routing is owned by the artifact discriminator, not its harness. */
+export const NON_DISCOVERY_HISTORICAL_QUALITY_ARTIFACT = parseQualityFixture({
+  ...makeHistoricalQualityArtifact(),
+  harness: 'matching',
+});
+
 export function historicalQualityRef(
   artifact: HistoricalQualityArtifactEnvelope = COMPLETE_HISTORICAL_QUALITY_ARTIFACT,
   id = 'historical-quality',

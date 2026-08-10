@@ -113,10 +113,10 @@ export class FsArtifactSource implements ArtifactSource {
     const envelope = this.parse(value);
     const stats = await stat(absolute);
     const completeness = envelope.completeness as { complete?: boolean };
-    return {
+    const baseRef = {
       id: encodeArtifactId(relPath),
       harness,
-      kind: envelope.artifactType === EVAL_BASELINE_ARTIFACT_TYPE ? "baseline" : "run",
+      kind: (envelope.artifactType === EVAL_BASELINE_ARTIFACT_TYPE ? "baseline" : "run") as "baseline" | "run",
       path: relPath,
       schemaVersion: envelope.schemaVersion,
       createdAt: envelope.createdAt,
@@ -129,18 +129,22 @@ export class FsArtifactSource implements ArtifactSource {
       aggregatePassRate: envelope.payload.aggregatePassRate,
       caseCount: envelope.payload.cases.length,
       complete: typeof completeness.complete === "boolean" ? completeness.complete : null,
-      measurementKind: isHistoricalQualityArtifact(envelope) ? envelope.measurement.kind : null,
-      ...(isHistoricalQualityArtifact(envelope)
-        ? {
-            qualityCompleteness: {
-              requestedSlots: envelope.measurement.requestedSlots,
-              completedSlots: envelope.measurement.completedSlots,
-            },
-          }
-        : {}),
       sizeBytes: stats.size,
       mtimeMs: stats.mtimeMs,
     };
+
+    if (isHistoricalQualityArtifact(envelope)) {
+      return {
+        ...baseRef,
+        measurementKind: envelope.measurement.kind,
+        qualityCompleteness: {
+          requestedSlots: envelope.measurement.requestedSlots,
+          completedSlots: envelope.measurement.completedSlots,
+        },
+      };
+    }
+
+    return { ...baseRef, measurementKind: null };
   }
 }
 
