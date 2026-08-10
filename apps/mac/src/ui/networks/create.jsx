@@ -467,7 +467,7 @@ function RequestStatusRow({ req, onEdit, onDismiss }) {
   );
 }
 
-function NetworkRow({ net, onOpen, onJoin }) {
+function NetworkRow({ net, onOpen, onJoin, joining }) {
   const [hover, setHover] = useState(false);
   return (
     <div
@@ -499,7 +499,7 @@ function NetworkRow({ net, onOpen, onJoin }) {
 
       {net.joined
         ? <QuietTag>{net.role || "member"}</QuietTag>
-        : <ActionButton onClick={() => onJoin && onJoin(net)} title="ask to join">join</ActionButton>}
+        : <ActionButton disabled={joining} onClick={() => onJoin && onJoin(net)} title="ask to join">{joining ? "joining…" : "join"}</ActionButton>}
     </div>
   );
 }

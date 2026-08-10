@@ -227,38 +227,45 @@ window.IndexApp = (function () {
     };
   }
 
-  function mapNetworks(networks, user) {
+  function mapNetworkEntry(n, user, joined) {
     const meId = user && user.id;
-    return networks.map((n) => {
-      const joinPolicy = (n.permissions && n.permissions.joinPolicy) || n.joinPolicy || "invite_only";
-      const invite = (n.permissions && n.permissions.invitationLink) || n.invitationLink || null;
-      // Prefer API `role` (viewer membership). Falling back to user.id ===
-      // network.user.id is wrong for multi-owner networks.
-      const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
-      const ownerId = n.user && n.user.id;
-      const inferredOwner = !!(meId && ownerId && meId === ownerId);
-      const role = n.isPersonal
-        ? "personal"
-        : (apiRole || (inferredOwner ? "owner" : "member"));
-      return {
-        id: n.id,
-        name: n.title || n.name || "untitled",
-        blurb: n.prompt || n.description || "",
-        members: (n._count && n._count.members) || n.memberCount || 0,
-        role,
-        joined: true,
-        isPersonal: n.isPersonal === true,
-        hasMasterKey: n.hasMasterKey === true,
-        hidden: n.hidden === true,
-        privacy: joinPolicy === "anyone" ? "public" : "private",
-        joinPolicy,
-        invitationCode: invite && invite.code ? invite.code : null,
-        // Same key resolution as user avatars: S3 keys need the storage base.
-        photo: avatarUrl(n.imageUrl || n.photo || null),
-        signals: [],
-        source: n,
-      };
-    });
+    const joinPolicy = (n.permissions && n.permissions.joinPolicy) || n.joinPolicy || "invite_only";
+    const invite = (n.permissions && n.permissions.invitationLink) || n.invitationLink || null;
+    // Prefer API `role` (viewer membership). Falling back to user.id ===
+    // network.user.id is wrong for multi-owner networks.
+    const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
+    const ownerId = n.user && n.user.id;
+    const inferredOwner = !!(meId && ownerId && meId === ownerId);
+    const role = n.isPersonal
+      ? "personal"
+      : (apiRole || (inferredOwner ? "owner" : "member"));
+    return {
+      id: n.id,
+      name: n.title || n.name || "untitled",
+      blurb: n.prompt || n.description || "",
+      members: (n._count && n._count.members) || n.memberCount || 0,
+      role,
+      joined,
+      isPersonal: n.isPersonal === true,
+      hasMasterKey: n.hasMasterKey === true,
+      hidden: n.hidden === true,
+      privacy: joinPolicy === "anyone" ? "public" : "private",
+      joinPolicy,
+      invitationCode: invite && invite.code ? invite.code : null,
+      // Same key resolution as user avatars: S3 keys need the storage base.
+      photo: avatarUrl(n.imageUrl || n.photo || null),
+      signals: [],
+      source: n,
+    };
+  }
+
+  function mapNetworks(networks, user) {
+    return networks.map((n) => mapNetworkEntry(n, user, true));
+  }
+
+  // Public discovery rows — not joined unless the API marks isMember.
+  function mapDiscoverNetworks(networks, user) {
+    return networks.map((n) => mapNetworkEntry(n, user, n.isMember === true));
   }
 
   // ---- tools + enrichment -------------------------------------------------
@@ -448,6 +455,7 @@ window.IndexApp = (function () {
     client: getClient,
     normalizeList,
     loadSnapshot,
+    mapDiscoverNetworks,
     login,
     logout,
     detectHarnesses,

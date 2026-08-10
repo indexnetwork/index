@@ -24,6 +24,10 @@ function Networks({ onClose, onOpenSignal }) {
   // Local mirror of the shared list so a new network renders immediately;
   // NETWORKS itself is still mutated so other screens see it too.
   const [nets, setNets] = useState(NETWORKS);
+  const [discoverNets, setDiscoverNets] = useState([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverError, setDiscoverError] = useState(null);
+  const [joiningId, setJoiningId] = useState(null);
 
   const loadRequests = () => {
     if (!client) return;
@@ -38,6 +42,31 @@ function Networks({ onClose, onOpenSignal }) {
   // One-shot on mount: `client` is rebuilt each render, so depending on it would
   // loop; a single load (refreshed explicitly after mutations) is enough.
   useEffect(() => { loadRequests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadPublicNetworks = () => {
+    if (!client) {
+      setDiscoverNets([]);
+      return;
+    }
+    setDiscoverLoading(true);
+    setDiscoverError(null);
+    client.networks.discoverPublic(1, 50)
+      .then((res) => {
+        const raw = window.IndexApp.normalizeList(res, "networks");
+        const mapped = window.IndexApp.mapDiscoverNetworks(raw);
+        setDiscoverNets(mapped);
+      })
+      .catch(() => {
+        setDiscoverNets([]);
+        setDiscoverError("Failed to load public networks. Please try again later.");
+      })
+      .finally(() => { setDiscoverLoading(false); });
+  };
+
+  const handleTabChange = (next) => {
+    setTab(next);
+    if (next === "discover") loadPublicNetworks();
+  };
 
   // You made it, so you're in it and you run it. Picture is optional: a data
   // URL from the picker is uploaded first so imageUrl on the server is a real
@@ -159,8 +188,27 @@ function Networks({ onClose, onOpenSignal }) {
   };
 
   const joinNetwork = (net) => {
-    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: true, role: "member" } : n));
-    if (client) client.networks.join(net.id).catch(() => {});
+    if (!net || !net.id) return;
+    setJoiningId(net.id);
+    setDiscoverError(null);
+    const joined = { ...net, joined: true, role: "member" };
+    setDiscoverNets(prev => prev.filter(n => n.id !== net.id));
+    NETWORKS.unshift(joined);
+    setNets([...NETWORKS]);
+    if (!client) {
+      setJoiningId(null);
+      return;
+    }
+    client.networks.join(net.id)
+      .then(() => { loadPublicNetworks(); })
+      .catch(() => {
+        setDiscoverError("Failed to join that network.");
+        const i = NETWORKS.findIndex(n => n.id === net.id);
+        if (i >= 0) NETWORKS.splice(i, 1);
+        setNets([...NETWORKS]);
+        setDiscoverNets(prev => [net, ...prev]);
+      })
+      .finally(() => { setJoiningId(null); });
   };
 
   const leaveNetwork = (net) => {
@@ -207,8 +255,7 @@ function Networks({ onClose, onOpenSignal }) {
   }
 
   const mine = nets.filter(n => n.joined);
-  const rest = nets.filter(n => !n.joined);
-  const shown = tab === "mine" ? mine : rest;
+  const shown = tab === "mine" ? mine : discoverNets;
 
   return (
     <div style={{
@@ -246,7 +293,7 @@ function Networks({ onClose, onOpenSignal }) {
               <MacSegmented
                 size="lg"
                 value={tab}
-                onChange={setTab}
+                onChange={handleTabChange}
                 options={[
                   { value:"mine",     label:`my networks (${mine.length})` },
                   { value:"discover", label:"discover" },
@@ -273,14 +320,29 @@ function Networks({ onClose, onOpenSignal }) {
                 key={net.id}
                 net={net}
                 onOpen={(n) => { setOpenTab(null); setOpenNote(""); setOpenNet(n); }}
-                onJoin={joinNetwork}/>
+                onJoin={joinNetwork}
+                joining={joiningId === net.id}/>
             ))}
 
-            {!shown.length && !(tab === "mine" && myRequests.length) && (
+            {tab === "discover" && discoverLoading && (
               <p style={{
                 margin:"18px 12px",
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-              }}>nothing here yet.</p>
+              }}>loading public networks…</p>
+            )}
+
+            {tab === "discover" && !discoverLoading && discoverError && (
+              <p style={{
+                margin:"18px 12px",
+                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--mac-red, #c00)",
+              }}>{discoverError}</p>
+            )}
+
+            {!shown.length && !(tab === "mine" && myRequests.length) && !(tab === "discover" && discoverLoading) && !(tab === "discover" && discoverError) && (
+              <p style={{
+                margin:"18px 12px",
+                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+              }}>{tab === "discover" ? "No public networks to discover right now." : "nothing here yet."}</p>
             )}
           </div>
         </MacWindow>

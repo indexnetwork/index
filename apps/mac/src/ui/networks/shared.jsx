@@ -72,20 +72,21 @@ function QuietTag({ children }) {
 
 // Raised gadget, bordered with a hard shadow, so it reads as pressable at a
 // glance. Grey-on-grey chips read as disabled; this doesn't.
-function ActionButton({ children, onClick, title }) {
+function ActionButton({ children, onClick, title, disabled }) {
   const [hover, setHover] = useState(false);
   return (
     <button
       onClick={onClick}
       title={title}
-      onMouseEnter={() => setHover(true)}
+      disabled={disabled}
+      onMouseEnter={() => !disabled && setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        flex:"0 0 auto", padding:"6px 14px", cursor:"pointer",
+        flex:"0 0 auto", padding:"6px 14px", cursor: disabled ? "default" : "pointer",
         border:"1px solid #000",
-        background: hover ? "#000" : "#fff",
-        color: hover ? "#fff" : "#000",
-        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+        background: disabled ? "#F2F0EC" : (hover ? "#000" : "#fff"),
+        color: disabled ? "var(--ink-2)" : (hover ? "#fff" : "#000"),
+        boxShadow: disabled ? "none" : "1px 1px 0 rgba(0,0,0,0.2)",
         fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:600,
       }}>{children}</button>
   );

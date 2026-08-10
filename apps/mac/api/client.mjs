@@ -179,6 +179,10 @@ export function createIndexApiClient(options = {}) {
 
     networks: {
       list: (options = {}) => request('/networks', options),
+      discoverPublic: (page = 1, limit = 50, options = {}) => request(
+        `/networks/discovery/public${toQueryString({ page, limit })}`,
+        options,
+      ),
       overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
       myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
       create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
