@@ -78,8 +78,12 @@ private final class AuthorizationFixtureServer {
     private(set) var redirects: [String] = []
     private(set) var challenges: [String] = []
     private(set) var activationCount = 0
+    private(set) var disconnectCount = 0
     var activationAllowed: () -> Bool = { true }
     var rejectNextExchangeAsExpired = false
+    var blockExchange = false
+    let exchangeArrived = DispatchSemaphore(value: 0)
+    let releaseExchange = DispatchSemaphore(value: 0)
     var failNextActivation = false
     var failAccountLookup = false
     var blockActivation = false
@@ -172,6 +176,7 @@ private final class AuthorizationFixtureServer {
             rejectNextExchangeAsExpired = false
             let expectedChallenge = challenges.last!
             let redirect = redirects.last!
+            revoked = false
             lock.unlock()
             if rejectExpired {
                 respond(connection, status: 400, body: ["error": "expired_grant"])
@@ -185,7 +190,12 @@ private final class AuthorizationFixtureServer {
                 .replacingOccurrences(of: "=", with: "")
             precondition(digest == expectedChallenge)
             precondition(json["redirectUri"] as? String == redirect)
-            respond(connection, status: 200, body: credentialBody(state: "pending", includeCredential: true))
+            let issued = credentialBody(state: "pending", includeCredential: true)
+            if blockExchange {
+                exchangeArrived.signal()
+                _ = releaseExchange.wait(timeout: .now() + 5)
+            }
+            respond(connection, status: 200, body: issued)
         case "/api/hermes-authorizations/activate":
             precondition(activationAllowed())
             lock.lock()
@@ -200,7 +210,10 @@ private final class AuthorizationFixtureServer {
             }
             respond(connection, status: 200, body: credentialBody(state: "active", includeCredential: false))
         case "/api/hermes-authorizations/disconnect":
+            lock.lock()
+            disconnectCount += 1
             revoked = true
+            lock.unlock()
             respond(connection, status: 200, body: [
                 "revoked": true,
                 "credentialId": "55555555-5555-4555-8555-555555555555",
@@ -423,10 +436,13 @@ struct AuthorizationFixture {
             browser: automaticBrowser(code: "expired-code")
         )
         precondition(start(expiredRuntime, id: "expired-start").success)
-        guard case let .object(expiredResult)? = poll(expiredRuntime, id: "expired-poll").result else {
-            preconditionFailure()
-        }
+        let repeatedExpiredPoll = "repeatedExpiredPoll"
+        let expiredFirstPoll = poll(expiredRuntime, id: "expired-poll")
+        guard case let .object(expiredResult)? = expiredFirstPoll.result else { preconditionFailure() }
         precondition(expiredResult["status"] == .string("failed"))
+        let expiredRepeatedPoll = poll(expiredRuntime, id: "expired-poll-repeated")
+        precondition(expiredRepeatedPoll.result == expiredFirstPoll.result)
+        precondition(expiredRepeatedPoll.result != .object(["status": .string("pending")]))
 
         let activationTimeout = "activationTimeout"
         server.failNextActivation = true
@@ -438,10 +454,28 @@ struct AuthorizationFixture {
             browser: automaticBrowser(code: "activation-timeout")
         )
         precondition(start(timeoutRuntime, id: "timeout-start").success)
-        _ = poll(timeoutRuntime, id: "timeout-poll")
+        let repeatedAmbiguousFailurePoll = "repeatedAmbiguousFailurePoll"
+        let timeoutFirstPoll = poll(timeoutRuntime, id: "timeout-poll")
+        let timeoutRepeatedPoll = poll(timeoutRuntime, id: "timeout-poll-repeated")
+        precondition(timeoutRepeatedPoll.result == timeoutFirstPoll.result)
+        guard case let .object(timeoutRepeatedResult)? = timeoutRepeatedPoll.result else {
+            preconditionFailure()
+        }
+        precondition(timeoutRepeatedResult["status"] == .string("failed"))
         precondition(timeoutStore.record?.recoveryPhase == .activationRequested)
         precondition(timeoutJournal.recoveryPhase == .activationRequested)
         precondition(timeoutProcess.isRecoveryOnly)
+        timeoutJournal.failNextSet = true
+        precondition(timeoutRuntime.handle(disconnectRequest("timeout-cleanup-fault")).result == .object([
+            "status": .string("recovery_only")
+        ]))
+        precondition(poll(timeoutRuntime, id: "timeout-poll-after-failed-cleanup").result == timeoutFirstPoll.result)
+        precondition(timeoutRuntime.handle(disconnectRequest("timeout-cleanup")).result == .object([
+            "status": .string("disconnected")
+        ]))
+        precondition(poll(timeoutRuntime, id: "timeout-poll-after-cleanup").result == .object([
+            "status": .string("pending")
+        ]))
 
         let activationRequestedJournalFailure = "activationRequestedJournalFailure"
         let activationJournalStore = FixtureCredentialStore()
@@ -546,6 +580,61 @@ struct AuthorizationFixture {
         _ = poll(callbackRuntime, id: "stale-callback-poll")
         precondition(callbackStore.record == nil && callbackJournal.recoveryPhase == .none)
 
+        let disconnectWhileExchangeBlocked = "disconnectWhileExchangeBlocked"
+        server.blockExchange = true
+        let exchangeStore = FixtureCredentialStore()
+        let exchangeJournal = AuthorizationInstallationStore(installationId: installationId)
+        let exchangeProcess = ConnectorProcessRecoveryState()
+        let exchangeRuntime = runtime(
+            store: exchangeStore,
+            journal: exchangeJournal,
+            process: exchangeProcess,
+            browser: automaticBrowser(code: "blocked-exchange")
+        )
+        precondition(start(exchangeRuntime, id: "exchange-start").success)
+        let exchangePollFinished = DispatchSemaphore(value: 0)
+        let activationCountBeforeExchangeRace = server.activationCount
+        DispatchQueue.global().async {
+            let response = poll(exchangeRuntime, id: "exchange-poll")
+            guard case let .object(result)? = response.result else { preconditionFailure() }
+            precondition(result["status"] == .string("failed"))
+            exchangePollFinished.signal()
+        }
+        precondition(server.exchangeArrived.wait(timeout: .now() + 3) == .success)
+        let exchangeDisconnect = exchangeRuntime.handle(disconnectRequest("exchange-disconnect"))
+        precondition(exchangeDisconnect.result == .object(["status": .string("recovery_only")]))
+        precondition(exchangeStore.record == nil)
+        precondition(exchangeJournal.recoveryPhase == .activationRequested)
+        server.releaseExchange.signal()
+        precondition(exchangePollFinished.wait(timeout: .now() + 3) == .success)
+        server.blockExchange = false
+        precondition(exchangeStore.record?.activationState == "pending")
+        precondition(exchangeStore.record?.recoveryPhase == .activationRequested)
+        precondition(exchangeStore.record?.authorizationAttemptId == nil)
+        precondition(exchangeJournal.recoveryPhase == .activationRequested)
+        precondition(exchangeProcess.isRecoveryOnly)
+        precondition(server.activationCount == activationCountBeforeExchangeRace)
+        guard case let .object(exchangeStatus)? = exchangeRuntime.handle(ConnectorRequest(
+            protocolVersion: 1, id: "exchange-status", operation: .status, payload: [:]
+        )).result else { preconditionFailure() }
+        precondition(exchangeStatus["health"] == .string("recovery_only"))
+        let exchangeDeniedREST = exchangeRuntime.handle(ConnectorRequest(
+            protocolVersion: 1, id: "exchange-rest", operation: .rest,
+            payload: ["method": .string("GET"), "path": .string("/v1/account")]
+        ))
+        precondition(exchangeDeniedREST.error?.code == "recovery_only")
+        let exchangeDeniedMCP = exchangeRuntime.handle(ConnectorRequest(
+            protocolVersion: 1, id: "exchange-mcp", operation: .mcp,
+            payload: ["toolName": .string("search"), "arguments": .object([:])]
+        ))
+        precondition(exchangeDeniedMCP.error?.code == "recovery_only")
+        let disconnectCountBeforeExchangeCleanup = server.disconnectCount
+        precondition(exchangeRuntime.handle(disconnectRequest("exchange-cleanup")).result == .object([
+            "status": .string("disconnected")
+        ]))
+        precondition(server.disconnectCount == disconnectCountBeforeExchangeCleanup + 1)
+        precondition(exchangeStore.record == nil && exchangeJournal.recoveryPhase == .none)
+
         let disconnectWhileActivationBlocked = "disconnectWhileActivationBlocked"
         server.blockActivation = true
         let blockedStore = FixtureCredentialStore()
@@ -576,11 +665,12 @@ struct AuthorizationFixture {
         precondition(blockedStore.record == nil && blockedJournal.recoveryPhase == .none)
 
         precondition([
-            keychainWriteBeforeActivation, activationOmittedAfterKeychainFailure, activationTimeout,
+            keychainWriteBeforeActivation, activationOmittedAfterKeychainFailure,
+            repeatedExpiredPoll, activationTimeout, repeatedAmbiguousFailurePoll,
             activationRequestedJournalFailure, accountLabelFailure,
             activeKeychainWriteFailure, labelUpdateKeychainFailure,
             disconnectBeforeCallback, callbackBeforeDisconnectBeforePoll,
-            disconnectWhileActivationBlocked,
+            disconnectWhileExchangeBlocked, disconnectWhileActivationBlocked,
         ].allSatisfy { !$0.isEmpty })
         print("Authorization fixture passed")
     }

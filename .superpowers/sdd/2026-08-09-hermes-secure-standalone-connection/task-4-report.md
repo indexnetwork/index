@@ -581,3 +581,130 @@ No native concurrency/fault PASS is claimed. The configured macOS CI job remains
 - Swift compiler and Apple frameworks are absent locally, so the substantial native refactor and deterministic concurrency fixtures require macOS CI evidence before acceptance.
 - The existing guarded PostgreSQL residual for the Task 4 self-disconnect transaction is unchanged; no server/database code changed in this round.
 - Independent reviewer gate remains required.
+
+---
+
+## Fix round 3/5 — exchange fencing and stable authorization failure polling
+
+### Status
+
+Resolved both remaining Important findings without changing the connector protocol or widening Task 4 scope.
+
+### Changes
+
+- Added a deterministic native exchange-in-flight ordering to `AuthorizationFixture` using explicit `exchangeArrived` and `releaseExchange` semaphores. The callback is accepted before `authorize.poll`; the fixture server constructs the issued pending credential and blocks the exchange response; a concurrent disconnect invalidates the attempt and advances/persists the operation epoch; only then is the exchange released.
+- The stale exchange result exercises the production `retainStaleIssuedCredential` branch. The fixture proves the issued credential is retained as pending `activation_requested` recovery with no authorization-attempt owner, activation is never called, status is `recovery_only`, REST and MCP both return `recovery_only`, and a subsequent exact self-disconnect revokes and deletes it before journal cleanup converges.
+- `authorize.poll` now returns `lastAuthorizationFailure` before attempting to consume another callback. Repeated polls for the same failed attempt therefore return the identical sanitized `failed` result instead of regressing to `pending`.
+- Authorization failure state is no longer cleared when disconnect merely begins. A deliberately failed disconnect persistence boundary retains the same poll failure. Failure state clears only after confirmed no-record cleanup, confirmed revocation/no-key cleanup, successful authorization completion, or initialization of a newly admitted authorization attempt.
+- Added repeated-poll assertions for an expired exchange grant and an ambiguous activation/network failure, including failed-cleanup retention and confirmed-cleanup clearing.
+
+### RED evidence
+
+After adding the round-3 fixture contract tokens but before implementing the fixture/runtime changes:
+
+```bash
+bun test apps/mac/IndexConnector/connector-contract.spec.mjs
+```
+
+```text
+11 pass
+1 fail
+149 expect() calls
+Ran 12 tests across 1 file.
+```
+
+The failing source contract showed that the deterministic blocked-exchange and repeated-failure-poll evidence was absent.
+
+### GREEN evidence
+
+Provider-free/source connector contracts:
+
+```bash
+bun test apps/mac/IndexConnector/connector-contract.spec.mjs
+```
+
+```text
+12 pass
+0 fail
+155 expect() calls
+Ran 12 tests across 1 file.
+```
+
+Focused authorization/audience API contracts:
+
+```bash
+cd services/api
+bun test src/controllers/tests/hermes-authorization.controller.spec.ts \
+  src/guards/tests/hermes-agent-audience.spec.ts
+```
+
+```text
+39 pass
+0 fail
+245 expect() calls
+Ran 39 tests across 2 files.
+```
+
+API/protocol build and typecheck:
+
+```bash
+cd services/api
+bun run build
+```
+
+```text
+$ bun run --cwd ../../packages/protocol build && tsc
+$ rm -rf dist && tsc
+```
+
+Exit status `0`.
+
+Shell/static checks:
+
+```bash
+bash -n apps/mac/IndexConnector/build.sh
+git diff --check
+```
+
+Both exited `0` with no output.
+
+Native fixture attempts:
+
+```bash
+cd apps/mac/IndexConnector
+./build.sh --fixture AuthorizationFixture
+./build.sh --fixture TransportFixture
+```
+
+Both stopped before compilation on this Linux host:
+
+```text
+./build.sh: line 60: swiftc: command not found
+```
+
+No native fixture PASS is claimed. macOS CI remains the required compile and execution gate for the semaphore-driven ordering and Apple-framework code.
+
+### Files changed in round 3
+
+- `apps/mac/IndexConnector/Sources/ConnectorRuntime.swift`
+- `apps/mac/IndexConnector/Tests/AuthorizationFixture.swift`
+- `apps/mac/IndexConnector/connector-contract.spec.mjs`
+- `.superpowers/sdd/2026-08-09-hermes-secure-standalone-connection/task-4-report.md`
+
+### Round-3 self-review
+
+- The exchange race uses server-side arrival/release barriers and a poll-completion barrier; no sleeps or timing-only ordering were added.
+- Disconnect completes epoch invalidation while exchange is blocked and before the server response is released.
+- The stale exchange branch stores only the issued pending credential in recovery, does not activate, and does not make it available to REST/MCP.
+- Self-disconnect receipt count, local deletion, and journal convergence are asserted.
+- Both expired and ambiguous failures compare the complete repeated poll result with the first sanitized result.
+- A failed disconnect journal write does not clear the ambiguous failure; a subsequent confirmed cleanup does.
+- Failure clearing remains at new-attempt admission, successful authorization completion, and confirmed disconnect cleanup only.
+- No URL, request ID, state, redirect URI, code, verifier, credential, or endpoint contract changed.
+- No blocker found in the round-3 source diff by self-review.
+
+### Round-3 residual risks
+
+- `swiftc` and Apple frameworks remain unavailable locally, so macOS CI must compile and run the native fixture before independent acceptance.
+- The existing guarded PostgreSQL residual for the Task 4 self-disconnect transaction is unchanged; no server/database code changed in this round.
+- Independent reviewer gate remains required.

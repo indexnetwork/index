@@ -219,6 +219,8 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
   expect(runtime).toContain('operationEpoch');
   expect(runtime).toContain('compareAndSet');
   expect(runtime).toContain('staleAuthorization');
+  expect(runtime).toContain('if let failure {');
+  expect(runtime).toContain('clearAuthorizationFailure()');
 });
 
 test('native fixtures cover callback replay, keychain ordering, transport bounds, and recovery mode', () => {
@@ -238,7 +240,9 @@ test('native fixtures cover callback replay, keychain ordering, transport bounds
     'serverReceiptJournalFailure', 'probeConfirmedJournalFailure',
     'activationRequestedJournalFailure', 'labelUpdateKeychainFailure',
     'disconnectBeforeCallback', 'callbackBeforeDisconnectBeforePoll',
-    'disconnectWhileActivationBlocked',
+    'disconnectWhileActivationBlocked', 'disconnectWhileExchangeBlocked',
+    'exchangeArrived', 'releaseExchange', 'repeatedExpiredPoll',
+    'repeatedAmbiguousFailurePoll',
   ]) {
     expect(`${authorization}\n${transport}`).toContain(token);
   }

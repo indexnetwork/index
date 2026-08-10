@@ -195,10 +195,10 @@ final class ConnectorRuntime {
         let attempt = currentAttempt
         let failure = lastAuthorizationFailure
         stateLock.unlock()
+        if let failure {
+            return failedAuthorizationResult(code: failure.code, message: failure.message)
+        }
         guard let attempt else {
-            if let failure {
-                return failedAuthorizationResult(code: failure.code, message: failure.message)
-            }
             if let record = try? credentialStore.read(), record.activationState == "active",
                record.recoveryPhase == .none {
                 var result = statusObject(record: record, recoveryOnly: recoveryRequired(record: record))
@@ -447,7 +447,6 @@ final class ConnectorRuntime {
         currentAttempt = nil
         operationEpoch &+= 1
         epoch = operationEpoch
-        lastAuthorizationFailure = nil
         let credentialNetworkInFlight = !inFlightCredentialAttempts.isEmpty
         stateLock.unlock()
         processRecovery.failClosed()
@@ -476,6 +475,7 @@ final class ConnectorRuntime {
             }
             if invalidated.recoveryPhase == .none {
                 processRecovery.clear()
+                clearAuthorizationFailure()
                 return disconnectedResult
             }
             return recoveryOnlyResult
@@ -596,7 +596,14 @@ final class ConnectorRuntime {
             return recoveryOnlyResult
         }
         processRecovery.clear()
+        clearAuthorizationFailure()
         return disconnectedResult
+    }
+
+    private func clearAuthorizationFailure() {
+        stateLock.lock()
+        lastAuthorizationFailure = nil
+        stateLock.unlock()
     }
 
     private func disconnectOwned(_ epoch: UInt64) -> Bool {
