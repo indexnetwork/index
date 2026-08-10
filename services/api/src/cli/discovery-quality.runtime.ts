@@ -3,7 +3,7 @@ import path from 'node:path';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-import { HistoricalQualitySpentRunError, classifyAbParentFailure, type AbRunStage } from './discovery.contract';
+import { HistoricalQualityLeaseReleaseError, HistoricalQualitySpentRunError, classifyAbParentFailure, type AbRunStage } from './discovery.contract';
 import { assertAbConfirmation } from './discovery.gate';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
@@ -914,6 +914,9 @@ export async function runHistoricalQualityRuntime(
   let artifactModel: string | undefined;
   let priorSideStarted = false;
   let operationLease: Pick<HistoricalQualityOperationLease, 'identifier' | 'release'> | undefined;
+  let primaryErrorForLeaseRelease: unknown;
+  let completedResult: HistoricalQualityParentResult | undefined;
+  let leaseReleaseFailed = false;
   const outputs: HistoricalQualityChildOutput[] = [];
   try {
     // Parallel mode spends once per candidate. Refuse it before even runtime
@@ -1016,14 +1019,7 @@ export async function runHistoricalQualityRuntime(
       throw new HistoricalQualitySlotOperationalError('artifact-write-failure', { cause: error });
     }
     const exitCode = aggregation.artifact.completeness.complete ? 0 as const : 3 as const;
-    deps.log?.(`Historical quality artifact written: ${reportPath}`);
-    if (aggregation.qualitySummary === null) {
-      deps.log?.('no quality verdict');
-    } else {
-      deps.log?.(`Historical quality summary: ${JSON.stringify(aggregation.qualitySummary)}`);
-    }
-    process.exitCode = exitCode;
-    return {
+    completedResult = {
       runId,
       configurationFingerprint: plan.configurationFingerprint,
       outputs,
@@ -1055,7 +1051,7 @@ export async function runHistoricalQualityRuntime(
           artifactFailure = { failureClass: 'artifact-writer-unavailable' };
         }
       }
-      throw new HistoricalQualitySpentRunError(
+      primaryErrorForLeaseRelease = new HistoricalQualitySpentRunError(
         stage,
         primaryFailure.failureClass,
         artifactFailure?.failureClass,
@@ -1066,8 +1062,9 @@ export async function runHistoricalQualityRuntime(
           ...(diagnosticReportPath === undefined ? {} : { diagnosticReportPath }),
         },
       );
+    } else {
+      primaryErrorForLeaseRelease = classifyAbParentFailure(stage, error, { shape: 'single' });
     }
-    throw classifyAbParentFailure(stage, error, { shape: 'single' });
   } finally {
     // Child files are removed only after aggregation/report handling has either
     // succeeded or been classified. Cleanup never replaces the primary result.
@@ -1079,8 +1076,33 @@ export async function runHistoricalQualityRuntime(
     }
     // Release only through the random token-bound lease handle, and only after
     // success/error artifact handling and temporary child cleanup have ended.
-    if (operationLease) await operationLease.release();
+    // A false/throw is never success and never masks an existing primary
+    // classification with raw filesystem details.
+    if (operationLease) {
+      try {
+        leaseReleaseFailed = !await operationLease.release();
+      } catch {
+        leaseReleaseFailed = true;
+      }
+    }
   }
+
+  if (leaseReleaseFailed) {
+    throw new HistoricalQualityLeaseReleaseError({
+      ...(primaryErrorForLeaseRelease === undefined ? {} : { primaryError: primaryErrorForLeaseRelease }),
+      ...(reportPath === undefined ? {} : { artifactPath: reportPath }),
+    });
+  }
+  if (primaryErrorForLeaseRelease !== undefined) throw primaryErrorForLeaseRelease;
+  if (completedResult === undefined) throw new Error('Historical quality runtime ended without a result');
+  process.exitCode = completedResult.exitCode;
+  deps.log?.(`Historical quality artifact written: ${completedResult.reportPath}`);
+  if (completedResult.qualitySummary === null) {
+    deps.log?.('no quality verdict');
+  } else {
+    deps.log?.(`Historical quality summary: ${JSON.stringify(completedResult.qualitySummary)}`);
+  }
+  return completedResult;
 }
 
 /** Name retained for the approved Task 5 interface and bootstrap. */

@@ -8,12 +8,12 @@ const mode = process.env.HISTORICAL_QUALITY_TEST_MODE;
 const readyPath = process.env.HISTORICAL_QUALITY_TEST_READY_PATH;
 const releasePath = process.env.HISTORICAL_QUALITY_TEST_RELEASE_PATH;
 
-if (!rootDirectory || !manifest || !readyPath || !releasePath || !['hold', 'once', 'crash'].includes(mode ?? '')) {
+if (!manifest || !readyPath || !releasePath || !['hold', 'once', 'crash'].includes(mode ?? '')) {
   process.exit(64);
 }
 
 try {
-  const lease = await acquireHistoricalQualityOperationLease(manifest, { rootDirectory });
+  const lease = await acquireHistoricalQualityOperationLease(manifest, rootDirectory === undefined ? {} : { rootDirectory });
   await writeFile(readyPath, lease.identifier);
   if (mode === 'crash') process.exit(86);
   if (mode === 'once') {

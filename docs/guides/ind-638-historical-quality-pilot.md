@@ -18,21 +18,26 @@ Historical quality is intentionally absent from the Eval Ops launch registry. Ev
 
 ## Historical-quality operation lease
 
-The stable host-local lease directory is `~/.indexnetwork/historical-quality-leases/`. The filename is an opaque SHA-256 identifier derived only from the strict manifest-v2 `projectId` and side-`a` `branchId`: `<identifier>.lease`. The file is created atomically with mode `0600`, contains identifier/ownership metadata only, and never contains a manifest, URL, credential, writable target, or provider configuration. A normal process removes only the lease carrying its own random ownership token, in `finally`, after report/diagnostic handling and child-file cleanup.
+The stable host-local lease root is the host's `os.tmpdir()` (normally `/tmp`), which the runtime accepts only when `lstat` proves it is a real, non-symlink sticky mode-`01777` directory. This produces the same path for every OS user on the host; `$HOME` is never part of the identity. The stable lock path is an opaque SHA-256 directory derived only from the strict manifest-v2 `projectId` and side-`a` `branchId`: `<tmpdir>/<identifier>.lease`. It is created with atomic `mkdir` and forced to mode `0700`. Its `owner.json` token is a regular no-follow mode-`0600` file containing identifier/ownership metadata only, never a manifest, URL, credential, writable target, or provider configuration.
 
-A killed or crashed process deliberately leaves its lease in place. There is no timeout, PID-based expiry, stale detection, takeover, or automatic deletion. Every later invocation must continue to refuse before control-plane, restore, or spend until an operator reconciles it.
+A normal release validates the owned token, atomically renames the still-held stable directory to its unique owner-token-derived `<identifier>.lease.tombstone-<digest>` path, and only then deletes the token and tombstone. It never read-then-unlinks the stable pathname. A killed/crashed process can therefore leave either the stable directory or a release tombstone. There is no timeout, PID-based expiry, stale detection, takeover, or automatic deletion; either form keeps later invocations fail-closed.
 
 For identifier-only inspection, with the strict v2 manifest loaded without printing it:
 
 ```bash
 cd services/api
 LEASE_PATH="$(bun -e 'import { historicalQualityOperationLeasePath } from "./src/cli/discovery-quality-operation-lease.ts"; process.stdout.write(historicalQualityOperationLeasePath(process.env.DISCOVERY_TARGETS))')"
+LEASE_ROOT="$(dirname "$LEASE_PATH")"
 LEASE_IDENTIFIER="$(basename "$LEASE_PATH" .lease)"
 printf 'historical-quality lease identifier: %s\n' "$LEASE_IDENTIFIER"
-stat "$LEASE_PATH"
+stat "$LEASE_ROOT"
+if test -e "$LEASE_PATH"; then stat "$LEASE_PATH" "$LEASE_PATH/owner.json"; fi
+find "$LEASE_ROOT" -maxdepth 1 -name "${LEASE_IDENTIFIER}.lease.tombstone-*" -print
 ```
 
-Do not `cat` the lease or print any environment value. The path and identifier do not establish that an operation is safe to resume. If a lease remains, stop and manually reconcile the originating host/process, surviving child process, Neon side-`a` operation state, and any report/diagnostic. Explicit manual removal is permitted only with separate recorded authorization **after proving that no historical-quality parent, child, restore, or other side-`a` operation is still running on any host**. Then remove exactly the inspected path with `rm -- "$LEASE_PATH"`; never use a wildcard, cleanup job, age rule, or retry wrapper. Removal does not authorize a rerun.
+Do not `cat` `owner.json` or print any environment value. The directory, tombstone, path, and identifier do not establish that an operation is safe to resume. If either form remains, stop and manually reconcile the originating host/process, surviving child process, Neon side-`a` operation state, and any report/diagnostic. **A clear lease root on this host says nothing about another host: remote/parallel-host execution remains prohibited, and reconciliation must prove no operation is running on any host.**
+
+Explicit manual removal is permitted only with separate recorded authorization after that proof. Remove only an exact path copied from the inspection: `rm -r -- "$LEASE_PATH"` for the stable directory, or `rm -r -- '<exact-inspected-tombstone-path>'` for one tombstone. Never place a wildcard in a removal command and never use a cleanup job, age rule, or retry wrapper. Removal does not authorize a rerun.
 
 ## Secret inputs
 

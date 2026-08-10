@@ -608,6 +608,59 @@ describe('historical quality runtime acceptance order', () => {
     expect(custom.written[0]!.path).toBe('/tmp/custom-quality.json');
   });
 
+  it.each(['false', 'throw'] as const)('classifies an otherwise-successful lease release %s as sanitized operational exit 4', async (mode) => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps, calls, logs } = runtimeDeps();
+    deps.acquireOperationLease = async () => ({
+      identifier: 'quality-lease-test',
+      release: async () => {
+        calls.push('lease-release');
+        if (mode === 'throw') throw new Error('postgresql://owner:release-secret@example.invalid/raw');
+        return false;
+      },
+    });
+    const thrown = await runHistoricalQualityRuntime(request, deps).catch((error) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(4);
+    expect(report.message).toContain('lease-release-failure');
+    expect(report.message).not.toContain('release-secret');
+    expect(calls.at(-1)).toBe('lease-release');
+    expect(logs).toEqual([]);
+  });
+
+  it('preserves the primary spent-run classification and reports release failure as sanitized secondary cleanup', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps, calls } = runtimeDeps();
+    deps.restoreSelectedChild = async () => { calls.push('restore'); throw new Error('primary-secret'); };
+    deps.acquireOperationLease = async () => ({
+      identifier: 'quality-lease-test',
+      release: async () => { calls.push('lease-release'); throw new Error('secondary-secret'); },
+    });
+    const thrown = await runHistoricalQualityRuntime(request, deps).catch((error) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(4);
+    expect(report.message).toContain('restore-failure');
+    expect(report.message).toContain('Secondary operational failure: lease-release-failure');
+    expect(report.message).not.toMatch(/primary-secret|secondary-secret/);
+    expect(calls.at(-1)).toBe('lease-release');
+  });
+
+  it('preserves a preflight primary failure when release also fails', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps, calls } = runtimeDeps();
+    const primary = new Error('child preflight failed');
+    deps.preflightChildRuntime = async () => { calls.push('child-preflight'); throw primary; };
+    deps.acquireOperationLease = async () => ({
+      identifier: 'quality-lease-test',
+      release: async () => { calls.push('lease-release'); return false; },
+    });
+    const thrown = await runHistoricalQualityRuntime(request, deps).catch((error) => error) as { primaryError?: unknown };
+    expect(thrown.primaryError).toBe(primary);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(2);
+    expect(report.message).toContain('Secondary operational failure: lease-release-failure');
+  });
+
   it.each(['success', 'preflight', 'attest', 'verify', 'restore', 'spawn', 'artifact'] as const)(
     'releases its operation lease after the complete %s path is handled',
     async (outcome) => {

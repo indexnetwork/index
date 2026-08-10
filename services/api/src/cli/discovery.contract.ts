@@ -274,6 +274,28 @@ export function classifyAbParentFailure(stage: AbRunStage | null, error: unknown
   return stage === null ? error : new AbSpentRunError(stage, { cause: error, ...detail });
 }
 
+/**
+ * Sanitized release failure wrapper. When a primary failure already exists its
+ * classification remains authoritative; this wrapper only appends the fixed
+ * secondary lease class. Without a primary, release failure is operational
+ * exit 4 even if report generation otherwise completed.
+ */
+export class HistoricalQualityLeaseReleaseError extends Error {
+  readonly primaryError?: unknown;
+  readonly artifactPath?: string;
+
+  constructor(options: { primaryError?: unknown; artifactPath?: string } = {}) {
+    super(
+      'Historical quality operation lease release failed. Operational failure: lease-release-failure. '
+      + 'No successful result may be reported; retain and manually reconcile the fail-closed lease directory or tombstone.',
+      options.primaryError === undefined ? undefined : { cause: options.primaryError },
+    );
+    this.name = 'HistoricalQualityLeaseReleaseError';
+    if (options.primaryError !== undefined) this.primaryError = options.primaryError;
+    if (options.artifactPath !== undefined) this.artifactPath = options.artifactPath;
+  }
+}
+
 export interface AbFailureReport { exitCode: number; message: string }
 
 /**
@@ -300,6 +322,17 @@ export type AbInvocationRole = 'parent' | 'child';
  * which is the process that knows.
  */
 export function describeAbFailure(error: unknown, role: AbInvocationRole = 'parent'): AbFailureReport {
+  if (error instanceof HistoricalQualityLeaseReleaseError) {
+    if (error.primaryError !== undefined) {
+      const primary = describeAbFailure(error.primaryError, role);
+      return {
+        exitCode: primary.exitCode,
+        message: `${primary.message} Secondary operational failure: lease-release-failure. `
+          + 'Retain and manually reconcile the fail-closed lease directory or tombstone.',
+      };
+    }
+    return { exitCode: AB_EXIT_SPENT_WITHOUT_ARTIFACT, message: error.message };
+  }
   if (error instanceof AbSpentRunError) {
     return { exitCode: AB_EXIT_SPENT_WITHOUT_ARTIFACT, message: error.message };
   }

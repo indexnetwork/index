@@ -1,18 +1,21 @@
+import { constants } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
-import { chmod, open, mkdir, readFile, unlink } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { chmod, lstat, mkdir, open, readdir, rename, rmdir, unlink, type FileHandle } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { parseHistoricalQualityManifest } from './discovery.neon';
 
-export const HISTORICAL_QUALITY_OPERATION_LEASE_ROOT = path.join(
-  homedir(),
-  '.indexnetwork',
-  'historical-quality-leases',
-);
+export const HISTORICAL_QUALITY_OPERATION_LEASE_ROOT = tmpdir();
+
+const LEASE_TOKEN_NAME = 'owner.json';
+const ROOT_MODE = 0o1777;
+const LOCK_MODE = 0o700;
+const TOKEN_MODE = 0o600;
 
 export interface HistoricalQualityOperationLease {
   readonly identifier: string;
+  /** Stable lock directory, not the token file within it. */
   readonly path: string;
   readonly ownerToken: string;
   release(): Promise<boolean>;
@@ -25,6 +28,8 @@ interface HistoricalQualityOperationLeaseOptions {
 interface HistoricalQualityOperationLeaseReleaseInput {
   path: string;
   ownerToken: string;
+  /** Narrow race injection used by the filesystem acceptance tests. */
+  beforeRename?: (input: { tombstonePath: string }) => Promise<void>;
 }
 
 function leaseIdentifier(rawManifest: string | undefined): string {
@@ -46,18 +51,41 @@ export function historicalQualityOperationLeasePath(
   return path.join(options.rootDirectory ?? HISTORICAL_QUALITY_OPERATION_LEASE_ROOT, `${identifier}.lease`);
 }
 
-function isAlreadyExists(error: unknown): boolean {
-  return error !== null && typeof error === 'object' && Reflect.get(error, 'code') === 'EEXIST';
+function errorCode(error: unknown): unknown {
+  return error !== null && typeof error === 'object' ? Reflect.get(error, 'code') : undefined;
 }
 
-function exactLeaseOwner(raw: string, ownerToken: string): boolean {
+function isAlreadyExists(error: unknown): boolean {
+  return errorCode(error) === 'EEXIST';
+}
+
+function sameIdentity(left: { dev: number; ino: number }, right: { dev: number; ino: number }): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function exactMode(mode: number, expected: number): boolean {
+  return (mode & 0o7777) === expected;
+}
+
+async function validateLeaseRoot(rootDirectory: string): Promise<void> {
+  let root;
+  try {
+    root = await lstat(rootDirectory);
+  } catch (error) {
+    throw new Error('Historical quality operation lease root is unavailable', { cause: error });
+  }
+  if (!root.isDirectory() || root.isSymbolicLink() || !exactMode(root.mode, ROOT_MODE)) {
+    throw new Error('Historical quality operation lease root must be a non-symlink sticky mode-01777 directory');
+  }
+}
+
+function exactLeaseOwner(raw: string, ownerToken: string, identifier: string): boolean {
   try {
     const record = JSON.parse(raw) as Record<string, unknown>;
     const keys = Object.keys(record).sort();
     return keys.join(',') === 'identifier,ownerToken,pid,version'
       && record.version === 1
-      && typeof record.identifier === 'string'
-      && /^[a-f0-9]{64}$/.test(record.identifier)
+      && record.identifier === identifier
       && record.ownerToken === ownerToken
       && typeof record.pid === 'number'
       && Number.isSafeInteger(record.pid)
@@ -67,34 +95,131 @@ function exactLeaseOwner(raw: string, ownerToken: string): boolean {
   }
 }
 
+function identifierFromLeasePath(leasePath: string): string | undefined {
+  const match = /^([a-f0-9]{64})\.lease$/.exec(path.basename(leasePath));
+  return match?.[1];
+}
+
+function tombstonePathFor(leasePath: string, ownerToken: string): string {
+  const tokenDigest = createHash('sha256').update(ownerToken).digest('hex');
+  return path.join(path.dirname(leasePath), `${path.basename(leasePath)}.tombstone-${tokenDigest}`);
+}
+
+async function hasIdentityTombstone(rootDirectory: string, leasePath: string): Promise<boolean> {
+  const prefix = `${path.basename(leasePath)}.tombstone-`;
+  return (await readdir(rootDirectory)).some((entry) => entry.startsWith(prefix));
+}
+
+async function closeQuietly(handle: FileHandle | undefined): Promise<void> {
+  if (handle) await handle.close().catch(() => undefined);
+}
+
 /**
- * Removes a lease only when its complete mode-0600 record still contains the
- * caller's random ownership token. Missing, malformed, or foreign records stay
- * fail-closed.
+ * Validates the stable directory and its regular no-follow token, atomically
+ * moves that exact directory out of the acquisition pathname, and only then
+ * deletes token/tombstone contents. Wrong, malformed, replaced, or foreign
+ * ownership state remains fail-closed.
  */
 export async function releaseHistoricalQualityOperationLease(
   input: HistoricalQualityOperationLeaseReleaseInput,
 ): Promise<boolean> {
-  let raw: string;
+  const identifier = identifierFromLeasePath(input.path);
+  if (!identifier || !/^[a-f0-9]{64}$/.test(input.ownerToken)) return false;
+  await validateLeaseRoot(path.dirname(input.path));
+
+  let stablePathStat;
   try {
-    raw = await readFile(input.path, 'utf8');
+    stablePathStat = await lstat(input.path);
   } catch (error) {
-    if (error !== null && typeof error === 'object' && Reflect.get(error, 'code') === 'ENOENT') return false;
+    if (errorCode(error) === 'ENOENT') return false;
     throw error;
   }
-  if (!exactLeaseOwner(raw, input.ownerToken)) return false;
+  if (!stablePathStat.isDirectory() || stablePathStat.isSymbolicLink() || !exactMode(stablePathStat.mode, LOCK_MODE)) return false;
+
+  let directoryHandle: FileHandle | undefined;
+  let tokenHandle: FileHandle | undefined;
+  let tokenPathStat;
   try {
-    await unlink(input.path);
+    directoryHandle = await open(input.path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    const directoryHandleStat = await directoryHandle.stat();
+    if (!directoryHandleStat.isDirectory() || !exactMode(directoryHandleStat.mode, LOCK_MODE)
+      || !sameIdentity(stablePathStat, directoryHandleStat)) return false;
+
+    const tokenPath = path.join(input.path, LEASE_TOKEN_NAME);
+    try {
+      tokenPathStat = await lstat(tokenPath);
+      if (!tokenPathStat.isFile() || tokenPathStat.isSymbolicLink() || !exactMode(tokenPathStat.mode, TOKEN_MODE)) return false;
+      tokenHandle = await open(tokenPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ELOOP') return false;
+      throw error;
+    }
+    const tokenHandleStat = await tokenHandle.stat();
+    if (!tokenHandleStat.isFile() || !exactMode(tokenHandleStat.mode, TOKEN_MODE)
+      || !sameIdentity(tokenPathStat, tokenHandleStat)) return false;
+    const raw = await tokenHandle.readFile('utf8');
+    if (!exactLeaseOwner(raw, input.ownerToken, identifier)) return false;
+
+    const tombstonePath = tombstonePathFor(input.path, input.ownerToken);
+    try {
+      await lstat(tombstonePath);
+      return false;
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error;
+    }
+    await input.beforeRename?.({ tombstonePath });
+
+    // Revalidate both source and unique destination immediately before rename.
+    // Sticky-root permissions prevent a normal different-user contender from
+    // replacing the source between this check and the atomic rename.
+    let stableBeforeRename;
+    try {
+      stableBeforeRename = await lstat(input.path);
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') return false;
+      throw error;
+    }
+    if (!stableBeforeRename.isDirectory() || !exactMode(stableBeforeRename.mode, LOCK_MODE)
+      || !sameIdentity(stablePathStat, stableBeforeRename)) return false;
+    try {
+      await lstat(tombstonePath);
+      return false;
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error;
+    }
+
+    try {
+      await rename(input.path, tombstonePath);
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT' || errorCode(error) === 'EEXIST' || errorCode(error) === 'ENOTEMPTY') return false;
+      throw error;
+    }
+    const tombstoneStat = await lstat(tombstonePath);
+    if (!tombstoneStat.isDirectory() || !exactMode(tombstoneStat.mode, LOCK_MODE)
+      || !sameIdentity(stablePathStat, tombstoneStat)) return false;
+
+    const movedTokenPath = path.join(tombstonePath, LEASE_TOKEN_NAME);
+    const movedTokenStat = await lstat(movedTokenPath);
+    if (!movedTokenStat.isFile() || !exactMode(movedTokenStat.mode, TOKEN_MODE)
+      || !sameIdentity(tokenPathStat, movedTokenStat)) return false;
+
+    await closeQuietly(tokenHandle);
+    tokenHandle = undefined;
+    await closeQuietly(directoryHandle);
+    directoryHandle = undefined;
+    await unlink(movedTokenPath);
+    await rmdir(tombstonePath);
     return true;
-  } catch (error) {
-    if (error !== null && typeof error === 'object' && Reflect.get(error, 'code') === 'ENOENT') return false;
-    throw error;
+  } finally {
+    await closeQuietly(tokenHandle);
+    await closeQuietly(directoryHandle);
   }
 }
 
 /**
- * Acquires the single-host historical-quality lease with an atomic exclusive
- * create. Existing and crash-left files are never expired or removed.
+ * Acquires the host-wide lease by atomically creating its identity-hash lock
+ * directory. Existing locks and crash-left tombstones are never expired,
+ * repaired, replaced, or automatically removed.
  */
 export async function acquireHistoricalQualityOperationLease(
   rawManifest: string | undefined,
@@ -104,25 +229,48 @@ export async function acquireHistoricalQualityOperationLease(
   const rootDirectory = options.rootDirectory ?? HISTORICAL_QUALITY_OPERATION_LEASE_ROOT;
   const leasePath = path.join(rootDirectory, `${identifier}.lease`);
   const ownerToken = randomBytes(32).toString('hex');
-  await mkdir(rootDirectory, { recursive: true, mode: 0o700 });
-  await chmod(rootDirectory, 0o700);
+  await validateLeaseRoot(rootDirectory);
 
-  let handle;
+  if (await hasIdentityTombstone(rootDirectory, leasePath)) {
+    throw new Error(`Historical quality operation lease is already held (${identifier})`);
+  }
   try {
-    handle = await open(leasePath, 'wx', 0o600);
+    await mkdir(leasePath, { mode: LOCK_MODE });
   } catch (error) {
     if (isAlreadyExists(error)) {
       throw new Error(`Historical quality operation lease is already held (${identifier})`, { cause: error });
     }
     throw error;
   }
+  await chmod(leasePath, LOCK_MODE);
+  const lockStat = await lstat(leasePath);
+  if (!lockStat.isDirectory() || lockStat.isSymbolicLink() || !exactMode(lockStat.mode, LOCK_MODE)) {
+    throw new Error(`Historical quality operation lease lock is malformed (${identifier})`);
+  }
+  // This second check closes the rename-to-tombstone/acquire race: if the old
+  // owner moved its lock before our mkdir, the tombstone is now visible and the
+  // newly created stable directory is deliberately left fail-closed.
+  if (await hasIdentityTombstone(rootDirectory, leasePath)) {
+    throw new Error(`Historical quality operation lease is already held (${identifier})`);
+  }
 
+  const tokenPath = path.join(leasePath, LEASE_TOKEN_NAME);
+  let handle: FileHandle | undefined;
   try {
-    await handle.chmod(0o600);
+    handle = await open(
+      tokenPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      TOKEN_MODE,
+    );
+    await handle.chmod(TOKEN_MODE);
     await handle.writeFile(`${JSON.stringify({ version: 1, identifier, ownerToken, pid: process.pid })}\n`, 'utf8');
     await handle.sync();
+    const tokenStat = await handle.stat();
+    if (!tokenStat.isFile() || !exactMode(tokenStat.mode, TOKEN_MODE)) {
+      throw new Error(`Historical quality operation lease token is malformed (${identifier})`);
+    }
   } finally {
-    await handle.close();
+    await closeQuietly(handle);
   }
 
   return Object.freeze({
