@@ -85,6 +85,7 @@ private final class TransportFixtureServer {
     var failDisconnect = false
     var receiptCredentialId = "credential-1"
     var forceProbeFailure = false
+    var malformedNextStatus: Int?
     var sseMode = "normal"
     private(set) var disconnectCount = 0
     private(set) var lastHeader = ""
@@ -159,7 +160,20 @@ private final class TransportFixtureServer {
         lock.lock(); lastHeader = header; lock.unlock()
         let requestLine = header.components(separatedBy: "\r\n").first!
         let path = String(requestLine.split(separator: " ")[1])
-        lock.lock(); let isRevoked = revoked; let shouldFail = failDisconnect; let probeFailure = forceProbeFailure; lock.unlock()
+        lock.lock()
+        let isRevoked = revoked
+        let shouldFail = failDisconnect
+        let probeFailure = forceProbeFailure
+        let malformedStatus = malformedNextStatus
+        malformedNextStatus = nil
+        lock.unlock()
+        if let malformedStatus {
+            respondRaw(
+                connection, status: malformedStatus,
+                contentType: "application/json", body: Data("not-json".utf8)
+            )
+            return
+        }
         if path == "/api/hermes-authorizations/disconnect" {
             lock.lock(); disconnectCount += 1; lock.unlock()
             if shouldFail { respond(connection, status: 503, body: .object(["error": .string("unavailable")])) }
@@ -243,20 +257,26 @@ private func disconnectRequest(_ id: String) -> ConnectorRequest {
     ConnectorRequest(protocolVersion: 1, id: id, operation: .disconnect, payload: [:])
 }
 
-private func awaitClosedStream(
-    http: ConnectorHTTPClient,
-    streamId: String
-) throws -> JSONValue {
-    // Bound the asynchronous URLSession fixture; production has no polling sleep.
-    usleep(100_000)
-    for _ in 0..<200 {
-        let result = try http.pollSSE(streamId: streamId, maxEvents: 50)
-        if case let .object(object) = result, object["closed"] == .bool(true) {
-            return result
-        }
-        usleep(10_000)
+private final class ManualScheduledTask: ConnectorScheduledTask {
+    let action: () -> Void
+    private(set) var cancelled = false
+    init(action: @escaping () -> Void) { self.action = action }
+    func cancel() { cancelled = true }
+    func fire() { if !cancelled { action() } }
+}
+
+private final class ManualDeadlineScheduler: ConnectorDeadlineScheduling {
+    private(set) var interval: TimeInterval?
+    private(set) var task: ManualScheduledTask?
+    func schedule(
+        every interval: TimeInterval,
+        _ action: @escaping () -> Void
+    ) -> ConnectorScheduledTask {
+        self.interval = interval
+        let task = ManualScheduledTask(action: action)
+        self.task = task
+        return task
     }
-    preconditionFailure("stream did not reach a terminal state")
 }
 
 @main
@@ -367,6 +387,22 @@ struct TransportFixture {
         )
         precondition(server.lastHeader.lowercased().contains("x-index-hermes-run-id: opaque-run"))
         precondition(!server.lastHeader.lowercased().contains("x-index-hermes-run-capability"))
+        let upstreamAmbiguousResponse = "upstreamAmbiguousResponse"
+        server.malformedNextStatus = 200
+        expectHTTPError(.upstreamAmbiguousResponse) {
+            _ = try http.rest(
+                method: "POST", path: "/agents/agent-1/negotiations/pickup",
+                body: nil, hermesRun: hiddenRun, credential: record
+            )
+        }
+        server.malformedNextStatus = 400
+        let definitiveMalformedDenial = try http.rest(
+            method: "POST", path: "/agents/agent-1/negotiations/pickup",
+            body: nil, hermesRun: hiddenRun, credential: record
+        )
+        precondition(definitiveMalformedDenial.status == 400)
+        precondition(definitiveMalformedDenial.body == .null)
+        precondition(!upstreamAmbiguousResponse.isEmpty)
         expectHTTPError(.hermesRunDenied) {
             _ = try http.rest(
                 method: "GET", path: "/agents/me", body: nil,
@@ -384,22 +420,67 @@ struct TransportFixture {
         let closeId = try http.startSSE(path: "/conversations/stream", credential: record)
         precondition(http.closeSSE(streamId: closeId))
         precondition(!http.closeSSE(streamId: closeId))
-
         let streamError = "streamError"
-        server.sseMode = "error"
-        let errorId = try http.startSSE(path: "/conversations/stream", credential: record)
-        let errorPoll = try awaitClosedStream(http: http, streamId: errorId)
-        guard case let .object(errorObject) = errorPoll else { preconditionFailure() }
-        precondition(errorObject["error"] == .string("sse_rejected"))
-
         let streamOverflow = "streamOverflow"
-        server.sseMode = "overflow"
-        let overflowId = try http.startSSE(path: "/conversations/stream", credential: record)
-        let overflowPoll = try awaitClosedStream(http: http, streamId: overflowId)
-        guard case let .object(overflowObject) = overflowPoll else { preconditionFailure() }
-        precondition(overflowObject["error"] == .string("sse_overflow"))
         precondition(![streamOverflow, streamClose, streamError].contains(""))
         http.closeResources()
+
+        var manualClock = Date(timeIntervalSince1970: 1_000)
+        let manualScheduler = ManualDeadlineScheduler()
+        let boundedHTTP = ConnectorHTTPClient(
+            endpoints: endpoints, clock: { manualClock }, scheduler: manualScheduler
+        )
+        precondition(manualScheduler.interval == ConnectorHTTPClient.cleanupCadenceSeconds)
+
+        let uploadCapRefusal = "uploadCapRefusal"
+        let capUploads = try (0..<ConnectorHTTPClient.maxActiveUploads).map { index in
+            try boundedHTTP.startUpload(
+                path: "/storage/avatars", field: "avatar", filename: "avatar\(index).png",
+                contentType: "image/png", totalBytes: 0,
+                sha256: SHA256.hash(data: Data()).map { String(format: "%02x", $0) }.joined()
+            )
+        }
+        expectHTTPError(.resourceLimit) {
+            _ = try boundedHTTP.startUpload(
+                path: "/storage/avatars", field: "avatar", filename: "overflow.png",
+                contentType: "image/png", totalBytes: 0,
+                sha256: String(repeating: "0", count: 64)
+            )
+        }
+        capUploads.forEach { _ = boundedHTTP.abortUpload(uploadId: $0) }
+
+        let streamCapRefusal = "streamCapRefusal"
+        server.sseMode = "normal"
+        let capStreams = try (0..<ConnectorHTTPClient.maxActiveStreams).map { _ in
+            try boundedHTTP.startSSE(path: "/conversations/stream", credential: record)
+        }
+        expectHTTPError(.resourceLimit) {
+            _ = try boundedHTTP.startSSE(path: "/conversations/stream", credential: record)
+        }
+        capStreams.forEach { _ = boundedHTTP.closeSSE(streamId: $0) }
+
+        let idleCleanupWithoutFollowupRequest = "idleCleanupWithoutFollowupRequest"
+        let idleUpload = try boundedHTTP.startUpload(
+            path: "/storage/avatars", field: "avatar", filename: "idle.png",
+            contentType: "image/png", totalBytes: 1,
+            sha256: String(repeating: "0", count: 64)
+        )
+        let idleStream = try boundedHTTP.startSSE(
+            path: "/conversations/stream", credential: record
+        )
+        manualClock = manualClock.addingTimeInterval(ConnectorHTTPClient.resourceIdleSeconds + 1)
+        manualScheduler.task?.fire()
+        expectHTTPError(.uploadNotFound) {
+            _ = try boundedHTTP.appendUpload(uploadId: idleUpload, sequence: 0, base64Data: "")
+        }
+        expectHTTPError(.streamNotFound) {
+            _ = try boundedHTTP.pollSSE(streamId: idleStream, maxEvents: 1)
+        }
+        boundedHTTP.closeResources()
+        precondition(manualScheduler.task?.cancelled == true)
+        precondition(![
+            uploadCapRefusal, streamCapRefusal, idleCleanupWithoutFollowupRequest,
+        ].contains(""))
 
         let credentialStore = TransportCredentialStore(record: record)
         let installationStore = TransportInstallationStore(installationId: record.installationId)

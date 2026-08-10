@@ -238,6 +238,26 @@ class ConnectorTransport:
         ):
             raise self._unverified()
 
+    @staticmethod
+    def _request_commit_uncertain(operation: str, payload: dict[str, Any]) -> bool:
+        return (
+            operation == "rest"
+            and payload.get("kind") == "json"
+            and payload.get("method") in {"POST", "PATCH", "DELETE"}
+        )
+
+    def _invalid_response_error(
+        self, operation: str, payload: dict[str, Any], *, commit_uncertain: bool
+    ) -> TransportError:
+        if commit_uncertain and self._request_commit_uncertain(operation, payload):
+            return TransportError(
+                "upstream_ambiguous_response",
+                "The upstream response was invalid after a possibly committed request.",
+            )
+        return TransportError(
+            "connector_invalid_response", "Index Connector returned an invalid response."
+        )
+
     def _request(self, operation: str, payload: dict[str, Any], *, ensure: bool = True) -> Any:
         with self._lock:
             process = self._ensure_process() if ensure else self._process
@@ -260,14 +280,23 @@ class ConnectorTransport:
             except Exception as exc:  # noqa: BLE001
                 self._stop_process()
                 raise TransportError("connector_unavailable", "Index Connector communication failed.") from exc
-            if not line or len(line.encode("utf-8")) > _MAX_LINE_BYTES:
+            if not line:
                 self._stop_process()
-                raise TransportError("connector_invalid_response", "Index Connector returned an invalid response.")
+                raise self._invalid_response_error(
+                    operation, payload, commit_uncertain=False
+                )
+            if len(line.encode("utf-8")) > _MAX_LINE_BYTES:
+                self._stop_process()
+                raise self._invalid_response_error(
+                    operation, payload, commit_uncertain=True
+                )
             try:
                 response = json.loads(line)
             except json.JSONDecodeError as exc:
                 self._stop_process()
-                raise TransportError("connector_invalid_response", "Index Connector returned an invalid response.") from exc
+                raise self._invalid_response_error(
+                    operation, payload, commit_uncertain=True
+                ) from exc
             if (
                 not isinstance(response, dict)
                 or set(response) != {"protocolVersion", "id", "success", "result", "error"}
@@ -276,7 +305,9 @@ class ConnectorTransport:
                 or not isinstance(response.get("success"), bool)
             ):
                 self._stop_process()
-                raise TransportError("connector_invalid_response", "Index Connector returned an invalid response.")
+                raise self._invalid_response_error(
+                    operation, payload, commit_uncertain=True
+                )
             if not response["success"]:
                 error = response.get("error")
                 code = error.get("code") if isinstance(error, dict) else "operation_failed"
@@ -349,7 +380,16 @@ class ConnectorTransport:
             payload["body"] = body
         if hermes_run is not None:
             payload["hermesRun"] = dict(hermes_run)
-        return self._rest_body(self._request("rest", payload))
+        result = self._request("rest", payload)
+        try:
+            return self._rest_body(result)
+        except TransportError as exc:
+            if exc.code == "connector_invalid_response" and self._request_commit_uncertain("rest", payload):
+                raise TransportError(
+                    "upstream_ambiguous_response",
+                    "The upstream response was invalid after a possibly committed request.",
+                ) from exc
+            raise
 
     def call_mcp(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         result = self._request("mcp", {"toolName": tool_name, "arguments": arguments})

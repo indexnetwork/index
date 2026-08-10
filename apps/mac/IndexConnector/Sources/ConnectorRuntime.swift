@@ -957,6 +957,15 @@ final class ConnectorRuntime {
                 return ConnectorError(code: "sse_overflow", message: "The stream buffer overflowed.")
             case .hermesRunDenied:
                 return ConnectorError(code: "hermes_run_denied", message: "Hermes run authority is invalid for this route.")
+            case .upstreamAmbiguousResponse:
+                return ConnectorError(
+                    code: "upstream_ambiguous_response",
+                    message: "The upstream response was ambiguous after dispatch."
+                )
+            case .resourceLimit:
+                return ConnectorError(
+                    code: "resource_limit", message: "The connector resource limit was reached."
+                )
             default:
                 break
             }

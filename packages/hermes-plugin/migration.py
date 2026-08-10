@@ -32,6 +32,11 @@ _OWNED_PROMPTS = {
 }
 _OWNED_SKILL = "index-network:index-negotiator"
 _OWNED_TOOLSET = "index-network"
+_IMMUTABLE_MARKERS = (
+    "index_app_installation_id",
+    "index_app_owner_id",
+    "index_app_setup_attempt_id",
+)
 
 
 class MigrationError(RuntimeError):
@@ -110,22 +115,65 @@ def _env_value(lines: list[str], key: str) -> str | None:
     return None
 
 
-def _is_attributable_job(job: Any, installation_id: str | None) -> bool:
-    if not isinstance(job, dict):
-        return False
-    marker = job.get("index_app_installation_id")
-    if isinstance(marker, str) and marker and (installation_id is None or marker == installation_id):
-        # Immutable Index provenance remains ownership even after field tampering.
-        return True
-    schedule = job.get("schedule_display", job.get("schedule"))
+def _schedule_value(job: dict[str, Any]) -> str | None:
+    schedule = job.get("schedule_display")
+    direct = job.get("schedule")
+    if isinstance(direct, str):
+        schedule = direct
+    elif isinstance(direct, dict):
+        schedule = direct.get("expr") if isinstance(direct.get("expr"), str) else direct.get("display")
+    return schedule.strip() if isinstance(schedule, str) else None
+
+
+def _is_exact_unmarked_legacy(job: Any) -> bool:
     return (
-        job.get("name") == _OWNED_NAME
-        and schedule == _OWNED_SCHEDULE
+        isinstance(job, dict)
+        and not any(marker in job for marker in _IMMUTABLE_MARKERS)
+        and job.get("name") == _OWNED_NAME
+        and _schedule_value(job) == _OWNED_SCHEDULE
         and job.get("prompt") in _OWNED_PROMPTS
         and job.get("enabled_toolsets") == [_OWNED_TOOLSET]
         and job.get("skills") == [_OWNED_SKILL]
-        and marker in {None, installation_id}
     )
+
+
+def _attributable_indices(jobs: list[Any]) -> set[int]:
+    marked = {
+        index for index, job in enumerate(jobs)
+        if isinstance(job, dict) and any(marker in job for marker in _IMMUTABLE_MARKERS)
+    }
+    legacy = [index for index, job in enumerate(jobs) if _is_exact_unmarked_legacy(job)]
+    if len(legacy) > 1:
+        raise MigrationError("Legacy owned Hermes scheduling is ambiguous.")
+    return marked.union(legacy)
+
+
+def _job_verification_identities(jobs: list[Any]) -> list[str]:
+    identities = []
+    for job in jobs:
+        if not isinstance(job, dict):
+            identities.append(json.dumps(job, sort_keys=True, separators=(",", ":")))
+            continue
+        stable = {key: value for key, value in job.items() if key not in {"enabled", "state"}}
+        identities.append(json.dumps(stable, sort_keys=True, separators=(",", ":")))
+    return identities
+
+
+@contextmanager
+def _canonical_jobs_lock(jobs_path: pathlib.Path):
+    jobs_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_path = jobs_path.parent / ".jobs.lock"
+    descriptor = os.open(
+        lock_path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600
+    )
+    try:
+        if fcntl is not None:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        if fcntl is not None:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 def _pause_owned_schedule(
@@ -133,32 +181,46 @@ def _pause_owned_schedule(
     installation_id: str | None,
     replace: Callable[[pathlib.Path, bytes], None],
 ) -> None:
-    raw = _secure_read(jobs_path)
-    if raw is None:
-        return
-    try:
-        document = json.loads(raw)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise MigrationError("Owned Hermes scheduling could not be verified.") from exc
-    jobs = document.get("jobs") if isinstance(document, dict) else None
-    if not isinstance(jobs, list):
-        raise MigrationError("Owned Hermes scheduling could not be verified.")
-    changed = False
-    for job in jobs:
-        if _is_attributable_job(job, installation_id) and (job.get("enabled") is not False or job.get("state") != "paused"):
-            job["enabled"] = False
-            job["state"] = "paused"
-            changed = True
-    if changed:
-        replace(jobs_path, (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8"))
-    verified_raw = _secure_read(jobs_path)
-    try:
-        verified = json.loads(verified_raw or b"{}")
-    except json.JSONDecodeError as exc:
-        raise MigrationError("Owned Hermes scheduling pause could not be verified.") from exc
-    for job in verified.get("jobs", []):
-        if _is_attributable_job(job, installation_id) and (job.get("enabled") is not False or job.get("state") != "paused"):
+    del installation_id  # Any immutable Index marker is attributable across generations.
+    with _canonical_jobs_lock(jobs_path):
+        raw = _secure_read(jobs_path)
+        if raw is None:
+            return
+        try:
+            document = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise MigrationError("Owned Hermes scheduling could not be verified.") from exc
+        jobs = document.get("jobs") if isinstance(document, dict) else None
+        if not isinstance(jobs, list):
+            raise MigrationError("Owned Hermes scheduling could not be verified.")
+        before_identities = _job_verification_identities(jobs)
+        attributable = _attributable_indices(jobs)
+        changed = False
+        for index in attributable:
+            job = jobs[index]
+            if job.get("enabled") is not False or str(job.get("state", "")).lower() != "paused":
+                job["enabled"] = False
+                job["state"] = "paused"
+                changed = True
+        if changed:
+            replace(jobs_path, (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+        verified_raw = _secure_read(jobs_path)
+        try:
+            verified = json.loads(verified_raw or b"{}")
+        except json.JSONDecodeError as exc:
+            raise MigrationError("Owned Hermes scheduling pause could not be verified.") from exc
+        verified_jobs = verified.get("jobs") if isinstance(verified, dict) else None
+        if not isinstance(verified_jobs, list):
             raise MigrationError("Owned Hermes scheduling pause could not be verified.")
+        if _job_verification_identities(verified_jobs) != before_identities:
+            raise MigrationError("Hermes scheduling changed during the locked migration.")
+        verified_attributable = _attributable_indices(verified_jobs)
+        if verified_attributable != attributable:
+            raise MigrationError("Hermes scheduling identities changed during migration.")
+        for index in verified_attributable:
+            job = verified_jobs[index]
+            if job.get("enabled") is not False or str(job.get("state", "")).lower() != "paused":
+                raise MigrationError("Owned Hermes scheduling pause could not be verified.")
 
 
 @contextmanager

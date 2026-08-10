@@ -41,6 +41,50 @@ struct ConnectorRevocationReceipt: Decodable, Equatable {
     let setupAttemptId: String
 }
 
+protocol ConnectorScheduledTask: AnyObject {
+    func cancel()
+}
+
+protocol ConnectorDeadlineScheduling {
+    func schedule(
+        every interval: TimeInterval,
+        _ action: @escaping () -> Void
+    ) -> ConnectorScheduledTask
+}
+
+private final class DispatchConnectorScheduledTask: ConnectorScheduledTask {
+    private let source: DispatchSourceTimer
+    private let lock = NSLock()
+    private var cancelled = false
+
+    init(interval: TimeInterval, action: @escaping () -> Void) {
+        source = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "network.index.connector.deadlines"))
+        source.schedule(deadline: .now() + interval, repeating: interval)
+        source.setEventHandler(handler: action)
+        source.resume()
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !cancelled else { return }
+        cancelled = true
+        source.setEventHandler {}
+        source.cancel()
+    }
+
+    deinit { cancel() }
+}
+
+struct DispatchConnectorDeadlineScheduler: ConnectorDeadlineScheduling {
+    func schedule(
+        every interval: TimeInterval,
+        _ action: @escaping () -> Void
+    ) -> ConnectorScheduledTask {
+        DispatchConnectorScheduledTask(interval: interval, action: action)
+    }
+}
+
 enum ConnectorHTTPError: Error, Equatable {
     case invalidRequest
     case routeDenied
@@ -61,6 +105,8 @@ enum ConnectorHTTPError: Error, Equatable {
     case streamNotFound
     case streamOverflow
     case hermesRunDenied
+    case upstreamAmbiguousResponse
+    case resourceLimit
 }
 
 private final class BoundedRequestDelegate: NSObject, URLSessionDataDelegate {
@@ -187,6 +233,11 @@ private final class ConnectorSSEDelegate: NSObject, URLSessionDataDelegate {
         lock.lock()
         defer { lock.unlock() }
         guard !closed else { return }
+        guard data.count <= ConnectorHTTPClient.maximumSSEBufferBytes - queuedBytes - partial.count else {
+            closeLocked(error: "sse_overflow")
+            dataTask.cancel()
+            return
+        }
         partial.append(data)
         while let newline = partial.firstIndex(of: 0x0A) {
             var lineData = Data(partial[..<newline])
@@ -258,6 +309,11 @@ final class ConnectorHTTPClient {
     static let maximumUploadChunkBytes = 131_072
     static let maximumSSEEvents = 256
     static let maximumSSEBufferBytes = 1_048_576
+    static let maxActiveUploads = 2
+    static let maxActiveStreams = 4
+    static let maxAggregateUploadBufferBytes = 16_777_216
+    static let maxAggregateStreamBufferBytes = 4_194_304
+    static let cleanupCadenceSeconds = 5.0
     static let resourceIdleSeconds = 120.0
     static let timeoutInterval = 30.0
 
@@ -265,11 +321,23 @@ final class ConnectorHTTPClient {
     private let jsonEncoder: JSONEncoder
     private let jsonDecoder: JSONDecoder
     private let resourceLock = NSLock()
+    private let clock: () -> Date
+    private var cleanupTimer: ConnectorScheduledTask?
     private var uploads: [String: ConnectorUploadRecord] = [:]
     private var streams: [String: ConnectorSSERecord] = [:]
 
-    init(endpoints: ConnectorEndpoints = .embedded) {
+    init(
+        endpoints: ConnectorEndpoints = .embedded,
+        clock: @escaping () -> Date = Date.init,
+        scheduler: ConnectorDeadlineScheduling = DispatchConnectorDeadlineScheduler()
+    ) {
         self.endpoints = endpoints
+        self.clock = clock
+        cleanupTimer = nil
+        precondition(
+            Self.maximumSSEBufferBytes * Self.maxActiveStreams
+                <= Self.maxAggregateStreamBufferBytes
+        )
         jsonEncoder = JSONEncoder()
         jsonDecoder = JSONDecoder()
         jsonDecoder.dateDecodingStrategy = .custom { decoder in
@@ -287,6 +355,13 @@ final class ConnectorHTTPClient {
             }
             return date
         }
+        cleanupTimer = scheduler.schedule(every: Self.cleanupCadenceSeconds) { [weak self] in
+            self?.cleanupIdleResources()
+        }
+    }
+
+    deinit {
+        shutdownResources()
     }
 
     func createAuthorization(
@@ -450,10 +525,14 @@ final class ConnectorHTTPClient {
         }
         let uploadId = UUID().uuidString.lowercased()
         resourceLock.lock()
+        guard uploads.count < Self.maxActiveUploads else {
+            resourceLock.unlock()
+            throw ConnectorHTTPError.resourceLimit
+        }
         uploads[uploadId] = ConnectorUploadRecord(
             path: path, field: field, filename: filename, contentType: contentType,
             totalBytes: totalBytes, sha256: sha256.lowercased(), nextSequence: 0,
-            content: Data(), lastUsed: Date()
+            content: Data(), lastUsed: clock()
         )
         resourceLock.unlock()
         return uploadId
@@ -473,14 +552,16 @@ final class ConnectorHTTPClient {
             uploads.removeValue(forKey: uploadId)
             throw ConnectorHTTPError.uploadSequenceMismatch
         }
+        let aggregateBytes = uploads.values.reduce(0) { $0 + $1.content.count }
         guard record.content.count <= record.totalBytes - decoded.count,
-              record.content.count <= Self.maximumUploadBytes - decoded.count else {
+              record.content.count <= Self.maximumUploadBytes - decoded.count,
+              aggregateBytes <= Self.maxAggregateUploadBufferBytes - decoded.count else {
             uploads.removeValue(forKey: uploadId)
             throw ConnectorHTTPError.uploadTooLarge
         }
         record.content.append(decoded)
         record.nextSequence += 1
-        record.lastUsed = Date()
+        record.lastUsed = clock()
         uploads[uploadId] = record
         return record.content.count
     }
@@ -521,8 +602,13 @@ final class ConnectorHTTPClient {
         let task = session.dataTask(with: request)
         let streamId = UUID().uuidString.lowercased()
         resourceLock.lock()
+        guard streams.count < Self.maxActiveStreams else {
+            resourceLock.unlock()
+            session.invalidateAndCancel()
+            throw ConnectorHTTPError.resourceLimit
+        }
         streams[streamId] = ConnectorSSERecord(
-            delegate: delegate, session: session, task: task, lastUsed: Date()
+            delegate: delegate, session: session, task: task, lastUsed: clock()
         )
         resourceLock.unlock()
         task.resume()
@@ -537,7 +623,7 @@ final class ConnectorHTTPClient {
             resourceLock.unlock()
             throw ConnectorHTTPError.streamNotFound
         }
-        record.lastUsed = Date()
+        record.lastUsed = clock()
         streams[streamId] = record
         resourceLock.unlock()
         let polled = record.delegate.poll(maxEvents: maxEvents)
@@ -568,11 +654,18 @@ final class ConnectorHTTPClient {
     }
 
     func closeResources() {
+        shutdownResources()
+    }
+
+    private func shutdownResources() {
         resourceLock.lock()
+        let timer = cleanupTimer
+        cleanupTimer = nil
         uploads.removeAll()
         let closing = Array(streams.values)
         streams.removeAll()
         resourceLock.unlock()
+        timer?.cancel()
         for record in closing {
             record.delegate.close()
             record.task.cancel()
@@ -586,10 +679,11 @@ final class ConnectorHTTPClient {
         resourceLock.unlock()
     }
 
-    private func cleanupIdleResources(now: Date = Date()) {
+    private func cleanupIdleResources(now: Date? = nil) {
+        let observed = now ?? clock()
         resourceLock.lock()
-        uploads = uploads.filter { now.timeIntervalSince($0.value.lastUsed) <= Self.resourceIdleSeconds }
-        let stale = streams.filter { now.timeIntervalSince($0.value.lastUsed) > Self.resourceIdleSeconds }
+        uploads = uploads.filter { observed.timeIntervalSince($0.value.lastUsed) < Self.resourceIdleSeconds }
+        let stale = streams.filter { observed.timeIntervalSince($0.value.lastUsed) >= Self.resourceIdleSeconds }
         for id in stale.keys { streams.removeValue(forKey: id) }
         resourceLock.unlock()
         for record in stale.values {
@@ -760,12 +854,45 @@ final class ConnectorHTTPClient {
             throw ConnectorHTTPError.timedOut
         }
         session.finishTasksAndInvalidate()
-        if let completedError { throw completedError }
-        guard let response = completedResponse, let data = completedData else {
+        if let completedError {
+            if completedError == .responseTooLarge,
+               let response = completedResponse,
+               !(200..<300).contains(response.statusCode) {
+                return ConnectorRESTResult(status: response.statusCode, body: .null)
+            }
+            if completedError == .responseTooLarge,
+               Self.methodMayCommit(method),
+               completedResponse.map({ (200..<300).contains($0.statusCode) }) != false {
+                throw ConnectorHTTPError.upstreamAmbiguousResponse
+            }
+            throw completedError
+        }
+        guard let response = completedResponse else {
             throw ConnectorHTTPError.invalidResponse
         }
-        let decoded = try decodeResponseBody(data, contentType: response.value(forHTTPHeaderField: "Content-Type"))
-        return ConnectorRESTResult(status: response.statusCode, body: decoded)
+        guard let data = completedData else {
+            if !(200..<300).contains(response.statusCode) {
+                return ConnectorRESTResult(status: response.statusCode, body: .null)
+            }
+            if Self.methodMayCommit(method) {
+                throw ConnectorHTTPError.upstreamAmbiguousResponse
+            }
+            throw ConnectorHTTPError.invalidResponse
+        }
+        do {
+            let decoded = try decodeResponseBody(
+                data, contentType: response.value(forHTTPHeaderField: "Content-Type")
+            )
+            return ConnectorRESTResult(status: response.statusCode, body: decoded)
+        } catch {
+            if !(200..<300).contains(response.statusCode) {
+                return ConnectorRESTResult(status: response.statusCode, body: .null)
+            }
+            if Self.methodMayCommit(method) {
+                throw ConnectorHTTPError.upstreamAmbiguousResponse
+            }
+            throw error
+        }
     }
 
     private func decodeResponseBody(_ data: Data, contentType: String?) throws -> JSONValue {
@@ -804,6 +931,10 @@ final class ConnectorHTTPClient {
             }
             throw ConnectorHTTPError.serverRejected("request_rejected")
         }
+    }
+
+    private static func methodMayCommit(_ method: String) -> Bool {
+        ["POST", "PATCH", "DELETE"].contains(method.uppercased())
     }
 
     private static func sanitizedServerCode(_ code: String) -> String {

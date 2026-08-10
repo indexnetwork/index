@@ -48,6 +48,11 @@ class FakeProcess:
         self.returncode = 0
 
 
+class RawProcess(FakeProcess):
+    def readline(self, _limit=-1):
+        return next(self.responses)
+
+
 class ConnectorProtocolTests(unittest.TestCase):
     def test_production_never_reads_environment_key(self):
         with mock.patch.dict(os.environ, {"INDEX_API_KEY": "must-not-be-read"}, clear=False):
@@ -168,6 +173,31 @@ class ConnectorProtocolTests(unittest.TestCase):
             "hermesRun": {"runId": "opaque-run"},
         })
         self.assertNotIn("headers", process.writes[-1]["payload"])
+
+    def test_malformed_mutation_response_is_upstream_ambiguous_but_read_is_not(self):
+        mutation_process = RawProcess([
+            json.dumps({
+                "protocolVersion": 1, "id": "placeholder", "success": True,
+                "result": {}, "error": None,
+            }) + "\n",
+        ])
+        mutation = ConnectorTransport(platform="darwin", candidate_paths=[])
+        mutation._process = mutation_process
+        mutation._fixture_verified = True
+        with self.assertRaises(TransportError) as ambiguous:
+            mutation.request_rest(
+                "POST", "/agents/agent/negotiations/pickup",
+                hermes_run={"runId": "opaque"},
+            )
+        self.assertEqual(ambiguous.exception.code, "upstream_ambiguous_response")
+
+        read_process = RawProcess(["not-json\n"])
+        read = ConnectorTransport(platform="darwin", candidate_paths=[])
+        read._process = read_process
+        read._fixture_verified = True
+        with self.assertRaises(TransportError) as invalid:
+            read.request_rest("GET", "/agents/me")
+        self.assertEqual(invalid.exception.code, "connector_invalid_response")
 
     def test_expired_connector_denies_immediately_without_renewal(self):
         process = FakeProcess([

@@ -446,26 +446,47 @@ def _api_request(
         return _error_payload(f"Index transport response could not be processed: {exc}")
 
 
+_AMBIGUOUS_REPLAY_CODES = {
+    "connector_unavailable",
+    "connector_invalid_response",
+    "upstream_ambiguous_response",
+    "network_error",
+    "timeout",
+}
+
+
+def _dispatch_negotiation_request(
+    path: str,
+    body: dict[str, Any] | None,
+    authority: dict[str, str],
+    *,
+    no_content_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Dispatch once, with at most one byte-identical ambiguous replay."""
+    result = _api_request(
+        "POST", path, body, hermes_run=authority,
+        no_content_payload=no_content_payload,
+    )
+    ambiguous = (
+        result.get("success") is False
+        and "status" not in result
+        and result.get("code") in _AMBIGUOUS_REPLAY_CODES
+    )
+    if ambiguous:
+        return _api_request(
+            "POST", path, body, hermes_run=authority,
+            no_content_payload=no_content_payload,
+        )
+    return result
+
+
 def _dispatch_negotiation_mutation(
     path: str,
     body: dict[str, Any],
     authority: dict[str, str],
 ) -> dict[str, Any]:
-    """Bounded exact replay for ambiguous transport failure inside one tool call.
-
-    The model cannot select this retry or alter its operation/body. HTTP results
-    are final; only a transport/response-processing failure with no server status
-    gets one identical idempotency replay under the same hidden run authority.
-    """
-    result = _api_request("POST", path, body, hermes_run=authority)
-    ambiguous_transport = (
-        result.get("success") is False
-        and "status" not in result
-        and result.get("code") in {"connector_unavailable", "network_error", "timeout"}
-    )
-    if ambiguous_transport:
-        return _api_request("POST", path, body, hermes_run=authority)
-    return result
+    """Bounded exact mutation replay under the same hidden run authority."""
+    return _dispatch_negotiation_request(path, body, authority)
 
 
 def _agent_id_from_payload(payload: dict[str, Any]) -> str | None:
@@ -658,11 +679,11 @@ def index_pickup_negotiation(args: dict, **kwargs) -> str:
         state.pickup_inflight = True
         _touch_negotiation_run_state(state)
     try:
-        payload = _api_request(
-            "POST",
+        payload = _dispatch_negotiation_request(
             f"/agents/{agent_id}/negotiations/pickup",
+            None,
+            _negotiation_run_authority(state),
             no_content_payload={"success": True, "pending": False},
-            hermes_run=_negotiation_run_authority(state),
         )
     finally:
         with _NEGOTIATION_RUN_LOCK:

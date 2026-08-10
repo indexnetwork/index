@@ -245,6 +245,35 @@ test('rest variants bound uploads and poll connector-owned SSE streams', () => {
   ]) expect(fixture).toContain(token);
 });
 
+test('ambiguous upstream response processing has one stable retry signal', () => {
+  const runtime = read('./Sources/ConnectorRuntime.swift');
+  const transport = read('./Sources/ConnectorHTTPClient.swift');
+  const pythonTransport = read('../../../packages/hermes-plugin/connector_transport.py');
+  const tools = read('../../../packages/hermes-plugin/tools.py');
+  expect(transport).toContain('case upstreamAmbiguousResponse');
+  expect(runtime).toContain('code: "upstream_ambiguous_response"');
+  expect(pythonTransport).toContain('"upstream_ambiguous_response"');
+  expect(tools).toContain('"connector_invalid_response"');
+  expect(tools).toContain('"upstream_ambiguous_response"');
+});
+
+test('resource caps and independent idle timer are exact and fixture-controlled', () => {
+  const transport = read('./Sources/ConnectorHTTPClient.swift');
+  const fixture = read('./Tests/TransportFixture.swift');
+  for (const token of [
+    'maxActiveUploads = 2', 'maxActiveStreams = 4',
+    'maxAggregateUploadBufferBytes = 16_777_216',
+    'maxAggregateStreamBufferBytes = 4_194_304',
+    'cleanupCadenceSeconds = 5.0', 'resourceIdleSeconds = 120.0',
+    'ConnectorDeadlineScheduling', 'cleanupTimer', 'deinit',
+  ]) expect(transport).toContain(token);
+  for (const token of [
+    'ManualDeadlineScheduler', 'manualClock', 'uploadCapRefusal',
+    'streamCapRefusal', 'idleCleanupWithoutFollowupRequest',
+  ]) expect(fixture).toContain(token);
+  expect(fixture).not.toContain('usleep(');
+});
+
 test('structured Hermes run authority renders only exact negotiation headers', () => {
   const runtime = read('./Sources/ConnectorRuntime.swift');
   const transport = read('./Sources/ConnectorHTTPClient.swift');
