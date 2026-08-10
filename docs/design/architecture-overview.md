@@ -22,7 +22,7 @@ The repository is organized as a Bun-managed monorepo with user-facing apps, dep
 index/
   apps/
     web/             Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
-    mac/             Native Apple client subtree (macOS/iOS WKWebView prototype)
+    mac/             Native macOS client subtree (Swift WKWebView prototype)
   services/
     api/             Backend API and Agent Engine (Bun, TypeScript)
   packages/
@@ -36,9 +36,7 @@ index/
 
 **Web app** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the API service. In production, `apps/web/server.ts` serves the Vite output and falls back to `index.html` only for document navigations. HTML is `no-store`, generated `/assets/*` files are immutable, and missing assets return a non-HTML 404 so stale lazy imports can be detected and recovered safely. React Router lazy imports make one bounded, URL-preserving reload attempt per stale route load before the application error boundary presents an explicit refresh action.
 
-**Mac app** is a subtree-synced native Apple prototype under `apps/mac/`, with Swift WKWebView shells wrapping self-contained React/HTML bundles.
-
-**CLI** is a standalone command-line client (`@indexnetwork/cli`) that wraps the Tool HTTP API. It provides authentication, command parsing, formatted terminal output, and `--json` mode for machine-readable output. Published to npm with platform-specific native binaries.
+**Mac app** is a subtree-synced native macOS prototype under `apps/mac/` (Swift WKWebView shell wrapping a self-contained React/HTML bundle). is a standalone command-line client (`@indexnetwork/cli`) that wraps the Tool HTTP API. It provides authentication, command parsing, formatted terminal output, and `--json` mode for machine-readable output. Published to npm with platform-specific native binaries.
 
 The Bun workspaces share the same repository and are installed together via `bun install` at the root. Development uses git worktrees (`.worktrees/`) to isolate feature and fix branches from the stable `dev` branch.
 

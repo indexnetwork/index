@@ -1,7 +1,7 @@
 /**
  * Standalone Index API client for the macOS prototype.
  *
- * Assembled into IndexApp as `window.IndexApi`. Gives the mac subtree a
+ * Assembled into the mac app as `window.IndexApi`. Gives the mac subtree a
  * dedicated place to evolve API consumption without coupling live transport
  * to browser-preview fake-data screens.
  */

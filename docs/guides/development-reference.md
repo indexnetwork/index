@@ -60,7 +60,7 @@ bun run lint                                # Run ESLint
 ### Mac App
 
 ```bash
-cd apps/mac/IndexApp
+cd apps/mac
 ./build.sh                                  # Assemble HTML and build the macOS WKWebView app
 ```
 
@@ -726,7 +726,7 @@ git subtree pull --squash --prefix=packages/hermes-plugin https://github.com/ind
 
 #### apps/mac/ → indexnetwork/mac-client
 
-The native Apple client prototype (macOS + iOS WKWebView shells around self-contained React/HTML bundles). The monorepo path is synced to the standalone `indexnetwork/mac-client` repo on `dev`/`main` pushes.
+The native macOS client prototype (Swift WKWebView shell around a self-contained React/HTML bundle). The monorepo path is synced to the standalone `indexnetwork/mac-client` repo on `dev`/`main` pushes.
 
 ```bash
 # Manual push if the workflow failed (use dev or main)

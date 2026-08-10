@@ -24,34 +24,34 @@ xcode-select --install
 ## Directory Structure
 
 ```
-IndexApp/                    # macOS app (Swift + WKWebView)
-├── build.sh              # Build script
-├── Sources/              # Swift source (app delegate, window management)
-├── Resources/            # Built assets (outputs here)
+apps/mac/                    # macOS app (Swift + WKWebView)
+├── build.sh, dev.sh, assemble.py   # thin wrappers → scripts/
+├── scripts/               # build, assemble, notarize, dmg, specs
+├── Sources/               # Swift (AppDelegate, AppConfig, auth, Hermes, …)
+├── Resources/             # AppIcon.icns, Assets.car; index.html is generated
 ├── src/
-│   ├── index-amiga.html  # Root HTML template
-│   ├── index-amiga/      # React components (.jsx files)
-│   ├── fonts/           # Woff2 font files
-│   └── vendor/          # Vendored React/Babel/ReactDOM
-├── assemble.py          # Bundles everything into single HTML
-└── Info.plist          # macOS app metadata
-
-api/                     # API client library
+│   ├── index.html         # Root HTML template
+│   ├── styles/amiga.css   # Workbench theme (inlined at build)
+│   ├── ui/                # React screens + shared primitives
+│   ├── fonts/             # Woff2 font files
+│   └── vendor/            # Vendored React/Babel/ReactDOM
+├── api/                   # API client library (Node-testable boundary)
+└── Info.plist             # macOS app metadata
 ```
 
 ## Building
 
 ### Standard Build
 
-From the `IndexApp` directory:
+From the `apps/mac` directory:
 
 ```bash
-cd IndexApp
+cd apps/mac
 ./build.sh
 ```
 
 This will:
-1. Assemble `src/index-amiga.html` and all JSX modules into a single `Resources/index.html`
+1. Assemble `src/index.html` and all JSX modules into a single `Resources/index.html`
 2. Inline all React/Babel libraries and fonts (fully offline)
 3. Compile Swift to a native binary
 4. Package into `dist/Index.app`
@@ -63,7 +63,7 @@ The app will be in `dist/Index.app`, double-click to launch.
 For rapid iteration without rebuilding the Swift binary each time:
 
 ```bash
-cd IndexApp
+cd apps/mac
 ./dev.sh
 ```
 
@@ -80,7 +80,7 @@ The app will hot-reload as you edit files, great for UI tweaking.
 
 **"AssertionError: no @font-face url() references found"**
 - The CSS must reference fonts at `fonts/jetbrains-mono-latin-var.woff2` etc.
-- Check `src/index-amiga.html` for correct paths.
+- Check `src/index.html` for correct paths.
 
 **Swift compilation fails**
 - Ensure you have Xcode Command Line Tools: `xcode-select --install`
@@ -113,7 +113,7 @@ are a `hosts` argument, not a code change.
 The `https://` half only works in a **Developer ID-signed, notarized** build.
 `build.sh` generates the `com.apple.developer.associated-domains` entitlement
 for the selected `INDEX_LINK_HOST` and passes that generated plist to
-`codesign`; `IndexApp/IndexApp.entitlements` is not the signed build input.
+`codesign`; `Index.entitlements` is not the signed build input.
 macOS verifies the resulting signed-app entitlement (for the default profile,
 `applinks:index.network`) against the host's `apple-app-site-association`,
 which lists `<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
@@ -161,7 +161,7 @@ Prepare and run the handoff in this order:
 5. From the repository root, build with all three required inputs:
 
    ```bash
-   cd apps/mac/IndexApp
+   cd apps/mac
    INDEX_LINK_HOST=dev.index.network \
    CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
    PROVISIONING_PROFILE='<path-to-downloaded-profile>' \
@@ -227,12 +227,12 @@ open dist/Index.app
 ```
 
 ### Or directly from Finder
-Navigate to `IndexApp/dist/Index.app` and double-click.
+Navigate to `dist/Index.app` and double-click.
 
 ## Development Workflow
 
-1. **Edit React components** in `IndexApp/src/index-amiga/` (.jsx files)
-2. **Edit styles** in `IndexApp/src/index-amiga.html` (the `<style>` block)
+1. **Edit React components** in `src/ui/` (.jsx files)
+2. **Edit styles** in `src/index.html` (the `<style>` block)
 3. **Run hot-reload** with `./dev.sh`
 4. **See changes** as you save files
 
@@ -242,7 +242,7 @@ For structural changes (new components, imports), the hot-reload will automatica
 
 ### Adding a New React Component
 
-1. Create `IndexApp/src/index-amiga/mycomponent.jsx`
+1. Create `src/ui/mycomponent.jsx`
 2. Import in your parent component or app.jsx:
    ```jsx
    // Imported automatically by Babel at runtime
@@ -265,7 +265,7 @@ Then re-run the build to inline the new fonts.
 
 ### Customizing the Amiga Theme
 
-Edit the CSS variables in `IndexApp/src/index-amiga.html`:
+Edit the CSS variables in `src/index.html`:
 
 ```css
 :root {
@@ -280,8 +280,7 @@ Edit the CSS variables in `IndexApp/src/index-amiga.html`:
 
 The app runs fully offline with no backend dependency. To test networking:
 
-- Edit `api/client.mjs` to point to your API
-- Rebuild with `./build.sh`
+- Edit `api/client.mjs` to point to your API, then rebuild with `./build.sh`
 
 ## Environment
 
@@ -305,7 +304,7 @@ by Time Machine or any backup pointed at Application Support.
 
 **Do not ship a build that touches real user credentials until every box is
 ticked.** The authoritative copy of this list lives beside the code, in the
-`CredentialStore` block in `IndexApp/Sources/main.swift`:
+`CredentialStore` block in `Sources/CredentialStore.swift`:
 
 - [ ] Sign with a Developer ID Application certificate. A real identity gives a
       stable code requirement, which is the actual fix for the prompt. Ad-hoc
@@ -327,4 +326,4 @@ ticked.** The authoritative copy of this list lives beside the code, in the
 ## Next Steps
 
 - Check `api/` for the API client boundary
-- Refer to `IndexApp/src/index-amiga/` component files for example patterns
+- Refer to `src/ui/` component files for example patterns
