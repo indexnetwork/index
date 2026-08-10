@@ -1,4 +1,4 @@
-import { isCredentialEnvKey } from "../ops/ops.allowlist.js";
+import { DISCOVERY_ENV_KEYS, isCredentialEnvKey } from "../ops/ops.allowlist.js";
 
 export const HISTORICAL_QUALITY_TRIGGERS = ["intent", "enrichment"] as const;
 export type HistoricalQualityTrigger = typeof HISTORICAL_QUALITY_TRIGGERS[number];
@@ -71,6 +71,7 @@ export function assertHistoricalResolvedConfig(config: HistoricalResolvedConfig)
   }
   for (const [key, value] of Object.entries(config.env)) {
     if (isCredentialEnvKey(key)) throw new Error(`Historical resolved config contains credential key ${key}`);
+    if (!DISCOVERY_ENV_KEYS.includes(key)) throw new Error(`Historical resolved env key ${key} is not allowed for discovery`);
     if (value.trim() === "") throw new Error(`Historical resolved env ${key} must be non-empty`);
   }
   for (const [key, value] of Object.entries(config.fixed)) {

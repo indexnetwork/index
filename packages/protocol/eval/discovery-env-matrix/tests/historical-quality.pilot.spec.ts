@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
+import { DISCOVERY_ENV_KEYS } from "../../ops/ops.allowlist.js";
 import { fingerprintCanonicalJson } from "../../shared/index.js";
 import { buildHistoricalQualityPilotPlan, type HistoricalQualityPilotInput } from "../historical-quality.pilot.js";
 import { HISTORICAL_SHARED_POOL_PLAN } from "../historical-quality.shared-pool.fixture.js";
@@ -31,6 +32,16 @@ describe("historical quality pilot planner", () => {
     expect(plan.graphInvocations).toBe(10);
     expect(plan.evaluatorCalls).toBe(10);
     expect(plan.maxAttempts).toBe(1);
+  });
+
+  it("accepts a generated discovery env key", () => {
+    expect(DISCOVERY_ENV_KEYS).toContain("NEGOTIATOR_STANCE");
+    expect(() => buildHistoricalQualityPilotPlan(input({
+      configuration: {
+        id: "a",
+        config: { ...resolvedConfig, env: { NEGOTIATOR_STANCE: "balanced" } },
+      },
+    }))).not.toThrow();
   });
 
   it.each([
@@ -114,6 +125,8 @@ describe("historical quality pilot planner", () => {
   it.each([
     ["EVAL_MODEL_OVERRIDES", { ...resolvedConfig, env: { EVAL_MODEL_OVERRIDES: '{"opportunityEvaluator":"model-a"}' } }, /EVAL_MODEL_OVERRIDES.*resolved models map/],
     ["credential env key", { ...resolvedConfig, env: { OPENROUTER_API_KEY: "secret" } }, /credential key OPENROUTER_API_KEY/],
+    ["unknown env key", { ...resolvedConfig, env: { HISTORICAL_UNKNOWN_FLAG: "value" } }, /resolved env key HISTORICAL_UNKNOWN_FLAG is not allowed for discovery/],
+    ["non-discovery env key", { ...resolvedConfig, env: { SMARTEST_VERIFIER_MODEL: "model-a" } }, /resolved env key SMARTEST_VERIFIER_MODEL is not allowed for discovery/],
     ["blank model key", { ...resolvedConfig, models: { " ": "model-a" } }, /model assignments must be non-empty/],
     ["blank model value", { ...resolvedConfig, models: { opportunityEvaluator: " " } }, /model assignments must be non-empty/],
     ["blank env value", { ...resolvedConfig, env: { DISCOVERY_ALLOWED_TYPES: " " } }, /resolved env DISCOVERY_ALLOWED_TYPES must be non-empty/],
