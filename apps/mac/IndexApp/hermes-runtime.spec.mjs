@@ -440,8 +440,9 @@ test('uses a verified credential-free connector status boundary for runtime auth
     'forbiddenCanonicalKeys', 'connectorDisconnect',
     'stagingRoot', 'copyItem', 'hardenAndRejectSymlinks',
     'sourceAfter.identity == sourceBefore.identity',
-    'openRegularFileDescriptor', 'O_RDONLY | O_NOFOLLOW', 'posix_spawn',
-    'posix_spawn_file_actions_addinherit_np',
+    'openRegularFileDescriptor', 'O_RDONLY | O_NOFOLLOW',
+    'O_EXEC | O_NOFOLLOW', 'readableRawValue', 'executableRawValue',
+    'posix_spawn', 'posix_spawn_file_actions_addinherit_np',
     'let inheritedDescriptor = executableDescriptor.rawValue',
     '/dev/fd/', 'expectedIdentity',
   ]) expect(runtime).toContain(token);
@@ -456,6 +457,7 @@ test('uses a verified credential-free connector status boundary for runtime auth
   expect(nativeCompatibility).toContain('posix_spawn');
   expect(nativeCompatibility).toContain('posix_spawn_file_actions_addinherit_np');
   expect(nativeCompatibility).toContain('let inherited = opened');
+  expect(nativeCompatibility).toContain('O_EXEC | O_NOFOLLOW');
   expect(nativeCompatibility).toContain('/dev/fd/');
   const connectorBoundary = runtime.slice(
     runtime.indexOf('final class HermesVerifiedConnectorStatusProvider'),

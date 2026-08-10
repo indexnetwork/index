@@ -199,7 +199,9 @@ struct HermesPersistenceCompatibilityFixture {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: candidate.path)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: replacement.path)
 
-        let opened = Darwin.open(candidate.path, O_RDONLY | O_NOFOLLOW)
+        // macOS requires execute access on the retained descriptor when
+        // posix_spawn resolves its /dev/fd/N path.
+        let opened = Darwin.open(candidate.path, O_EXEC | O_NOFOLLOW)
         guard opened >= 0 else { throw FixtureFailure.assertion("descriptor open failed") }
         defer { _ = Darwin.close(opened) }
         try FileManager.default.removeItem(at: candidate)

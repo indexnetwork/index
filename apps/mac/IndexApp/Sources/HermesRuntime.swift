@@ -515,18 +515,31 @@ private final class HermesDirectoryDescriptor {
 /// Retained capability for an already-opened regular vnode. Connector launch
 /// inherits this descriptor; it never resolves the staged executable path.
 private final class HermesRegularFileDescriptor {
+    /// O_EXEC is required because macOS resolves /dev/fd/N using execute
+    /// access during posix_spawn; an O_RDONLY descriptor is rejected EACCES.
     let rawValue: Int32
+    private let readableRawValue: Int32
 
-    init(rawValue: Int32) { self.rawValue = rawValue }
-    deinit { _ = Darwin.close(rawValue) }
+    init(readableRawValue: Int32, executableRawValue: Int32) {
+        self.readableRawValue = readableRawValue
+        self.rawValue = executableRawValue
+    }
+
+    deinit {
+        _ = Darwin.close(readableRawValue)
+        _ = Darwin.close(rawValue)
+    }
 
     func snapshot() throws -> HermesFileSnapshot {
         var before = stat()
-        guard Darwin.fstat(rawValue, &before) == 0,
-              before.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
+        var executable = stat()
+        guard Darwin.fstat(readableRawValue, &before) == 0,
+              Darwin.fstat(rawValue, &executable) == 0,
+              before.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+              HermesFileIdentity(before) == HermesFileIdentity(executable) else {
             throw HermesRuntimeFailure.connectorUnverified
         }
-        let duplicate = Darwin.dup(rawValue)
+        let duplicate = Darwin.dup(readableRawValue)
         guard duplicate >= 0 else { throw HermesRuntimeFailure.connectorUnverified }
         let handle = FileHandle(fileDescriptor: duplicate, closeOnDealloc: true)
         do {
@@ -534,7 +547,7 @@ private final class HermesRegularFileDescriptor {
             let data = try handle.readToEnd() ?? Data()
             try handle.close()
             var after = stat()
-            guard Darwin.fstat(rawValue, &after) == 0,
+            guard Darwin.fstat(readableRawValue, &after) == 0,
                   HermesFileIdentity(before) == HermesFileIdentity(after),
                   data.count == Int(before.st_size) else {
                 throw HermesRuntimeFailure.connectorUnverified
@@ -687,24 +700,40 @@ private enum HermesFilesystem {
               before.st_mode & fileTypeMask == regularType else {
             throw HermesRuntimeFailure.connectorUnverified
         }
-        let descriptor = url.lastPathComponent.withCString {
+        let readableDescriptor = url.lastPathComponent.withCString {
             Darwin.openat(parent.rawValue, $0, O_RDONLY | O_NOFOLLOW)
         }
-        guard descriptor >= 0 else { throw HermesRuntimeFailure.connectorUnverified }
-        var opened = stat()
+        guard readableDescriptor >= 0 else {
+            throw HermesRuntimeFailure.connectorUnverified
+        }
+        let executableDescriptor = url.lastPathComponent.withCString {
+            Darwin.openat(parent.rawValue, $0, O_EXEC | O_NOFOLLOW)
+        }
+        guard executableDescriptor >= 0 else {
+            _ = Darwin.close(readableDescriptor)
+            throw HermesRuntimeFailure.connectorUnverified
+        }
+        var readable = stat()
+        var executable = stat()
         var after = stat()
         let observedAfter = url.lastPathComponent.withCString {
             Darwin.fstatat(parent.rawValue, $0, &after, AT_SYMLINK_NOFOLLOW)
         }
-        guard Darwin.fstat(descriptor, &opened) == 0,
+        guard Darwin.fstat(readableDescriptor, &readable) == 0,
+              Darwin.fstat(executableDescriptor, &executable) == 0,
               observedAfter == 0,
-              opened.st_mode & fileTypeMask == regularType,
-              HermesFileIdentity(before) == HermesFileIdentity(opened),
-              HermesFileIdentity(opened) == HermesFileIdentity(after) else {
-            _ = Darwin.close(descriptor)
+              readable.st_mode & fileTypeMask == regularType,
+              HermesFileIdentity(before) == HermesFileIdentity(readable),
+              HermesFileIdentity(readable) == HermesFileIdentity(executable),
+              HermesFileIdentity(executable) == HermesFileIdentity(after) else {
+            _ = Darwin.close(readableDescriptor)
+            _ = Darwin.close(executableDescriptor)
             throw HermesRuntimeFailure.connectorUnverified
         }
-        return HermesRegularFileDescriptor(rawValue: descriptor)
+        return HermesRegularFileDescriptor(
+            readableRawValue: readableDescriptor,
+            executableRawValue: executableDescriptor
+        )
     }
 
     static func readRegularFile(_ url: URL) throws -> HermesFileSnapshot? {
