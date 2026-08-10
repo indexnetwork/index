@@ -17,7 +17,6 @@ export interface EnrichmentDiscoveryTrigger {
 }
 
 export type FromIntentGraphInvokeOptions = IntentDiscoveryTrigger;
-export type FromEnrichmentGraphInvokeOptions = EnrichmentDiscoveryTrigger;
 
 export function buildIntentDiscoveryTrigger(input: {
   userId: string;

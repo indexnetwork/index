@@ -3,8 +3,30 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger, type EnrichmentDiscoveryTrigger, type IntentDiscoveryTrigger } from '../opportunity/discovery-trigger.builders';
+import type { FromEnrichmentGraphInvokeOptions } from '../opportunity/from-enrichment.queue';
 
 const BUILDER_MODULE = path.resolve(import.meta.dir, '../opportunity/discovery-trigger.builders.ts');
+
+type EnrichmentBuilderInput = Parameters<typeof buildEnrichmentDiscoveryTrigger>[0];
+
+const queueTriggerWithExplicitUndefined: FromEnrichmentGraphInvokeOptions = {
+  userId: 'legacy-user',
+  operationMode: 'create',
+  networkId: undefined,
+  options: { initialStatus: 'latent' },
+};
+
+// @ts-expect-error — quality builder callers must provide networkId.
+const builderInputMissingNetwork: EnrichmentBuilderInput = { userId: 'quality-user' };
+const builderInputWithUndefinedNetwork: EnrichmentBuilderInput = {
+  userId: 'quality-user',
+  // @ts-expect-error — quality builder callers must provide a concrete networkId.
+  networkId: undefined,
+};
+
+void queueTriggerWithExplicitUndefined;
+void builderInputMissingNetwork;
+void builderInputWithUndefinedNetwork;
 
 describe('production discovery trigger builders', () => {
   it('builds the exact single-network intent trigger shape', () => {
