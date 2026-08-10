@@ -3,7 +3,175 @@
 // one line, so the cards stack their actions instead.
 const MATCH_CARD_ROW_MIN = 340;
 
-function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {} }) {
+/* ---------- Counterparty discovery (design handoff: "eye + checklist", 2a) ----
+   Shown in the radar while the agent runs discovery, before anyone lands in
+   awaiting-you / negotiating / etc.
+
+   The handoff's step timings (1.5s/2.5s/3s/2s/2.5s) are its demo loop, and it
+   says so: in production the steps are driven by real progress instead. So a
+   step is done when the thing it describes has actually happened, and the first
+   one that has not is the active one. A timer would tick to "complete" while
+   the agent was still out, which is the one thing this screen must not do.
+
+   Every counter is a number the app actually has. */
+const DISCOVERY_STEPS = [
+  // Reach is known once the networks list resolves. No detail, per the spec.
+  { key:"reach",   label:"mapping reach",
+    done: (m) => m.networks != null,
+    detail: () => "" },
+  { key:"scan",    label:"scanning counterparties",
+    done: (m) => m.found != null,
+    detail: (m) => (m.found == null ? "" : `${fmtCount(m.found)} found`) },
+  { key:"overlap", label:"evaluating overlap",
+    done: (m) => m.scored != null,
+    detail: (m) => (m.scored == null ? "" : `${fmtCount(m.scored)} scored`) },
+  { key:"rank",    label:"ranking counterparties",
+    done: (m) => m.scored != null,
+    detail: (m, isDone) => (isDone ? "ranked" : "ranking") },
+  // Holds as the active step while the radar is empty, which is the honest
+  // reading of that state: nobody has advanced yet.
+  { key:"short",   label:"shortlisting",
+    done: (m) => m.advanced > 0,
+    detail: (m) => (m.advanced == null ? "" : `${fmtCount(m.advanced)} advanced`) },
+];
+
+const SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".split("");
+const SPINNER_MS = 100;
+
+// Ink, muted detail, pending: the handoff's tokens.
+const DISCOVERY_INK = "#111";
+const DISCOVERY_MUTED = "#8a8375";
+const DISCOVERY_PENDING = "#c2baa8";
+
+function fmtCount(n) {
+  return Number(n || 0).toLocaleString("en-US");
+}
+
+/* How long a step is shown working before the next one can start.
+
+   The data does not arrive one step at a time: the radar answers in one go, so
+   found/scored/ranked all become true in the same tick and the list jumped
+   straight to the fourth row. This walks the checklist forward one row at a
+   time so each step is legible as its own step. It is pacing, not fiction: the
+   walk can never pass what the data supports, so a step is only ever checked
+   once the thing it describes has actually happened. */
+const STEP_DWELL_MS = 700;
+
+/* How many steps the data supports, counted in order. Sequential on purpose: a
+   later step cannot be complete while an earlier one is not, which is what put
+   a checkmark on "ranking counterparties" while "mapping reach" was still
+   spinning. */
+function reachedStepCount(metrics) {
+  let reached = 0;
+  for (const step of DISCOVERY_STEPS) {
+    if (!step.done(metrics)) break;
+    reached += 1;
+  }
+  return reached;
+}
+
+/* The number of steps shown complete, walking toward `reached` one per dwell.
+   Clamped to `reached` on every render, so if the metrics reset (a different
+   signal) the checklist walks again from the top rather than staying lit. */
+function useWalkedProgress(reached) {
+  const [walked, setWalked] = useState(0);
+  useEffect(() => {
+    if (walked >= reached) return;
+    const t = setTimeout(() => setWalked((n) => n + 1), STEP_DWELL_MS);
+    return () => clearTimeout(t);
+  }, [walked, reached]);
+  return Math.min(walked, reached);
+}
+
+// Advances only while something is actually spinning, so a settled radar is not
+// re-rendering ten times a second in the background.
+function useSpinnerFrame(active) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setI((n) => (n + 1) % SPINNER_FRAMES.length), SPINNER_MS);
+    return () => clearInterval(t);
+  }, [active]);
+  return SPINNER_FRAMES[i % SPINNER_FRAMES.length];
+}
+
+/* A pulsing mark for work happening right now on the other side of the wire.
+   The animation is defined in styles/amiga.css so it can be reused. */
+function LiveDot({ label }) {
+  return (
+    <span style={{
+      display:"inline-flex", alignItems:"center", gap:4, flex:"0 0 auto",
+      fontFamily:"var(--mac-mono)", fontSize:9, letterSpacing:"0.08em",
+      color:"var(--ink-2)", border:"1px solid var(--ink-4)", padding:"0 4px",
+    }}>
+      <span className="live-pulse" style={{
+        width:5, height:5, borderRadius:"50%", background:"#1FA463",
+        display:"block", flex:"0 0 auto",
+      }}/>
+      {label}
+    </span>
+  );
+}
+
+function DiscoveryStages({ metrics = {}, art }) {
+  // Everything before `walked` is done, `walked` itself is the row being worked
+  // on, everything after is still pending. One index, so the three states can
+  // never disagree the way independent per-step checks did.
+  const walked = useWalkedProgress(reachedStepCount(metrics));
+  const activeIndex = walked < DISCOVERY_STEPS.length ? walked : -1;
+  const spinner = useSpinnerFrame(activeIndex !== -1);
+
+  return (
+    <div style={{
+      padding:"16px 30px 30px", display:"flex", flexDirection:"column",
+      alignItems:"center",
+    }}>
+      {/* 180x180 with object-fit:cover, per the handoff: the gif carries a lot
+          of whitespace padding and is cropped rather than scaled down. */}
+      {art && (
+        <img src={art} alt="searching" style={{
+          width:180, height:180, objectFit:"cover", flexShrink:0,
+          display:"block", mixBlendMode:"multiply",
+        }}/>
+      )}
+      <div style={{
+        fontFamily:"var(--mac-mono)", fontSize:15, fontWeight:700,
+        letterSpacing:"0.04em", color:DISCOVERY_INK, margin:"0 0 22px",
+      }}>hold on, looking for your people</div>
+
+      <div role="status" aria-live="polite" style={{
+        display:"flex", flexDirection:"column", gap:10, width:"100%",
+        fontFamily:"var(--mac-mono)", fontSize:13,
+      }}>
+        {DISCOVERY_STEPS.map((step, i) => {
+          const isDone = i < walked;
+          const isActive = i === activeIndex;
+          const mark = isDone ? "✓" : (isActive ? spinner : "·");
+          // Detail is for active and done rows only; a pending row is bare.
+          const detail = (isDone || isActive) ? step.detail(metrics, isDone) : "";
+          return (
+            <div key={step.key} style={{
+              display:"flex", gap:12, alignItems:"baseline",
+              color: isDone ? DISCOVERY_INK : (isActive ? DISCOVERY_INK : DISCOVERY_PENDING),
+              fontWeight: isActive ? 600 : 400,
+            }}>
+              <span style={{
+                width:16, display:"inline-block", textAlign:"center", flex:"0 0 auto",
+              }}>{mark}</span>
+              <span style={{ flex:1, minWidth:0 }}>{step.label}</span>
+              <span style={{
+                color:DISCOVERY_MUTED, fontWeight:400, flex:"0 0 auto",
+                whiteSpace:"nowrap",
+              }}>{detail}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {}, discovering = false, discoveryMetrics = {} }) {
   const shownPeople = people.filter(p => opportunityBucket(p) !== null);
   const peopleForTab = tab === "all"
     ? shownPeople
@@ -34,11 +202,17 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
         overflowY:"auto", padding:"14px 22px 24px",
         display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start",
       }}>
-        {peopleForTab.map(p => (
+        {discovering && (
+          <DiscoveryStages
+            metrics={discoveryMetrics}
+            art={(window.IndexAssets || {}).loading2}
+          />
+        )}
+        {!discovering && peopleForTab.map(p => (
           <MatchCard key={p.id} person={p} onOpenRoom={onOpenRoom} onAccept={onAccept} onPass={onPass} onSummary={onSummary} onProfile={onProfile}
             hasChat={chatIds.includes(p.id)} unreadCount={unread[p.id] || 0} compact={compact}/>
         ))}
-        {peopleForTab.length === 0 && (
+        {!discovering && peopleForTab.length === 0 && (
           <div style={{
             padding:28, textAlign:"center",
             fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
@@ -148,6 +322,10 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
           onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}>
             {person.name}
           </span>
+          {/* The agents are genuinely mid-exchange on these, and the radar
+              repolls faster while any of them are open, so the row can say so
+              rather than looking like a settled list. */}
+          {negotiating && <LiveDot label="live"/>}
         </div>
         <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4 }}>
           {person.blurb}

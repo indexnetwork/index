@@ -63,6 +63,40 @@ for url, fname in VENDOR.items():
     html = pat.sub(lambda _m, f=fname: inline_script(SRC / "vendor" / f), html, count=1)
 
 
+# Images the UI draws. The bundle is one offline file, so these ride along as
+# data URIs like the webfonts rather than being fetched over file://, which
+# WKWebView will not do reliably.
+IMAGES = ("loading2.gif",)
+
+# Magic bytes per type, so a re-exported or converted asset that no longer
+# animates is caught here rather than showing up as a frozen first frame.
+IMAGE_KINDS = {
+    ".gif": ("image/gif", lambda d: d[:6] in (b"GIF87a", b"GIF89a")),
+    ".webp": ("image/webp", lambda d: d[:4] == b"RIFF" and d[8:12] == b"WEBP"),
+    ".png": ("image/png", lambda d: d[:8] == b"\x89PNG\r\n\x1a\n"),
+}
+
+
+def build_index_assets() -> str:
+    entries = []
+    for fname in IMAGES:
+        path = SRC / "img" / fname
+        if not path.is_file():
+            raise SystemExit(f"missing image: src/img/{fname}")
+        ext = "." + fname.rsplit(".", 1)[-1].lower()
+        if ext not in IMAGE_KINDS:
+            raise SystemExit(f"src/img/{fname}: unsupported image type {ext}")
+        mime, ok = IMAGE_KINDS[ext]
+        data = path.read_bytes()
+        if not ok(data):
+            raise SystemExit(f"src/img/{fname} is not a valid {ext.lstrip('.')} file")
+        b64 = base64.b64encode(data).decode("ascii")
+        key = fname.rsplit(".", 1)[0]
+        entries.append(f'  "{key}": "data:{mime};base64,{b64}"')
+    body = ",\n".join(entries)
+    return "<script>\nwindow.IndexAssets = {\n" + body + "\n};\n</script>"
+
+
 def build_index_api() -> str:
     parts = []
     for fname in API_MODULES:
@@ -82,7 +116,7 @@ def build_index_api() -> str:
 anchor = '<script type="text/babel" src="ui/primitives/tokens.jsx"></script>'
 if anchor not in html:
     raise SystemExit("could not find the first babel script tag to inject IndexApi before")
-html = html.replace(anchor, build_index_api() + "\n" + anchor, 1)
+html = html.replace(anchor, build_index_assets() + "\n" + build_index_api() + "\n" + anchor, 1)
 
 
 def babel_sub(m):

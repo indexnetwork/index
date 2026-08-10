@@ -290,6 +290,18 @@
   .fade-up{ animation: fade-up 260ms cubic-bezier(.2,.7,.2,1) both }
   .fade-in{ animation: fade-in 500ms ease both }
 
+  /* Something is happening right now on the other side of the wire. Slow and
+     shallow on purpose: a hard blink next to every negotiating row reads as an
+     alarm, and there can be a column of them. */
+  @keyframes live-pulse {
+    0%, 100% { opacity:1 }
+    50%      { opacity:0.35 }
+  }
+  .live-pulse{ animation: live-pulse 1.6s ease-in-out infinite }
+  @media (prefers-reduced-motion: reduce) {
+    .live-pulse{ animation:none }
+  }
+
   .mac-caret::after{
     content:"_"; margin-left:2px;
     animation: mac-blink 1s steps(2) infinite;

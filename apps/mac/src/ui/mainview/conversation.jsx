@@ -111,7 +111,15 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               without limit, and opening the third window narrowed the column
               enough that the title pushed the status line straight through the
               header's bottom rule. It clips to an ellipsis instead, and the
-              whole signal is one hover away. */}
+              whole signal is one hover away.
+
+              maxHeight repeats the cap the line-clamp already implies, because
+              the clamp alone does not reliably constrain the box's layout
+              height in WebKit the way it does in Blink: the title rendered its
+              third line while the header had been sized for less, and the
+              status line came out through the rule again. lineHeight is 1.2, so
+              three lines is 3.6em, and this is what actually holds the header
+              open. Keep the two in step if either changes. */}
           <h2
             title={profile.intent || "your signal"}
             style={{
@@ -119,6 +127,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               fontSize:17, color:"#000", letterSpacing:-0.2, lineHeight:1.2,
               flex:1, minWidth:0,
               display:"-webkit-box", WebkitBoxOrient:"vertical", WebkitLineClamp:3,
+              maxHeight:"3.6em",
               overflow:"hidden",
             }}>{profile.intent || "your signal"}</h2>
           <div style={{ display:"flex", gap:6, flex:"0 0 auto" }}>
