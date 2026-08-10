@@ -69,5 +69,7 @@ describe('mac link-host profile', () => {
     expect(build).toContain('PlistBuddy');
     expect(build).toContain('network.index.system6.owner-credentials');
     expect(build).toContain('write_associated_domains_entitlements "$LINK_HOST" "$ENTITLEMENTS" "$APP_KEYCHAIN_GROUP"');
+    expect(build).toContain('"$LINK_HOST" "$APP_KEYCHAIN_GROUP"');
+    expect(build).toContain('validate_embedded_profile "${APP}" "$LINK_HOST"');
   });
 });

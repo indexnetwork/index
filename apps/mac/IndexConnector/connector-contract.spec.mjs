@@ -138,6 +138,20 @@ test('profile pair contract rejects canonical reuse and wrong group authorizatio
   expect(wrongGroup.stderr.toString()).toContain('does not authorize the expected Keychain access group');
 });
 
+test('production app profile, signed entitlements, and operator docs carry the owner-group contract', () => {
+  const profileHelper = read('../IndexApp/provisioning-profile.sh');
+  const appBuild = read('../IndexApp/build.sh');
+  const readme = read('../README.md');
+
+  expect(profileHelper).toContain('keychain-access-groups');
+  expect(profileHelper).toContain('does not authorize exactly the owner Keychain group');
+  expect(profileHelper).toContain('does not match the signed owner Keychain entitlement');
+  expect(appBuild).toContain('validate_embedded_profile "${APP}" "$LINK_HOST"');
+  expect(readme).toContain('all four required inputs');
+  expect(readme).toContain("INDEX_APP_IDENTIFIER_PREFIX='TEAM123ABC.'");
+  expect(readme).toMatch(/must\s+match the profile\/Team application-identifier prefix/);
+});
+
 test('macOS CI runs native fixtures and keeps signed identity verification gated', () => {
   const workflow = read('../../../.github/workflows/mac-app-build.yml');
   expect(workflow).toContain('IndexConnector/connector-contract.spec.mjs');

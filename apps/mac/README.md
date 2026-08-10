@@ -166,11 +166,16 @@ Prepare and run the handoff in this order:
    ID, selecting the matching Developer ID Application certificate.
 4. Download the Developer ID provisioning profile to the operator machine. Do
    not commit it or record its local name or path in PR evidence.
-5. From the repository root, build with all three required inputs:
+5. From the repository root, build with all four required inputs. The
+   `INDEX_APP_IDENTIFIER_PREFIX` value includes its trailing period and must
+   match the profile/Team application-identifier prefix; for example, a Team
+   prefix of `TEAM123ABC` is supplied as `TEAM123ABC.`. The profile must
+   authorize exactly `<prefix>network.index.system6.owner-credentials`.
 
    ```bash
    cd apps/mac/IndexApp
    INDEX_LINK_HOST=dev.index.network \
+   INDEX_APP_IDENTIFIER_PREFIX='TEAM123ABC.' \
    CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
    PROVISIONING_PROFILE='<path-to-downloaded-profile>' \
    ./build.sh

@@ -99,8 +99,10 @@ if [ -n "${IDENTITY}" ]; then
     fi
     echo "==> Code signing as '${IDENTITY}' for ${LINK_HOST}"
     embed_provisioning_profile \
-        "$PROFILE" "$CONTENTS" "$IDENTITY" "network.index.system6" "$LINK_HOST"
+        "$PROFILE" "$CONTENTS" "$IDENTITY" "network.index.system6" \
+        "$LINK_HOST" "$APP_KEYCHAIN_GROUP"
     codesign --force --deep --options runtime --entitlements "${ENTITLEMENTS}" --sign "${IDENTITY}" "${APP}"
+    validate_embedded_profile "${APP}" "$LINK_HOST"
 else
     # Preserve the existing ad-hoc local-development path only here.
     # It may retry without associated-domains when codesign rejects that entitlement.

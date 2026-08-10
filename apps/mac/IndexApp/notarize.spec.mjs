@@ -70,6 +70,7 @@ test('notarization waits, staples, validates and assesses', () => {
 test('documents the Developer ID dev handoff', () => {
   for (const required of [
     'INDEX_LINK_HOST=dev.index.network',
+    "INDEX_APP_IDENTIFIER_PREFIX='TEAM123ABC.'",
     'CODESIGN_IDENTITY=',
     'PROVISIONING_PROFILE=',
     'NOTARYTOOL_PROFILE=',
