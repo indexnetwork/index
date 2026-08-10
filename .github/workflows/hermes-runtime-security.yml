@@ -57,6 +57,7 @@ jobs:
             apps/mac/api/agent-runtime-ui.spec.mjs \
             apps/mac/api/markdown.spec.mjs \
             apps/mac/api/client.spec.mjs \
+            apps/mac/api/native-api-bridge.spec.mjs \
             apps/mac/api/deeplink.spec.mjs
           bun test \
             apps/mac/IndexApp/hermes-runtime.spec.mjs \

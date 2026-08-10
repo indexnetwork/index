@@ -48,7 +48,6 @@ jobs:
             api/agent-runtime.spec.mjs \
             api/agent-runtime-saga.spec.mjs \
             api/client.spec.mjs \
-            api/native-api-bridge.spec.mjs \
             api/deeplink.spec.mjs \
             IndexConnector/connector-contract.spec.mjs
 

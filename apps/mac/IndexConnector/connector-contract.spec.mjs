@@ -163,6 +163,13 @@ test('macOS CI runs native fixtures and keeps signed identity verification gated
   expect(workflow).toContain('./build.sh --signed-access-fixture');
 });
 
+test('dependency-free macOS CI delegates dependency-backed owner bridge checks', () => {
+  const macWorkflow = read('../../../.github/workflows/mac-app-build.yml');
+  const securityWorkflow = read('../../../.github/workflows/hermes-runtime-security.yml');
+  expect(macWorkflow).not.toContain('api/native-api-bridge.spec.mjs');
+  expect(securityWorkflow).toContain('apps/mac/api/native-api-bridge.spec.mjs');
+});
+
 test('production connector endpoints and build mode cannot be supplied by callers', () => {
   const identity = read('./Sources/ConnectorIdentity.swift');
   const runtime = read('./Sources/ConnectorRuntime.swift');
