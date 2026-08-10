@@ -48,7 +48,34 @@ jobs:
             api/agent-runtime.spec.mjs \
             api/agent-runtime-saga.spec.mjs \
             api/client.spec.mjs \
-            api/deeplink.spec.mjs
+            api/deeplink.spec.mjs \
+            IndexConnector/connector-contract.spec.mjs
+
+      - name: Native connector protocol and Keychain fixtures
+        working-directory: apps/mac/IndexConnector
+        run: |
+          bash -n build.sh
+          plutil -lint Info.plist IndexConnector.entitlements
+          ./build.sh --fixture ConnectorProtocolFixture
+          ./build.sh --fixture KeychainIntegrationFixture
+
+      - name: Protected signed cross-identity Keychain fixture
+        working-directory: apps/mac/IndexConnector
+        env:
+          INDEX_KEYCHAIN_SIGNING_FIXTURE: ${{ secrets.INDEX_KEYCHAIN_SIGNING_FIXTURE }}
+          INDEX_APP_IDENTIFIER_PREFIX: ${{ secrets.INDEX_APP_IDENTIFIER_PREFIX }}
+          INDEX_TEST_APP_KEYCHAIN_GROUP: ${{ secrets.INDEX_TEST_APP_KEYCHAIN_GROUP }}
+          INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP: ${{ secrets.INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP }}
+          INDEX_TEST_APP_CODESIGN_IDENTITY: ${{ secrets.INDEX_TEST_APP_CODESIGN_IDENTITY }}
+          INDEX_TEST_CONNECTOR_CODESIGN_IDENTITY: ${{ secrets.INDEX_TEST_CONNECTOR_CODESIGN_IDENTITY }}
+          INDEX_TEST_APP_PROVISIONING_PROFILE: ${{ secrets.INDEX_TEST_APP_PROVISIONING_PROFILE }}
+          INDEX_TEST_CONNECTOR_PROVISIONING_PROFILE: ${{ secrets.INDEX_TEST_CONNECTOR_PROVISIONING_PROFILE }}
+        run: |
+          if [ "${INDEX_KEYCHAIN_SIGNING_FIXTURE:-}" != "1" ]; then
+            echo "Protected signed Keychain fixture skipped (set INDEX_KEYCHAIN_SIGNING_FIXTURE=1 to enable)."
+            exit 0
+          fi
+          ./build.sh --signed-access-fixture
 
       - name: macOS shell and handoff tests
         working-directory: apps/mac/IndexApp
