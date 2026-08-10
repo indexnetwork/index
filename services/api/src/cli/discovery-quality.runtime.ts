@@ -8,6 +8,8 @@ import { assertAbConfirmation } from './discovery.gate';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
 import { buildHistoricalQualityChildEnvironment, type HistoricalQualityChildEnvironment } from './discovery-quality.environment';
+import { preflightHistoricalQualityChildRuntime } from './discovery-quality.child-loader';
+import { embeddingConfigurationFingerprint, HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY } from '../lib/embedding/embedding.identity';
 import { attestHistoricalQualityTargets, parseHistoricalQualityManifest, restoreHistoricalQualitySelectedChild, type AttestedHistoricalQualityManifest } from './discovery.neon';
 
 import type { HistoricalQualityRequest } from './discovery-quality.contract';
@@ -16,7 +18,12 @@ export const HISTORICAL_QUALITY_SCORING_POLICY_VERSION = 'historical-quality-v1'
 
 export interface VerifiedHistoricalQualityBase {
   version: 1;
-  embeddingModelId: string;
+  embedding: {
+    provider: string;
+    model: string;
+    dimensions: number;
+    configurationFingerprint: string;
+  };
   corpusVersion: string;
 }
 
@@ -46,13 +53,24 @@ export interface HistoricalQualitySlotDispatch {
   runId: string;
   slotId: string;
   configurationId: 'a';
+  /** Canonical fingerprint of the complete HistoricalResolvedConfig. */
   configurationFingerprint: string;
+  /** Canonical fingerprint of the strict sanitized child config JSON. */
+  childEnvironmentFingerprint: string;
   outputPath: string;
 }
 
-export type HistoricalQualityChildOutput = Readonly<Record<string, unknown>>;
+export interface HistoricalQualityChildOutput {
+  readonly schemaVersion: 1;
+  readonly runId: string;
+  readonly slotId: string;
+  readonly configurationId: 'a';
+  readonly transportRow: Readonly<Record<string, unknown>>;
+  readonly executionRun: Readonly<Record<string, unknown>>;
+}
 
 export interface HistoricalQualityRuntimeDeps {
+  preflightChildRuntime(): Promise<void>;
   attest(): Promise<AttestedHistoricalQualityManifest>;
   verifyBase(manifest: AttestedHistoricalQualityManifest): Promise<VerifiedHistoricalQualityBase>;
   restoreSelectedChild(manifest: AttestedHistoricalQualityManifest): Promise<void>;
@@ -60,7 +78,11 @@ export interface HistoricalQualityRuntimeDeps {
     dispatch: HistoricalQualitySlotDispatch;
     environment: HistoricalQualityChildEnvironment;
   }): Promise<unknown>;
-  validateSlotOutput(slot: HistoricalQualityPilotSlot, output: unknown): HistoricalQualityChildOutput;
+  validateSlotOutput(
+    slot: HistoricalQualityPilotSlot,
+    dispatch: HistoricalQualitySlotDispatch,
+    output: unknown,
+  ): Promise<HistoricalQualityChildOutput>;
 }
 
 export interface HistoricalQualityParentResult {
@@ -79,6 +101,15 @@ type HistoricalAuthorities = {
   fingerprintCanonicalJson(value: unknown): string;
   resolveEvalJudgeModelId(environment: Record<string, string | undefined>): string;
   resolveCanonicalAllAgentModels(environment: Readonly<Record<string, string | undefined>>): Readonly<Record<string, string>>;
+  parseHistoricalQualityChildOutput(value: unknown, expected: {
+    runId: string;
+    slotId: string;
+    configurationId: 'a';
+    configurationFingerprint: string;
+    logicalCaseId: string;
+    trigger: 'intent' | 'enrichment';
+    repetition: number;
+  }): HistoricalQualityChildOutput;
 };
 
 async function loadHistoricalAuthorities(): Promise<HistoricalAuthorities> {
@@ -87,16 +118,19 @@ async function loadHistoricalAuthorities(): Promise<HistoricalAuthorities> {
   const pilotSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.pilot.js';
   const sharedSpecifier = '../../../../packages/protocol/eval/shared/index.js';
   const modelsSpecifier = '../../../../packages/protocol/src/shared/agent/model.resolver.js';
-  const [pilot, shared, models] = await Promise.all([
+  const childOutputSpecifier = '../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
+  const [pilot, shared, models, childOutput] = await Promise.all([
     import(pilotSpecifier),
     import(sharedSpecifier),
     import(modelsSpecifier),
+    import(childOutputSpecifier),
   ]);
   return {
     buildHistoricalQualityPilotPlan: pilot.buildHistoricalQualityPilotPlan as HistoricalAuthorities['buildHistoricalQualityPilotPlan'],
     fingerprintCanonicalJson: shared.fingerprintCanonicalJson as HistoricalAuthorities['fingerprintCanonicalJson'],
     resolveEvalJudgeModelId: shared.resolveEvalJudgeModelId as HistoricalAuthorities['resolveEvalJudgeModelId'],
     resolveCanonicalAllAgentModels: models.resolveCanonicalAllAgentModels as HistoricalAuthorities['resolveCanonicalAllAgentModels'],
+    parseHistoricalQualityChildOutput: childOutput.parseHistoricalQualityChildOutput as HistoricalAuthorities['parseHistoricalQualityChildOutput'],
   };
 }
 
@@ -149,7 +183,7 @@ export async function resolveHistoricalQualityConfiguration(input: {
     env,
     fixed: {
       judgeModelId,
-      embeddingModelId: input.verifiedBase.embeddingModelId,
+      embeddingModelId: input.verifiedBase.embedding.model,
       providerAccountFingerprint: exactProviderFingerprint(input.environment),
       corpusVersion: input.verifiedBase.corpusVersion,
       scoringPolicyFingerprint: authorities.fingerprintCanonicalJson(historicalQualityScoringPolicy(judgeModelId)),
@@ -160,17 +194,61 @@ export async function resolveHistoricalQualityConfiguration(input: {
 function parseVerifiedBase(value: unknown): VerifiedHistoricalQualityBase {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Historical quality base verifier returned invalid metadata');
   const record = value as Record<string, unknown>;
-  if (Object.keys(record).sort().join(',') !== 'corpusVersion,embeddingModelId,version'
+  const embedding = record.embedding;
+  if (Object.keys(record).sort().join(',') !== 'corpusVersion,embedding,version'
     || record.version !== 1
-    || typeof record.embeddingModelId !== 'string' || record.embeddingModelId.trim() === ''
-    || typeof record.corpusVersion !== 'string' || record.corpusVersion.trim() === '') {
+    || typeof record.corpusVersion !== 'string' || record.corpusVersion.trim() === ''
+    || !embedding || typeof embedding !== 'object' || Array.isArray(embedding)) {
+    throw new Error('Historical quality base verifier returned invalid metadata');
+  }
+  const identity = embedding as Record<string, unknown>;
+  if (Object.keys(identity).sort().join(',') !== 'configurationFingerprint,dimensions,model,provider'
+    || typeof identity.provider !== 'string' || identity.provider.trim() === ''
+    || typeof identity.model !== 'string' || identity.model.trim() === ''
+    || !Number.isInteger(identity.dimensions) || (identity.dimensions as number) < 1
+    || typeof identity.configurationFingerprint !== 'string'
+    || !/^[a-f0-9]{64}$/.test(identity.configurationFingerprint)) {
+    throw new Error('Historical quality base verifier returned invalid metadata');
+  }
+  const canonicalIdentity = {
+    provider: identity.provider,
+    model: identity.model,
+    dimensions: identity.dimensions as number,
+  };
+  if (identity.configurationFingerprint !== embeddingConfigurationFingerprint(canonicalIdentity)) {
     throw new Error('Historical quality base verifier returned invalid metadata');
   }
   return Object.freeze({
     version: 1,
-    embeddingModelId: record.embeddingModelId,
+    embedding: Object.freeze({ ...canonicalIdentity, configurationFingerprint: identity.configurationFingerprint }),
     corpusVersion: record.corpusVersion,
   });
+}
+
+function reconcileHistoricalQualityEmbedding(
+  verifiedBase: VerifiedHistoricalQualityBase,
+  environment: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string | undefined>> {
+  const runtimeIdentity = {
+    provider: HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY.provider,
+    model: environment.EMBEDDING_MODEL ?? HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY.model,
+    dimensions: environment.EMBEDDING_DIMENSIONS === undefined
+      ? HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY.dimensions
+      : Number(environment.EMBEDDING_DIMENSIONS),
+  };
+  const verified = verifiedBase.embedding;
+  if (!Number.isInteger(runtimeIdentity.dimensions)
+    || runtimeIdentity.provider !== verified.provider
+    || runtimeIdentity.model !== verified.model
+    || runtimeIdentity.dimensions !== verified.dimensions
+    || embeddingConfigurationFingerprint(runtimeIdentity) !== verified.configurationFingerprint) {
+    throw new Error('Historical quality runtime embedding identity does not match verified base metadata');
+  }
+  return {
+    ...environment,
+    EMBEDDING_MODEL: verified.model,
+    EMBEDDING_DIMENSIONS: String(verified.dimensions),
+  };
 }
 
 async function verifyBaseInFreshProcess(manifest: AttestedHistoricalQualityManifest): Promise<VerifiedHistoricalQualityBase> {
@@ -223,6 +301,7 @@ async function productionSpawnSlot(input: {
       '--slot-id', dispatch.slotId,
       '--configuration-id', dispatch.configurationId,
       '--configuration-fingerprint', dispatch.configurationFingerprint,
+      '--child-environment-fingerprint', dispatch.childEnvironmentFingerprint,
       '--child-output', dispatch.outputPath,
     ],
     env: input.environment,
@@ -242,18 +321,34 @@ async function productionSpawnSlot(input: {
   }
 }
 
-function productionValidateSlotOutput(slot: HistoricalQualityPilotSlot, output: unknown): HistoricalQualityChildOutput {
-  if (!output || typeof output !== 'object' || Array.isArray(output)) {
+async function productionValidateSlotOutput(
+  slot: HistoricalQualityPilotSlot,
+  dispatch: HistoricalQualitySlotDispatch,
+  output: unknown,
+): Promise<HistoricalQualityChildOutput> {
+  try {
+    const { parseHistoricalQualityChildOutput } = await loadHistoricalAuthorities();
+    return parseHistoricalQualityChildOutput(output, {
+      runId: dispatch.runId,
+      slotId: slot.slotId,
+      configurationId: dispatch.configurationId,
+      configurationFingerprint: dispatch.configurationFingerprint,
+      logicalCaseId: slot.caseId,
+      trigger: slot.trigger,
+      repetition: slot.repetition,
+    });
+  } catch {
     throw new Error('Historical quality slot child output was invalid');
   }
-  const record = output as Record<string, unknown>;
-  if (record.slotId !== slot.slotId || record.configurationId !== 'a') {
-    throw new Error('Historical quality slot child output did not match its dispatch');
-  }
-  return Object.freeze({ ...record });
 }
 
 const productionDependencies: HistoricalQualityRuntimeDeps = {
+  preflightChildRuntime: async () => {
+    // Consent stays the first production gate, while child availability still
+    // precedes topology attestation and every destructive operation.
+    assertAbConfirmation(process.env);
+    await preflightHistoricalQualityChildRuntime(process.env);
+  },
   attest: productionAttest,
   verifyBase: verifyBaseInFreshProcess,
   restoreSelectedChild: async (manifest) => restoreHistoricalQualitySelectedChild({
@@ -271,20 +366,28 @@ export async function runHistoricalQualityRuntime(
   let stage: AbRunStage | null = null;
   let temporaryDirectory: string | undefined;
   try {
+    // The real Task 6 module must prove its own availability before topology
+    // attestation or any destructive/provider operation can be constructed.
+    await deps.preflightChildRuntime();
     const manifest = await deps.attest();
     const verifiedBase = parseVerifiedBase(await deps.verifyBase(manifest));
-    const resolved = await resolveHistoricalQualityConfiguration({ request, verifiedBase, environment: process.env });
-    const { buildHistoricalQualityPilotPlan } = await loadHistoricalAuthorities();
+    const reconciledEnvironment = reconcileHistoricalQualityEmbedding(verifiedBase, process.env);
+    const resolved = await resolveHistoricalQualityConfiguration({ request, verifiedBase, environment: reconciledEnvironment });
+    const { buildHistoricalQualityPilotPlan, fingerprintCanonicalJson } = await loadHistoricalAuthorities();
     const plan = buildHistoricalQualityPilotPlan({
       caseIds: request.caseIds,
       triggers: request.triggers,
       repetitions: request.repetitions,
       configuration: { id: 'a', config: resolved },
     });
+    const recomputedConfigurationFingerprint = fingerprintCanonicalJson(resolved);
+    if (plan.configurationFingerprint !== recomputedConfigurationFingerprint
+      || plan.slots.some((slot) => slot.configurationFingerprint !== recomputedConfigurationFingerprint)) {
+      throw new Error('Historical quality planner configuration fingerprint mismatch');
+    }
     const childEnvironment = buildHistoricalQualityChildEnvironment({
-      parentEnvironment: process.env,
+      parentEnvironment: reconciledEnvironment,
       sanitizedConfiguration: request.configuration.config,
-      configurationFingerprint: plan.configurationFingerprint,
     });
     const runId = `hq-run-${randomBytes(16).toString('hex')}`;
     const outputs: HistoricalQualityChildOutput[] = [];
@@ -298,12 +401,13 @@ export async function runHistoricalQualityRuntime(
         runId,
         slotId: slot.slotId,
         configurationId: 'a',
-        configurationFingerprint: slot.configurationFingerprint,
+        configurationFingerprint: recomputedConfigurationFingerprint,
+        childEnvironmentFingerprint: childEnvironment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT,
         outputPath: path.join(temporaryDirectory, `${slot.slotId}.json`),
       };
       stage = 'spawned';
       const output = await deps.spawnSlot({ dispatch, environment: childEnvironment });
-      outputs.push(deps.validateSlotOutput(slot, output));
+      outputs.push(await deps.validateSlotOutput(slot, dispatch, output));
     }
     return { runId, configurationFingerprint: plan.configurationFingerprint, outputs };
   } catch (error) {

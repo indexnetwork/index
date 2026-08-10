@@ -5,12 +5,29 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, type HistoricalQualityRequest } from '../discovery-quality.contract';
 import { HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
 import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, type HistoricalQualityRuntimeDeps, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
+import { embeddingConfigurationFingerprint } from '../../lib/embedding/embedding.identity';
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+};
 const providerFingerprint = digest('stable-provider-account');
+const verifiedEmbedding = {
+  provider: 'openrouter',
+  model: 'openai/text-embedding-3-large',
+  dimensions: 2000,
+};
 const verifiedBase: VerifiedHistoricalQualityBase = {
   version: 1,
-  embeddingModelId: 'openai/text-embedding-3-large',
+  embedding: {
+    ...verifiedEmbedding,
+    configurationFingerprint: embeddingConfigurationFingerprint(verifiedEmbedding),
+  },
   corpusVersion: 'historical-shared-pool-v1',
 };
 const request: HistoricalQualityRequest = {
@@ -56,18 +73,21 @@ describe('historical quality child environment', () => {
     const environment = buildHistoricalQualityChildEnvironment({
       parentEnvironment: parent,
       sanitizedConfiguration: { DISCOVERY_ALLOWED_TYPES: 'intent', CHAT_MODEL: 'anthropic/claude-sonnet-4' },
-      configurationFingerprint: digest('resolved-config'),
     });
 
     expect(HISTORICAL_QUALITY_RUNTIME_CORE_KEYS.every((key) => environment[key] === parent[key])).toBe(true);
     expect(HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS.every((key) => environment[key] !== undefined)).toBe(true);
     expect(environment.CHAT_MODEL).toBe('anthropic/claude-sonnet-4');
     expect(JSON.parse(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON)).toEqual({ DISCOVERY_ALLOWED_TYPES: 'intent' });
+    expect(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT).toBe(
+      digest(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON),
+    );
     expect(Object.keys(environment).sort()).toEqual([
       ...HISTORICAL_QUALITY_RUNTIME_CORE_KEYS,
       ...HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS,
       'REDIS_URL',
       'DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON',
+      'DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT',
     ].sort());
     for (const forbidden of ['DATABASE_URL', 'PATH', 'HOME', 'AWS_SECRET_ACCESS_KEY', 'SENTRY_DSN', 'INVENTED_SECRET', 'HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT']) {
       expect(environment).not.toHaveProperty(forbidden);
@@ -113,7 +133,7 @@ describe('historical quality production configuration resolver', () => {
     expect(resolved.env).toEqual({});
     expect(resolved.fixed).toMatchObject({
       judgeModelId: 'judge/model',
-      embeddingModelId: verifiedBase.embeddingModelId,
+      embeddingModelId: verifiedBase.embedding.model,
       corpusVersion: verifiedBase.corpusVersion,
       providerAccountFingerprint: providerFingerprint,
     });
@@ -135,6 +155,7 @@ function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
   let active = false;
   const argv: string[][] = [];
   const deps: HistoricalQualityRuntimeDeps = {
+    preflightChildRuntime: async () => { calls.push('child-preflight'); },
     attest: async () => {
       calls.push('attest');
       return {
@@ -161,17 +182,24 @@ function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
       expect(active).toBe(false);
       active = true;
       calls.push('spawn');
-      argv.push([dispatch.runId, dispatch.slotId, dispatch.configurationId, dispatch.configurationFingerprint, dispatch.outputPath]);
+      argv.push([
+        dispatch.runId,
+        dispatch.slotId,
+        dispatch.configurationId,
+        dispatch.configurationFingerprint,
+        dispatch.childEnvironmentFingerprint,
+        dispatch.outputPath,
+      ]);
       expect(environment).not.toHaveProperty('HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT');
       await Promise.resolve();
       active = false;
       return { slotId: dispatch.slotId, configurationId: 'a' };
     },
-    validateSlotOutput: (slot, output) => {
+    validateSlotOutput: async (slot, _dispatch, output) => {
       expect(active).toBe(false);
       calls.push('validate');
       expect((output as { slotId: string }).slotId).toBe(slot.slotId);
-      return output as Record<string, unknown>;
+      return output as never;
     },
   };
   return { calls, argv, deps };
@@ -185,7 +213,7 @@ describe('historical quality runtime acceptance order', () => {
     const result = await runHistoricalQualityRuntime(tenSlots, deps);
     expect(result.outputs).toHaveLength(10);
     expect(calls).toEqual([
-      'attest', 'verify', 'verifier-closed',
+      'child-preflight', 'attest', 'verify', 'verifier-closed',
       ...Array.from({ length: 10 }, () => ['restore', 'spawn', 'validate']).flat(),
     ]);
     expect(argv.flat().join(' ')).not.toContain('DISCOVERY_ALLOWED_TYPES');
@@ -199,7 +227,7 @@ describe('historical quality runtime acceptance order', () => {
     const failure = new Error('sanitized verifier failure');
     const { calls, deps } = runtimeDeps({ verifierFailure: failure });
     await expect(runHistoricalQualityRuntime(request, deps)).rejects.toBe(failure);
-    expect(calls).toEqual(['attest', 'verify']);
+    expect(calls).toEqual(['child-preflight', 'attest', 'verify']);
   });
 
   it('validates the minimal child environment before the first destructive restore', async () => {
@@ -207,6 +235,64 @@ describe('historical quality runtime acceptance order', () => {
     delete process.env.REDIS_URL;
     const { calls, deps } = runtimeDeps();
     await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow();
-    expect(calls).toEqual(['attest', 'verify', 'verifier-closed']);
+    expect(calls).toEqual(['child-preflight', 'attest', 'verify', 'verifier-closed']);
+  });
+
+  it('performs zero attest, verifier, restore, or spawn work when the child runtime is unavailable', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { calls, deps } = runtimeDeps();
+    deps.preflightChildRuntime = async () => {
+      calls.push('child-preflight');
+      throw new Error('Historical quality child runtime is unavailable');
+    };
+    await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow(/child runtime is unavailable/);
+    expect(calls).toEqual(['child-preflight']);
+  });
+
+  it('rejects arbitrary or extra verifier embedding identity metadata before the first restore', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    for (const invalidBase of [
+      { ...verifiedBase, embedding: { ...verifiedBase.embedding, configurationFingerprint: 'b'.repeat(64) } },
+      { ...verifiedBase, embedding: { ...verifiedBase.embedding, secret: 'must-not-pass' } },
+    ]) {
+      const { calls, deps } = runtimeDeps();
+      deps.verifyBase = async () => {
+        calls.push('verify');
+        calls.push('verifier-closed');
+        return invalidBase as never;
+      };
+      await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow(/invalid metadata/);
+      expect(calls).toEqual(['child-preflight', 'attest', 'verify', 'verifier-closed']);
+    }
+  });
+
+  it('refuses a runtime embedding mismatch before the first restore', async () => {
+    Object.assign(process.env, requiredParentEnvironment(), { EMBEDDING_MODEL: 'other/model', EMBEDDING_DIMENSIONS: '2000' });
+    const { calls, deps } = runtimeDeps();
+    await expect(runHistoricalQualityRuntime(request, deps)).rejects.toThrow(/embedding identity/);
+    expect(calls).toEqual(['child-preflight', 'attest', 'verify', 'verifier-closed']);
+  });
+
+  it('dispatches distinct recomputed full-config and canonical child-env fingerprints', async () => {
+    Object.assign(process.env, requiredParentEnvironment());
+    const { deps } = runtimeDeps();
+    let observed: { full: string; childEnv: string; json: string } | undefined;
+    deps.spawnSlot = async ({ dispatch, environment }) => {
+      observed = {
+        full: dispatch.configurationFingerprint,
+        childEnv: dispatch.childEnvironmentFingerprint,
+        json: environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON,
+      };
+      return { slotId: dispatch.slotId, configurationId: 'a' };
+    };
+    await runHistoricalQualityRuntime(request, deps);
+    const resolved = await resolveHistoricalQualityConfiguration({
+      request,
+      verifiedBase,
+      environment: process.env,
+    });
+    expect(observed?.childEnv).toBe(digest(observed!.json));
+    expect(observed?.full).toBe(digest(canonicalJson(resolved)));
+    expect(observed?.full).not.toBe(observed?.childEnv);
   });
 });

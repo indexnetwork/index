@@ -198,6 +198,30 @@ describe('historical quality provider-free preflight contract', () => {
 });
 
 describe('historical quality PR B dispatch acceptance', () => {
+  it('recognizes a direct quality child before legacy parsing and refuses through the child-runtime seam', async () => {
+    const calls: string[] = [];
+    const dependencies = {
+      assertConfirmation: () => { calls.push('legacy-confirmation'); },
+      parseManifest: () => { calls.push('legacy-manifest'); throw new Error('legacy parser must not run'); },
+      attestTargets: async () => { calls.push('legacy-attest'); },
+      importRuntime: async () => ({ main: async () => { calls.push('legacy-runtime'); } }),
+      importQualityChildRuntime: async () => {
+        calls.push('quality-child-preflight');
+        throw new Error('Historical quality child runtime is unavailable');
+      },
+    } as DiscoveryBootstrapDependencies & {
+      importQualityChildRuntime(): Promise<never>;
+    };
+
+    await expect(runDiscoveryBootstrap(
+      ['--historical-quality-child', '--run-id', 'run', '--slot-id', 'slot', '--configuration-id', 'a'],
+      {},
+      { log: () => {}, error: () => {} },
+      dependencies,
+    )).rejects.toThrow(/child runtime is unavailable/);
+    expect(calls).toEqual(['quality-child-preflight']);
+  });
+
   it('passes the parsed request to the dedicated quality runtime instead of legacy A/B', async () => {
     const calls: string[] = [];
     let dispatchedRequest: HistoricalQualityRequest | undefined;

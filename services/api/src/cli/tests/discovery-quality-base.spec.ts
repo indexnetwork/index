@@ -482,8 +482,9 @@ describe('historical quality read-only command', () => {
     await expect(assertReadOnlySession(async () => [])).rejects.toThrow('not read-only');
   });
 
-  it('constructs no refresh/provider dependency in verify mode and always closes', async () => {
+  it('constructs no refresh/provider dependency in verify mode, returns full embedding identity, and always closes', async () => {
     const calls: string[] = [];
+    let verifiedMetadata: unknown;
     const db = new FakeDb();
     const attestation = await refreshHistoricalQualityBase(db as unknown as DrizzleDB, projection, fakeEmbedder(), dependencies());
     expect(attestation).toBeDefined();
@@ -498,7 +499,13 @@ describe('historical quality read-only command', () => {
       dependencies: () => dependencies(),
       projection,
       log: (line) => calls.push(line),
+      verified: (metadata) => { verifiedMetadata = metadata; },
     })).resolves.toBe('verified');
+    expect(verifiedMetadata).toEqual({
+      version: 1,
+      embedding: attestation.embedding,
+      corpusVersion: attestation.corpusVersion,
+    });
     expect(calls).toEqual(['Historical quality base verifier session read-only: on', 'close-verifier']);
   });
 

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { assertAbEnvConfig } from './discovery.flags';
 
 export const HISTORICAL_QUALITY_RUNTIME_CORE_KEYS = [
@@ -33,6 +35,7 @@ export type HistoricalQualityRuntimeEnvironment = Readonly<
 
 export type HistoricalQualityChildEnvironment = HistoricalQualityRuntimeEnvironment & {
   readonly DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON: string;
+  readonly DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT: string;
 };
 
 function required(environment: Readonly<Record<string, string | undefined>>, key: string): string {
@@ -92,11 +95,7 @@ function canonicalNonModelConfiguration(configuration: Readonly<Record<string, s
 export function buildHistoricalQualityChildEnvironment(input: {
   parentEnvironment: Readonly<Record<string, string | undefined>>;
   sanitizedConfiguration: Readonly<Record<string, string>>;
-  configurationFingerprint: string;
 }): HistoricalQualityChildEnvironment {
-  if (!/^[a-f0-9]{64}$/.test(input.configurationFingerprint)) {
-    throw new Error('Historical quality configuration fingerprint must be lowercase 64-hex');
-  }
   const runtimeSource: Record<string, string | undefined> = {};
   for (const key of [...HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, ...HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, ...HISTORICAL_QUALITY_RUNTIME_REDIS_KEYS]) {
     runtimeSource[key] = input.parentEnvironment[key];
@@ -108,8 +107,10 @@ export function buildHistoricalQualityChildEnvironment(input: {
   }
   const runtime = parseHistoricalQualityRuntimeEnvironment(runtimeSource);
   const configuration = canonicalNonModelConfiguration(input.sanitizedConfiguration);
+  const configurationJson = JSON.stringify(configuration);
   return Object.freeze({
     ...runtime,
-    DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON: JSON.stringify(configuration),
+    DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON: configurationJson,
+    DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT: createHash('sha256').update(configurationJson).digest('hex'),
   }) as HistoricalQualityChildEnvironment;
 }

@@ -25,6 +25,7 @@ import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { formatHistoricalQualityCost, hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, type HistoricalQualityRequest } from './discovery-quality.contract';
 
 import type { AbSideId } from './discovery.plan';
+import type { HistoricalQualityChildEnvironment } from './discovery-quality.environment';
 
 /**
  * Attests both targets, reporting a refusal an operator can act on without
@@ -81,6 +82,9 @@ export interface DiscoveryBootstrapDependencies {
   importQualityRuntime?(): Promise<{
     runHistoricalQualityRuntime(request: HistoricalQualityRequest): Promise<unknown>;
   }>;
+  importQualityChildRuntime?(environment: Readonly<Record<string, string | undefined>>): Promise<{
+    runHistoricalQualityChild(args: readonly string[], environment: HistoricalQualityChildEnvironment): Promise<void>;
+  }>;
 }
 
 const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
@@ -89,6 +93,10 @@ const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
   attestTargets: attestOrRefuse,
   importRuntime: async () => await import('./discovery.main'),
   importQualityRuntime: async () => await import('./discovery-quality.runtime'),
+  importQualityChildRuntime: async (environment) => {
+    const loader = await import('./discovery-quality.child-loader');
+    return loader.loadAvailableHistoricalQualityChildRuntime(environment);
+  },
 };
 
 /**
@@ -101,7 +109,16 @@ export async function runDiscoveryBootstrap(
   io: Pick<Console, 'log' | 'error'>,
   dependencies: DiscoveryBootstrapDependencies = productionBootstrapDependencies,
 ): Promise<0 | 2 | undefined> {
-  // Help remains above every gate, environment read, runtime import, and live operation.
+  // Child recognition must precede every legacy gate, manifest parser, and
+  // runtime import. The shared loader has no fallback, so a missing Task 6
+  // implementation refuses here rather than after a parent restore.
+  if (args.includes('--historical-quality-child')) {
+    const runtime = await (dependencies.importQualityChildRuntime
+      ?? productionBootstrapDependencies.importQualityChildRuntime!)(env);
+    await runtime.runHistoricalQualityChild(args, env as HistoricalQualityChildEnvironment);
+    return undefined;
+  }
+  // Help remains above every parent gate, environment read, runtime import, and live operation.
   if (isHistoricalQualityRequest(args)) {
     if (hasHistoricalQualityHelp(args)) {
       io.log(historicalQualityUsage());

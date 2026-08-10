@@ -20,7 +20,11 @@ export interface HistoricalQualityBaseCommandDependencies {
   dependencies(): HistoricalQualityBaseDependencies;
   projection: HistoricalSharedPoolSeedProjection;
   log(line: string): void;
-  verified?(metadata: { version: 1; embeddingModelId: string; corpusVersion: string }): void;
+  verified?(metadata: {
+    version: 1;
+    embedding: { provider: string; model: string; dimensions: number; configurationFingerprint: string };
+    corpusVersion: string;
+  }): void;
 }
 
 function parseArgs(args: readonly string[]): { verifyOnly: boolean } {
@@ -44,7 +48,12 @@ export async function runHistoricalQualityBaseCommand(
       const attestation = await readVerifiedHistoricalQualityPublishedState(verifier.db, dependencies.projection, operations);
       dependencies.verified?.({
         version: 1,
-        embeddingModelId: attestation.embedding.model,
+        embedding: {
+          provider: attestation.embedding.provider,
+          model: attestation.embedding.model,
+          dimensions: attestation.embedding.dimensions,
+          configurationFingerprint: attestation.embedding.configurationFingerprint,
+        },
         corpusVersion: attestation.corpusVersion,
       });
       return 'verified';
