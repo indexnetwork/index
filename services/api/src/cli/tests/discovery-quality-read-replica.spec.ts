@@ -108,6 +108,9 @@ function memoryRecordStore(initial?: QualityReadReplicaSecureRecord, mode = 0o60
         events.push(`reserve:${path}:${requestedMode.toString(8)}`);
         if (input.reserveError) throw input.reserveError;
         return {
+          writeCreateUncertain: async () => {
+            events.push('write-create-uncertain');
+          },
           writeRecovery: async (next) => {
             events.push('write-recovery');
             records.push(next);
@@ -171,7 +174,7 @@ describe('historical quality read-replica provision command', () => {
       'listEndpoints:project-quality:br-quality-base',
     ]);
     expect(records.events).toEqual([
-      'reserve:/secure/read-replica.json:600', 'write-recovery', 'commit',
+      'reserve:/secure/read-replica.json:600', 'write-create-uncertain', 'write-recovery', 'commit',
     ]);
     expect(records.records.at(-1)).toEqual(initialRecord);
     expect(result).toEqual(initialRecord);
@@ -275,7 +278,7 @@ describe('historical quality read-replica provision command', () => {
     const { controlPlane } = makeControlPlane();
     const create = controlPlane.createReadOnlyEndpoint;
     controlPlane.createReadOnlyEndpoint = async (projectId, branchId) => {
-      expect(records.events).toEqual(['reserve:/secure/read-replica.json:600']);
+      expect(records.events).toEqual(['reserve:/secure/read-replica.json:600', 'write-create-uncertain']);
       return create(projectId, branchId);
     };
     await runQualityReadReplicaProvision({
@@ -319,7 +322,14 @@ describe('historical quality read-replica provision command', () => {
       });
       await createStarted;
       expect((await stat(recordPath)).mode & 0o777).toBe(0o600);
-      expect(JSON.parse(await readFile(recordPath, 'utf8'))).toEqual({ status: 'reserved' });
+      expect(JSON.parse(await readFile(recordPath, 'utf8'))).toEqual({
+        version: 1,
+        projectId: 'project-quality',
+        baseBranchId: 'br-quality-base',
+        endpointType: 'read_only',
+        databaseName: 'protocol_eval',
+        status: 'create_uncertain',
+      });
       const second = makeControlPlane();
       await expect(runQualityReadReplicaProvision({
         args: [...provisionArgs.slice(0, -1), recordPath], env: environment(), controlPlane: second.controlPlane, log: () => {},
@@ -414,21 +424,62 @@ describe('historical quality read-replica provision command', () => {
     expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('disk-secret-finalize');
   });
 
-  it('sanitizes create API failures and writes no record', async () => {
-    const records = memoryRecordStore();
-    const error = await runQualityReadReplicaProvision({
-      args: provisionArgs,
-      env: environment(),
-      controlPlane: makeControlPlane({ createError: new Error('401 neon-api-secret response-password') }).controlPlane,
-      recordStore: records.store,
-      log: () => {},
-    }).catch((caught: Error) => caught);
-    expect(error.message).not.toContain('neon-api-secret');
-    expect(error.message).not.toContain('response-password');
-    expect(error.cause).toBeUndefined();
-    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('response-password');
-    expect(records.records).toEqual([]);
-    expect(records.events).toContain('abandon');
+  it('persists sanitized create uncertainty before invocation and retains it when create rejects after possible mutation', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'quality-replica-uncertain-'));
+    const recordPath = path.join(directory, 'record.json');
+    const secret = 'neon-api-secret-response-password';
+    let possibleMutation = false;
+    const fixture = makeControlPlane();
+    fixture.controlPlane.createReadOnlyEndpoint = async () => {
+      const attempted = JSON.parse(await readFile(recordPath, 'utf8'));
+      expect(attempted).toEqual({
+        version: 1,
+        projectId: 'project-quality',
+        baseBranchId: 'br-quality-base',
+        endpointType: 'read_only',
+        databaseName: 'protocol_eval',
+        status: 'create_uncertain',
+      });
+      expect((await stat(recordPath)).mode & 0o777).toBe(0o600);
+      possibleMutation = true;
+      throw new Error(`ambiguous rejection ${secret}`);
+    };
+    try {
+      const error = await runQualityReadReplicaProvision({
+        args: [...provisionArgs.slice(0, -1), recordPath],
+        env: environment(),
+        controlPlane: fixture.controlPlane,
+        log: () => {},
+      }).catch((caught: Error) => caught);
+      expect(possibleMutation).toBeTrue();
+      const raw = await readFile(recordPath, 'utf8');
+      expect(JSON.parse(raw)).toMatchObject({ status: 'create_uncertain' });
+      expect(raw).not.toContain(secret);
+      expect(raw).not.toContain('databaseUrl');
+      expect(error.cause).toBeUndefined();
+      expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(secret);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses an automatic rerun after ambiguous create rejection without creating a duplicate', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'quality-replica-rerun-'));
+    const recordPath = path.join(directory, 'record.json');
+    const first = makeControlPlane({ createError: new Error('request rejected after dispatch') });
+    try {
+      await expect(runQualityReadReplicaProvision({
+        args: [...provisionArgs.slice(0, -1), recordPath], env: environment(), controlPlane: first.controlPlane, log: () => {},
+      })).rejects.toThrow();
+      const second = makeControlPlane();
+      await expect(runQualityReadReplicaProvision({
+        args: [...provisionArgs.slice(0, -1), recordPath], env: environment(), controlPlane: second.controlPlane, log: () => {},
+      })).rejects.toThrow();
+      expect(second.calls.some((call) => call.startsWith('create'))).toBeFalse();
+      expect(JSON.parse(await readFile(recordPath, 'utf8'))).toMatchObject({ status: 'create_uncertain' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('rejects any provisioning shape other than the fixed base/type/database contract', async () => {
@@ -446,6 +497,30 @@ describe('historical quality read-replica provision command', () => {
 });
 
 describe('historical quality read-replica attest command', () => {
+  it('demands explicit operator resolution for an uncertain create without attempting another create', async () => {
+    const uncertainRecord = {
+      version: 1,
+      projectId: 'project-quality',
+      baseBranchId: 'br-quality-base',
+      endpointType: 'read_only',
+      databaseName: 'protocol_eval',
+      status: 'create_uncertain',
+    } as const;
+    const { controlPlane, calls } = makeControlPlane();
+    const error = await runQualityReadReplicaAttestation({
+      args: attestArgs,
+      env: environment({ DISCOVERY_QUALITY_READ_REPLICA_CONFIRM: undefined }),
+      controlPlane,
+      recordStore: {
+        reserve: async () => { throw new Error('attest must never reserve'); },
+        read: async () => ({ value: uncertainRecord, mode: 0o600 }),
+      },
+      log: () => {},
+    }).catch((caught: Error) => caught);
+    expect(error.message).toContain('explicit operator resolution');
+    expect(calls).toEqual([]);
+  });
+
   it('attests the create-free secure record with no confirmation or runtime dependency', async () => {
     const { controlPlane, calls } = makeControlPlane({ before: [
       { id: 'ep-refresh', branchId: 'br-quality-base', host: 'ep-refresh.neon.tech', type: 'read_write' },

@@ -25,7 +25,19 @@ export interface QualityReadReplicaSecureRecord {
   proposedManifest?: DiscoveryManifestV2;
 }
 
+export interface QualityReadReplicaCreateUncertainRecord {
+  version: 1;
+  projectId: string;
+  baseBranchId: string;
+  endpointType: 'read_only';
+  databaseName: 'protocol_eval';
+  status: 'create_uncertain';
+}
+
+type StoredQualityReadReplicaRecord = QualityReadReplicaSecureRecord | QualityReadReplicaCreateUncertainRecord;
+
 export interface QualityReadReplicaSecureRecordReservation {
+  writeCreateUncertain(record: QualityReadReplicaCreateUncertainRecord): Promise<void>;
   writeRecovery(record: QualityReadReplicaSecureRecord): Promise<void>;
   commit(record: QualityReadReplicaSecureRecord): Promise<void>;
   abandon(): Promise<void>;
@@ -43,7 +55,7 @@ async function replaceFileContents(handle: Awaited<ReturnType<typeof open>>, con
   await handle.sync();
 }
 
-async function writeRecord(handle: Awaited<ReturnType<typeof open>>, record: QualityReadReplicaSecureRecord): Promise<void> {
+async function writeRecord(handle: Awaited<ReturnType<typeof open>>, record: StoredQualityReadReplicaRecord): Promise<void> {
   await replaceFileContents(handle, `${JSON.stringify(record, null, 2)}\n`);
 }
 
@@ -66,6 +78,10 @@ const productionRecordStore: QualityReadReplicaSecureRecordStore = {
       }
     };
     return {
+      writeCreateUncertain: async (record) => {
+        await writeRecord(handle, record);
+        await chmod(path, mode);
+      },
       writeRecovery: async (record) => {
         await writeRecord(handle, record);
         await chmod(path, mode);
@@ -124,8 +140,24 @@ function assertExactKeys(record: Record<string, unknown>, keys: readonly string[
   }
 }
 
-function parseSecureRecord(value: unknown): QualityReadReplicaSecureRecord {
+function parseSecureRecord(value: unknown): StoredQualityReadReplicaRecord {
   const record = asRecord(value, 'Historical quality read-replica secure record');
+  if (record.status === 'create_uncertain') {
+    assertExactKeys(record, [
+      'version', 'projectId', 'baseBranchId', 'endpointType', 'databaseName', 'status',
+    ], 'Historical quality read-replica uncertain record');
+    if (record.version !== 1 || record.endpointType !== 'read_only' || record.databaseName !== DATABASE_NAME) {
+      throw new Error('Historical quality read-replica uncertain record has an invalid fixed contract');
+    }
+    return {
+      version: 1,
+      projectId: asString(record.projectId, 'uncertain record projectId'),
+      baseBranchId: asString(record.baseBranchId, 'uncertain record baseBranchId'),
+      endpointType: 'read_only',
+      databaseName: DATABASE_NAME,
+      status: 'create_uncertain',
+    };
+  }
   const hasManifest = Object.prototype.hasOwnProperty.call(record, 'proposedManifest');
   assertExactKeys(record, [
     'version', 'projectId', 'baseBranchId', 'endpointId', 'endpointHost',
@@ -281,7 +313,7 @@ export async function runQualityReadReplicaProvision(input: {
     throw new Error(`Set DISCOVERY_QUALITY_READ_REPLICA_CONFIRM exactly to "${READ_REPLICA_CONFIRMATION}"`);
   }
   let reservation: QualityReadReplicaSecureRecordReservation | undefined;
-  let created: NeonEndpoint | undefined;
+  let createInvocationBegan = false;
   try {
     const args = parseProvisionArgs(input.args);
     const legacy = parseLegacyAbManifest(env.DISCOVERY_TARGETS);
@@ -299,7 +331,16 @@ export async function runQualityReadReplicaProvision(input: {
     if (before.some((endpoint) => endpoint.branchId !== legacy.baseBranchId)) throw new Error('base endpoint ownership');
     if (before.some((endpoint) => endpoint.type === 'read_only')) throw new Error('read replica already exists');
 
-    created = await controlPlane.createReadOnlyEndpoint(legacy.projectId, legacy.baseBranchId);
+    await reservation.writeCreateUncertain({
+      version: 1,
+      projectId: legacy.projectId,
+      baseBranchId: legacy.baseBranchId,
+      endpointType: 'read_only',
+      databaseName: DATABASE_NAME,
+      status: 'create_uncertain',
+    });
+    createInvocationBegan = true;
+    const created = await controlPlane.createReadOnlyEndpoint(legacy.projectId, legacy.baseBranchId);
     await reservation.writeRecovery(recoveryRecord({ legacy, endpoint: created }));
     assertLegacyRefreshBinding({ legacy, refresh, replicaEndpointId: created.id });
     assertReadReplicaEndpoint(created, { projectId: legacy.projectId, baseBranchId: legacy.baseBranchId });
@@ -327,7 +368,7 @@ export async function runQualityReadReplicaProvision(input: {
     (input.log ?? console.log)(safeSummary(record));
     return record;
   } catch {
-    if (reservation && !created) await reservation.abandon().catch(() => undefined);
+    if (reservation && !createInvocationBegan) await reservation.abandon().catch(() => undefined);
     throw new Error('Historical quality read-replica provisioning failed');
   }
 }
@@ -341,11 +382,20 @@ export async function runQualityReadReplicaAttestation(input: {
   log?: (line: string) => void;
 }): Promise<QualityReadReplicaSecureRecord> {
   const env = input.env ?? process.env;
+  const record = await (async (): Promise<StoredQualityReadReplicaRecord> => {
+    try {
+      const args = parseAttestArgs(input.args);
+      const stored = await (input.recordStore ?? productionRecordStore).read(args.secureRecord);
+      if (stored.mode !== SECURE_MODE) throw new Error('record mode');
+      return parseSecureRecord(stored.value);
+    } catch {
+      throw new Error('Historical quality read-replica attestation failed');
+    }
+  })();
+  if (record.status === 'create_uncertain') {
+    throw new Error('Historical quality read-replica creation is uncertain and requires explicit operator resolution');
+  }
   try {
-    const args = parseAttestArgs(input.args);
-    const stored = await (input.recordStore ?? productionRecordStore).read(args.secureRecord);
-    if (stored.mode !== SECURE_MODE) throw new Error('record mode');
-    const record = parseSecureRecord(stored.value);
     if (record.status !== 'attested' || record.endpointType !== 'read_only') throw new Error('record status');
     const legacy = parseLegacyAbManifest(env.DISCOVERY_TARGETS);
     const refreshTarget = parseQualityBaseRefreshTarget(env.DISCOVERY_QUALITY_BASE_REFRESH_TARGET);

@@ -16,17 +16,29 @@ const targetSchema = z.object({
   databaseUrl: nonBlank,
 }).strict();
 
-function assertTargetUrl(value: string): void {
+function assertTargetUrl(value: string): URL {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
     throw new Error('DISCOVERY_QUALITY_BASE_REFRESH_TARGET databaseUrl must be a valid URL');
   }
-  if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') throw new Error('Historical quality refresh target must use postgres');
-  if (url.pathname !== '/protocol_eval') throw new Error('Historical quality refresh target path must be exactly /protocol_eval');
-  if (url.port && url.port !== '5432') throw new Error('Historical quality refresh target port must be exactly 5432');
+  if (url.protocol !== 'postgresql:') throw new Error('Historical quality refresh target must use postgresql');
+  if (url.pathname !== '/protocol_eval' || url.search || url.hash) {
+    throw new Error('Historical quality refresh target path must be exactly /protocol_eval');
+  }
+  if (url.port && url.port !== '5432') throw new Error('Historical quality refresh target port must be omitted or exactly 5432');
   if (!url.hostname.endsWith('.neon.tech')) throw new Error('Historical quality refresh target must use a Neon host');
+  try {
+    if (!decodeURIComponent(url.username) || !decodeURIComponent(url.password)) throw new Error('missing credentials');
+  } catch {
+    throw new Error('Historical quality refresh target must contain valid credentials');
+  }
+  return url;
+}
+
+function parseTargetValue(value: unknown): QualityBaseRefreshTargetV2 {
+  return targetSchema.parse(value);
 }
 
 /** Strictly parses the one writable protected-base target declaration. */
@@ -38,7 +50,7 @@ export function parseQualityBaseRefreshTarget(raw: string | undefined): QualityB
   } catch {
     throw new Error('DISCOVERY_QUALITY_BASE_REFRESH_TARGET must be valid JSON');
   }
-  const target = targetSchema.parse(json);
+  const target = parseTargetValue(json);
   assertTargetUrl(target.databaseUrl);
   return target;
 }
@@ -48,7 +60,15 @@ export async function attestWritableQualityBaseTarget(input: {
   target: QualityBaseRefreshTargetV2;
   controlPlane: NeonControlPlane;
 }): Promise<AttestedWritableQualityBaseTarget> {
-  const { target, controlPlane } = input;
+  const { controlPlane } = input;
+  let target: QualityBaseRefreshTargetV2;
+  let url: URL;
+  try {
+    target = parseTargetValue(input.target);
+    url = assertTargetUrl(target.databaseUrl);
+  } catch {
+    throw new Error('Historical quality writable refresh control-plane attestation failed');
+  }
   let branch: Awaited<ReturnType<NeonControlPlane['getBranch']>>;
   let endpoints: Awaited<ReturnType<NeonControlPlane['listEndpoints']>>;
   try {
@@ -61,7 +81,6 @@ export async function attestWritableQualityBaseTarget(input: {
     throw new Error('Historical quality writable refresh branch identity is invalid');
   }
   const endpoint = endpoints.find((candidate) => candidate.id === target.endpointId);
-  const url = new URL(target.databaseUrl);
   if (!endpoint || endpoint.branchId !== target.branchId || !isEndpointHost(url.hostname, endpoint.host)) {
     throw new Error('Historical quality writable refresh endpoint identity is invalid');
   }

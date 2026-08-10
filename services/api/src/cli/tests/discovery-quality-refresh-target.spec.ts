@@ -70,17 +70,43 @@ describe('historical quality writable refresh target', () => {
     await expect(attestWritableQualityBaseTarget({ target: parsed, controlPlane: controlPlane({ endpointHost: 'other.neon.tech' }) })).rejects.toThrow('endpoint');
   });
 
-  it('does not retain or serialize credential-bearing control-plane causes', async () => {
-    const secret = 'refresh-provider-secret';
+  it.each([
+    ['https scheme', 'https://owner:unsafe-secret@ep-quality-base.neon.tech/protocol_eval'],
+    ['wrong path', 'postgresql://owner:unsafe-secret@ep-quality-base.neon.tech/other'],
+    ['wrong port', 'postgresql://owner:unsafe-secret@ep-quality-base.neon.tech:6543/protocol_eval'],
+    ['malformed credentials', 'postgresql://owner:%ZZ-unsafe-secret@ep-quality-base.neon.tech/protocol_eval'],
+  ])('refuses a structurally supplied target with %s before minting the attestation brand', async (_label, databaseUrl) => {
+    let controlPlaneCalled = false;
     const error = await attestWritableQualityBaseTarget({
-      target: parseQualityBaseRefreshTarget(JSON.stringify(target)),
+      target: { ...target, databaseUrl },
+      controlPlane: {
+        getBranch: async () => {
+          controlPlaneCalled = true;
+          throw new Error('must not reach control plane');
+        },
+        listEndpoints: async () => { throw new Error('must not reach control plane'); },
+      },
+    }).catch((caught: Error) => caught);
+    expect(controlPlaneCalled).toBeFalse();
+    expect(error.message).toBe('Historical quality writable refresh control-plane attestation failed');
+    expect(error.cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('unsafe-secret');
+  });
+
+  it('does not retain or serialize credential-bearing control-plane causes or raw URLs', async () => {
+    const secret = 'refresh-provider-secret';
+    const unsafeUrl = `postgresql://owner:${secret}@ep-quality-base.neon.tech/protocol_eval`;
+    const error = await attestWritableQualityBaseTarget({
+      target: { ...target, databaseUrl: unsafeUrl },
       controlPlane: {
         getBranch: async () => { throw new Error(secret, { cause: new Error(`nested-${secret}`) }); },
         listEndpoints: async () => { throw new Error('not reached'); },
       },
     }).catch((caught: Error) => caught);
     expect(error.cause).toBeUndefined();
-    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(secret);
+    const serialized = JSON.stringify(error, Object.getOwnPropertyNames(error));
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain(unsafeUrl);
   });
 
   it('requires the branded attestation before runtime binding', () => {
