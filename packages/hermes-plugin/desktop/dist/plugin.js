@@ -981,7 +981,8 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   function UserAvatar(props) {
     const seed = props.id || props.name || "default";
     const size = props.size;
-    const className = (props.className || "index-dashboard__avatar")
+    const className = "index-dashboard__avatar"
+      + (props.className ? " " + props.className : "")
       + (props.ghost ? " index-dashboard__net-member-avatar--ghost" : "");
     const style = size ? { width: size, height: size } : undefined;
     const children = [React.createElement(BoringAvatar, { key: "fallback", seed: seed })];
@@ -4322,28 +4323,11 @@ function rememberNotified(ctx, key) {
   return true
 }
 
-function questionNewTitle(event) {
-  if (event.opportunityLabel) return 'Your agent has a question about ' + event.opportunityLabel + '\'s fit'
-  if (event.intentLabel) return 'Your agent has a question about your ' + event.intentLabel
-  return 'Your agent has a question'
-}
-
 function composeNotification(event) {
   if (!event || !event.type) return null
-  if (event.type === 'question.new') {
-    return { title: questionNewTitle(event), body: event.prompt || 'Open Index to answer.' }
-  }
-  if (event.type === 'question.attention') {
-    return {
-      title: 'Your agent needs your input',
-      body: 'A negotiation with ' + (event.peerName || 'someone') + ' is waiting for your answer.',
-    }
-  }
-  if (event.type === 'opportunity.new') {
-    return {
-      title: event.headline || 'Index Network',
-      body: event.summary || ('New opportunity' + (event.counterpartyName ? ' with ' + event.counterpartyName : '')),
-    }
+  if (event.type === 'question.new' || event.type === 'opportunity.new') {
+    if (!event.title) return null
+    return { title: event.title, body: event.body || '' }
   }
   if (event.type === 'message') {
     const msg = event.message || {}
@@ -4364,12 +4348,31 @@ function notifyFromEvent(ctx, event) {
   if (!ctx.os || !ctx.os.notify) return
   const copy = composeNotification(event)
   if (!copy) return
-  const entityId = event.questionId || event.opportunityId || (event.message && event.message.id) || ''
+  const entityId = event.id || (event.message && event.message.id) || ''
   if (entityId) {
     const dedupeKey = event.type + ':' + entityId
     if (!rememberNotified(ctx, dedupeKey)) return
   }
   ctx.os.notify(copy)
+}
+
+function authedPluginStreamFetch(path) {
+  const rel = PLUGIN_STREAM_PREFIX + path
+  const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
+  if (bridge && bridge.getConnection) {
+    return bridge.getConnection().then(function (conn) {
+      if (!conn || !conn.baseUrl) throw new Error('gateway unavailable')
+      const headers = { Accept: 'text/event-stream' }
+      if (conn.authMode !== 'oauth' && conn.token) {
+        headers['X-Hermes-Session-Token'] = conn.token
+      }
+      return window.fetch(conn.baseUrl.replace(/\/$/, '') + rel, {
+        headers: headers,
+        credentials: 'include',
+      })
+    })
+  }
+  return window.fetch(rel, { headers: { Accept: 'text/event-stream' }, credentials: 'include' })
 }
 
 function connectPluginStream(path, onEvent) {
@@ -4387,8 +4390,7 @@ function connectPluginStream(path, onEvent) {
   }
 
   function connect() {
-    const url = PLUGIN_STREAM_PREFIX + path
-    window.fetch(url, { headers: { Accept: 'text/event-stream' }, credentials: 'include' })
+    authedPluginStreamFetch(path)
       .then(function (response) {
         if (!response || !response.ok || !response.body || !response.body.getReader) throw new Error('stream unavailable')
         retries = 0

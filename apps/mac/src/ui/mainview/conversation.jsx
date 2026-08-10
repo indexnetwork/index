@@ -521,12 +521,6 @@ function timeAgo(t) {
   const m = Math.floor(s / 60);
   return `${m}m ago`;
 }
-function HELLO_FOR(profile) {
-  if (profile.shape === "quiet")  return "i'll stay quiet. one or two intros a week at most.";
-  if (profile.shape === "active") return "the network's busy. i'll keep the pipeline moving.";
-  return "i'll surface a handful and check in before negotiating.";
-}
-
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
 
