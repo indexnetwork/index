@@ -152,7 +152,7 @@ function BoringAvatar({ seed, size = 28 }) {
       style={{ display:"block" }}
     >
       <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={SIZE} height={SIZE}>
-        <rect width={SIZE} height={SIZE} rx={SIZE * 2} fill="#FFFFFF"/>
+        <rect width={SIZE} height={SIZE} rx={0} fill="#FFFFFF"/>
       </mask>
       <g mask={`url(#${maskId})`}>
         <rect width={SIZE} height={SIZE} fill={props_[0].color}/>
@@ -194,7 +194,6 @@ function Avatar({ id, name, photo, size = 28, ring = false, blur = false }) {
   const frameStyle = {
     width: size,
     height: size,
-    borderRadius: "50%",
     overflow: "hidden",
     flex: "0 0 auto",
     boxShadow: ring ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}` : undefined,
@@ -458,7 +457,6 @@ function MyAgentAvatar({ size = 22, style, title }) {
       {owner.photo ? (
         <img src={owner.photo} alt="" style={{
           width:"100%", height:"100%", objectFit:"cover", display:"block",
-          borderRadius:"50%",
         }}/>
       ) : (
         <Avatar id={owner.id} name={owner.name} size={size}/>

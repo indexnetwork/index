@@ -125,7 +125,6 @@ function PhotoPicker({ me, name, photo, onPick }) {
               alt=""
               style={{
                 width:54, height:54, objectFit:"cover", display:"block",
-                borderRadius:"50%",
               }}/>
           : <Avatar id={me.id} name={me.name} size={54}/>}
       </PicturePicker>

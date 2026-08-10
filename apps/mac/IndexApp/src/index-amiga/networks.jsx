@@ -1,25 +1,38 @@
 // Networks, the communities you're in, and the ones you could join. Reached
 // from the networks row on the hub's sidebar footer.
 
-// Deterministic bauhaus avatar matching the web app. Same id/name always
-// yields the same pattern, so a network is recognisable without a photo.
+// Deterministic 2x2 tile standing in for the generative avatar. Same name
+// always yields the same tile, so a network is recognisable by its colours.
+// A network is a place, not a face: the flat palette and hard keyline sit with
+// the rest of the chrome, where a bauhaus portrait read as a person.
 function NetworkTile({ id, name, size = 36, photo }) {
-  const seed = id || name || "default";
-  const frameStyle = {
-    flex:"0 0 auto", width:size, height:size,
-    borderRadius:"50%", overflow:"hidden",
-  };
   if (photo) {
     return (
       <img
         src={photo}
         alt=""
-        style={{ ...frameStyle, objectFit:"cover", display:"block" }}/>
+        style={{
+          flex:"0 0 auto", width:size, height:size,
+          objectFit:"cover", display:"block",
+          border:"1px solid #000",
+          // same treatment as every other photo in the app
+          filter:"grayscale(1) contrast(1.05)",
+        }}/>
     );
   }
+  const PAL = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
+  const seed = String(name || id || "");
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  // unsigned shift, a signed one goes negative on bit 31 and indexes off the end
+  const cells = [0, 1, 2, 3].map(i => PAL[(h >>> (i * 3)) % PAL.length]);
   return (
-    <span style={frameStyle}>
-      <BoringAvatar seed={seed} size={size}/>
+    <span style={{
+      flex:"0 0 auto", width:size, height:size,
+      border:"1px solid #000",
+      display:"grid", gridTemplateColumns:"1fr 1fr", gridTemplateRows:"1fr 1fr",
+    }}>
+      {cells.map((c, i) => <span key={i} style={{ background:c }}/>)}
     </span>
   );
 }
@@ -146,9 +159,11 @@ function CreateNetwork({ onCancel, onCreate }) {
   const [desc, setDesc]     = useState("");
   const [photo, setPhoto]   = useState(null);
   const [access, setAccess] = useState("private");
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState("");
 
   const named = name.trim();
-  const canCreate = named.length > 0;
+  const canCreate = named.length > 0 && !busy;
 
   useEffect(() => {
     // capture + preventDefault: this form is on top of the networks window, so
@@ -162,9 +177,19 @@ function CreateNetwork({ onCancel, onCreate }) {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [onCancel]);
 
-  const submit = () => {
+  // Held open until the server answers. A create that fails has to say so here
+  // rather than handing the next screen an optimistic network that doesn't
+  // exist, which is the one way "created" could be a lie.
+  const submit = async () => {
     if (!canCreate) return;
-    onCreate({ name: named, desc: desc.trim(), access, photo });
+    setBusy(true);
+    setErr("");
+    try {
+      await onCreate({ name: named, desc: desc.trim(), access, photo });
+    } catch (e) {
+      setErr((e && e.message) || "couldn't create the network. try again.");
+      setBusy(false);
+    }
   };
 
   return (
@@ -199,7 +224,9 @@ function CreateNetwork({ onCancel, onCreate }) {
             <div style={{
               marginTop:12,
               fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-            }}>a network is a group that shares signals. name it, then say who can get in.</div>
+            }}>a network is a group that shares signals. if you run a community,
+              event, or team, create one here, then invite your members so their
+              signals can find each other.</div>
           </div>
 
           <div className="mac-scroll" style={{
@@ -275,6 +302,13 @@ function CreateNetwork({ onCancel, onCreate }) {
             borderTop:"2px solid #000", padding:"11px 24px",
             display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10,
           }}>
+            {/* the failure sits next to the button that caused it */}
+            {err && (
+              <span style={{
+                flex:1, minWidth:0,
+                fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-warn)",
+              }}>{err}</span>
+            )}
             <button
               onClick={onCancel}
               style={{
@@ -285,7 +319,7 @@ function CreateNetwork({ onCancel, onCreate }) {
             <button
               onClick={submit}
               disabled={!canCreate}
-              title={canCreate ? undefined : "give the network a name first"}
+              title={canCreate ? undefined : (busy ? "creating…" : "give the network a name first")}
               style={{
                 fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 19px",
                 border:"1px solid #000",
@@ -294,7 +328,7 @@ function CreateNetwork({ onCancel, onCreate }) {
                 boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
                 cursor: canCreate ? "pointer" : "default",
                 fontWeight:700,
-              }}>create</button>
+              }}>{busy ? "creating…" : "create"}</button>
           </div>
         </MacWindow>
       </div>
@@ -411,7 +445,16 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                   border:"1px solid #000", borderLeft:"3px solid #FF8A00",
                   background:"#F2EFE6",
                   fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-                }}>network creation is still early. fill this in and we&apos;ll review it before it goes live.</div>
+                }}>
+                  {/* what it is, then the caveat, on their own lines: one
+                      four-line paragraph in a banner is a wall */}
+                  <p style={{ margin:0 }}>a network is a group that shares
+                    signals. if you run a community, event, or team, request one
+                    here and invite your members so their signals can find each
+                    other.</p>
+                  <p style={{ margin:"7px 0 0" }}>network creation is still
+                    early, so we&apos;ll review this before it goes live.</p>
+                </div>
               </div>
 
               <div className="mac-scroll" style={{
@@ -950,13 +993,19 @@ function networkIsOwner(net) {
   return role === "owner" || role === "admin";
 }
 
-function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSignal }) {
+// `initialTab` is the tab the window opens on. The list opens a network on its
+// overview; creation opens it on access, where the invitation link is, with
+// `flash` set to the line confirming the network now exists.
+function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onDeleted, onOpenSignal }) {
   const [local, setLocal] = useState(net);
   const [signals, setSignals] = useState(net.signals || []);
   const [signalsLoading, setSignalsLoading] = useState(false);
   const [undo, setUndo] = useState(null);
   const isOwner = networkIsOwner(local);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(initialTab || "overview");
+  // Arrival note: it says the create went through and holds until dismissed,
+  // rather than timing out while you're still reading the link below it.
+  const [note, setNote] = useState(flash || "");
   const [copied, setCopied] = useState(false);
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1213,6 +1262,32 @@ function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSigna
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"14px 24px 20px",
           }}>
+            {/* accent fill, not the quiet grey of the undo strip: this is the
+                only thing telling you the network exists, so it holds the eye
+                and stays until you dismiss it */}
+            {note && (
+              <div className="fade-up" style={{
+                marginBottom:16, padding:"10px 12px",
+                border:"2px solid #000", background:"#FF8A00",
+                boxShadow:"2px 2px 0 rgba(0,0,0,0.25)",
+                display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+              }}>
+                <span style={{
+                  fontFamily:"var(--mac-sans)", fontSize:13, fontWeight:600, color:"#000",
+                }}>{note}</span>
+                <button
+                  onClick={() => setNote("")}
+                  title="dismiss"
+                  aria-label="dismiss"
+                  style={{
+                    flex:"0 0 auto", cursor:"pointer",
+                    padding:"2px 8px", border:"1px solid #000", background:"#fff",
+                    fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
+                    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                  }}>✕</button>
+              </div>
+            )}
+
             {isOwner && tab === "settings" ? (
               <div style={{ display:"grid", gap:16 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:13 }}>
@@ -1498,7 +1573,12 @@ function Networks({ onClose, onOpenSignal }) {
   const client = live ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState("mine");
   const [openNet, setOpenNet] = useState(null);
+  // Which tab the detail window opens on. Null is the usual overview; creation
+  // sets "access" so a brand-new network hands you its link straight away.
+  const [openTab, setOpenTab] = useState(null);
   const [creating, setCreating] = useState(false);
+  // One-shot line the detail window shows on arrival, set by create.
+  const [openNote, setOpenNote] = useState("");
   // Early-access request flow: non-staff submit a reviewed request instead of
   // creating a live network. `canReview` (from the server) gates direct create.
   const [requesting, setRequesting] = useState(false);
@@ -1577,12 +1657,20 @@ function Networks({ onClose, onOpenSignal }) {
           photo: window.IndexApp.avatarUrl(n.imageUrl) || created.photo,
           source: n,
         };
-      } catch (e) { /* keep the optimistic mirror */ }
+      } catch (e) {
+        // Signed in, so the server is the authority on whether this network
+        // exists. Swallowing the failure here would leave a network in the
+        // list that is gone on the next load, and the confirmation screen
+        // would announce it as created. The form shows the error instead.
+        throw e;
+      }
     }
     NETWORKS.unshift(created);
     setNets([...NETWORKS]);
     setCreating(false);
     setTab("mine");
+    setOpenTab("access");
+    setOpenNote(`${created.name} is live. send the link to let people in.`);
     setOpenNet(created);
   };
 
@@ -1658,7 +1746,9 @@ function Networks({ onClose, onOpenSignal }) {
     return (
       <NetworkDetail
         net={openNet}
-        onBack={() => setOpenNet(null)}
+        initialTab={openTab}
+        flash={openNote}
+        onBack={() => { setOpenNet(null); setOpenTab(null); setOpenNote(""); }}
         onLeave={leaveNetwork}
         onUpdated={updateOpenNet}
         onDeleted={deleteNetwork}
@@ -1742,7 +1832,13 @@ function Networks({ onClose, onOpenSignal }) {
               />
             ))}
 
-            {shown.map(net => <NetworkRow key={net.id} net={net} onOpen={setOpenNet} onJoin={joinNetwork}/>)}
+            {shown.map(net => (
+              <NetworkRow
+                key={net.id}
+                net={net}
+                onOpen={(n) => { setOpenTab(null); setOpenNote(""); setOpenNet(n); }}
+                onJoin={joinNetwork}/>
+            ))}
 
             {!shown.length && !(tab === "mine" && myRequests.length) && (
               <p style={{
