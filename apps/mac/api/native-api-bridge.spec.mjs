@@ -151,6 +151,7 @@ describe('native owner migration and transport source contracts', () => {
     expect(nativeBridge).toContain('beginQuarantine');
     expect(nativeBridge).toContain('endQuarantineAfterCredentialReadBack');
     expect(streamFixture).toContain('mid-stream event was completion-buffered');
+    expect(streamFixture).toContain('completions[0].2 == ["x-session-id": "session-1"]');
     expect(streamFixture).toContain('partial-frame overflow was not cancelled');
     expect(streamFixture).toContain('malformed SSE was not cancelled');
     expect(streamFixture).toContain('comment-only raw-byte overflow was not cancelled');

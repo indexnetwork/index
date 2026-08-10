@@ -12,12 +12,12 @@ enum NativeAPIStreamDelegateFixture {
         let session = URLSession(configuration: .ephemeral)
         let task = session.dataTask(with: url)
         var events: [NativeAPIEvent] = []
-        var completions: [(NativeAPIRequestFailure?, Int?)] = []
+        var completions: [(NativeAPIRequestFailure?, Int?, [String: String])] = []
         let delegate = NativeAPIStreamDelegate(
             requestId: "stream-1",
             publish: { events.append($0); return true },
             isSafe: { _ in true },
-            complete: { completions.append(($0, $1)) }
+            complete: { completions.append(($0, $1, $2)) }
         )
         let response = HTTPURLResponse(
             url: url, statusCode: 200, httpVersion: "HTTP/1.1",
@@ -32,15 +32,18 @@ enum NativeAPIStreamDelegateFixture {
         try require(events.count == 2, "mid-stream event was completion-buffered")
         try require(completions.isEmpty, "stream completed before delegate completion")
         delegate.urlSession(session, task: task, didCompleteWithError: nil)
-        try require(completions.count == 1 && completions[0].0 == nil && completions[0].1 == 200,
-                    "valid stream did not complete exactly once")
+        try require(
+            completions.count == 1 && completions[0].0 == nil && completions[0].1 == 200
+                && completions[0].2 == ["x-session-id": "session-1"],
+            "valid stream did not complete exactly once"
+        )
 
         // A partial frame over 64 KiB cancels immediately rather than buffering.
         let overflowTask = session.dataTask(with: url)
         var overflow: NativeAPIRequestFailure?
         let overflowDelegate = NativeAPIStreamDelegate(
             requestId: "stream-overflow", publish: { _ in true }, isSafe: { _ in true },
-            complete: { overflow = $0 }
+            complete: { failure, _, _ in overflow = failure }
         )
         overflowDelegate.urlSession(session, dataTask: overflowTask, didReceive: response) { _ in }
         overflowDelegate.urlSession(session, dataTask: overflowTask, didReceive: Data(repeating: 0x61, count: 65_537))
@@ -51,7 +54,7 @@ enum NativeAPIStreamDelegateFixture {
         var malformed: NativeAPIRequestFailure?
         let malformedDelegate = NativeAPIStreamDelegate(
             requestId: "stream-malformed", publish: { _ in true }, isSafe: { _ in true },
-            complete: { malformed = $0 }
+            complete: { failure, _, _ in malformed = failure }
         )
         malformedDelegate.urlSession(session, dataTask: malformedTask, didReceive: response) { _ in }
         malformedDelegate.urlSession(session, dataTask: malformedTask, didReceive: Data([0xff, 0x0a, 0x0a]))
@@ -64,7 +67,7 @@ enum NativeAPIStreamDelegateFixture {
             let aggregateDelegate = NativeAPIStreamDelegate(
                 requestId: requestId,
                 publish: { aggregateEvents.append($0); return true }, isSafe: { _ in true },
-                complete: { aggregateCompletions.append($0) }
+                complete: { failure, _, _ in aggregateCompletions.append(failure) }
             )
             aggregateDelegate.urlSession(session, dataTask: aggregateTask, didReceive: response) { _ in }
             var received = 0
