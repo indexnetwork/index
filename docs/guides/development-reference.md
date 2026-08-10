@@ -60,12 +60,8 @@ bun run lint                                # Run ESLint
 ### Mac App
 
 ```bash
-cd apps/mac/IndexApp
+cd apps/mac
 ./build.sh                                  # Assemble HTML and build the macOS WKWebView app
-
-cd ../IndexApp-iOS
-./build.sh assemble                         # Regenerate mobile Resources/index.html without Xcode
-./preview/build-preview.sh                  # Build the macOS preview shell for the mobile UI
 ```
 
 ### CLI
@@ -120,6 +116,40 @@ insufficient evidence.
 
 Lives in `services/api` (not `packages/protocol`) because it drives the real
 discovery graph against real Neon databases.
+
+#### Historical shared-pool quality contract (PR A)
+
+PR A exposes a provider- and infrastructure-free command contract only. Its
+exact quality-mode syntax is:
+
+```text
+bun run eval:discovery -- --historical-quality --env KEY=VALUE [--case <approved-id>]... [--trigger intent|enrichment]... [--runs <n>] [--report <path>] [--force]
+bun run eval:discovery -- --historical-quality --help
+```
+
+`--env` supplies exactly one configuration; this mode has no `--a`/`--b`
+comparison semantics. `--case` and `--trigger` are repeatable. Omitting
+`--case` selects all five approved cases, and omitting `--trigger` selects both
+`intent` and `enrichment`. The default three repetitions therefore estimate
+`5 cases × 2 triggers × 3 repetitions = 30` graph invocations and 30 evaluator
+calls. Use `--runs 1` for the first pilot estimate of `5 × 2 × 1 = 10` graph
+invocations and 10 evaluator calls. A request may not exceed 200 graph
+invocations.
+
+The execution contract is one attempt and one evaluator call per slot, with a
+restore before every slot. Selected case or trigger subsets produce descriptive
+evidence only: they do not produce a subset verdict, and quality artifacts do
+not read, write, update, or compare against a baseline. Stage-funnel metrics are
+descriptive, not a pass/fail comparison.
+
+In PR A, `--help` prints the contract without provider credentials. A non-help
+quality request parses the selection and prints its exact cost provider-free,
+then exits with the classified refusal that runtime is unavailable; it performs
+no confirmation, protected-base verification, reset, database, Neon, Redis, or
+provider operation. Historical-quality runtime, protected-base handling, and
+all operational commands are explicitly deferred to PR B and are not documented
+here. Eval Ops can render historical-quality reports and execution completeness,
+but it cannot launch quality mode.
 
 ```bash
 cd services/api
@@ -696,7 +726,7 @@ git subtree pull --squash --prefix=packages/hermes-plugin https://github.com/ind
 
 #### apps/mac/ → indexnetwork/mac-client
 
-The native Apple client prototype (macOS + iOS WKWebView shells around self-contained React/HTML bundles). The monorepo path is synced to the standalone `indexnetwork/mac-client` repo on `dev`/`main` pushes.
+The native macOS client prototype (Swift WKWebView shell around a self-contained React/HTML bundle). The monorepo path is synced to the standalone `indexnetwork/mac-client` repo on `dev`/`main` pushes.
 
 ```bash
 # Manual push if the workflow failed (use dev or main)

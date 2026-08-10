@@ -11,7 +11,7 @@ import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LA
 import { narratorRemarkFromReasoning, stripUuids } from "../domain/opportunity.presentation.js";
 import { safeFallbackSummary, getSafePresentationOrSkip } from "../domain/opportunity.safe-presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
-import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../../capabilities/questions.runtime.facade.js";
+import { isUptakeGuardEnabled } from "../../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from './opportunity.update-admission.js';

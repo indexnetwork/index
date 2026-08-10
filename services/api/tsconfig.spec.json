@@ -1,6 +1,7 @@
 {
-  // Type-checks the discovery CLI specs, which the build tsconfig excludes
-  // (`src/**/*.spec.ts`) and CI's `bun run build` therefore never compiles.
+  // Type-checks the discovery CLI specs and focused queue contract spec, which
+  // the build tsconfig excludes (`src/**/*.spec.ts`) and CI's `bun run build`
+  // therefore never compiles.
   //
   // That exclusion is normally harmless — until a spec's assertion *is* a
   // type-level assertion. `discovery.neon.spec.ts` carries the only guard
@@ -30,7 +31,8 @@
     "rootDir": "../.."
   },
   "include": [
-    "src/cli/tests/discovery.*.spec.ts"
+    "src/cli/tests/discovery.*.spec.ts",
+    "src/queues/tests/discovery-trigger.builders.spec.ts"
   ],
   "exclude": [
     "node_modules"

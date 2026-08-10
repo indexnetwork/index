@@ -7,9 +7,10 @@ import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { LogView } from '../components/LogView';
 import { CaseTable } from '../components/CaseTable';
+import { HistoricalQualityReport } from '../components/HistoricalQualityReport';
 import { RunProgressView } from '../components/RunProgress';
 import { HarnessProgressParser, type RunProgress } from '../../../../packages/protocol/eval/ops/ops.progress';
-import { api, encodeArtifactId, isTerminalStatus, subscribeToRun, type Artifact, type CompareResult, type HarnessDescriptor, type RunRecord } from '../api/client';
+import { api, encodeArtifactId, isHistoricalQualityArtifact, isTerminalStatus, subscribeToRun, type Artifact, type CompareResult, type HarnessDescriptor, type RunRecord } from '../api/client';
 
 interface RunState {
   run: RunRecord | null;
@@ -21,6 +22,8 @@ interface RunState {
   comparison: CompareResult | null;
   comparisonError: string | null;
   error: string | null;
+  /** Artifact classification completed without a usable artifact. */
+  artifactUnavailable: boolean;
   /** Set when the stream fails before any status frame arrives. */
   streamError: string | null;
 }
@@ -38,7 +41,7 @@ export function Run() {
     );
   }
 
-  return <RunDetail runId={runId} />;
+  return <RunDetail key={runId} runId={runId} />;
 }
 
 function RunDetail({ runId }: { runId: string }) {
@@ -52,6 +55,7 @@ function RunDetail({ runId }: { runId: string }) {
     comparison: null,
     comparisonError: null,
     error: null,
+    artifactUnavailable: false,
     streamError: null,
   });
   const [cancelling, setCancelling] = useState(false);
@@ -142,7 +146,7 @@ function RunDetail({ runId }: { runId: string }) {
 
     async function fetchArtifactAndComparison(record: RunRecord) {
       const { artifactPath, spec } = record;
-      if (!artifactPath || spec.kind !== 'eval') return;
+      if (!artifactPath) return;
 
       const artifactId = encodeArtifactId(artifactPath);
 
@@ -150,7 +154,25 @@ function RunDetail({ runId }: { runId: string }) {
         const artifact = (await api.artifact(artifactId)) as Artifact;
 
         if (!mounted) return;
-        setState((prev) => ({ ...prev, artifact }));
+
+        // Classification is resolved before publishing the artifact so a quality
+        // result can atomically discard every scorecard-only presentation state.
+        if (isHistoricalQualityArtifact(artifact)) {
+          setShowRawLog(false);
+          setState((prev) => ({
+            ...prev,
+            artifact,
+            baseline: null,
+            comparison: null,
+            comparisonError: null,
+            artifactUnavailable: false,
+          }));
+          return;
+        }
+
+        setState((prev) => ({ ...prev, artifact, artifactUnavailable: false }));
+
+        if (spec.kind !== 'eval') return;
 
         // Only compare if non-experimental, and never for a harness that runs
         // operator-chosen configurations: it has no committed baseline and never
@@ -195,11 +217,16 @@ function RunDetail({ runId }: { runId: string }) {
             }
           }
         }
-      } catch (error) {
+      } catch {
         if (mounted) {
+          setShowRawLog(false);
           setState((prev) => ({
             ...prev,
-            error: error instanceof Error ? error.message : String(error),
+            artifact: null,
+            baseline: null,
+            comparison: null,
+            comparisonError: null,
+            artifactUnavailable: true,
           }));
         }
       }
@@ -258,7 +285,25 @@ function RunDetail({ runId }: { runId: string }) {
   }
 
   const run = state.run;
+  const classificationPending =
+    isTerminalStatus(run.status)
+    && run.artifactPath !== null
+    && state.artifact === null
+    && !state.artifactUnavailable;
+
+  if (classificationPending || state.artifactUnavailable) {
+    return (
+      <div className="p-4">
+        <p className="text-term-dim">
+          {classificationPending ? 'Loading result classification...' : 'Result unavailable.'}
+        </p>
+      </div>
+    );
+  }
+
   const isRunning = run.status === 'running' || run.status === 'queued';
+  const qualityArtifact = isHistoricalQualityArtifact(state.artifact) ? state.artifact : null;
+  const isQuality = qualityArtifact !== null;
   const harnessQuestion =
     run.spec.kind === 'eval'
       ? state.harnesses.find((h) => h.harness === (run.spec as { harness: string }).harness)?.question ?? null
@@ -321,11 +366,13 @@ function RunDetail({ runId }: { runId: string }) {
                   <span className="text-term-dim">{harnessQuestion}</span>
                 )}
               </div>
-              <div className="flex gap-4">
-                <span className="text-term-dim w-24">profile:</span>
-                <span>{run.spec.profile}</span>
-              </div>
-              {overridesSummary !== null && (
+              {!isQuality && (
+                <div className="flex gap-4">
+                  <span className="text-term-dim w-24">profile:</span>
+                  <span>{run.spec.profile}</span>
+                </div>
+              )}
+              {!isQuality && overridesSummary !== null && (
                 <div className="flex gap-4">
                   {/* "environment" for a run whose environment IS the subject, and
                       "overrides" for one where it is a deviation from a baseline.
@@ -373,14 +420,16 @@ function RunDetail({ runId }: { runId: string }) {
             )}
           </div>
 
-          <div className="flex gap-4">
-            <span className="text-term-dim w-24">command:</span>
-            <span className="font-mono text-sm">
-              {run.argv.length > 0
-                ? run.argv.join(' ')
-                : run.steps?.map((s) => s.argv.join(' ')).join(' && ') || '—'}
-            </span>
-          </div>
+          {!isQuality && (
+            <div className="flex gap-4">
+              <span className="text-term-dim w-24">command:</span>
+              <span className="font-mono text-sm">
+                {run.argv.length > 0
+                  ? run.argv.join(' ')
+                  : run.steps?.map((s) => s.argv.join(' ')).join(' && ') || '—'}
+              </span>
+            </div>
+          )}
 
           {run.spec.kind === 'eval' && (
             <div className="flex gap-4">
@@ -394,7 +443,7 @@ function RunDetail({ runId }: { runId: string }) {
         </div>
       </Frame>
 
-      {run.experimental && (
+      {run.experimental && !isQuality && (
         <Frame label="experimental">
           <p className="text-term-yellow">
             Experimental configuration — this run is not compared to the committed
@@ -403,7 +452,9 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       )}
 
-      {state.artifact && (comparesSides ? (
+      {state.artifact && (qualityArtifact !== null ? (
+        <HistoricalQualityReport artifact={qualityArtifact} />
+      ) : comparesSides ? (
         // The scorecard frame would report this run's aggregate pass rate: the
         // mean across two DIFFERENT configurations, which is a number about
         // neither of them, over a case table listing each side's rows as if
@@ -424,7 +475,7 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       ))}
 
-      {state.comparison && !run.experimental && (
+      {state.comparison && !isQuality && !run.experimental && (
         <Frame label="baseline diff">
           {state.comparison.comparable ? (
             <div className="space-y-2">
@@ -504,7 +555,7 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       )}
 
-      {state.comparisonError !== null && !run.experimental && (
+      {state.comparisonError !== null && !isQuality && !run.experimental && (
         <Frame label="baseline diff">
           <p className="text-term-yellow">
             Could not load the baseline comparison: {state.comparisonError}
@@ -512,7 +563,7 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       )}
 
-      {state.progress !== null && state.progress.totalCases !== null ? (
+      {!isQuality && (state.progress !== null && state.progress.totalCases !== null ? (
         <Frame label="progress">
           <RunProgressView
             progress={state.progress}
@@ -538,7 +589,7 @@ function RunDetail({ runId }: { runId: string }) {
         <Frame label="log">
           <LogView text={state.log} />
         </Frame>
-      )}
+      ))}
     </div>
   );
 }

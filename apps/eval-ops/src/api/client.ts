@@ -41,6 +41,13 @@ export type {
 export type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.profiles';
 
 import type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.profiles';
+import type { HistoricalParticipantMetric, HistoricalQualityMeasurement, HistoricalStageFunnel } from '../../../../packages/protocol/eval/shared/artifact';
+
+export type {
+  HistoricalParticipantMetric,
+  HistoricalQualityMeasurement,
+  HistoricalStageFunnel,
+} from '../../../../packages/protocol/eval/shared/artifact';
 
 /**
  * Guided-configuration metadata shapes, re-exported from the ops core for the
@@ -142,6 +149,19 @@ export interface ArtifactRule {
   passRate: number;
 }
 
+/** One strict historical-quality transport row carried in payload.cases. */
+export interface HistoricalQualityCase extends ArtifactCase {
+  kind: 'historical-quality-pilot';
+  logicalCaseId: string;
+  trigger: 'intent' | 'enrichment';
+  /** Zero-based repetition index on the wire. */
+  repetition: number;
+  configurationFingerprint: string;
+  completed: boolean;
+  participantMetrics: HistoricalParticipantMetric[];
+  stageFunnel: HistoricalStageFunnel | null;
+}
+
 /**
  * Execution completeness, as the artifact states it.
  *
@@ -182,11 +202,25 @@ export interface Artifact {
   git: { revision: string; dirty: boolean | null };
   /** Absent on schema-v1 artifacts, which carry no execution evidence. */
   completeness?: ArtifactCompleteness;
+  /** Present only on descriptive V2 measurements, never ordinary scorecards. */
+  measurement?: HistoricalQualityMeasurement;
   payload: {
     cases: ArtifactCase[];
     aggregatePassRate: number;
     rules?: ArtifactRule[];
   };
+}
+
+/** Browser-facing specialization selected only by measurement.kind. */
+export interface HistoricalQualityArtifact extends Artifact {
+  measurement: HistoricalQualityMeasurement & { kind: 'historical-quality-pilot' };
+  payload: Omit<Artifact['payload'], 'cases'> & { cases: HistoricalQualityCase[] };
+}
+
+export function isHistoricalQualityArtifact(
+  artifact: Artifact | null,
+): artifact is HistoricalQualityArtifact {
+  return artifact?.measurement?.kind === 'historical-quality-pilot';
 }
 
 const TERMINAL_STATUSES: readonly RunStatus[] = [

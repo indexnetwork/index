@@ -19,6 +19,15 @@ describe("production web server", () => {
     );
     writeFileSync(join(distDir, "assets", "index-abc12345.js"), "export const ok = true;");
     writeFileSync(join(distDir, "favicon.png"), "png");
+    mkdirSync(join(distDir, "protocol-atlas"));
+    writeFileSync(
+      join(distDir, "protocol-atlas", "index.html"),
+      "<!doctype html><title>Protocol Atlas</title>",
+    );
+    writeFileSync(
+      join(distDir, "protocol-atlas", "atlas.css"),
+      ".atlas { display: grid; }",
+    );
   });
 
   afterEach(() => {
@@ -135,6 +144,32 @@ describe("production web server", () => {
     },
   );
 
+  test.each(["dev.index.network", "localhost", "127.0.0.1", "[::1]"])(
+    "redirects the slashless atlas route on allowed host %s",
+    (hostname) => {
+      const fetch = createWebHandler({ distDir, metaMap: {} });
+      const response = fetch(new Request(`http://${hostname}/protocol-atlas`));
+
+      expect(response.status).toBe(308);
+      expect(response.headers.get("Location")).toBe("/protocol-atlas/");
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+    },
+  );
+
+  test("serves atlas HTML and assets on the development host", async () => {
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+    const html = fetch(new Request("https://dev.index.network/protocol-atlas/"));
+    const css = fetch(new Request("https://dev.index.network/protocol-atlas/atlas.css"));
+
+    expect(html.status).toBe(200);
+    expect(html.headers.get("Content-Type")).toContain("text/html");
+    expect(html.headers.get("Cache-Control")).toBe("no-store");
+    expect(await html.text()).toContain("Protocol Atlas");
+    expect(css.status).toBe(200);
+    expect(css.headers.get("Content-Type")).toContain("text/css");
+    expect(await css.text()).toContain("display: grid");
+  });
+
   test("serves the SPA entrypoint for document route navigation", async () => {
     const fetch = createWebHandler({ distDir, metaMap: {} });
 
@@ -189,6 +224,51 @@ describe("production web server", () => {
     expect(publicFileResponse.headers.get("Cache-Control")).toBe(
       "public, max-age=0, must-revalidate",
     );
+  });
+
+  test.each(["index.network", "www.index.network", "preview.example.com"])(
+    "returns 404 for atlas HTML and assets on disallowed host %s",
+    async (hostname) => {
+      const fetch = createWebHandler({ distDir, metaMap: {} });
+      for (const pathname of [
+        "/protocol-atlas",
+        "/protocol-atlas/",
+        "/protocol-atlas/atlas.css",
+      ]) {
+        const response = fetch(
+          new Request(`https://${hostname}${pathname}`, {
+            headers: { Accept: "text/html" },
+          }),
+        );
+        expect(response.status).toBe(404);
+        expect(response.headers.get("Cache-Control")).toBe("no-store");
+        expect(await response.text()).toBe("Not Found");
+      }
+    },
+  );
+
+  test("returns a real 404 for a missing atlas asset on the development host", async () => {
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+    const response = fetch(
+      new Request("https://dev.index.network/protocol-atlas/missing.js", {
+        headers: { Accept: "text/html" },
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not Found");
+  });
+
+  test("does not treat a similar SPA path as the restricted atlas subtree", async () => {
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+    const response = fetch(
+      new Request("https://index.network/protocol-atlas-notes", {
+        headers: { Accept: "text/html" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("SPA entry");
   });
 
   test("does not use the SPA fallback for non-document requests", async () => {

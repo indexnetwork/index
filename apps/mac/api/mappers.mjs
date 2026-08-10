@@ -1,5 +1,5 @@
 /**
- * Pure response mappers for the macOS/iOS prototypes.
+ * Pure response mappers for the macOS prototype.
  *
  * These functions translate services/api response envelopes into the current
  * `window.INDEX_DATA`-style view models, but this file deliberately has no

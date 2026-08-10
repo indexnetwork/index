@@ -1,8 +1,8 @@
 # Mac API client boundary
 
-This folder is the standalone API-consumption boundary for the native macOS/iOS prototypes under `apps/mac`.
+This folder is the standalone API-consumption boundary for the native macOS prototype under `apps/mac`.
 
-It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappers.mjs` + `deeplink.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/index-amiga/api.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data. `IndexApp-iOS` is not wired yet.
+It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs` + `mappers.mjs` + `deeplink.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/ui/bridge.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data.
 
 ## Role
 
@@ -17,7 +17,7 @@ It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappe
 The native macOS client authenticates with a **90-day CLI API key** minted via the browser `/cli-auth` flow (mirroring `packages/cli/src/login.command.ts`) and stored in the Keychain by the Swift shell. All requests send it as the **`x-api-key`** header:
 
 - `client.mjs` accepts a `getApiKey` option (read lazily) alongside the existing `getToken`; when it resolves to a value, the client attaches `x-api-key`.
-- Fetch-based SSE in `api.jsx` (`streamChat`, `streamInbox`) sets `x-api-key` directly, since `EventSource` cannot set headers.
+- Fetch-based SSE in `bridge.jsx` (`streamChat`, `streamInbox`) sets `x-api-key` directly, since `EventSource` cannot set headers.
 - `services/api/src/lib/cors.ts` includes `x-api-key` in `Access-Control-Allow-Headers`.
 
 API-key chat uses the **orchestrator** persona (not the Signal web persona). Session-only routes (`/intents/:id/visit`, `/questions/counts`, agent management writes, account deletion) are unreachable with an API key and are skipped or read-only in the UI.
@@ -43,4 +43,4 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `tool.controller.ts`: `POST /tools/:toolName` (`client.tools.invoke`; used for the onboarding-allowed `preview_user_context` / `confirm_user_context`)
 - `enrichment.controller.ts`: `POST /enrichment/enrich` (`client.enrichment.trigger`; runs the full public-research enrichment inline and returns the resolved identity + discovered socials)
 
-Onboarding creates a real intent through the `create_intent` MCP tool via a single JSON-RPC `tools/call` to `/mcp` (`api.jsx`'s `mcpCall`), since intent creation has no plain REST POST. SSE endpoints are consumed directly via `fetch` (not through the resource methods): `POST /chat/stream` and `GET /conversations/stream`.
+Onboarding creates a real intent through the `create_intent` MCP tool via a single JSON-RPC `tools/call` to `/mcp` (`bridge.jsx`'s `mcpCall`), since intent creation has no plain REST POST. SSE endpoints are consumed directly via `fetch` (not through the resource methods): `POST /chat/stream` and `GET /conversations/stream`.

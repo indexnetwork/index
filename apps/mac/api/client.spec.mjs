@@ -47,6 +47,7 @@ describe('mac Index API client endpoint contract', () => {
   it('uses controller-backed auth/network/intent endpoints', async () => {
     await expectCall('auth.me', (client) => client.auth.me(), { path: '/auth/me' });
     await expectCall('networks.list', (client) => client.networks.list(), { path: '/networks' });
+    await expectCall('networks.discoverPublic', (client) => client.networks.discoverPublic(1, 50), { path: '/networks/discovery/public?page=1&limit=50' });
     await expectCall('networks.overview', (client) => client.networks.overview('net/1'), { path: '/networks/net%2F1/overview' });
     await expectCall('networks.myIntents', (client) => client.networks.myIntents('net/1'), { path: '/networks/net%2F1/my-intents' });
     await expectCall('networks.update', (client) => client.networks.update('net/1', { title: 'n' }), { path: '/networks/net%2F1', method: 'PUT', body: { title: 'n' } });

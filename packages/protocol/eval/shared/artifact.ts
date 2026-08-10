@@ -77,8 +77,8 @@ const ruleResultSchema = z.object({
   passRate: rateSchema,
 }).strict();
 
-function caseResultSchema(minRuns: number, requireScoredRunIds: boolean): z.ZodTypeAny {
-  const base = z.object({
+function caseResultBaseSchema(minRuns: number, requireScoredRunIds: boolean) {
+  return z.object({
     caseId: z.string().min(1),
     rule: z.string().min(1),
     runs: z.number().int().min(minRuns),
@@ -86,8 +86,7 @@ function caseResultSchema(minRuns: number, requireScoredRunIds: boolean): z.ZodT
     passRate: rateSchema,
     flaky: z.boolean(),
     ...(requireScoredRunIds ? { scoredRunIds: z.array(z.string().min(1)) } : {}),
-  });
-  return base.passthrough();
+  }).passthrough();
 }
 
 function addScorecardValidation(
@@ -192,17 +191,22 @@ export const EvalScorecardPayloadV1Schema = z.object({
   runs: z.number().int().min(1),
   aggregatePassRate: rateSchema,
   rules: z.array(ruleResultSchema).min(1),
-  cases: z.array(caseResultSchema(1, false)).min(1),
+  cases: z.array(caseResultBaseSchema(1, false)).min(1),
 }).strict().superRefine((payload, context) => addScorecardValidation(payload as never, context));
 
-export const EvalScorecardPayloadV2Schema = z.object({
+const evalScorecardPayloadV2BaseSchema = z.object({
   generatedAt: dateTimeSchema,
   model: z.string().min(1),
   runs: z.number().int().min(1),
   aggregatePassRate: rateSchema,
   rules: z.array(ruleResultSchema).min(1),
-  cases: z.array(caseResultSchema(0, true)).min(1),
-}).strict().superRefine((payload, context) => addScorecardValidation(payload as never, context));
+  cases: z.array(caseResultBaseSchema(0, true)).min(1),
+}).strict();
+type EvalScorecardPayloadV2Input = z.infer<typeof evalScorecardPayloadV2BaseSchema>;
+function refineEvalScorecardPayloadV2(payload: EvalScorecardPayloadV2Input, context: z.RefinementCtx): void {
+  addScorecardValidation(payload as never, context);
+}
+export const EvalScorecardPayloadV2Schema = evalScorecardPayloadV2BaseSchema.superRefine(refineEvalScorecardPayloadV2);
 /** Current payload schema. */
 export const EvalScorecardPayloadSchema = EvalScorecardPayloadV2Schema;
 
@@ -212,7 +216,232 @@ const sanitizedErrorSchema = z.object({
   message: z.string().max(601),
 }).strict();
 
-const attemptEvidenceSchema = z.object({
+const historicalEvidenceTypeSchema = z.enum(["intent", "premise", "user_context"]);
+const historicalFailureStageSchema = z.enum([
+  "execution", "retrieval", "evaluation_admission", "evaluation_rejection", "finalization", "none",
+]);
+const historicalCandidateRoleSchema = z.enum(["target", "semantic-negative", "background"]);
+const safeHistoricalIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+
+export const HistoricalParticipantMetricSchema = z.object({
+  participantId: safeHistoricalIdSchema,
+  role: historicalCandidateRoleSchema,
+  retrieval: z.object({
+    rank: z.number().int().min(1).max(24),
+    bestScore: z.number().finite(),
+    evidenceIds: z.array(safeHistoricalIdSchema).min(1),
+    evidenceTypes: z.array(historicalEvidenceTypeSchema).min(1),
+  }).strict().nullable(),
+  evaluator: z.object({
+    eligible: z.boolean(),
+    submitted: z.boolean(),
+    returned: z.boolean(),
+    score: z.number().finite().nullable(),
+    errorClass: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/).optional(),
+  }).strict(),
+  finalRank: z.number().int().min(1).max(24).nullable(),
+  failureStage: historicalFailureStageSchema,
+}).strict().superRefine((metric, context) => {
+  const sortedUnique = (values: readonly string[]): boolean => values.every(
+    (value, index) => index === 0 || values[index - 1]!.localeCompare(value) < 0,
+  );
+  if (metric.retrieval !== null) {
+    if (!sortedUnique(metric.retrieval.evidenceIds)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["retrieval", "evidenceIds"], message: "evidenceIds must be sorted and unique" });
+    }
+    if (!sortedUnique(metric.retrieval.evidenceTypes)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["retrieval", "evidenceTypes"], message: "evidenceTypes must be sorted and unique" });
+    }
+  }
+  if (metric.evaluator.submitted && !metric.evaluator.eligible) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["evaluator", "submitted"], message: "submitted evaluation requires eligibility" });
+  }
+  if (metric.evaluator.returned && !metric.evaluator.submitted) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["evaluator", "returned"], message: "returned evaluation requires submission" });
+  }
+  if (metric.evaluator.eligible && metric.retrieval === null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["evaluator", "eligible"], message: "eligible evaluation requires retrieval" });
+  }
+  if ((metric.evaluator.returned && metric.evaluator.score === null)
+    || (!metric.evaluator.returned && metric.evaluator.score !== null)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["evaluator", "score"], message: "evaluator score must exist if and only if evaluation returned" });
+  }
+  if (metric.finalRank !== null && !metric.evaluator.returned) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["finalRank"], message: "final rank requires a returned evaluation" });
+  }
+});
+export type HistoricalParticipantMetric = z.infer<typeof HistoricalParticipantMetricSchema>;
+
+const historicalStageCountsSchema = z.object({
+  total: countSchema,
+  retrieved: countSchema,
+  evaluatorEligible: countSchema,
+  evaluatorSubmitted: countSchema,
+  evaluatorReturned: countSchema,
+  finalIncluded: countSchema,
+}).strict();
+const historicalRankSummarySchema = z.object({
+  count: countSchema,
+  sum: countSchema,
+  mean: z.number().finite().nullable(),
+}).strict();
+const historicalStageFunnelBaseSchema = z.object({
+  slots: countSchema,
+  participants: countSchema,
+  target: historicalStageCountsSchema,
+  semanticNegatives: historicalStageCountsSchema,
+  backgrounds: historicalStageCountsSchema,
+  targetRetrievalRank: historicalRankSummarySchema,
+  targetFinalRank: historicalRankSummarySchema,
+  failureStages: z.object({
+    execution: countSchema,
+    retrieval: countSchema,
+    evaluation_admission: countSchema,
+    evaluation_rejection: countSchema,
+    finalization: countSchema,
+    none: countSchema,
+  }).strict(),
+}).strict();
+
+type HistoricalStageFunnelInput = z.infer<typeof historicalStageFunnelBaseSchema>;
+function refineHistoricalStageFunnel(funnel: HistoricalStageFunnelInput, context: z.RefinementCtx): void {
+  const groups = [[funnel.target, 1], [funnel.semanticNegatives, 3], [funnel.backgrounds, 20]] as const;
+  for (const [counts, expectedTotal] of groups) {
+    if (counts.total !== expectedTotal
+      || counts.retrieved < counts.evaluatorEligible
+      || counts.evaluatorEligible < counts.evaluatorSubmitted
+      || counts.evaluatorSubmitted < counts.evaluatorReturned
+      || counts.evaluatorReturned < counts.finalIncluded) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: [], message: "stage funnel counts are inconsistent" });
+      break;
+    }
+  }
+  const total = (key: keyof z.infer<typeof historicalStageCountsSchema>): number =>
+    funnel.target[key] + funnel.semanticNegatives[key] + funnel.backgrounds[key];
+  const validRank = (rank: z.infer<typeof historicalRankSummarySchema>, expected: number): boolean =>
+    rank.count === expected
+    && rank.count <= total("total")
+    && rank.sum >= rank.count
+    && rank.sum <= rank.count * total("total")
+    && rank.mean === (rank.count === 0 ? null : rank.sum / rank.count);
+  if (funnel.slots !== 1 || funnel.participants !== 24
+    || !validRank(funnel.targetRetrievalRank, funnel.target.retrieved)
+    || !validRank(funnel.targetFinalRank, funnel.target.finalIncluded)
+    || funnel.failureStages.execution !== 0
+    || funnel.failureStages.retrieval !== 24 - total("retrieved")
+    || funnel.failureStages.evaluation_admission !== total("retrieved") - total("evaluatorSubmitted")
+    || funnel.failureStages.evaluation_rejection !== total("evaluatorSubmitted") - total("evaluatorReturned")
+    || funnel.failureStages.finalization !== total("evaluatorReturned") - total("finalIncluded")
+    || funnel.failureStages.none !== total("finalIncluded")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: [], message: "stage funnel is not a valid single-slot funnel" });
+  }
+}
+export const HistoricalStageFunnelSchema = historicalStageFunnelBaseSchema.superRefine(refineHistoricalStageFunnel);
+export type HistoricalStageFunnel = z.infer<typeof HistoricalStageFunnelSchema>;
+
+export const HistoricalQualityMeasurementSchema = z.object({
+  kind: z.literal("historical-quality-pilot"),
+  scorecardSemantics: z.literal("execution-completeness"),
+  repetitionsRequested: z.number().int().min(1),
+  requestedSlots: z.number().int().min(1),
+  completedSlots: countSchema,
+  qualityVerdictAvailable: z.boolean(),
+}).strict();
+export type HistoricalQualityMeasurement = z.infer<typeof HistoricalQualityMeasurementSchema>;
+
+const historicalQualityTransportRowBaseSchema = z.object({
+  kind: z.literal("historical-quality-pilot"),
+  logicalCaseId: z.string().min(1),
+  trigger: z.enum(["intent", "enrichment"]),
+  repetition: countSchema,
+  configurationFingerprint: sha256Schema,
+  completed: z.boolean(),
+  participantMetrics: z.array(HistoricalParticipantMetricSchema).length(24),
+  stageFunnel: HistoricalStageFunnelSchema.nullable(),
+}).strict();
+
+type HistoricalQualityTransportRowInput = z.infer<typeof historicalQualityTransportRowBaseSchema>;
+function refineHistoricalQualityTransportRow(row: HistoricalQualityTransportRowInput, context: z.RefinementCtx): void {
+  const ids = row.participantMetrics.map((metric) => metric.participantId);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "participant metrics must have unique participant IDs" });
+  }
+  const roleCounts = { target: 0, "semantic-negative": 0, background: 0 };
+  for (const metric of row.participantMetrics) roleCounts[metric.role] += 1;
+  if (roleCounts.target !== 1 || roleCounts["semantic-negative"] !== 3 || roleCounts.background !== 20) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "participant metrics require 1 target, 3 semantic-negative, and 20 background rows" });
+  }
+  const retrievalRanks = row.participantMetrics.flatMap((metric) => metric.retrieval === null ? [] : [metric.retrieval.rank]).sort((a, b) => a - b);
+  const finalRanks = row.participantMetrics.flatMap((metric) => metric.finalRank === null ? [] : [metric.finalRank]).sort((a, b) => a - b);
+  const contiguous = (values: readonly number[]): boolean => values.every((value, index) => value === index + 1);
+  if (!contiguous(retrievalRanks) || !contiguous(finalRanks)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "retrieval and final ranks must be contiguous" });
+  }
+  if (row.completed) {
+    if (row.stageFunnel === null) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["stageFunnel"], message: "completed transport row requires a stage funnel" });
+    }
+    const expectedStage = (metric: HistoricalParticipantMetric): z.infer<typeof historicalFailureStageSchema> => {
+      if (metric.retrieval === null) return "retrieval";
+      if (!metric.evaluator.eligible || !metric.evaluator.submitted) return "evaluation_admission";
+      if (!metric.evaluator.returned) return "evaluation_rejection";
+      if (metric.finalRank === null) return "finalization";
+      return "none";
+    };
+    if (row.participantMetrics.some((metric) => metric.failureStage !== expectedStage(metric))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "participant failure stages are inconsistent with metric evidence" });
+    }
+    if (row.stageFunnel !== null) {
+      const counts = (role: HistoricalParticipantMetric["role"]) => {
+        const metrics = row.participantMetrics.filter((metric) => metric.role === role);
+        return {
+          total: metrics.length,
+          retrieved: metrics.filter((metric) => metric.retrieval !== null).length,
+          evaluatorEligible: metrics.filter((metric) => metric.evaluator.eligible).length,
+          evaluatorSubmitted: metrics.filter((metric) => metric.evaluator.submitted).length,
+          evaluatorReturned: metrics.filter((metric) => metric.evaluator.returned).length,
+          finalIncluded: metrics.filter((metric) => metric.finalRank !== null).length,
+        };
+      };
+      const target = row.participantMetrics.find((metric) => metric.role === "target")!;
+      const rankSummary = (rank: number | null) => ({ count: rank === null ? 0 : 1, sum: rank ?? 0, mean: rank });
+      const derived: HistoricalStageFunnelInput = {
+        slots: 1,
+        participants: 24,
+        target: counts("target"),
+        semanticNegatives: counts("semantic-negative"),
+        backgrounds: counts("background"),
+        targetRetrievalRank: rankSummary(target.retrieval?.rank ?? null),
+        targetFinalRank: rankSummary(target.finalRank),
+        failureStages: {
+          execution: row.participantMetrics.filter((metric) => metric.failureStage === "execution").length,
+          retrieval: row.participantMetrics.filter((metric) => metric.failureStage === "retrieval").length,
+          evaluation_admission: row.participantMetrics.filter((metric) => metric.failureStage === "evaluation_admission").length,
+          evaluation_rejection: row.participantMetrics.filter((metric) => metric.failureStage === "evaluation_rejection").length,
+          finalization: row.participantMetrics.filter((metric) => metric.failureStage === "finalization").length,
+          none: row.participantMetrics.filter((metric) => metric.failureStage === "none").length,
+        },
+      };
+      if (JSON.stringify(row.stageFunnel) !== JSON.stringify(derived)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["stageFunnel"], message: "stage funnel must exactly summarize participant metrics" });
+      }
+    }
+  } else {
+    if (row.stageFunnel !== null) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["stageFunnel"], message: "failed transport row must not have a stage funnel" });
+    }
+    if (row.participantMetrics.some((metric) => metric.failureStage !== "execution")) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "failed transport row metrics must record execution failure" });
+    }
+    if (row.participantMetrics.some((metric) => metric.finalRank !== null)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "failed transport row final ranks must be null" });
+    }
+  }
+}
+export const HistoricalQualityTransportRowSchema = historicalQualityTransportRowBaseSchema.superRefine(refineHistoricalQualityTransportRow);
+export type HistoricalQualityTransportRow = z.infer<typeof HistoricalQualityTransportRowSchema>;
+
+const attemptEvidenceBaseSchema = z.object({
   attemptId: z.string().min(1),
   runId: z.string().min(1),
   runIndex: countSchema,
@@ -224,7 +453,10 @@ const attemptEvidenceSchema = z.object({
   error: sanitizedErrorSchema.optional(),
   retryable: z.boolean(),
   backoffMs: countSchema,
-}).strict().superRefine((attempt, context) => {
+}).strict();
+
+type AttemptEvidenceInput = z.infer<typeof attemptEvidenceBaseSchema>;
+function refineAttemptEvidence(attempt: AttemptEvidenceInput, context: z.RefinementCtx): void {
   const elapsed = Date.parse(attempt.completedAt) - Date.parse(attempt.startedAt);
   if (elapsed < 0) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["completedAt"], message: "attempt completedAt precedes startedAt" });
@@ -246,16 +478,20 @@ const attemptEvidenceSchema = z.object({
       }
     }
   }
-});
+}
+const attemptEvidenceSchema = attemptEvidenceBaseSchema.superRefine(refineAttemptEvidence);
 
-const runEvidenceSchema = z.object({
+const runEvidenceBaseSchema = z.object({
   runId: z.string().min(1),
   caseId: z.string().min(1),
   runIndex: countSchema,
   outcome: z.enum(["success", "failed", "cancelled"]),
   recovered: z.boolean(),
   attempts: z.array(attemptEvidenceSchema),
-}).strict().superRefine((run, context) => {
+}).strict();
+
+type RunEvidenceInput = z.infer<typeof runEvidenceBaseSchema>;
+function refineRunEvidence(run: RunEvidenceInput, context: z.RefinementCtx): void {
   const expectedRunId = `${encodeURIComponent(run.caseId)}::run:${run.runIndex + 1}`;
   if (run.runId !== expectedRunId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["runId"], message: `runId must be deterministic (${expectedRunId})` });
@@ -308,11 +544,77 @@ const runEvidenceSchema = z.object({
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["outcome"], message: "cancelled attempt requires a cancelled run" });
     }
   }
+}
+const runEvidenceSchema = runEvidenceBaseSchema.superRefine(refineRunEvidence);
+
+const historicalQualityAttemptBaseSchema = attemptEvidenceBaseSchema.extend({
+  retryable: z.literal(false),
+  backoffMs: z.literal(0),
 });
+const historicalQualityAttemptSchema = historicalQualityAttemptBaseSchema.superRefine(refineAttemptEvidence);
+const historicalQualityExecutionRunBaseSchema = runEvidenceBaseSchema.extend({
+  runIndex: z.literal(0),
+  recovered: z.literal(false),
+  attempts: z.tuple([historicalQualityAttemptSchema]),
+});
+export const HistoricalQualityExecutionRunSchema = historicalQualityExecutionRunBaseSchema.superRefine(refineRunEvidence);
+export type HistoricalQualityExecutionRun = z.infer<typeof HistoricalQualityExecutionRunSchema>;
 
 export const EvalExecutionEvidenceSchema = z.object({
   policy: z.enum(["normal", "strict"]),
   runs: z.array(runEvidenceSchema),
+}).strict();
+
+const historicalQualityCaseBaseSchema = caseResultBaseSchema(1, true).extend({
+  rule: z.literal("execution-completeness"),
+  runs: z.literal(1),
+  passes: z.union([z.literal(0), z.literal(1)]),
+  passRate: z.union([z.literal(0), z.literal(1)]),
+  flaky: z.literal(false),
+  ...historicalQualityTransportRowBaseSchema.shape,
+}).strict();
+const historicalQualityCaseSchema = historicalQualityCaseBaseSchema.superRefine((row, context) => {
+  refineHistoricalQualityTransportRow(row, context);
+  if (row.passRate !== row.passes) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["passRate"], message: "quality passRate must equal passes" });
+  }
+});
+
+const historicalQualityPayloadBaseSchema = evalScorecardPayloadV2BaseSchema.extend({
+  runs: z.literal(1),
+  rules: z.tuple([ruleResultSchema.extend({ rule: z.literal("execution-completeness"), caseCount: countSchema })]),
+  cases: z.array(historicalQualityCaseSchema),
+});
+type HistoricalQualityPayloadInput = z.infer<typeof historicalQualityPayloadBaseSchema>;
+function refineHistoricalQualityPayload(payload: HistoricalQualityPayloadInput, context: z.RefinementCtx): void {
+  const caseIds = payload.cases.map((row) => row.caseId);
+  if (new Set(caseIds).size !== caseIds.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["cases"], message: "duplicate caseId values" });
+  }
+  const expectedRate = payload.cases.length === 0
+    ? 0
+    : payload.cases.reduce((sum, row) => sum + row.passes, 0) / payload.cases.length;
+  if (Math.abs(payload.aggregatePassRate - expectedRate) > RATE_TOLERANCE) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["aggregatePassRate"], message: "aggregatePassRate is inconsistent with quality transport completion" });
+  }
+  if (payload.rules[0].caseCount !== payload.cases.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["rules", 0, "caseCount"], message: "quality rule caseCount must equal emitted transport rows" });
+  }
+  if (Math.abs(payload.rules[0].passRate - expectedRate) > RATE_TOLERANCE) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["rules", 0, "passRate"], message: "quality rule passRate is inconsistent with transport completion" });
+  }
+  for (const [index, row] of payload.cases.entries()) {
+    const expectedId = `${encodeURIComponent(row.logicalCaseId)}/${row.trigger}/r${row.repetition + 1}`;
+    if (row.caseId !== expectedId) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["cases", index, "caseId"], message: `quality transport caseId must be deterministic (${expectedId})` });
+    }
+  }
+}
+const historicalQualityPayloadSchema = historicalQualityPayloadBaseSchema.superRefine(refineHistoricalQualityPayload);
+
+const historicalQualityExecutionSchema = z.object({
+  policy: z.enum(["normal", "strict"]),
+  runs: z.array(HistoricalQualityExecutionRunSchema),
 }).strict();
 
 const fingerprintSchema = z.union([sha256Schema, z.literal(EVAL_LEGACY_UNAVAILABLE)]);
@@ -382,17 +684,25 @@ export const EvalArtifactEnvelopeV1Schema = z.object({
   }
 });
 
-export const EvalArtifactEnvelopeV2Schema = z.object({
+const evalArtifactEnvelopeV2BaseSchema = z.object({
   ...commonEnvelopeFields,
   schemaVersion: z.literal(EVAL_ARTIFACT_SCHEMA_VERSION_V2),
   source: z.literal("run"),
   completeness: EvalCompletenessV2Schema,
   execution: EvalExecutionEvidenceSchema,
   payload: EvalScorecardPayloadV2Schema,
-}).strict().superRefine((artifact, context) => {
+}).strict();
+type EvalArtifactEnvelopeV2Input = z.infer<typeof evalArtifactEnvelopeV2BaseSchema>;
+
+function refineEvalArtifactEnvelopeV2(
+  artifact: EvalArtifactEnvelopeV2Input,
+  context: z.RefinementCtx,
+  quality: boolean,
+): void {
   validateCommonEnvelope(artifact, context);
   const expected = summarizeCompletenessV2(artifact.payload.cases, artifact.payload.rules.length, artifact.execution);
   for (const key of Object.keys(expected) as Array<keyof EvalCompletenessV2>) {
+    if (quality && key === "complete") continue;
     if (artifact.completeness[key] !== expected[key]) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", key], message: `completeness.${key} is inconsistent with the payload/execution (expected ${String(expected[key])})` });
     }
@@ -440,13 +750,99 @@ export const EvalArtifactEnvelopeV2Schema = z.object({
     if (JSON.stringify(entry.scoredRunIds) !== JSON.stringify(successfulIds)) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "cases", caseIndex, "scoredRunIds"], message: "scoredRunIds must exactly match successful terminal runs" });
     }
-    if (entry.runs !== successfulIds.length) {
+    if (!quality && entry.runs !== successfulIds.length) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "cases", caseIndex, "runs"], message: "case runs must count only successful terminal outputs" });
     }
   }
   if (artifact.artifactType === EVAL_BASELINE_ARTIFACT_TYPE && !artifact.completeness.complete) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", "complete"], message: "baseline artifacts require complete execution evidence" });
   }
+}
+
+const evalArtifactEnvelopeV2LegacySchema = evalArtifactEnvelopeV2BaseSchema.superRefine(
+  (artifact, context) => refineEvalArtifactEnvelopeV2(artifact, context, false),
+);
+
+const historicalQualityArtifactEnvelopeBaseSchema = evalArtifactEnvelopeV2BaseSchema.extend({
+  artifactType: z.literal(EVAL_RUN_REPORT_ARTIFACT_TYPE),
+  runs: z.literal(1),
+  measurement: HistoricalQualityMeasurementSchema,
+  execution: historicalQualityExecutionSchema,
+  payload: historicalQualityPayloadSchema,
+});
+type HistoricalQualityArtifactEnvelopeInput = z.infer<typeof historicalQualityArtifactEnvelopeBaseSchema>;
+function refineHistoricalQualityArtifactEnvelope(
+  artifact: HistoricalQualityArtifactEnvelopeInput,
+  context: z.RefinementCtx,
+): void {
+  refineEvalArtifactEnvelopeV2(artifact, context, true);
+  const { measurement } = artifact;
+  if (artifact.payload.cases.length > measurement.requestedSlots) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "cases"], message: "emitted quality rows exceed requestedSlots" });
+  }
+  const executionByCase = new Map(artifact.execution.runs.map((run) => [run.caseId, run]));
+  let completedSlots = 0;
+  for (const [index, row] of artifact.payload.cases.entries()) {
+    const run = executionByCase.get(row.caseId);
+    if (!run) continue;
+    const attempt = run.attempts[0];
+    const executionSucceeded = run.outcome === "success" && attempt.outcome === "success";
+    const pass = row.passes === 1 && row.passRate === 1;
+    const hasFunnel = row.stageFunnel !== null;
+    if (!(row.completed === executionSucceeded && row.completed === pass && row.completed === hasFunnel)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "cases", index], message: "quality completion, pass, execution success, and funnel presence must agree" });
+    }
+    if (!row.completed && (run.outcome !== "failed" || !["failure", "timeout"].includes(attempt.outcome))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["execution", "runs", index], message: "failed quality row requires one failed-or-timeout execution attempt" });
+    }
+    if (row.repetition >= measurement.repetitionsRequested) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "cases", index, "repetition"], message: "quality repetition exceeds repetitionsRequested" });
+    }
+    if (row.configurationFingerprint !== artifact.configFingerprint) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "cases", index, "configurationFingerprint"], message: "quality row configuration fingerprint must match the envelope" });
+    }
+    if (row.completed) completedSlots += 1;
+  }
+  if (measurement.completedSlots !== completedSlots) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "completedSlots"], message: "completedSlots must equal completed emitted transport rows" });
+  }
+  const repetitionsByGroup = new Map<string, number[]>();
+  for (const row of artifact.payload.cases) {
+    const key = JSON.stringify([row.logicalCaseId, row.trigger]);
+    const repetitions = repetitionsByGroup.get(key) ?? [];
+    repetitions.push(row.repetition);
+    repetitionsByGroup.set(key, repetitions);
+  }
+  const exactRepetitionCoverage = [...repetitionsByGroup.values()].every((repetitions) =>
+    repetitions.length === measurement.repetitionsRequested
+      && [...repetitions].sort((left, right) => left - right)
+        .every((repetition, index) => repetition === index));
+  const requestedSlotMath = repetitionsByGroup.size * measurement.repetitionsRequested
+    === measurement.requestedSlots;
+  const completeEvidence = artifact.payload.cases.length === measurement.requestedSlots
+    && completedSlots === measurement.requestedSlots
+    && exactRepetitionCoverage
+    && requestedSlotMath;
+  if (measurement.qualityVerdictAvailable !== completeEvidence) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "qualityVerdictAvailable"], message: "quality verdict availability must exactly match complete requested evidence with exact repetition coverage and requested-slot math" });
+  }
+  if (artifact.completeness.complete !== completeEvidence) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", "complete"], message: "quality completeness must exactly match complete requested evidence with exact repetition coverage and requested-slot math" });
+  }
+}
+export const HistoricalQualityArtifactEnvelopeSchema = historicalQualityArtifactEnvelopeBaseSchema
+  .superRefine(refineHistoricalQualityArtifactEnvelope);
+export type HistoricalQualityArtifactEnvelope = z.infer<typeof HistoricalQualityArtifactEnvelopeSchema>;
+
+/** Selects the strict V2 variant without changing legacy issue paths/messages. */
+export const EvalArtifactEnvelopeV2Schema = z.any().transform((value, context) => {
+  const schema = isRecord(value) && Object.prototype.hasOwnProperty.call(value, "measurement")
+    ? HistoricalQualityArtifactEnvelopeSchema
+    : evalArtifactEnvelopeV2LegacySchema;
+  const parsed = schema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  for (const issue of parsed.error.issues) context.addIssue(issue);
+  return z.NEVER;
 });
 
 /** Current writer schema. Readers explicitly accept both v1 and v2. */
@@ -505,6 +901,12 @@ export function parseEvalArtifact<P extends ScorecardLike = ScorecardLike>(
 
 export function isEvalArtifactV2<P extends ScorecardLike>(artifact: EvalArtifactEnvelope<P>): artifact is EvalArtifactEnvelopeV2<P> {
   return artifact.schemaVersion === EVAL_ARTIFACT_SCHEMA_VERSION_V2;
+}
+
+export function isHistoricalQualityArtifact(artifact: EvalArtifactEnvelope | unknown): artifact is HistoricalQualityArtifactEnvelope {
+  return isRecord(artifact)
+    && isRecord(artifact.measurement)
+    && artifact.measurement.kind === "historical-quality-pilot";
 }
 
 /** Returns genuine v2 execution evidence, or null for v1 artifacts. */
