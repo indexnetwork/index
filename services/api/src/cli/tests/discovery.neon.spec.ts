@@ -22,7 +22,7 @@ const controlPlane = (overrides: Record<string, Partial<{ name: string; parentId
     ...overrides[branchId],
   }),
   listEndpoints: async (_projectId, branchId) => [
-    { id: `ep-${branchId.slice(3)}`, branchId, host: `ep-${branchId.slice(3)}.neon.tech` },
+    { id: `ep-${branchId.slice(3)}`, branchId, host: `ep-${branchId.slice(3)}.neon.tech`, type: 'read_write' },
   ],
 });
 

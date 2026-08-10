@@ -3,10 +3,11 @@
  * Uses the shared OpenRouter + OpenAI embedding config from lib/embedding.
  */
 
+import { createHash } from 'node:crypto';
+
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
-import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
 import * as schema from '../schemas/database.schema';
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,14 +101,30 @@ export function planHydeCorpusSearches(
 // Adapter implementation
 // ─────────────────────────────────────────────────────────────────────────────
 
+async function getDb() {
+  return (await import('../lib/drizzle/drizzle')).default;
+}
+
+export interface EmbedderAdapterIdentity {
+  provider: 'openrouter';
+  model: string;
+  dimensions: number;
+  configurationFingerprint: string;
+}
+
 export class EmbedderAdapter {
   private openai: OpenAI;
   private dimensions: number;
+  private model: string;
+  readonly identity: EmbedderAdapterIdentity;
 
   constructor(options?: { apiKey?: string; baseURL?: string; dimensions?: number }) {
+    const baseURL = options?.baseURL ?? OPENROUTER_EMBEDDING_BASE_URL;
+    this.dimensions = options?.dimensions ?? OPENROUTER_EMBEDDING_DIMENSIONS;
+    this.model = OPENROUTER_EMBEDDING_MODEL;
     this.openai = new OpenAI({
       apiKey: options?.apiKey ?? process.env.OPENROUTER_API_KEY,
-      baseURL: options?.baseURL ?? OPENROUTER_EMBEDDING_BASE_URL,
+      baseURL,
       defaultHeaders: options?.baseURL
         ? undefined
         : {
@@ -115,7 +132,15 @@ export class EmbedderAdapter {
             'X-Title': 'Index Network',
           },
     });
-    this.dimensions = options?.dimensions ?? OPENROUTER_EMBEDDING_DIMENSIONS;
+    const configuration = {
+      provider: 'openrouter' as const,
+      model: this.model,
+      dimensions: this.dimensions,
+    };
+    this.identity = Object.freeze({
+      ...configuration,
+      configurationFingerprint: createHash('sha256').update(JSON.stringify(configuration)).digest('hex'),
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -134,7 +159,7 @@ export class EmbedderAdapter {
         attributes: {
           subsystem: 'embedding',
           provider: 'openrouter',
-          model: OPENROUTER_EMBEDDING_MODEL,
+          model: this.model,
           'embedding.input_count': Array.isArray(text) ? text.length : 1,
           'embedding.dimensions': dimensions ?? this.dimensions,
         },
@@ -156,7 +181,7 @@ export class EmbedderAdapter {
 
     const dim = dimensions ?? this.dimensions;
     const response = await this.openai.embeddings.create({
-      model: OPENROUTER_EMBEDDING_MODEL,
+      model: this.model,
       input: cleanTexts,
       dimensions: dim,
       encoding_format: 'float',
@@ -269,6 +294,7 @@ export class EmbedderAdapter {
     lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 
@@ -321,6 +347,7 @@ export class EmbedderAdapter {
     lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { premises, premiseNetworks } = schema;
 
@@ -373,6 +400,7 @@ export class EmbedderAdapter {
     lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { userContexts } = schema;
 
@@ -458,6 +486,7 @@ export class EmbedderAdapter {
     limit: number,
     minScore: number
   ): Promise<VectorSearchResult<unknown>[]> {
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 

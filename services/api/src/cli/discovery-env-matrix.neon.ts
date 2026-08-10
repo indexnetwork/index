@@ -4,7 +4,12 @@ const NEON_API_ORIGIN = 'https://console.neon.tech/api/v2';
 const BASE_NAME = 'eval-discovery-base';
 
 export type NeonBranch = { id: string; name: string; parentId: string | null; expiresAt: string | null; primary: boolean };
-export type NeonEndpoint = { id: string; branchId: string; host: string };
+export type NeonEndpoint = {
+  id: string;
+  branchId: string;
+  host: string;
+  type: 'read_only' | 'read_write';
+};
 
 /** Narrow, injectable control-plane port. Database/protocol dependencies must never be imported here. */
 export interface NeonControlPlane {
@@ -48,7 +53,16 @@ function decodeEndpoints(value: unknown): NeonEndpoint[] {
   return raw.map((value) => {
     const endpoint = asRecord(value, 'Neon control-plane returned an invalid endpoint');
     const host = endpoint.host ?? endpoint.host_name;
-    return { id: asString(endpoint.id, 'Neon control-plane endpoint response is missing id'), branchId: asString(endpoint.branch_id, 'Neon control-plane endpoint response is missing branch_id'), host: asString(host, 'Neon control-plane endpoint response is missing host') };
+    const type = endpoint.type;
+    if (type !== 'read_only' && type !== 'read_write') {
+      throw new Error('Neon control-plane endpoint response has an invalid type');
+    }
+    return {
+      id: asString(endpoint.id, 'Neon control-plane endpoint response is missing id'),
+      branchId: asString(endpoint.branch_id, 'Neon control-plane endpoint response is missing branch_id'),
+      host: asString(host, 'Neon control-plane endpoint response is missing host'),
+      type,
+    };
   });
 }
 
