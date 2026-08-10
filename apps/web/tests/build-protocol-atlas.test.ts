@@ -96,7 +96,7 @@ describe("publishProtocolAtlas", () => {
 });
 
 test("wires validation, publication, and atlas Railway watch inputs", () => {
-  const webDir = process.cwd();
+  const webDir = join(__dirname, "..");
   const packageJson = JSON.parse(
     readFileSync(join(webDir, "package.json"), "utf8"),
   ) as { scripts: Record<string, string> };
@@ -107,5 +107,6 @@ test("wires validation, publication, and atlas Railway watch inputs", () => {
   );
   expect(railway).toContain('"/docs/protocol-atlas/**"');
   expect(railway).toContain('"/scripts/build-protocol-atlas.ts"');
+  expect(railway).toContain('"/scripts/tests/build-protocol-atlas.spec.ts"');
   expect(railway).toContain('"/packages/protocol/**"');
 });
