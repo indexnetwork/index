@@ -104,6 +104,7 @@ describe('native owner migration and transport source contracts', () => {
       'absence read-back failure accepted', 'invalid legacy key ID accepted',
       'invalid legacy key ID source was deleted', 'Keychain read-back mismatch accepted',
     ]) expect(migrationFixture).toContain(evidence);
+    expect(migrationFixture).not.toMatch(/require\(\s*try/s);
     expect(build).toContain('--fixture OwnerCredentialMigrationFixture');
     expect(macWorkflow).toContain('./build.sh --fixture OwnerCredentialMigrationFixture');
   });

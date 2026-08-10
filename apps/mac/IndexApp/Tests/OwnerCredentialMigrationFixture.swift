@@ -34,8 +34,8 @@ enum OwnerCredentialMigrationFixture {
 
         // Offline relaunch keeps strict non-secret evidence and requires fresh login.
         var relaunched = try OwnerCredentialStore(accessGroup: group, applicationSupportDirectory: validRoot)
-        try require(try relaunched.prepareForStartup(installationId: installation) == journal,
-                    "offline revocation evidence was not durable")
+        let relaunchedJournal = try relaunched.prepareForStartup(installationId: installation)
+        try require(relaunchedJournal == journal, "offline revocation evidence was not durable")
 
         // Malformed files fail closed and are not deleted.
         let malformedRoot = root.appendingPathComponent("malformed", isDirectory: true)
@@ -86,7 +86,8 @@ enum OwnerCredentialMigrationFixture {
             throw FixtureFailure.assertion("deletion failure accepted")
         } catch OwnerCredentialStoreFailure.fileDeletionFailed {}
         try require(FileManager.default.fileExists(atPath: deletionURL.path), "failed deletion removed file")
-        try require(try deletion.loadJournal()?.legacyKeyId == "delete-id", "revocation ID not journaled first")
+        let deletionJournal = try deletion.loadJournal()
+        try require(deletionJournal?.legacyKeyId == "delete-id", "revocation ID not journaled first")
 
         // A failed absence read-back remains signed out even after remove returns.
         let readBackRoot = root.appendingPathComponent("readback", isDirectory: true)
