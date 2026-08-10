@@ -154,6 +154,7 @@ import {
   truncateAtBoundary,
   stripUnsupportedOpportunityClaims,
   safeFallbackSummary,
+  DEFAULT_FALLBACK_HEADLINE,
   buildApiChatCardPresentationCacheKey,
   buildDeliveryCardPresentationCacheKey,
   buildRadarCardPresentationCacheKey,
