@@ -212,6 +212,15 @@ export interface HistoricalQualityConstructedDependencies {
   readonly [key: string]: unknown;
 }
 
+export interface HistoricalQualityAcquiredResource {
+  readonly kind: 'cache' | 'database';
+  close(): Promise<void>;
+}
+
+export interface HistoricalQualityResourceRegistry {
+  add(resource: HistoricalQualityAcquiredResource): void;
+}
+
 export interface HistoricalQualityChildDeps {
   environment: Readonly<Record<string, string | undefined>>;
   reattestSelectedChild(input: {
@@ -225,20 +234,34 @@ export interface HistoricalQualityChildDeps {
     runtimeEnvironment: HistoricalQualityRuntimeEnvironment;
     base: VerifiedHistoricalQualityBase;
   }): Promise<string>;
-  createCache(seed: HistoricalQualitySlotDispatch): Promise<HydeCache> | HydeCache;
+  createCache(
+    seed: HistoricalQualitySlotDispatch,
+    resources: HistoricalQualityResourceRegistry,
+  ): Promise<HydeCache> | HydeCache;
   createDependencies(input: {
     configuration: Readonly<Record<DiscoveryEnvKey, string>>;
     runtimeEnvironment: HistoricalQualityRuntimeEnvironment;
     selectedDatabaseUrl: string;
     embedding: Readonly<{ model: string; dimensions: number }>;
     cache: HydeCache;
-  }): Promise<HistoricalQualityConstructedDependencies>;
+  }, resources: HistoricalQualityResourceRegistry): Promise<HistoricalQualityConstructedDependencies>;
   executeSlot(input: {
     dispatch: HistoricalQualitySlotDispatch;
     configuration: Readonly<Record<DiscoveryEnvKey, string>>;
     dependencies: HistoricalQualityConstructedDependencies;
   }): Promise<HistoricalQualityChildOutput>;
-  closeResources(): Promise<void>;
+}
+
+async function closeAcquiredResources(resources: readonly HistoricalQualityAcquiredResource[]): Promise<void> {
+  let failed = false;
+  for (const resource of [...resources].reverse()) {
+    try {
+      await resource.close();
+    } catch {
+      failed = true;
+    }
+  }
+  if (failed) throw new Error('Historical quality child resource cleanup failed');
 }
 
 async function closeWithoutMasking(primary: unknown, close: () => Promise<void>): Promise<void> {
@@ -286,24 +309,26 @@ async function runHistoricalQualityChildCore(
     throw new Error('Historical quality child-resolved configuration fingerprint mismatch');
   }
 
-  let constructionStarted = false;
+  const acquiredResources: HistoricalQualityAcquiredResource[] = [];
+  const resourceRegistry: HistoricalQualityResourceRegistry = {
+    add: (resource) => { acquiredResources.push(resource); },
+  };
   let primaryError: unknown;
   let result: HistoricalQualityChildOutput | undefined;
   try {
-    constructionStarted = true;
-    const cache = await deps.createCache(dispatch);
+    const cache = await deps.createCache(dispatch, resourceRegistry);
     const dependencies = await deps.createDependencies({
       configuration,
       runtimeEnvironment,
       selectedDatabaseUrl,
       embedding,
       cache,
-    });
+    }, resourceRegistry);
     result = await deps.executeSlot({ dispatch, configuration, dependencies });
   } catch (error) {
     primaryError = error;
   }
-  if (constructionStarted) await closeWithoutMasking(primaryError, deps.closeResources);
+  await closeWithoutMasking(primaryError, () => closeAcquiredResources(acquiredResources));
   if (primaryError !== undefined) throw primaryError;
   if (result === undefined) throw new Error('Historical quality child produced no output');
   return result;
@@ -342,16 +367,6 @@ async function verifyProductionPublishedState(db: DrizzleDB): Promise<VerifiedHi
   });
 }
 
-async function closeProductionResources(): Promise<void> {
-  const [drizzleModule, cacheModule] = await Promise.all([
-    import('../lib/drizzle/drizzle'),
-    import('../adapters/cache.adapter'),
-  ]);
-  const results = await Promise.allSettled([drizzleModule.closeDb(), cacheModule.closeRedisConnection()]);
-  const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-  if (failure) throw failure.reason;
-}
-
 function productionDependencies(environment: HistoricalQualityChildEnvironment): HistoricalQualityChildDeps {
   return {
     environment,
@@ -373,46 +388,52 @@ function productionDependencies(environment: HistoricalQualityChildEnvironment):
       });
       return fingerprintHistoricalQualityChildResolvedConfiguration(resolved);
     },
-    createCache: async (seed) => {
+    createCache: async (seed, resources) => {
       // Loaded only after attestation, exact DB verification, verifier close,
       // embedding reconciliation, and full planner-fingerprint comparison.
-      const { RedisCacheAdapter } = await import('../adapters/cache.adapter');
-      return new NamespacedHydeCache(new RedisCacheAdapter(), seed);
+      const cacheModule = await import('../adapters/cache.adapter');
+      const cache = new cacheModule.RedisCacheAdapter();
+      resources.add(Object.freeze({
+        kind: 'cache' as const,
+        close: async () => cacheModule.closeRedisConnection(),
+      }));
+      return new NamespacedHydeCache(cache, seed);
     },
-    createDependencies: async ({ selectedDatabaseUrl, embedding, cache }) => {
+    createDependencies: async ({ selectedDatabaseUrl, embedding, cache }, resources) => {
       // The process is dedicated to one slot. This assignment is the first and
       // only DATABASE_URL authority and is derived from the re-attested target.
       process.env.DATABASE_URL = selectedDatabaseUrl;
-      try {
-        const [protocol, adapterModule, embedderModule] = await Promise.all([
-          import('@indexnetwork/protocol'),
-          import('../adapters/database.adapter'),
-          import('../adapters/embedder.adapter'),
-        ]);
-        const database = new adapterModule.ChatDatabaseAdapter();
-        const embedder = new embedderModule.EmbedderAdapter();
-        if (embedder.identity.model !== embedding.model || embedder.identity.dimensions !== embedding.dimensions) {
-          throw new Error('Historical quality constructed embedder identity drifted after verification');
-        }
-        const graphDb = database as never;
-        const hydeGraph = new protocol.HydeGraphFactory(
-          graphDb,
-          embedder,
-          cache,
-          new protocol.LensInferrer(),
-          new protocol.HydeGenerator(),
-        ).createGraph();
-        const opportunityGraph = new protocol.OpportunityGraphFactory(
-          graphDb,
-          embedder,
-          hydeGraph,
-          new protocol.OpportunityEvaluator(),
-        ).createGraph();
-        return { database, embedder, hydeGraph, opportunityGraph };
-      } catch (error) {
-        await closeProductionResources().catch(() => undefined);
-        throw error;
+      const drizzleModule = await import('../lib/drizzle/drizzle');
+      resources.add(Object.freeze({
+        kind: 'database' as const,
+        close: async () => drizzleModule.closeDb(),
+      }));
+
+      // Import and construct each later dependency only after the concrete DB
+      // handle has a registered closer. The core owns cleanup from this point.
+      const adapterModule = await import('../adapters/chat.database.adapter');
+      const database = new adapterModule.ChatDatabaseAdapter();
+      const embedderModule = await import('../adapters/embedder.adapter');
+      const embedder = new embedderModule.EmbedderAdapter();
+      if (embedder.identity.model !== embedding.model || embedder.identity.dimensions !== embedding.dimensions) {
+        throw new Error('Historical quality constructed embedder identity drifted after verification');
       }
+      const protocol = await import('@indexnetwork/protocol');
+      const graphDb = database as never;
+      const hydeGraph = new protocol.HydeGraphFactory(
+        graphDb,
+        embedder,
+        cache,
+        new protocol.LensInferrer(),
+        new protocol.HydeGenerator(),
+      ).createGraph();
+      const opportunityGraph = new protocol.OpportunityGraphFactory(
+        graphDb,
+        embedder,
+        hydeGraph,
+        new protocol.OpportunityEvaluator(),
+      ).createGraph();
+      return { database, embedder, hydeGraph, opportunityGraph };
     },
     executeSlot: async () => {
       // Task 7 supplies production-shaped trigger execution and the canonical
@@ -420,7 +441,6 @@ function productionDependencies(environment: HistoricalQualityChildEnvironment):
       // Task 6 from inventing or weakening that schema.
       throw new Error('Historical quality slot execution is unavailable');
     },
-    closeResources: closeProductionResources,
   };
 }
 
@@ -438,6 +458,7 @@ export async function preflightHistoricalQualityChildRuntime(
     throw new Error('Historical quality child configuration handoff is incomplete');
   }
   parseHistoricalQualityChildConfiguration({ raw, expectedFingerprint: fingerprint });
+  parseHistoricalQualityRuntimeEnvironment(environment);
 }
 
 export function runHistoricalQualityChild(

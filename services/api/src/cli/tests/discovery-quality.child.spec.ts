@@ -103,23 +103,33 @@ function dependencies(events: string[] = []): HistoricalQualityChildDeps {
       expect(base).toBe(verifiedBase);
       return dispatch.childResolvedConfigurationFingerprint;
     },
-    createDependencies: async ({ selectedDatabaseUrl, cache }) => {
+    createDependencies: async ({ selectedDatabaseUrl, cache }, resources) => {
       events.push('create');
       expect(selectedDatabaseUrl).toBe(databaseUrl);
       expect(cache).toBeInstanceOf(NamespacedHydeCache);
+      resources.add({
+        kind: 'database',
+        close: async () => { events.push('database-close'); },
+      });
       return {};
     },
     executeSlot: async () => {
       events.push('execute');
       return output;
     },
-    closeResources: async () => { events.push('resources-close'); },
-    createCache: (seed) => new NamespacedHydeCache({
-      get: async () => null,
-      set: async () => {},
-      delete: async () => false,
-      exists: async () => false,
-    }, seed),
+    createCache: (seed, resources) => {
+      events.push('cache-construct');
+      resources.add({
+        kind: 'cache',
+        close: async () => { events.push('cache-close'); },
+      });
+      return new NamespacedHydeCache({
+        get: async () => null,
+        set: async () => {},
+        delete: async () => false,
+        exists: async () => false,
+      }, seed);
+    },
   };
 }
 
@@ -198,7 +208,7 @@ describe('runHistoricalQualityChild ordering and cleanup', () => {
     await expect(runHistoricalQualityChild(dispatch, dependencies(events))).resolves.toBe(output);
     expect(events).toEqual([
       'attest', `open:${databaseUrl}`, 'verify', 'verifier-close',
-      'resolve', 'create', 'execute', 'resources-close',
+      'resolve', 'cache-construct', 'create', 'execute', 'database-close', 'cache-close',
     ]);
   });
 
@@ -210,18 +220,19 @@ describe('runHistoricalQualityChild ordering and cleanup', () => {
     expect(events).toEqual([]);
   });
 
-  it('never consults a parent DATABASE_URL and derives the verifier URL only from attestation', async () => {
+  it.each([
+    ['own nonblank', 'postgres://parent:secret@wrong.example/production', false],
+    ['own blank', '', false],
+    ['inherited nonblank', 'postgres://parent:secret@wrong.example/production', true],
+    ['inherited blank', '', true],
+  ] as const)('rejects an %s DATABASE_URL before attestation or dependency construction', async (_label, suppliedUrl, inherited) => {
     const events: string[] = [];
     const deps = dependencies(events);
-    deps.environment = {
-      ...childEnvironment,
-      DATABASE_URL: 'postgres://parent:secret@wrong.example/production',
-      AWS_SECRET_ACCESS_KEY: 'parent-secret',
-      INVENTED_PARENT_VALUE: 'parent-value',
-    };
-    await runHistoricalQualityChild(dispatch, deps);
-    expect(events).toContain(`open:${databaseUrl}`);
-    expect(events.join('|')).not.toContain('wrong.example');
+    deps.environment = inherited
+      ? Object.assign(Object.create({ DATABASE_URL: suppliedUrl }) as Record<string, string>, childEnvironment)
+      : { ...childEnvironment, DATABASE_URL: suppliedUrl };
+    await expect(runHistoricalQualityChild(dispatch, deps)).rejects.toThrow(/DATABASE_URL/);
+    expect(events).toEqual([]);
   });
 
   it('closes the verifier and constructs nothing when exact published state is stale', async () => {
@@ -240,26 +251,99 @@ describe('runHistoricalQualityChild ordering and cleanup', () => {
     expect(events).toEqual(['attest', `open:${databaseUrl}`, 'verify', 'verifier-close', 'resolve']);
   });
 
-  for (const failure of ['create', 'execute'] as const) {
-    it(`closes constructed or partially constructed resources after ${failure} failure`, async () => {
-      const events: string[] = [];
-      const deps = dependencies(events);
-      if (failure === 'create') deps.createDependencies = async () => { events.push('create'); throw new Error('create failed'); };
-      else deps.executeSlot = async () => { events.push('execute'); throw new Error('graph failed'); };
-      await expect(runHistoricalQualityChild(dispatch, deps)).rejects.toThrow();
-      expect(events.at(-1)).toBe('resources-close');
-    });
-  }
+  it('closes only an acquired cache handle when cache construction fails and never starts dependency imports', async () => {
+    const events: string[] = [];
+    const primary = new Error('cache constructor failed');
+    const deps = dependencies(events);
+    deps.createCache = (_seed, resources) => {
+      events.push('cache-import');
+      resources.add({ kind: 'cache', close: async () => { events.push('cache-close'); } });
+      events.push('cache-constructor');
+      throw primary;
+    };
+    deps.createDependencies = async () => {
+      events.push('unauthorized-database-import');
+      throw new Error('must not construct a database');
+    };
+    await expect(runHistoricalQualityChild(dispatch, deps)).rejects.toBe(primary);
+    expect(events.slice(-3)).toEqual(['cache-import', 'cache-constructor', 'cache-close']);
+    expect(events).not.toContain('unauthorized-database-import');
+  });
+
+  it.each([
+    ['before database acquisition', false, ['cache-close']],
+    ['after database acquisition', true, ['database-close', 'cache-close']],
+  ] as const)('closes exactly resources acquired %s when dependency construction fails', async (_label, acquireDatabase, expectedCloses) => {
+    const events: string[] = [];
+    const primary = new Error('dependency construction failed');
+    const deps = dependencies(events);
+    deps.createDependencies = async (_input, resources) => {
+      events.push('database-import');
+      if (acquireDatabase) {
+        resources.add({ kind: 'database', close: async () => { events.push('database-close'); } });
+      }
+      events.push('provider-constructor');
+      throw primary;
+    };
+    await expect(runHistoricalQualityChild(dispatch, deps)).rejects.toBe(primary);
+    expect(events.filter((event) => event === 'database-close' || event === 'cache-close')).toEqual(expectedCloses);
+    expect(events.filter((event) => event === 'database-import')).toHaveLength(1);
+    expect(events.filter((event) => event === 'provider-constructor')).toHaveLength(1);
+  });
+
+  it('continues reverse-order cleanup after one close fails and preserves the primary failure', async () => {
+    const events: string[] = [];
+    const primary = new Error('graph failed');
+    const deps = dependencies(events);
+    deps.createDependencies = async (_input, resources) => {
+      resources.add({
+        kind: 'database',
+        close: async () => {
+          events.push('database-close');
+          throw new Error('postgres://cleanup-user:cleanup-secret@wrong.example/production');
+        },
+      });
+      return {};
+    };
+    deps.executeSlot = async () => { throw primary; };
+    await expect(runHistoricalQualityChild(dispatch, deps)).rejects.toBe(primary);
+    expect(events.slice(-2)).toEqual(['database-close', 'cache-close']);
+  });
+
+  it('sanitizes a cleanup-only failure after closing every acquired handle', async () => {
+    const events: string[] = [];
+    const deps = dependencies(events);
+    deps.createDependencies = async (_input, resources) => {
+      resources.add({
+        kind: 'database',
+        close: async () => {
+          events.push('database-close');
+          throw new Error('redis://user:cleanup-secret@wrong.example:6379');
+        },
+      });
+      return {};
+    };
+    let failure: unknown;
+    try {
+      await runHistoricalQualityChild(dispatch, deps);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('Historical quality child resource cleanup failed');
+    expect(JSON.stringify(failure, Object.getOwnPropertyNames(failure as object))).not.toContain('cleanup-secret');
+    expect(events.slice(-2)).toEqual(['database-close', 'cache-close']);
+  });
 });
 
 describe('runtime environment, embedding, and exact selected-child attestation', () => {
-  it('preflights child config without consulting arbitrary parent variables or DATABASE_URL', async () => {
+  it('rejects DATABASE_URL from a complete child handoff during preflight', async () => {
     await expect(preflightHistoricalQualityChildRuntime({
       ...childEnvironment,
       DATABASE_URL: 'postgres://parent:secret@wrong.example/prod',
       AWS_SECRET_ACCESS_KEY: 'parent-secret',
       INVENTED_PARENT_VALUE: 'parent-value',
-    })).resolves.toBeUndefined();
+    })).rejects.toThrow(/DATABASE_URL/);
   });
 
   it('reconciles the exact verified embedding identity and rejects drift', () => {

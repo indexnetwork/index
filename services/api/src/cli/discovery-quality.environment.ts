@@ -53,6 +53,9 @@ function defined(environment: Readonly<Record<string, string | undefined>>, key:
 export function parseHistoricalQualityRuntimeEnvironment(
   environment: Readonly<Record<string, string | undefined>>,
 ): HistoricalQualityRuntimeEnvironment {
+  if ('DATABASE_URL' in environment) {
+    throw new Error('Historical quality runtime forbids a supplied DATABASE_URL');
+  }
   const result: Record<string, string> = {};
   for (const key of HISTORICAL_QUALITY_RUNTIME_CORE_KEYS) result[key] = required(environment, key);
   if (result.DISCOVERY_CONFIRM !== '1') throw new Error('Historical quality DISCOVERY_CONFIRM must equal 1');

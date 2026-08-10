@@ -106,6 +106,16 @@ describe('historical quality child environment', () => {
   });
 
   it.each([
+    ['own nonblank', { DATABASE_URL: 'postgres://parent:secret@wrong.example/production' }],
+    ['own blank', { DATABASE_URL: '' }],
+    ['inherited nonblank', Object.create({ DATABASE_URL: 'postgres://parent:secret@wrong.example/production' }) as Record<string, string>],
+    ['inherited blank', Object.create({ DATABASE_URL: '' }) as Record<string, string>],
+  ] as const)('rejects an %s DATABASE_URL instead of projecting around it', (_label, supplied) => {
+    expect(() => parseHistoricalQualityRuntimeEnvironment(Object.assign(supplied, requiredParentEnvironment())))
+      .toThrow(/DATABASE_URL/);
+  });
+
+  it.each([
     ['missing Redis', {}, /exactly one Redis configuration/],
     ['ambiguous Redis', { REDIS_URL: 'redis://x', REDIS_HOST: 'x', REDIS_PORT: '1', REDIS_PASSWORD: 'p', REDIS_DB: '0' }, /exactly one Redis configuration/],
     ['partial Redis', { REDIS_HOST: 'x', REDIS_PORT: '1' }, /complete REDIS_HOST/],
