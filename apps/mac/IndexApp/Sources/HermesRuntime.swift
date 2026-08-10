@@ -2100,7 +2100,10 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
             buffer.append(line); buffer.append(0x0a)
         }
 
-        let inheritedDescriptor: Int32 = 198
+        // posix_spawn resolves the executable path before child-side dup2
+        // actions run. Address the retained descriptor that already exists in
+        // the parent and explicitly inherit that capability into the child.
+        let inheritedDescriptor = executableDescriptor.rawValue
         let descriptorPath = "/dev/fd/\(inheritedDescriptor)"
         var inputPipe = [Int32](repeating: -1, count: 2)
         var outputPipe = [Int32](repeating: -1, count: 2)
@@ -2125,9 +2128,7 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
                 &actions, STDERR_FILENO, $0, O_WRONLY, mode_t(0)
             )
         }
-        guard posix_spawn_file_actions_adddup2(
-                &actions, executableDescriptor.rawValue, inheritedDescriptor
-              ) == 0,
+        guard posix_spawn_file_actions_addinherit_np(&actions, inheritedDescriptor) == 0,
               posix_spawn_file_actions_adddup2(&actions, inputPipe[0], STDIN_FILENO) == 0,
               posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDOUT_FILENO) == 0,
               stderrAction == 0,

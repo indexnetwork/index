@@ -204,7 +204,7 @@ struct HermesPersistenceCompatibilityFixture {
         defer { _ = Darwin.close(opened) }
         try FileManager.default.removeItem(at: candidate)
         try FileManager.default.moveItem(at: replacement, to: candidate)
-        let inherited: Int32 = 198
+        let inherited = opened
         let descriptorPath = "/dev/fd/\(inherited)"
 
         var output = [Int32](repeating: -1, count: 2)
@@ -217,7 +217,7 @@ struct HermesPersistenceCompatibilityFixture {
             throw FixtureFailure.assertion("descriptor fixture actions failed")
         }
         defer { posix_spawn_file_actions_destroy(&actions) }
-        guard posix_spawn_file_actions_adddup2(&actions, opened, inherited) == 0,
+        guard posix_spawn_file_actions_addinherit_np(&actions, inherited) == 0,
               posix_spawn_file_actions_adddup2(&actions, output[1], STDOUT_FILENO) == 0,
               posix_spawn_file_actions_addclose(&actions, output[0]) == 0 else {
             throw FixtureFailure.assertion("descriptor fixture actions failed")
