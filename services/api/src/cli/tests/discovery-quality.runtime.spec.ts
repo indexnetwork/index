@@ -195,10 +195,11 @@ function runtimeDeps(input: { verifierFailure?: Error; slots?: number } = {}) {
       active = false;
       return { slotId: dispatch.slotId, configurationId: 'a' };
     },
-    validateSlotOutput: async (slot, _dispatch, output) => {
+    validateSlotOutput: async (slot, _dispatch, output, forbiddenValues) => {
       expect(active).toBe(false);
       calls.push('validate');
       expect((output as { slotId: string }).slotId).toBe(slot.slotId);
+      expect(forbiddenValues).toEqual(expect.arrayContaining(['manifest-secret-sentinel', 'neon-secret-sentinel', 'openrouter-secret-sentinel', 'redis://redis-secret-sentinel@example.invalid', 'replica-secret', 'a-secret', 'b-secret', providerFingerprint]));
       return output as never;
     },
   };

@@ -82,6 +82,7 @@ export interface HistoricalQualityRuntimeDeps {
     slot: HistoricalQualityPilotSlot,
     dispatch: HistoricalQualitySlotDispatch,
     output: unknown,
+    forbiddenValues: string[],
   ): Promise<HistoricalQualityChildOutput>;
 }
 
@@ -109,6 +110,7 @@ type HistoricalAuthorities = {
     logicalCaseId: string;
     trigger: 'intent' | 'enrichment';
     repetition: number;
+    forbiddenValues: string[];
   }): HistoricalQualityChildOutput;
 };
 
@@ -321,10 +323,37 @@ async function productionSpawnSlot(input: {
   }
 }
 
+function urlPassword(url: string): string | undefined {
+  try {
+    return new URL(url).password;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildHistoricalQualityForbiddenValues(
+  environment: Readonly<Record<string, string | undefined>>,
+  manifest: AttestedHistoricalQualityManifest,
+): string[] {
+  const values: (string | undefined)[] = [
+    environment.NEON_API_KEY,
+    environment.OPENROUTER_API_KEY,
+    environment.DISCOVERY_TARGETS,
+    environment.HISTORICAL_QUALITY_PROVIDER_ACCOUNT_FINGERPRINT,
+    environment.REDIS_URL,
+    environment.REDIS_PASSWORD,
+    manifest.baseReadReplica.databaseUrl,
+    urlPassword(manifest.baseReadReplica.databaseUrl),
+    ...manifest.targets.flatMap((target) => [target.databaseUrl, urlPassword(target.databaseUrl)]),
+  ];
+  return values.filter((value): value is string => value !== undefined && value.trim() !== '');
+}
+
 async function productionValidateSlotOutput(
   slot: HistoricalQualityPilotSlot,
   dispatch: HistoricalQualitySlotDispatch,
   output: unknown,
+  forbiddenValues: string[],
 ): Promise<HistoricalQualityChildOutput> {
   try {
     const { parseHistoricalQualityChildOutput } = await loadHistoricalAuthorities();
@@ -336,6 +365,7 @@ async function productionValidateSlotOutput(
       logicalCaseId: slot.caseId,
       trigger: slot.trigger,
       repetition: slot.repetition,
+      forbiddenValues,
     });
   } catch {
     throw new Error('Historical quality slot child output was invalid');
@@ -370,6 +400,7 @@ export async function runHistoricalQualityRuntime(
     // attestation or any destructive/provider operation can be constructed.
     await deps.preflightChildRuntime();
     const manifest = await deps.attest();
+    const forbiddenValues = buildHistoricalQualityForbiddenValues(process.env, manifest);
     const verifiedBase = parseVerifiedBase(await deps.verifyBase(manifest));
     const reconciledEnvironment = reconcileHistoricalQualityEmbedding(verifiedBase, process.env);
     const resolved = await resolveHistoricalQualityConfiguration({ request, verifiedBase, environment: reconciledEnvironment });
@@ -407,7 +438,7 @@ export async function runHistoricalQualityRuntime(
       };
       stage = 'spawned';
       const output = await deps.spawnSlot({ dispatch, environment: childEnvironment });
-      outputs.push(await deps.validateSlotOutput(slot, dispatch, output));
+      outputs.push(await deps.validateSlotOutput(slot, dispatch, output, forbiddenValues));
     }
     return { runId, configurationFingerprint: plan.configurationFingerprint, outputs };
   } catch (error) {
