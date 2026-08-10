@@ -2,7 +2,7 @@
 
 Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
-question-answer writes stay scoped to the configured INDEX_API_KEY principal.
+question-answer writes stay scoped to the connector-authenticated principal.
 
 The dashboard is intent-centric: each intent carries its own pending and
 answered questions (server-scoped per intent, the Mac app's queries) and its
@@ -17,12 +17,12 @@ import importlib.util
 import json
 import os
 import re
-import urllib.error
-import urllib.request
+import sys
+import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
 _PLUGIN_ROOT = _DASHBOARD_DIR.parent
@@ -142,11 +142,23 @@ def _load_module(name: str, path: Path):
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load module {name} from {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
-tools = _load_module("index_network_hermes_dashboard_tools", _TOOLS_PATH)
+def _load_tools_module():
+    package_name = "index_network_hermes_dashboard_runtime"
+    package = sys.modules.get(package_name)
+    if package is None:
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(_PLUGIN_ROOT)]
+        package.__package__ = package_name
+        sys.modules[package_name] = package
+    return _load_module(f"{package_name}.tools", _TOOLS_PATH)
+
+
+tools = _load_tools_module()
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 
 
@@ -406,34 +418,11 @@ def _avatar_filename(content_type: str) -> str:
 
 
 def _api_multipart(path: str, field: str, filename: str, content: bytes, content_type: str) -> dict[str, Any]:
-    """POST a single-file multipart/form-data body to the Index API with the plugin key."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": False, "error": "INDEX_API_KEY is required."}
-
-    boundary = "----IndexHermesBoundary" + base64.urlsafe_b64encode(os.urandom(12)).decode("ascii").rstrip("=")
-    preamble = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
-        f"Content-Type: {content_type}\r\n\r\n"
-    ).encode("utf-8")
-    body = preamble + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
-
-    headers = {k: v for k, v in tools._headers(api_key).items() if k.lower() != "content-type"}
-    headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
-
-    base_url = tools._api_url().rstrip("/")
-    request_path = path if path.startswith("/") else f"/{path}"
-    request = urllib.request.Request(f"{base_url}{request_path}", data=body, headers=headers, method="POST")
+    """Upload through the connector's bounded start/chunk/finish protocol."""
     try:
-        with urllib.request.urlopen(request, timeout=tools._timeout_seconds()) as response:
-            parsed = tools._parse_api_response(response.read())
-            return parsed if isinstance(parsed, dict) else {"success": True, "data": parsed}
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:2_000]
-        return {"success": False, "error": f"Avatar upload failed with status {exc.code}.", "status": exc.code, "body": body_text}
-    except urllib.error.URLError as exc:
-        return {"success": False, "error": f"Avatar upload request failed: {exc.reason}"}
+        return tools.get_transport().upload(path, field, filename, content, content_type)
+    except tools.TransportError as exc:
+        return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Avatar upload could not be processed: {exc}"}
 
@@ -603,8 +592,7 @@ def _avatar_url(value: Any) -> str:
         return ""
     if raw.startswith("http://") or raw.startswith("https://"):
         return raw
-    base = tools._api_url().rstrip("/")
-    origin = base[:-4] if base.endswith("/api") else base
+    origin = "https://protocol.index.network"
     path = raw.lstrip("/")
     if not path.startswith("api/storage/"):
         path = "api/storage/" + path
@@ -998,91 +986,58 @@ def _build_dashboard(
 
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
-    """Report whether the plugin holds a working Index credential.
-
-    Missing key or an auth failure (401/403) from `GET /auth/me` means the
-    dashboard should show the browser-login gate; any other error keeps the
-    (present) key and lets the dashboard surface its own section errors.
-    """
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": True, "authenticated": False, "needsLogin": True}
-    payload = tools._api_request("GET", "/auth/me")
-    if payload.get("success") is False:
-        if payload.get("status") in (401, 403):
-            return {"success": True, "authenticated": False, "needsLogin": True}
-        return {"success": True, "authenticated": True, "needsLogin": False, "error": payload.get("error")}
-    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    """Report connector health without reading or receiving a credential."""
+    try:
+        status = tools.get_transport().status()
+    except tools.TransportError as exc:
+        payload = exc.as_payload()
+        payload.update({"authenticated": False, "needsLogin": True})
+        return payload
+    connected = status.get("connected") is True and not status.get("reconnectRequired")
     return {
         "success": True,
-        "authenticated": True,
-        "needsLogin": False,
-        "user": {"id": _text(user.get("id")) or None, "email": _text(user.get("email")) or None},
+        "authenticated": connected,
+        "needsLogin": not connected,
+        "accountLabel": status.get("accountLabel"),
+        "installationId": status.get("installationId"),
+        "expiresAt": status.get("expiresAt"),
+        "health": status.get("health"),
+        "reconnectSoon": status.get("reconnectSoon") is True,
+        "reconnectRequired": status.get("reconnectRequired") is True,
+        "revocationPending": status.get("revocationPending") is True,
     }
-
-
-def _login_app_base_url() -> str:
-    """Web origin that serves `/cli-auth`, paired with the active API environment.
-
-    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
-    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
-    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
-    pointed at dev/staging signs in against the matching web app instead of prod.
-    Without this pairing a dev-configured plugin would mint a prod key that then
-    401s against the dev API.
-    """
-    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
-        return tools._app_base_url()
-    try:
-        parts = urlsplit(tools._api_url())
-    except ValueError:
-        return tools.INDEX_APP_BASE_URL
-    if parts.scheme in ("http", "https") and parts.netloc:
-        host = parts.netloc
-        if host.startswith("protocol."):
-            host = host[len("protocol."):]
-        return f"{parts.scheme}://{host}"
-    return tools.INDEX_APP_BASE_URL
 
 
 @full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
-
-    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
-    a headless/remote agent host where opening a browser is not possible.
-    """
+    """Migrate plaintext first, then let the connector open browser consent."""
     try:
-        auth_url = auth_login.start_login(_login_app_base_url())
+        result = auth_login.start_login(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Could not start login: {exc}"}
-    opener = tools._url_opener_command(auth_url)
-    open_error = tools._open_url(opener) if opener else "No URL opener is available on this host."
-    return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
+    return {"success": True, "started": result.get("status") == "pending", **result}
 
 
 @full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the pending login; on success the key is already persisted server-side."""
-    result = auth_login.poll_status()
-    payload: dict[str, Any] = {"success": True, "status": result.get("status")}
-    if result.get("error"):
-        payload["error"] = result.get("error")
-    return payload
+    """Poll the connector-owned browser authorization attempt."""
+    try:
+        result = auth_login.poll_status(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
+    return {"success": result.get("status") != "failed", **result}
 
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
-    if api_key and key_id:
-        try:
-            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
-        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
-            pass
-    auth_login.clear_api_key()
-    return {"success": True, "needsLogin": True}
+    """Revoke through connector recovery and delete only after confirmation."""
+    try:
+        result = auth_login.disconnect(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
+    return {"success": result.get("status") == "disconnected", "needsLogin": True, **result}
 
 
 @full_router.get("/summary")
@@ -1616,8 +1571,6 @@ def archive_intent(intent_id: str) -> dict[str, Any]:
 # the client normalizes both REST and SSE payloads through one code path.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SSE_READ_TIMEOUT = 60.0
-
 
 def _message_text(parts: Any) -> str:
     # Message text lives either in a data part (data.message /
@@ -1759,32 +1712,12 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
 
 
 def _conversation_stream():
-    """Relay the upstream conversations SSE stream (Redis pub/sub) to the dashboard tab."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
-        return
-    headers = dict(tools._headers(api_key))
-    headers["Accept"] = "text/event-stream"
-    base_url = tools._api_url().rstrip("/")
-    request = urllib.request.Request(f"{base_url}/conversations/stream", headers=headers, method="GET")
+    """Relay connector-owned, bounded SSE polling to the dashboard tab."""
     try:
-        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        yield from tools.get_transport().stream_sse("/conversations/stream")
+    except Exception as exc:  # noqa: BLE001 - surface a sanitized stream frame.
         message = json.dumps({"type": "error", "error": str(exc)})
         yield f"data: {message}\n\n".encode("utf-8")
-        return
-    try:
-        for line in response:
-            if line:
-                yield line
-    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
-        return
-    finally:
-        try:
-            response.close()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 @full_router.get("/conversations/stream")

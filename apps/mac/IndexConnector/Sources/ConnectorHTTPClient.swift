@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct ConnectorCreatedAuthorization: Decodable {
@@ -53,6 +54,13 @@ enum ConnectorHTTPError: Error, Equatable {
     case unauthorized
     case serverRejected(String)
     case revocationUnconfirmed
+    case uploadNotFound
+    case uploadSequenceMismatch
+    case uploadHashMismatch
+    case uploadSizeMismatch
+    case streamNotFound
+    case streamOverflow
+    case hermesRunDenied
 }
 
 private final class BoundedRequestDelegate: NSObject, URLSessionDataDelegate {
@@ -127,14 +135,138 @@ private final class BoundedRequestDelegate: NSObject, URLSessionDataDelegate {
     }
 }
 
+private struct ConnectorUploadRecord {
+    let path: String
+    let field: String
+    let filename: String
+    let contentType: String
+    let totalBytes: Int
+    let sha256: String
+    var nextSequence: Int
+    var content: Data
+    var lastUsed: Date
+}
+
+private final class ConnectorSSEDelegate: NSObject, URLSessionDataDelegate {
+    static let maximumLineBytes = 65_536
+    private let lock = NSLock()
+    private var partial = Data()
+    private var queued: [(sequence: Int, line: String)] = []
+    private var queuedBytes = 0
+    private var nextSequence = 0
+    private(set) var closed = false
+    private(set) var stableError: String?
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let http = response as? HTTPURLResponse,
+              http.statusCode == 200,
+              http.value(forHTTPHeaderField: "Content-Type")?.lowercased().contains("text/event-stream") == true else {
+            close(error: "sse_rejected")
+            completionHandler(.cancel)
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed else { return }
+        partial.append(data)
+        while let newline = partial.firstIndex(of: 0x0A) {
+            var lineData = Data(partial[..<newline])
+            partial.removeSubrange(...newline)
+            if lineData.last == 0x0D { lineData.removeLast() }
+            guard lineData.count <= Self.maximumLineBytes,
+                  let line = String(data: lineData, encoding: .utf8) else {
+                closeLocked(error: "sse_invalid_line")
+                dataTask.cancel()
+                return
+            }
+            let size = line.utf8.count + 1
+            guard queued.count < ConnectorHTTPClient.maximumSSEEvents,
+                  queuedBytes <= ConnectorHTTPClient.maximumSSEBufferBytes - size else {
+                closeLocked(error: "sse_overflow")
+                dataTask.cancel()
+                return
+            }
+            queued.append((nextSequence, line))
+            queuedBytes += size
+            nextSequence += 1
+        }
+        if partial.count > Self.maximumLineBytes {
+            closeLocked(error: "sse_invalid_line")
+            dataTask.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        if !closed {
+            closeLocked(error: error == nil ? nil : "sse_network_error")
+        }
+    }
+
+    func poll(maxEvents: Int) -> (events: [(Int, String)], closed: Bool, error: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        let count = min(maxEvents, queued.count)
+        let events = Array(queued.prefix(count))
+        queued.removeFirst(count)
+        queuedBytes -= events.reduce(0) { $0 + $1.1.utf8.count + 1 }
+        return (events, closed, stableError)
+    }
+
+    func close(error: String? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        closeLocked(error: error)
+    }
+
+    private func closeLocked(error: String?) {
+        closed = true
+        if stableError == nil { stableError = error }
+    }
+}
+
+private struct ConnectorSSERecord {
+    let delegate: ConnectorSSEDelegate
+    let session: URLSession
+    let task: URLSessionDataTask
+    var lastUsed: Date
+}
+
 final class ConnectorHTTPClient {
     static let maximumResponseBytes = 1_048_576
     static let maximumUploadBytes = 8_388_608
+    static let maximumUploadChunkBytes = 131_072
+    static let maximumSSEEvents = 256
+    static let maximumSSEBufferBytes = 1_048_576
+    static let resourceIdleSeconds = 120.0
     static let timeoutInterval = 30.0
 
     private let endpoints: ConnectorEndpoints
     private let jsonEncoder: JSONEncoder
     private let jsonDecoder: JSONDecoder
+    private let resourceLock = NSLock()
+    private var uploads: [String: ConnectorUploadRecord] = [:]
+    private var streams: [String: ConnectorSSERecord] = [:]
 
     init(endpoints: ConnectorEndpoints = .embedded) {
         self.endpoints = endpoints
@@ -225,16 +357,19 @@ final class ConnectorHTTPClient {
         method: String,
         path: String,
         body: JSONValue?,
+        hermesRun: [String: String]? = nil,
         credential: ConnectorCredentialRecord
     ) throws -> ConnectorRESTResult {
         guard ConnectorRoutePolicy.allows(method: method, path: path, agentId: credential.agentId) else {
             throw ConnectorHTTPError.routeDenied
         }
+        let runHeaders = try hermesRunHeaders(method: method, path: path, values: hermesRun)
         return try performAPI(
             method: method.uppercased(),
             path: path,
             body: body,
-            credential: credential.rawCredential
+            credential: credential.rawCredential,
+            additionalHeaders: runHeaders
         )
     }
 
@@ -288,14 +423,251 @@ final class ConnectorHTTPClient {
         guard result.status == 401 else { throw ConnectorHTTPError.revocationUnconfirmed }
     }
 
+    func startUpload(
+        path: String,
+        field: String,
+        filename: String,
+        contentType: String,
+        totalBytes: Int,
+        sha256: String
+    ) throws -> String {
+        cleanupIdleResources()
+        let expectedField = path == "/storage/avatars" ? "avatar"
+            : path == "/storage/index-images" ? "image" : nil
+        let allowedContentTypes: Set<String> = [
+            "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif",
+        ]
+        guard let expectedField, field == expectedField,
+              (1...255).contains(filename.utf8.count),
+              filename.unicodeScalars.allSatisfy({
+                  CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-")).contains($0)
+              }),
+              allowedContentTypes.contains(contentType),
+              totalBytes >= 0, totalBytes <= Self.maximumUploadBytes,
+              sha256.count == 64,
+              sha256.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "0123456789abcdefABCDEF").contains($0) }) else {
+            throw ConnectorHTTPError.invalidRequest
+        }
+        let uploadId = UUID().uuidString.lowercased()
+        resourceLock.lock()
+        uploads[uploadId] = ConnectorUploadRecord(
+            path: path, field: field, filename: filename, contentType: contentType,
+            totalBytes: totalBytes, sha256: sha256.lowercased(), nextSequence: 0,
+            content: Data(), lastUsed: Date()
+        )
+        resourceLock.unlock()
+        return uploadId
+    }
+
+    func appendUpload(uploadId: String, sequence: Int, base64Data: String) throws -> Int {
+        cleanupIdleResources()
+        guard let decoded = Data(base64Encoded: base64Data),
+              decoded.count <= Self.maximumUploadChunkBytes else {
+            discardUpload(uploadId)
+            throw ConnectorHTTPError.invalidRequest
+        }
+        resourceLock.lock()
+        defer { resourceLock.unlock() }
+        guard var record = uploads[uploadId] else { throw ConnectorHTTPError.uploadNotFound }
+        guard sequence == record.nextSequence else {
+            uploads.removeValue(forKey: uploadId)
+            throw ConnectorHTTPError.uploadSequenceMismatch
+        }
+        guard record.content.count <= record.totalBytes - decoded.count,
+              record.content.count <= Self.maximumUploadBytes - decoded.count else {
+            uploads.removeValue(forKey: uploadId)
+            throw ConnectorHTTPError.uploadTooLarge
+        }
+        record.content.append(decoded)
+        record.nextSequence += 1
+        record.lastUsed = Date()
+        uploads[uploadId] = record
+        return record.content.count
+    }
+
+    func finishUpload(uploadId: String, credential: ConnectorCredentialRecord) throws -> ConnectorRESTResult {
+        cleanupIdleResources()
+        resourceLock.lock()
+        let record = uploads.removeValue(forKey: uploadId)
+        resourceLock.unlock()
+        guard let record else { throw ConnectorHTTPError.uploadNotFound }
+        guard record.content.count == record.totalBytes else { throw ConnectorHTTPError.uploadSizeMismatch }
+        let digest = SHA256.hash(data: record.content).map { String(format: "%02x", $0) }.joined()
+        guard digest == record.sha256 else { throw ConnectorHTTPError.uploadHashMismatch }
+        return try uploadMultipart(record: record, credential: credential.rawCredential)
+    }
+
+    func abortUpload(uploadId: String) -> Bool {
+        resourceLock.lock()
+        defer { resourceLock.unlock() }
+        return uploads.removeValue(forKey: uploadId) != nil
+    }
+
+    func startSSE(path: String, credential: ConnectorCredentialRecord) throws -> String {
+        cleanupIdleResources()
+        guard path == "/conversations/stream" else { throw ConnectorHTTPError.routeDenied }
+        let url = try apiURL(for: path)
+        var request = URLRequest(url: url, timeoutInterval: Self.resourceIdleSeconds)
+        request.httpMethod = "GET"
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue(credential.rawCredential, forHTTPHeaderField: "x-api-key")
+        let delegate = ConnectorSSEDelegate()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = Self.resourceIdleSeconds
+        configuration.timeoutIntervalForResource = 24 * 60 * 60
+        configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
+        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        let task = session.dataTask(with: request)
+        let streamId = UUID().uuidString.lowercased()
+        resourceLock.lock()
+        streams[streamId] = ConnectorSSERecord(
+            delegate: delegate, session: session, task: task, lastUsed: Date()
+        )
+        resourceLock.unlock()
+        task.resume()
+        return streamId
+    }
+
+    func pollSSE(streamId: String, maxEvents: Int) throws -> JSONValue {
+        cleanupIdleResources()
+        guard (1...50).contains(maxEvents) else { throw ConnectorHTTPError.invalidRequest }
+        resourceLock.lock()
+        guard var record = streams[streamId] else {
+            resourceLock.unlock()
+            throw ConnectorHTTPError.streamNotFound
+        }
+        record.lastUsed = Date()
+        streams[streamId] = record
+        resourceLock.unlock()
+        let polled = record.delegate.poll(maxEvents: maxEvents)
+        let events = polled.events.map { sequence, line in
+            JSONValue.object(["sequence": .number(Double(sequence)), "line": .string(line)])
+        }
+        var result: [String: JSONValue] = [
+            "events": .array(events), "closed": .bool(polled.closed),
+        ]
+        if let error = polled.error { result["error"] = .string(error) }
+        if polled.closed {
+            resourceLock.lock()
+            let removed = streams.removeValue(forKey: streamId)
+            resourceLock.unlock()
+            removed?.session.invalidateAndCancel()
+        }
+        return .object(result)
+    }
+
+    func closeSSE(streamId: String) -> Bool {
+        resourceLock.lock()
+        let record = streams.removeValue(forKey: streamId)
+        resourceLock.unlock()
+        record?.delegate.close()
+        record?.task.cancel()
+        record?.session.invalidateAndCancel()
+        return record != nil
+    }
+
+    func closeResources() {
+        resourceLock.lock()
+        uploads.removeAll()
+        let closing = Array(streams.values)
+        streams.removeAll()
+        resourceLock.unlock()
+        for record in closing {
+            record.delegate.close()
+            record.task.cancel()
+            record.session.invalidateAndCancel()
+        }
+    }
+
+    private func discardUpload(_ uploadId: String) {
+        resourceLock.lock()
+        uploads.removeValue(forKey: uploadId)
+        resourceLock.unlock()
+    }
+
+    private func cleanupIdleResources(now: Date = Date()) {
+        resourceLock.lock()
+        uploads = uploads.filter { now.timeIntervalSince($0.value.lastUsed) <= Self.resourceIdleSeconds }
+        let stale = streams.filter { now.timeIntervalSince($0.value.lastUsed) > Self.resourceIdleSeconds }
+        for id in stale.keys { streams.removeValue(forKey: id) }
+        resourceLock.unlock()
+        for record in stale.values {
+            record.delegate.close(error: "sse_idle_timeout")
+            record.task.cancel()
+            record.session.invalidateAndCancel()
+        }
+    }
+
+    private func uploadMultipart(
+        record: ConnectorUploadRecord,
+        credential: String
+    ) throws -> ConnectorRESTResult {
+        let boundary = "IndexConnector-" + UUID().uuidString.lowercased()
+        var data = Data()
+        data.append(Data((
+            "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(record.field)\"; "
+            + "filename=\"\(record.filename)\"\r\nContent-Type: \(record.contentType)\r\n\r\n"
+        ).utf8))
+        data.append(record.content)
+        data.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        guard data.count <= Self.maximumUploadBytes + 4096 else { throw ConnectorHTTPError.uploadTooLarge }
+        return try performRaw(
+            url: apiURL(for: record.path), method: "POST", data: data,
+            contentType: "multipart/form-data; boundary=\(boundary)",
+            accept: "application/json", credential: credential
+        )
+    }
+
+    private func hermesRunHeaders(
+        method: String, path: String, values: [String: String]?
+    ) throws -> [String: String] {
+        let pickup = method.uppercased() == "POST"
+            && path.range(of: "^/agents/[^/]+/negotiations/pickup$", options: .regularExpression) != nil
+        let mutation = method.uppercased() == "POST"
+            && path.range(
+                of: "^/agents/[^/]+/negotiations/[^/]+/(?:respond|consult)$",
+                options: .regularExpression
+            ) != nil
+        guard pickup || mutation else {
+            guard values == nil else { throw ConnectorHTTPError.hermesRunDenied }
+            return [:]
+        }
+        guard let values,
+              Set(values.keys).isSubset(of: ["runId", "capability"]),
+              let runId = values["runId"], validHermesRunValue(runId) else {
+            throw ConnectorHTTPError.hermesRunDenied
+        }
+        var headers = ["x-index-hermes-run-id": runId]
+        if pickup {
+            guard values["capability"] == nil else { throw ConnectorHTTPError.hermesRunDenied }
+        } else {
+            guard let capability = values["capability"], validHermesRunValue(capability) else {
+                throw ConnectorHTTPError.hermesRunDenied
+            }
+            headers["x-index-hermes-run-capability"] = capability
+        }
+        return headers
+    }
+
+    private func validHermesRunValue(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value == trimmed && (1...256).contains(value.utf8.count)
+            && value.unicodeScalars.allSatisfy { (0x20...0x7E).contains($0.value) }
+    }
+
     private func performAPI(
         method: String,
         path: String,
         body: JSONValue?,
-        credential: String? = nil
+        credential: String? = nil,
+        additionalHeaders: [String: String] = [:]
     ) throws -> ConnectorRESTResult {
         let url = try apiURL(for: path)
-        return try perform(url: url, method: method, body: body, credential: credential)
+        return try perform(
+            url: url, method: method, body: body, credential: credential,
+            additionalHeaders: additionalHeaders
+        )
     }
 
     private func apiURL(for relativePath: String) throws -> URL {
@@ -326,20 +698,41 @@ final class ConnectorHTTPClient {
         url: URL,
         method: String,
         body: JSONValue?,
-        credential: String?
+        credential: String?,
+        additionalHeaders: [String: String] = [:]
+    ) throws -> ConnectorRESTResult {
+        let encoded = try body.map { try JSONEncoder().encode($0) }
+        if let encoded, encoded.count > Self.maximumUploadBytes {
+            throw ConnectorHTTPError.uploadTooLarge
+        }
+        return try performRaw(
+            url: url, method: method, data: encoded,
+            contentType: encoded == nil ? nil : "application/json",
+            accept: "application/json", credential: credential,
+            additionalHeaders: additionalHeaders
+        )
+    }
+
+    private func performRaw(
+        url: URL,
+        method: String,
+        data: Data?,
+        contentType: String?,
+        accept: String,
+        credential: String?,
+        additionalHeaders: [String: String] = [:]
     ) throws -> ConnectorRESTResult {
         guard url.scheme == "https" || (ConnectorBuildIdentity.buildMode == "development" && url.host == "127.0.0.1") else {
             throw ConnectorHTTPError.endpointNotAllowed
         }
         var request = URLRequest(url: url, timeoutInterval: Self.timeoutInterval)
         request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
         if let credential { request.setValue(credential, forHTTPHeaderField: "x-api-key") }
-        if let body {
-            let encoded = try JSONEncoder().encode(body)
-            guard encoded.count <= Self.maximumUploadBytes else { throw ConnectorHTTPError.uploadTooLarge }
-            request.httpBody = encoded
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (name, value) in additionalHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        if let data {
+            request.httpBody = data
+            if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         }
 
         let semaphore = DispatchSemaphore(value: 0)

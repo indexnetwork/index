@@ -53,7 +53,6 @@ provides_tools:
   - index_consult_owner
 provides_hooks:
   - pre_llm_call
-# INDEX_API_KEY is intentionally NOT declared under requires_env: install must
-# not prompt for a key. Sign in from the Index dashboard tab ("Log in with
-# browser"), which mints and persists the key. Setting INDEX_API_KEY in the
-# Hermes environment manually still works as an optional override.
+# Production uses the signed Index Connector and never reads a plaintext key.
+# Source-checkout development transport is separately double-gated and is not
+# included in the published package.

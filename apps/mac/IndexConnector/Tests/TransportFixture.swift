@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -84,7 +85,9 @@ private final class TransportFixtureServer {
     var failDisconnect = false
     var receiptCredentialId = "credential-1"
     var forceProbeFailure = false
+    var sseMode = "normal"
     private(set) var disconnectCount = 0
+    private(set) var lastHeader = ""
     private var revoked = false
 
     init() {
@@ -153,6 +156,7 @@ private final class TransportFixtureServer {
     }
 
     private func route(_ connection: Int32, header: String, body: Data) {
+        lock.lock(); lastHeader = header; lock.unlock()
         let requestLine = header.components(separatedBy: "\r\n").first!
         let path = String(requestLine.split(separator: " ")[1])
         lock.lock(); let isRevoked = revoked; let shouldFail = failDisconnect; let probeFailure = forceProbeFailure; lock.unlock()
@@ -174,6 +178,15 @@ private final class TransportFixtureServer {
             respondDeclaredOversize(connection)
         } else if path == "/api/agents/me" {
             respond(connection, status: 200, body: .object(["agent": .object(["id": .string("agent-1")])]))
+        } else if path == "/api/conversations/stream" {
+            lock.lock(); let mode = sseMode; lock.unlock()
+            if mode == "error" {
+                respondRaw(connection, status: 503, contentType: "application/json", body: Data("{}".utf8))
+            } else {
+                let count = mode == "overflow" ? ConnectorHTTPClient.maximumSSEEvents + 1 : 1
+                let body = Data((0..<count).map { "data: {\"sequence\":\($0)}\n\n" }.joined().utf8)
+                respondRaw(connection, status: 200, contentType: "text/event-stream", body: body)
+            }
         } else if path == "/mcp" {
             respond(connection, status: 200, body: .object([
                 "jsonrpc": .string("2.0"), "id": .number(1),
@@ -230,6 +243,22 @@ private func disconnectRequest(_ id: String) -> ConnectorRequest {
     ConnectorRequest(protocolVersion: 1, id: id, operation: .disconnect, payload: [:])
 }
 
+private func awaitClosedStream(
+    http: ConnectorHTTPClient,
+    streamId: String
+) throws -> JSONValue {
+    // Bound the asynchronous URLSession fixture; production has no polling sleep.
+    usleep(100_000)
+    for _ in 0..<200 {
+        let result = try http.pollSSE(streamId: streamId, maxEvents: 50)
+        if case let .object(object) = result, object["closed"] == .bool(true) {
+            return result
+        }
+        usleep(10_000)
+    }
+    preconditionFailure("stream did not reach a terminal state")
+}
+
 @main
 struct TransportFixture {
     static func main() throws {
@@ -279,6 +308,98 @@ struct TransportFixture {
         let mcp = try http.callMCP(toolName: "read_docs", arguments: [:], credential: record)
         guard case let .object(mcpObject) = mcp else { preconditionFailure() }
         precondition(mcpObject["content"] != nil)
+
+        let uploadSequencing = "uploadSequencing"
+        let sequenceId = try http.startUpload(
+            path: "/storage/avatars", field: "avatar", filename: "avatar.png",
+            contentType: "image/png", totalBytes: 2,
+            sha256: String(repeating: "0", count: 64)
+        )
+        precondition(try http.appendUpload(
+            uploadId: sequenceId, sequence: 0, base64Data: Data([1]).base64EncodedString()
+        ) == 1)
+        expectHTTPError(.uploadSequenceMismatch) {
+            _ = try http.appendUpload(
+                uploadId: sequenceId, sequence: 2, base64Data: Data([2]).base64EncodedString()
+            )
+        }
+
+        let uploadHashMismatch = "uploadHashMismatch"
+        let hashId = try http.startUpload(
+            path: "/storage/avatars", field: "avatar", filename: "avatar.png",
+            contentType: "image/png", totalBytes: 1,
+            sha256: String(repeating: "0", count: 64)
+        )
+        _ = try http.appendUpload(uploadId: hashId, sequence: 0, base64Data: Data([1]).base64EncodedString())
+        expectHTTPError(.uploadHashMismatch) { _ = try http.finishUpload(uploadId: hashId, credential: record) }
+
+        let uploadSizeMismatch = "uploadSizeMismatch"
+        let sizeId = try http.startUpload(
+            path: "/storage/avatars", field: "avatar", filename: "avatar.png",
+            contentType: "image/png", totalBytes: 2,
+            sha256: String(repeating: "0", count: 64)
+        )
+        _ = try http.appendUpload(uploadId: sizeId, sequence: 0, base64Data: Data([1]).base64EncodedString())
+        expectHTTPError(.uploadSizeMismatch) { _ = try http.finishUpload(uploadId: sizeId, credential: record) }
+
+        let uploadCleanup = "uploadCleanup"
+        let cleanupId = try http.startUpload(
+            path: "/storage/index-images", field: "image", filename: "network.png",
+            contentType: "image/png", totalBytes: 0,
+            sha256: SHA256.hash(data: Data()).map { String(format: "%02x", $0) }.joined()
+        )
+        precondition(http.abortUpload(uploadId: cleanupId))
+        expectHTTPError(.uploadNotFound) {
+            _ = try http.appendUpload(uploadId: cleanupId, sequence: 0, base64Data: "")
+        }
+        let uploadDisallowedPath = "uploadDisallowedPath"
+        expectHTTPError(.invalidRequest) {
+            _ = try http.startUpload(
+                path: "/auth/me", field: "file", filename: "x", contentType: "text/plain",
+                totalBytes: 0, sha256: String(repeating: "0", count: 64)
+            )
+        }
+
+        let hiddenRun = ["runId": "opaque-run"]
+        _ = try http.rest(
+            method: "POST", path: "/agents/agent-1/negotiations/pickup",
+            body: nil, hermesRun: hiddenRun, credential: record
+        )
+        precondition(server.lastHeader.lowercased().contains("x-index-hermes-run-id: opaque-run"))
+        precondition(!server.lastHeader.lowercased().contains("x-index-hermes-run-capability"))
+        expectHTTPError(.hermesRunDenied) {
+            _ = try http.rest(
+                method: "GET", path: "/agents/me", body: nil,
+                hermesRun: hiddenRun, credential: record
+            )
+        }
+        expectHTTPError(.hermesRunDenied) {
+            _ = try http.rest(
+                method: "POST", path: "/agents/agent-1/negotiations/n-1/respond", body: nil,
+                hermesRun: ["runId": "bad\nrun", "capability": "cap"], credential: record
+            )
+        }
+
+        let streamClose = "streamClose"
+        let closeId = try http.startSSE(path: "/conversations/stream", credential: record)
+        precondition(http.closeSSE(streamId: closeId))
+        precondition(!http.closeSSE(streamId: closeId))
+
+        let streamError = "streamError"
+        server.sseMode = "error"
+        let errorId = try http.startSSE(path: "/conversations/stream", credential: record)
+        let errorPoll = try awaitClosedStream(http: http, streamId: errorId)
+        guard case let .object(errorObject) = errorPoll else { preconditionFailure() }
+        precondition(errorObject["error"] == .string("sse_rejected"))
+
+        let streamOverflow = "streamOverflow"
+        server.sseMode = "overflow"
+        let overflowId = try http.startSSE(path: "/conversations/stream", credential: record)
+        let overflowPoll = try awaitClosedStream(http: http, streamId: overflowId)
+        guard case let .object(overflowObject) = overflowPoll else { preconditionFailure() }
+        precondition(overflowObject["error"] == .string("sse_overflow"))
+        precondition(![streamOverflow, streamClose, streamError].contains(""))
+        http.closeResources()
 
         let credentialStore = TransportCredentialStore(record: record)
         let installationStore = TransportInstallationStore(installationId: record.installationId)

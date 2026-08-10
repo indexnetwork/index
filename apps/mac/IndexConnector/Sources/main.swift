@@ -10,6 +10,7 @@ struct IndexConnectorMain {
         } catch {
             runtime = nil
         }
+        defer { runtime?.closeResources() }
 
         while let line = readLine(strippingNewline: true) {
             let data = Data(line.utf8)

@@ -223,6 +223,42 @@ test('runtime exclusively owns authorization side effects and epoch-CAS recovery
   expect(runtime).toContain('clearAuthorizationFailure()');
 });
 
+test('rest variants bound uploads and poll connector-owned SSE streams', () => {
+  const runtime = read('./Sources/ConnectorRuntime.swift');
+  const transport = read('./Sources/ConnectorHTTPClient.swift');
+  const fixture = read('./Tests/TransportFixture.swift');
+  for (const token of [
+    'upload.start', 'upload.chunk', 'upload.finish', 'upload.abort',
+    'sse.start', 'sse.poll', 'sse.close',
+  ]) expect(runtime).toContain(token);
+  for (const token of [
+    'maximumUploadChunkBytes = 131_072', 'maximumSSEEvents = 256',
+    'maximumSSEBufferBytes = 1_048_576', 'closeResources()',
+  ]) expect(transport).toContain(token);
+  for (const token of ['upload_sequence_mismatch', 'upload_hash_mismatch', 'sse_overflow']) {
+    expect(`${runtime}\n${transport}`).toContain(token);
+  }
+  for (const token of [
+    'uploadSequencing', 'uploadHashMismatch', 'uploadSizeMismatch',
+    'uploadCleanup', 'uploadDisallowedPath', 'streamOverflow',
+    'streamClose', 'streamError',
+  ]) expect(fixture).toContain(token);
+});
+
+test('structured Hermes run authority renders only exact negotiation headers', () => {
+  const runtime = read('./Sources/ConnectorRuntime.swift');
+  const transport = read('./Sources/ConnectorHTTPClient.swift');
+  const fixture = read('./Tests/TransportFixture.swift');
+  expect(runtime).toContain('"hermesRun"');
+  expect(transport).toContain('private func hermesRunHeaders');
+  expect(transport).toContain('x-index-hermes-run-id');
+  expect(transport).toContain('x-index-hermes-run-capability');
+  expect(transport).toContain('throw ConnectorHTTPError.hermesRunDenied');
+  expect(fixture).toContain('bad\\nrun');
+  expect(fixture).toContain('opaque-run');
+  expect(runtime).not.toContain('additionalHeaders');
+});
+
 test('native fixtures cover callback replay, keychain ordering, transport bounds, and recovery mode', () => {
   const authorization = read('./Tests/AuthorizationFixture.swift');
   const transport = read('./Tests/TransportFixture.swift');

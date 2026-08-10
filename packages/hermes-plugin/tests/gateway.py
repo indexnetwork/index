@@ -108,6 +108,7 @@ def main() -> None:
 
     try:
         import os
+        os.environ["INDEX_PLUGIN_DEVELOPMENT_TRANSPORT"] = "1"
         os.environ["INDEX_API_KEY"] = "gateway-test-key"
         os.environ["INDEX_API_URL"] = "https://api.example.test/api"
         urllib.request.urlopen = fake_urlopen

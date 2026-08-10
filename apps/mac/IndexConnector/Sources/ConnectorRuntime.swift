@@ -65,6 +65,10 @@ final class ConnectorRuntime {
         )
     }
 
+    func closeResources() {
+        http.closeResources()
+    }
+
     func handle(_ request: ConnectorRequest) -> ConnectorResponse {
         do {
             return ConnectorResponse(
@@ -104,14 +108,7 @@ final class ConnectorRuntime {
             try requireExactKeys(request.payload, allowed: [])
             return pollAuthorization()
         case .rest:
-            try requireExactKeys(request.payload, allowed: ["method", "path", "body"], required: ["method", "path"])
-            guard case let .string(method)? = request.payload["method"],
-                  case let .string(path)? = request.payload["path"] else {
-                throw ConnectorRuntimeError.invalidPayload
-            }
-            let credential = try activeCredential()
-            let result = try http.rest(method: method, path: path, body: request.payload["body"], credential: credential)
-            return .object(["status": .number(Double(result.status)), "body": result.body])
+            return try dispatchREST(request.payload, credential: activeCredential())
         case .mcp:
             try requireExactKeys(request.payload, allowed: ["toolName", "arguments"], required: ["toolName", "arguments"])
             guard case let .string(toolName)? = request.payload["toolName"],
@@ -123,6 +120,129 @@ final class ConnectorRuntime {
             try requireExactKeys(request.payload, allowed: [])
             return disconnect()
         }
+    }
+
+    private func dispatchREST(
+        _ payload: [String: JSONValue],
+        credential: ConnectorCredentialRecord
+    ) throws -> JSONValue {
+        guard case let .string(kind)? = payload["kind"] else {
+            throw ConnectorRuntimeError.invalidPayload
+        }
+        switch kind {
+        case "json":
+            try requireExactKeys(
+                payload, allowed: ["kind", "method", "path", "body", "hermesRun"],
+                required: ["kind", "method", "path"]
+            )
+            guard case let .string(method)? = payload["method"],
+                  case let .string(path)? = payload["path"] else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            var hermesRun: [String: String]?
+            if let value = payload["hermesRun"] {
+                guard case let .object(raw) = value,
+                      Set(raw.keys).isSubset(of: ["runId", "capability"]) else {
+                    throw ConnectorRuntimeError.invalidPayload
+                }
+                var parsed: [String: String] = [:]
+                for (key, item) in raw {
+                    guard case let .string(string) = item else { throw ConnectorRuntimeError.invalidPayload }
+                    parsed[key] = string
+                }
+                hermesRun = parsed
+            }
+            let result = try http.rest(
+                method: method, path: path, body: payload["body"],
+                hermesRun: hermesRun, credential: credential
+            )
+            return restResult(result)
+        case "upload.start":
+            try requireExactKeys(
+                payload,
+                allowed: ["kind", "method", "path", "field", "filename", "contentType", "totalBytes", "sha256"],
+                required: ["kind", "method", "path", "field", "filename", "contentType", "totalBytes", "sha256"]
+            )
+            guard case let .string(method)? = payload["method"], method == "POST",
+                  case let .string(path)? = payload["path"],
+                  case let .string(field)? = payload["field"],
+                  case let .string(filename)? = payload["filename"],
+                  case let .string(contentType)? = payload["contentType"],
+                  let totalBytes = exactInteger(payload["totalBytes"]),
+                  case let .string(sha256)? = payload["sha256"] else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            return .object(["uploadId": .string(try http.startUpload(
+                path: path, field: field, filename: filename, contentType: contentType,
+                totalBytes: totalBytes, sha256: sha256
+            ))])
+        case "upload.chunk":
+            try requireExactKeys(
+                payload, allowed: ["kind", "uploadId", "sequence", "data"],
+                required: ["kind", "uploadId", "sequence", "data"]
+            )
+            guard case let .string(uploadId)? = payload["uploadId"],
+                  let sequence = exactInteger(payload["sequence"]), sequence >= 0,
+                  case let .string(data)? = payload["data"] else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            return .object(["acceptedBytes": .number(Double(try http.appendUpload(
+                uploadId: uploadId, sequence: sequence, base64Data: data
+            )))])
+        case "upload.finish":
+            try requireExactKeys(payload, allowed: ["kind", "uploadId"], required: ["kind", "uploadId"])
+            guard case let .string(uploadId)? = payload["uploadId"] else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            return restResult(try http.finishUpload(uploadId: uploadId, credential: credential))
+        case "upload.abort":
+            try requireExactKeys(payload, allowed: ["kind", "uploadId"], required: ["kind", "uploadId"])
+            guard case let .string(uploadId)? = payload["uploadId"] else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            _ = http.abortUpload(uploadId: uploadId)
+            return .object(["aborted": .bool(true)])
+        case "sse.start":
+            try requireExactKeys(
+                payload, allowed: ["kind", "method", "path"],
+                required: ["kind", "method", "path"]
+            )
+            guard case let .string(method)? = payload["method"], method == "GET",
+                  case let .string(path)? = payload["path"], path == "/conversations/stream" else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            return .object(["streamId": .string(try http.startSSE(path: path, credential: credential))])
+        case "sse.poll":
+            try requireExactKeys(
+                payload, allowed: ["kind", "streamId", "maxEvents"],
+                required: ["kind", "streamId", "maxEvents"]
+            )
+            guard case let .string(streamId)? = payload["streamId"],
+                  let maxEvents = exactInteger(payload["maxEvents"]), (1...50).contains(maxEvents) else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            return try http.pollSSE(streamId: streamId, maxEvents: maxEvents)
+        case "sse.close":
+            try requireExactKeys(payload, allowed: ["kind", "streamId"], required: ["kind", "streamId"])
+            guard case let .string(streamId)? = payload["streamId"] else {
+                throw ConnectorRuntimeError.invalidPayload
+            }
+            _ = http.closeSSE(streamId: streamId)
+            return .object(["closed": .bool(true)])
+        default:
+            throw ConnectorRuntimeError.invalidPayload
+        }
+    }
+
+    private func restResult(_ result: ConnectorRESTResult) -> JSONValue {
+        .object(["status": .number(Double(result.status)), "body": result.body])
+    }
+
+    private func exactInteger(_ value: JSONValue?) -> Int? {
+        guard case let .number(number)? = value,
+              number.isFinite, number.rounded(.towardZero) == number,
+              number >= 0, number <= Double(Int.max) else { return nil }
+        return Int(number)
     }
 
     private func startAuthorization() throws -> JSONValue {
@@ -440,6 +560,7 @@ final class ConnectorRuntime {
     }
 
     private func disconnect() -> JSONValue {
+        http.closeResources()
         let invalidatedAttempt: String?
         let epoch: UInt64
         stateLock.lock()
@@ -822,6 +943,20 @@ final class ConnectorRuntime {
                 return ConnectorError(code: "endpoint_denied", message: "The endpoint is not allowed.")
             case .networkFailure:
                 return ConnectorError(code: "network_error", message: "Index could not be reached.")
+            case .uploadNotFound:
+                return ConnectorError(code: "upload_not_found", message: "The upload no longer exists.")
+            case .uploadSequenceMismatch:
+                return ConnectorError(code: "upload_sequence_mismatch", message: "The upload sequence is invalid.")
+            case .uploadHashMismatch:
+                return ConnectorError(code: "upload_hash_mismatch", message: "The upload hash did not match.")
+            case .uploadSizeMismatch:
+                return ConnectorError(code: "upload_size_mismatch", message: "The upload size did not match.")
+            case .streamNotFound:
+                return ConnectorError(code: "stream_not_found", message: "The stream no longer exists.")
+            case .streamOverflow:
+                return ConnectorError(code: "sse_overflow", message: "The stream buffer overflowed.")
+            case .hermesRunDenied:
+                return ConnectorError(code: "hermes_run_denied", message: "Hermes run authority is invalid for this route.")
             default:
                 break
             }

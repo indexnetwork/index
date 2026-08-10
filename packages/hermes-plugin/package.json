@@ -15,13 +15,21 @@
     "_mode.py",
     "schemas.py",
     "tools.py",
+    "transport.py",
+    "connector_transport.py",
+    "env_transport.py",
+    "migration.py",
+    "connector-release.cms",
     "skills/",
     "dashboard/",
     "desktop/dist/",
     "tests/",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "!**/__pycache__/**",
+    "!**/*.py[cod]",
+    "!.index-plugin-development"
   ],
   "scripts": {
     "test": "python3 tests/smoke.py",
