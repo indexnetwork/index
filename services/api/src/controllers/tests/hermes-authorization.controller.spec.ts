@@ -307,6 +307,7 @@ describe('HermesAuthorizationController provider-free contract', () => {
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({
       credential: 'idxh_credential-secret',
+      audience: 'hermes-agent',
       credentialId: CREDENTIAL_ID,
       agentId: AGENT_ID,
       installationId: INSTALLATION_ID,
@@ -340,7 +341,16 @@ describe('HermesAuthorizationController provider-free contract', () => {
       { 'x-api-key': pending.credential },
     ));
     expect(activated.status).toBe(200);
-    expect(await activated.json()).toMatchObject({ activationState: 'active', credentialId: CREDENTIAL_ID });
+    expect(await activated.json()).toEqual({
+      audience: 'hermes-agent',
+      agentId: AGENT_ID,
+      installationId: INSTALLATION_ID,
+      setupAttemptId: SETUP_ATTEMPT_ID,
+      credentialId: CREDENTIAL_ID,
+      actions: HERMES_CANONICAL_ACTIONS,
+      expiresAt: '2026-09-08T12:00:00.000Z',
+      activationState: 'active',
+    });
     expect(store.permissionActions).toEqual(HERMES_CANONICAL_ACTIONS);
   });
 

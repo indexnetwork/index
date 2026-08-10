@@ -23,6 +23,7 @@ export type CreateHermesAuthorizationInput = {
 
 function publicMetadata(metadata: HermesCredentialMetadata) {
   return {
+    audience: metadata.audience,
     agentId: metadata.agentId,
     installationId: metadata.installationId,
     setupAttemptId: metadata.setupAttemptId,
