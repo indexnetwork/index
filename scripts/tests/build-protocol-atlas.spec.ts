@@ -157,9 +157,12 @@ test("keeps responsive layouts bounded with touch and grayscale-safe interaction
   expect(css).toContain("--edge-static-pattern: 10 5");
   expect(css).toContain("--edge-injected-pattern: 2 5");
   expect(css).toContain("--edge-conceptual-pattern: 1 5");
-  expect(css).toMatch(/\.atlas-edge--runtime\s*\{[^}]*--edge-pattern:\s*var\(--edge-runtime-pattern\)[^}]*--edge-label:\s*"runtime"/s);
-  expect(css).toMatch(/\.atlas-edge--static\s*\{[^}]*--edge-pattern:\s*var\(--edge-static-pattern\)[^}]*--edge-label:\s*"static"/s);
-  expect(css).toMatch(/\.atlas-edge--injected\s*\{[^}]*--edge-pattern:\s*var\(--edge-injected-pattern\)[^}]*--edge-label:\s*"injected"/s);
+  const effectiveSvgEdgeRule = css.match(/\.atlas-edge\s*\{([^}]*)\}/)?.[1];
+  expect(effectiveSvgEdgeRule).toMatch(/stroke:\s*var\(--edge-color\)/);
+  expect(effectiveSvgEdgeRule).toMatch(/stroke-dasharray:\s*var\(--edge-pattern\)/);
+  expect(css).toMatch(/\.atlas-edge--runtime\s*\{[^}]*--edge-color:\s*var\(--edge-runtime\)[^}]*--edge-pattern:\s*var\(--edge-runtime-pattern\)[^}]*--edge-label:\s*"runtime"/s);
+  expect(css).toMatch(/\.atlas-edge--static\s*\{[^}]*--edge-color:\s*var\(--edge-static\)[^}]*--edge-pattern:\s*var\(--edge-static-pattern\)[^}]*--edge-label:\s*"static"/s);
+  expect(css).toMatch(/\.atlas-edge--injected\s*\{[^}]*--edge-color:\s*var\(--edge-injected\)[^}]*--edge-pattern:\s*var\(--edge-injected-pattern\)[^}]*--edge-label:\s*"injected"/s);
   expect(css).toMatch(/\.atlas-edge--conceptual\s*\{[^}]*--edge-color:\s*var\(--edge-conceptual\)[^}]*--edge-pattern:\s*var\(--edge-conceptual-pattern\)[^}]*--edge-label:\s*"conceptual"/s);
   expect(css).toMatch(/\.atlas-edge--runtime \.atlas-edge__line,[\s\S]*?border-top-style:\s*solid/);
   expect(css).toMatch(/\.atlas-edge--static \.atlas-edge__line,[\s\S]*?border-top-style:\s*dashed/);
