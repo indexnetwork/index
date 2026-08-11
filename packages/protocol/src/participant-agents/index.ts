@@ -12,13 +12,10 @@
  * shared/interfaces/agent.interface.ts, and
  * shared/interfaces/agent-dispatcher.interface.ts.
  *
- * Legacy paths:
- * - agent/* — thin compatibility shims pointing to participant-agents/application
+ * Compatibility paths:
  * - shared/interfaces/agent.interface.ts — re-exports from participant-agents/domain
  *   and participant-agents/ports
  * - shared/interfaces/agent-dispatcher.interface.ts — re-exports from
  *   participant-agents/ports
- * - capabilities/participant-agents.tools.port.ts — re-exports AgentToolDeps
- *   from participant-agents/ports
  */
 export * from "./public/index.js";

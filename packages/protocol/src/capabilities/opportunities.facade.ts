@@ -4,8 +4,7 @@
  * The list is curated by responsibility (discovery, lifecycle, presentation,
  * and question lenses) rather than exposing the opportunity directory.
  *
- * IND-551: canonical paths updated to opportunity/domain and
- * opportunity/application; shims remain at old flat paths for compatibility.
+ * IND-551: canonical paths use opportunity/domain and opportunity/application.
  */
 
 // ── Core graphs ───────────────────────────────────────────────────────────────
@@ -28,7 +27,7 @@ export type { PresenterDatabase } from "../opportunity/application/opportunity.p
 
 // ── MCP tool factory ──────────────────────────────────────────────────────────
 export { createOpportunityTools } from "../opportunity/application/opportunity.tools.js";
-export type { OpportunityToolDeps } from "./opportunities.tools.port.js";
+export type { OpportunityToolDeps } from "../opportunity/ports/index.js";
 
 // ── Discovery env accessors ───────────────────────────────────────────────────
 export {

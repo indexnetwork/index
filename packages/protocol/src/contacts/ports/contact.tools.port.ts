@@ -11,9 +11,8 @@
  * from shared/interfaces/contact.interface.ts, which after IND-549 forwards
  * to contacts/ports — creating a cycle back here.
  *
- * Structural equivalence with the Pick<ToolRegistryCompositionDeps,
- * "contactService" | "contactsEnabled"> definition in the legacy shim is
- * preserved.
+ * Its shape remains structurally equivalent to the matching
+ * ToolRegistryCompositionDeps fields.
  *
  * IND-549: extracted from capabilities/contacts.tools.port.ts into the
  * contacts capability's dedicated ports layer.

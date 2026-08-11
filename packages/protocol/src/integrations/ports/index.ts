@@ -19,9 +19,8 @@
  * - IntegrationToolDeps — host capabilities for integration-backed tools.
  *
  * IND-549: canonical ports surface for the integrations capability.
- * Legacy paths:
+ * Legacy path:
  *   - shared/interfaces/integration.interface.ts → re-exports types from here
- *   - capabilities/integrations.tools.port.ts → re-exports IntegrationToolDeps from here
  */
 
 // ── Platform adapter ──────────────────────────────────────────────────────────

@@ -11,12 +11,10 @@
  * across questioner/, shared/schemas/question.schema.ts, and
  * shared/interfaces/questioner.interface.ts.
  *
- * Legacy paths:
- * - questioner/* — thin compatibility shims pointing to questions/application
+ * Compatibility paths:
  * - capabilities/questions.facade.ts — re-exports from questions/public/index.js
  * - shared/schemas/question.schema.ts — re-exports from questions/domain
  * - shared/interfaces/questioner.interface.ts — re-exports from questions/ports
  * - shared/interfaces/question-generator.interface.ts — re-exports from questions/ports
- * - capabilities/questions.tools.port.ts — re-exports from questions/ports
  */
 export * from "./public/index.js";

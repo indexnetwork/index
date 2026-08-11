@@ -5,8 +5,7 @@
  * (question delivery and chat-inline ask_user_question) without importing
  * the full ToolRegistryCompositionDeps interface.
  *
- * IND-547: canonical home — previously capabilities/questions.tools.port.ts.
- * Legacy path is a thin compatibility shim pointing here.
+ * IND-547: canonical tool-host port.
  */
 import type { ToolRegistryCompositionDeps } from "../../shared/agent/tool.helpers.js";
 
