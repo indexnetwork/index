@@ -10,6 +10,7 @@ output="$(mktemp)"
 trap 'rm -f "$output"' EXIT
 
 for target in \
+  src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts \
   tests/hermes-runtime-lifecycle.database.isolated.ts \
   tests/negotiation-runtime-authority.database.isolated.ts
 do
@@ -26,3 +27,8 @@ do
   fi
   : >"$output"
 done
+
+# Release-approved workflows may choose tighter values, but every enforced
+# duration is explicit: the CLI intentionally owns no fallback thresholds.
+bun run maintenance:hermes-preflight -- \
+  --json --max-lock-ms 5000 --max-total-ms 30000

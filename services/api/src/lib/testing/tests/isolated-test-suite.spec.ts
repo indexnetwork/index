@@ -136,6 +136,7 @@ describe('isolated test inventory', () => {
     const apiRoot = path.resolve(import.meta.dir, '../../../..');
     const transpiler = new Bun.Transpiler({ loader: 'ts' });
     const targets = [
+      'src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts',
       'tests/hermes-runtime-lifecycle.database.isolated.ts',
       'tests/negotiation-runtime-authority.database.isolated.ts',
     ];

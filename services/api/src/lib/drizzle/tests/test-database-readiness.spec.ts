@@ -42,8 +42,11 @@ describe('Hermes production assurance contract', () => {
     const runnerPath = path.join(apiRoot, 'scripts/test-hermes-production-assurance.sh');
     expect(existsSync(runnerPath)).toBe(true);
     const runner = existsSync(runnerPath) ? readFileSync(runnerPath, 'utf8') : '';
+    expect(runner).toContain('src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts');
     expect(runner).toContain('tests/hermes-runtime-lifecycle.database.isolated.ts');
     expect(runner).toContain('tests/negotiation-runtime-authority.database.isolated.ts');
+    expect(runner).toContain('bun run maintenance:hermes-preflight --');
+    expect(runner).toContain('--json --max-lock-ms 5000 --max-total-ms 30000');
     expect(runner.match(/bun test src\/lib\/testing\/isolated-test-import-harness\.spec\.ts/g) ?? [])
       .toHaveLength(1);
     expect(runner).toContain('for target in');

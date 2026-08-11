@@ -68,6 +68,7 @@ tests/frame-drift.database.adapter.isolated.ts
 tests/negotiation.ask-user.e2e.isolated.ts
 tests/negotiation-polling-consultation.e2e.isolated.ts
 # Dedicated targets for the disposable-PostgreSQL Hermes production assurance job.
+src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts
 tests/hermes-runtime-lifecycle.database.isolated.ts
 tests/negotiation-runtime-authority.database.isolated.ts
 src/services/tests/negotiation-polling.memory.isolated.ts
