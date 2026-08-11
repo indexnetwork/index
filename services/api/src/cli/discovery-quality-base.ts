@@ -145,6 +145,36 @@ function fail(label: string, detail = 'mismatch'): never {
   throw new Error(`Historical quality base integrity failed: ${label} ${detail}`);
 }
 
+declare const historicalQualityPgvectorReadbackBrand: unique symbol;
+type HistoricalQualityPgvectorReadback = number[] & { readonly [historicalQualityPgvectorReadbackBrand]: true };
+
+/** Canonicalizes only values returned by a typed historical-quality pgvector select. */
+function canonicalizeSelectedHistoricalQualityPgvector(
+  selected: unknown,
+  label: string,
+): HistoricalQualityPgvectorReadback {
+  if (!Array.isArray(selected)) {
+    throw new Error(`Historical quality pgvector DB readback ${label} must be an array`);
+  }
+  return Array.from(selected, (component, index) => {
+    if (typeof component !== 'number' || !Number.isFinite(component)) {
+      throw new Error(`Historical quality pgvector DB readback ${label} component ${index} must be finite`);
+    }
+    const canonical = Math.fround(Object.is(component, -0) ? 0 : component);
+    if (!Number.isFinite(canonical)) {
+      throw new Error(`Historical quality pgvector DB readback ${label} component ${index} must be finite float32`);
+    }
+    return canonical;
+  }) as HistoricalQualityPgvectorReadback;
+}
+
+function canonicalizeNullableSelectedHistoricalQualityPgvector(
+  selected: unknown,
+  label: string,
+): HistoricalQualityPgvectorReadback | null {
+  return selected === null ? null : canonicalizeSelectedHistoricalQualityPgvector(selected, label);
+}
+
 function assertExactIds(label: string, expected: readonly string[], actual: readonly string[]): void {
   const expectedSorted = [...expected].sort(compareText);
   const actualSorted = [...actual].sort(compareText);
@@ -420,12 +450,12 @@ async function readProductionState(dbValue: unknown, projection: HistoricalShare
     db.select({ id: schema.users.id, email: schema.users.email, name: schema.users.name, emailVerified: schema.users.emailVerified, isGhost: schema.users.isGhost, deletedAt: schema.users.deletedAt }).from(schema.users).where(inArray(schema.users.id, userIds)),
     db.select({ id: schema.networks.id, title: schema.networks.title, prompt: schema.networks.prompt, isPersonal: schema.networks.isPersonal, deletedAt: schema.networks.deletedAt }).from(schema.networks).where(inArray(schema.networks.id, networkIds)),
     db.select({ networkId: schema.networkMembers.networkId, userId: schema.networkMembers.userId, permissions: schema.networkMembers.permissions, autoAssign: schema.networkMembers.autoAssign, deletedAt: schema.networkMembers.deletedAt }).from(schema.networkMembers).where(or(inArray(schema.networkMembers.userId, userIds), inArray(schema.networkMembers.networkId, networkIds))),
-    db.select({ id: schema.intents.id, userId: schema.intents.userId, payload: schema.intents.payload, summary: schema.intents.summary, sourceType: schema.intents.sourceType, sourceId: schema.intents.sourceId, status: schema.intents.status, isIncognito: schema.intents.isIncognito, archivedAt: schema.intents.archivedAt, embedding: schema.intents.embedding }).from(schema.intents).where(or(inArray(schema.intents.id, intentIds), inArray(schema.intents.userId, userIds))),
+    db.select({ id: schema.intents.id, userId: schema.intents.userId, payload: schema.intents.payload, summary: schema.intents.summary, sourceType: schema.intents.sourceType, sourceId: schema.intents.sourceId, status: schema.intents.status, isIncognito: schema.intents.isIncognito, archivedAt: schema.intents.archivedAt, embedding: schema.intents.embedding }).from(schema.intents).where(or(inArray(schema.intents.id, intentIds), inArray(schema.intents.userId, userIds))).then((rows) => rows.map((row) => ({ ...row, embedding: canonicalizeNullableSelectedHistoricalQualityPgvector(row.embedding, `intent ${row.id}`) }))),
     db.select({ intentId: schema.intentNetworks.intentId, networkId: schema.intentNetworks.networkId, relevancyScore: schema.intentNetworks.relevancyScore }).from(schema.intentNetworks).where(or(inArray(schema.intentNetworks.intentId, intentIds), inArray(schema.intentNetworks.networkId, networkIds))),
-    db.select({ id: schema.premises.id, userId: schema.premises.userId, assertion: schema.premises.assertion, provenance: schema.premises.provenance, validity: schema.premises.validity, status: schema.premises.status, retractedAt: schema.premises.retractedAt, deletedAt: schema.premises.deletedAt, embedding: schema.premises.embedding }).from(schema.premises).where(or(inArray(schema.premises.id, premiseIds), inArray(schema.premises.userId, userIds))),
+    db.select({ id: schema.premises.id, userId: schema.premises.userId, assertion: schema.premises.assertion, provenance: schema.premises.provenance, validity: schema.premises.validity, status: schema.premises.status, retractedAt: schema.premises.retractedAt, deletedAt: schema.premises.deletedAt, embedding: schema.premises.embedding }).from(schema.premises).where(or(inArray(schema.premises.id, premiseIds), inArray(schema.premises.userId, userIds))).then((rows) => rows.map((row) => ({ ...row, embedding: canonicalizeNullableSelectedHistoricalQualityPgvector(row.embedding, `premise ${row.id}`) }))),
     db.select({ premiseId: schema.premiseNetworks.premiseId, networkId: schema.premiseNetworks.networkId, relevancyScore: schema.premiseNetworks.relevancyScore }).from(schema.premiseNetworks).where(or(inArray(schema.premiseNetworks.premiseId, premiseIds), inArray(schema.premiseNetworks.networkId, networkIds))),
-    db.select({ id: schema.userContexts.id, userId: schema.userContexts.userId, networkId: schema.userContexts.networkId, text: schema.userContexts.text, premiseHash: schema.userContexts.premiseHash, embedding: schema.userContexts.embedding }).from(schema.userContexts).where(or(inArray(schema.userContexts.id, contextIds), inArray(schema.userContexts.userId, userIds), inArray(schema.userContexts.networkId, networkIds))),
-    db.select({ id: schema.hydeDocuments.id, sourceId: schema.hydeDocuments.sourceId, sourceText: schema.hydeDocuments.sourceText, strategy: schema.hydeDocuments.strategy, targetCorpus: schema.hydeDocuments.targetCorpus, context: schema.hydeDocuments.context, hydeText: schema.hydeDocuments.hydeText, embedding: schema.hydeDocuments.hydeEmbedding }).from(schema.hydeDocuments).where(or(inArray(schema.hydeDocuments.id, documentIds), inArray(schema.hydeDocuments.sourceId, [...premiseIds, ...contextIds]))),
+    db.select({ id: schema.userContexts.id, userId: schema.userContexts.userId, networkId: schema.userContexts.networkId, text: schema.userContexts.text, premiseHash: schema.userContexts.premiseHash, embedding: schema.userContexts.embedding }).from(schema.userContexts).where(or(inArray(schema.userContexts.id, contextIds), inArray(schema.userContexts.userId, userIds), inArray(schema.userContexts.networkId, networkIds))).then((rows) => rows.map((row) => ({ ...row, embedding: canonicalizeNullableSelectedHistoricalQualityPgvector(row.embedding, `context ${row.id}`) }))),
+    db.select({ id: schema.hydeDocuments.id, sourceId: schema.hydeDocuments.sourceId, sourceText: schema.hydeDocuments.sourceText, strategy: schema.hydeDocuments.strategy, targetCorpus: schema.hydeDocuments.targetCorpus, context: schema.hydeDocuments.context, hydeText: schema.hydeDocuments.hydeText, embedding: schema.hydeDocuments.hydeEmbedding }).from(schema.hydeDocuments).where(or(inArray(schema.hydeDocuments.id, documentIds), inArray(schema.hydeDocuments.sourceId, [...premiseIds, ...contextIds]))).then((rows) => rows.map((row) => ({ ...row, embedding: canonicalizeSelectedHistoricalQualityPgvector(row.embedding, `document ${row.id}`) }))),
     db.select({ key: schema.evalMatrixMetadata.key, schemaMigrationFingerprint: schema.evalMatrixMetadata.schemaMigrationFingerprint, fixtureFingerprint: schema.evalMatrixMetadata.fixtureFingerprint, fixtureCorpusVersion: schema.evalMatrixMetadata.fixtureCorpusVersion, qualityAttestation: schema.evalMatrixMetadata.qualityAttestation }).from(schema.evalMatrixMetadata),
     db.select({ id: schema.opportunities.id, actors: schema.opportunities.actors }).from(schema.opportunities),
   ]);
@@ -642,7 +672,11 @@ export const productionHistoricalQualityBaseDependencies: HistoricalQualityBaseD
     .from(schema.hydeDocuments)
     .where(inArray(schema.hydeDocuments.id, projection.documents.map((row) => row.documentId)))
     .orderBy(schema.hydeDocuments.id)
-    .then((rows) => rows.map((row) => ({ documentId: row.documentId, text: row.text ?? '', embedding: row.embedding }))),
+    .then((rows) => rows.map((row) => ({
+      documentId: row.documentId,
+      text: row.text ?? '',
+      embedding: canonicalizeSelectedHistoricalQualityPgvector(row.embedding, `candidate document ${row.documentId}`),
+    }))),
   insertQualityMetadata: async (dbValue, metadata) => { await (dbValue as DrizzleDB).insert(schema.evalMatrixMetadata).values({ ...metadata, seededAt: new Date() }); },
 };
 

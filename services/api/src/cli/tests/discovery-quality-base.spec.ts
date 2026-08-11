@@ -324,6 +324,69 @@ describe('historical quality base state', () => {
     });
   }
 
+  it('canonicalizes every production pgvector select at the DB readback boundary', async () => {
+    const seed = exactSeedState();
+    const drizzleReadback = [0.1, -0, 3.25];
+    const document = projection.documents[0]!;
+    const state = await productionHistoricalQualityBaseDependencies.readState(queuedReadDb([
+      seed.users,
+      seed.networks,
+      seed.memberships,
+      seed.intents.map((row, index) => ({ ...row, embedding: index === 0 ? [...drizzleReadback] : null })),
+      seed.intentNetworkAssignments,
+      seed.premises.map((row, index) => ({ ...row, embedding: index === 0 ? [...drizzleReadback] : null })),
+      seed.premiseNetworkAssignments,
+      seed.contexts.map((row, index) => ({ ...row, embedding: index === 0 ? [...drizzleReadback] : null })),
+      [{
+        id: document.documentId,
+        sourceId: document.sourceRowId,
+        sourceText: document.text,
+        strategy: document.strategy,
+        targetCorpus: document.targetCorpus,
+        context: {
+          participantId: document.participantId,
+          sourceType: document.sourceType,
+          sourcePaths: document.sourcePaths,
+          targetFrame: document.targetFrame,
+          contentFingerprint: document.contentFingerprint,
+        },
+        hydeText: document.text,
+        embedding: [...drizzleReadback],
+      }],
+      [],
+      [],
+    ]), projection);
+    const expected = [Math.fround(0.1), 0, 3.25];
+
+    expect(state.intents[0]!.embedding).toEqual(expected);
+    expect(state.premises[0]!.embedding).toEqual(expected);
+    expect(state.contexts[0]!.embedding).toEqual(expected);
+    expect(state.documents[0]!.embedding).toEqual(expected);
+    expect(state.documents[0]!.embedding).toHaveLength(drizzleReadback.length);
+    expect(Object.is(state.documents[0]!.embedding[1], -0)).toBeFalse();
+    expect(() => fingerprintHistoricalQualityVector([0.1])).toThrow('float32');
+  });
+
+  it('validates candidate vector shape and finite components at the production DB readback boundary', async () => {
+    const rows = await productionHistoricalQualityBaseDependencies.readRoundTrippedVectors(queuedReadDb([[
+      { documentId: 'doc-b', text: 'second', embedding: [0.1, -0, 2] },
+      { documentId: 'doc-a', text: 'first', embedding: [-2, 0.2] },
+    ]]), projection);
+    expect(rows).toEqual([
+      { documentId: 'doc-b', text: 'second', embedding: [Math.fround(0.1), 0, 2] },
+      { documentId: 'doc-a', text: 'first', embedding: [-2, Math.fround(0.2)] },
+    ]);
+
+    for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      await expect(productionHistoricalQualityBaseDependencies.readRoundTrippedVectors(queuedReadDb([[
+        { documentId: projection.documents[0]!.documentId, text: projection.documents[0]!.text, embedding: [invalid] },
+      ]]), projection)).rejects.toThrow('finite');
+    }
+    await expect(productionHistoricalQualityBaseDependencies.readRoundTrippedVectors(queuedReadDb([[
+      { documentId: projection.documents[0]!.documentId, text: projection.documents[0]!.text, embedding: '0.1,0.2' },
+    ]]), projection)).rejects.toThrow('array');
+  });
+
   it('rejects a supplied projection outside approved seed authority', async () => {
     const mutated = structuredClone(projection);
     (mutated.contexts[0] as { sourcePaths: string[] }).sourcePaths = ['unapproved-source-path'];
