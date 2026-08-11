@@ -75,7 +75,7 @@ packages/protocol/src/
 | Premise Indexer | `premise/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
 | User Context Generator | `context/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
 | Questioner Agent | `questions/application/question.agent.ts` | Questioner queue — mode-driven structured decision-question generation (enrichment/intent/negotiation/discovery) |
-| Network Recommender | `communities/application/network.recommender.ts` | Network flows — recommends networks for a user/intent |
+| Network Recommender | `communities/application/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
 | HyDE Generator | `shared/hyde/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `shared/hyde/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
 | Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
