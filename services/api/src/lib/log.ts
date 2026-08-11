@@ -421,7 +421,7 @@ export function sanitizeForLog(value: unknown): unknown {
 
 function sanitizeForLogInternal(value: unknown, depth = 0): unknown {
   if (value == null) return value;
-  if (typeof value === 'string') return truncateLogString(value);
+  if (typeof value === 'string') return truncateLogString(redactEstablishedCredentialPatterns(value));
   if (isNumberArray(value)) return `[redacted: ${value.length} values]`;
   if (Array.isArray(value)) {
     if (value.length > 0 && typeof value[0] === 'number') return `[redacted: ${value.length} values]`;

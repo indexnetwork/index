@@ -181,6 +181,17 @@ export async function refreshHermesCredentialExpiryGauges(
   }
 }
 
+/** Start an aggregate snapshot after an authority decision and consume every failure off-path. */
+export function scheduleHermesCredentialExpiryGaugeRefresh(
+  telemetry: HermesRuntimeTelemetry,
+  store: HermesCredentialExpiryHealthStore,
+  now: Date,
+): void {
+  queueMicrotask(() => {
+    void refreshHermesCredentialExpiryGauges(telemetry, store, now).catch(() => undefined);
+  });
+}
+
 /** Time only the database lock acquisition; telemetry remains synchronous and unlabeled. */
 export async function observeHermesAdvisoryLockWait(
   telemetry: HermesRuntimeTelemetry,

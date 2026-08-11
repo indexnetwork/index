@@ -28,6 +28,8 @@ describe('Sentry log metadata redaction', () => {
     const metadata = Object.fromEntries(sensitiveKeys.map((key) => [key, `idxh_${key}_SECRET`]));
     metadata.safeCount = 7;
     metadata.safeReason = 'expired';
+    metadata.safeDetail = 'nested idxh_12345678DETAIL value';
+    metadata.safeError = new Error('outer failure', { cause: 'direct idxo_12345678CAUSE value' });
 
     try {
       log.lib.from('sentry-redaction-test').info('safe message', metadata);
@@ -43,6 +45,8 @@ describe('Sentry log metadata redaction', () => {
     }
     expect(attributes['meta.safeCount']).toBe(7);
     expect(attributes['meta.safeReason']).toBe('expired');
-    expect(JSON.stringify(attributes)).not.toContain('_SECRET');
+    expect(attributes['meta.safeDetail']).toBe('nested [REDACTED] value');
+    expect(attributes['meta.safeError']).toBe('{"message":"outer failure","name":"Error","cause":"direct [REDACTED] value"}');
+    expect(JSON.stringify(attributes)).not.toMatch(/_SECRET|idxh_|idxo_|12345678DETAIL|12345678CAUSE/);
   });
 });

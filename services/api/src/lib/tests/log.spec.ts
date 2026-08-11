@@ -78,6 +78,28 @@ describe('sanitizeForLog credential redaction', () => {
     expect(JSON.stringify(sanitized)).not.toMatch(/idxh_|idxo_|ERROR_SECRET|OWNER_SECRET|NESTED_SECRET/);
   });
 
+  it('redacts established credentials in direct string causes and arbitrary nested string values', () => {
+    const error = new Error('safe outer failure', { cause: 'direct idxh_12345678SECRET cause' });
+    const cyclic: Record<string, unknown> = {
+      detail: 'nested idxo_12345678OWNER value',
+      values: ['safe', 'array idxh_12345678ARRAY value'],
+      error,
+    };
+    cyclic.self = cyclic;
+
+    const sanitized = sanitizeForLog(cyclic);
+    expect(sanitized).toMatchObject({
+      detail: 'nested [REDACTED] value',
+      values: ['safe', 'array [REDACTED] value'],
+      error: {
+        message: 'safe outer failure',
+        name: 'Error',
+        cause: 'direct [REDACTED] cause',
+      },
+    });
+    expect(JSON.stringify(sanitized)).not.toMatch(/idxh_|idxo_|12345678SECRET|12345678OWNER|12345678ARRAY/);
+  });
+
   it('redacts nested sensitive keys in cyclic plain objects without retaining secrets', () => {
     const cyclic: Record<string, unknown> = {
       label: 'safe',

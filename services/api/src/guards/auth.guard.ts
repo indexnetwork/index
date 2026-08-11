@@ -11,7 +11,7 @@ import { HERMES_AGENT_AUDIENCE, hashHermesSecret } from '../lib/agent/hermes-aut
 import { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX, hashIndexAppOwnerSecret } from '../lib/agent/index-app-owner-authorization';
 import { HERMES_CANONICAL_ACTIONS, type HermesCapability } from '../lib/agent/hermes-capabilities';
 import { HERMES_AGENT_CREDENTIAL_PREFIX, HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
-import { hermesRuntimeTelemetry, refreshHermesCredentialExpiryGauges, type HermesCredentialExpiryHealthStore, type HermesRuntimeTelemetry, type HermesTelemetryReason } from '../lib/agent/hermes-runtime-telemetry';
+import { hermesRuntimeTelemetry, scheduleHermesCredentialExpiryGaugeRefresh, type HermesCredentialExpiryHealthStore, type HermesRuntimeTelemetry, type HermesTelemetryReason } from '../lib/agent/hermes-runtime-telemetry';
 
 export { HERMES_AGENT_CREDENTIAL_PREFIX, HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND } from '../lib/agent/hermes-credential';
 export { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX } from '../lib/agent/index-app-owner-authorization';
@@ -628,6 +628,16 @@ function invalidHermesAgentCredential(
   return new Error('Invalid API key');
 }
 
+function rejectResolvedHermesAgentCredential(
+  reason: HermesTelemetryReason,
+  telemetry: HermesRuntimeTelemetry,
+  store: HermesAgentAuthenticationStore,
+  decidedAt: Date,
+): never {
+  scheduleHermesCredentialExpiryGaugeRefresh(telemetry, store, decidedAt);
+  throw invalidHermesAgentCredential(reason, telemetry);
+}
+
 /** Resolve one exact active dedicated principal without admitting a route. */
 export async function resolveHermesAgentCredential(
   rawCredential: string,
@@ -640,11 +650,12 @@ export async function resolveHermesAgentCredential(
     || rawCredential.length <= HERMES_AGENT_CREDENTIAL_PREFIX.length
   ) throw invalidHermesAgentCredential('malformed_credential', telemetry);
 
-  const checkedAt = now();
+  const reject = (reason: HermesTelemetryReason, decidedAt: Date = now()): never =>
+    rejectResolvedHermesAgentCredential(reason, telemetry, store, decidedAt);
+
   const hash = await hashHermesSecret(rawCredential);
   const row = await store.findCredentialByHash(hash);
-  await refreshHermesCredentialExpiryGauges(telemetry, store, checkedAt);
-  if (!row) throw invalidHermesAgentCredential('invalid_credential', telemetry);
+  if (!row) return reject('invalid_credential');
   if (
     !nonemptyString(row.id)
     || !nonemptyString(row.ownerId)
@@ -656,16 +667,12 @@ export async function resolveHermesAgentCredential(
     || !hasExactCanonicalHermesActions(row.actions)
     || !(row.expiresAt instanceof Date)
     || !Number.isFinite(row.expiresAt.getTime())
-  ) throw invalidHermesAgentCredential('malformed_credential', telemetry);
-  if (row.activationState === 'revoked') {
-    throw invalidHermesAgentCredential('revoked', telemetry);
-  }
-  if (row.activationState !== 'active') {
-    throw invalidHermesAgentCredential('malformed_credential', telemetry);
-  }
-  if (row.expiresAt.getTime() <= checkedAt.getTime()) {
-    throw invalidHermesAgentCredential('expired', telemetry);
-  }
+  ) return reject('malformed_credential');
+  if (row.activationState === 'revoked') return reject('revoked');
+  if (row.activationState !== 'active') return reject('malformed_credential');
+
+  const initiallyCheckedAt = now();
+  if (row.expiresAt.getTime() <= initiallyCheckedAt.getTime()) return reject('expired', initiallyCheckedAt);
 
   const authority = await store.findAgentAuthority(row.agentId, row.ownerId);
   if (
@@ -679,12 +686,14 @@ export async function resolveHermesAgentCredential(
     || authority.deletedAt !== null
     || !Array.isArray(authority.actions)
     || !hasExactCanonicalHermesActions(authority.actions)
-  ) throw invalidHermesAgentCredential('stale', telemetry);
+  ) return reject('stale');
 
   const user = await store.findUserById(row.ownerId);
-  if (!user || user.id !== row.ownerId) {
-    throw invalidHermesAgentCredential('stale', telemetry);
-  }
+  if (!user || user.id !== row.ownerId) return reject('stale');
+
+  const decidedAt = now();
+  if (row.expiresAt.getTime() <= decidedAt.getTime()) return reject('expired', decidedAt);
+  scheduleHermesCredentialExpiryGaugeRefresh(telemetry, store, decidedAt);
 
   return {
     user,

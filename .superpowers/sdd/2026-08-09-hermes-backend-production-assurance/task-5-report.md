@@ -65,3 +65,27 @@ Addressed every finding from `.pi-subagents/artifacts/c6d8c06a_reviewer_0_output
 - `git diff --check` passed.
 
 No database-backed test or database command was run during remediation, and `TEST_DATABASE_SAFE` remained unset. The aggregate adapter is covered through an injected query seam and source-level bound assertions; real PostgreSQL execution remains owned by the guarded CI assurance suite.
+
+## Remaining Important review remediation
+
+Addressed both findings from `.pi-subagents/artifacts/baf2630b_reviewer_0_output.md`:
+
+- Active Hermes authentication no longer awaits or starts the aggregate expiry query before deciding authority. It performs an early expired-row rejection and a second expiry comparison at the final boundary after authority and owner lookup. Only after success or a stable post-lookup rejection does a microtask-scheduled helper start the aggregate snapshot; the helper attaches a terminal rejection consumer so query and sink failures remain off the business promise path.
+- Deterministic clock and deferred-query tests prove a credential expiring during authority lookup is rejected, pending aggregate work delays neither success nor stable rejection, delayed aggregate rejection is handled without an unhandled rejection, and denial metrics remain exactly once.
+- The bounded `idxh_`/`idxo_` matcher now applies to every sanitized string, including direct string `Error.cause`, arbitrary nested object values, and array values. Existing incomplete-prefix and unrelated-prose controls remain unchanged. Mocked production Sentry assertions prove these string paths do not reach attributes.
+
+### Remaining findings RED evidence
+
+- `bun test src/lib/tests/log.spec.ts ./src/lib/tests/log-sentry.isolated.ts src/guards/tests/hermes-agent-audience.spec.ts` produced 6 expected failures: direct/nested credential strings remained visible, a credential expiring at the final boundary was admitted, and pending aggregate work delayed both success and rejection (41 passed, 6 failed).
+
+### Remaining findings GREEN evidence
+
+- Final focused telemetry/log/guard/controller matrix: 70 passed, 0 failed, 418 expectations across 5 files.
+- Fresh-process mocked Sentry import: 1 passed, 0 failed, 27 expectations.
+- Static isolated-test inventory: 14 passed, 0 failed, 66 expectations.
+- Exact telemetry type compilation and API CLI-spec typecheck passed without diagnostics.
+- Full repository build passed; the final API/protocol build was rerun after the fire-and-forget helper refinement.
+- Repository and API lint passed with 0 errors; a final focused lint of all changed TypeScript files produced no findings.
+- `git diff --check` passed.
+
+No database-backed test or database command was run for this follow-up, and `TEST_DATABASE_SAFE` remained unset.

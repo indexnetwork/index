@@ -31,6 +31,23 @@ function rawFixtureCredential(): string {
   return `idxh_${crypto.randomUUID().replaceAll('-', '')}`;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function outcomeBeforeTelemetry<T>(promise: Promise<T>): Promise<'resolved' | 'rejected' | 'pending'> {
+  return Promise.race([
+    promise.then(() => 'resolved' as const, () => 'rejected' as const),
+    new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 25)),
+  ]);
+}
+
 const allowed = [
   ['POST', '/mcp'],
   ['GET', '/api/agents/me'],
@@ -301,6 +318,117 @@ describe('full Hermes active credential authentication', () => {
       .not.toMatch(/owner-hermes|agent-hermes|credential-hermes|idxh_/);
   });
 
+  it('rechecks expiry at the final authority boundary without waiting for aggregate telemetry', async () => {
+    const recorded = recordingTelemetry();
+    const health = deferred<{ nearExpiry: number; expired: number }>();
+    let current = new Date(NOW);
+    const expiringStore = {
+      ...store(credential({ expiresAt: new Date(NOW.getTime() + 1) })),
+      countActiveCredentialExpiryHealth: () => health.promise,
+      findAgentAuthority: async () => {
+        current = new Date(NOW.getTime() + 2);
+        return {
+          id: agentId,
+          ownerId,
+          runtimeKind: 'hermes' as const,
+          installationId,
+          setupAttemptId,
+          status: 'active' as const,
+          deletedAt: null,
+          actions: [...HERMES_CANONICAL_ACTIONS],
+        };
+      },
+    };
+
+    const authentication = resolveHermesAgentCredential(
+      rawFixtureCredential(),
+      expiringStore,
+      recorded.telemetry,
+      () => new Date(current),
+    );
+    const outcome = await outcomeBeforeTelemetry(authentication);
+    health.resolve({ nearExpiry: 0, expired: 1 });
+    await expect(authentication).rejects.toThrow('Invalid API key');
+
+    expect(outcome).toBe('rejected');
+    expect(recorded.events).toEqual([
+      { name: 'hermes.auth_denied', attributes: { reason: 'expired' } },
+      { name: 'hermes.credential_rejected', attributes: { reason: 'expired' } },
+    ]);
+  });
+
+  it('does not delay successful authority while aggregate telemetry remains pending', async () => {
+    const recorded = recordingTelemetry();
+    const health = deferred<{ nearExpiry: number; expired: number }>();
+    const activeStore = {
+      ...store(credential({ expiresAt: new Date(NOW.getTime() + 60_000) })),
+      countActiveCredentialExpiryHealth: () => health.promise,
+    };
+    const authentication = resolveHermesAgentCredential(
+      rawFixtureCredential(),
+      activeStore,
+      recorded.telemetry,
+      () => new Date(NOW),
+    );
+
+    const outcome = await outcomeBeforeTelemetry(authentication);
+    health.resolve({ nearExpiry: 1, expired: 0 });
+    await expect(authentication).resolves.toMatchObject({ user: { id: ownerId } });
+    expect(outcome).toBe('resolved');
+  });
+
+  it('does not delay a stable rejection or double-count its denial while aggregate telemetry remains pending', async () => {
+    const recorded = recordingTelemetry();
+    const health = deferred<{ nearExpiry: number; expired: number }>();
+    const missingStore = {
+      ...store(null),
+      countActiveCredentialExpiryHealth: () => health.promise,
+    };
+    const authentication = resolveHermesAgentCredential(
+      rawFixtureCredential(),
+      missingStore,
+      recorded.telemetry,
+      () => new Date(NOW),
+    );
+
+    const outcome = await outcomeBeforeTelemetry(authentication);
+    health.resolve({ nearExpiry: 0, expired: 0 });
+    await expect(authentication).rejects.toThrow('Invalid API key');
+    expect(outcome).toBe('rejected');
+    expect(recorded.events).toEqual([
+      { name: 'hermes.auth_denied', attributes: { reason: 'invalid_credential' } },
+      { name: 'hermes.credential_rejected', attributes: { reason: 'invalid_credential' } },
+    ]);
+  });
+
+  it('consumes a delayed aggregate telemetry rejection after authority has returned', async () => {
+    const recorded = recordingTelemetry();
+    const health = deferred<{ nearExpiry: number; expired: number }>();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const authentication = resolveHermesAgentCredential(
+        rawFixtureCredential(),
+        {
+          ...store(credential({ expiresAt: new Date(NOW.getTime() + 60_000) })),
+          countActiveCredentialExpiryHealth: () => health.promise,
+        },
+        recorded.telemetry,
+        () => new Date(NOW),
+      );
+      expect(await outcomeBeforeTelemetry(authentication)).toBe('resolved');
+      await expect(authentication).resolves.toMatchObject({ user: { id: ownerId } });
+
+      health.reject(new Error('delayed telemetry failure'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+      expect(recorded.gauges).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('refreshes authoritative active near-expiry and expired counts on normal authentication', async () => {
     const recorded = recordingTelemetry();
     const healthCalls: Array<{ now: Date; nearExpiryCutoff: Date }> = [];
@@ -318,6 +446,7 @@ describe('full Hermes active credential authentication', () => {
       recorded.telemetry,
       () => new Date(NOW),
     )).resolves.toMatchObject({ user: { id: ownerId } });
+    await Promise.resolve();
 
     expect(healthCalls).toEqual([{
       now: NOW,
