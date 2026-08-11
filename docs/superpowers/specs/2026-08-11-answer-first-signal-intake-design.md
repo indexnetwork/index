@@ -41,25 +41,26 @@ The design preserves useful personalization without allowing premises to reinter
 4. One structured model call chooses the follow-up question and returns an ordinary list of options.
 5. The question is normalized and returned unchanged to Mac or web.
 
-The failure occurs at step 4: the planner sees both evidence sources but the output contract does not preserve their priority or provenance.
+The failure occurs at step 4: the planner sees both evidence sources but the output contract does not preserve their priority or provenance. Live evaluation additionally proved that a one-call schema with separate option fields is insufficient: the model can still misclassify profile-derived ideas as answer-grounded.
 
 ## Design
 
-### 1. Evidence priority
+### 1. Evidence isolation
 
-The follow-up planner receives two explicitly ranked context blocks:
+Use two sequential structured model stages instead of asking one model call to self-classify provenance:
 
-1. **Primary evidence: answered rounds**
+1. **Core generation receives answered rounds only**
    - Determines the missing axis.
-   - Determines the question prompt.
-   - Grounds the core options.
+   - Writes a standalone, domain-naming question prompt.
+   - Produces two or three concrete answer-grounded options.
+   - Cannot be contaminated by profile context because the profile brief is absent from this call.
 
-2. **Secondary context: profile brief**
-   - May produce one optional profile bridge.
-   - Cannot select the missing axis.
-   - Cannot reinterpret or narrow the user’s answer.
+2. **Bridge generation receives the immutable core output plus the profile brief**
+   - May append one optional profile bridge after the core options.
+   - Cannot rewrite, replace, remove, or reclassify core options.
+   - Returns null when the intersection is forced or redundant.
 
-The human prompt should present answered rounds before the profile brief and label their roles explicitly. The system prompt must state that the latest interview evidence has authority over profile personalization.
+This boundary makes answer-first behavior structural rather than dependent on the model honestly labeling its own profile-derived ideas.
 
 ### 2. Bounded missing axes
 
@@ -74,10 +75,10 @@ The planner must not re-ask a dimension already answered. No single axis is mand
 
 ### 3. Internal structured output
 
-Replace the planner’s undifferentiated question options with an internal question candidate shaped conceptually as:
+Replace the planner’s undifferentiated question options with separate internal core and bridge contracts shaped conceptually as:
 
 ```ts
-interface AnswerFirstFollowUpCandidate {
+interface AnswerFirstCoreQuestion {
   missingAxis: "purpose" | "desired_attributes" | "exchange" | "constraint";
   title: string;
   prompt: string;
@@ -85,20 +86,24 @@ interface AnswerFirstFollowUpCandidate {
     label: string;
     description: string;
   }>;
-  profileBridgeOption: {
-    label: string;
-    description: string;
-  } | null;
   multiSelect: boolean;
 }
 
 interface AnswerFirstFollowUpPlan {
-  questions: AnswerFirstFollowUpCandidate[];
+  questions: AnswerFirstCoreQuestion[];
   plannedFollowUpCount: number;
+}
+
+interface ProfileBridgeDecision {
+  questionIndex: number;
+  profileBridgeOption: {
+    label: string;
+    description: string;
+  } | null;
 }
 ```
 
-The plan wrapper preserves the existing singular/plural question batching and locked `plannedFollowUpCount` behavior. Only each question candidate's internal option contract changes. Neither internal type changes the public `IntakePackQuestion` type.
+The plan wrapper preserves the existing singular/plural question batching and locked `plannedFollowUpCount` behavior. The bridge stage returns at most one indexed decision per immutable core question. Neither internal contract changes the public `IntakePackQuestion` type.
 
 ### 4. Assembly and validation
 
@@ -116,9 +121,9 @@ Rules:
 
 “Require at least two” applies to generated selectable options, not to the user’s answer. If the model returns fewer than two usable answer-grounded choices, the generated candidate is invalid and is not shown.
 
-The deterministic validator enforces the structure and quota represented by these separate fields. It cannot independently prove that the model classified an option's semantic provenance honestly; the prompt contract and semantic intake cases cover that quality boundary.
+The deterministic validator enforces the core-option quota and appends only the bridge stage's indexed option. Because core generation never receives the profile, it no longer relies on model-authored provenance labels.
 
-If normalization or structured generation fails, serve the existing neutral `FALLBACK_BRING_QUESTION`. Intake remains available rather than surfacing a profile-dominated or malformed question.
+If core generation or normalization fails, serve the existing neutral `FALLBACK_BRING_QUESTION`. If optional bridge generation fails, preserve and return the valid core questions without personalization.
 
 ### 5. Public compatibility
 
@@ -164,10 +169,11 @@ That candidate is discarded because it contains fewer than two answer-grounded o
 
 ## Failure Handling
 
-- **Structured model error:** return the existing neutral fallback.
+- **Core structured-model error:** return the existing neutral fallback.
 - **Fewer than two answer-grounded options:** discard the candidate and return the fallback.
 - **Duplicate option labels:** deduplicate; if fewer than two answer-grounded options remain, return the fallback.
-- **More than one attempted profile bridge:** the schema permits only one; invalid structured output follows the existing model failure path.
+- **Bridge structured-model error:** return the valid core questions without a bridge.
+- **Duplicate or out-of-range bridge decision:** accept at most the first valid decision for each existing question index.
 - **No natural profile intersection:** return only answer-grounded options.
 - **Client behavior:** unchanged; clients continue to offer free text in addition to generated options.
 
@@ -177,20 +183,20 @@ That candidate is discarded because it contains fewer than two answer-grounded o
 
 Add or update tests around `SignalIntakeOrchestrator.generateFollowUps` to prove:
 
-1. answered rounds are rendered as primary evidence and before the profile brief;
-2. the prompt says the profile cannot choose the missing axis;
+1. the core planner prompt contains the answered rounds and no profile brief;
+2. bridge generation receives the profile brief and immutable core questions;
 3. two or three answer-grounded options normalize successfully;
 4. a profile bridge is optional;
 5. no more than one profile bridge reaches the public payload;
 6. answer-grounded options always precede the profile bridge;
 7. duplicate labels are removed;
 8. fewer than two usable answer-grounded options returns `FALLBACK_BRING_QUESTION`;
-9. malformed structured output returns the fallback;
+9. a bridge-model failure preserves valid core questions;
 10. the public `IntakePackQuestion` shape remains unchanged.
 
-### Semantic intake cases
+### Live semantic intake harness
 
-Add representative model-backed or eval cases covering:
+Add `eval/intake`, a live harness that runs the real two-stage planner and an independent semantic judge, with provider-free corpus/runner/scorer tests gated by `eval:verify`. Cover:
 
 - **Unrelated profile:** scuba divers plus a technology-heavy profile. Most options must explore diving-related purposes or counterpart types; no more than one option may bridge to technology.
 - **Unrelated profile:** a running club plus an investor profile. Investment themes must not dominate.
@@ -209,6 +215,10 @@ The initial change does not alter service telemetry. It must not log the user’
 
 - `packages/protocol/src/signals/application/intake.orchestrator.ts`
 - `packages/protocol/src/signals/application/tests/intake.orchestrator.spec.ts`
-- applicable intake eval corpus or tests, if a model-backed suite already owns follow-up semantic quality
+- `packages/protocol/eval/intake/**`
+- `packages/protocol/eval/verify.ts`
+- `packages/protocol/eval/README.md`
+- `packages/protocol/package.json`
+- `packages/protocol/CHANGELOG.md`
 
-No changes are expected in Mac, web, service controllers, database adapters, or schemas.
+No changes are expected in Mac, web, service controllers, database adapters, or database schemas.

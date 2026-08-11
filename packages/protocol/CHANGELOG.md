@@ -51,6 +51,7 @@ pin a supported release, use `latest`.
   enrichment are unchanged.
 
 ### Added
+- Add a live answer-first signal-intake eval with unrelated, relevant, and no-bridge profile cases plus provider-free corpus, runner, and scorer checks.
 - Add the protocol-only Guided Atlas, deterministic architecture inventory
   generator, and source-evidenced Configuration Lab. The atlas explains
   normative concepts, the current `packages/protocol` reference implementation,
@@ -69,6 +70,7 @@ pin a supported release, use `latest`.
   `SynthesisResult` types. Minor bump: additive surface only.
 
 ### Changed
+- Make fast signal-intake follow-ups answer-first with a two-stage model boundary: an answer-only core call chooses the missing axis and supplies two or three concrete domain options, then an isolated bridge call may append at most one premise-derived profile option so an existing profile theme cannot dominate or reorder a newly stated intent.
 - Remove unsupported deprecated source/deep forwarding shims after migrating repository consumers to canonical modules; stable package-root exports are unchanged.
 - Add a fail-closed isolated provider-free test gate (10.1.1). Tooling-only
   safety foundation; no runtime or public API behavior changes.
