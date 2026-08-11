@@ -133,7 +133,7 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       opportunities: {
         getOpportunity: async (id) => opportunitiesById.get(id) ?? null,
-        getOpportunitiesForUser: async (userId) => userId === 'viewer'
+        getNotificationSnapshotOpportunities: async (userId) => userId === 'viewer'
           ? [actionableOpportunity, actedOpportunity]
           : [],
       },
@@ -162,6 +162,74 @@ describe('NotificationDeliveryService persisted projection', () => {
     expect(snapshot.find(({ id }) => id === actionableOpportunity.id)?.body).not.toContain('internal scoring');
   });
 
+  test('snapshot preserves realtime parity for actionable roles omitted by the legacy UI query', async () => {
+    const legacyOmitted = [
+      opportunity({
+        id: 'latent-no-introducer-agent',
+        status: 'latent',
+        actors: [
+          { userId: 'viewer', networkId: 'network-1', role: 'agent' },
+          { userId: 'patient-peer', networkId: 'network-1', role: 'patient' },
+        ],
+      }),
+      opportunity({
+        id: 'latent-approved-introducer-patient',
+        status: 'latent',
+        actors: [
+          { userId: 'viewer', networkId: 'network-1', role: 'patient' },
+          { userId: 'agent-peer', networkId: 'network-1', role: 'agent' },
+          { userId: 'introducer', networkId: 'network-1', role: 'introducer', approved: true },
+        ],
+      }),
+      opportunity({
+        id: 'pending-introducer-agent',
+        status: 'pending',
+        actors: [
+          { userId: 'viewer', networkId: 'network-1', role: 'agent' },
+          { userId: 'patient-peer', networkId: 'network-1', role: 'patient' },
+          { userId: 'introducer', networkId: 'network-1', role: 'introducer', approved: true },
+        ],
+      }),
+    ];
+    const byId = new Map(legacyOmitted.map((row) => [row.id, row]));
+    const identities = new Map([
+      ['viewer', identity('viewer', 'Viewer')],
+      ['patient-peer', identity('patient-peer', 'Patient Peer')],
+      ['agent-peer', identity('agent-peer', 'Agent Peer')],
+      ['introducer', identity('introducer', 'Introducer')],
+    ]);
+    const published: Array<{ userId: string; event: NotificationStreamEvent }> = [];
+    const service = new NotificationDeliveryService({
+      questioner: {
+        getById: async () => null,
+        findPending: async () => [],
+      },
+      opportunities: {
+        getOpportunity: async (id) => byId.get(id) ?? null,
+        getNotificationSnapshotOpportunities: async () => legacyOmitted,
+      },
+      getIdentity: async (userId) => identities.get(userId) ?? null,
+      getIntentLabel: async () => undefined,
+      publish: async (userId, event) => { published.push({ userId, event }); },
+    });
+
+    for (const row of legacyOmitted) {
+      await service.publishOpportunityActionable({ opportunity: { id: row.id, status: row.status } });
+    }
+
+    const realtimeForViewer = published
+      .filter(({ userId }) => userId === 'viewer')
+      .map(({ event }) => event);
+    const snapshot = await service.snapshot('viewer');
+
+    expect(snapshot.map(({ id }) => id)).toEqual([
+      'latent-no-introducer-agent',
+      'latent-approved-introducer-patient',
+      'pending-introducer-agent',
+    ]);
+    expect(sortEvents(snapshot)).toEqual(sortEvents(realtimeForViewer));
+  });
+
   test('bounds intent and opportunity labels used in question titles', async () => {
     const longLabel = 'l'.repeat(100);
     const longName = 'n'.repeat(100);
@@ -187,7 +255,7 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       opportunities: {
         getOpportunity: async () => labelOpportunity,
-        getOpportunitiesForUser: async () => [],
+        getNotificationSnapshotOpportunities: async () => [],
       },
       getIdentity: async (userId) => userId === 'peer' ? identity('peer', longName) : identity('viewer', 'Viewer'),
       getIntentLabel: async () => longLabel,
@@ -236,7 +304,7 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       opportunities: {
         getOpportunity: async () => negotiatingOpportunity,
-        getOpportunitiesForUser: async () => [],
+        getNotificationSnapshotOpportunities: async () => [],
       },
       getIdentity: async (userId) => userId === 'peer'
         ? identity('peer', 'Casey Counterpart')
@@ -271,7 +339,7 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       opportunities: {
         getOpportunity: async () => null,
-        getOpportunitiesForUser: async () => [],
+        getNotificationSnapshotOpportunities: async () => [],
       },
       getIdentity: async () => null,
       getIntentLabel: async () => undefined,

@@ -14,7 +14,7 @@ const logger = log.service.from('NotificationDelivery');
 
 export interface NotificationDeliveryDependencies {
   questioner: Pick<QuestionerAdapter, 'getById' | 'findPending'>;
-  opportunities: Pick<OpportunityDatabaseAdapter, 'getOpportunity' | 'getOpportunitiesForUser'>;
+  opportunities: Pick<OpportunityDatabaseAdapter, 'getOpportunity' | 'getNotificationSnapshotOpportunities'>;
   getIdentity: (userId: string) => Promise<UserIdentity | null>;
   getIntentLabel: (intentId: string) => Promise<string | undefined>;
   publish: NotificationStreamPublisher;
@@ -156,9 +156,7 @@ export class NotificationDeliveryService {
   async snapshot(userId: string): Promise<NotificationStreamEvent[]> {
     const [questions, opportunities] = await Promise.all([
       this.deps.questioner.findPending(userId),
-      this.deps.opportunities.getOpportunitiesForUser(userId, {
-        statuses: ['latent', 'pending'],
-      }),
+      this.deps.opportunities.getNotificationSnapshotOpportunities(userId),
     ]);
     const pendingQuestions = questions.filter(({ status }) => status === 'pending');
     const actionableOpportunities = opportunities.filter((opportunity) =>

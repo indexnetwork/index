@@ -242,6 +242,18 @@ export async function compensateTasklessNegotiatingOpportunityInTransaction(
   return row ? toOpportunityRow(row) : null;
 }
 
+/**
+ * Candidate rows for persisted notification catch-up. This intentionally uses
+ * actor membership rather than the legacy UI role-visibility policy; the
+ * notification projection applies canonical actionability after the read.
+ */
+export function notificationSnapshotOpportunityWhere(userId: string) {
+  return and(
+    sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+    inArray(opportunities.status, ['latent', 'pending']),
+  )!;
+}
+
 export class OpportunityDatabaseAdapter {
   async getProfile(userId: string): Promise<UserIdentity | null> {
     return buildProfileFromUser(userId);
@@ -723,6 +735,15 @@ export class OpportunityDatabaseAdapter {
     if (rows.length === 0) return null;
     if (rows.length > 1) return { ambiguous: true };
     return { id: rows[0].id };
+  }
+
+  async getNotificationSnapshotOpportunities(userId: string): Promise<OpportunityRow[]> {
+    const rows = await db
+      .select()
+      .from(opportunities)
+      .where(notificationSnapshotOpportunityWhere(userId))
+      .orderBy(desc(opportunities.createdAt));
+    return rows.map(toOpportunityRow);
   }
 
   async getOpportunitiesForUser(
