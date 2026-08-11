@@ -2190,102 +2190,85 @@ final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProvidin
         guard posix_spawnattr_setflags(&attributes, Int16(flags)) == 0 else {
             throw HermesRuntimeFailure.connectorStatusFailed
         }
-        var child = pid_t()
-        let spawnStatus = executable.path.withCString { path in
-            arguments.withUnsafeMutableBufferPointer { argv in
-                environmentPointers.withUnsafeMutableBufferPointer { envp in
-                    posix_spawn(
-                        &child, path, &actions, &attributes, argv.baseAddress, envp.baseAddress
-                    )
-                }
-            }
-        }
-        guard spawnStatus == 0 else { throw HermesRuntimeFailure.connectorStatusFailed }
-
-        _ = Darwin.close(inputPipe[0]); inputPipe[0] = -1
-        _ = Darwin.close(outputPipe[1]); outputPipe[1] = -1
-
-        var childReaped = false
-        func killAndReapSuspendedChild() {
-            guard !childReaped else { return }
-            _ = Darwin.kill(child, SIGKILL)
-            var status: Int32 = 0
-            while Darwin.waitpid(child, &status, 0) < 0 && errno == EINTR {}
-            childReaped = true
-        }
-
-        do {
-            try HermesConnectorCodeAttestor.attestSuspendedChild(
-                pid: child,
-                expected: expectedLaunchIdentity,
-                requirement: requirement
-            )
-        } catch {
-            killAndReapSuspendedChild()
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-
-        guard Darwin.kill(child, SIGCONT) == 0 else {
-            killAndReapSuspendedChild()
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        // Request bytes remain parent-owned until dynamic attestation succeeds
-        // and the verified child has been resumed.
-        let outputReadDescriptor = outputPipe[0]; outputPipe[0] = -1
-        let inputWriteDescriptor = inputPipe[1]; inputPipe[1] = -1
         let capture = HermesExactBoundedCapture(limit: Self.maximumConnectorResponseBytes)
         let io = DispatchGroup()
-        io.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            let handle = FileHandle(fileDescriptor: outputReadDescriptor, closeOnDealloc: true)
-            defer { try? handle.close(); io.leave() }
-            do {
-                while let chunk = try handle.read(upToCount: 16_384), !chunk.isEmpty {
-                    capture.append(chunk)
-                }
-            } catch { capture.append(Data(repeating: 0, count: Self.maximumConnectorResponseBytes + 1)) }
-        }
-        io.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            let handle = FileHandle(fileDescriptor: inputWriteDescriptor, closeOnDealloc: true)
-            defer { try? handle.close(); io.leave() }
-            do { try handle.write(contentsOf: input) } catch {}
-        }
-
-        var waitStatus: Int32 = 0
-        var timedOut = false
-        let deadline = DispatchTime.now().uptimeNanoseconds
-            + UInt64(Self.timeout * 1_000_000_000)
-        while true {
-            let waited = Darwin.waitpid(child, &waitStatus, WNOHANG)
-            if waited == child {
-                childReaped = true
-                break
-            }
-            if waited < 0 {
-                if errno == EINTR { continue }
-                killAndReapSuspendedChild()
+        let outcome: HermesSuspendedChildOutcome
+        do {
+            outcome = try HermesSuspendedChildLifecycle.run(
+                spawnSuspended: {
+                    var child = pid_t()
+                    let spawnStatus = executable.path.withCString { path in
+                        arguments.withUnsafeMutableBufferPointer { argv in
+                            environmentPointers.withUnsafeMutableBufferPointer { envp in
+                                posix_spawn(
+                                    &child, path, &actions, &attributes,
+                                    argv.baseAddress, envp.baseAddress
+                                )
+                            }
+                        }
+                    }
+                    guard spawnStatus == 0 else {
+                        throw HermesSuspendedChildLifecycleError.spawnFailed
+                    }
+                    // The shared lifecycle owns the child from this return. The
+                    // parent no longer needs the descriptors installed in it.
+                    _ = Darwin.close(inputPipe[0]); inputPipe[0] = -1
+                    _ = Darwin.close(outputPipe[1]); outputPipe[1] = -1
+                    return child
+                },
+                attest: { child in
+                    try HermesConnectorCodeAttestor.attestSuspendedChild(
+                        pid: child,
+                        expected: expectedLaunchIdentity,
+                        requirement: requirement
+                    )
+                },
+                startIO: {
+                    // This closure is invoked only after attestation and SIGCONT.
+                    let outputReadDescriptor = outputPipe[0]; outputPipe[0] = -1
+                    let inputWriteDescriptor = inputPipe[1]; inputPipe[1] = -1
+                    io.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let handle = FileHandle(
+                            fileDescriptor: outputReadDescriptor, closeOnDealloc: true
+                        )
+                        defer { try? handle.close(); io.leave() }
+                        do {
+                            while let chunk = try handle.read(upToCount: 16_384),
+                                  !chunk.isEmpty {
+                                capture.append(chunk)
+                            }
+                        } catch {
+                            capture.append(Data(
+                                repeating: 0,
+                                count: Self.maximumConnectorResponseBytes + 1
+                            ))
+                        }
+                    }
+                    io.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let handle = FileHandle(
+                            fileDescriptor: inputWriteDescriptor, closeOnDealloc: true
+                        )
+                        defer { try? handle.close(); io.leave() }
+                        do { try handle.write(contentsOf: input) } catch {}
+                    }
+                },
+                timeoutNanoseconds: UInt64(Self.timeout * 1_000_000_000)
+            )
+        } catch let error as HermesSuspendedChildLifecycleError {
+            switch error {
+            case .attestationFailed, .resumeFailed:
+                throw HermesRuntimeFailure.connectorUnverified
+            default:
                 throw HermesRuntimeFailure.connectorStatusFailed
             }
-            if DispatchTime.now().uptimeNanoseconds >= deadline {
-                timedOut = true
-                _ = Darwin.kill(child, SIGTERM)
-                let terminationDeadline = DispatchTime.now().uptimeNanoseconds + 2_000_000_000
-                while !childReaped,
-                      DispatchTime.now().uptimeNanoseconds < terminationDeadline {
-                    let terminated = Darwin.waitpid(child, &waitStatus, WNOHANG)
-                    if terminated == child {
-                        childReaped = true
-                        break
-                    }
-                    if terminated < 0, errno != EINTR { break }
-                    Darwin.usleep(10_000)
-                }
-                killAndReapSuspendedChild()
-                break
-            }
-            Darwin.usleep(10_000)
+        } catch {
+            throw HermesRuntimeFailure.connectorStatusFailed
         }
+
+        let waitStatus = outcome.status
+        let timedOut = outcome.timedOut
         let ioCompleted = io.wait(timeout: .now() + 2) == .success
         let captured = capture.result()
         let afterExecution = try executableDescriptor.snapshot()

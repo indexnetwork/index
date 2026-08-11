@@ -7,6 +7,9 @@ const runtime = await Bun.file(runtimeFile).exists()
 const launchAttestation = await Bun.file(
   new URL('./Sources/ConnectorLaunchAttestation.swift', import.meta.url),
 ).text();
+const launchFixture = await Bun.file(
+  new URL('./Tests/ConnectorLaunchAttestationFixture.swift', import.meta.url),
+).text();
 const main = await Bun.file(new URL('./Sources/main.swift', import.meta.url)).text();
 const build = await Bun.file(new URL('./build.sh', import.meta.url)).text();
 const nativeCompatibilityFile = new URL('./Tests/HermesPersistenceCompatibility.swift', import.meta.url);
@@ -461,7 +464,7 @@ test('uses a verified credential-free connector status boundary for runtime auth
     'HermesConnectorCodeAttestor.attestSuspendedChild',
     'SecCodeCopyGuestWithAttributes',
     'kSecCodeInfoUnique',
-    'Darwin.kill(child, SIGCONT)',
+    'operations.signal(child, SIGCONT)',
   ]) expect(runtime + launchAttestation).toContain(token);
 
   for (const forbidden of [
@@ -477,6 +480,39 @@ test('uses a verified credential-free connector status boundary for runtime auth
     runtime.indexOf('final class HermesRuntimeManager'),
   );
   expect(connectorBoundary).not.toContain('process.executableURL = executable');
+});
+
+test('production launch delegates ordered child ownership and fault coverage to the shared lifecycle', () => {
+  const productionLaunch = runtime.match(
+    /private func launch\([\s\S]*?\n    private func runCommand/,
+  )?.[0] ?? '';
+  const sharedLifecycle = launchAttestation.slice(
+    launchAttestation.indexOf('enum HermesSuspendedChildLifecycle'),
+  );
+
+  expect(productionLaunch).toContain('HermesSuspendedChildLifecycle.run(');
+  expect(productionLaunch).toContain('startIO: {');
+  expect(productionLaunch).not.toContain('Darwin.kill(child, SIGCONT)');
+  expect(productionLaunch).not.toContain('Darwin.waitpid');
+  expect(productionLaunch.indexOf('try handle.write(contentsOf: input)'))
+    .toBeGreaterThan(productionLaunch.indexOf('startIO: {'));
+
+  const attestation = sharedLifecycle.indexOf('try attest(child)');
+  const resume = sharedLifecycle.indexOf('operations.signal(child, SIGCONT)');
+  const stdin = sharedLifecycle.indexOf('try startIO()');
+  expect(attestation).toBeGreaterThanOrEqual(0);
+  expect(resume).toBeGreaterThan(attestation);
+  expect(stdin).toBeGreaterThan(resume);
+
+  for (const faultCase of [
+    'injectedAttestationFailureWritesNoStdin',
+    'injectedResumeFailureCleansUp',
+    'injectedTimeoutEscalates',
+    'injectedCleanupErrorsStayBounded',
+  ]) expect(launchFixture).toContain(faultCase);
+  expect(launchFixture).toContain('HermesSuspendedChildLifecycle.run(');
+  expect(launchFixture).not.toContain('private static func waitForChild');
+  expect(launchFixture).not.toContain('private static func killAndReap');
 });
 
 test('connector staging rejects ancestor links, source replacement, and staged mutation', () => {
