@@ -10,12 +10,93 @@ on:
       - "bun.lock"
       - ".github/workflows/hermes-backend-production-assurance.yml"
   workflow_dispatch:
+    inputs:
+      PREVIOUS_API_IMAGE:
+        description: "Release-ops supplied immutable digest of the currently deployed API image (repository@sha256:...)"
+        required: true
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  previous-api-pr-fixture-evidence:
+    name: Non-production PR fixture compatibility evidence
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hermes_assurance
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres -d hermes_assurance"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+          no-cache: true
+
+      - name: Install frozen dependencies
+        run: |
+          bun pm cache rm || true
+          bun install --frozen-lockfile
+
+      - name: Install pgvector in exact PostgreSQL service
+        env:
+          POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_SERVICE_CONTAINER"
+          test "$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")" = "postgres:16"
+          docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            apt-get update
+            apt-get install -y --no-install-recommends postgresql-16-pgvector
+            rm -rf /var/lib/apt/lists/*
+          '
+          docker exec "$POSTGRES_SERVICE_CONTAINER" \
+            psql --username postgres --dbname hermes_assurance \
+              --no-psqlrc --tuples-only --no-align \
+              --command "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" \
+            | grep -qx 1
+
+      - name: Migrate disposable compatibility database
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+        run: bun run --cwd services/api db:migrate:test
+
+      - name: Build local previous-API fixture
+        run: |
+          docker build -t index-api-previous-fixture:pr \
+            -f services/api/src/cli/tests/fixtures/previous-api.Dockerfile \
+            services/api/src/cli/tests/fixtures
+
+      - name: Record non-production fixture denial
+        env:
+          NODE_ENV: test
+          ALLOW_MUTABLE_PREVIOUS_IMAGE: "1"
+          PREVIOUS_API_IMAGE: index-api-previous-fixture:pr
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+          HERMES_PREVIOUS_API_REPORT: previous-api-compatibility-pr-fixture.json
+        run: bun run --cwd services/api verify:hermes-previous-api-compatibility
+
+      - name: Upload non-production compatibility evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: non-production-previous-api-pr-fixture-evidence
+          path: services/api/previous-api-compatibility-pr-fixture.json
+          if-no-files-found: error
+          retention-days: 14
+
   disposable-postgres-assurance:
     runs-on: ubuntu-24.04
     services:
@@ -71,3 +152,72 @@ jobs:
         run: |
           bun run --cwd services/api db:migrate:test
           bun run --cwd services/api test:hermes-production-assurance
+
+  previous-api-protected-compatibility:
+    name: Protected currently-deployed API compatibility gate
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hermes_assurance
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres -d hermes_assurance"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+          no-cache: true
+
+      - name: Install frozen dependencies
+        run: |
+          bun pm cache rm || true
+          bun install --frozen-lockfile
+
+      - name: Install pgvector in exact PostgreSQL service
+        env:
+          POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_SERVICE_CONTAINER"
+          test "$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")" = "postgres:16"
+          docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            apt-get update
+            apt-get install -y --no-install-recommends postgresql-16-pgvector
+            rm -rf /var/lib/apt/lists/*
+          '
+          docker exec "$POSTGRES_SERVICE_CONTAINER" \
+            psql --username postgres --dbname hermes_assurance \
+              --no-psqlrc --tuples-only --no-align \
+              --command "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" \
+            | grep -qx 1
+
+      - name: Migrate disposable compatibility database
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+        run: bun run --cwd services/api db:migrate:test
+
+      - name: Verify the release-ops supplied currently deployed image
+        env:
+          PREVIOUS_API_IMAGE: ${{ inputs.PREVIOUS_API_IMAGE }}
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+          HERMES_PREVIOUS_API_REPORT: previous-api-compatibility-protected.json
+        run: bun run --cwd services/api verify:hermes-previous-api-compatibility
+
+      - name: Upload protected compatibility evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: protected-previous-api-compatibility-evidence
+          path: services/api/previous-api-compatibility-protected.json
+          if-no-files-found: error
+          retention-days: 30

@@ -11,6 +11,8 @@
     "typecheck:cli-specs": "tsc -p tsconfig.spec.json",
     "test:isolated": "NODE_ENV=test bash scripts/test-isolated.sh",
     "test:hermes-production-assurance": "bash scripts/test-hermes-production-assurance.sh",
+    "test:hermes-previous-api-compatibility": "bun test src/cli/tests/hermes-previous-api-compatibility.spec.ts",
+    "verify:hermes-previous-api-compatibility": "bash scripts/verify-hermes-previous-api-compatibility.sh",
     "test:all": "NODE_ENV=test API_TEST_REQUIRE_DATABASE=1 bun test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
