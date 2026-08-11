@@ -143,10 +143,24 @@ describe('Hermes final production assurance release contract', () => {
     expect(workflow).toContain(`PGVECTOR_PACKAGE_SHA256: ${packageSha256}`);
     expect(workflow).toContain(`PGVECTOR_PACKAGE_URL: ${packageUrl}`);
     expect(workflow.match(/sha256sum --check --strict/g)).toHaveLength(3);
+    expect(workflow).toContain('POSTGRES_JIT_ABI: "19"');
     expect(workflow.match(/showformat=\\\$\{db:Status-Status\} postgresql-16\)" = installed/g)).toHaveLength(3);
     expect(workflow.match(/showformat=\\\$\{db:Status-Status\} libc6\)" = installed/g)).toHaveLength(3);
-    expect(workflow.match(/! dpkg-query --show postgresql-16-jit-llvm/g)).toHaveLength(3);
+    expect(workflow).not.toContain('! dpkg-query --show postgresql-16-jit-llvm');
+    expect(workflow.match(/showformat=\\\$\{Provides\} postgresql-16/g)).toHaveLength(3);
+    expect(workflow.match(/IFS=',' read -r -a provided_packages <<<"\$provides"/g)).toHaveLength(3);
+    const exactProviderCheck = '[[ "$provided" =~ ^postgresql-16-jit-llvm[[:space:]]*\\([[:space:]]*=[[:space:]]*"$expected_jit_abi"[[:space:]]*\\)$ ]]';
+    expect(workflow.split(exactProviderCheck)).toHaveLength(4);
+    expect(workflow.match(/test "\$jit_provider_count" -eq 1/g)).toHaveLength(3);
+    expect(workflow.match(/expected_breaks="postgresql-16-jit-llvm \(<< \$expected_jit_abi\)"/g)).toHaveLength(3);
+    expect(workflow.match(/dpkg-deb --field "\$package_file" Depends\)" = "postgresql-16, libc6 \(>= 2\.38\)"/g)).toHaveLength(3);
+    expect(workflow.match(/dpkg-deb --field "\$package_file" Breaks\)" = "\$expected_breaks"/g)).toHaveLength(3);
     expect(workflow.match(/dpkg --install "\$package_file"/g)).toHaveLength(3);
+    for (const install of workflow.matchAll(/dpkg --install "\$package_file"/g)) {
+      const precedingMetadata = workflow.slice(0, install.index);
+      expect(precedingMetadata.lastIndexOf('dpkg-deb --field "$package_file" Breaks'))
+        .toBeGreaterThan(precedingMetadata.lastIndexOf('docker cp "$package_path"'));
+    }
     expect(workflow.match(/dpkg-query --show --showformat=\\\$\{Version\} postgresql-16-pgvector/g)).toHaveLength(3);
     expect(workflow.match(/SELECT extversion FROM pg_extension WHERE extname = 'vector'/g)).toHaveLength(3);
     expect(workflow).not.toMatch(/apt-get\s+(?:update|install)/);

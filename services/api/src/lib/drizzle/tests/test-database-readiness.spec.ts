@@ -14,6 +14,7 @@ const assuranceWorkflow = existsSync(assuranceWorkflowPath)
   ? readFileSync(assuranceWorkflowPath, 'utf8')
   : '';
 const POSTGRES_ASSURANCE_REFERENCE = 'postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b';
+const POSTGRES_JIT_ABI = '19';
 const PGVECTOR_PACKAGE_VERSION = '0.8.6-1.pgdg13+1';
 const PGVECTOR_EXTENSION_VERSION = '0.8.6';
 const PGVECTOR_PACKAGE_SHA256 = '9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc';
@@ -88,9 +89,14 @@ describe('Hermes production assurance contract', () => {
     expect(assuranceWorkflow).toContain(
       `docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu`,
     );
+    expect(assuranceWorkflow).toContain(`POSTGRES_JIT_ABI: "${POSTGRES_JIT_ABI}"`);
     expect(assuranceWorkflow).toContain('showformat=\\${db:Status-Status} postgresql-16)" = installed');
     expect(assuranceWorkflow).toContain('showformat=\\${db:Status-Status} libc6)" = installed');
-    expect(assuranceWorkflow).toContain('! dpkg-query --show postgresql-16-jit-llvm');
+    expect(assuranceWorkflow).not.toContain('! dpkg-query --show postgresql-16-jit-llvm');
+    expect(assuranceWorkflow.match(/showformat=\\\$\{Provides\} postgresql-16/g) ?? []).toHaveLength(3);
+    expect(assuranceWorkflow.match(/test "\$jit_provider_count" -eq 1/g) ?? []).toHaveLength(3);
+    expect(assuranceWorkflow.match(/dpkg-deb --field "\$package_file" Breaks\)" = "\$expected_breaks"/g) ?? [])
+      .toHaveLength(3);
     expect(assuranceWorkflow).toContain('sha256sum --check --strict');
     expect(assuranceWorkflow).toContain('dpkg --install "$package_file"');
     expect(assuranceWorkflow).toContain(

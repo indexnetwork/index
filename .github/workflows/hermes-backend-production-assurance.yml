@@ -44,6 +44,7 @@ permissions:
 # participates in a run.
 env:
   POSTGRES_ASSURANCE_REFERENCE: postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b
+  POSTGRES_JIT_ABI: "19"
   PGVECTOR_PACKAGE_VERSION: 0.8.6-1.pgdg13+1
   PGVECTOR_EXTENSION_VERSION: 0.8.6
   PGVECTOR_PACKAGE_SHA256: 9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc
@@ -99,24 +100,40 @@ jobs:
           printf '%s  %s\n' "$PGVECTOR_PACKAGE_SHA256" "$package_path" \
             | sha256sum --check --strict
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            expected_jit_abi="$1"
             test "$(dpkg --print-architecture)" = amd64
             dpkg --audit
             test "$(dpkg-query --show --showformat=\${db:Status-Status} postgresql-16)" = installed
             test "$(dpkg-query --show --showformat=\${db:Status-Status} libc6)" = installed
-            ! dpkg-query --show postgresql-16-jit-llvm >/dev/null 2>&1
-          '
+            provides="$(dpkg-query --show --showformat=\${Provides} postgresql-16)"
+            jit_provider_count=0
+            IFS=',' read -r -a provided_packages <<<"$provides"
+            for provided in "${provided_packages[@]}"; do
+              provided="${provided#"${provided%%[![:space:]]*}"}"
+              provided="${provided%"${provided##*[![:space:]]}"}"
+              if [[ "$provided" == postgresql-16-jit-llvm* ]]; then
+                [[ "$provided" =~ ^postgresql-16-jit-llvm[[:space:]]*\([[:space:]]*=[[:space:]]*"$expected_jit_abi"[[:space:]]*\)$ ]]
+                ((jit_provider_count += 1))
+              fi
+            done
+            test "$jit_provider_count" -eq 1
+          ' -- "$POSTGRES_JIT_ABI"
           docker cp "$package_path" "$POSTGRES_SERVICE_CONTAINER:/tmp/$package_name"
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
             package_file="$1"
             expected_version="$2"
+            expected_jit_abi="$3"
+            expected_breaks="postgresql-16-jit-llvm (<< $expected_jit_abi)"
             test "$(dpkg-deb --field "$package_file" Package)" = postgresql-16-pgvector
             test "$(dpkg-deb --field "$package_file" Version)" = "$expected_version"
             test "$(dpkg-deb --field "$package_file" Architecture)" = amd64
+            test "$(dpkg-deb --field "$package_file" Depends)" = "postgresql-16, libc6 (>= 2.38)"
+            test "$(dpkg-deb --field "$package_file" Breaks)" = "$expected_breaks"
             dpkg --install "$package_file"
             test "$(dpkg-query --show --showformat=\${Version} postgresql-16-pgvector)" = "$expected_version"
             dpkg --audit
             rm -f "$package_file"
-          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION"
+          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION" "$POSTGRES_JIT_ABI"
           rm -f "$package_path"
           trap - EXIT
           docker exec "$POSTGRES_SERVICE_CONTAINER" \
@@ -305,24 +322,40 @@ jobs:
           printf '%s  %s\n' "$PGVECTOR_PACKAGE_SHA256" "$package_path" \
             | sha256sum --check --strict
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            expected_jit_abi="$1"
             test "$(dpkg --print-architecture)" = amd64
             dpkg --audit
             test "$(dpkg-query --show --showformat=\${db:Status-Status} postgresql-16)" = installed
             test "$(dpkg-query --show --showformat=\${db:Status-Status} libc6)" = installed
-            ! dpkg-query --show postgresql-16-jit-llvm >/dev/null 2>&1
-          '
+            provides="$(dpkg-query --show --showformat=\${Provides} postgresql-16)"
+            jit_provider_count=0
+            IFS=',' read -r -a provided_packages <<<"$provides"
+            for provided in "${provided_packages[@]}"; do
+              provided="${provided#"${provided%%[![:space:]]*}"}"
+              provided="${provided%"${provided##*[![:space:]]}"}"
+              if [[ "$provided" == postgresql-16-jit-llvm* ]]; then
+                [[ "$provided" =~ ^postgresql-16-jit-llvm[[:space:]]*\([[:space:]]*=[[:space:]]*"$expected_jit_abi"[[:space:]]*\)$ ]]
+                ((jit_provider_count += 1))
+              fi
+            done
+            test "$jit_provider_count" -eq 1
+          ' -- "$POSTGRES_JIT_ABI"
           docker cp "$package_path" "$POSTGRES_SERVICE_CONTAINER:/tmp/$package_name"
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
             package_file="$1"
             expected_version="$2"
+            expected_jit_abi="$3"
+            expected_breaks="postgresql-16-jit-llvm (<< $expected_jit_abi)"
             test "$(dpkg-deb --field "$package_file" Package)" = postgresql-16-pgvector
             test "$(dpkg-deb --field "$package_file" Version)" = "$expected_version"
             test "$(dpkg-deb --field "$package_file" Architecture)" = amd64
+            test "$(dpkg-deb --field "$package_file" Depends)" = "postgresql-16, libc6 (>= 2.38)"
+            test "$(dpkg-deb --field "$package_file" Breaks)" = "$expected_breaks"
             dpkg --install "$package_file"
             test "$(dpkg-query --show --showformat=\${Version} postgresql-16-pgvector)" = "$expected_version"
             dpkg --audit
             rm -f "$package_file"
-          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION"
+          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION" "$POSTGRES_JIT_ABI"
           rm -f "$package_path"
           trap - EXIT
           docker exec "$POSTGRES_SERVICE_CONTAINER" \
@@ -466,24 +499,40 @@ jobs:
           printf '%s  %s\n' "$PGVECTOR_PACKAGE_SHA256" "$package_path" \
             | sha256sum --check --strict
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            expected_jit_abi="$1"
             test "$(dpkg --print-architecture)" = amd64
             dpkg --audit
             test "$(dpkg-query --show --showformat=\${db:Status-Status} postgresql-16)" = installed
             test "$(dpkg-query --show --showformat=\${db:Status-Status} libc6)" = installed
-            ! dpkg-query --show postgresql-16-jit-llvm >/dev/null 2>&1
-          '
+            provides="$(dpkg-query --show --showformat=\${Provides} postgresql-16)"
+            jit_provider_count=0
+            IFS=',' read -r -a provided_packages <<<"$provides"
+            for provided in "${provided_packages[@]}"; do
+              provided="${provided#"${provided%%[![:space:]]*}"}"
+              provided="${provided%"${provided##*[![:space:]]}"}"
+              if [[ "$provided" == postgresql-16-jit-llvm* ]]; then
+                [[ "$provided" =~ ^postgresql-16-jit-llvm[[:space:]]*\([[:space:]]*=[[:space:]]*"$expected_jit_abi"[[:space:]]*\)$ ]]
+                ((jit_provider_count += 1))
+              fi
+            done
+            test "$jit_provider_count" -eq 1
+          ' -- "$POSTGRES_JIT_ABI"
           docker cp "$package_path" "$POSTGRES_SERVICE_CONTAINER:/tmp/$package_name"
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
             package_file="$1"
             expected_version="$2"
+            expected_jit_abi="$3"
+            expected_breaks="postgresql-16-jit-llvm (<< $expected_jit_abi)"
             test "$(dpkg-deb --field "$package_file" Package)" = postgresql-16-pgvector
             test "$(dpkg-deb --field "$package_file" Version)" = "$expected_version"
             test "$(dpkg-deb --field "$package_file" Architecture)" = amd64
+            test "$(dpkg-deb --field "$package_file" Depends)" = "postgresql-16, libc6 (>= 2.38)"
+            test "$(dpkg-deb --field "$package_file" Breaks)" = "$expected_breaks"
             dpkg --install "$package_file"
             test "$(dpkg-query --show --showformat=\${Version} postgresql-16-pgvector)" = "$expected_version"
             dpkg --audit
             rm -f "$package_file"
-          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION"
+          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION" "$POSTGRES_JIT_ABI"
           rm -f "$package_path"
           trap - EXIT
           docker exec "$POSTGRES_SERVICE_CONTAINER" \
