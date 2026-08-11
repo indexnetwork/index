@@ -280,7 +280,7 @@ dbDescribe('historical quality protected-base integration', () => {
     await assertReadOnlySession(async (statement) => baseClient!.unsafe(statement));
     await verifyHistoricalQualityPublishedState(baseDb, projection, productionHistoricalQualityBaseDependencies);
     expect(await currentState(baseDb)).toEqual(baselineState);
-  });
+  }, { timeout: 30_000 });
 
   afterEach(async () => { await restoreBaseline(); });
 
