@@ -39,7 +39,7 @@ Index Network is a private, intent-driven discovery protocol. Users express sign
 
 ## Core Concepts
 
-**Identity & Context** — User profile (name, bio, skills, interests, location) and current scope (networks, intents, stage).
+**Identity & Context** — Account and presentation metadata plus scoped runtime state (networks, signals, stage).
 
 **Premises** — Foundational facts: background, experience, stage, timeline, constraints.
 
@@ -57,7 +57,7 @@ Index Network is a private, intent-driven discovery protocol. Users express sign
 
 Refer to these for detailed entity facts and lifecycle:
 
-- **identity-context** — Profile structure, context scoping
+- **identity-context** — Presentation identity, context scoping, matching inputs
 - **premises** — Background, stage, constraints
 - **signals** — Intent inference, classification
 - **communities-networks** — Membership, auto-assign
@@ -72,23 +72,20 @@ Refer to these for detailed entity facts and lifecycle:
 export const CANONICAL_GUIDANCE_TOPICS_CONTENT: Record<CanonicalGuidanceTopic, string> = {
   "identity-context": `## Identity & Context
 
-**Identity** is the user's profile on the platform: name, bio, skills, interests, location, social links. It's used for semantic matching and is enriched from social URLs (LinkedIn, GitHub) or explicit user input.
+**Identity** is account and presentation metadata: name, bio, location, skills, interests, and social links. It identifies and presents the user; it does not provide a profile-vector matching corpus.
 
-**Context** is the user's current scope: which networks they belong to, what intents they've expressed, their stage (onboarding vs established), their preferences (e.g. geographic scope). Context shapes what discovery surfaces and what tools are available.
+**Context** is scoped runtime state: network memberships, approved signals, lifecycle stage, and current opportunity or negotiation state. It determines the user's active scope and available workflow state.
 
-### Profile Structure
-- Name, bio, location
-- Skills and interests (arrays)
-- Social links (LinkedIn, GitHub, Twitter, personal websites)
-- Embeddings for semantic matching (generated via HyDE — hypothetical document embedding)
+### Matching Inputs
+Matching uses approved signals, premises, shared network membership, and current opportunity or negotiation state. Premises supply the asserted background, constraints, and capabilities that ground relevant matches.
 
 ### Context Scoping
 - Users can belong to multiple networks
 - Each network has a scope (open to all members or invite-only)
-- Discovery is scoped to shared networks
+- Matching is scoped to shared networks
 
 ### Key Distinction
-Identity is static and represents who the user is. Context is dynamic and represents where they are in their journey and what they're focused on at this moment.`,
+Identity is account/presentation metadata. Context is dynamic, scoped runtime state for what the user is doing now.`,
 
   premises: `## Premises
 

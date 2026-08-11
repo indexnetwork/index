@@ -138,12 +138,12 @@ export interface OpportunityGraphOptions {
   /** Chat session ID for draft opportunities; stored as context.conversationId for visibility filtering. */
   conversationId?: string;
   /**
-   * MCP-only: cap the negotiate-phase wall-clock at this many milliseconds.
+   * Cap the negotiate-phase wall-clock at this many milliseconds.
    * When set, `negotiateNode` races `negotiateCandidates(...)` against a timer;
    * if the timer wins, the node returns early with a `timed_out` trace and the
-   * unawaited negotiation chains finalize each opp's DB status in the
-   * background. Set to 20_000 by the MCP `discover_opportunities` handler.
-   * Chat, ambient queue, and all other callers omit this — existing behavior.
+   * unawaited negotiation chains finalize each opportunity's DB status in the
+   * background. Foreground callers omit this; background matching supplies it
+   * only where its bounded execution requires it.
    */
   negotiateTimeoutMs?: number;
 }
