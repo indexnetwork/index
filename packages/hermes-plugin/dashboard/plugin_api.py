@@ -12,6 +12,7 @@ own opportunities ("radar"). Opportunities not tied to an intent land in a
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import importlib.util
 import json
@@ -25,13 +26,19 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 try:
-    from fastapi import APIRouter, Body
+    from fastapi import APIRouter, Body, WebSocket, WebSocketDisconnect
     from fastapi.responses import StreamingResponse
 except Exception:  # Allows local smoke tests without dashboard dependencies.
     StreamingResponse = None  # type: ignore
 
     def Body(default=None, **_kwargs):  # type: ignore
         return default
+
+    class WebSocket:  # type: ignore
+        pass
+
+    class WebSocketDisconnect(Exception):  # type: ignore
+        pass
 
     class APIRouter:  # type: ignore
         def get(self, *_args, **_kwargs):
@@ -47,6 +54,9 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
             return lambda fn: fn
 
         def delete(self, *_args, **_kwargs):
+            return lambda fn: fn
+
+        def websocket(self, *_args, **_kwargs):
             return lambda fn: fn
 
 router = APIRouter()
@@ -2007,6 +2017,72 @@ def archive_intent(intent_id: str) -> dict[str, Any]:
 _SSE_READ_TIMEOUT = 60.0
 
 
+def parse_sse_data_line(line: bytes) -> dict[str, Any] | None:
+    """Parse one complete dictionary-valued SSE ``data:`` line.
+
+    Comments, other SSE fields, partial EOF data, malformed UTF-8/JSON, and
+    non-object JSON values are deliberately ignored.
+    """
+    if not isinstance(line, bytes) or not line.endswith(b"\n"):
+        return None
+    content = line[:-1]
+    if content.endswith(b"\r"):
+        content = content[:-1]
+    if not content.startswith(b"data:"):
+        return None
+    payload = content[len(b"data:"):]
+    if payload.startswith(b" "):
+        payload = payload[1:]
+    try:
+        parsed = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _sse_request(path: str) -> urllib.request.Request:
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("INDEX_API_KEY is required.")
+    headers = dict(tools._headers(api_key))
+    headers["Accept"] = "text/event-stream"
+    base_url = tools._api_url().rstrip("/")
+    return urllib.request.Request(f"{base_url}{path}", headers=headers, method="GET")
+
+
+def _close_upstream_response(response: Any) -> None:
+    try:
+        response.close()
+    except Exception:  # noqa: BLE001 - cleanup is best-effort.
+        pass
+
+
+async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
+    """Relay dictionary-valued events from an authenticated Index SSE stream."""
+    await websocket.accept()
+    response: Any | None = None
+    try:
+        request = _sse_request(path)
+        response = await asyncio.to_thread(urllib.request.urlopen, request, timeout=_SSE_READ_TIMEOUT)
+        while True:
+            line = await asyncio.to_thread(response.readline)
+            if not line:
+                return
+            event = parse_sse_data_line(line)
+            if event is not None:
+                await websocket.send_json(event)
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:  # noqa: BLE001 - terminate a failed relay without escaping the route.
+        try:
+            await websocket.send_json({"type": "error", "error": str(exc)})
+        except Exception:  # noqa: BLE001 - the WebSocket may already be disconnected.
+            pass
+    finally:
+        if response is not None:
+            await asyncio.to_thread(_close_upstream_response, response)
+
+
 def _message_text(parts: Any) -> str:
     # Message text lives either in a data part (data.message /
     # data.assessment.reasoning) or in a plain text part. Parts use `kind`
@@ -2187,6 +2263,12 @@ def conversations_stream():
     )
 
 
+@router.websocket("/conversations/socket")
+async def conversations_socket(websocket: WebSocket) -> None:
+    """Authenticated Hermes WebSocket relay for realtime conversation events."""
+    await _relay_sse_to_websocket(websocket, "/conversations/stream")
+
+
 def _notification_stream():
     """Relay the upstream notifications SSE stream (Redis pub/sub) to Hermes clients."""
     api_key = os.environ.get("INDEX_API_KEY", "").strip()
@@ -2226,3 +2308,15 @@ def notifications_stream():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+
+@router.websocket("/notifications/socket")
+async def notifications_socket(websocket: WebSocket) -> None:
+    """Authenticated Hermes WebSocket relay for realtime notification events."""
+    await _relay_sse_to_websocket(websocket, "/notifications/stream")
+
+
+@router.get("/notifications/snapshot")
+async def notifications_snapshot() -> dict[str, Any]:
+    """Proxy persisted actionable notifications without rewriting upstream errors."""
+    return await asyncio.to_thread(tools._api_request, "GET", "/notifications/snapshot")

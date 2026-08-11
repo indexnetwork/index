@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import base64
 import importlib.util
 import io
@@ -12,6 +13,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -92,6 +94,40 @@ class FakeResponse:
         if isinstance(self.payload, bytes):
             return self.payload
         return json.dumps(self.payload).encode()
+
+
+class FakeStreamingResponse:
+    def __init__(self, lines, *, read_error=None):
+        self.lines = list(lines)
+        self.read_error = read_error
+        self.closed = False
+        self.read_thread_ids = []
+        self.close_thread_id = None
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.read_error is not None:
+            raise self.read_error
+        return self.lines.pop(0) if self.lines else b""
+
+    def close(self):
+        self.close_thread_id = threading.get_ident()
+        self.closed = True
+
+
+class FakeWebSocket:
+    def __init__(self, disconnect_error=None):
+        self.accepted = False
+        self.sent = []
+        self.disconnect_error = disconnect_error
+
+    async def accept(self):
+        self.accepted = True
+
+    async def send_json(self, payload):
+        if self.disconnect_error is not None:
+            raise self.disconnect_error
+        self.sent.append(payload)
 
 
 def http_error(status, payload, *, url="https://api.example.test/api/error"):
@@ -772,6 +808,96 @@ def main() -> None:
         ) == {"success": False, "error": "message is required for counter and question actions."}
 
         dashboard_api = load_dashboard_api()
+
+        # Hermes Desktop uses authenticated plugin WebSockets. The Python plugin
+        # keeps Index SSE upstream, parsing only complete dictionary-valued
+        # `data:` JSON frames and running every blocking urllib operation away
+        # from the event-loop thread.
+        assert dashboard_api.parse_sse_data_line(b'data: {"type":"question.new","questionId":"q-1"}\n') == {
+            "type": "question.new",
+            "questionId": "q-1",
+        }
+        for ignored_line in (
+            b': keep-alive\n',
+            b'event: notification\n',
+            b'data: not-json\n',
+            b'data: ["not", "an", "object"]\n',
+            b'data: {"partial": true}',
+            b'data: {"invalid": }\n',
+        ):
+            assert dashboard_api.parse_sse_data_line(ignored_line) is None, ignored_line
+
+        event_loop_thread_id = threading.get_ident()
+        stream_response = FakeStreamingResponse(
+            [
+                b': keep-alive\n',
+                b'data: not-json\n',
+                b'data: {"type":"question.new","questionId":"q-1"}\n',
+                b'data: {"partial": true}',
+            ]
+        )
+        opened = []
+
+        def fake_stream_urlopen(request, timeout):
+            opened.append((request, timeout, threading.get_ident()))
+            return stream_response
+
+        urllib.request.urlopen = fake_stream_urlopen
+        websocket = FakeWebSocket()
+        asyncio.run(dashboard_api.notifications_socket(websocket))
+        assert websocket.accepted is True
+        assert websocket.sent == [{"type": "question.new", "questionId": "q-1"}]
+        assert opened[0][0].full_url == "https://api.example.test/api/notifications/stream"
+        assert opened[0][0].get_header("Accept") == "text/event-stream"
+        assert opened[0][0].get_header("X-api-key") == "test-key"
+        assert opened[0][2] != event_loop_thread_id
+        assert stream_response.read_thread_ids
+        assert all(thread_id != event_loop_thread_id for thread_id in stream_response.read_thread_ids)
+        assert stream_response.closed is True
+        assert stream_response.close_thread_id != event_loop_thread_id
+
+        # A WebSocket disconnect terminates the relay and still closes the
+        # upstream response in a worker thread.
+        disconnect_response = FakeStreamingResponse([b'data: {"type":"message.new"}\n'])
+        urllib.request.urlopen = lambda _request, timeout: disconnect_response
+        disconnecting_socket = FakeWebSocket(dashboard_api.WebSocketDisconnect())
+        asyncio.run(dashboard_api.conversations_socket(disconnecting_socket))
+        assert disconnecting_socket.accepted is True
+        assert disconnect_response.closed is True
+        assert disconnect_response.close_thread_id != event_loop_thread_id
+
+        failed_response = FakeStreamingResponse([], read_error=OSError("upstream failed"))
+        urllib.request.urlopen = lambda _request, timeout: failed_response
+        failed_socket = FakeWebSocket()
+        asyncio.run(dashboard_api.notifications_socket(failed_socket))
+        assert failed_socket.sent == [{"type": "error", "error": "upstream failed"}]
+        assert failed_response.closed is True
+        assert failed_response.close_thread_id != event_loop_thread_id
+
+        # The persisted catch-up proxy is a transparent authenticated GET: API
+        # errors retain their status/details payload instead of being rewritten.
+        upstream_error = {
+            "success": False,
+            "error": "Notification snapshots are unavailable.",
+            "status": 503,
+            "details": {"retryable": True},
+        }
+        snapshot_calls = []
+        original_api_request = dashboard_api.tools._api_request
+
+        def fake_snapshot_request(method, path):
+            snapshot_calls.append((method, path, threading.get_ident()))
+            return upstream_error
+
+        dashboard_api.tools._api_request = fake_snapshot_request
+        try:
+            assert asyncio.run(dashboard_api.notifications_snapshot()) == upstream_error
+        finally:
+            dashboard_api.tools._api_request = original_api_request
+        assert len(snapshot_calls) == 1
+        assert snapshot_calls[0][:2] == ("GET", "/notifications/snapshot")
+        assert snapshot_calls[0][2] != event_loop_thread_id
+
         captured = []
         install_fake_urlopen(
             [
