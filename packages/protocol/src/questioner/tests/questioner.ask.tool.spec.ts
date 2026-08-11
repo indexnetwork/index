@@ -3,8 +3,8 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect, afterEach } from "bun:test";
-import { createAskUserQuestionTools, setQuestionerAgentForTesting } from "../questioner.ask.tool.js";
-import type { QuestionerAgent } from "../questioner.agent.js";
+import { createAskUserQuestionTools, setQuestionerAgentForTesting } from "../../questions/application/question.ask.tool.js";
+import type { QuestionerAgent } from "../../questions/application/question.agent.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { PersistableQuestion, PersistedQuestion, ChatQuestionAnswerOutcome, ChatQuestionsHost } from "../../shared/interfaces/questioner.interface.js";
 import type { Question } from "../../shared/schemas/question.schema.js";

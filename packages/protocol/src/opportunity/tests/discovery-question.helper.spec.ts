@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildDiscoveryQuestionInput } from "../discovery-question.helper.js";
+import { buildDiscoveryQuestionInput } from "../domain/discovery-question.helper.js";
 import type { ChatContextDigest } from "../../shared/schemas/chat-context.schema.js";
 import type { DiscoveryNegotiationDigest } from "../../shared/schemas/negotiation-digest.schema.js";
 import type { DiscoverySummary } from "../../shared/schemas/discovery-question.schema.js";

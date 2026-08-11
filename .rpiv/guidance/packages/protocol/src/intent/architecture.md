@@ -1,7 +1,7 @@
-# Protocol Intent
+# Protocol Signals
 
 ## Responsibility
-Intent/signal agent domain. It infers, verifies, reconciles, indexes, and executes intent operations through LangGraph workflows and structured LLM agents.
+Signals domain. It infers, verifies, reconciles, indexes, and executes intent operations through LangGraph workflows and structured LLM agents.
 
 ## Dependencies
 - **LangGraph**: stateful workflow nodes and routing.
@@ -14,12 +14,12 @@ Intent/signal agent domain. It infers, verifies, reconciles, indexes, and execut
 
 ## Module Structure
 ```
-intent/
-├── intent.state.ts       # graph state and operation contracts
-├── intent.graph.ts       # prep/query/infer/verify/reconcile/execute workflow
-├── *.agent.ts            # structured LLM sub-agents
-├── *.tools.ts            # MCP/chat tool surface where present
-└── tests/                # graph and agent unit specs
+signals/
+├── domain/intent.state.ts         # graph state and operation contracts
+├── application/intent.graph.ts    # prep/query/infer/verify/reconcile/execute workflow
+├── application/intent.*.ts        # structured LLM sub-agents
+├── application/intent.tools.ts    # MCP/chat tool surface
+└── tests/                         # graph and agent unit specs
 ```
 
 ## Structured Agent Pattern
@@ -56,7 +56,7 @@ const inferNode = async (state: IntentGraphState) => {
 - Use Zod schemas as the public LLM output contract.
 - Regenerate HyDE/indexing asynchronously; do not block HTTP flows with heavy work unless explicitly required.
 
-<important if="you are adding intent graph behavior">
+<important if="you are adding signal graph behavior">
 1. Add state fields with reducers/defaults.
 2. Add a focused node or structured agent.
 3. Validate LLM outputs with Zod and decide fallback/null/throw policy.

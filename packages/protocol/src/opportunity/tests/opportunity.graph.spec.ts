@@ -9,13 +9,13 @@ config({ path: '.env.test', override: true });
 
 import { afterAll, afterEach, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
-import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
+import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../application/opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { SourceProfileData } from '../opportunity.state.js';
-import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';
-import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
+import type { SourceProfileData } from '../domain/opportunity.state.js';
+import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../application/opportunity.evaluator.js';
+import type { EvaluatedOpportunityWithActors } from '../application/opportunity.evaluator.js';
 import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
 import { computeHydeSourceTextHash } from '../../shared/hyde/hyde.documents.js';

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
 import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import { IndexNegotiator } from "../negotiation.agent.js";
+import { IndexNegotiator } from "../application/negotiation.agent.js";
 
 let msgCounter = 0;
 
@@ -153,7 +153,7 @@ describe("Negotiation continuation telemetry", () => {
     };
 
     const events: Array<Record<string, unknown>> = [];
-    const { negotiateCandidates } = await import("../negotiation.graph.js");
+    const { negotiateCandidates } = await import("../application/negotiation.graph.js");
     const { requestContext } = await import("../../shared/observability/request-context.js");
     await requestContext.run(
       { traceEmitter: (e: Record<string, unknown>) => events.push(e) },

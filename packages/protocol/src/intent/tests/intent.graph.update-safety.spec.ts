@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import { buildExplicitUpdateActions, enforceIntentActionBoundary } from "../intent.graph.js";
-import type { NormalizedIntentAction } from "../intent.reconciler.js";
-import type { VerifiedIntent } from "../intent.state.js";
+import { buildExplicitUpdateActions, enforceIntentActionBoundary } from "../../signals/application/intent.graph.js";
+import type { NormalizedIntentAction } from "../../signals/application/intent.reconciler.js";
+import type { VerifiedIntent } from "../../signals/domain/intent.state.js";
 
 const broadDirective: VerifiedIntent = {
   type: "goal",

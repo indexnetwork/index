@@ -14,7 +14,7 @@ mock.module("../../shared/agent/model.config", () => ({
   }),
 }));
 
-const { generateInviteMessage } = await import("../contact.inviter.js");
+const { generateInviteMessage } = await import("../../contacts/application/index.js");
 
 afterAll(() => mock.restore());
 

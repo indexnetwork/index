@@ -84,7 +84,6 @@ vi.mock('@/contexts/APIContext', () => {
     useSync: () => noopService,
     useAuth: () => noopService,
     useIntegrations: () => noopService,
-    useAdmin: () => noopService,
     useUsers: () => noopService,
     useOpportunities: () => noopService,
     useQuestionsService: () => noopService,

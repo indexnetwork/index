@@ -22,7 +22,7 @@ import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.j
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
 import type { ChatQuestionsHost, QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
-import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
+import type { QuestionerEnqueueFn } from "../../questions/application/question.input.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 import type { QuestionMode, QuestionPurpose } from "../schemas/question.schema.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";

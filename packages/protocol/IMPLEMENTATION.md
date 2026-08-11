@@ -18,6 +18,10 @@ deep imports are not part of the contract. Every symbol is re-exported explicitl
 See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
+Internal source is domain-first: `signals`, `communities`, `questions`,
+`participant-agents`, `contacts`, and `integrations`; opportunity and negotiation
+place state/contracts in `domain/` and workflows/tools in `application/`.
+
 ## Source-map publication policy
 
 Published `@indexnetwork/protocol` tarballs contain **no source maps**: neither
@@ -94,7 +98,6 @@ The package defines interfaces — your application provides the concrete implem
 | `AgentDispatcher` | Resolves and invokes personal agents during negotiation turns — required to register the negotiation tools |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
 | `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
-| `DiscoveryRunStore` / `DiscoveryRunQueue` | Persist and execute async MCP discovery runs |
 | `EnrichmentRunStore` / `EnrichmentRunQueue` | Persist and execute async MCP enrichment runs |
 | `MintConnectLink` | Mints short connect links for opportunity accepts |
 | `ChatSummaryReader` | Read-through chat-session digest |
@@ -138,7 +141,6 @@ const tools = await createChatTools({
   agentDatabase,        // AgentDatabase — agent registry
   agentDispatcher,      // AgentDispatcher — routes negotiation turns to personal agents
   deliveryLedger,       // DeliveryLedger — OpenClaw delivery commits
-  discoveryRuns,        // DiscoveryRunStore (+ discoveryRunQueue) — async MCP discovery
   enrichmentRuns,       // EnrichmentRunStore (+ enrichmentRunQueue) — async MCP enrichment runs
   mintConnectLink,      // short connect links for opportunity accepts
   modelConfig,          // override chat model / reasoning effort (see above)
@@ -148,10 +150,9 @@ const tools = await createChatTools({
 ```
 
 `createChatTools` accepts a single `ToolContext` object. The required adapters
-above are always needed; the optional capabilities default to a degraded-but-
-functional mode when omitted (e.g. without `agentDispatcher` the negotiation
-tools are not registered, and without `discoveryRuns` MCP discovery runs
-synchronously).
+above are always needed; optional capabilities default to a degraded-but-
+functional mode when omitted (for example, without `agentDispatcher` the
+negotiation tools are not registered).
 
 ## Graphs
 
@@ -181,7 +182,7 @@ Each factory takes its typed dependencies in the constructor and exposes a
 |---|---|
 | `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
 | `IntentGraphFactory` | Clarify, infer, verify felicity, reconcile, and persist intents |
-| `OpportunityGraphFactory` | HyDE-based discovery: search, evaluate (valency), rank, persist |
+| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, persist |
 | `EnrichmentGraphFactory` | Enrich users (scrape + embed) and decompose into premises |
 | `PremiseGraphFactory` | Decompose and index a user's premises |
 | `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |

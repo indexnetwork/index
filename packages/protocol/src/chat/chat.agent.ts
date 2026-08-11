@@ -538,9 +538,8 @@ export class ChatAgent {
 
 
   /**
-   * Check whether any tool call produced valid opportunity blocks.
-   * Both `discover_opportunities` and `list_opportunities` can return
-   * ```opportunity code blocks — either one counts as a valid source.
+   * Check whether `list_opportunities` returned valid opportunity blocks.
+   * Persisted cards from that tool are the only valid source.
    */
   private static hasOpportunitySource(
     toolsUsed: Array<{ name: string; success: boolean; resultSummary?: string }>,
@@ -654,7 +653,7 @@ export class ChatAgent {
 
   /**
    * Post-process a tool result: strip _graphTimings, extract summary/debugSteps,
-   * and optionally run discover_opportunities → create_intent callback.
+   * and optionally normalize a tool result before a create_intent callback.
    *
    * Returns the normalized result string and extracted debug metadata so both
    * the normal streaming tool loop and the hallucination-recovery branch

@@ -639,7 +639,7 @@ Timeouts can be tuned globally by class or per tool:
 - `MCP_TOOL_TIMEOUT_FAST_MS`
 - `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS`
 - `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS`
-- `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where the tool name is uppercased and non-alphanumeric characters become `_` (for example, `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`).
+- `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where the tool name is uppercased and non-alphanumeric characters become `_` (for example, `MCP_TOOL_TIMEOUT_LIST_OPPORTUNITIES_MS`).
 
 The runtime also enforces response size limits before a tool result is returned to MCP or the REST-safe tool path:
 

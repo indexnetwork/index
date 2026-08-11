@@ -4,7 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 
 import { createMcpServer, clearMcpToolMetadataCacheForTests, getCachedMcpToolMetadata } from '../../../packages/protocol/src/mcp/mcp.server';
 import { CANONICAL_MCP_TOOL_ACCESS_RULES } from '../../../packages/protocol/src/mcp/mcp.authorization-policy';
-import { createAgentTools } from '../../../packages/protocol/src/agent/agent.tools';
+import { createAgentTools } from '../../../packages/protocol/src/participant-agents/application/agent.tools';
 import { createToolRegistry } from '../../../packages/protocol/src/shared/agent/tool.registry';
 import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';
 import type { McpAuthResolver } from '../../../packages/protocol/src/shared/interfaces/auth.interface';
