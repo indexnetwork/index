@@ -268,6 +268,8 @@ Confirm the legacy run used only the projected writable children. Do not infer q
 
 ## 8. Separately confirmed quality smokes
 
+Historical quality fixes its provider runtime to the OpenRouter default base URL, a 60-second request timeout, zero HTTP retries, no fallback model, and one runnable attempt. Inherited values and `--env` values for these controls are normalized to that policy and cannot tune a quality run. Model assignments remain configurable, except that `EVAL_MODEL_OVERRIDES` follows production runtime semantics: it is ignored when `NODE_ENV=production` and applied otherwise.
+
 Both smokes use only `historical/builder-and-operator`, one repetition, and one trigger. Each restores side `a`, invokes one graph slot, and makes one evaluator call.
 
 For the intent smoke, obtain authorization and type:

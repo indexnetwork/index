@@ -7,7 +7,7 @@ import { HistoricalQualityLeaseReleaseError, HistoricalQualitySpentRunError, cla
 import { assertAbConfirmation } from './discovery.gate';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget } from './discovery-quality-refresh-target';
-import { buildHistoricalQualityChildEnvironment, type HistoricalQualityChildEnvironment } from './discovery-quality.environment';
+import { HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY, buildHistoricalQualityChildEnvironment, normalizeHistoricalQualityDiscoveryConfiguration, type HistoricalQualityChildEnvironment } from './discovery-quality.environment';
 import { preflightHistoricalQualityChildRuntime } from './discovery-quality.child-loader';
 import { acquireHistoricalQualityOperationLease, type HistoricalQualityOperationLease } from './discovery-quality-operation-lease';
 import { buildHistoricalQualityBaseVerifierEnvironment } from './discovery-quality-verifier.environment';
@@ -190,7 +190,10 @@ type HistoricalAuthorities = {
   }): { slots: HistoricalQualityPilotSlot[]; configurationFingerprint: string };
   fingerprintCanonicalJson(value: unknown): string;
   resolveEvalJudgeModelId(environment: Record<string, string | undefined>): string;
-  resolveCanonicalAllAgentModels(environment: Readonly<Record<string, string | undefined>>): Readonly<Record<string, string>>;
+  resolveCanonicalAllAgentModels(
+    environment: Readonly<Record<string, string | undefined>>,
+    options?: { applyEvalOverrides?: boolean },
+  ): Readonly<Record<string, string>>;
   parseHistoricalQualityChildOutput(value: unknown, expected: {
     runId: string;
     slotId: string;
@@ -284,6 +287,7 @@ export function historicalQualityScoringPolicy(judgeModelId: string): Readonly<R
     },
     stages: ['eligible', 'submitted', 'returned', 'final-inclusion'],
     attempts: { perSlot: 1, retry: false, recovery: false, backoffMs: 0 },
+    modelRuntime: HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY,
     poolPartition: 'each participant is scored within the approved shared historical pool and selected case',
     completeness: 'every planned slot must produce exactly one terminal execution row; subsets are evidence-only and have no verdict',
   });
@@ -306,13 +310,14 @@ export async function resolveHistoricalQualityChildConfiguration(input: {
   const modelEnvironment = {
     CHAT_MODEL: input.configuration.CHAT_MODEL ?? input.environment.CHAT_MODEL,
     EVAL_MODEL_OVERRIDES: input.configuration.EVAL_MODEL_OVERRIDES ?? input.environment.EVAL_MODEL_OVERRIDES,
+    NODE_ENV: input.environment.NODE_ENV,
   };
-  const models = { ...authorities.resolveCanonicalAllAgentModels(modelEnvironment) };
-  const env = Object.fromEntries(
-    Object.entries(input.configuration)
-      .filter(([key]) => key !== 'CHAT_MODEL' && key !== 'EVAL_MODEL_OVERRIDES')
-      .sort(([left], [right]) => left.localeCompare(right)),
-  );
+  const models = {
+    ...authorities.resolveCanonicalAllAgentModels(modelEnvironment, {
+      applyEvalOverrides: modelEnvironment.NODE_ENV !== 'production',
+    }),
+  };
+  const env = { ...normalizeHistoricalQualityDiscoveryConfiguration(input.configuration) };
   const judgeModelId = authorities.resolveEvalJudgeModelId({
     SMARTEST_VERIFIER_MODEL: input.environment.SMARTEST_VERIFIER_MODEL,
   });

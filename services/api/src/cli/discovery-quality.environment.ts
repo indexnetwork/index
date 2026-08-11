@@ -16,6 +16,22 @@ export const HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS = [
   'EVAL_MODEL_OVERRIDES',
 ] as const;
 
+/** Exact provider runtime used by every historical-quality graph invocation. */
+export const HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY = Object.freeze({
+  OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
+  OPENROUTER_REQUEST_TIMEOUT_MS: '60000',
+  OPENROUTER_MAX_RETRIES: '0',
+  OPENROUTER_FALLBACK_MODEL: 'none',
+  OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '1',
+} as const);
+
+const HISTORICAL_QUALITY_DISCOVERY_MODEL_RUNTIME_POLICY = Object.freeze(
+  Object.fromEntries(
+    Object.entries(HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY)
+      .filter(([key]) => key !== 'OPENROUTER_BASE_URL'),
+  ) as Readonly<Record<Exclude<keyof typeof HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY, 'OPENROUTER_BASE_URL'>, string>>,
+);
+
 export const HISTORICAL_QUALITY_RUNTIME_REDIS_KEYS = [
   'REDIS_URL', 'REDIS_HOST', 'REDIS_PORT', 'REDIS_PASSWORD', 'REDIS_DB',
 ] as const;
@@ -64,6 +80,7 @@ export function parseHistoricalQualityRuntimeEnvironment(
     const value = defined(environment, key);
     if (value !== undefined) result[key] = value;
   }
+  Object.assign(result, HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY);
 
   const redisUrl = defined(environment, 'REDIS_URL');
   const splitValues = ['REDIS_HOST', 'REDIS_PORT', 'REDIS_PASSWORD', 'REDIS_DB']
@@ -85,14 +102,16 @@ export function parseHistoricalQualityRuntimeEnvironment(
   return Object.freeze(result) as HistoricalQualityRuntimeEnvironment;
 }
 
-function canonicalNonModelConfiguration(configuration: Readonly<Record<string, string>>): Record<string, string> {
+export function normalizeHistoricalQualityDiscoveryConfiguration(
+  configuration: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
   assertAbEnvConfig(configuration);
   const carriers = new Set<string>(HISTORICAL_QUALITY_MODEL_ASSIGNMENT_CARRIERS);
-  return Object.fromEntries(
-    Object.entries(configuration)
+  return Object.freeze(Object.fromEntries(
+    Object.entries({ ...configuration, ...HISTORICAL_QUALITY_DISCOVERY_MODEL_RUNTIME_POLICY })
       .filter(([key]) => !carriers.has(key))
       .sort(([left], [right]) => left.localeCompare(right)),
-  );
+  ));
 }
 
 export function buildHistoricalQualityChildEnvironment(input: {
@@ -109,7 +128,7 @@ export function buildHistoricalQualityChildEnvironment(input: {
     if (input.sanitizedConfiguration[key] !== undefined) runtimeSource[key] = input.sanitizedConfiguration[key];
   }
   const runtime = parseHistoricalQualityRuntimeEnvironment(runtimeSource);
-  const configuration = canonicalNonModelConfiguration(input.sanitizedConfiguration);
+  const configuration = normalizeHistoricalQualityDiscoveryConfiguration(input.sanitizedConfiguration);
   const configurationJson = JSON.stringify(configuration);
   return Object.freeze({
     ...runtime,

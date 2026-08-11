@@ -6,8 +6,8 @@ import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, type HistoricalQualityRequest } f
 import { makeHistoricalQualityArtifact } from '../../../../../packages/protocol/eval/shared/tests/artifact.fixtures.js';
 import { HistoricalQualityChildOutputSchema } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.child-output.js';
 import { DISCOVERY_ENV_KEYS } from '../discovery.flags';
-import { HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
-import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, HistoricalQualitySlotOperationalError, historicalQualityChildResolvedProjection, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, superviseHistoricalQualityChild, verifyBaseInFreshProcess, type HistoricalQualityRuntimeDeps, type HistoricalQualitySupervisorClock, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
+import { HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY, HISTORICAL_QUALITY_RUNTIME_CORE_KEYS, HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS, buildHistoricalQualityChildEnvironment, parseHistoricalQualityRuntimeEnvironment } from '../discovery-quality.environment';
+import { HISTORICAL_QUALITY_SCORING_POLICY_VERSION, HistoricalQualitySlotOperationalError, historicalQualityChildResolvedProjection, historicalQualityScoringPolicy, resolveHistoricalQualityConfiguration, runHistoricalQualityRuntime, superviseHistoricalQualityChild, verifyBaseInFreshProcess, type HistoricalQualityRuntimeDeps, type HistoricalQualitySupervisorClock, type VerifiedHistoricalQualityBase } from '../discovery-quality.runtime';
 import { HistoricalQualitySpentRunError, describeAbFailure } from '../discovery.contract';
 import { embeddingConfigurationFingerprint } from '../../lib/embedding/embedding.identity';
 
@@ -88,7 +88,13 @@ describe('historical quality child environment', () => {
     expect(HISTORICAL_QUALITY_RUNTIME_CORE_KEYS.every((key) => environment[key] === parent[key])).toBe(true);
     expect(HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS.every((key) => environment[key] !== undefined)).toBe(true);
     expect(environment.CHAT_MODEL).toBe('anthropic/claude-sonnet-4');
-    expect(JSON.parse(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON)).toEqual({ DISCOVERY_ALLOWED_TYPES: 'intent' });
+    expect(JSON.parse(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON)).toEqual({
+      DISCOVERY_ALLOWED_TYPES: 'intent',
+      OPENROUTER_FALLBACK_MODEL: 'none',
+      OPENROUTER_MAX_RETRIES: '0',
+      OPENROUTER_REQUEST_TIMEOUT_MS: '60000',
+      OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '1',
+    });
     expect(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_FINGERPRINT).toBe(
       digest(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON),
     );
@@ -106,6 +112,34 @@ describe('historical quality child environment', () => {
     for (const sentinel of ['manifest-secret-sentinel', 'neon-secret-sentinel', 'openrouter-secret-sentinel', 'redis-secret-sentinel', 'database-secret-sentinel', 'aws-secret-sentinel', 'sentry-secret-sentinel', 'invented-secret-sentinel', providerFingerprint]) {
       expect(serializedConfig).not.toContain(sentinel);
     }
+  });
+
+  it('overrides adversarial inherited and configured resilience values with the frozen runtime policy', () => {
+    const environment = buildHistoricalQualityChildEnvironment({
+      parentEnvironment: {
+        ...requiredParentEnvironment(),
+        OPENROUTER_BASE_URL: 'https://attacker.example/v9',
+        OPENROUTER_REQUEST_TIMEOUT_MS: '999999',
+        OPENROUTER_MAX_RETRIES: '12',
+        OPENROUTER_FALLBACK_MODEL: 'attacker/fallback',
+        OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '8',
+      },
+      sanitizedConfiguration: {
+        OPENROUTER_REQUEST_TIMEOUT_MS: '1',
+        OPENROUTER_MAX_RETRIES: '99',
+        OPENROUTER_FALLBACK_MODEL: 'openai/gpt-4.1-mini',
+        OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '20',
+      },
+    });
+
+    expect(Object.isFrozen(HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY)).toBeTrue();
+    expect(environment).toMatchObject(HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY);
+    expect(JSON.parse(environment.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON)).toEqual({
+      OPENROUTER_FALLBACK_MODEL: 'none',
+      OPENROUTER_MAX_RETRIES: '0',
+      OPENROUTER_REQUEST_TIMEOUT_MS: '60000',
+      OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '1',
+    });
   });
 
   it('accepts the complete split Redis form', () => {
@@ -150,7 +184,12 @@ describe('historical quality production configuration resolver', () => {
       },
     });
     expect(resolved.models).toMatchObject({ chat: 'chat/parent', opportunityEvaluator: 'model/selected' });
-    expect(resolved.env).toEqual({});
+    expect(resolved.env).toEqual({
+      OPENROUTER_FALLBACK_MODEL: 'none',
+      OPENROUTER_MAX_RETRIES: '0',
+      OPENROUTER_REQUEST_TIMEOUT_MS: '60000',
+      OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '1',
+    });
     expect(resolved.fixed).toMatchObject({
       judgeModelId: 'judge/model',
       embeddingModelId: verifiedBase.embedding.model,
@@ -159,6 +198,78 @@ describe('historical quality production configuration resolver', () => {
     });
     expect(resolved.fixed.scoringPolicyFingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(HISTORICAL_QUALITY_SCORING_POLICY_VERSION).toBe('historical-quality-v1');
+  });
+
+  it('reports the same effective policy in resolved env and child graph configuration and binds all values in scoring policy', async () => {
+    const adversarialRequest: HistoricalQualityRequest = {
+      ...request,
+      configuration: {
+        id: 'a',
+        config: {
+          DISCOVERY_ALLOWED_TYPES: 'intent',
+          OPENROUTER_REQUEST_TIMEOUT_MS: '1',
+          OPENROUTER_MAX_RETRIES: '7',
+          OPENROUTER_FALLBACK_MODEL: 'openai/gpt-4.1-mini',
+          OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '9',
+        },
+      },
+    };
+    const environment = {
+      ...requiredParentEnvironment(),
+      OPENROUTER_BASE_URL: 'https://attacker.example/v9',
+      OPENROUTER_REQUEST_TIMEOUT_MS: '2',
+      OPENROUTER_MAX_RETRIES: '8',
+      OPENROUTER_FALLBACK_MODEL: 'attacker/fallback',
+      OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '10',
+      SMARTEST_VERIFIER_MODEL: 'judge/model',
+    };
+    const resolved = await resolveHistoricalQualityConfiguration({ request: adversarialRequest, verifiedBase, environment });
+    const child = buildHistoricalQualityChildEnvironment({
+      parentEnvironment: environment,
+      sanitizedConfiguration: adversarialRequest.configuration.config,
+    });
+
+    expect(resolved.env).toEqual({
+      DISCOVERY_ALLOWED_TYPES: 'intent',
+      OPENROUTER_FALLBACK_MODEL: 'none',
+      OPENROUTER_MAX_RETRIES: '0',
+      OPENROUTER_REQUEST_TIMEOUT_MS: '60000',
+      OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '1',
+    });
+    expect(JSON.parse(child.DISCOVERY_HISTORICAL_QUALITY_CONFIG_JSON)).toEqual(resolved.env);
+    expect(child).toMatchObject(HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY);
+    expect(historicalQualityScoringPolicy('judge/model')).toMatchObject({
+      modelRuntime: HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY,
+    });
+  });
+
+  it('matches model.config production override semantics and fingerprints only real effective inputs', async () => {
+    const resolve = (nodeEnv: string, config: Record<string, string>, environment: Record<string, string> = {}) =>
+      resolveHistoricalQualityConfiguration({
+        request: { ...request, configuration: { id: 'a', config } },
+        verifiedBase,
+        environment: { ...requiredParentEnvironment(), NODE_ENV: nodeEnv, ...environment },
+      });
+    const override = { EVAL_MODEL_OVERRIDES: '{"opportunityEvaluator":"model/selected"}' };
+    const productionBase = await resolve('production', {});
+    const productionOverride = await resolve('production', override);
+    const testBase = await resolve('test', {});
+    const testOverride = await resolve('test', override);
+
+    expect(productionOverride.models).toEqual(productionBase.models);
+    expect(digest(canonicalJson(productionOverride))).toBe(digest(canonicalJson(productionBase)));
+    expect(testOverride.models.opportunityEvaluator).toBe('model/selected');
+    expect(digest(canonicalJson(testOverride))).not.toBe(digest(canonicalJson(testBase)));
+
+    const adversarialNoOp = await resolve('test', {
+      OPENROUTER_REQUEST_TIMEOUT_MS: '1',
+      OPENROUTER_MAX_RETRIES: '99',
+      OPENROUTER_FALLBACK_MODEL: 'openai/gpt-4.1-mini',
+      OPENROUTER_RUNNABLE_MAX_ATTEMPTS: '99',
+    }, { OPENROUTER_BASE_URL: 'https://attacker.example/v9' });
+    expect(digest(canonicalJson(adversarialNoOp))).toBe(digest(canonicalJson(testBase)));
+    const changedModel = await resolve('test', { CHAT_MODEL: 'anthropic/claude-sonnet-4' });
+    expect(digest(canonicalJson(changedModel))).not.toBe(digest(canonicalJson(testBase)));
   });
 
   it.each(['ABC', 'a'.repeat(63), 'a'.repeat(65), ''])('refuses invalid parent-only provider fingerprint %p', async (fingerprint) => {
