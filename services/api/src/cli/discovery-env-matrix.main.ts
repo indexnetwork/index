@@ -714,7 +714,18 @@ export async function createChildDependencies() {
   const premiseGraph = new PremiseGraphFactory(graphDb, embedder).createGraph();
   const contextGenerator = new UserContextGenerator(embedder);
   const hydeGraph = new HydeGraphFactory(graphDb, embedder, new cacheModule.RedisCacheAdapter(), new LensInferrer(), new HydeGenerator()).createGraph();
-  const opportunityGraph = new OpportunityGraphFactory(graphDb, embedder, hydeGraph, new OpportunityEvaluator()).createGraph();
+  const opportunityGraph = new OpportunityGraphFactory(
+    graphDb,
+    embedder,
+    hydeGraph,
+    new OpportunityEvaluator(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { evaluatorMinScore: 50 },
+  ).createGraph();
   return { database, premiseGraph, contextGenerator, opportunityGraph };
 }
 
