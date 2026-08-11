@@ -12,8 +12,7 @@
  * the owning user's personal network. Contacts are participants with whom
  * opportunity discovery is run.
  *
- * Compatibility paths:
- * - shared/interfaces/contact.interface.ts — thin compatibility shim → contacts/ports
+ * Compatibility path:
  * - capabilities/contacts.facade.ts — thin re-export via contacts/public
  */
 export * from "./public/index.js";

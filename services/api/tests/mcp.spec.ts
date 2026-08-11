@@ -8,7 +8,7 @@ import { createAgentTools } from '../../../packages/protocol/src/participant-age
 import { createToolRegistry } from '../../../packages/protocol/src/shared/agent/tool.registry';
 import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';
 import type { McpAuthResolver } from '../../../packages/protocol/src/shared/interfaces/auth.interface';
-import type { AgentDatabase } from '../../../packages/protocol/src/shared/interfaces/agent.interface';
+import type { AgentDatabase } from '../../../packages/protocol/src/participant-agents/ports/agent.repository.port';
 import type { ScopedDepsFactory } from '../../../packages/protocol/src/mcp/mcp.server';
 import { createHmac } from 'node:crypto';
 import { createOpportunityOwnerApprovalAuthority } from '../src/lib/mcp/owner-approval';

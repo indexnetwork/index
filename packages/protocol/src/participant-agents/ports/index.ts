@@ -19,8 +19,7 @@
  * - AgentToolDeps — host capabilities for registration/permission tools.
  *
  * IND-548: canonical ports surface for the participant-agents capability.
- * Legacy paths:
- *   - shared/interfaces/agent.interface.ts → re-exports AgentDatabase from here
+ * Compatibility path:
  *   - shared/interfaces/agent-dispatcher.interface.ts → re-exports from here
  */
 

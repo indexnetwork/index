@@ -5,8 +5,6 @@
  * No application logic, no LLM calls, no cross-capability imports.
  *
  * IND-549: canonical domain layer for the integrations capability.
- * Legacy path (shared/interfaces/integration.interface.ts) is a thin
- * compatibility shim pointing here.
  */
 
 /**

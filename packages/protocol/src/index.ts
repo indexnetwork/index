@@ -35,12 +35,11 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 export type { McpAuthResolver } from "./shared/interfaces/auth.interface.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./shared/interfaces/cache.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
-export type { QuestionGeneratorReader } from "./shared/interfaces/question-generator.interface.js";
-export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./shared/interfaces/questioner.interface.js";
+export type { QuestionGeneratorReader, QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./capabilities/questions.facade.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer } from "./capabilities/negotiation.facade.js";
-export type { ContactServiceAdapter } from "./shared/interfaces/contact.interface.js";
+export type { ContactServiceAdapter } from "./capabilities/contacts.facade.js";
 export type {
   ChatGraphCompositeDatabase,
   UserDatabase,
@@ -66,13 +65,13 @@ export type {
   CreateOpportunityData,
 } from "./shared/interfaces/database.interface.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./shared/interfaces/embedder.interface.js";
-export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./shared/interfaces/integration.interface.js";
+export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./capabilities/integrations.facade.js";
 export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
 export type { Scraper } from "./shared/interfaces/scraper.interface.js";
 export type { EnrichmentRunInput, EnrichmentRunRecord } from "./shared/interfaces/enrichment-run.interface.js";
 export type { NegotiationTimeoutQueue, AskUserExpiryPayload } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
-export { SYSTEM_AGENT_IDS } from './shared/interfaces/agent.interface.js';
+export { SYSTEM_AGENT_IDS } from './capabilities/participant-agents.facade.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
@@ -93,7 +92,7 @@ export {
   type QuestionVoidedReason,
   type QuestionPoolPushRequestStatus,
   type QuestionPoolPushRequestReason,
-} from "./shared/schemas/question.schema.js";
+} from "./capabilities/questions.facade.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export {
   McpAuthInputSchema,
@@ -253,7 +252,7 @@ export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from ".
 export type { PoolAdjustment, PoolAdjustmentSignal } from "./capabilities/opportunities.facade.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./capabilities/opportunities.facade.js";
 export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./capabilities/opportunities.facade.js";
-export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./shared/schemas/question.schema.js";
+export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./capabilities/questions.facade.js";
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./capabilities/opportunities.facade.js";
 
 // Lens C — negotiation-evidence questions (IND-433, shadow).

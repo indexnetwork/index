@@ -16,8 +16,7 @@
  * Allowed outbound capability dependencies: none (empty set). The integrations
  * module is a leaf capability that only depends on shared/ primitives.
  *
- * Compatibility paths:
- * - shared/interfaces/integration.interface.ts — thin compatibility shim → integrations/ports
+ * Compatibility path:
  * - capabilities/integrations.facade.ts — thin re-export via integrations/public
  */
 export * from "./public/index.js";

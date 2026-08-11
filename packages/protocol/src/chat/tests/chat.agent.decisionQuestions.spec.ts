@@ -36,7 +36,7 @@ mock.module("../../shared/agent/tool.helpers", () => ({
 afterAll(() => mock.restore());
 
 import { ChatAgent } from "../chat.agent.js";
-import type { Question, QuestionStrategy } from "../../shared/schemas/question.schema.js";
+import type { Question, QuestionStrategy } from "../../questions/domain/question.schema.js";
 import type { DebugMetaDiscoveryQuestions } from "../chat-streaming.types.js";
 
 // ─── Test fixtures ────────────────────────────────────────────────────────────

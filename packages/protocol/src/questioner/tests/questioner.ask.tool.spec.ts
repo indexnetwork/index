@@ -6,8 +6,8 @@ import { describe, it, expect, afterEach } from "bun:test";
 import { createAskUserQuestionTools, setQuestionerAgentForTesting } from "../../questions/application/question.ask.tool.js";
 import type { QuestionerAgent } from "../../questions/application/question.agent.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
-import type { PersistableQuestion, PersistedQuestion, ChatQuestionAnswerOutcome, ChatQuestionsHost } from "../../shared/interfaces/questioner.interface.js";
-import type { Question } from "../../shared/schemas/question.schema.js";
+import type { PersistableQuestion, PersistedQuestion, ChatQuestionAnswerOutcome, ChatQuestionsHost } from "../../questions/ports/question.persistence.port.js";
+import type { Question } from "../../questions/domain/question.schema.js";
 import { requestContext, type TraceEmitter } from "../../shared/observability/request-context.js";
 
 const userId = '00000000-0000-4000-8000-000000000001';

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
-import type { QuestionGenerationResult, Question, QuestionStrategy } from "../../schemas/question.schema.js";
-import type { DiscoveryQuestionInput } from "../../schemas/discovery-question.schema.js";
-import type { QuestionGeneratorReader } from "../question-generator.interface.js";
+import type { QuestionGenerationResult, Question, QuestionStrategy } from "../../domain/question.schema.js";
+import type { DiscoveryQuestionInput } from "../../../shared/schemas/discovery-question.schema.js";
+import type { QuestionGeneratorReader } from "../question.generator.port.js";
 
 describe("QuestionGeneratorReader contract", () => {
   it("accepts a DiscoveryQuestionInput and returns a Promise of QuestionGenerationResult | null", async () => {
