@@ -13,6 +13,7 @@ src/adapters/tests/rejection-cooldown.adapter.isolated.ts
 src/adapters/tests/scraper.adapter.isolated.ts
 src/adapters/tests/storage.adapter.isolated.ts
 src/controllers/tests/network.controller.isolated.ts
+src/controllers/tests/notification.controller.isolated.ts
 src/controllers/tests/opportunity.controller.isolated.ts
 src/queues/tests/enrichment.queue.jobs.isolated.ts
 src/queues/tests/expiration.queue.isolated.ts
@@ -28,6 +29,7 @@ src/queues/tests/usercontext.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
 src/services/tests/notification-delivery.service.isolated.ts
 src/services/tests/notification-projection.isolated.ts
+src/services/tests/notification.service.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
 src/services/tests/opportunity.service.rediscovery.isolated.ts
 src/services/tests/opportunity.service.maintenance.isolated.ts

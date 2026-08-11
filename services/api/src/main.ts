@@ -619,7 +619,10 @@ controllerInstances.set(StorageController, new StorageController(new StorageServ
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
-controllerInstances.set(NotificationController, new NotificationController(new NotificationService()));
+controllerInstances.set(
+  NotificationController,
+  new NotificationController(new NotificationService(), notificationDeliveryService),
+);
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
