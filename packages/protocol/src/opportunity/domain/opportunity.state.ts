@@ -125,8 +125,6 @@ export interface OpportunityGraphOptions {
   negotiationContinuation?: NegotiationContinuationExecution;
   /** Initial status for created opportunities (default: 'pending') */
   initialStatus?: OpportunityStatus;
-  /** Minimum score threshold (default: 50) */
-  minScore?: number;
   /** Maximum opportunities to return (default: 20) */
   limit?: number;
   /** Pre-inferred lenses (if not provided, lens inference runs automatically in HyDE graph) */

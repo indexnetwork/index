@@ -153,6 +153,7 @@ export { MaintenanceGraphFactory } from "./capabilities/interaction-composition.
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./capabilities/interaction-composition.facade.js";
 export { NegotiationGraphFactory, negotiateCandidates } from "./capabilities/negotiation.facade.js";
 export { OpportunityGraphFactory } from "./capabilities/opportunities.facade.js";
+export type { OpportunityGraphThresholdOverrides } from "./capabilities/opportunities.facade.js";
 export { hasUnsupportedOpportunityClaim } from "./capabilities/opportunities.facade.js";
 export type { StampNewbornOpportunitiesFn } from "./capabilities/opportunities.facade.js";
 export { opportunityOwnerActionForStatus, bindOwnerApprovalProvenance } from "./capabilities/opportunities.facade.js";

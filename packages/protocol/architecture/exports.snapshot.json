@@ -903,6 +903,12 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "OpportunityGraphThresholdOverrides",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "hasUnsupportedOpportunityClaim",
       "kind": "value",
       "stability": "stable",
@@ -1401,13 +1407,37 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "DISCOVERY_MIN_SIMILARITY_DEFAULT",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "discoveryAllowedTypes",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "discoveryEvaluatorMinScore",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "discoveryIntentMatchingEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryMinSimilarity",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1426,6 +1456,18 @@
     },
     {
       "name": "resetDiscoveryEnvWarningsForTests",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "validateDiscoveryEvaluatorMinScore",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "validateDiscoveryMinSimilarity",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"

@@ -11,6 +11,7 @@
 // ── Core graphs ───────────────────────────────────────────────────────────────
 export { RadarGraphFactory } from "../opportunity/radar/radar.graph.js";
 export { OpportunityGraphFactory } from "../opportunity/application/opportunity.graph.js";
+export type { OpportunityGraphThresholdOverrides } from "../opportunity/application/opportunity.graph.js";
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "../opportunity/application/opportunity.newborn-stamping.js";
 
 // ── Presentation safety ───────────────────────────────────────────────────────

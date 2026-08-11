@@ -191,6 +191,7 @@ export type { RadarHealthInput } from "../radar/radar.health.js";
 // ── Application exports ───────────────────────────────────────────────────────
 export { isIntroducerDiscoveryEnabled } from "../application/opportunity.introducer-feature.js";
 export { OpportunityGraphFactory } from "../application/opportunity.graph.js";
+export type { OpportunityGraphThresholdOverrides } from "../application/opportunity.graph.js";
 export type {
   StampNewbornOpportunitiesFn,
   StampNewbornOpportunitiesInput,

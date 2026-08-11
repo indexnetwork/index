@@ -531,7 +531,7 @@ export interface MatrixGraphRuntimeInput {
 
 /** Provider-free seam around the exact graph invocation used by every matrix slot. */
 export async function invokeMatrixDiscoveryGraph<T>(
-  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: { minScore: number } }, config?: { signal?: AbortSignal }): Promise<T> },
+  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: Record<string, never> }, config?: { signal?: AbortSignal }): Promise<T> },
   runtime: MatrixGraphRuntimeInput,
   row: { id: string; allowedTypes: string; profileSource: string },
   signal?: AbortSignal,
@@ -540,7 +540,7 @@ export async function invokeMatrixDiscoveryGraph<T>(
     userId: runtime.sourceUserId,
     networkId: runtime.networkId,
     triggerIntentId: runtime.triggerIntentId,
-    options: { minScore: 50 },
+    options: {},
   }, signal ? { signal } : undefined));
 }
 

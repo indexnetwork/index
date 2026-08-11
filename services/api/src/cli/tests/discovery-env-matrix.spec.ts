@@ -121,8 +121,8 @@ describe('discovery environment matrix runtime seams', () => {
     }
 
     expect(calls).toEqual([
-      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
-      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
+      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: {} }),
+      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: {} }),
     ]);
     expect(signals).toEqual([controller.signal, controller.signal]);
     expect(() => resolveFixtureTriggerIntent(

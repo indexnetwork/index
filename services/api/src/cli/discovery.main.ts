@@ -185,7 +185,7 @@ export function parseAbChildArgs(args: readonly string[]): { sideId: AbSideId; o
 
 /** Invokes the graph for one slot under that side's configuration. */
 export async function invokeAbDiscoveryGraph<T>(
-  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: { minScore: number } }, config?: { signal?: AbortSignal }): Promise<T> },
+  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: Record<string, never> }, config?: { signal?: AbortSignal }): Promise<T> },
   runtime: MatrixGraphRuntimeInput,
   config: AbEnvConfig,
   signal?: AbortSignal,
@@ -194,7 +194,7 @@ export async function invokeAbDiscoveryGraph<T>(
     userId: runtime.sourceUserId,
     networkId: runtime.networkId,
     triggerIntentId: runtime.triggerIntentId,
-    options: { minScore: AB_MIN_SCORE },
+    options: {},
   }, signal ? { signal } : undefined));
 }
 
@@ -286,8 +286,10 @@ async function runAbSide(
 export async function runAbChild(sideId: AbSideId, slots: readonly AbSlot[], outputPath: string): Promise<void> {
   const selection = selectAbSideSlots(sideId, slots);
   await runWithChildCleanup(async () => {
-    const deps = await createChildDependencies();
-    const output = await runAbSide(selection, deps);
+    const output = await withDiscoveryEnvironment(selection.side.config, async () => {
+      const deps = await createChildDependencies();
+      return runAbSide(selection, deps);
+    });
     await Bun.write(outputPath, JSON.stringify(output));
     console.log(`Discovery child artifact written: side=${sideId} path=${outputPath}`);
   }, closeChildResources);
