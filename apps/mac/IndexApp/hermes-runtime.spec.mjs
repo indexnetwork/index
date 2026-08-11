@@ -417,6 +417,9 @@ test('keeps a Linux source contract for the macOS-native historical persistence 
   expect(nativeCompatibility).toContain('URL(fileURLWithPath: runnerTemp');
   expect(nativeCompatibility).toContain('manager.handle(inspectRequest)');
   expect(nativeCompatibility).toContain('manager.handle(rebindRequest)');
+  expect(nativeCompatibility).toContain('rebound.stage == "connectorActivationConfirmed"');
+  expect(nativeCompatibility).toContain('rebound.state?.scheduleEnabled == false');
+  expect(nativeCompatibility).not.toContain('rebound.stage == "scheduleDisabled"');
   for (const rejection of ['malformed', 'newer', 'tampered']) {
     expect(nativeCompatibility).toContain(`assertRejected("${rejection}"`);
   }

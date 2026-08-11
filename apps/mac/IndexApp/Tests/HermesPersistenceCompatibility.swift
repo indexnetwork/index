@@ -247,7 +247,11 @@ struct HermesPersistenceCompatibilityFixture {
         let rebound = manager.handle(rebindRequest)
         trace("completed rebind: \(rebound.errorCode ?? "ok")")
         try require(rebound.ok, "exact pre-owner rebind failed: \(rebound.errorCode ?? "none")")
-        try require(rebound.stage == "scheduleDisabled", "rebind did not finish disabled")
+        try require(
+            rebound.stage == "connectorActivationConfirmed",
+            "rebind did not confirm connector activation"
+        )
+        try require(rebound.state?.scheduleEnabled == false, "rebind did not finish disabled")
 
         // Reload through a fresh production store to prove the saved tuple is
         // durable rather than merely retained by the manager instance.
