@@ -18,28 +18,33 @@ export function emergencyExecutionLockQuery(planId: string): SQL {
   return sql`SELECT pg_advisory_xact_lock(hashtextextended(${`hermes-emergency-control:${planId}`}::text, 0))`;
 }
 
-/** Production mutation query exported so its real PostgreSQL rendering is contract-tested. */
-export function emergencyPermissionUpdateQuery(): SQL {
+function permissionTargetList(permissionIds: readonly string[]): SQL {
+  if (permissionIds.length === 0) throw new Error('permission target IDs required');
+  const sortedIds = [...permissionIds].sort((left, right) => left.localeCompare(right, 'en'));
+  return sql.join(sortedIds.map((id) => sql`${id}::text`), sql`, `);
+}
+
+/** Delete only locked-snapshot targets whose negotiation-action removal makes them empty. */
+export function emergencyEmptyTargetPermissionDeleteQuery(permissionIds: readonly string[]): SQL {
+  const targets = permissionTargetList(permissionIds);
   return sql`
-    UPDATE agent_permissions permission
-    SET actions = array_remove(permission.actions, ${HERMES_EMERGENCY_ACTION}::text)
-    FROM agents agent
-    WHERE agent.id = permission.agent_id
-      AND agent.type = 'external'
-      AND agent.runtime_kind = 'hermes'
-      AND ${HERMES_EMERGENCY_ACTION}::text = ANY(permission.actions)
-    RETURNING permission.id AS id
+    DELETE FROM agent_permissions
+    WHERE id IN (${targets})
+      AND ${HERMES_EMERGENCY_ACTION}::text = ANY(actions)
+      AND cardinality(array_remove(actions, ${HERMES_EMERGENCY_ACTION}::text)) = 0
+    RETURNING id
   `;
 }
 
-function emergencyEmptyPermissionDeleteQuery(): SQL {
+/** Remove the action from surviving locked-snapshot targets, preserving every unrelated action. */
+export function emergencyPermissionUpdateQuery(permissionIds: readonly string[]): SQL {
+  const targets = permissionTargetList(permissionIds);
   return sql`
-    DELETE FROM agent_permissions permission
-    USING agents agent
-    WHERE agent.id = permission.agent_id
-      AND agent.type = 'external'
-      AND agent.runtime_kind = 'hermes'
-      AND cardinality(permission.actions) = 0
+    UPDATE agent_permissions
+    SET actions = array_remove(actions, ${HERMES_EMERGENCY_ACTION}::text)
+    WHERE id IN (${targets})
+      AND ${HERMES_EMERGENCY_ACTION}::text = ANY(actions)
+    RETURNING id
   `;
 }
 
@@ -112,15 +117,45 @@ function snapshotOwnerIds(snapshot: EmergencySnapshot): string[] {
   ])].sort((left, right) => left.localeCompare(right, 'en'));
 }
 
-export async function planEmergencyControl(
+interface EmergencyControlTestHooks {
+  afterPlanSnapshot?: () => Promise<void>;
+  afterPreliminaryPlan?: () => Promise<void>;
+  afterMutations?: () => Promise<void>;
+}
+
+function assertTestHooksAllowed(): void {
+  if (process.env.NODE_ENV !== 'test') throw new Error('emergency control test hooks require NODE_ENV=test');
+}
+
+async function planEmergencyControlInternal(
   database: DrizzleDB,
   input: { audience: string },
+  testHooks: Pick<EmergencyControlTestHooks, 'afterPlanSnapshot'>,
 ): Promise<EmergencyPlan> {
   assertEmergencyAudience(input.audience);
   return database.transaction(async (tx) => {
     await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`);
-    return createEmergencyPlan(await readEmergencySnapshot(tx), input.audience);
+    const snapshot = await readEmergencySnapshot(tx);
+    await testHooks.afterPlanSnapshot?.();
+    return createEmergencyPlan(snapshot, input.audience);
   });
+}
+
+export function planEmergencyControl(
+  database: DrizzleDB,
+  input: { audience: string },
+): Promise<EmergencyPlan> {
+  return planEmergencyControlInternal(database, input, {});
+}
+
+/** Test-only concurrency seam; impossible to invoke unless Bun is in test mode. */
+export function planEmergencyControlWithTestHooks(
+  database: DrizzleDB,
+  input: { audience: string },
+  testHooks: Pick<EmergencyControlTestHooks, 'afterPlanSnapshot'>,
+): Promise<EmergencyPlan> {
+  assertTestHooksAllowed();
+  return planEmergencyControlInternal(database, input, testHooks);
 }
 
 function executedReceipt(row: typeof schema.hermesEmergencyReceipts.$inferSelect): EmergencyReceipt {
@@ -141,9 +176,10 @@ function executedReceipt(row: typeof schema.hermesEmergencyReceipts.$inferSelect
   };
 }
 
-export async function executeEmergencyControl(
+async function executeEmergencyControlInternal(
   database: DrizzleDB,
   input: { planId: string; expectedInstallations: number; confirm: boolean },
+  testHooks: Pick<EmergencyControlTestHooks, 'afterPreliminaryPlan' | 'afterMutations'>,
 ): Promise<EmergencyReceipt> {
   if (input.confirm !== true) throw new Error('confirmation required');
   assertEmergencyPlanId(input.planId);
@@ -164,6 +200,7 @@ export async function executeEmergencyControl(
     const preliminaryPlan = createEmergencyPlan(preliminarySnapshot, HERMES_EMERGENCY_AUDIENCE);
     if (preliminaryPlan.installations !== input.expectedInstallations) throw new Error('expected count mismatch');
     if (preliminaryPlan.planId !== input.planId) throw new Error('plan drift');
+    await testHooks.afterPreliminaryPlan?.();
 
     for (const ownerId of snapshotOwnerIds(preliminarySnapshot)) {
       await tx.execute(emergencyOwnerLockQuery(ownerId));
@@ -197,6 +234,7 @@ export async function executeEmergencyControl(
         isNotNull(schema.agents.runtimeSetupAttemptId),
       ),
     )).returning({ id: schema.agents.id });
+    if (disconnected.length !== lockedPlan.installations) throw new Error('plan drift');
 
     const revoked = await tx.update(schema.hermesAgentCredentials).set({
       activationState: 'revoked',
@@ -205,9 +243,21 @@ export async function executeEmergencyControl(
       eq(schema.hermesAgentCredentials.audience, HERMES_EMERGENCY_AUDIENCE),
       inArray(schema.hermesAgentCredentials.activationState, ['pending', 'active']),
     )).returning({ id: schema.hermesAgentCredentials.id });
+    if (revoked.length !== lockedPlan.credentials) throw new Error('plan drift');
 
-    const permissions = await tx.execute(emergencyPermissionUpdateQuery()) as unknown as ReturningId[];
-    await tx.execute(emergencyEmptyPermissionDeleteQuery());
+    const permissionIds = lockedSnapshot.permissions.map((permission) => permission.id);
+    let permissionsRemoved = 0;
+    if (permissionIds.length > 0) {
+      const deletedPermissions = await tx.execute(
+        emergencyEmptyTargetPermissionDeleteQuery(permissionIds),
+      ) as unknown as ReturningId[];
+      const updatedPermissions = await tx.execute(
+        emergencyPermissionUpdateQuery(permissionIds),
+      ) as unknown as ReturningId[];
+      permissionsRemoved = deletedPermissions.length + updatedPermissions.length;
+      if (permissionsRemoved !== lockedPlan.permissions) throw new Error('plan drift');
+    }
+    await testHooks.afterMutations?.();
 
     const [audit] = await tx.insert(schema.hermesEmergencyReceipts).values({
       planId: lockedPlan.planId,
@@ -218,7 +268,7 @@ export async function executeEmergencyControl(
       owners: lockedPlan.owners,
       selectedPaused: disconnected.length,
       credentialsRevoked: revoked.length,
-      permissionsRemoved: permissions.length,
+      permissionsRemoved,
       installationsDisconnected: disconnected.length,
       resultReason: 'executed',
       createdAt: now,
@@ -235,12 +285,29 @@ export async function executeEmergencyControl(
       owners: lockedPlan.owners,
       selectedPaused: disconnected.length,
       credentialsRevoked: revoked.length,
-      permissionsRemoved: permissions.length,
+      permissionsRemoved,
       installationsDisconnected: disconnected.length,
       auditReceipts: 1,
       reason: 'executed',
     };
   });
+}
+
+export function executeEmergencyControl(
+  database: DrizzleDB,
+  input: { planId: string; expectedInstallations: number; confirm: boolean },
+): Promise<EmergencyReceipt> {
+  return executeEmergencyControlInternal(database, input, {});
+}
+
+/** Test-only concurrency/fault seam; impossible to invoke unless Bun is in test mode. */
+export function executeEmergencyControlWithTestHooks(
+  database: DrizzleDB,
+  input: { planId: string; expectedInstallations: number; confirm: boolean },
+  testHooks: Pick<EmergencyControlTestHooks, 'afterPreliminaryPlan' | 'afterMutations'>,
+): Promise<EmergencyReceipt> {
+  assertTestHooksAllowed();
+  return executeEmergencyControlInternal(database, input, testHooks);
 }
 
 if (import.meta.main) {

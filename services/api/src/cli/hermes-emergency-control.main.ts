@@ -50,9 +50,12 @@ export function parseHermesEmergencyArguments(args: readonly string[]): HermesEm
     throw new Error('--confirm requires --plan-id and --expected-installations');
   }
   assertEmergencyPlanId(planId);
+  if (!/^(0|[1-9][0-9]*)$/.test(rawExpectedInstallations)) {
+    throw new Error('--expected-installations must be a canonical non-negative decimal safe integer');
+  }
   const expectedInstallations = Number(rawExpectedInstallations);
-  if (!Number.isSafeInteger(expectedInstallations) || expectedInstallations < 0) {
-    throw new Error('--expected-installations must be a non-negative safe integer');
+  if (!Number.isSafeInteger(expectedInstallations)) {
+    throw new Error('--expected-installations must be a canonical non-negative decimal safe integer');
   }
   return { mode: 'execute', audience, confirm: true, planId, expectedInstallations };
 }

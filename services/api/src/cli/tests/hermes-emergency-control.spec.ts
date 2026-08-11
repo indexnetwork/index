@@ -3,8 +3,8 @@ import { PgDialect, getTableConfig } from 'drizzle-orm/pg-core';
 import path from 'node:path';
 
 import { createEmergencyPlan, formatEmergencyOutput, type EmergencySnapshot } from '../hermes-emergency-control.contract';
-import { parseHermesEmergencyArguments } from '../hermes-emergency-control.main';
-import { emergencyExecutionLockQuery, emergencyOwnerLockQuery, emergencyPermissionUpdateQuery, executeEmergencyControl, planEmergencyControl } from '../hermes-emergency-control';
+import { parseHermesEmergencyArguments, runHermesEmergencyMain } from '../hermes-emergency-control.main';
+import { emergencyEmptyTargetPermissionDeleteQuery, emergencyExecutionLockQuery, emergencyOwnerLockQuery, emergencyPermissionUpdateQuery, executeEmergencyControl, planEmergencyControl } from '../hermes-emergency-control';
 import { hermesEmergencyReceipts } from '../../schemas/database.schema';
 
 const snapshot: EmergencySnapshot = {
@@ -62,6 +62,27 @@ describe('Hermes emergency control contract', () => {
     expect(createEmergencyPlan(drifted, 'hermes-agent').planId).not.toBe(first.planId);
   });
 
+  it('binds credential identity and mutation fields without selecting a credential hash', async () => {
+    for (const mutate of [
+      (value: EmergencySnapshot) => { value.credentials[0]!.id = 'credential-b'; },
+      (value: EmergencySnapshot) => { value.credentials[0]!.setupAttemptId = 'generation-b'; },
+      (value: EmergencySnapshot) => { value.credentials[0]!.activationState = 'pending'; },
+      (value: EmergencySnapshot) => { value.credentials[0]!.actions = ['manage:negotiations']; },
+    ]) {
+      const changed = structuredClone(snapshot);
+      mutate(changed);
+      expect(createEmergencyPlan(changed, 'hermes-agent').planId)
+        .not.toBe(createEmergencyPlan(snapshot, 'hermes-agent').planId);
+    }
+    const implementation = await Bun.file(path.resolve(import.meta.dir, '../hermes-emergency-control.ts')).text();
+    const credentialProjection = implementation.slice(
+      implementation.indexOf('const credentials ='),
+      implementation.indexOf('const permissions ='),
+    );
+    expect(credentialProjection).not.toContain('secretHash');
+    expect(credentialProjection).not.toContain('secret_hash');
+  });
+
   it('refuses every non-dedicated audience', () => {
     for (const audience of ['generic', 'legacy', 'negotiator', 'index-owner', 'unknown', '', 'Hermes-agent']) {
       expect(() => createEmergencyPlan(snapshot, audience)).toThrow('audience must be exactly hermes-agent');
@@ -111,6 +132,32 @@ describe('Hermes emergency CLI arguments', () => {
     })).rejects.toThrow('expected count mismatch');
   });
 
+  it('accepts only canonical nonnegative decimal expected-installation syntax before database initialization', async () => {
+    const base = [
+      '--audience', 'hermes-agent', '--confirm', '--plan-id', `hecp_${'a'.repeat(43)}`,
+      '--expected-installations',
+    ] as const;
+    for (const value of ['', ' ', '\t', '0x10', '2e0', '+2', '-0', '02', '2.0', 'NaN', 'Infinity']) {
+      const args = [...base, value];
+      expect(() => parseHermesEmergencyArguments(args)).toThrow(
+        '--expected-installations must be a canonical non-negative decimal safe integer',
+      );
+      let databaseInitializations = 0;
+      await expect(runHermesEmergencyMain({
+        args,
+        plan: async () => { databaseInitializations += 1; throw new Error('database reached'); },
+        execute: async () => { databaseInitializations += 1; throw new Error('database reached'); },
+      })).rejects.toThrow('--expected-installations must be a canonical non-negative decimal safe integer');
+      expect(databaseInitializations).toBe(0);
+    }
+    expect(parseHermesEmergencyArguments([...base, '0'])).toMatchObject({ expectedInstallations: 0 });
+    expect(parseHermesEmergencyArguments([...base, '9007199254740991']))
+      .toMatchObject({ expectedInstallations: Number.MAX_SAFE_INTEGER });
+    expect(() => parseHermesEmergencyArguments([...base, '9007199254740992'])).toThrow(
+      '--expected-installations must be a canonical non-negative decimal safe integer',
+    );
+  });
+
   it('requires the complete exact confirmation triple and refuses unknown or duplicate flags', () => {
     expect(parseHermesEmergencyArguments([
       '--audience', 'hermes-agent', '--confirm', '--plan-id', `hecp_${'a'.repeat(43)}`,
@@ -146,6 +193,11 @@ describe('Hermes emergency receipt schema and migration', () => {
     expect(databaseSuite).toContain("process.env.TEST_DATABASE_SAFE !== '1'");
     expect(databaseSuite).toContain("databaseName !== 'hermes_assurance'");
     expect(databaseSuite).not.toContain('process.env.TEST_DATABASE_SAFE =');
+    const implementation = await Bun.file(path.join(apiRoot, 'src/cli/hermes-emergency-control.ts')).text();
+    const cliEntry = implementation.slice(implementation.indexOf('if (import.meta.main)'));
+    expect(cliEntry).not.toContain('afterPlanSnapshot');
+    expect(cliEntry).not.toContain('afterPreliminaryPlan');
+    expect(cliEntry).not.toContain('afterMutations');
   });
 
   it('stores only opaque identity, bounded reason, counts and creation time', async () => {
@@ -180,12 +232,27 @@ describe('Hermes emergency rendered SQL boundaries', () => {
     expect(owner.params).toEqual(['agent-runtime:owner-a']);
   });
 
-  it('binds the permission action as text and never interpolates an identifier array', () => {
-    const rendered = dialect.sqlToQuery(emergencyPermissionUpdateQuery());
-    expect(rendered.sql).toContain('array_remove');
-    expect(rendered.sql).toContain('$1::text');
-    expect(rendered.sql).toContain('$2::text');
-    expect(rendered.params).toEqual(['manage:negotiations', 'manage:negotiations']);
-    expect(rendered.params.every((parameter) => !Array.isArray(parameter))).toBe(true);
+  it('binds snapshot permission IDs and action scalars for delete-then-update mutation', () => {
+    const ids = ['permission-b', 'permission-a'];
+    const deletion = dialect.sqlToQuery(emergencyEmptyTargetPermissionDeleteQuery(ids));
+    expect(deletion.sql).toContain('DELETE FROM agent_permissions');
+    expect(deletion.sql).toContain('WHERE id IN');
+    expect(deletion.sql).toContain('cardinality(array_remove');
+    expect(deletion.sql).not.toContain('cardinality(actions) = 0');
+    expect(deletion.sql).toContain('RETURNING id');
+    expect(deletion.params).toEqual([
+      'permission-a', 'permission-b', 'manage:negotiations', 'manage:negotiations',
+    ]);
+
+    const update = dialect.sqlToQuery(emergencyPermissionUpdateQuery(ids));
+    expect(update.sql).toContain('UPDATE agent_permissions');
+    expect(update.sql).toContain('array_remove');
+    expect(update.sql).toContain('RETURNING id');
+    expect(update.params).toEqual([
+      'manage:negotiations', 'permission-a', 'permission-b', 'manage:negotiations',
+    ]);
+    expect([...deletion.params, ...update.params].every((parameter) => !Array.isArray(parameter))).toBe(true);
+    expect(() => emergencyEmptyTargetPermissionDeleteQuery([])).toThrow('permission target IDs required');
+    expect(() => emergencyPermissionUpdateQuery([])).toThrow('permission target IDs required');
   });
 });

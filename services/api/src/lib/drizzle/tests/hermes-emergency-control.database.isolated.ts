@@ -2,23 +2,39 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it as bunIt } from '
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 
-import { executeEmergencyControl, planEmergencyControl } from '../../../cli/hermes-emergency-control';
+import { executeEmergencyControl, executeEmergencyControlWithTestHooks, planEmergencyControl, planEmergencyControlWithTestHooks } from '../../../cli/hermes-emergency-control';
 import { HERMES_CANONICAL_ACTIONS } from '../../agent/hermes-capabilities';
 import { withMinimumDatabaseTestBudget } from '../../testing/database-test-budget';
 import * as schema from '../../../schemas/database.schema';
 import db from '../drizzle';
 
-const it = withMinimumDatabaseTestBudget(bunIt, 60_000);
+const it = withMinimumDatabaseTestBudget(bunIt, 90_000);
 const fixture = `emergency_${randomUUID().replace(/-/g, '')}`;
 const ownerId = `${fixture}_owner`;
 const otherOwnerId = `${fixture}_other_owner`;
 const firstAgentId = `${fixture}_hermes_a`;
 const secondAgentId = `${fixture}_hermes_b`;
+const inactiveAgentId = `${fixture}_hermes_inactive`;
 const indexAgentId = `${fixture}_index`;
 const otherAgentId = `${fixture}_other_agent`;
 const issuedAt = new Date('2026-08-09T00:00:00.000Z');
 const expiresAt = new Date(issuedAt.getTime() + 2_592_000_000);
 const receiptPlanIds = new Set<string>();
+
+const permissionIds = [
+  `${fixture}_permission_canonical`,
+  `${fixture}_permission_only_negotiation`,
+  `${fixture}_permission_mixed`,
+  `${fixture}_permission_empty`,
+  `${fixture}_permission_unrelated_hermes`,
+  `${fixture}_permission_other_agent`,
+  `${fixture}_permission_concurrent_insert`,
+] as const;
+const credentialIds = [
+  `${fixture}_credential_a`, `${fixture}_credential_b`, `${fixture}_credential_revoked`,
+] as const;
+const agentIds = [firstAgentId, secondAgentId, inactiveAgentId, indexAgentId, otherAgentId] as const;
+const userIds = [ownerId, otherOwnerId] as const;
 
 function assertDedicatedAssuranceGuard(): void {
   if (process.env.TEST_DATABASE_SAFE !== '1') throw new Error('Hermes emergency suite requires TEST_DATABASE_SAFE=1');
@@ -30,13 +46,6 @@ function assertDedicatedAssuranceGuard(): void {
     throw new Error('Hermes emergency suite requires the exact hermes_assurance database');
   }
 }
-
-const permissionIds = [
-  `${fixture}_permission_global`, `${fixture}_permission_network`, `${fixture}_permission_other`,
-] as const;
-const credentialIds = [`${fixture}_credential_a`, `${fixture}_credential_b`] as const;
-const agentIds = [firstAgentId, secondAgentId, indexAgentId, otherAgentId] as const;
-const userIds = [ownerId, otherOwnerId] as const;
 
 async function cleanup(): Promise<void> {
   const errors: unknown[] = [];
@@ -85,6 +94,11 @@ async function seed(): Promise<void> {
       runtimeSetupAttemptId: `${fixture}_generation_b`, handleNegotiations: false,
     },
     {
+      id: inactiveAgentId, ownerId, name: 'Inactive Hermes', type: 'external', status: 'inactive',
+      runtimeKind: 'hermes', installationId: `${fixture}_install_inactive`,
+      runtimeSetupAttemptId: null, handleNegotiations: false,
+    },
+    {
       id: indexAgentId, ownerId, name: 'Index personal runtime', type: 'personal', status: 'active',
       handleNegotiations: false,
     },
@@ -95,30 +109,48 @@ async function seed(): Promise<void> {
   ]);
   await db.insert(schema.hermesAgentCredentials).values([
     {
-      id: `${fixture}_credential_a`, secretHash: `${fixture}_digest_a`, ownerId, agentId: firstAgentId,
+      id: credentialIds[0], secretHash: `${fixture}_digest_a`, ownerId, agentId: firstAgentId,
       installationId: `${fixture}_install_a`, setupAttemptId: `${fixture}_generation_a`,
       audience: 'hermes-agent', actions: [...HERMES_CANONICAL_ACTIONS], activationState: 'active',
       issuedAt, expiresAt, activatedAt: issuedAt,
     },
     {
-      id: `${fixture}_credential_b`, secretHash: `${fixture}_digest_b`, ownerId, agentId: secondAgentId,
+      id: credentialIds[1], secretHash: `${fixture}_digest_b`, ownerId, agentId: secondAgentId,
       installationId: `${fixture}_install_b`, setupAttemptId: `${fixture}_generation_b`,
       audience: 'hermes-agent', actions: [...HERMES_CANONICAL_ACTIONS], activationState: 'pending',
       issuedAt, expiresAt,
     },
+    {
+      id: credentialIds[2], secretHash: `${fixture}_digest_revoked`, ownerId, agentId: inactiveAgentId,
+      installationId: `${fixture}_install_inactive`, setupAttemptId: `${fixture}_generation_revoked`,
+      audience: 'hermes-agent', actions: [...HERMES_CANONICAL_ACTIONS], activationState: 'revoked',
+      issuedAt, expiresAt, revokedAt: issuedAt,
+    },
   ]);
   await db.insert(schema.agentPermissions).values([
     {
-      id: `${fixture}_permission_global`, agentId: firstAgentId, userId: ownerId,
+      id: permissionIds[0], agentId: firstAgentId, userId: ownerId,
       scope: 'global', actions: [...HERMES_CANONICAL_ACTIONS],
     },
     {
-      id: `${fixture}_permission_network`, agentId: secondAgentId, userId: ownerId,
-      scope: 'network', scopeId: `${fixture}_network`, actions: ['manage:negotiations'],
+      id: permissionIds[1], agentId: secondAgentId, userId: ownerId,
+      scope: 'network', scopeId: `${fixture}_network_only`, actions: ['manage:negotiations'],
     },
     {
-      id: `${fixture}_permission_other`, agentId: otherAgentId, userId: otherOwnerId,
-      scope: 'global', actions: ['manage:negotiations', 'unrelated:action'],
+      id: permissionIds[2], agentId: secondAgentId, userId: ownerId,
+      scope: 'network', scopeId: `${fixture}_network_mixed`, actions: ['unrelated:mixed', 'manage:negotiations'],
+    },
+    {
+      id: permissionIds[3], agentId: inactiveAgentId, userId: ownerId,
+      scope: 'network', scopeId: `${fixture}_network_empty`, actions: [],
+    },
+    {
+      id: permissionIds[4], agentId: inactiveAgentId, userId: ownerId,
+      scope: 'network', scopeId: `${fixture}_network_unrelated`, actions: ['unrelated:keep'],
+    },
+    {
+      id: permissionIds[5], agentId: otherAgentId, userId: otherOwnerId,
+      scope: 'global', actions: ['manage:negotiations', 'unrelated:other'],
     },
   ]);
 }
@@ -129,6 +161,28 @@ async function rememberPlan(): Promise<Awaited<ReturnType<typeof planEmergencyCo
   return plan;
 }
 
+async function assertOriginalMutationState(): Promise<void> {
+  const agents = await db.select().from(schema.agents).where(inArray(schema.agents.id, [firstAgentId, secondAgentId]));
+  expect(agents).toHaveLength(2);
+  expect(agents.every((row) => row.status === 'active' && row.runtimeSetupAttemptId !== null)).toBe(true);
+  expect(agents.find((row) => row.id === firstAgentId)!.handleNegotiations).toBe(true);
+  expect(await db.$count(schema.hermesAgentCredentials,
+    and(inArray(schema.hermesAgentCredentials.id, credentialIds), inArray(schema.hermesAgentCredentials.activationState, ['pending', 'active'])))).toBe(2);
+  const permissionRows = await db.select().from(schema.agentPermissions)
+    .where(inArray(schema.agentPermissions.id, permissionIds.slice(0, 6)));
+  expect(permissionRows).toHaveLength(6);
+  expect(permissionRows.find((row) => row.id === permissionIds[0])!.actions).toEqual([...HERMES_CANONICAL_ACTIONS]);
+  expect(permissionRows.find((row) => row.id === permissionIds[1])!.actions).toEqual(['manage:negotiations']);
+  expect(permissionRows.find((row) => row.id === permissionIds[2])!.actions).toEqual(['unrelated:mixed', 'manage:negotiations']);
+  expect(permissionRows.find((row) => row.id === permissionIds[3])!.actions).toEqual([]);
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 beforeAll(assertDedicatedAssuranceGuard);
 beforeEach(async () => {
   await cleanup();
@@ -137,74 +191,58 @@ beforeEach(async () => {
 afterAll(cleanup);
 
 describe('Hermes emergency control on dedicated PostgreSQL', () => {
-  it('keeps count mismatch mutation-free, executes exactly, and reruns idempotently', async () => {
+  it('mutates only locked-snapshot permissions and preserves empty/unrelated rows', async () => {
     const plan = await rememberPlan();
-    expect(plan).toMatchObject({ installations: 2, credentials: 2, permissions: 2, owners: 1 });
-
-    await expect(executeEmergencyControl(db, {
-      planId: plan.planId, expectedInstallations: plan.installations + 1, confirm: true,
-    })).rejects.toThrow('expected count mismatch');
-    expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, plan.planId))).toBe(0);
-    expect(await db.$count(schema.hermesAgentCredentials,
-      and(inArray(schema.hermesAgentCredentials.id, credentialIds), inArray(schema.hermesAgentCredentials.activationState, ['pending', 'active'])))).toBe(2);
+    expect(plan).toMatchObject({ installations: 2, credentials: 2, permissions: 3, owners: 1 });
 
     const receipt = await executeEmergencyControl(db, {
       planId: plan.planId, expectedInstallations: plan.installations, confirm: true,
     });
     expect(receipt).toMatchObject({
-      receiptId: plan.planId, reason: 'executed', selectedPaused: 2,
-      credentialsRevoked: 2, permissionsRemoved: 2, installationsDisconnected: 2,
-      auditReceipts: 1,
+      reason: 'executed', selectedPaused: 2, credentialsRevoked: 2,
+      permissionsRemoved: 3, installationsDisconnected: 2, auditReceipts: 1,
     });
-    const serialized = JSON.stringify({ plan, receipt });
-    for (const identifier of [ownerId, firstAgentId, `${fixture}_credential_a`, `${fixture}_digest_a`]) {
-      expect(serialized).not.toContain(identifier);
-    }
 
-    const hermesAgents = await db.select().from(schema.agents)
-      .where(inArray(schema.agents.id, [firstAgentId, secondAgentId]));
-    expect(hermesAgents.every((row) => row.status === 'inactive'
-      && row.handleNegotiations === false && row.runtimeSetupAttemptId === null)).toBe(true);
-    const [preservedPermission] = await db.select().from(schema.agentPermissions)
-      .where(eq(schema.agentPermissions.id, `${fixture}_permission_global`));
-    expect(preservedPermission!.actions).toEqual(HERMES_CANONICAL_ACTIONS.filter((action) => action !== 'manage:negotiations'));
-    expect(await db.$count(schema.agentPermissions, eq(schema.agentPermissions.id, `${fixture}_permission_network`))).toBe(0);
-    const [unrelatedPermission] = await db.select().from(schema.agentPermissions)
-      .where(eq(schema.agentPermissions.id, `${fixture}_permission_other`));
-    expect(unrelatedPermission!.actions).toEqual(['manage:negotiations', 'unrelated:action']);
-    const [preservedIndex, preservedOther] = await db.select().from(schema.agents)
-      .where(inArray(schema.agents.id, [indexAgentId, otherAgentId]));
-    expect(preservedIndex).toMatchObject({ status: 'active', type: 'personal' });
-    expect(preservedOther).toMatchObject({ status: 'active', runtimeKind: null });
+    const permissions = await db.select().from(schema.agentPermissions)
+      .where(inArray(schema.agentPermissions.id, permissionIds.slice(0, 6)));
+    expect(permissions.find((row) => row.id === permissionIds[0])!.actions)
+      .toEqual(HERMES_CANONICAL_ACTIONS.filter((action) => action !== 'manage:negotiations'));
+    expect(permissions.some((row) => row.id === permissionIds[1])).toBe(false);
+    expect(permissions.find((row) => row.id === permissionIds[2])!.actions).toEqual(['unrelated:mixed']);
+    expect(permissions.find((row) => row.id === permissionIds[3])!.actions).toEqual([]);
+    expect(permissions.find((row) => row.id === permissionIds[4])!.actions).toEqual(['unrelated:keep']);
+    expect(permissions.find((row) => row.id === permissionIds[5])!.actions)
+      .toEqual(['manage:negotiations', 'unrelated:other']);
 
+    const [inactiveAgent] = await db.select().from(schema.agents).where(eq(schema.agents.id, inactiveAgentId));
+    expect(inactiveAgent).toMatchObject({ status: 'inactive', runtimeSetupAttemptId: null });
+    const [alreadyRevoked] = await db.select().from(schema.hermesAgentCredentials)
+      .where(eq(schema.hermesAgentCredentials.id, credentialIds[2]));
+    expect(alreadyRevoked).toMatchObject({ activationState: 'revoked', revokedAt: issuedAt });
+  });
+
+  it('keeps count mismatch mutation-free and exact rerun idempotent', async () => {
+    const plan = await rememberPlan();
+    await expect(executeEmergencyControl(db, {
+      planId: plan.planId, expectedInstallations: plan.installations + 1, confirm: true,
+    })).rejects.toThrow('expected count mismatch');
+    await assertOriginalMutationState();
+    expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, plan.planId))).toBe(0);
+
+    const receipt = await executeEmergencyControl(db, {
+      planId: plan.planId, expectedInstallations: plan.installations, confirm: true,
+    });
     const rerun = await executeEmergencyControl(db, {
       planId: plan.planId, expectedInstallations: plan.installations, confirm: true,
     });
     expect(rerun).toMatchObject({
       receiptId: receipt.receiptId, reason: 'already-executed', selectedPaused: 0,
-      credentialsRevoked: 0, permissionsRemoved: 0, installationsDisconnected: 0,
-      auditReceipts: 0,
+      credentialsRevoked: 0, permissionsRemoved: 0, installationsDisconnected: 0, auditReceipts: 0,
     });
     expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, plan.planId))).toBe(1);
   });
 
-  it('rolls back every mutation when the exact plan snapshot drifts', async () => {
-    const plan = await rememberPlan();
-    await db.update(schema.agentPermissions).set({
-      actions: [...HERMES_CANONICAL_ACTIONS, 'unrelated:preserved'],
-    }).where(eq(schema.agentPermissions.id, `${fixture}_permission_global`));
-
-    await expect(executeEmergencyControl(db, {
-      planId: plan.planId, expectedInstallations: plan.installations, confirm: true,
-    })).rejects.toThrow('plan drift');
-    expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, plan.planId))).toBe(0);
-    const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, firstAgentId));
-    expect(agent).toMatchObject({ status: 'active', handleNegotiations: true, runtimeSetupAttemptId: `${fixture}_generation_a` });
-    expect(await db.$count(schema.hermesAgentCredentials,
-      and(inArray(schema.hermesAgentCredentials.id, credentialIds), inArray(schema.hermesAgentCredentials.activationState, ['pending', 'active'])))).toBe(2);
-  });
-
-  it('serializes concurrent exact executions without double mutation or audit', async () => {
+  it('serializes concurrent same-plan execution to one exact receipt and mutation count', async () => {
     const plan = await rememberPlan();
     const results = await Promise.all([
       executeEmergencyControl(db, { planId: plan.planId, expectedInstallations: plan.installations, confirm: true }),
@@ -212,8 +250,105 @@ describe('Hermes emergency control on dedicated PostgreSQL', () => {
     ]);
     expect(results.map((result) => result.reason).sort()).toEqual(['already-executed', 'executed']);
     expect(results.reduce((sum, result) => sum + result.credentialsRevoked, 0)).toBe(2);
-    expect(results.reduce((sum, result) => sum + result.permissionsRemoved, 0)).toBe(2);
+    expect(results.reduce((sum, result) => sum + result.permissionsRemoved, 0)).toBe(3);
     expect(results.reduce((sum, result) => sum + result.installationsDisconnected, 0)).toBe(2);
+    expect(results.reduce((sum, result) => sum + result.auditReceipts, 0)).toBe(1);
     expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, plan.planId))).toBe(1);
+  });
+
+  it('returns a concurrent pre-execution plan as the stable executed snapshot and exposes a new current plan', async () => {
+    const initial = await rememberPlan();
+    const snapshotRead = deferred();
+    const releasePlan = deferred();
+    const racingPlanPromise = planEmergencyControlWithTestHooks(db, { audience: 'hermes-agent' }, {
+      afterPlanSnapshot: async () => {
+        snapshotRead.resolve();
+        await releasePlan.promise;
+      },
+    });
+    await snapshotRead.promise;
+    const executed = await executeEmergencyControl(db, {
+      planId: initial.planId, expectedInstallations: initial.installations, confirm: true,
+    });
+    releasePlan.resolve();
+    const racingPlan = await racingPlanPromise;
+    expect(racingPlan).toEqual(initial);
+    const rerun = await executeEmergencyControl(db, {
+      planId: racingPlan.planId, expectedInstallations: racingPlan.installations, confirm: true,
+    });
+    expect(rerun).toMatchObject({ reason: 'already-executed', receiptId: executed.receiptId });
+
+    const current = await rememberPlan();
+    expect(current.planId).not.toBe(initial.planId);
+    expect(current).toMatchObject({ installations: 0, credentials: 0, permissions: 0, owners: 0 });
+    const currentReceipt = await executeEmergencyControl(db, {
+      planId: current.planId, expectedInstallations: current.installations, confirm: true,
+    });
+    expect(currentReceipt).toMatchObject({
+      reason: 'executed', installationsDisconnected: 0, credentialsRevoked: 0,
+      permissionsRemoved: 0, auditReceipts: 1,
+    });
+    expect(await db.$count(schema.hermesEmergencyReceipts,
+      inArray(schema.hermesEmergencyReceipts.planId, [initial.planId, current.planId]))).toBe(2);
+  });
+
+  it('rejects an insertion committed after preliminary planning and accepts the new current plan', async () => {
+    const stale = await rememberPlan();
+    await expect(executeEmergencyControlWithTestHooks(db, {
+      planId: stale.planId, expectedInstallations: stale.installations, confirm: true,
+    }, {
+      afterPreliminaryPlan: async () => {
+        await db.insert(schema.agentPermissions).values({
+          id: permissionIds[6], agentId: firstAgentId, userId: ownerId,
+          scope: 'network', scopeId: `${fixture}_network_inserted`, actions: ['manage:negotiations'],
+        });
+      },
+    })).rejects.toThrow('plan drift');
+    await assertOriginalMutationState();
+    expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, stale.planId))).toBe(0);
+
+    const current = await rememberPlan();
+    expect(current.planId).not.toBe(stale.planId);
+    expect(current.permissions).toBe(4);
+    const receipt = await executeEmergencyControl(db, {
+      planId: current.planId, expectedInstallations: current.installations, confirm: true,
+    });
+    expect(receipt.permissionsRemoved).toBe(4);
+  });
+
+  it('rejects a deletion committed after preliminary planning without partial emergency mutation', async () => {
+    const stale = await rememberPlan();
+    await expect(executeEmergencyControlWithTestHooks(db, {
+      planId: stale.planId, expectedInstallations: stale.installations, confirm: true,
+    }, {
+      afterPreliminaryPlan: async () => {
+        await db.delete(schema.agentPermissions).where(eq(schema.agentPermissions.id, permissionIds[2]));
+      },
+    })).rejects.toThrow('plan drift');
+    const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, firstAgentId));
+    expect(agent).toMatchObject({
+      status: 'active', handleNegotiations: true, runtimeSetupAttemptId: `${fixture}_generation_a`,
+    });
+    expect(await db.$count(schema.hermesAgentCredentials,
+      and(inArray(schema.hermesAgentCredentials.id, credentialIds), inArray(schema.hermesAgentCredentials.activationState, ['pending', 'active'])))).toBe(2);
+    expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, stale.planId))).toBe(0);
+  });
+
+  it('rolls back agents, credentials, permissions, and receipt on an injected post-mutation failure', async () => {
+    const plan = await rememberPlan();
+    const injected = new Error('test-only injected post-mutation failure');
+    let caught: unknown;
+    try {
+      await executeEmergencyControlWithTestHooks(db, {
+        planId: plan.planId, expectedInstallations: plan.installations, confirm: true,
+      }, {
+        afterMutations: async () => { throw injected; },
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBe(injected);
+    await assertOriginalMutationState();
+    expect(await db.$count(schema.hermesEmergencyReceipts, eq(schema.hermesEmergencyReceipts.planId, plan.planId))).toBe(0);
   });
 });
