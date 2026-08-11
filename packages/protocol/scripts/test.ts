@@ -10,46 +10,28 @@
  * mock state per file.
  */
 import { spawn } from "bun";
-import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { classifySpecFiles, parseConcurrency, runFiles, type ChildTestResult } from "./test-runner.js";
 
 const ROOT = new URL("../src", import.meta.url).pathname;
-const CONCURRENCY = Number(process.env.TEST_CONCURRENCY ?? 4);
 
 /**
  * These suites make real model calls and use an LLM judge. They remain available
  * to the explicit live-evaluation workflow, but must never be picked up by the
  * credential-free source-test gate.
  */
-const LIVE_MODEL_SPECS = new Set([
+export const LIVE_MODEL_SPECS = new Set([
   "chat/tests/chat.prompt.spec.ts",
   "contact/tests/contact.inviter.spec.ts",
+  "enrichment/tests/enrichment.generator.spec.ts",
   "negotiation/tests/insight.generator.spec.ts",
   "negotiation/tests/negotiator-discovery-query.spec.ts",
   "opportunity/tests/opportunity.graph.spec.ts",
+  "premise/tests/premise.decomposer.spec.ts",
 ]);
 
-function findSpecFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) out.push(...findSpecFiles(full));
-    else if (entry.endsWith(".spec.ts") || entry.endsWith(".test.ts")) out.push(full);
-  }
-  return out;
-}
+type ChildTestInput = Pick<ChildTestResult, "file" | "exitCode" | "durationMs" | "output">;
 
-type Result = {
-  file: string;
-  pass: number;
-  fail: number;
-  error: number;
-  durationMs: number;
-  output: string;
-};
-
-async function runOne(file: string): Promise<Result> {
+async function runOne(file: string): Promise<ChildTestInput> {
   const started = Date.now();
   const childEnv = { ...process.env, NODE_ENV: "test" };
   delete childEnv.OPENROUTER_API_KEY;
@@ -64,63 +46,71 @@ async function runOne(file: string): Promise<Result> {
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
   ]);
-  await proc.exited;
-  const output = stdout + stderr;
-  const passMatch = output.match(/(\d+)\s+pass/);
-  const failMatch = output.match(/(\d+)\s+fail/);
-  const errorMatch = output.match(/(\d+)\s+error/);
+  const exitCode = await proc.exited;
   return {
     file: file.replace(ROOT + "/", ""),
-    pass: passMatch ? Number(passMatch[1]) : 0,
-    fail: failMatch ? Number(failMatch[1]) : 0,
-    error: errorMatch ? Number(errorMatch[1]) : 0,
+    exitCode,
     durationMs: Date.now() - started,
-    output,
+    output: stdout + stderr,
   };
 }
 
-async function runPool(files: string[], n: number): Promise<Result[]> {
-  const results: Result[] = [];
-  let cursor = 0;
-  async function worker() {
-    while (cursor < files.length) {
-      const idx = cursor++;
-      const r = await runOne(files[idx]);
-      results.push(r);
-      const status = r.fail + r.error === 0 ? "PASS" : "FAIL";
-      console.log(`[${results.length}/${files.length}] ${status} ${r.file} (${r.pass}p/${r.fail}f/${r.error}e, ${r.durationMs}ms)`);
+export async function main(): Promise<number> {
+  let concurrency: number;
+  try {
+    concurrency = parseConcurrency(process.env.TEST_CONCURRENCY);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    return 1;
+  }
+
+  const { providerFreeFiles: files, liveFiles } = classifySpecFiles(ROOT, LIVE_MODEL_SPECS);
+  if (files.length === 0) {
+    console.error("No provider-free spec files discovered");
+    return 1;
+  }
+
+  console.log(`Running ${files.length} provider-free spec files with concurrency=${concurrency}`);
+  if (liveFiles.length > 0) {
+    console.log("Excluded explicit live-model specs (run through the live-evaluation workflow):");
+    for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "")}`);
+  }
+  console.log();
+
+  const started = Date.now();
+  const results = await runFiles(files, {
+    concurrency,
+    runFile: runOne,
+    onResult(result, completed, total) {
+      const status = result.failureReasons.length === 0 ? "PASS" : "FAIL";
+      const totals = result.totals ?? { pass: 0, fail: 0, error: 0 };
+      console.log(`[${completed}/${total}] ${status} ${result.file} (${totals.pass}p/${totals.fail}f/${totals.error}e, ${result.durationMs}ms)`);
+    },
+  });
+  const elapsed = Date.now() - started;
+
+  const totals = results.reduce(
+    (acc, result) => ({
+      pass: acc.pass + (result.totals?.pass ?? 0),
+      fail: acc.fail + (result.totals?.fail ?? 0),
+      error: acc.error + (result.totals?.error ?? 0),
+    }),
+    { pass: 0, fail: 0, error: 0 },
+  );
+
+  const failedFiles = results.filter((result) => result.failureReasons.length > 0).sort((a, b) => a.file.localeCompare(b.file));
+  if (failedFiles.length > 0) {
+    console.log("\nFailing files:");
+    for (const result of failedFiles) {
+      console.log(`\n--- ${result.file} (${result.failureReasons.join(", ")}) ---`);
+      console.log(result.output.trim());
     }
   }
-  await Promise.all(Array.from({ length: Math.min(n, files.length) }, worker));
-  return results;
+
+  console.log(`\nTotals: ${totals.pass} pass, ${totals.fail} fail, ${totals.error} errors across ${files.length} files in ${(elapsed / 1000).toFixed(1)}s`);
+  return failedFiles.length > 0 ? 1 : 0;
 }
 
-const allFiles = findSpecFiles(ROOT).sort();
-const liveFiles = allFiles.filter((file) => LIVE_MODEL_SPECS.has(file.replace(ROOT + "/", "")));
-const files = allFiles.filter((file) => !LIVE_MODEL_SPECS.has(file.replace(ROOT + "/", "")));
-console.log(`Running ${files.length} provider-free spec files with concurrency=${CONCURRENCY}`);
-if (liveFiles.length > 0) {
-  console.log("Excluded explicit live-model specs (run through the live-evaluation workflow):");
-  for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "")}`);
+if (import.meta.main) {
+  process.exitCode = await main();
 }
-console.log();
-const started = Date.now();
-const results = await runPool(files, CONCURRENCY);
-const elapsed = Date.now() - started;
-
-const totals = results.reduce(
-  (acc, r) => ({ pass: acc.pass + r.pass, fail: acc.fail + r.fail, error: acc.error + r.error }),
-  { pass: 0, fail: 0, error: 0 },
-);
-
-const failedFiles = results.filter((r) => r.fail + r.error > 0).sort((a, b) => a.file.localeCompare(b.file));
-if (failedFiles.length > 0) {
-  console.log("\nFailing files:");
-  for (const r of failedFiles) {
-    console.log(`\n--- ${r.file} (${r.fail}f/${r.error}e) ---`);
-    console.log(r.output.trim());
-  }
-}
-
-console.log(`\nTotals: ${totals.pass} pass, ${totals.fail} fail, ${totals.error} errors across ${files.length} files in ${(elapsed / 1000).toFixed(1)}s`);
-process.exit(totals.fail + totals.error > 0 ? 1 : 0);
