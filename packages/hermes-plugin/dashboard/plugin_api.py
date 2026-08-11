@@ -1186,12 +1186,27 @@ def summary() -> dict[str, Any]:
 
 
 @router.get("/intents/{intent_id}/questions")
-def intent_questions(intent_id: str, status: str = "pending") -> dict[str, Any]:
-    """Pending or answered questions for one intent (web intent page parity)."""
+def intent_questions(intent_id: str, status: str = "") -> dict[str, Any]:
+    """Pending and/or answered questions for one intent (web intent page parity).
+
+    Without ``status``, returns both lists in one response (parallel upstream fetches).
+    With ``status=pending|answered``, returns a single ``questions`` list (legacy).
+    """
     intent_id = _text(intent_id)
     if not intent_id:
         return {"success": False, "error": "An intent id is required."}
     normalized = _text(status).lower()
+    if not normalized:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            pending_future = pool.submit(_fetch_scoped_questions, intent_id, "pending")
+            answered_future = pool.submit(_fetch_scoped_questions, intent_id, "answered")
+            pending_records, pending_error = pending_future.result()
+            answered_records, answered_error = answered_future.result()
+        if pending_error:
+            return {"success": False, "error": pending_error}
+        if answered_error:
+            return {"success": False, "error": answered_error}
+        return {"success": True, "pending": pending_records, "answered": answered_records}
     if normalized not in ("pending", "answered"):
         return {"success": False, "error": "status must be pending or answered."}
     records, error = _fetch_scoped_questions(intent_id, normalized)

@@ -2399,7 +2399,8 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       return bucketForStatus(opp.status) === selectedBucket;
     });
     const radarEmpty = "No matches here yet.";
-    const detailLoading = !!props.detailLoading;
+    const questionsLoading = !!props.questionsLoading;
+    const radarLoading = !!props.radarLoading;
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
@@ -2434,13 +2435,13 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
-        detailLoading && !(intent.questions && intent.questions.length)
+        questionsLoading
           ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading questions…")
           : React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
         React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          detailLoading && !allOpps.length
+          radarLoading && !allOpps.length
             ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
             : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
@@ -3577,9 +3578,12 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const intentDetailsState = useState({});
     const intentDetails = intentDetailsState[0];
     const setIntentDetails = intentDetailsState[1];
-    const detailLoadingState = useState(false);
-    const detailLoading = detailLoadingState[0];
-    const setDetailLoading = detailLoadingState[1];
+    const questionsLoadingState = useState(false);
+    const questionsLoading = questionsLoadingState[0];
+    const setQuestionsLoading = questionsLoadingState[1];
+    const radarLoadingState = useState(false);
+    const radarLoading = radarLoadingState[0];
+    const setRadarLoading = radarLoadingState[1];
     const needsOnboardingState = useState(false);
     const needsOnboarding = needsOnboardingState[0];
     const setNeedsOnboarding = needsOnboardingState[1];
@@ -3679,59 +3683,65 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
 
     function loadIntentDetail(intentId, passive) {
       if (!intentId) return Promise.resolve();
-      if (!passive) setDetailLoading(true);
+      if (!passive) {
+        setQuestionsLoading(true);
+        setRadarLoading(true);
+      }
       const seq = Date.now();
       const radarPath = API + "/intents/" + encodeURIComponent(intentId) + "/radar";
-      const pendingPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions?status=pending";
-      const answeredPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions?status=answered";
-      const skeletonPromise = passive
-        ? Promise.resolve(null)
-        : fetchPluginJSON(radarPath + "?presentation=skeleton").catch(function () { return null; });
-      return skeletonPromise
-        .then(function (skeleton) {
-          if (selectedIdRef.current !== intentId) return null;
-          if (skeleton && skeleton.success !== false && Array.isArray(skeleton.items)) {
-            setIntentDetails(function (prev) {
-              const existing = prev[intentId] || {};
-              return Object.assign({}, prev, {
-                [intentId]: Object.assign({}, existing, {
-                  opportunities: skeleton.items,
-                  questions: existing.questions || [],
-                  answeredQuestions: existing.answeredQuestions || [],
-                  _seq: seq,
-                }),
-              });
-            });
-          }
-          return Promise.all([
-            fetchPluginJSON(pendingPath),
-            fetchPluginJSON(answeredPath),
-            fetchPluginJSON(radarPath),
-          ]);
-        })
-        .then(function (results) {
-          if (!results || selectedIdRef.current !== intentId) return;
-          const pendingPayload = results[0];
-          const answeredPayload = results[1];
-          const radarPayload = results[2];
-          const questions = (pendingPayload && pendingPayload.questions) || [];
-          const answeredQuestions = (answeredPayload && answeredPayload.questions) || [];
-          const opportunities = (radarPayload && radarPayload.items) || [];
-          setIntentDetails(function (prev) {
-            return Object.assign({}, prev, {
-              [intentId]: {
-                questions: questions,
-                answeredQuestions: answeredQuestions,
-                opportunities: opportunities,
-                _seq: seq,
-              },
-            });
+      const questionsPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions";
+
+      function mergeDetail(patch) {
+        if (selectedIdRef.current !== intentId) return;
+        setIntentDetails(function (prev) {
+          const existing = prev[intentId] || {};
+          return Object.assign({}, prev, {
+            [intentId]: Object.assign({}, existing, patch, { _seq: seq }),
           });
+        });
+      }
+
+      const questionsPromise = fetchPluginJSON(questionsPath)
+        .then(function (payload) {
+          if (selectedIdRef.current !== intentId) return;
+          let questions = [];
+          let answeredQuestions = [];
+          if (payload && payload.pending !== undefined) {
+            questions = payload.pending || [];
+            answeredQuestions = payload.answered || [];
+          } else if (payload && payload.questions) {
+            questions = payload.questions;
+          }
+          mergeDetail({ questions: questions, answeredQuestions: answeredQuestions });
         })
         .catch(function () { /* keep prior detail on failure */ })
         .finally(function () {
-          if (selectedIdRef.current === intentId && !passive) setDetailLoading(false);
+          if (selectedIdRef.current === intentId && !passive) setQuestionsLoading(false);
         });
+
+      const skeletonPromise = passive
+        ? Promise.resolve(null)
+        : fetchPluginJSON(radarPath + "?presentation=skeleton")
+            .then(function (skeleton) {
+              if (selectedIdRef.current !== intentId) return;
+              if (skeleton && skeleton.success !== false && Array.isArray(skeleton.items)) {
+                mergeDetail({ opportunities: skeleton.items });
+              }
+            })
+            .catch(function () { return null; });
+
+      const radarPromise = fetchPluginJSON(radarPath)
+        .then(function (radarPayload) {
+          if (selectedIdRef.current !== intentId) return;
+          const opportunities = (radarPayload && radarPayload.items) || [];
+          mergeDetail({ opportunities: opportunities });
+        })
+        .catch(function () { /* keep prior detail on failure */ })
+        .finally(function () {
+          if (selectedIdRef.current === intentId && !passive) setRadarLoading(false);
+        });
+
+      return Promise.all([questionsPromise, skeletonPromise, radarPromise]);
     }
 
     function load() {
@@ -4287,7 +4297,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     })();
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, detailLoading: detailLoading, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, questionsLoading: questionsLoading, radarLoading: radarLoading, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },

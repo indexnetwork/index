@@ -273,6 +273,10 @@ def main() -> None:
     assert "/networks/home" in dashboard_js
     assert "/intents/" in dashboard_js
     assert "loadIntentDetail" in dashboard_js
+    assert "questionsLoading" in dashboard_js
+    assert "radarLoading" in dashboard_js
+    assert "questionsPath" in dashboard_js
+    assert "payload.pending" in dashboard_js
     plugin_api_src = (ROOT / "dashboard" / "plugin_api.py").read_text()
     assert "/bootstrap" in plugin_api_src
     assert "intent_radar" in plugin_api_src
@@ -894,6 +898,57 @@ def main() -> None:
         assert answered["success"] is True
         assert answered["questions"][0]["id"] == "question-answered"
         assert answered["questions"][0]["answerText"] == "Hiring"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "questions": [
+                            {
+                                "id": "question-1",
+                                "status": "pending",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
+                                    "title": "Robotics focus",
+                                    "prompt": "Which robotics area should Index prioritize?",
+                                    "options": [{"label": "Hiring", "description": "Find mentors for recruiting."}],
+                                    "multiSelect": False,
+                                },
+                            },
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "questions": [
+                            {
+                                "id": "question-answered",
+                                "status": "answered",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
+                                    "title": "Focus",
+                                    "prompt": "Which robotics area did you pick?",
+                                    "options": [],
+                                    "multiSelect": False,
+                                },
+                                "answer": {
+                                    "selectedOptions": ["Hiring"],
+                                    "freeText": "",
+                                    "answeredAt": "2026-06-01T00:00:00.000Z",
+                                },
+                            }
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        both = dashboard_api.intent_questions("intent-1")
+        assert both["success"] is True
+        assert both["pending"][0]["id"] == "question-1"
+        assert both["answered"][0]["id"] == "question-answered"
+        assert len(captured) == 2
 
         captured = []
         install_fake_urlopen(
