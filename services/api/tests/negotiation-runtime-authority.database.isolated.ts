@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it as bunIt, mock } from 'bun:test';
 import { randomUUID } from 'crypto';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { settlePromiseOutcome, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
+import { taskRowBlockerPredicate } from './support/task-row-lock-evidence';
 
 const it = withMinimumDatabaseTestBudget(bunIt, 60_000);
 
@@ -504,7 +505,7 @@ async function waitForTaskRowWaiters(
       WHERE activity.pid <> pg_backend_pid()
         AND activity.state = 'active'
         AND activity.wait_event_type = 'Lock'
-        AND pg_blocking_pids(activity.pid) && ${knownBlockers}::int[]
+        AND ${taskRowBlockerPredicate(knownBlockers)}
       ORDER BY activity.query_start, activity.pid
     `);
     const evidence = (rows as unknown as Array<{
