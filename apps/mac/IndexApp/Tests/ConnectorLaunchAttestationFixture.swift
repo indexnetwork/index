@@ -41,23 +41,24 @@ struct ConnectorLaunchAttestationFixture {
         let candidate = try copyCandidate(from: "/bin/echo", named: "candidate", into: root)
         let artifact = try fixtureArtifact(at: candidate)
         let child = try spawnSuspended(executable: candidate, arguments: [])
-        var reaped = false
-        defer {
-            _ = Darwin.close(child.outputFD)
-            if !reaped { try? killAndReap(child.pid) }
+        var requiresKillAndReap = true
+        defer { _ = Darwin.close(child.outputFD) }
+        do {
+            try HermesConnectorCodeAttestor.attestSuspendedChild(
+                pid: child.pid,
+                expected: artifact.identity,
+                requirement: artifact.requirement
+            )
+            try require(Darwin.kill(child.pid, SIGCONT) == 0, "positive child did not resume")
+            let status = try waitForChild(child.pid)
+            requiresKillAndReap = false
+            try require(exitedSuccessfully(status), "positive child failed")
+            let output = try readAll(from: child.outputFD)
+            try require(output == Data("\n".utf8), "positive child output was not exactly one newline")
+        } catch {
+            if requiresKillAndReap { try killAndReap(child.pid) }
+            throw error
         }
-
-        try HermesConnectorCodeAttestor.attestSuspendedChild(
-            pid: child.pid,
-            expected: artifact.identity,
-            requirement: artifact.requirement
-        )
-        try require(Darwin.kill(child.pid, SIGCONT) == 0, "positive child did not resume")
-        let status = try waitForChild(child.pid)
-        reaped = true
-        try require(exitedSuccessfully(status), "positive child failed")
-        let output = try readAll(from: child.outputFD)
-        try require(output == Data("\n".utf8), "positive child output was not exactly one newline")
     }
 
     private static func replacementIsKilledBeforeResume() throws {
@@ -72,25 +73,27 @@ struct ConnectorLaunchAttestationFixture {
         )
 
         let child = try spawnSuspended(executable: candidate, arguments: [])
-        var reaped = false
-        defer {
-            _ = Darwin.close(child.outputFD)
-            if !reaped { try? killAndReap(child.pid) }
-        }
+        var requiresKillAndReap = true
+        defer { _ = Darwin.close(child.outputFD) }
         do {
-            try HermesConnectorCodeAttestor.attestSuspendedChild(
-                pid: child.pid,
-                expected: artifact.identity,
-                requirement: artifact.requirement
-            )
-            throw FixtureFailure.assertion("replacement child passed attestation")
-        } catch HermesConnectorAttestationError.invalidIdentity {
-            // The child remains suspended and receives no resume signal.
+            do {
+                try HermesConnectorCodeAttestor.attestSuspendedChild(
+                    pid: child.pid,
+                    expected: artifact.identity,
+                    requirement: artifact.requirement
+                )
+                throw FixtureFailure.assertion("replacement child passed attestation")
+            } catch HermesConnectorAttestationError.invalidIdentity {
+                // The child remains suspended and receives no resume signal.
+            }
+            try killAndReap(child.pid)
+            requiresKillAndReap = false
+            let output = try readAll(from: child.outputFD)
+            try require(output.isEmpty, "replacement child wrote output before attestation")
+        } catch {
+            if requiresKillAndReap { try killAndReap(child.pid) }
+            throw error
         }
-        try killAndReap(child.pid)
-        reaped = true
-        let output = try readAll(from: child.outputFD)
-        try require(output.isEmpty, "replacement child wrote output before attestation")
     }
 
     private static func closeOnExecDefaultRejectsUnrelatedDescriptor() throws {
@@ -108,21 +111,22 @@ struct ConnectorLaunchAttestationFixture {
             executable: candidate,
             arguments: ["-c", "test ! -e /dev/fd/\(unrelatedFD)"]
         )
-        var reaped = false
-        defer {
-            _ = Darwin.close(child.outputFD)
-            if !reaped { try? killAndReap(child.pid) }
+        var requiresKillAndReap = true
+        defer { _ = Darwin.close(child.outputFD) }
+        do {
+            try HermesConnectorCodeAttestor.attestSuspendedChild(
+                pid: child.pid,
+                expected: artifact.identity,
+                requirement: artifact.requirement
+            )
+            try require(Darwin.kill(child.pid, SIGCONT) == 0, "CLOEXEC child did not resume")
+            let status = try waitForChild(child.pid)
+            requiresKillAndReap = false
+            try require(exitedSuccessfully(status), "unrelated descriptor entered the child")
+        } catch {
+            if requiresKillAndReap { try killAndReap(child.pid) }
+            throw error
         }
-
-        try HermesConnectorCodeAttestor.attestSuspendedChild(
-            pid: child.pid,
-            expected: artifact.identity,
-            requirement: artifact.requirement
-        )
-        try require(Darwin.kill(child.pid, SIGCONT) == 0, "CLOEXEC child did not resume")
-        let status = try waitForChild(child.pid)
-        reaped = true
-        try require(exitedSuccessfully(status), "unrelated descriptor entered the child")
     }
 
     private static func makePrivateRoot(label: String) throws -> URL {
