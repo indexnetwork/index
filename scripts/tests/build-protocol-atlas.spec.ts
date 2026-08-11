@@ -153,27 +153,21 @@ test("keeps responsive layouts bounded with touch and grayscale-safe interaction
   expect(css).toContain("@media (max-width: 640px)");
   const layerToggleRule = css.match(/#atlas-layer-toggle button\s*\{([^}]*)\}/)?.[1];
   expect(layerToggleRule).toMatch(/min-height:\s*(?:2\.75rem|44px)/);
-  expect(css).toContain("--edge-runtime-pattern: none");
-  expect(css).toContain("--edge-static-pattern: 10 5");
-  expect(css).toContain("--edge-injected-pattern: 2 5");
-  expect(css).toContain("--edge-conceptual-pattern: 1 5");
-  const effectiveSvgEdgeRule = css.match(/\.atlas-edge\s*\{([^}]*)\}/)?.[1];
-  expect(effectiveSvgEdgeRule).toMatch(/stroke:\s*var\(--edge-color\)/);
-  expect(effectiveSvgEdgeRule).toMatch(/stroke-dasharray:\s*var\(--edge-pattern\)/);
-  expect(css).toMatch(/\.atlas-edge--runtime\s*\{[^}]*--edge-color:\s*var\(--edge-runtime\)[^}]*--edge-pattern:\s*var\(--edge-runtime-pattern\)[^}]*--edge-label:\s*"runtime"/s);
-  expect(css).toMatch(/\.atlas-edge--static\s*\{[^}]*--edge-color:\s*var\(--edge-static\)[^}]*--edge-pattern:\s*var\(--edge-static-pattern\)[^}]*--edge-label:\s*"static"/s);
-  expect(css).toMatch(/\.atlas-edge--injected\s*\{[^}]*--edge-color:\s*var\(--edge-injected\)[^}]*--edge-pattern:\s*var\(--edge-injected-pattern\)[^}]*--edge-label:\s*"injected"/s);
-  expect(css).toMatch(/\.atlas-edge--conceptual\s*\{[^}]*--edge-color:\s*var\(--edge-conceptual\)[^}]*--edge-pattern:\s*var\(--edge-conceptual-pattern\)[^}]*--edge-label:\s*"conceptual"/s);
-  expect(css).toMatch(/\.atlas-edge--runtime \.atlas-edge__line,[\s\S]*?border-top-style:\s*solid/);
-  expect(css).toMatch(/\.atlas-edge--static \.atlas-edge__line,[\s\S]*?border-top-style:\s*dashed/);
-  expect(css).toMatch(/\.atlas-edge--injected \.atlas-edge__line,[\s\S]*?border-top-style:\s*dotted/);
-  expect(css).toMatch(/\.atlas-edge--conceptual \.atlas-edge__line,[\s\S]*?border-top-style:\s*dashed/);
-  expect(css).toMatch(/\.atlas-edge text\s*\{[^}]*fill:\s*currentcolor/s);
+  const nodeGrid = css.match(/\.atlas-node-grid\s*\{([^}]*)\}/)?.[1];
+  expect(nodeGrid).toMatch(/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+
+  const nodeCard = css.match(/\.atlas-node-grid \.atlas-node\s*\{([^}]*)\}/)?.[1];
+  expect(nodeCard).toMatch(/height:\s*100%/);
+  expect(nodeCard).not.toMatch(/max-height|overflow-y/);
+
+  const intermediate = css.slice(css.indexOf("@media (max-width: 900px)"), css.indexOf("@media (max-width: 640px)"));
+  expect(intermediate).toMatch(/\.atlas-node-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  expect(intermediate).toMatch(/\.atlas-relationship\s*\{[^}]*grid-template-columns:\s*1fr/s);
+
   const mobile = css.slice(css.indexOf("@media (max-width: 640px)"), css.indexOf("@media (max-width: 375px)"));
-  expect(mobile).toMatch(/\.atlas-diagram-canvas svg\s*\{[^}]*display:\s*none/s);
-  expect(mobile).toMatch(/\.atlas-diagram-nodes\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*1fr/s);
-  expect(mobile).toMatch(/\.atlas-diagram-relations\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*1fr/s);
-  expect(mobile).toMatch(/\.atlas-relationship\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  expect(mobile).toMatch(/\.atlas-node-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  expect(css).not.toContain(".atlas-diagram-canvas svg");
+  expect(css).not.toContain("overflow-y: auto;\n  pointer-events: auto");
   expect(css).toContain(".configuration-delta--activated");
   expect(css).toContain(".configuration-delta--bypassed");
   expect(css).toContain(".configuration-delta--changed");
