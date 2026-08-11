@@ -26,6 +26,8 @@ src/queues/tests/premise.queue.isolated.ts
 src/queues/tests/run-existing.queue.isolated.ts
 src/queues/tests/usercontext.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
+src/services/tests/notification-delivery.service.isolated.ts
+src/services/tests/notification-projection.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
 src/services/tests/opportunity.service.rediscovery.isolated.ts
 src/services/tests/opportunity.service.maintenance.isolated.ts

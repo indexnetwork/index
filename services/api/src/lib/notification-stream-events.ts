@@ -13,6 +13,12 @@ export interface NotificationStreamEvent {
   body: string;
 }
 
+/** Injectable delivery boundary shared by realtime publication and isolated tests. */
+export type NotificationStreamPublisher = (
+  userId: string,
+  event: NotificationStreamEvent,
+) => Promise<void>;
+
 export function notificationStreamChannel(userId: string): string {
   return `notifications:user:${userId}`;
 }
