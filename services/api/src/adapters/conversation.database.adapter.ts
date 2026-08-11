@@ -823,7 +823,21 @@ export class ConversationDatabaseAdapter {
     // here. Publish only after persistence, and only to authenticated owners
     // represented by the stored participant rows.
     try {
-      await publishConversationMessageEvent(message, await this.getParticipants(data.conversationId));
+      const senderUserId = data.senderId.startsWith('agent:')
+        ? data.senderId.slice('agent:'.length)
+        : data.senderId;
+      const [sender] = await db
+        .select({ name: schema.users.name })
+        .from(schema.users)
+        .where(eq(schema.users.id, senderUserId))
+        .limit(1);
+      await publishConversationMessageEvent(
+        {
+          ...message,
+          ...(sender?.name?.trim() ? { senderName: sender.name.trim() } : {}),
+        },
+        await this.getParticipants(data.conversationId),
+      );
     } catch (error) {
       logger.error('Failed to publish conversation SSE event', {
         conversationId: data.conversationId,
