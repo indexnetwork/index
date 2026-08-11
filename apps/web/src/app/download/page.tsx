@@ -36,7 +36,7 @@ function macArtifactLine(): string {
 
 /**
  * `/download` — post-invite install page. Full-viewport column: header,
- * centered hero and cards, hairline footer. No app chrome.
+ * centered hero and cards. No app chrome.
  */
 export default function Download() {
   const indexAvailable = MAC_APP_DOWNLOAD_URL.length > 0;
@@ -115,13 +115,6 @@ export default function Download() {
           </section>
         </div>
       </main>
-
-      <footer className="download-page__footer">
-        <span>index·network</span>
-        {/* Computed rather than written in, so the page does not start lying
-            about the year on 1 January. */}
-        <span>© {new Date().getFullYear()}</span>
-      </footer>
     </div>
   );
 }

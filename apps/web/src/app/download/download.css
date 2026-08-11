@@ -212,29 +212,14 @@
   cursor: default;
 }
 
-/* ---------- footer ---------- */
-
-.download-page__footer {
-  display: flex;
-  justify-content: space-between;
-  padding: 22px 48px;
-  border-top: 1px solid #1b2c22;
-  font-size: 11px;
-  color: #5d7466;
-}
-
 /* ---------- responsive ---------- */
 
 /* The handoff wraps the cards to one centred column here; the gutters come in
    to match, and the 52px title would otherwise overflow a phone. */
 @media (max-width: 760px) {
-  .download-page__header,
-  .download-page__footer {
+  .download-page__header {
     padding-left: 24px;
     padding-right: 24px;
-  }
-
-  .download-page__header {
     padding-top: 24px;
     padding-bottom: 24px;
   }

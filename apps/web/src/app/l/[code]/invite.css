@@ -159,34 +159,6 @@
   flex-direction: column;
 }
 
-.invite-legal {
-  margin: 28px 0 0;
-  max-width: 380px;
-  font-size: 11px;
-  line-height: 1.7;
-  text-align: center;
-  color: var(--faint);
-}
-
-.invite-legal a {
-  color: var(--muted);
-}
-
-.invite-legal a:hover {
-  color: var(--accent);
-}
-
-/* ---------- footer ---------- */
-
-.invite-footer {
-  display: flex;
-  justify-content: space-between;
-  padding: 22px 48px;
-  border-top: 1px solid var(--hairline-soft);
-  font-size: 11px;
-  color: var(--faint);
-}
-
 /* ---------- AuthForm, restyled for this page ---------- */
 
 .invite .av-oauth {
@@ -395,13 +367,9 @@
 /* ---------- responsive ---------- */
 
 @media (max-width: 720px) {
-  .invite-header,
-  .invite-footer {
+  .invite-header {
     padding-left: 24px;
     padding-right: 24px;
-  }
-
-  .invite-header {
     padding-top: 24px;
     padding-bottom: 24px;
   }

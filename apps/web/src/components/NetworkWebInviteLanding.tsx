@@ -142,36 +142,23 @@ export default function NetworkWebInviteLanding() {
             )}
 
             {!joining && !joinError && !isAuthenticated && isReady && (
-              <>
-                {/* The card is chrome only; AuthForm keeps every behaviour it
-                    already had (Google OAuth, magic link, password fallback).
-                    Its .av-* internals are restyled from invite.css. */}
-                <section className="invite-card">
-                  <h2 className="invite-card__bar">JOIN THE NETWORK</h2>
-                  <div className="invite-card__body auth">
-                    <AuthForm
-                      variant="inline"
-                      callbackURL={callbackURL}
-                      onAuthenticated={() => setLoginRequested(true)}
-                    />
-                  </div>
-                </section>
-
-                <p className="invite-legal">
-                  by continuing you agree to the{" "}
-                  <Link to="/pages/terms-of-use">terms</Link> and{" "}
-                  <Link to="/pages/privacy-policy">privacy policy</Link>
-                </p>
-              </>
+              /* The card is chrome only; AuthForm keeps every behaviour it
+                  already had (Google OAuth, magic link, password fallback).
+                  Its .av-* internals are restyled from invite.css. */
+              <section className="invite-card">
+                <h2 className="invite-card__bar">JOIN THE NETWORK</h2>
+                <div className="invite-card__body auth">
+                  <AuthForm
+                    variant="inline"
+                    callbackURL={callbackURL}
+                    onAuthenticated={() => setLoginRequested(true)}
+                  />
+                </div>
+              </section>
             )}
           </>
         )}
       </main>
-
-      <footer className="invite-footer">
-        <span>index·network</span>
-        <span>© {new Date().getFullYear()}</span>
-      </footer>
     </div>
   );
 }
