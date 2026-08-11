@@ -163,6 +163,8 @@ Plugin skills are namespaced and read-only — do not copy them into `~/.hermes/
 
 The plugin ships an **Index Network** dashboard tab under `dashboard/`: an intent-centric master-detail view for answering pending Index questions (answered questions stay visible as settled records, Mac-app parity), opportunity accept/skip, community self-join, intent pause/archive, profile editing, a first-run **Getting started** profile gate (Mac `profileConfirmedAt` parity), and realtime direct messages. Hermes Desktop uses the same UI via `desktop/dist/` (built from that dashboard bundle); both hosts share the gate and `plugin_api.py` routes. The dashboard backend (`dashboard/plugin_api.py`) reuses `tools.py` for authentication, MCP forwarding, and timeouts, and it never claims or responds to negotiation turns — those remain explicit tool/skill flows.
 
+Native Desktop notifications use the Hermes Plugin SDK exclusively: `ctx.socket` connects to authenticated plugin WebSocket relays for Index notification and conversation SSE, while `ctx.rest` reconciles persisted pending questions and actionable opportunities every 60 seconds. The first successful snapshot is a silent baseline and later unseen entities are deduplicated against realtime delivery. Index rejects network-scoped API keys at both notification stream and snapshot boundaries because those events do not yet carry authoritative network provenance. Direct-message alerts are realtime-only (not reconstructed by snapshots), and are suppressed for the current user's own messages or while identity is unresolved.
+
 See [`dashboard/README.md`](./dashboard/README.md) for the full scope and runtime behavior.
 
 ## Autonomous negotiation

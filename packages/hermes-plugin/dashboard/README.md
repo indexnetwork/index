@@ -25,6 +25,12 @@ A **Messages** panel is reached from a messages button in the dashboard header (
 
 The stream is consumed with **`SDK.authedFetch` + a streaming body reader** (parsing `text/event-stream` frames manually), not a raw `EventSource`. This is the key difference from the web app: a browser `EventSource` cannot set the Hermes dashboard session header (`X-Hermes-Session-Token`, injected in loopback mode) and the host does not accept a `?token=` query param on plugin routes, so `EventSource` would fail to authenticate on the default desktop. `authedFetch` applies the same session auth as `SDK.fetchJSON` (header in loopback, cookies in gated mode), while the plugin backend still relays the upstream Redis stream with its own `x-api-key`.
 
+### Native Desktop notification delivery
+
+The generated native plugin uses only authenticated Hermes Plugin SDK transports. `ctx.socket('/notifications/socket')` and `ctx.socket('/conversations/socket')` connect to plugin WebSockets that relay the upstream Index SSE streams; native code does not read session tokens or call raw `window.fetch`. In parallel, `ctx.rest('/notifications/snapshot')` runs immediately and every 60 seconds as persisted fallback for pending questions and actionable latent/pending opportunities. The first successful snapshot establishes a silent baseline; subsequent unseen entities share canonical dedupe keys with realtime events, so a question or opportunity is notified at most once across both paths. Snapshot reconciliation still runs if socket setup is unavailable.
+
+Index notification stream and snapshot endpoints reject network-scoped API keys before subscribing to Redis or reading snapshot state. User-wide notification events do not yet have authoritative per-network provenance, so scoped agents cannot safely consume them. Direct messages are deliberately realtime-only and never reconstructed from the snapshot; own-user and `agent:<userId>` messages are suppressed, and message alerts fail closed until the current identity is known.
+
 Opportunity cards in an intent radar are clickable: selecting one opens the visible counterpart's **read-only** profile (the web `/u/:id` equivalent) in the same panel.
 
 The selected intent is mirrored into the URL hash (`#intent=<id>`) so browser Back/Forward navigate between intents. Boot loads only auth metadata and the intents list via `GET /bootstrap`; selecting an intent triggers lazy fetches for that intent's questions and radar.

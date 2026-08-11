@@ -38,5 +38,12 @@ export function emitOpportunityLifecycleBestEffort(opportunity: PendingOpportuni
   }
 }
 
-/** @deprecated Use {@link emitOpportunityLifecycleBestEffort}. */
-export const emitOpportunityPendingBestEffort = emitOpportunityLifecycleBestEffort;
+/** @deprecated Use {@link emitOpportunityLifecycleBestEffort} for lifecycle writes. */
+export function emitOpportunityPendingBestEffort(opportunity: PendingOpportunityEvent): void {
+  if (opportunity.status !== 'pending') return;
+  try {
+    Promise.resolve(OpportunityEvents.onPending({ opportunity })).catch(() => {});
+  } catch {
+    // Preserve the legacy helper's pending-only, fail-open contract.
+  }
+}
