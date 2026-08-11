@@ -13,7 +13,8 @@ diagnostic_container_stop='not-needed'
 diagnostic_container_remove='not-needed'
 diagnostic_database='not-needed'
 temporary_directory=''
-container_id=''
+container_name=''
+container_cleanup_pending=false
 fixture_id=''
 credential=''
 credential_hash=''
@@ -48,23 +49,48 @@ record_phase() {
   }
 }
 
+container_is_absent() {
+  local matches
+  if ! matches="$(
+    timeout --signal=TERM --kill-after=2s 5s \
+      docker ps --all --quiet --filter "name=^/${container_name}$" 2>/dev/null
+  )"; then
+    return 1
+  fi
+  test -z "$matches"
+}
+
 cleanup() {
   status=$?
   trap - EXIT INT TERM
   set +e
   cleanup_failed=false
-  if test -n "$container_id"; then
-    if docker stop "$container_id" >/dev/null 2>&1; then
-      diagnostic_container_stop='ok'
+  if test "$container_cleanup_pending" = true; then
+    if container_is_absent; then
+      diagnostic_container_stop='not-needed'
+      diagnostic_container_remove='not-needed'
     else
-      diagnostic_container_stop='failed'
-      cleanup_failed=true
-    fi
-    if docker rm "$container_id" >/dev/null 2>&1; then
-      diagnostic_container_remove='ok'
-    else
-      diagnostic_container_remove='failed'
-      cleanup_failed=true
+      if timeout --signal=TERM --kill-after=2s 10s \
+        docker stop --time 5 "$container_name" >/dev/null 2>&1; then
+        diagnostic_container_stop='ok'
+      elif container_is_absent; then
+        diagnostic_container_stop='not-needed'
+        diagnostic_container_remove='not-needed'
+      else
+        diagnostic_container_stop='failed'
+      fi
+
+      if test "$diagnostic_container_remove" != 'not-needed'; then
+        if timeout --signal=TERM --kill-after=2s 10s \
+          docker rm --force "$container_name" >/dev/null 2>&1; then
+          diagnostic_container_remove='ok'
+        elif container_is_absent; then
+          diagnostic_container_remove='not-needed'
+        else
+          diagnostic_container_remove='failed'
+          cleanup_failed=true
+        fi
+      fi
     fi
   fi
   if test -n "$fixture_id"; then
@@ -345,8 +371,17 @@ fi
 
 record_phase container
 container_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
-container_id="$(
-  DATABASE_URL="$container_database_url" \
+container_name="$(HERMES_COMPAT_OPERATION=generate-container-name bun - <<'BUN'
+process.stdout.write(`hermes-previous-api-compat-${crypto.randomUUID()}`);
+BUN
+)"
+[[ "$container_name" =~ ^hermes-previous-api-compat-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+  || fail 'Failed to generate the previous API container name.'
+container_cleanup_pending=true
+diagnostic_container_stop='pending'
+diagnostic_container_remove='pending'
+write_diagnostic || fail 'Failed to write previous API compatibility diagnostic.'
+if ! DATABASE_URL="$container_database_url" \
   PORT=3001 \
   NODE_ENV=production \
   BETTER_AUTH_SECRET=hermes-compatibility-synthetic-auth-only \
@@ -355,21 +390,21 @@ container_id="$(
   S3_BUCKET=hermes-compatibility-synthetic-bucket \
   S3_ACCESS_KEY_ID=hermes-compatibility-synthetic-access \
   S3_SECRET_ACCESS_KEY=hermes-compatibility-synthetic-secret \
-    docker run --detach \
-      --log-driver none \
-      --add-host host.docker.internal:host-gateway \
-      --env DATABASE_URL --env PORT --env NODE_ENV \
-      --env BETTER_AUTH_SECRET --env CONNECT_JWT_SECRET --env OPENROUTER_API_KEY \
-      --env S3_BUCKET --env S3_ACCESS_KEY_ID --env S3_SECRET_ACCESS_KEY \
-      --publish 127.0.0.1::3001 \
-      "$PREVIOUS_API_IMAGE"
-)"
-test -n "$container_id" || fail 'Previous API container did not start.'
-diagnostic_container_stop='pending'
-diagnostic_container_remove='pending'
-write_diagnostic || fail 'Failed to write previous API compatibility diagnostic.'
+    timeout --signal=TERM --kill-after=5s 30s \
+      docker run --detach \
+        --name "$container_name" \
+        --log-driver none \
+        --add-host host.docker.internal:host-gateway \
+        --env DATABASE_URL --env PORT --env NODE_ENV \
+        --env BETTER_AUTH_SECRET --env CONNECT_JWT_SECRET --env OPENROUTER_API_KEY \
+        --env S3_BUCKET --env S3_ACCESS_KEY_ID --env S3_SECRET_ACCESS_KEY \
+        --publish 127.0.0.1::3001 \
+        "$PREVIOUS_API_IMAGE" >/dev/null 2>&1
+then
+  fail 'Previous API container did not start.'
+fi
 
-host_port="$(docker inspect '--format={{(index (index .NetworkSettings.Ports "3001/tcp") 0).HostPort}}' "$container_id")"
+host_port="$(docker inspect '--format={{(index (index .NetworkSettings.Ports "3001/tcp") 0).HostPort}}' "$container_name")"
 [[ "$host_port" =~ ^[0-9]+$ ]] || fail 'Previous API did not publish a random loopback port.'
 health_url="http://127.0.0.1:${host_port}/health"
 record_phase health

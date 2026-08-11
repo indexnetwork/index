@@ -29,6 +29,11 @@ async function contractEnvironment(options: {
   currentAuthenticationFailure?: boolean;
   currentAuthenticationHang?: boolean;
   cleanupFailure?: boolean;
+  launchCreatesThenFails?: boolean;
+  launchCreatesThenHangs?: boolean;
+  containerStopHang?: boolean;
+  containerRemoveHang?: boolean;
+  containerAbsentBeforeCleanup?: boolean;
 } = {}) {
   const directory = await mkdtemp(resolve(tmpdir(), 'hermes-previous-api-contract-'));
   temporaryDirectories.push(directory);
@@ -38,12 +43,14 @@ async function contractEnvironment(options: {
   const diagnosticPath = resolve(directory, 'diagnostic.json');
   const lifecyclePath = resolve(directory, 'lifecycle.log');
   const healthStatePath = resolve(directory, 'health-state');
+  const containerStatePath = resolve(directory, 'container-state');
 
   await executable(resolve(bin, 'bun'), `#!/usr/bin/env bash
 set -euo pipefail
 cat >/dev/null
 case "\${HERMES_COMPAT_OPERATION:-}" in
   generate) printf 'idxh_contractSecret\\n' ;;
+  generate-container-name) printf 'hermes-previous-api-compat-00000000-0000-4000-8000-000000000001\\n' ;;
   hash) printf 'contractCredentialHash\\n' ;;
   seed)
     test "\${HERMES_COMPAT_CREDENTIAL:-}" = idxh_contractSecret
@@ -74,6 +81,32 @@ if test "\${HERMES_COMPAT_OPERATION:-}" = verify-current && test "\${FAKE_TIMEOU
   printf 'verify-timeout\\n' >>"${lifecyclePath}"
   exit 124
 fi
+case " $* " in
+  *' docker run '*)
+    if test "\${FAKE_TIMEOUT_DOCKER_RUN:-}" = 1; then
+      "\${@:4}" & child_pid=$!
+      for _attempt in $(seq 1 100); do
+        test -e "${containerStatePath}" && break
+        /bin/sleep 0.01
+      done
+      kill -TERM "$child_pid" >/dev/null 2>&1 || true
+      /bin/sleep 0.05
+      kill -KILL "$child_pid" >/dev/null 2>&1 || true
+      wait "$child_pid" >/dev/null 2>&1 || true
+      exit 124
+    fi
+    ;;
+  *' docker stop '*)
+    if test "\${FAKE_TIMEOUT_DOCKER_STOP:-}" = 1; then
+      exec /usr/bin/timeout --signal=TERM --kill-after=0.1s 0.2s "\${@:4}"
+    fi
+    ;;
+  *' docker rm '*)
+    if test "\${FAKE_TIMEOUT_DOCKER_REMOVE:-}" = 1; then
+      exec /usr/bin/timeout --signal=TERM --kill-after=0.1s 0.2s "\${@:4}"
+    fi
+    ;;
+esac
 exec /usr/bin/timeout "$@"
 `);
   await executable(resolve(bin, 'docker'), `#!/usr/bin/env bash
@@ -86,12 +119,49 @@ case "$command" in
     case "$*" in
       *RepoDigests*) printf '%b' '${(options.repoDigests ?? `${productionDigest}\\n`).replaceAll("'", "'\\''")}' ;;
       *'.Id'*) printf '%s\\n' '${localImageId}' ;;
-      *HostPort*) printf '49173\\n' ;;
+      *HostPort*)
+        printf '49173\\n'
+        ${options.containerAbsentBeforeCleanup ? `rm -f "${containerStatePath}"` : ':'}
+        ;;
       *) exit 65 ;;
     esac
     ;;
-  run) printf 'fixture-container\\n' ;;
-  stop|rm) printf '%s\\n' "$command" >>"${lifecyclePath}" ;;
+  run)
+    container_name=''
+    log_driver=''
+    while test "$#" -gt 0; do
+      case "$1" in
+        --name) container_name="\${2:-}"; shift 2 ;;
+        --log-driver) log_driver="\${2:-}"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    [[ "$container_name" =~ ^hermes-previous-api-compat-[0-9a-f-]+$ ]] || exit 72
+    test "$log_driver" = none || exit 73
+    printf '%s\\n' "$container_name" >"${containerStatePath}"
+    ${options.launchCreatesThenFails
+      ? `printf '%s\\n' 'idxh_contractSecret ${disposableDatabaseUrl} ${productionDigest} fixture-container-id' >&2; exit 74`
+      : ':'}
+    ${options.launchCreatesThenHangs ? '/bin/sleep 3' : ':'}
+    ;;
+  ps)
+    if test -e "${containerStatePath}"; then printf 'fixture-container-id\\n'; fi
+    ;;
+  stop)
+    printf 'stop\\n' >>"${lifecyclePath}"
+    ${options.containerStopHang
+      ? `printf '%s\\n' 'idxh_contractSecret ${disposableDatabaseUrl} ${productionDigest} fixture-container-id' >&2; /bin/sleep 3`
+      : ':'}
+    test -e "${containerStatePath}"
+    ;;
+  rm)
+    printf 'rm\\n' >>"${lifecyclePath}"
+    ${options.containerRemoveHang
+      ? `printf '%s\\n' 'idxh_contractSecret ${disposableDatabaseUrl} ${productionDigest} fixture-container-id' >&2; /bin/sleep 3`
+      : ':'}
+    test -e "${containerStatePath}"
+    rm -f "${containerStatePath}"
+    ;;
   *) exit 66 ;;
 esac
 `);
@@ -131,6 +201,9 @@ esac
       HERMES_PREVIOUS_API_REPORT: reportPath,
       HERMES_PREVIOUS_API_DIAGNOSTIC: diagnosticPath,
       FAKE_TIMEOUT_CURRENT_PROOF: options.currentAuthenticationHang ? '1' : '',
+      FAKE_TIMEOUT_DOCKER_RUN: options.launchCreatesThenHangs ? '1' : '',
+      FAKE_TIMEOUT_DOCKER_STOP: options.containerStopHang ? '1' : '',
+      FAKE_TIMEOUT_DOCKER_REMOVE: options.containerRemoveHang ? '1' : '',
     },
   };
 }
@@ -261,6 +334,93 @@ describe('previous API compatibility shell gate', () => {
     expect(credentialDelete).toBeGreaterThan(-1);
     expect(agentDelete).toBeGreaterThan(credentialDelete);
     expect(userDelete).toBeGreaterThan(agentDelete);
+  });
+
+  test('registers named-container cleanup before a launch that creates then fails', async () => {
+    const contract = await contractEnvironment({ launchCreatesThenFails: true });
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('Previous API container did not start.');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+    const diagnosticSource = await readFile(contract.diagnosticPath, 'utf8');
+    expect(`${result.stdout}${result.stderr}${diagnosticSource}`).not.toMatch(
+      /idxh_|postgres(?:ql)?:|registry\.example|sha256:|fixture-container-id/,
+    );
+    expect(JSON.parse(diagnosticSource)).toEqual({
+      schemaVersion: 1,
+      phase: 'container',
+      outcome: 'failed',
+      healthStatus: 0,
+      probeStatus: 0,
+      cleanup: { containerStop: 'ok', containerRemove: 'ok', database: 'ok' },
+    });
+  });
+
+  test('bounds a named-container launch that creates then hangs and still cleans it up', async () => {
+    const contract = await contractEnvironment({ launchCreatesThenHangs: true });
+    const startedAt = performance.now();
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+    const durationMs = performance.now() - startedAt;
+
+    expect(durationMs).toBeLessThan(1_000);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('Previous API container did not start.');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+  });
+
+  test('does not fail the gate when bounded stop hangs but bounded force-removal succeeds', async () => {
+    const contract = await contractEnvironment({ containerStopHang: true });
+    const startedAt = performance.now();
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+    const durationMs = performance.now() - startedAt;
+
+    expect(durationMs).toBeLessThan(1_000);
+    expect(result.exitCode).toBe(0);
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+    expect(JSON.parse(await readFile(contract.diagnosticPath, 'utf8')).cleanup).toEqual({
+      containerStop: 'failed',
+      containerRemove: 'ok',
+      database: 'ok',
+    });
+  });
+
+  test('fails visibly when bounded stop and force-removal cannot prove absence', async () => {
+    const contract = await contractEnvironment({ containerStopHang: true, containerRemoveHang: true });
+    const startedAt = performance.now();
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+    const durationMs = performance.now() - startedAt;
+
+    expect(durationMs).toBeLessThan(1_500);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('Failed to clean up previous API compatibility fixtures.');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+    const diagnosticSource = await readFile(contract.diagnosticPath, 'utf8');
+    expect(`${result.stderr}${diagnosticSource}`).not.toMatch(
+      /idxh_|postgres(?:ql)?:|registry\.example|sha256:|fixture-container-id/,
+    );
+    expect(result.stdout.toString()).toMatch(/^\{"imageDigest":"registry\.example\/index-api@sha256:[a-f0-9]{64}"/);
+    expect(JSON.parse(diagnosticSource)).toEqual({
+      schemaVersion: 1,
+      phase: 'cleanup',
+      outcome: 'failed',
+      healthStatus: 200,
+      probeStatus: 401,
+      cleanup: { containerStop: 'failed', containerRemove: 'failed', database: 'ok' },
+    });
+  });
+
+  test('treats an already-absent named container as idempotent cleanup success', async () => {
+    const contract = await contractEnvironment({ containerAbsentBeforeCleanup: true });
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+
+    expect(result.exitCode).toBe(0);
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\ncleanup\n');
+    expect(JSON.parse(await readFile(contract.diagnosticPath, 'utf8')).cleanup).toEqual({
+      containerStop: 'not-needed',
+      containerRemove: 'not-needed',
+      database: 'ok',
+    });
   });
 
   test('fails cleanup visibly without forwarding secret-bearing diagnostics', async () => {
@@ -404,6 +564,22 @@ describe('previous API compatibility shell gate', () => {
     expect(script).toContain('SELECT count(*)::int AS count FROM apikey WHERE key =');
     expect(permissionDelete).toBeGreaterThan(-1);
     expect(credentialDelete).toBeGreaterThan(permissionDelete);
+  });
+
+  test('registers fixed-enum named cleanup before bounded launch and bounds every Docker cleanup action', async () => {
+    const script = await readFile(scriptPath, 'utf8');
+    const cleanupPending = script.indexOf("container_cleanup_pending=true");
+    const namedLaunch = script.indexOf('docker run --detach');
+
+    expect(cleanupPending).toBeGreaterThan(-1);
+    expect(namedLaunch).toBeGreaterThan(cleanupPending);
+    expect(script.slice(cleanupPending, namedLaunch)).toContain("diagnostic_container_stop='pending'");
+    expect(script.slice(cleanupPending, namedLaunch)).toContain("diagnostic_container_remove='pending'");
+    expect(script).toContain('timeout --signal=TERM --kill-after=5s 30s');
+    expect(script).toContain('docker stop --time 5 "$container_name"');
+    expect(script).toContain('docker rm --force "$container_name"');
+    expect(script).toContain('timeout --signal=TERM --kill-after=2s 10s');
+    expect(script).not.toContain('container_id');
   });
 
   test('bounds every database Bun subprocess and exits proof only after local pool shutdown', async () => {
