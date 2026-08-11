@@ -157,19 +157,31 @@ class MemoryHermesAuthorizationStore implements HermesAuthorizationStore {
     return [...this.credentials.values()].find((row) => row.credentialHash === credentialHash) ?? null;
   }
 
+  async countActiveCredentialExpiryHealth(input: { now: Date; nearExpiryCutoff: Date }) {
+    const active = [...this.credentials.values()].filter((row) => row.activationState === 'active');
+    return {
+      nearExpiry: active.filter((row) => row.expiresAt > input.now && row.expiresAt <= input.nearExpiryCutoff).length,
+      expired: active.filter((row) => row.expiresAt <= input.now).length,
+    };
+  }
+
   async disconnectCredential(input: HermesActivationPrincipal) {
     const row = this.credentials.get(input.credentialId);
     if (!row) throw new AuthorizationConflictError();
-    if (row.activationState !== 'revoked') {
+    const transitioned = row.activationState !== 'revoked';
+    if (transitioned) {
       row.activationState = 'revoked';
       this.selectedRuntime = 'index';
       this.permissionActions = null;
       this.disconnectedCredentialId = row.credentialId;
     }
     return {
-      revoked: true as const,
-      credentialId: row.credentialId,
-      setupAttemptId: row.setupAttemptId,
+      receipt: {
+        revoked: true as const,
+        credentialId: row.credentialId,
+        setupAttemptId: row.setupAttemptId,
+      },
+      transitioned,
     };
   }
 
@@ -288,7 +300,7 @@ describe('HermesAuthorizationController provider-free contract', () => {
       randomId: () => ids[idIndex++]!,
       randomSecret: () => secrets[secretIndex++]!,
     }, telemetry);
-    controller = new HermesAuthorizationController(service, () => undefined);
+    controller = new HermesAuthorizationController(service, () => undefined, telemetry);
   });
 
   it('keeps creation/exchange public but requires a browser session for request reads and approval', () => {
@@ -304,6 +316,10 @@ describe('HermesAuthorizationController provider-free contract', () => {
   it('emits privacy-bounded authorization, rotation, expiry-health, and revocation lifecycle telemetry', async () => {
     await createAuthorization();
     const approval = await approveAuthorization();
+    expect(telemetryGauges).toEqual([
+      { name: 'hermes.credentials_near_expiry', value: 0 },
+      { name: 'hermes.credentials_expired', value: 0 },
+    ]);
     const { code } = await approval.json() as { code: string };
     const exchange = await controller.exchange(request('/hermes-authorizations/exchange', {
       protocolVersion: 1,
@@ -314,7 +330,14 @@ describe('HermesAuthorizationController provider-free contract', () => {
     }));
     const issued = await exchange.json() as { credential: string };
     const principal = await service.authenticatePendingHermesCredential(issued.credential);
+    expect(telemetryGauges).toHaveLength(2);
     await service.activatePendingHermesCredential(principal);
+    expect(telemetryGauges).toEqual([
+      { name: 'hermes.credentials_near_expiry', value: 0 },
+      { name: 'hermes.credentials_expired', value: 0 },
+      { name: 'hermes.credentials_near_expiry', value: 0 },
+      { name: 'hermes.credentials_expired', value: 0 },
+    ]);
     await service.disconnectHermesCredential(principal);
 
     expect(telemetryEvents).toEqual([
@@ -324,6 +347,10 @@ describe('HermesAuthorizationController provider-free contract', () => {
       { name: 'hermes.credential_revoked', attributes: {} },
     ]);
     expect(telemetryGauges).toEqual([
+      { name: 'hermes.credentials_near_expiry', value: 0 },
+      { name: 'hermes.credentials_expired', value: 0 },
+      { name: 'hermes.credentials_near_expiry', value: 0 },
+      { name: 'hermes.credentials_expired', value: 0 },
       { name: 'hermes.credentials_near_expiry', value: 0 },
       { name: 'hermes.credentials_expired', value: 0 },
     ]);
@@ -483,6 +510,26 @@ describe('HermesAuthorizationController provider-free contract', () => {
     expect(store.permissionActions).toEqual(HERMES_CANONICAL_ACTIONS);
   });
 
+  it('emits one stable denial pair at each missing x-api-key controller boundary', async () => {
+    const activate = await controller.activate(request(
+      '/hermes-authorizations/activate',
+      { protocolVersion: 1, keychainConfirmed: true },
+    ));
+    const disconnect = await controller.disconnect(request(
+      '/hermes-authorizations/disconnect',
+      { protocolVersion: 1 },
+    ));
+
+    expect(activate.status).toBe(401);
+    expect(disconnect.status).toBe(401);
+    expect(telemetryEvents).toEqual([
+      { name: 'hermes.auth_denied', attributes: { reason: 'missing_credential' } },
+      { name: 'hermes.credential_rejected', attributes: { reason: 'missing_credential' } },
+      { name: 'hermes.auth_denied', attributes: { reason: 'missing_credential' } },
+      { name: 'hermes.credential_rejected', attributes: { reason: 'missing_credential' } },
+    ]);
+  });
+
   it('rejects activation without the exact pending dedicated credential', async () => {
     const response = await controller.activate(request(
       '/hermes-authorizations/activate',
@@ -533,6 +580,7 @@ describe('HermesAuthorizationController provider-free contract', () => {
     ));
     expect(replay.status).toBe(200);
     expect(await replay.json()).toEqual(receipt);
+    expect(telemetryEvents.filter((event) => event.name === 'hermes.credential_revoked')).toHaveLength(1);
   });
 
   it('reports revocation pending without swallowing the business failure', async () => {
@@ -596,7 +644,7 @@ describe('HermesAuthorizationController provider-free contract', () => {
     });
     expect(telemetryGauges.slice(-2)).toEqual([
       { name: 'hermes.credentials_near_expiry', value: 0 },
-      { name: 'hermes.credentials_expired', value: 1 },
+      { name: 'hermes.credentials_expired', value: 0 },
     ]);
   });
 });

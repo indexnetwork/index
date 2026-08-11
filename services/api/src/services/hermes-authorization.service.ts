@@ -1,6 +1,6 @@
 import { AuthorizationConflictError, AuthorizationExpiredError, AuthorizationInvalidGrantError, AuthorizationReplayError, HERMES_AGENT_AUDIENCE, HERMES_AUTHORIZATION_CODE_TTL_MS, HERMES_AUTHORIZATION_REQUEST_TTL_MS, HERMES_CREDENTIAL_TTL_MS, HERMES_INSTALLATION_NAME, InvalidHermesCredentialError, derivePkceS256Challenge, hashHermesSecret, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
 import { isExactHermesCapabilitySet, type HermesCapability } from '../lib/agent/hermes-capabilities';
-import { hermesRuntimeTelemetry, type HermesRuntimeTelemetry } from '../lib/agent/hermes-runtime-telemetry';
+import { hermesRuntimeTelemetry, refreshHermesCredentialExpiryGauges, type HermesCredentialExpiryHealthStore, type HermesRuntimeTelemetry } from '../lib/agent/hermes-runtime-telemetry';
 
 export type HermesAuthorizationServiceDependencies = {
   now: () => Date;
@@ -13,8 +13,6 @@ const defaultDependencies: HermesAuthorizationServiceDependencies = {
   randomId: () => crypto.randomUUID(),
   randomSecret: () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),
 };
-
-const HERMES_CREDENTIAL_NEAR_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type CreateHermesAuthorizationInput = {
   installationId: string;
@@ -40,7 +38,7 @@ function publicMetadata(metadata: HermesCredentialMetadata) {
 /** Orchestrates one-time Hermes authorization without retaining raw secrets. */
 export class HermesAuthorizationService {
   constructor(
-    private readonly store: HermesAuthorizationStore = lazyHermesAuthorizationStore,
+    private readonly store: HermesAuthorizationStore & HermesCredentialExpiryHealthStore = lazyHermesAuthorizationStore,
     private readonly dependencies: HermesAuthorizationServiceDependencies = defaultDependencies,
     private readonly telemetry: HermesRuntimeTelemetry = hermesRuntimeTelemetry,
   ) {}
@@ -104,6 +102,7 @@ export class HermesAuthorizationService {
         expiresAt: new Date(now.getTime() + HERMES_AUTHORIZATION_CODE_TTL_MS),
       });
       this.telemetry.increment('credential_rotated');
+      await refreshHermesCredentialExpiryGauges(this.telemetry, this.store, now);
       return { requestId, code, state: approved.state };
     } catch (error) {
       this.recordAuthorizationFailure(error);
@@ -150,7 +149,6 @@ export class HermesAuthorizationService {
     if (!metadata || metadata.audience !== HERMES_AGENT_AUDIENCE || metadata.activationState !== 'pending') {
       return this.rejectCredential();
     }
-    this.recordCredentialExpiry(metadata.expiresAt);
     return {
       ownerId: metadata.ownerId,
       audience: metadata.audience,
@@ -173,7 +171,6 @@ export class HermesAuthorizationService {
       || !['pending', 'active', 'revoked'].includes(metadata.activationState)
       || !isExactHermesCapabilitySet(metadata.actions)
     ) return this.rejectCredential();
-    this.recordCredentialExpiry(metadata.expiresAt);
     return {
       ownerId: metadata.ownerId,
       audience: metadata.audience,
@@ -188,15 +185,18 @@ export class HermesAuthorizationService {
 
   /** Install the exact pending generation's permission after native confirmation. */
   async activatePendingHermesCredential(principal: HermesActivationPrincipal) {
-    return publicMetadata(await this.store.activatePendingCredential(principal));
+    const activated = await this.store.activatePendingCredential(principal);
+    await refreshHermesCredentialExpiryGauges(this.telemetry, this.store, this.dependencies.now());
+    return publicMetadata(activated);
   }
 
   /** Revoke this exact credential/generation and restore Index authority. */
   async disconnectHermesCredential(principal: HermesActivationPrincipal) {
     try {
-      const receipt = await this.store.disconnectCredential(principal);
-      this.telemetry.increment('credential_revoked');
-      return receipt;
+      const result = await this.store.disconnectCredential(principal);
+      if (result.transitioned) this.telemetry.increment('credential_revoked');
+      await refreshHermesCredentialExpiryGauges(this.telemetry, this.store, this.dependencies.now());
+      return result.receipt;
     } catch (error) {
       this.telemetry.increment('server_error', { reason: 'server_error' });
       this.telemetry.increment('credential_revocation_pending', { reason: 'server_error' });
@@ -208,12 +208,6 @@ export class HermesAuthorizationService {
     this.telemetry.increment('auth_denied', { reason: 'invalid_credential' });
     this.telemetry.increment('credential_rejected', { reason: 'invalid_credential' });
     throw new InvalidHermesCredentialError();
-  }
-
-  private recordCredentialExpiry(expiresAt: Date): void {
-    const remainingMs = expiresAt.getTime() - this.dependencies.now().getTime();
-    this.telemetry.gauge('credentials_near_expiry', remainingMs > 0 && remainingMs <= HERMES_CREDENTIAL_NEAR_EXPIRY_MS ? 1 : 0);
-    this.telemetry.gauge('credentials_expired', remainingMs <= 0 ? 1 : 0);
   }
 
   private recordAuthorizationFailure(error: unknown): void {
@@ -234,7 +228,7 @@ export class HermesAuthorizationService {
   }
 }
 
-const lazyHermesAuthorizationStore: HermesAuthorizationStore = {
+const lazyHermesAuthorizationStore: HermesAuthorizationStore & HermesCredentialExpiryHealthStore = {
   async createAuthorization(input) {
     const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
     return hermesAuthorizationDatabaseAdapter.createAuthorization(input);
@@ -262,6 +256,10 @@ const lazyHermesAuthorizationStore: HermesAuthorizationStore = {
   async activatePendingCredential(input) {
     const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
     return hermesAuthorizationDatabaseAdapter.activatePendingCredential(input);
+  },
+  async countActiveCredentialExpiryHealth(input) {
+    const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');
+    return hermesAuthorizationDatabaseAdapter.countActiveCredentialExpiryHealth(input);
   },
   async disconnectCredential(input) {
     const { hermesAuthorizationDatabaseAdapter } = await import('../adapters/hermes-authorization.database.adapter');

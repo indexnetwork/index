@@ -60,6 +60,7 @@ describe('HermesRuntimeTelemetry', () => {
         { [dimension]: secret } as never,
       )),
       () => telemetry.increment('credential_rejected', { reason: secret } as never),
+      () => telemetry.increment('auth_denied', { ...{ reason: 'expired' }, ownerId: secret } as never),
       () => telemetry.gauge('pending_outbox', Number.NaN),
       () => telemetry.gauge('pending_outbox', -1),
       () => telemetry.observe('advisory_lock_wait_ms', Number.POSITIVE_INFINITY),
@@ -143,6 +144,12 @@ describe('HermesRuntimeTelemetry', () => {
       telemetry.increment('auth_denied', { message: 'free text' });
       // @ts-expect-error arbitrary free text is not a telemetry dimension
       telemetry.increment('auth_denied', { freeText: 'free text' });
+      const aliased = { reason: 'expired' as const, ownerId: 'owner' };
+      // @ts-expect-error aliased objects retain exact-key enforcement
+      telemetry.increment('auth_denied', aliased);
+      const spread = { ...{ reason: 'expired' as const }, agentId: 'agent' };
+      // @ts-expect-error spread objects retain exact-key enforcement
+      telemetry.increment('auth_denied', spread);
     };
     expect(compileTimeAssertions).toBeFunction();
   });

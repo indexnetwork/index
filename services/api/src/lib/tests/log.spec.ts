@@ -42,6 +42,67 @@ describe('sanitizeForLog credential redaction', () => {
     });
   });
 
+  it('redacts bounded mixed-case and separator token variants without broad token matching', () => {
+    expect(sanitizeForLog({
+      authorizationToken: 'first',
+      API_TOKEN: 'second',
+      'bearer-token': 'third',
+      access_token: 'fourth',
+      RefreshToken: 'fifth',
+      tokenCount: 5,
+      authorizationStatus: 'pending',
+      statusCode: 401,
+    })).toEqual({
+      authorizationToken: '[REDACTED]',
+      API_TOKEN: '[REDACTED]',
+      'bearer-token': '[REDACTED]',
+      access_token: '[REDACTED]',
+      RefreshToken: '[REDACTED]',
+      tokenCount: 5,
+      authorizationStatus: 'pending',
+      statusCode: 401,
+    });
+  });
+
+  it('redacts established project credential prefixes in Error messages and nested cyclic causes', () => {
+    const root = new Error('Hermes failed for idxh_ERROR_SECRET while owner used idxo_OWNER_SECRET');
+    const cause = new Error('nested idxh_NESTED_SECRET');
+    Object.defineProperty(root, 'cause', { value: cause, enumerable: false });
+    Object.defineProperty(cause, 'cause', { value: root, enumerable: false });
+
+    const sanitized = sanitizeForLog({ error: root }) as {
+      error: { message: string; cause: { message: string; cause: unknown } };
+    };
+    expect(sanitized.error.message).toBe('Hermes failed for [REDACTED] while owner used [REDACTED]');
+    expect(sanitized.error.cause.message).toBe('nested [REDACTED]');
+    expect(JSON.stringify(sanitized)).not.toMatch(/idxh_|idxo_|ERROR_SECRET|OWNER_SECRET|NESTED_SECRET/);
+  });
+
+  it('redacts nested sensitive keys in cyclic plain objects without retaining secrets', () => {
+    const cyclic: Record<string, unknown> = {
+      label: 'safe',
+      nested: { API_TOKEN: 'cycle-secret' },
+    };
+    cyclic.self = cyclic;
+    const sanitized = sanitizeForLog(cyclic);
+    expect(JSON.stringify(sanitized)).not.toContain('cycle-secret');
+    expect(sanitized).toMatchObject({
+      label: 'safe',
+      nested: { API_TOKEN: '[REDACTED]' },
+    });
+  });
+
+  it('preserves unrelated prose and incomplete documented prefixes in errors', () => {
+    expect(sanitizeForLog({
+      error: new Error('authorization failed; use the idxh_ or idxo_ prefix in documentation'),
+    })).toEqual({
+      error: {
+        message: 'authorization failed; use the idxh_ or idxo_ prefix in documentation',
+        name: 'Error',
+      },
+    });
+  });
+
   it('preserves unrelated truncation and embedding behavior', () => {
     expect(sanitizeForLog({
       statusCode: 401,

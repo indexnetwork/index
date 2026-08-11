@@ -34,4 +34,34 @@ Extended `sanitizeForLog` recursively for authorization, exact code/verifier, AP
 
 No database-backed test or database command was run, and `TEST_DATABASE_SAFE` was not set. One attempted mixed provider-free test invocation included `negotiation-polling.remaining-budget.spec.ts`; its import reached the fail-closed database readiness guard and refused immediately because `TEST_DATABASE_SAFE=1` was absent. No database operation ran. The unrelated `negotiation-polling.fixture-contract.spec.ts` also reports pre-existing static-parser findings in `tests/negotiation-runtime-authority.database.isolated.ts`; Task 5 did not alter that fixture or parser.
 
-Scope is limited to the Task 5 telemetry adapter, recursive log redaction, the four planned production integration files, exact adapter/integration tests, and this report. No settings, schema, migration, workflow, package, authority, response, or transaction semantics were changed.
+Scope is limited to the Task 5 telemetry adapter, recursive log redaction, the planned production integration seams, exact adapter/integration tests, and this report. No settings, schema, migration, workflow, package, authority, response, or transaction semantics were changed.
+
+## Critical/Important review remediation
+
+Addressed every finding from `.pi-subagents/artifacts/c6d8c06a_reviewer_0_output.md`:
+
+- Sentry metadata now classifies each top-level key before value conversion. A fresh-process mocked `@sentry/bun` test covers every bounded sensitive top-level key and proves only `[REDACTED]` reaches Sentry attributes.
+- Key matching now handles bounded mixed-case/separator variants including authorization, API, bearer, access, and refresh token fields. Error messages redact only established `idxh_` and `idxo_` credential shapes; nested/cyclic causes and cyclic plain objects terminate safely, while unrelated prose, status fields, token counts, and incomplete documented prefixes remain unchanged.
+- `increment` now uses a generic exact-key constraint. Type compilation proves direct literals, aliases, and spreads carrying identity/free-text keys are rejected; ergonomic no-attribute and reason-only calls remain valid. Runtime spread/computed-key rejection remains covered.
+- The former per-request boolean expiry gauges were removed. A dedicated adapter issues one aggregate query with indexed expiry bounds and active-state predicates for authoritative seven-day near-expiry and expired counts. Gauges refresh after approval rotation, activation, revocation/retry, normal active authentication, and active expiry denial. Snapshot-query or sink failure remains isolated from authority behavior.
+- The revocation store now returns internal transition metadata while the public receipt remains unchanged; `credential_revoked` emits only for the first transition. Already-delivered response replays skip both delivery and `outbox_replay_attempted`.
+- Missing controller credentials and malformed, unknown, expired, revoked, or stale active-guard credentials emit exactly one privacy-bounded `auth_denied`/`credential_rejected` pair with stable enum reasons. Lower layers do not recount these guard/controller denials.
+
+### Remediation RED evidence
+
+- Log tests first failed for `authorizationToken`, `api_token`, `bearerToken`, raw `idxh_`/`idxo_` error messages, nested causes, and raw top-level Sentry attributes (3 failures).
+- The focused TypeScript command reported two unused `@ts-expect-error` directives because aliased and spread attributes still compiled.
+- Authorization/guard/polling/count-seam tests first produced 14 expected failures plus the missing count-adapter module: request booleans remained, missing-header and guard denials emitted nothing, idempotent revocation/replay double-counted, and aggregate gauges were absent.
+- The approval lifecycle test was observed failing with an empty gauge list before rotation refresh was added.
+
+### Remediation GREEN evidence
+
+- Final focused Task 5/runtime matrix: 136 passed, 0 failed, 645 expectations across adapter, mocked Sentry, redaction, authorization controller, active guard, runtime, and polling seams.
+- Static isolated inventory: 14 passed, 0 failed, 66 expectations.
+- Both new isolated tests passed through the registered fresh-process import harness (1/1 each).
+- Exact telemetry type compilation and CLI-spec typecheck passed without diagnostics.
+- API/protocol build passed.
+- Full API lint passed with 0 errors and the same 46 pre-existing warnings outside Task 5.
+- `git diff --check` passed.
+
+No database-backed test or database command was run during remediation, and `TEST_DATABASE_SAFE` remained unset. The aggregate adapter is covered through an injected query seam and source-level bound assertions; real PostgreSQL execution remains owned by the guarded CI assurance suite.

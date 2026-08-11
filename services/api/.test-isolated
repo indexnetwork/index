@@ -53,6 +53,8 @@ src/services/tests/opportunity-delivery.isolated.ts
 src/services/tests/chat-summary.service.isolated.ts
 src/services/tests/chat.service.isolated.ts
 src/controllers/tests/route-deprecation.controller.isolated.ts
+src/lib/tests/log-sentry.isolated.ts
+src/adapters/tests/hermes-runtime-telemetry.database.adapter.isolated.ts
 tests/contacts-disabled.e2e.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts
 src/controllers/tests/chat.reporter.isolated.ts

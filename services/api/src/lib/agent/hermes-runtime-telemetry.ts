@@ -31,6 +31,9 @@ export const HERMES_TELEMETRY_REASONS = [
   'expired',
   'replayed',
   'invalid_credential',
+  'missing_credential',
+  'malformed_credential',
+  'revoked',
   'invalid_grant',
   'authorization_conflict',
   'runtime_conflict',
@@ -47,6 +50,20 @@ export type HermesTelemetryEvent = typeof HERMES_TELEMETRY_EVENTS[number];
 export type HermesTelemetryGauge = typeof HERMES_TELEMETRY_GAUGES[number];
 export type HermesTelemetryObservation = typeof HERMES_TELEMETRY_OBSERVATIONS[number];
 export type HermesTelemetryReason = typeof HERMES_TELEMETRY_REASONS[number];
+
+export const HERMES_CREDENTIAL_NEAR_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type HermesCredentialExpiryHealth = {
+  nearExpiry: number;
+  expired: number;
+};
+
+export interface HermesCredentialExpiryHealthStore {
+  countActiveCredentialExpiryHealth(input: {
+    now: Date;
+    nearExpiryCutoff: Date;
+  }): Promise<HermesCredentialExpiryHealth>;
+}
 
 /** The only supported label is a bounded reason enum. */
 export type HermesTelemetryAttributes = Readonly<{
@@ -110,7 +127,10 @@ function validatedAttributes(attributes: HermesTelemetryAttributes | undefined):
 export class HermesRuntimeTelemetry {
   constructor(private readonly sink: HermesRuntimeTelemetrySink = sentrySink) {}
 
-  increment(event: HermesTelemetryEvent, attributes?: HermesTelemetryAttributes): void {
+  increment<T extends HermesTelemetryAttributes = HermesTelemetryAttributes>(
+    event: HermesTelemetryEvent,
+    attributes?: T & Record<Exclude<keyof T, keyof HermesTelemetryAttributes>, never>,
+  ): void {
     assertMetricName(EVENTS, event);
     const safeAttributes = validatedAttributes(attributes);
     try {
@@ -142,6 +162,24 @@ export class HermesRuntimeTelemetry {
 }
 
 export const hermesRuntimeTelemetry = new HermesRuntimeTelemetry();
+
+/** Refresh aggregate active-credential health without letting the telemetry query affect authority. */
+export async function refreshHermesCredentialExpiryGauges(
+  telemetry: HermesRuntimeTelemetry,
+  store: HermesCredentialExpiryHealthStore,
+  now: Date,
+): Promise<void> {
+  try {
+    const health = await store.countActiveCredentialExpiryHealth({
+      now,
+      nearExpiryCutoff: new Date(now.getTime() + HERMES_CREDENTIAL_NEAR_EXPIRY_MS),
+    });
+    telemetry.gauge('credentials_near_expiry', health.nearExpiry);
+    telemetry.gauge('credentials_expired', health.expired);
+  } catch {
+    // A telemetry snapshot must never alter authentication or lifecycle behavior.
+  }
+}
 
 /** Time only the database lock acquisition; telemetry remains synchronous and unlabeled. */
 export async function observeHermesAdvisoryLockWait(

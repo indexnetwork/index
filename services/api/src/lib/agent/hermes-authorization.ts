@@ -120,9 +120,12 @@ export interface HermesAuthorizationStore {
   authenticateRevocableCredential(credentialHash: string): Promise<HermesCredentialMetadata | null>;
   activatePendingCredential(input: HermesActivationPrincipal): Promise<HermesCredentialMetadata>;
   disconnectCredential(input: HermesActivationPrincipal): Promise<{
-    revoked: true;
-    credentialId: string;
-    setupAttemptId: string;
+    receipt: {
+      revoked: true;
+      credentialId: string;
+      setupAttemptId: string;
+    };
+    transitioned: boolean;
   }>;
 }
 

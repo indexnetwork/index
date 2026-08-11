@@ -622,8 +622,10 @@ export class NegotiationPollingService {
       runAuthority,
     );
     if (replay) {
-      this.telemetry.increment('outbox_replay_attempted', { reason: 'outbox_pending' });
-      await this.deliverHermesResponseOutbox(negotiationId, replay);
+      if (!replay.outboxDelivered) {
+        this.telemetry.increment('outbox_replay_attempted', { reason: 'outbox_pending' });
+        await this.deliverHermesResponseOutbox(negotiationId, replay);
+      }
       return { success: true };
     }
 

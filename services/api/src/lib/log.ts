@@ -133,6 +133,9 @@ const EXACT_SENSITIVE_LOG_KEYS = new Set([
   'password',
   'accesstoken',
   'refreshtoken',
+  'authorizationtoken',
+  'apitoken',
+  'bearertoken',
 ]);
 
 function isSensitiveLogKey(key: string): boolean {
@@ -140,6 +143,13 @@ function isSensitiveLogKey(key: string): boolean {
   return EXACT_SENSITIVE_LOG_KEYS.has(normalized)
     || normalized.includes('credential')
     || normalized.includes('clientsecret');
+}
+
+function redactEstablishedCredentialPatterns(value: string): string {
+  return value.replace(
+    /(^|[^A-Za-z0-9_-])(?:idxh|idxo)_[A-Za-z0-9_-]{8,}/g,
+    '$1[REDACTED]',
+  );
 }
 
 /**
@@ -229,7 +239,7 @@ function sentryAttributes(
   if (source) attributes.log_source = source;
 
   for (const [key, value] of Object.entries(meta ?? {})) {
-    const attributeValue = toSentryAttributeValue(value);
+    const attributeValue = isSensitiveLogKey(key) ? '[REDACTED]' : toSentryAttributeValue(value);
     if (attributeValue !== undefined) {
       attributes[`meta.${normalizeSentryAttributeName(key)}`] = attributeValue;
     }
@@ -425,10 +435,14 @@ function sanitizeForLogInternal(value: unknown, depth = 0): unknown {
     return items;
   }
   if (value instanceof Error) {
+    if (depth >= MAX_LOG_DEPTH) return `[truncated: ${value.name || 'Error'}]`;
     const out: Record<string, unknown> = {
-      message: truncateLogString(value.message),
+      message: truncateLogString(redactEstablishedCredentialPatterns(value.message)),
       name: value.name,
     };
+    if ('cause' in value && value.cause !== undefined) {
+      out.cause = sanitizeForLogInternal(value.cause, depth + 1);
+    }
     // Capture any extra enumerable own properties (e.g. Drizzle/postgres driver fields: query, parameters, code, constraint)
     for (const [k, v] of Object.entries(value as unknown as Record<string, unknown>)) {
       if (!(k in out)) {

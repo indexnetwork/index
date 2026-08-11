@@ -315,6 +315,37 @@ describe('NegotiationPollingService closed Hermes atomic response seam', () => {
     expect(JSON.stringify(telemetryEvents)).not.toMatch(/task|receipt|owner|agent|run|capability/);
   });
 
+  it('does not count or attempt delivery for an already-delivered idempotent replay', async () => {
+    getReplay.mockResolvedValue({
+      kind: 'replay',
+      receipt: {
+        version: 1, receiptId: 'receipt', taskId, messageId: 'message', artifactId: null,
+        action: 'counter', finalState: 'waiting_for_agent', turnNumber: 2,
+        completedAt: '2026-01-02T03:05:00.000Z',
+      },
+      queueIntent: {
+        cancelClaimTimeout: true,
+        claimGeneration: '2026-01-02T03:04:05.000Z',
+        rearmParkTimeout: null,
+      },
+      outboxDelivered: true,
+    } as never);
+
+    await expect(service.respondHermes(
+      agentId,
+      ownerId,
+      taskId,
+      { action: 'decline', roleAlignment: 'peers' },
+      principal,
+      authority,
+    )).resolves.toEqual({ success: true });
+
+    expect(telemetryEvents).toEqual([]);
+    expect(cancelClaimTimeout).not.toHaveBeenCalled();
+    expect(enqueueParkTimeout).not.toHaveBeenCalled();
+    expect(markDelivered).not.toHaveBeenCalled();
+  });
+
   it('never extends the committed response deadline across a substantial outage or repeated replay', async () => {
     getReplay.mockResolvedValue({
       kind: 'replay',
