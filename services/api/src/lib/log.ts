@@ -119,6 +119,29 @@ const EMBEDDING_KEYS = new Set([
   'embeddings',
 ]);
 
+const EXACT_SENSITIVE_LOG_KEYS = new Set([
+  'authorization',
+  'authorizationheader',
+  'code',
+  'authorizationcode',
+  'verifier',
+  'codeverifier',
+  'apikey',
+  'xapikey',
+  'secret',
+  'secrethash',
+  'password',
+  'accesstoken',
+  'refreshtoken',
+]);
+
+function isSensitiveLogKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return EXACT_SENSITIVE_LOG_KEYS.has(normalized)
+    || normalized.includes('credential')
+    || normalized.includes('clientsecret');
+}
+
 /**
  * Truncation limits for logged meta. Logs are for humans and Sentry —
  * never dump large payloads (full entities, LLM outputs, API responses).
@@ -408,7 +431,9 @@ function sanitizeForLogInternal(value: unknown, depth = 0): unknown {
     };
     // Capture any extra enumerable own properties (e.g. Drizzle/postgres driver fields: query, parameters, code, constraint)
     for (const [k, v] of Object.entries(value as unknown as Record<string, unknown>)) {
-      if (!(k in out)) out[k] = sanitizeForLogInternal(v, depth + 1);
+      if (!(k in out)) {
+        out[k] = isSensitiveLogKey(k) ? '[REDACTED]' : sanitizeForLogInternal(v, depth + 1);
+      }
     }
     return out;
   }
@@ -422,7 +447,9 @@ function sanitizeForLogInternal(value: unknown, depth = 0): unknown {
         break;
       }
       keyCount++;
-      if (EMBEDDING_KEYS.has(k) || isNumberArray(v)) {
+      if (isSensitiveLogKey(k)) {
+        out[k] = '[REDACTED]';
+      } else if (EMBEDDING_KEYS.has(k) || isNumberArray(v)) {
         out[k] = isNumberArray(v) ? `[redacted: ${v.length} values]` : sanitizeForLogInternal(v, depth + 1);
       } else if (v != null && typeof v === 'object' && !Array.isArray(v) && v.constructor === Object) {
         const nested = v as Record<string, unknown>;

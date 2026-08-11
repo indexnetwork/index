@@ -4,6 +4,7 @@ import type { AgentWithRelations } from '../src/adapters/agent.database.adapter'
 import { authenticateApiKey } from '../src/guards/auth.guard';
 import { AgentRuntimeTransactionHarness } from './support/agent-runtime-transaction.harness';
 import { NegotiationPollingAuthorization } from '../src/lib/agent/negotiation-polling-authorization';
+import { HermesRuntimeTelemetry } from '../src/lib/agent/hermes-runtime-telemetry';
 import { AgentRuntimeService, NEGOTIATION_EXECUTOR_FRESHNESS_MS, type AgentRuntimeStore } from '../src/services/agent-runtime.service';
 
 const OWNER_ID = 'owner-1';
@@ -207,6 +208,45 @@ class RuntimeMemoryStore implements AgentRuntimeStore {
 }
 
 describe('AgentRuntimeService', () => {
+  it('emits stable rotation, stale fallback, conflict, and revocation telemetry without identities', async () => {
+    const store = new RuntimeMemoryStore();
+    const events: Array<{ name: string; attributes: Record<string, string> }> = [];
+    const telemetry = new HermesRuntimeTelemetry({
+      increment: (name, attributes) => events.push({ name, attributes }),
+      gauge: () => undefined,
+      observe: () => undefined,
+    });
+    const service = new AgentRuntimeService(
+      store,
+      () => new Date('2026-08-07T00:10:00.000Z'),
+      telemetry,
+    );
+
+    await service.prepareHermes(OWNER_ID, INSTALLATION_ID, 'setup-current');
+    await service.setRuntime(OWNER_ID, {
+      runtime: 'hermes', installationId: INSTALLATION_ID, executorId: AGENT_ID, setupAttemptId: 'setup-current',
+    });
+    store.seed(agent({
+      handleNegotiations: true,
+      lastNegotiationPickupAt: new Date('2026-08-07T00:00:00.000Z'),
+      permissions: [{ id: 'permission', agentId: AGENT_ID, userId: OWNER_ID, scope: 'global', scopeId: null, actions: ['manage:negotiations'], createdAt: new Date() }],
+    }));
+    await service.getRuntime(OWNER_ID, INSTALLATION_ID);
+    await expect(service.setRuntime(OWNER_ID, {
+      runtime: 'hermes', installationId: INSTALLATION_ID, executorId: AGENT_ID, setupAttemptId: 'stale-setup',
+    })).rejects.toThrow();
+    await service.disconnectHermes(OWNER_ID, INSTALLATION_ID);
+
+    expect(events).toEqual([
+      { name: 'hermes.credential_rotated', attributes: {} },
+      { name: 'hermes.runtime_stale', attributes: { reason: 'stale' } },
+      { name: 'hermes.index_fallback', attributes: { reason: 'stale' } },
+      { name: 'hermes.conflict', attributes: { reason: 'runtime_conflict' } },
+      { name: 'hermes.credential_revoked', attributes: {} },
+    ]);
+    expect(JSON.stringify(events)).not.toMatch(/owner-1|agent-1|installation-1|setup-current/);
+  });
+
   it('prepares idempotently with no authority, then selects Hermes and Index', async () => {
     const store = new RuntimeMemoryStore();
     const service = new AgentRuntimeService(store, () => new Date('2026-08-07T00:00:00.000Z'));

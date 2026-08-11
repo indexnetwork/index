@@ -43,6 +43,12 @@ mock.module('../../adapters/negotiator-memory.retrieval.adapter', () => ({
 }));
 
 const { NegotiationPollingService } = await import('../negotiation-polling.service');
+const telemetryEvents: Array<{ name: string; attributes: Record<string, string> }> = [];
+const telemetry = {
+  increment: (name: string, attributes: Record<string, string> = {}) => telemetryEvents.push({ name: `hermes.${name}`, attributes }),
+  gauge: () => undefined,
+  observe: () => undefined,
+};
 
 const metadata = {
   type: 'negotiation',
@@ -110,6 +116,7 @@ const service = new NegotiationPollingService(
   singletonAdapter as never,
   responsePersistence as never,
   () => now,
+  telemetry as never,
 );
 
 beforeEach(() => {
@@ -121,6 +128,7 @@ beforeEach(() => {
   markDelivered.mockClear();
   cancelClaimTimeout.mockClear();
   enqueueParkTimeout.mockClear();
+  telemetryEvents.length = 0;
   now = COMMITTED_AT;
 });
 
@@ -301,6 +309,10 @@ describe('NegotiationPollingService closed Hermes atomic response seam', () => {
       taskId, 2, 300_000, 'receipt-park-generation', undefined,
     );
     expect(markDelivered).toHaveBeenCalledWith(taskId, 'receipt');
+    expect(telemetryEvents).toEqual([
+      { name: 'hermes.outbox_replay_attempted', attributes: { reason: 'outbox_pending' } },
+    ]);
+    expect(JSON.stringify(telemetryEvents)).not.toMatch(/task|receipt|owner|agent|run|capability/);
   });
 
   it('never extends the committed response deadline across a substantial outage or repeated replay', async () => {
