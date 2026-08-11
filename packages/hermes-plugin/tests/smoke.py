@@ -101,6 +101,7 @@ class FakeStreamingResponse:
         self.lines = list(lines)
         self.read_error = read_error
         self.closed = False
+        self.close_event = threading.Event()
         self.read_thread_ids = []
         self.close_thread_id = None
 
@@ -113,6 +114,7 @@ class FakeStreamingResponse:
     def close(self):
         self.close_thread_id = threading.get_ident()
         self.closed = True
+        self.close_event.set()
 
 
 class FakeWebSocket:
@@ -153,6 +155,7 @@ def install_fake_urlopen(responses, captured):
         captured.append(
             {
                 "timeout": timeout,
+                "thread_id": threading.get_ident(),
                 "url": request.full_url,
                 "method": request.get_method(),
                 "headers": dict(request.header_items()),
@@ -856,13 +859,51 @@ def main() -> None:
         assert stream_response.closed is True
         assert stream_response.close_thread_id != event_loop_thread_id
 
-        # A WebSocket disconnect terminates the relay and still closes the
-        # upstream response in a worker thread.
+        # Cancellation while urlopen is still running must transfer cleanup
+        # ownership to the worker: if it eventually returns a response, that
+        # response is closed even though the coroutine never received it.
+        delayed_response = FakeStreamingResponse([])
+        open_started = threading.Event()
+        release_open = threading.Event()
+
+        def delayed_urlopen(_request, timeout):
+            open_started.set()
+            assert release_open.wait(5), "test did not release delayed urlopen"
+            return delayed_response
+
+        urllib.request.urlopen = delayed_urlopen
+
+        async def cancel_during_open():
+            task = asyncio.create_task(dashboard_api.notifications_socket(FakeWebSocket()))
+            assert await asyncio.to_thread(open_started.wait, 5), "urlopen did not start"
+            task.cancel()
+            try:
+                await task
+                raise AssertionError("cancelled relay should raise CancelledError")
+            except asyncio.CancelledError:
+                pass
+            assert delayed_response.closed is False
+            release_open.set()
+            assert await asyncio.to_thread(delayed_response.close_event.wait, 5), "eventual response leaked"
+
+        asyncio.run(cancel_during_open())
+        assert delayed_response.closed is True
+        assert delayed_response.close_thread_id != event_loop_thread_id
+
+        # A WebSocket disconnect terminates the conversation relay and still
+        # closes the correctly addressed upstream response in a worker thread.
         disconnect_response = FakeStreamingResponse([b'data: {"type":"message.new"}\n'])
-        urllib.request.urlopen = lambda _request, timeout: disconnect_response
+        conversation_requests = []
+
+        def fake_conversation_urlopen(request, timeout):
+            conversation_requests.append(request)
+            return disconnect_response
+
+        urllib.request.urlopen = fake_conversation_urlopen
         disconnecting_socket = FakeWebSocket(dashboard_api.WebSocketDisconnect())
         asyncio.run(dashboard_api.conversations_socket(disconnecting_socket))
         assert disconnecting_socket.accepted is True
+        assert conversation_requests[0].full_url == "https://api.example.test/api/conversations/stream"
         assert disconnect_response.closed is True
         assert disconnect_response.close_thread_id != event_loop_thread_id
 
@@ -874,29 +915,22 @@ def main() -> None:
         assert failed_response.closed is True
         assert failed_response.close_thread_id != event_loop_thread_id
 
-        # The persisted catch-up proxy is a transparent authenticated GET: API
-        # errors retain their status/details payload instead of being rewritten.
+        # The persisted catch-up proxy is a transparent authenticated GET: an
+        # HTTP error's JSON body is returned unchanged instead of being wrapped.
         upstream_error = {
-            "success": False,
             "error": "Notification snapshots are unavailable.",
-            "status": 503,
-            "details": {"retryable": True},
+            "code": "snapshot_unavailable",
+            "retryable": True,
         }
-        snapshot_calls = []
-        original_api_request = dashboard_api.tools._api_request
-
-        def fake_snapshot_request(method, path):
-            snapshot_calls.append((method, path, threading.get_ident()))
-            return upstream_error
-
-        dashboard_api.tools._api_request = fake_snapshot_request
-        try:
-            assert asyncio.run(dashboard_api.notifications_snapshot()) == upstream_error
-        finally:
-            dashboard_api.tools._api_request = original_api_request
-        assert len(snapshot_calls) == 1
-        assert snapshot_calls[0][:2] == ("GET", "/notifications/snapshot")
-        assert snapshot_calls[0][2] != event_loop_thread_id
+        snapshot_http_error = http_error(503, upstream_error)
+        captured = []
+        install_fake_urlopen([snapshot_http_error], captured)
+        assert asyncio.run(dashboard_api.notifications_snapshot()) == upstream_error
+        assert captured[-1]["method"] == "GET"
+        assert captured[-1]["url"] == "https://api.example.test/api/notifications/snapshot"
+        assert captured[-1]["headers"]["X-api-key"] == "test-key"
+        assert captured[-1]["thread_id"] != event_loop_thread_id
+        assert snapshot_http_error.fp.closed is True
 
         captured = []
         install_fake_urlopen(

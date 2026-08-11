@@ -18,6 +18,7 @@ import importlib.util
 import json
 import os
 import re
+import threading
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -2057,13 +2058,45 @@ def _close_upstream_response(response: Any) -> None:
         pass
 
 
+class _UpstreamOpenState:
+    """Transfer response cleanup ownership safely across to_thread cancellation."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._abandoned = False
+        self._response: Any | None = None
+
+    def open(self, request: urllib.request.Request) -> Any | None:
+        try:
+            response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
+        except urllib.error.HTTPError as exc:
+            _close_upstream_response(exc)
+            raise
+        with self._lock:
+            if not self._abandoned:
+                self._response = response
+                return response
+        # The awaiting coroutine was cancelled before it could receive the
+        # result. This worker owns the otherwise-unreachable response cleanup.
+        _close_upstream_response(response)
+        return None
+
+    def abandon(self) -> Any | None:
+        with self._lock:
+            self._abandoned = True
+            return self._response
+
+
 async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
     """Relay dictionary-valued events from an authenticated Index SSE stream."""
     await websocket.accept()
     response: Any | None = None
+    open_state = _UpstreamOpenState()
     try:
         request = _sse_request(path)
-        response = await asyncio.to_thread(urllib.request.urlopen, request, timeout=_SSE_READ_TIMEOUT)
+        response = await asyncio.to_thread(open_state.open, request)
+        if response is None:
+            return
         while True:
             line = await asyncio.to_thread(response.readline)
             if not line:
@@ -2079,8 +2112,9 @@ async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
         except Exception:  # noqa: BLE001 - the WebSocket may already be disconnected.
             pass
     finally:
-        if response is not None:
-            await asyncio.to_thread(_close_upstream_response, response)
+        opened_response = open_state.abandon()
+        if opened_response is not None:
+            await asyncio.to_thread(_close_upstream_response, opened_response)
 
 
 def _message_text(parts: Any) -> str:
@@ -2316,7 +2350,36 @@ async def notifications_socket(websocket: WebSocket) -> None:
     await _relay_sse_to_websocket(websocket, "/notifications/stream")
 
 
+def _notification_snapshot_request() -> Any:
+    """Perform the blocking snapshot GET while preserving its JSON boundary."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        return {"success": False, "error": "INDEX_API_KEY is required."}
+    base_url = tools._api_url().rstrip("/")
+    request = urllib.request.Request(
+        f"{base_url}/notifications/snapshot",
+        headers=tools._headers(api_key),
+        method="GET",
+    )
+    response: Any | None = None
+    try:
+        try:
+            response = urllib.request.urlopen(request, timeout=tools._timeout_seconds())
+        except urllib.error.HTTPError as exc:
+            # HTTPError is also the upstream response. Parse its body directly
+            # so the plugin does not replace the API's error payload.
+            response = exc
+        return tools._parse_api_response(response.read())
+    except urllib.error.URLError as exc:
+        return {"success": False, "error": f"Notification snapshot request failed: {exc.reason}"}
+    except Exception as exc:  # noqa: BLE001 - plugin routes return errors rather than raising.
+        return {"success": False, "error": f"Notification snapshot response could not be processed: {exc}"}
+    finally:
+        if response is not None:
+            _close_upstream_response(response)
+
+
 @router.get("/notifications/snapshot")
-async def notifications_snapshot() -> dict[str, Any]:
-    """Proxy persisted actionable notifications without rewriting upstream errors."""
-    return await asyncio.to_thread(tools._api_request, "GET", "/notifications/snapshot")
+async def notifications_snapshot() -> Any:
+    """Proxy persisted actionable notifications without rewriting upstream JSON."""
+    return await asyncio.to_thread(_notification_snapshot_request)
