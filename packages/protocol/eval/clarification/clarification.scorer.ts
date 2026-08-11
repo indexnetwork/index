@@ -1,4 +1,4 @@
-import type { IntentClarifierOutput } from "../../src/intent/intent.clarifier.js";
+import type { IntentClarifierOutput } from "../../src/signals/application/intent.clarifier.js";
 
 import type { ClarificationCase, ClarificationResult } from "./clarification.types.js";
 
