@@ -13,6 +13,8 @@ const assuranceWorkflowPath = path.join(
 const assuranceWorkflow = existsSync(assuranceWorkflowPath)
   ? readFileSync(assuranceWorkflowPath, 'utf8')
   : '';
+const POSTGRES_ASSURANCE_REFERENCE = 'postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b';
+const POSTGRES_ASSURANCE_DIGEST = 'sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b';
 const apiPackage = JSON.parse(
   readFileSync(path.join(apiRoot, 'package.json'), 'utf8'),
 ) as { scripts?: Record<string, string> };
@@ -70,8 +72,10 @@ describe('Hermes production assurance contract', () => {
       'POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}',
     );
     expect(assuranceWorkflow).toContain(
-      `test "$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")" = "postgres:16"`,
+      `image_ref="$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")"`,
     );
+    expect(assuranceWorkflow).toContain(`test "$image_ref" = "${POSTGRES_ASSURANCE_REFERENCE}"`);
+    expect(assuranceWorkflow).toContain(`test "\${image_ref##*@}" = "${POSTGRES_ASSURANCE_DIGEST}"`);
     expect(assuranceWorkflow).toContain(
       `docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu`,
     );
@@ -88,7 +92,8 @@ describe('Hermes production assurance contract', () => {
 
   test('uses a healthy disposable PostgreSQL 16 service with frozen dependencies', () => {
     expect(existsSync(assuranceWorkflowPath)).toBe(true);
-    expect(assuranceWorkflow).toContain('image: postgres:16');
+    expect(assuranceWorkflow).toContain(`image: ${POSTGRES_ASSURANCE_REFERENCE}`);
+    expect(assuranceWorkflow).not.toMatch(/image:\s+postgres:16\s*$/m);
     expect(assuranceWorkflow).toContain('POSTGRES_DB: hermes_assurance');
     expect(assuranceWorkflow).toContain('pg_isready -U postgres -d hermes_assurance');
     expect(assuranceWorkflow).toContain('bun install --frozen-lockfile');

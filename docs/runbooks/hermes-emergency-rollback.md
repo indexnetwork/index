@@ -25,12 +25,14 @@ Do not reorder or parallelize these steps. In particular, never start an older s
 1. Stop Hermes client rollout, new connector activation, and scheduled negotiator launches at the deployment/control-plane layer.
 2. For each connection returned to an authorized owner by `GET /api/connected-agents/hermes`, call:
 
-   ```text
-   POST /api/connected-agents/hermes/:installationId/pause
-   body: {}
+   ```js
+   await fetch(`/api/connected-agents/hermes/${encodeURIComponent(installationId)}/pause`, {
+     method: "POST",
+     credentials: "include",
+   });
    ```
 
-   Require `selected:false` and `indexCovering:true`. Keep installation IDs only in the authorized operator/client session; never put them in incident evidence.
+   The pause endpoint requires an exactly empty request: omit the `body` option entirely and do not add a JSON content type or payload. Require `selected:false` and `indexCovering:true`. Keep installation IDs only in the authorized operator/client session; never put them in incident evidence.
 3. Confirm Index is covering new negotiation dispatch before proceeding. If individual owner pause cannot complete, do not restore the old binary; continue only when incident command explicitly authorizes the bulk emergency transaction in step 2, which atomically deselects every actionable Hermes installation before revocation commits.
 
 ## 2. Bulk revoke
@@ -51,10 +53,19 @@ trap cleanup_emergency_files EXIT
 bun run --cwd services/api maintenance:hermes-emergency-control -- \
   --audience hermes-agent >"$plan_file"
 
+jq -e '
+  (keys == ["audience", "credentials", "durationMs", "installations", "owners", "permissions", "planId", "reason"])
+  and .audience == "hermes-agent"
+  and .reason == "dry-run"
+  and (.planId | type == "string" and test("^hecp_[A-Za-z0-9_-]{43}$"))
+  and (.durationMs | type == "number" and . >= 0)
+  and ([.installations, .credentials, .permissions, .owners]
+    | all(type == "number" and floor == . and . >= 0))
+' "$plan_file" >/dev/null
+
 plan_id="$(jq -er '
-  select(.audience == "hermes-agent" and .reason == "planned")
+  select(.audience == "hermes-agent" and .reason == "dry-run")
   | .planId
-  | select(type == "string" and test("^hecp_[A-Za-z0-9_-]+$"))
 ' "$plan_file")"
 expected_installations="$(jq -er '
   .installations

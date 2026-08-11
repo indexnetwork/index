@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 
 : "${HERMES_PREFLIGHT_MAX_LOCK_MS:?release-approved max lock threshold is required}"
 : "${HERMES_PREFLIGHT_MAX_TOTAL_MS:?release-approved max total threshold is required}"
+export HERMES_PREFLIGHT_MAX_LOCK_MS HERMES_PREFLIGHT_MAX_TOTAL_MS
 
 output="$(mktemp)"
 trap 'rm -f "$output"' EXIT

@@ -9,6 +9,13 @@ const workflow = readFileSync(
   'utf8',
 );
 const runner = readFileSync(path.join(apiRoot, 'scripts/test-hermes-production-assurance.sh'), 'utf8');
+const preflightFixture = readFileSync(
+  path.join(apiRoot, 'src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts'),
+  'utf8',
+);
+const emergencyContract = readFileSync(path.join(apiRoot, 'src/cli/hermes-emergency-control.contract.ts'), 'utf8');
+const runtimeService = readFileSync(path.join(apiRoot, 'src/services/agent-runtime.service.ts'), 'utf8');
+const macRuntimeSaga = readFileSync(path.join(repositoryRoot, 'apps/mac/api/agent-runtime-saga.spec.mjs'), 'utf8');
 const rolloutPath = path.join(repositoryRoot, 'docs/rollout/hermes-backend-production-assurance.md');
 const rollbackPath = path.join(repositoryRoot, 'docs/runbooks/hermes-emergency-rollback.md');
 const rollout = existsSync(rolloutPath) ? readFileSync(rolloutPath, 'utf8') : '';
@@ -38,9 +45,20 @@ describe('Hermes final production assurance release contract', () => {
     }
     expect(runner).toContain(': "${HERMES_PREFLIGHT_MAX_LOCK_MS:?');
     expect(runner).toContain(': "${HERMES_PREFLIGHT_MAX_TOTAL_MS:?');
+    expect(runner).toContain('export HERMES_PREFLIGHT_MAX_LOCK_MS HERMES_PREFLIGHT_MAX_TOTAL_MS');
     expect(runner).toContain('--max-lock-ms "$HERMES_PREFLIGHT_MAX_LOCK_MS"');
     expect(runner).toContain('--max-total-ms "$HERMES_PREFLIGHT_MAX_TOTAL_MS"');
     expect(runner).not.toContain('--max-lock-ms 5000 --max-total-ms 30000');
+
+    expect(preflightFixture).toContain('requireHermesPreflightThresholds(process.env)');
+    expect(preflightFixture).toContain('thresholds: THRESHOLDS');
+    expect(preflightFixture).toContain("SET LOCAL lock_timeout = '${THRESHOLDS.maxLockMs}ms'");
+    expect(preflightFixture).toContain('THRESHOLDS.maxTotalMs');
+    expect(preflightFixture).not.toMatch(/THRESHOLDS\s*=\s*\{\s*maxLockMs:\s*5_?000/);
+
+    const workflowThresholds = position(workflow, 'HERMES_PREFLIGHT_MAX_LOCK_MS: ${{ steps.preflight_thresholds.outputs.max_lock_ms }}');
+    const workflowFreshSuite = position(workflow, 'bun run --cwd services/api test:hermes-production-assurance');
+    expect(workflowThresholds).toBeLessThan(workflowFreshSuite);
   });
 
   it('keeps the release workflow provider-free, explicit, dry-run-only, and no-skip', () => {
@@ -54,6 +72,10 @@ describe('Hermes final production assurance release contract', () => {
     expect(workflow).toContain('bun run --cwd services/api lint');
     expect(workflow).toContain('src/lib/testing/tests/isolated-test-suite.spec.ts');
     expect(workflow).toContain('Run stale and expired Index coverage smoke');
+    expect(workflow).toContain('src/lib/agent/tests/hermes-runtime-telemetry.spec.ts');
+    expect(workflow).toContain('src/lib/testing/tests/hermes-assurance-output.spec.ts');
+    expect(workflow).toContain('API_TEST_ISOLATED_TARGET=src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts');
+    expect(workflow).toContain('bun test services/api/src/lib/testing/isolated-test-import-harness.spec.ts');
     expect(workflow).toContain('maintenance:hermes-emergency-control -- --audience hermes-agent');
     expect(workflow).not.toContain('maintenance:hermes-emergency-control -- --confirm');
     expect(workflow).not.toMatch(/OPENAI_API_KEY|OPENROUTER_API_KEY|ANTHROPIC_API_KEY/);
@@ -63,6 +85,39 @@ describe('Hermes final production assurance release contract', () => {
     expect(protectedJob).toContain('if: github.event_name == \'workflow_dispatch\'');
     expect(protectedJob).toContain('environment: production');
     expect(protectedJob).toContain('PREVIOUS_API_IMAGE: ${{ inputs.PREVIOUS_API_IMAGE }}');
+  });
+
+  it('pins the workflow token, actions, and multi-arch PostgreSQL supply chain', () => {
+    const checkoutSha = '11d5960a326750d5838078e36cf38b85af677262';
+    const setupBunSha = '0c5077e51419868618aeaa5fe8019c62421857d6';
+    const uploadSha = 'ea165f8d65b6e75b540449e92b4886f43607fa02';
+    const postgresDigest = 'sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b';
+    const postgresReference = `postgres:16@${postgresDigest}`;
+
+    expect(workflow).toMatch(/permissions:\n\s+contents: read/);
+    const actionUses = [...workflow.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1]);
+    expect(actionUses).toHaveLength(11);
+    for (const actionUse of actionUses) expect(actionUse).toMatch(/^[^@\s]+@[0-9a-f]{40}$/);
+    expect(workflow).not.toMatch(/uses:\s*[^@\s]+@v\d/);
+    expect(workflow.match(new RegExp(`actions/checkout@${checkoutSha} # v4\\.4\\.0`, 'g'))).toHaveLength(3);
+    expect(workflow.match(new RegExp(`oven-sh/setup-bun@${setupBunSha} # v2\\.2\\.0`, 'g'))).toHaveLength(3);
+    expect(workflow.match(new RegExp(`actions/upload-artifact@${uploadSha} # v4\\.6\\.2`, 'g'))).toHaveLength(5);
+    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(3);
+    expect(workflow).toContain('[[ "$remote_url" =~ ^https://github\\.com/[^/]+/[^/]+(\\.git)?$ ]]');
+    expect(workflow).toContain('git fetch --no-tags origin');
+    expect(workflow.match(new RegExp(`image: ${postgresReference}`, 'g'))).toHaveLength(3);
+    expect(workflow.match(new RegExp(`test "\\$image_ref" = "${postgresReference}"`, 'g'))).toHaveLength(3);
+    expect(workflow.match(new RegExp(`test "\\$\\{image_ref##\\*@\\}" = "${postgresDigest}"`, 'g'))).toHaveLength(3);
+    expect(workflow).not.toMatch(/image:\s+postgres:16\s*$/m);
+  });
+
+  it('validates the exact emergency dry-run plan schema and reason', () => {
+    expect(emergencyContract).toContain("reason: 'dry-run';");
+    expect(emergencyContract).toContain("reason: 'dry-run',");
+    expect(workflow).toContain('value.reason !== "dry-run"');
+    expect(workflow).toContain('Object.keys(value).sort().join(",") !== expectedKeys.sort().join(",")');
+    expect(rollback).toContain('.reason == "dry-run"');
+    expect(rollback).not.toContain('.reason == "planned"');
   });
 
   it('uploads only the aggregate evidence and established sanitized JSON reports', () => {
@@ -83,6 +138,12 @@ describe('Hermes final production assurance release contract', () => {
     for (const phrase of [
       'server before client',
       'prepare → select → pickup → respond → consult → Index → reselect → disconnect',
+      'POST /api/hermes-authorizations',
+      'activated connector tuple',
+      'health:"never-seen"',
+      'indexCovering:true',
+      'health:"active"',
+      'indexCovering:false',
       'indexCovering: true',
       'credentials_near_expiry',
       'credentials_expired',
@@ -95,6 +156,14 @@ describe('Hermes final production assurance release contract', () => {
     ]) {
       expect(rollout).toContain(phrase);
     }
+    expect(rollout).toContain('never call the legacy `/api/agent-runtime/hermes/prepare` route');
+    expect(rollout).not.toContain('call `POST /api/agent-runtime/hermes/prepare`');
+    expect(macRuntimeSaga).toContain("legacy prepare must not run");
+    expect(macRuntimeSaga).toContain('selects only the exact active connector authority without preparing or carrying plaintext');
+    expect(runtimeService).toContain("lastPickup === null\n      ? 'never-seen'");
+    expect(runtimeService).toContain("indexCovering: selectedRuntime === 'index' || health !== 'active'");
+    expect(position(rollout, 'health:"never-seen"')).toBeLessThan(position(rollout, 'health:"active"'));
+    expect(position(rollout, 'indexCovering:true')).toBeLessThan(position(rollout, 'indexCovering:false'));
   });
 
   it('documents forward-fix-first rollback and the exact emergency order', () => {
@@ -112,6 +181,20 @@ describe('Hermes final production assurance release contract', () => {
     expect(rollback).toContain('hermes_assurance');
     expect(rollback).toContain('does not authorize production execution');
     expect(rollback).toContain('Never upload the plan ID');
+    expect(rollback).toContain('omit the `body` option entirely');
+    expect(rollback).not.toContain('body: {}');
+  });
+
+  it('runs for every contracted Task 7 source, runbook, plan, and report path', () => {
+    for (const sourcePath of [
+      'docs/rollout/hermes-backend-production-assurance.md',
+      'docs/runbooks/hermes-emergency-rollback.md',
+      'docs/guides/development-reference.md',
+      'docs/superpowers/plans/2026-08-09-hermes-backend-production-assurance.md',
+      '.superpowers/sdd/2026-08-09-hermes-backend-production-assurance/task-7-report.md',
+    ]) {
+      expect(workflow).toContain(`- "${sourcePath}"`);
+    }
   });
 
   it('bumps only the API package metadata to 0.80.0', () => {

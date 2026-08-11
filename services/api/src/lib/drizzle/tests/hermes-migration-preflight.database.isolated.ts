@@ -9,6 +9,7 @@ import { runHermesMigrationPreflight } from '../../../cli/hermes-migration-prefl
 import { HERMES_CANONICAL_ACTIONS } from '../../../lib/agent/hermes-capabilities';
 import type { DrizzleDB } from '../../../lib/drizzle/drizzle';
 import { withMinimumDatabaseTestBudget } from '../../../lib/testing/database-test-budget';
+import { requireHermesPreflightThresholds } from '../../../lib/testing/hermes-assurance-thresholds';
 import * as schema from '../../../schemas/database.schema';
 import db from '../drizzle';
 
@@ -23,7 +24,7 @@ const expiredAgentId = `${fixture}_expired_agent`;
 const selectedOwnerId = `${fixture}_selected_owner`;
 const issuedAt = new Date('2026-08-09T00:00:00.000Z');
 const expiresAt = new Date(issuedAt.getTime() + 2_592_000_000);
-const THRESHOLDS = { maxLockMs: 5_000, maxTotalMs: 30_000 } as const;
+const THRESHOLDS = requireHermesPreflightThresholds(process.env);
 
 const SELECTED_INDEX_DDL = `
   CREATE UNIQUE INDEX uniq_agents_selected_negotiation_executor
