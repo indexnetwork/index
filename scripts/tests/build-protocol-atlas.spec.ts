@@ -156,18 +156,26 @@ test("keeps responsive layouts bounded with touch and grayscale-safe interaction
   const nodeGrid = css.match(/\.atlas-node-grid\s*\{([^}]*)\}/)?.[1];
   expect(nodeGrid).toMatch(/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
 
-  const nodeCard = css.match(/\.atlas-node-grid \.atlas-node\s*\{([^}]*)\}/)?.[1];
-  expect(nodeCard).toMatch(/height:\s*100%/);
-  expect(nodeCard).not.toMatch(/max-height|overflow-y/);
+  const nodeSelector = /\.atlas-node(?:--[\w-]+)?(?=$|[\s.:#\]>+~*,]|\[)/;
+  const nodeRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter(([, selectors]) => selectors.split(",").some((selector) => nodeSelector.test(selector)));
+  expect(nodeRules.length).toBeGreaterThan(0);
+  for (const [, selector, declarations] of nodeRules) {
+    expect(declarations, selector.trim()).not.toMatch(/(?:^|;)\s*(?:max-height|overflow-y)\s*:/);
+    for (const height of declarations.matchAll(/(?:^|;)\s*height\s*:\s*([^;]+)/g)) {
+      expect(height[1].trim(), selector.trim()).toBe("100%");
+    }
+  }
 
   const intermediate = css.slice(css.indexOf("@media (max-width: 900px)"), css.indexOf("@media (max-width: 640px)"));
   expect(intermediate).toMatch(/\.atlas-node-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
   expect(intermediate).toMatch(/\.atlas-relationship\s*\{[^}]*grid-template-columns:\s*1fr/s);
 
   const mobile = css.slice(css.indexOf("@media (max-width: 640px)"), css.indexOf("@media (max-width: 375px)"));
-  expect(mobile).toMatch(/\.atlas-node-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  const mobileNodeGrid = mobile.match(/\.atlas-node-grid\s*\{([^}]*)\}/)?.[1];
+  expect(mobileNodeGrid).toMatch(/grid-template-columns:\s*1fr/);
+  expect(mobileNodeGrid).toMatch(/padding:\s*var\(--space-2\)/);
   expect(css).not.toContain(".atlas-diagram-canvas svg");
-  expect(css).not.toContain("overflow-y: auto;\n  pointer-events: auto");
   expect(css).toContain(".configuration-delta--activated");
   expect(css).toContain(".configuration-delta--bypassed");
   expect(css).toContain(".configuration-delta--changed");

@@ -1126,7 +1126,7 @@ noscript {
 
   .atlas-node-grid {
     grid-template-columns: 1fr;
-    padding: 0;
+    padding: var(--space-2);
   }
 
   .configuration-assignments {
