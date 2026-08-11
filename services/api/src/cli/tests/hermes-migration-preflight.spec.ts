@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { drizzle } from 'drizzle-orm/postgres-js';
 
+import { HERMES_CANONICAL_ACTIONS } from '../../lib/agent/hermes-capabilities';
+import * as schema from '../../schemas/database.schema';
 import { assertPreflightPass, formatPreflightReport, parseLegacyMetadata, type HermesPreflightReport } from '../hermes-migration-preflight.contract';
 import { parseHermesPreflightArguments, runHermesPreflightMain } from '../hermes-migration-preflight.main';
 
@@ -91,6 +94,46 @@ describe('Hermes migration preflight contract', () => {
       classification.indexOf('metadata::jsonb'),
     );
     expect(classification.match(/metadata::jsonb/g)).toHaveLength(1);
+  });
+
+  it('renders full and sliced fixture actions as one PostgreSQL text-array parameter', () => {
+    const database = drizzle.mock({ schema });
+    const render = (actions: string[]) => database.insert(schema.hermesAgentCredentials).values({
+      id: 'synthetic-id',
+      secretHash: 'synthetic-hash',
+      ownerId: 'synthetic-owner',
+      agentId: 'synthetic-agent',
+      installationId: 'synthetic-installation',
+      setupAttemptId: 'synthetic-setup',
+      audience: 'hermes-agent',
+      actions,
+      activationState: 'revoked',
+      issuedAt: new Date('2026-08-09T00:00:00.000Z'),
+      expiresAt: new Date('2026-09-08T00:00:00.000Z'),
+      revokedAt: new Date('2026-08-09T00:00:00.000Z'),
+    }).toSQL();
+
+    const full = render([...HERMES_CANONICAL_ACTIONS]);
+    const sliced = render(HERMES_CANONICAL_ACTIONS.slice(0, -1));
+    expect(full.sql).toContain('values ($1, $2, $3, $4, $5, $6, $7, $8, $9');
+    expect(full.params[7]).toBe('{"manage:identity","manage:premises","manage:intents","manage:networks","manage:opportunities","manage:negotiations"}');
+    expect(sliced.params[7]).toBe('{"manage:identity","manage:premises","manage:intents","manage:networks","manage:opportunities"}');
+    expect(full.params).toHaveLength(12);
+    expect(sliced.params).toHaveLength(12);
+  });
+
+  it('uses the rendered-safe typed insert at every credential fixture site', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../..');
+    const fixture = readFileSync(
+      path.join(apiRoot, 'src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts'),
+      'utf8',
+    );
+
+    expect(fixture.match(/db\.insert\(schema\.hermesAgentCredentials\)/g)).toHaveLength(4);
+    expect(fixture).not.toContain('${HERMES_CANONICAL_ACTIONS}');
+    expect(fixture).not.toContain('${HERMES_CANONICAL_ACTIONS.slice(0, -1)}');
+    expect(fixture).toContain('actions: [...HERMES_CANONICAL_ACTIONS]');
+    expect(fixture).toContain('actions: HERMES_CANONICAL_ACTIONS.slice(0, -1)');
   });
 
   it('emits the count-only JSON report before failing a dirty preflight', async () => {

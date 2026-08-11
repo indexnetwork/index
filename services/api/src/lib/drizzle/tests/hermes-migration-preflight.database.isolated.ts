@@ -6,6 +6,7 @@ import { assertPreflightPass, formatPreflightReport, type HermesPreflightReport 
 import { runHermesMigrationPreflight } from '../../../cli/hermes-migration-preflight';
 import { HERMES_CANONICAL_ACTIONS } from '../../../lib/agent/hermes-capabilities';
 import { withMinimumDatabaseTestBudget } from '../../../lib/testing/database-test-budget';
+import * as schema from '../../../schemas/database.schema';
 import db from '../drizzle';
 
 const it = withMinimumDatabaseTestBudget(bunIt, 150_000);
@@ -77,16 +78,20 @@ beforeAll(async () => {
       ${`${fixture}_installation`}, ${`${fixture}_setup`}, false
     )
   `);
-  await db.execute(sql`
-    INSERT INTO hermes_agent_credentials (
-      id, secret_hash, owner_id, agent_id, installation_id, setup_attempt_id,
-      audience, actions, activation_state, issued_at, expires_at, activated_at
-    ) VALUES (
-      ${`${fixture}_credential`}, ${`${fixture}_non_secret_digest`}, ${ownerId}, ${agentId},
-      ${`${fixture}_installation`}, ${`${fixture}_setup`}, 'hermes-agent',
-      ${HERMES_CANONICAL_ACTIONS}, 'active', ${issuedAt}, ${expiresAt}, ${issuedAt}
-    )
-  `);
+  await db.insert(schema.hermesAgentCredentials).values({
+    id: `${fixture}_credential`,
+    secretHash: `${fixture}_non_secret_digest`,
+    ownerId,
+    agentId,
+    installationId: `${fixture}_installation`,
+    setupAttemptId: `${fixture}_setup`,
+    audience: 'hermes-agent',
+    actions: [...HERMES_CANONICAL_ACTIONS],
+    activationState: 'active',
+    issuedAt,
+    expiresAt,
+    activatedAt: issuedAt,
+  });
 
   // One set-based statement keeps the 100,000-row production-size fixture well
   // below the isolated workflow timeout. Values are synthetic and non-secret.
@@ -125,32 +130,39 @@ describe('Hermes migration preflight on disposable PostgreSQL', () => {
     expect(formatPreflightReport(malformed)).not.toContain(fixture);
     await db.execute(sql`DELETE FROM apikey WHERE id = ${`${fixture}_malformed`}`);
 
-    await db.execute(sql`
-      INSERT INTO hermes_agent_credentials (
-        id, secret_hash, owner_id, agent_id, installation_id, setup_attempt_id,
-        audience, actions, activation_state, issued_at, expires_at, activated_at
-      ) VALUES (
-        ${`${fixture}_bad_state`}, ${`${fixture}_bad_state_digest`}, ${ownerId}, ${agentId},
-        ${`${fixture}_bad_state_installation`}, ${`${fixture}_bad_state_setup`}, 'hermes-agent',
-        ${HERMES_CANONICAL_ACTIONS}, 'pending', ${issuedAt}, ${expiresAt}, ${issuedAt}
-      )
-    `);
+    await db.insert(schema.hermesAgentCredentials).values({
+      id: `${fixture}_bad_state`,
+      secretHash: `${fixture}_bad_state_digest`,
+      ownerId,
+      agentId,
+      installationId: `${fixture}_bad_state_installation`,
+      setupAttemptId: `${fixture}_bad_state_setup`,
+      audience: 'hermes-agent',
+      actions: [...HERMES_CANONICAL_ACTIONS],
+      activationState: 'pending',
+      issuedAt,
+      expiresAt,
+      activatedAt: issuedAt,
+    });
     const invalidState = await timedPreflight();
     expect(invalidState.invalidDedicatedCredentials).toBe(1);
     expect(() => assertPreflightPass(invalidState)).toThrow('invalid dedicated credentials');
     await db.execute(sql`DELETE FROM hermes_agent_credentials WHERE id = ${`${fixture}_bad_state`}`);
 
-    await db.execute(sql`
-      INSERT INTO hermes_agent_credentials (
-        id, secret_hash, owner_id, agent_id, installation_id, setup_attempt_id,
-        audience, actions, activation_state, issued_at, expires_at, revoked_at
-      ) VALUES (
-        ${`${fixture}_bad_expiry`}, ${`${fixture}_bad_expiry_digest`}, ${ownerId}, ${agentId},
-        ${`${fixture}_bad_expiry_installation`}, ${`${fixture}_bad_expiry_setup`}, 'hermes-agent',
-        ${HERMES_CANONICAL_ACTIONS}, 'revoked', ${issuedAt},
-        ${new Date(issuedAt.getTime() + 29 * 24 * 60 * 60 * 1000)}, ${issuedAt}
-      )
-    `);
+    await db.insert(schema.hermesAgentCredentials).values({
+      id: `${fixture}_bad_expiry`,
+      secretHash: `${fixture}_bad_expiry_digest`,
+      ownerId,
+      agentId,
+      installationId: `${fixture}_bad_expiry_installation`,
+      setupAttemptId: `${fixture}_bad_expiry_setup`,
+      audience: 'hermes-agent',
+      actions: [...HERMES_CANONICAL_ACTIONS],
+      activationState: 'revoked',
+      issuedAt,
+      expiresAt: new Date(issuedAt.getTime() + 29 * 24 * 60 * 60 * 1000),
+      revokedAt: issuedAt,
+    });
     const expiryMismatch = await timedPreflight();
     expect(expiryMismatch.expiryMismatches).toBe(1);
     expect(() => assertPreflightPass(expiryMismatch)).toThrow('credential expiry mismatches');
@@ -175,16 +187,20 @@ describe('Hermes migration preflight on disposable PostgreSQL', () => {
 
     await db.execute(sql.raw('ALTER TABLE hermes_agent_credentials DROP CONSTRAINT hermes_agent_credentials_actions_check'));
     try {
-      await db.execute(sql`
-        INSERT INTO hermes_agent_credentials (
-          id, secret_hash, owner_id, agent_id, installation_id, setup_attempt_id,
-          audience, actions, activation_state, issued_at, expires_at, revoked_at
-        ) VALUES (
-          ${`${fixture}_bad_actions`}, ${`${fixture}_bad_actions_digest`}, ${ownerId}, ${agentId},
-          ${`${fixture}_bad_actions_installation`}, ${`${fixture}_bad_actions_setup`}, 'hermes-agent',
-          ${HERMES_CANONICAL_ACTIONS.slice(0, -1)}, 'revoked', ${issuedAt}, ${expiresAt}, ${issuedAt}
-        )
-      `);
+      await db.insert(schema.hermesAgentCredentials).values({
+        id: `${fixture}_bad_actions`,
+        secretHash: `${fixture}_bad_actions_digest`,
+        ownerId,
+        agentId,
+        installationId: `${fixture}_bad_actions_installation`,
+        setupAttemptId: `${fixture}_bad_actions_setup`,
+        audience: 'hermes-agent',
+        actions: HERMES_CANONICAL_ACTIONS.slice(0, -1),
+        activationState: 'revoked',
+        issuedAt,
+        expiresAt,
+        revokedAt: issuedAt,
+      });
       const invalidActions = await timedPreflight();
       expect(invalidActions.invalidDedicatedCredentials).toBe(1);
       expect(invalidActions.missingIndexes).toBeGreaterThanOrEqual(1);

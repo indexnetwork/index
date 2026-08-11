@@ -23,3 +23,9 @@ The real database suite was not run locally because no proven disposable `DATABA
 ## Review
 
 Focused self-review found no blockers after fixing two issues: dirty preflights now emit their sanitized count-only JSON before failing, and report formatting reconstructs the exact seven-field shape so extra runtime fields cannot escape. Residual risk is PostgreSQL catalog-expression/runtime verification in the real PostgreSQL 16 CI service.
+
+## PostgreSQL CI fixture-array follow-up
+
+CI run `31492184977` reached the disposable PostgreSQL 16 suite and exposed a fixture-only SQL rendering error: interpolating `HERMES_CANONICAL_ACTIONS` directly into a raw Drizzle SQL template rendered `($7, ... $12)`, a PostgreSQL record rather than `text[]`. All four `hermes_agent_credentials` fixture inserts now use `db.insert(schema.hermesAgentCredentials).values(...)`, so the schema-aware PostgreSQL driver binds both the full canonical action arrays and the sliced invalid-actions array as `text[]`.
+
+A provider-free rendered-SQL regression uses `drizzle.mock()` to prove both full and sliced actions compile to one PostgreSQL array parameter, while a source regression asserts all four fixture sites use the typed Drizzle insert and rejects direct SQL-template interpolation. The test was observed RED against the CI-failing implementation, then passed with 14 tests and 39 expectations. Focused ESLint and Bun parse checks also passed. The real disposable-PostgreSQL rerun remains pending CI; no local database or production mutation was attempted.
