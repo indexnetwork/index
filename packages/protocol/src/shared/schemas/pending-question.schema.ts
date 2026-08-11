@@ -3,7 +3,7 @@
  * in tool results. Omits internal fields (actors, answer, status) that
  * are not needed by the chat agent or MCP client.
  */
-import type { QuestionMode, QuestionPurpose } from "./question.schema.js";
+import type { QuestionMode, QuestionPurpose } from "../../questions/domain/question.schema.js";
 
 export interface PendingQuestionSummary {
   id: string;

@@ -12,6 +12,12 @@ const LEGACY_PATHS = [
   "packages/protocol/src/capabilities/opportunities.tools.port.ts",
   "packages/protocol/src/capabilities/participant-agents.tools.port.ts",
   "packages/protocol/src/capabilities/questions.tools.port.ts",
+  "packages/protocol/src/shared/interfaces/agent.interface.ts",
+  "packages/protocol/src/shared/interfaces/contact.interface.ts",
+  "packages/protocol/src/shared/interfaces/integration.interface.ts",
+  "packages/protocol/src/shared/interfaces/question-generator.interface.ts",
+  "packages/protocol/src/shared/interfaces/questioner.interface.ts",
+  "packages/protocol/src/shared/schemas/question.schema.ts",
   "packages/protocol/src/intent/intent.clarifier.ts",
   "packages/protocol/src/intent/intent.graph.ts",
   "packages/protocol/src/intent/intent.indexer.ts",
@@ -189,6 +195,6 @@ test("finds static template and import-equals legacy specifiers", () => {
 });
 
 test("repository source does not reference deprecated protocol paths", async () => {
-  expect(LEGACY_PATHS).toHaveLength(83);
+  expect(LEGACY_PATHS).toHaveLength(89);
   expect(await legacyPathViolations()).toEqual([]);
 });

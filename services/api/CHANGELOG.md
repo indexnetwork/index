@@ -10,6 +10,7 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- Repoint MCP contract-test agent ports from the removed internal protocol compatibility interface to the canonical participant-agents port.
 - Remove the onboarding privacy-consent layer (protocol 10.0.0, API 0.77.0).
   The `record_onboarding_privacy_consent` MCP/persona tool, the
   `publicProfileLookup` and `edgeosImport` consent decisions, and the

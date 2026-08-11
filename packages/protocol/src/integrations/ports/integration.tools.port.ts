@@ -5,11 +5,9 @@
  * IntegrationAdapter, an IntegrationImporter, and the contactsEnabled flag
  * that gates the import_gmail_contacts tool (which creates ghost users).
  *
- * NOTE: This type is intentionally defined inline (not derived via Pick from
- * ToolRegistryCompositionDeps in shared/agent/tool.helpers.ts) to avoid a
- * module cycle. ToolRegistryCompositionDeps imports IntegrationAdapter from
- * shared/interfaces/integration.interface.ts, which after IND-549 forwards
- * to integrations/ports — creating a cycle back here.
+ * NOTE: This type is intentionally defined inline rather than derived from
+ * ToolRegistryCompositionDeps, keeping the capability port independent from
+ * the all-capability composition contract.
  *
  * Its shape remains structurally equivalent to the matching
  * ToolRegistryCompositionDeps fields.

@@ -11,8 +11,7 @@
  * `ProtocolDeps`/`ToolContext`. The protocol module never constructs its own
  * LLM-bound generator — callers inject one (or `undefined` to opt out).
  *
- * IND-547: canonical home — previously shared/interfaces/question-generator.interface.ts.
- * Legacy path is a thin compatibility shim pointing here.
+ * IND-547: canonical question generator port.
  */
 import type { DiscoveryQuestionInput } from "../../shared/schemas/discovery-question.schema.js";
 import type { QuestionGenerationResult } from "../domain/question.schema.js";

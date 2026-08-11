@@ -6,4 +6,4 @@
  */
 export { generateInviteMessage } from "../contacts/public/index.js";
 export { createContactTools } from "../contacts/public/index.js";
-export type { ContactToolDeps } from "../contacts/public/index.js";
+export type { ContactServiceAdapter, ContactToolDeps } from "../contacts/public/index.js";

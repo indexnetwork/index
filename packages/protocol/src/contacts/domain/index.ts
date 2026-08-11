@@ -12,8 +12,6 @@
  * - generateInviteMessage: application layer — lives in contacts/application.
  *
  * IND-549: canonical domain layer for the contacts capability.
- * Legacy path (shared/interfaces/contact.interface.ts) is a thin
- * compatibility shim.
  */
 export type {
   ContactInput,

@@ -1,6 +1,6 @@
 import { describe, it, expect, mock } from "bun:test";
 import { dispatchElicitations } from "../elicitation.dispatcher.js";
-import type { Question } from "../../shared/schemas/question.schema.js";
+import type { Question } from "../../questions/domain/question.schema.js";
 import type { ChatMessageWriter } from "../../shared/interfaces/chat-message-writer.interface.js";
 
 const q1: Question = {

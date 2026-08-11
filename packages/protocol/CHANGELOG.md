@@ -29,6 +29,7 @@ pin a supported release, use `latest`.
 ## [Unreleased]
 
 ### Removed
+- Remove six unsupported shared interface/schema forwarding shims after migrating repository consumers to capability-owned domain and port modules; stable package-root exports remain unchanged.
 - Remove six unsupported tool-port forwarding shims and the deprecated unused discovery-question mapper; stable package-root exports remain unchanged.
 - Remove the onboarding privacy-consent layer (10.0.0). The
   `record_onboarding_privacy_consent` tool is gone from the tool registry, the
