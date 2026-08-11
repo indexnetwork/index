@@ -78,6 +78,17 @@ describe('Hermes production assurance contract', () => {
     expect(assuranceWorkflow).toContain('bun run --cwd services/api test:hermes-production-assurance');
   });
 
+  test('requests bounded readiness only in the exact database step without injecting proof', () => {
+    const readinessRequests = assuranceWorkflow.match(/API_TEST_REQUIRE_DATABASE:\s*["']1["']/g) ?? [];
+    expect(readinessRequests).toHaveLength(1);
+    expect(assuranceWorkflow).not.toContain('API_TEST_DATABASE_READY');
+    expect(assuranceWorkflow).toContain(`- name: Run Hermes production assurance
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+          API_TEST_REQUIRE_DATABASE: "1"`);
+  });
+
   test('scopes the disposable-database marker to the exact database test step', () => {
     const safetyMarkers = assuranceWorkflow.match(/TEST_DATABASE_SAFE:\s*["']1["']/g) ?? [];
     expect(safetyMarkers).toHaveLength(1);
@@ -85,6 +96,7 @@ describe('Hermes production assurance contract', () => {
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
           TEST_DATABASE_SAFE: "1"
+          API_TEST_REQUIRE_DATABASE: "1"
         run: |
           bun run --cwd services/api db:migrate:test
           bun run --cwd services/api test:hermes-production-assurance`);

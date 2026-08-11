@@ -67,6 +67,7 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
           TEST_DATABASE_SAFE: "1"
+          API_TEST_REQUIRE_DATABASE: "1"
         run: |
           bun run --cwd services/api db:migrate:test
           bun run --cwd services/api test:hermes-production-assurance
