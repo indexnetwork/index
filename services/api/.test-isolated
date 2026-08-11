@@ -71,6 +71,7 @@ src/services/tests/negotiator-memory.service.isolated.ts
 src/services/tests/opportunity.service.enrichedReplacement.isolated.ts
 src/services/tests/contact.service.flag.isolated.ts
 src/events/handlers/tests/question.answer.pool.isolated.ts
+src/events/tests/opportunity.event.lifecycle.isolated.ts
 src/controllers/tests/enrichment.controller.isolated.ts
 src/adapters/tests/cache.adapter.isolated.ts
 src/queues/tests/questioner.queue.isolated.ts

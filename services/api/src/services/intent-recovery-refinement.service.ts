@@ -93,7 +93,7 @@ export class IntentRecoveryRefinementService {
     this.getGlobalUserContext = deps?.getGlobalUserContext
       ?? (async (userId) => (await chatDatabaseAdapter.getUserContext(userId, null))?.text ?? '');
     this.generateOverride = deps?.generate;
-    this.onCreated = deps?.onCreated ?? QuestionEvents.onCreated;
+    this.onCreated = deps?.onCreated ?? ((payload) => QuestionEvents.onCreated(payload));
   }
 
   /**

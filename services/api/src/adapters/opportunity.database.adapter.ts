@@ -1,5 +1,5 @@
 import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
-import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
+import { emitOpportunityLifecycleBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
@@ -264,7 +264,7 @@ export class OpportunityDatabaseAdapter {
       .returning();
     if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunity: no row returned');
     const created = toOpportunityRow(row);
-    emitOpportunityPendingBestEffort(created);
+    emitOpportunityLifecycleBestEffort(created);
     return created;
   }
 
@@ -343,7 +343,7 @@ export class OpportunityDatabaseAdapter {
       if (!row) throw new Error('OpportunityDatabaseAdapter.createOpportunityIfNetworkEligible: no row returned');
       return toOpportunityRow(row);
     });
-    if (created) emitOpportunityPendingBestEffort(created);
+    if (created) emitOpportunityLifecycleBestEffort(created);
     return created;
   }
 
@@ -525,7 +525,7 @@ export class OpportunityDatabaseAdapter {
       return { created: toOpportunityRow(inserted), expired };
     });
 
-    if (result && 'created' in result && result.created) emitOpportunityPendingBestEffort(result.created);
+    if (result && 'created' in result && result.created) emitOpportunityLifecycleBestEffort(result.created);
     return result;
   }
 
@@ -651,7 +651,7 @@ export class OpportunityDatabaseAdapter {
 
       return await validateEligibility() ? reactivate() : null;
     });
-    if (updated) emitOpportunityPendingBestEffort(updated);
+    if (updated) emitOpportunityLifecycleBestEffort(updated);
     return updated;
   }
 
@@ -1000,7 +1000,7 @@ export class OpportunityDatabaseAdapter {
         .returning();
     }
     const updated = row ? toOpportunityRow(row) : null;
-    if (updated) emitOpportunityPendingBestEffort(updated);
+    if (updated) emitOpportunityLifecycleBestEffort(updated);
     return updated;
   }
 
@@ -1194,7 +1194,7 @@ export class OpportunityDatabaseAdapter {
       },
       outbox,
     );
-    if (updated) emitOpportunityPendingBestEffort(updated);
+    if (updated) emitOpportunityLifecycleBestEffort(updated);
     return updated;
   }
 
@@ -1243,7 +1243,7 @@ export class OpportunityDatabaseAdapter {
       return { created, expired };
     }),
     );
-    emitOpportunityPendingBestEffort(result.created);
+    emitOpportunityLifecycleBestEffort(result.created);
     return result;
   }
 
@@ -1334,7 +1334,7 @@ export class OpportunityDatabaseAdapter {
       }
       return { created: toOpportunityRow(inserted), expired };
     });
-    if (result) emitOpportunityPendingBestEffort(result.created);
+    if (result) emitOpportunityLifecycleBestEffort(result.created);
     return result;
   }
 
