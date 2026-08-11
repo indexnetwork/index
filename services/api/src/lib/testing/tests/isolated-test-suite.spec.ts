@@ -36,6 +36,16 @@ describe('isolated test inventory', () => {
     expect(new Set(inventory.files).size).toBe(inventory.files.length);
   });
 
+  it('keeps the budgeted Hermes database fixture free of unsupported it.each calls', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const source = readFileSync(
+      path.join(apiRoot, 'tests/negotiation-runtime-authority.database.isolated.ts'),
+      'utf8',
+    );
+
+    expect(source.match(/\bit\.each\s*\(/g) ?? []).toHaveLength(0);
+  });
+
   it('dispatches E2E entries through their own explicit gates without filename skips', () => {
     const apiRoot = path.resolve(import.meta.dir, '../../../..');
     const inventory = loadIsolatedTestInventory(apiRoot);

@@ -517,9 +517,9 @@ describe('real negotiation runtime authority SQL seam', () => {
     expect(repeated.taskId).toBe(task.id);
   });
 
-  it.each(['existing', 'new'] as const)(
-    'holds the real %s-claim pickup outcome and heartbeat behind the owner advisory lock',
-    async (boundary) => {
+  const pickupLockBoundaries = ['existing', 'new'] as const;
+  for (const boundary of pickupLockBoundaries) {
+    it(`holds the real ${boundary}-claim pickup outcome and heartbeat behind the owner advisory lock`, async () => {
       const value = await fixture(`barrier-${boundary}`);
       const task = await seedWaitingTask(value.owner, value.counterparty);
       if (boundary === 'existing') {
@@ -548,8 +548,8 @@ describe('real negotiation runtime authority SQL seam', () => {
       expect((await heartbeat(value.prepared.executorId))!.getTime()).toBeGreaterThan(
         boundary === 'existing' ? CONTROLLED_OLD_HEARTBEAT.getTime() : 0,
       );
-    },
-  );
+    });
+  }
 
   for (const boundary of ['empty', 'existing', 'new'] as const satisfies readonly PickupBoundary[]) {
     for (const race of ['deselect', 'disconnect', 'rotate'] as const satisfies readonly RuntimeInvalidation[]) {
@@ -928,9 +928,16 @@ describe('real negotiation runtime authority SQL seam', () => {
     expect(afterExecution?.fence).toBe(stored.fence);
   });
 
-  it.each(['message', 'task', 'artifact', 'opportunity', 'continuation', 'receipt'] as const)(
-    'rolls back a real timeout transaction at %s and resumes the invoked generation exactly once',
-    async (boundary) => {
+  const timeoutTransactionBoundaries = [
+    'message',
+    'task',
+    'artifact',
+    'opportunity',
+    'continuation',
+    'receipt',
+  ] as const;
+  for (const boundary of timeoutTransactionBoundaries) {
+    it(`rolls back a real timeout transaction at ${boundary} and resumes the invoked generation exactly once`, async () => {
       const value = await fixture(`timeout-atomic-${boundary}`);
       const task = await seedWaitingTask(value.owner, value.counterparty);
       const parked = await conversationDatabaseAdapter.getTask(task.id);
@@ -976,8 +983,8 @@ describe('real negotiation runtime authority SQL seam', () => {
       expect(completed?.execution.receipt?.messageId).toBe(`${acquired.execution.executionId}:message`);
       expect(await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId)).toHaveLength(1);
       expect(await db.select({ id: schema.artifacts.id }).from(schema.artifacts).where(eq(schema.artifacts.taskId, task.id))).toHaveLength(1);
-    },
-  );
+    });
+  }
 
   it('reconciles legacy ordinary/claim generations concurrently and preserves elapsed deadlines', async () => {
     const value = await fixture('timeout-upgrade-db');
