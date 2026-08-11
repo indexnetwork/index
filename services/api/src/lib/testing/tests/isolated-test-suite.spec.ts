@@ -61,6 +61,20 @@ describe('isolated test inventory', () => {
     expect(lifecycle).not.toContain('await Bun.sleep(');
   });
 
+  it('parses every Hermes assurance target with Bun without importing database code', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const transpiler = new Bun.Transpiler({ loader: 'ts' });
+    const targets = [
+      'tests/hermes-runtime-lifecycle.database.isolated.ts',
+      'tests/negotiation-runtime-authority.database.isolated.ts',
+    ];
+
+    for (const target of targets) {
+      const source = readFileSync(path.join(apiRoot, target), 'utf8');
+      expect(() => transpiler.transformSync(source), target).not.toThrow();
+    }
+  });
+
   it('dispatches E2E entries through their own explicit gates without filename skips', () => {
     const apiRoot = path.resolve(import.meta.dir, '../../../..');
     const inventory = loadIsolatedTestInventory(apiRoot);

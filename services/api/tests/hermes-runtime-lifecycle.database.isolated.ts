@@ -77,16 +77,17 @@ async function createAuthorizationRequest(installationId: string) {
 async function preparePending(
   ownerId: string,
   installationId: string,
-  request = await createAuthorizationRequest(installationId),
+  request?: Awaited<ReturnType<typeof createAuthorizationRequest>>,
 ): Promise<PendingGeneration> {
+  const resolvedRequest = request ?? await createAuthorizationRequest(installationId);
   const approved = await authorization.approveAuthorization(
     ownerId,
-    request.requestId,
-    request.state,
+    resolvedRequest.requestId,
+    resolvedRequest.state,
     redirectUri,
   );
   const exchange = await authorization.exchangeAuthorizationCode({
-    requestId: request.requestId,
+    requestId: resolvedRequest.requestId,
     code: approved.code,
     verifier,
     redirectUri,
@@ -115,9 +116,10 @@ async function activateAndSelect(pending: PendingGeneration): Promise<ActiveGene
 async function prepareAndActivate(
   ownerId: string,
   installationId: string,
-  request = await createAuthorizationRequest(installationId),
+  request?: Awaited<ReturnType<typeof createAuthorizationRequest>>,
 ): Promise<ActiveGeneration> {
-  return activateAndSelect(await preparePending(ownerId, installationId, request));
+  const resolvedRequest = request ?? await createAuthorizationRequest(installationId);
+  return activateAndSelect(await preparePending(ownerId, installationId, resolvedRequest));
 }
 
 async function selectedHermesCount(ownerId: string): Promise<number> {

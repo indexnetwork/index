@@ -59,3 +59,18 @@ The wrapper starts one fresh Bun process per exact target and lets each child ex
 
 - The new PostgreSQL concurrency, expiry-boundary, generation, and atomic-fault assertions are compile-checked and source-contract checked locally but await execution by the dedicated PostgreSQL CI service.
 - No merge, push, deployment, migration execution, or production mutation was performed.
+
+## CI parser follow-up (run 31486652274)
+
+The first CI attempt stopped before database readiness because Bun rejected `await` in two async default-parameter initializers in the lifecycle fixture. TypeScript compilation had accepted the source, so the provider-free checks did not exercise Bun's runtime parser.
+
+The follow-up:
+
+- changed both authorization request parameters to optional values and resolved defaults inside their async function bodies;
+- added a provider-free `Bun.Transpiler({ loader: 'ts' })` contract over both exact Hermes assurance targets without importing database code;
+- reproduced RED with the new contract (`1 failed, 12 passed`, `AggregateError: Parse error`);
+- verified GREEN with `13 passed, 0 failed` for the isolated inventory suite;
+- verified the combined readiness/inventory contracts with `41 passed, 0 failed, 132 assertions`;
+- verified a direct Bun parser invocation (`Bun parser: pass`), targeted ESLint, `tsc --noEmit`, the API build, and repository `git diff --check`.
+
+The real PostgreSQL behavior gate remains pending CI; this follow-up changes test syntax and provider-free parser coverage only.
