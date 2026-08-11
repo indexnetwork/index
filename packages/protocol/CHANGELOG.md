@@ -67,6 +67,8 @@ pin a supported release, use `latest`.
   `SynthesisResult` types. Minor bump: additive surface only.
 
 ### Changed
+- Add a fail-closed isolated provider-free test gate (10.1.1). Tooling-only
+  safety foundation; no runtime or public API behavior changes.
 - Share capability classification metadata between the existing architecture
   boundary gate and the protocol atlas generator; allowed dependency directions
   are unchanged.
