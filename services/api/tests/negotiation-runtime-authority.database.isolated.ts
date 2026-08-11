@@ -119,14 +119,14 @@ async function prepareDedicatedRuntime(owner: string, label: string) {
     hashMatchesRaw: sql<boolean>`${schema.hermesAgentCredentials.secretHash} = ${rawCredential}`,
   }).from(schema.hermesAgentCredentials)
     .where(eq(schema.hermesAgentCredentials.secretHash, credentialHash));
-  const legacyCountRows = await db.execute(sql`
-    SELECT count(*)::int AS count FROM apikeys WHERE key = ${credentialHash}
-  `);
+  const legacyRows = await db.select({ id: schema.apikeys.id })
+    .from(schema.apikeys)
+    .where(eq(schema.apikeys.key, credentialHash));
   expect(dedicatedRows).toHaveLength(1);
   expect(dedicatedRows[0]?.actions).toEqual(HERMES_CANONICAL_ACTIONS);
   expect(dedicatedRows[0]?.activationState).toBe('active');
   expect(dedicatedRows[0]?.hashMatchesRaw).toBe(false);
-  expect(Number((legacyCountRows as unknown as Array<{ count: number }>)[0]?.count ?? 0)).toBe(0);
+  expect(legacyRows).toHaveLength(0);
   expect(resolved.user.id).toBe(owner);
   expect(resolved.principal.actions).toEqual(HERMES_CANONICAL_ACTIONS);
 

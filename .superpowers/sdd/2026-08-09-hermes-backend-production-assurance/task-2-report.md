@@ -113,3 +113,17 @@ TDD and focused validation:
 - Targeted ESLint, Bun parsing of the lifecycle target, `tsc --noEmit`, and `git diff --check` pass.
 
 No production code, readiness guard, credential behavior, or runner semantics changed. The three real PostgreSQL lock-order tests require a dedicated CI rerun; no local database pass is claimed.
+
+## Legacy-table schema follow-up (run 31489362277)
+
+The subsequent CI run passed the complete lifecycle suite and reached all 49 authority tests. Each authority fixture failed during its dedicated-hash isolation assertion because the raw query referenced nonexistent relation `apikeys`; the Drizzle schema maps `schema.apikeys` to physical table `apikey`. PostgreSQL reported `42P01` before any authority behavior assertion ran.
+
+The bounded fix replaces that raw count with a schema-aware Drizzle select from `schema.apikeys`, filtered by `schema.apikeys.key`, and asserts the result has zero rows. This preserves the intended proof that a dedicated credential hash never appears in the legacy credential store while removing the duplicated physical table name. A provider-free schema contract verifies `getTableName(apikeys) === 'apikey'`, requires the fixture to use `.from(schema.apikeys)`, and rejects the CI's raw `FROM apikeys` form.
+
+TDD and focused validation:
+
+- RED: isolated inventory contract `13 passed, 1 failed`; the schema-aware fixture query was absent.
+- GREEN: isolated inventory contract `14 passed, 0 failed, 54 assertions`.
+- Targeted ESLint, Bun parsing of both assurance targets, `tsc --noEmit`, and `git diff --check` pass.
+
+No production code, schema, migration, readiness guard, credential behavior, or runner semantics changed. The real authority suite requires a dedicated CI rerun; no local database pass is claimed.

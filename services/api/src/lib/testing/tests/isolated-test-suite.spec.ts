@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { getTableName } from 'drizzle-orm';
 
+import { apikeys } from '../../../schemas/database.schema';
 import { assertNoDiscoverableModuleMocks, loadIsolatedTestInventory } from '../isolated-test-suite';
 
 const temporaryDirectories: string[] = [];
@@ -73,6 +75,13 @@ describe('isolated test inventory', () => {
     expect(lifecycle).toContain("throw new AggregateError(cleanupErrors, 'Hermes lifecycle fixture cleanup failed')");
 
     expect(authority).toContain('new HermesAuthorizationService(');
+    const dedicatedRuntimeFixture = authority.slice(
+      authority.indexOf('async function prepareDedicatedRuntime'),
+      authority.indexOf('async function fixture('),
+    );
+    expect(getTableName(apikeys)).toBe('apikey');
+    expect(dedicatedRuntimeFixture).toContain('.from(schema.apikeys)');
+    expect(dedicatedRuntimeFixture).not.toContain('FROM apikeys');
     expect(authority).toContain('resolveHermesAgentCredential(rawCredential)');
     expect(authority).toContain('rearmCalls.push({');
     expect(authority).not.toContain('authorizePickup: async () => true');
