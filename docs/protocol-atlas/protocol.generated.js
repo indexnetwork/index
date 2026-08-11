@@ -997,6 +997,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/opportunity/application/opportunity.tools.ts"
     },
     {
+      "id": "static.component.radar-graph-factory.component.opportunity-presenter",
+      "sourceId": "component.radar-graph-factory",
+      "targetId": "component.opportunity-presenter",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/opportunity/radar/radar.graph.ts"
+    },
+    {
       "id": "static.component.tool-registry.component.chat-tools",
       "sourceId": "component.tool-registry",
       "targetId": "component.chat-tools",
