@@ -4,6 +4,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "ConnectorLaunchAttestationFixture" ] && [ "$#" -eq 2 ]; then
+    OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/connector-launch-attestation-fixture"
+    swiftc -parse-as-library -framework Foundation -framework Security \
+        Sources/ConnectorLaunchAttestation.swift \
+        Tests/ConnectorLaunchAttestationFixture.swift \
+        -o "$OUT"
+    "$OUT"
+    exit 0
+fi
 if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "OwnerCredentialMigrationFixture" ] && [ "$#" -eq 2 ]; then
     OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owner-credential-migration-fixture"
     swiftc -parse-as-library -framework Foundation -framework Security \
@@ -48,7 +57,7 @@ if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIQuarantineFixture" ] && 
     exit 0
 fi
 if [ "$#" -ne 0 ]; then
-    echo "usage: $0 [--fixture OwnerCredentialMigrationFixture|--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
+    echo "usage: $0 [--fixture ConnectorLaunchAttestationFixture|--fixture OwnerCredentialMigrationFixture|--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
     exit 64
 fi
 

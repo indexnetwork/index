@@ -99,6 +99,10 @@ jobs:
           ./build.sh --fixture NativeAPIBodyValidationFixture
           ./build.sh --fixture NativeAPIQuarantineFixture
 
+      - name: Native suspended connector launch attestation
+        working-directory: apps/mac/IndexApp
+        run: ./build.sh --fixture ConnectorLaunchAttestationFixture
+
       - name: Native historical Hermes persistence compatibility
         working-directory: apps/mac/IndexApp
         run: |
