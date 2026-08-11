@@ -35,6 +35,7 @@ async function contractEnvironment(options: {
   const bin = resolve(directory, 'bin');
   await Bun.write(resolve(bin, '.keep'), '');
   const reportPath = resolve(directory, 'report.json');
+  const diagnosticPath = resolve(directory, 'diagnostic.json');
   const lifecyclePath = resolve(directory, 'lifecycle.log');
   const healthStatePath = resolve(directory, 'health-state');
 
@@ -99,6 +100,9 @@ set -euo pipefail
 case " $* " in
   *' --config - '*)
     config="$(cat)"
+    probe_url="$(printf '%s\\n' "$config" | sed -n 's/^url = "\\(.*\\)"$/\\1/p')"
+    [[ "$probe_url" =~ ^http://127\\.0\\.0\\.1:[0-9]+/api/agents/me$ ]] || exit 68
+    test "$(printf '%s\\n' "$config" | grep -c '^url = ')" = 1 || exit 68
     case "$config" in
       *'x-api-key: idxh_contractSecret'*) ;;
       *) exit 67 ;;
@@ -115,6 +119,7 @@ esac
   return {
     directory,
     reportPath,
+    diagnosticPath,
     lifecyclePath,
     env: {
       ...process.env,
@@ -124,6 +129,7 @@ esac
       NODE_ENV: 'production',
       ALLOW_MUTABLE_PREVIOUS_IMAGE: '',
       HERMES_PREVIOUS_API_REPORT: reportPath,
+      HERMES_PREVIOUS_API_DIAGNOSTIC: diagnosticPath,
       FAKE_TIMEOUT_CURRENT_PROOF: options.currentAuthenticationHang ? '1' : '',
     },
   };
@@ -199,6 +205,14 @@ describe('previous API compatibility shell gate', () => {
     expect(observableOutput).not.toContain('contractCredentialHash');
     expect(observableOutput).not.toContain(disposableDatabaseUrl);
     expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+    expect(JSON.parse(await readFile(contract.diagnosticPath, 'utf8'))).toEqual({
+      schemaVersion: 1,
+      phase: 'complete',
+      outcome: 'succeeded',
+      healthStatus: 200,
+      probeStatus: 401,
+      cleanup: { containerStop: 'ok', containerRemove: 'ok', database: 'ok' },
+    });
   });
 
   test('sanitizes database seeding failures instead of forwarding secret-bearing diagnostics', async () => {
@@ -215,6 +229,18 @@ describe('previous API compatibility shell gate', () => {
     expect(observableOutput).not.toContain('contractCredentialHash');
     expect(observableOutput).not.toContain(disposableDatabaseUrl);
     expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('cleanup\n');
+    const diagnosticSource = await readFile(contract.diagnosticPath, 'utf8');
+    expect(JSON.parse(diagnosticSource)).toEqual({
+      schemaVersion: 1,
+      phase: 'seed',
+      outcome: 'failed',
+      healthStatus: 0,
+      probeStatus: 0,
+      cleanup: { containerStop: 'not-needed', containerRemove: 'not-needed', database: 'ok' },
+    });
+    expect(`${result.stdout}${result.stderr}${diagnosticSource}`).not.toMatch(
+      /idxh_|contractCredentialHash|postgres(?:ql)?:|registry\.example|sha256:|fixture-container/,
+    );
   });
 
   test('binds the validated canonical actions through postgres typed-array support', async () => {
@@ -251,6 +277,14 @@ describe('previous API compatibility shell gate', () => {
     expect(observableOutput).not.toContain('contractCredentialHash');
     expect(observableOutput).not.toContain(disposableDatabaseUrl);
     expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+    expect(JSON.parse(await readFile(contract.diagnosticPath, 'utf8'))).toEqual({
+      schemaVersion: 1,
+      phase: 'cleanup',
+      outcome: 'failed',
+      healthStatus: 200,
+      probeStatus: 401,
+      cleanup: { containerStop: 'ok', containerRemove: 'ok', database: 'failed' },
+    });
   });
 
   test('cleans up a transaction that commits before the seed process exits nonzero', async () => {
@@ -347,6 +381,14 @@ describe('previous API compatibility shell gate', () => {
     expect(result.stderr.toString()).toContain('expected HTTP 401');
     expect(await Bun.file(contract.reportPath).exists()).toBe(false);
     expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+    expect(JSON.parse(await readFile(contract.diagnosticPath, 'utf8'))).toEqual({
+      schemaVersion: 1,
+      phase: 'probe',
+      outcome: 'failed',
+      healthStatus: 200,
+      probeStatus: 200,
+      cleanup: { containerStop: 'ok', containerRemove: 'ok', database: 'ok' },
+    });
   });
 
   test('seeds and removes the complete current dedicated authority contract', async () => {
@@ -411,11 +453,23 @@ describe('workflow compatibility modes', () => {
     expect(baseDockerfile).toContain('CMD ["bun", "--preload", "./dist/instrument.js", "./dist/main.js"]');
   });
 
-  test('the synthetic contract server hashes legacy credentials with the historical algorithm', async () => {
+  test('the synthetic server enforces the exact historical route and hash algorithm', async () => {
     const fixtureServer = await readFile(fixtureServerPath, 'utf8');
     expect(fixtureServer).toContain("crypto.subtle.digest('SHA-256'");
     expect(fixtureServer).toContain("Buffer.from(digest).toString('base64url')");
     expect(fixtureServer).toContain('WHERE key = ${credentialHash}');
     expect(fixtureServer).not.toContain('WHERE key = ${credential}');
+    expect(fixtureServer).toContain("pathname === '/api/agents/me'");
+    expect(fixtureServer).not.toContain("pathname === '/agents/me'");
+  });
+
+  test('always uploads a fixed-schema diagnostic separately from success evidence', async () => {
+    const workflow = await readFile(workflowPath, 'utf8');
+    expect(workflow.match(/HERMES_PREVIOUS_API_DIAGNOSTIC: previous-api-compatibility-diagnostic\.json/g)).toHaveLength(2);
+    expect(workflow.match(/name: Upload previous API compatibility diagnostic/g)).toHaveLength(2);
+    expect(workflow.match(/if: always\(\)/g)).toHaveLength(2);
+    expect(workflow.match(/name: previous-api-compatibility-diagnostic/g)).toHaveLength(2);
+    expect(workflow.match(/path: services\/api\/previous-api-compatibility-diagnostic\.json/g)).toHaveLength(2);
+    expect(workflow.match(/if-no-files-found: error/g)).toHaveLength(4);
   });
 });

@@ -457,6 +457,74 @@ async function waitForOwnerRuntimeWaiters(holderPid: number, expected: number): 
   throw new Error(`Timed out waiting for ${expected} owner-runtime lock waiter(s) behind backend ${holderPid}`);
 }
 
+async function holdTaskRowLock(taskId: string, claimOnReleaseByAgentId?: string): Promise<{
+  backendPid: number;
+  release: () => void;
+  done: Promise<void>;
+}> {
+  let acquired!: (backendPid: number) => void;
+  let release!: () => void;
+  const acquiredPromise = new Promise<number>((resolve) => { acquired = resolve; });
+  const releasePromise = new Promise<void>((resolve) => { release = resolve; });
+  const done = db.transaction(async (tx) => {
+    await tx.select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, taskId))
+      .for('update');
+    const rows = await tx.execute(sql`SELECT pg_backend_pid()::int AS pid`);
+    acquired(Number((rows as unknown as Array<{ pid: number }>)[0]?.pid));
+    await releasePromise;
+    if (claimOnReleaseByAgentId) {
+      await tx.update(schema.tasks).set({
+        state: 'claimed',
+        claimedByAgentId: claimOnReleaseByAgentId,
+        claimedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(schema.tasks.id, taskId));
+    }
+  });
+  return { backendPid: await acquiredPromise, release, done };
+}
+
+async function waitForTaskRowWaiters(
+  holderPid: number,
+  expected: number,
+  earlierWaiterPids: number[] = [],
+): Promise<Array<{ pid: number; blockerPids: number[]; state: string; waitEventType: string }>> {
+  const deadline = Date.now() + 5_000;
+  const knownBlockers = [holderPid, ...earlierWaiterPids];
+  while (Date.now() < deadline) {
+    const rows = await db.execute(sql`
+      SELECT
+        activity.pid::int AS pid,
+        pg_blocking_pids(activity.pid)::int[] AS "blockerPids",
+        activity.state,
+        activity.wait_event_type AS "waitEventType"
+      FROM pg_stat_activity activity
+      WHERE activity.pid <> pg_backend_pid()
+        AND activity.state = 'active'
+        AND activity.wait_event_type = 'Lock'
+        AND pg_blocking_pids(activity.pid) && ${knownBlockers}::int[]
+      ORDER BY activity.query_start, activity.pid
+    `);
+    const evidence = (rows as unknown as Array<{
+      pid: number;
+      blockerPids: number[];
+      state: string;
+      waitEventType: string;
+    }>).map((row) => ({
+      pid: Number(row.pid),
+      blockerPids: row.blockerPids.map(Number),
+      state: row.state,
+      waitEventType: row.waitEventType,
+    }));
+    if (evidence.length >= expected) return evidence;
+    // Cadence only: PostgreSQL's blocking graph is the synchronization evidence.
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for ${expected} task-row waiter(s) behind backend ${holderPid}`);
+}
+
 async function invalidateRuntime(value: RuntimeFixture, race: RuntimeInvalidation): Promise<unknown> {
   if (race === 'deselect') return value.runtime.setRuntime(value.owner, { runtime: 'index' });
   if (race === 'disconnect') return value.runtime.disconnectHermes(value.owner, value.installationId);
@@ -616,6 +684,112 @@ describe('real negotiation runtime authority SQL seam', () => {
     expect((await heartbeat(source.prepared.executorId))!.getTime()).toBe(CONTROLLED_OLD_HEARTBEAT.getTime());
     expect((await heartbeat(counterparty.prepared.executorId))!.getTime()).toBeGreaterThan(CONTROLLED_OLD_HEARTBEAT.getTime());
     expect(await taskState(task.id)).toMatchObject({ state: 'claimed', claimedByAgentId: counterparty.prepared.executorId });
+  });
+
+  it('queues the non-speaker before the eligible waiter on the exact continuation task row', async () => {
+    const source = await fixture('speaker-row-lock-source');
+    const counterparty = await prepareRuntimeForUser(source.counterparty, 'speaker-row-lock-counterparty');
+    const task = await seedWaitingTask(source.owner, source.counterparty);
+    const runId = randomUUID();
+    const opening = await source.service.pickup(
+      source.prepared.executorId, source.owner, source.principal, runId,
+    );
+    if (!opening || !('runCapability' in opening)) throw new Error('Missing opening run capability');
+    await source.service.respondHermes(
+      source.prepared.executorId,
+      source.owner,
+      task.id,
+      { action: 'continue', roleAlignment: 'peers' },
+      source.principal,
+      { runId, capability: opening.runCapability, outcome: 'responded' },
+    );
+    await Promise.all([
+      setHeartbeat(source.prepared.executorId, CONTROLLED_OLD_HEARTBEAT),
+      setHeartbeat(counterparty.prepared.executorId, CONTROLLED_OLD_HEARTBEAT),
+    ]);
+
+    const held = await holdTaskRowLock(task.id);
+    const sourceOutcome = settlePromiseOutcome(source.service.pickup(
+      source.prepared.executorId, source.owner, source.principal, randomUUID(),
+    ));
+    let counterpartyOutcome: Promise<PromiseSettledResult<Awaited<ReturnType<typeof pickup>>>> | undefined;
+    try {
+      const sourceWaiters = await waitForTaskRowWaiters(held.backendPid, 1);
+      expect(sourceWaiters).toHaveLength(1);
+      expect(sourceWaiters[0]).toMatchObject({ state: 'active', waitEventType: 'Lock' });
+
+      counterpartyOutcome = settlePromiseOutcome(counterparty.service.pickup(
+        counterparty.prepared.executorId,
+        counterparty.owner,
+        counterparty.principal,
+        randomUUID(),
+      ));
+      const bothWaiters = await waitForTaskRowWaiters(
+        held.backendPid,
+        2,
+        sourceWaiters.map(({ pid }) => pid),
+      );
+      expect(bothWaiters.map(({ pid }) => pid)).toContain(sourceWaiters[0]!.pid);
+      expect(new Set(bothWaiters.map(({ pid }) => pid)).size).toBe(2);
+      expect(bothWaiters.every(({ blockerPids }) => blockerPids.length > 0)).toBe(true);
+    } finally {
+      held.release();
+      await held.done;
+    }
+
+    const [sourceResult, counterpartyResult] = await Promise.all([
+      sourceOutcome,
+      counterpartyOutcome ?? Promise.reject(new Error('Eligible waiter did not start')),
+    ]);
+    expect(sourceResult).toEqual({ status: 'fulfilled', value: null });
+    expect(counterpartyResult.status).toBe('fulfilled');
+    if (counterpartyResult.status !== 'fulfilled') throw counterpartyResult.reason;
+    expect(counterpartyResult.value).toMatchObject({ taskId: task.id });
+    expect((await heartbeat(source.prepared.executorId))!.getTime()).toBe(CONTROLLED_OLD_HEARTBEAT.getTime());
+    expect((await heartbeat(counterparty.prepared.executorId))!.getTime()).toBeGreaterThan(CONTROLLED_OLD_HEARTBEAT.getTime());
+    expect(await taskState(task.id)).toEqual({
+      state: 'claimed',
+      claimedByAgentId: counterparty.prepared.executorId,
+    });
+  });
+
+  it('continues to the next eligible task after an older row-lock contender commits a claim', async () => {
+    const value = await fixture('pickup-multiple-task-contention');
+    const counterparty = await prepareRuntimeForUser(value.counterparty, 'pickup-multiple-task-contender');
+    const [olderTask, newerTask] = await Promise.all([
+      seedWaitingTask(value.owner, value.counterparty),
+      seedWaitingTask(value.owner, value.counterparty),
+    ]);
+    await Promise.all([
+      db.update(schema.tasks).set({ createdAt: new Date('2020-01-01T00:00:00.000Z') })
+        .where(eq(schema.tasks.id, olderTask.id)),
+      db.update(schema.tasks).set({ createdAt: new Date('2020-01-01T00:00:01.000Z') })
+        .where(eq(schema.tasks.id, newerTask.id)),
+    ]);
+
+    const held = await holdTaskRowLock(olderTask.id, counterparty.prepared.executorId);
+    const pickupOutcome = settlePromiseOutcome(pickup(value));
+    try {
+      const evidence = await waitForTaskRowWaiters(held.backendPid, 1);
+      expect(evidence[0]).toMatchObject({ state: 'active', waitEventType: 'Lock' });
+      expect(await taskState(newerTask.id)).toEqual({ state: 'waiting_for_agent', claimedByAgentId: null });
+    } finally {
+      held.release();
+      await held.done;
+    }
+
+    const result = await pickupOutcome;
+    expect(result.status).toBe('fulfilled');
+    if (result.status !== 'fulfilled') throw result.reason;
+    expect(result.value).toMatchObject({ taskId: newerTask.id });
+    expect(await taskState(olderTask.id)).toEqual({
+      state: 'claimed',
+      claimedByAgentId: counterparty.prepared.executorId,
+    });
+    expect(await taskState(newerTask.id)).toEqual({
+      state: 'claimed',
+      claimedByAgentId: value.prepared.executorId,
+    });
   });
 
   it('strictly refreshes a controlled old heartbeat on existing-claim pickup', async () => {

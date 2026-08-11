@@ -147,3 +147,11 @@ TDD and focused validation:
 - Targeted ESLint, rendered PostgreSQL SQL-shape coverage, Bun parsing of both assurance targets, `tsc --noEmit`, and `git diff --check` pass.
 
 No production code, schema, migration, readiness guard, credential behavior, or runner semantics changed. The real authority suite and fail-visible cleanup require a dedicated CI rerun; no local database pass is claimed.
+
+## Deterministic pickup row-lock follow-up (run 31503086936)
+
+The continuation pickup race is now forced with the exact task row locked in a dedicated transaction. The test starts the non-speaker poll, proves its active lock wait through `pg_blocking_pids` and `pg_stat_activity`, then starts and proves the distinct eligible waiter before releasing the holder. It asserts the non-speaker remains null with a stale heartbeat, the counterparty claims, and only the counterparty heartbeat advances. A second multiple-task contention case locks the deterministically older eligible row, commits a competing claim, and proves PostgreSQL re-evaluation continues to and claims the newer eligible task rather than stranding it.
+
+The eligible selection now uses ordinary `FOR UPDATE`; the non-speaker fallback remains blocking. This removes the `SKIP LOCKED` path that let the eligible poll skip into the fallback behind a non-speaker and return a second conflict. No sleep is used as synchronization; short polling is cadence only and PostgreSQL's blocking graph is the barrier evidence.
+
+The database tests were not run locally because no dedicated disposable `DATABASE_URL` was proven, and `TEST_DATABASE_SAFE` was not set. Provider-free targeted ESLint and the API build passed. A standalone compilation of the database target reached only the suite's documented pre-existing type errors and reported no new error in the added helpers/tests. Dedicated PostgreSQL CI must execute both new cases.

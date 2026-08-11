@@ -32,7 +32,7 @@ Bun.serve({
       }
     }
 
-    if (pathname === '/agents/me' && request.method === 'GET') {
+    if (pathname === '/api/agents/me' && request.method === 'GET') {
       const credential = request.headers.get('x-api-key');
       if (!credential) return new Response(null, { status: 401 });
       try {

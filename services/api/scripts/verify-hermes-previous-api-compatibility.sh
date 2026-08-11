@@ -4,6 +4,129 @@
 # environment variables, stdin, and process memory.
 set -euo pipefail
 
+diagnostic_path="${HERMES_PREVIOUS_API_DIAGNOSTIC:-previous-api-compatibility-diagnostic.json}"
+diagnostic_phase='validation'
+diagnostic_outcome='running'
+diagnostic_health_status=0
+diagnostic_probe_status=0
+diagnostic_container_stop='not-needed'
+diagnostic_container_remove='not-needed'
+diagnostic_database='not-needed'
+temporary_directory=''
+container_id=''
+fixture_id=''
+credential=''
+credential_hash=''
+
+write_diagnostic() {
+  case "$diagnostic_phase" in
+    validation|image|seed|current-auth|container|health|probe|report|cleanup|complete) ;;
+    *) return 1 ;;
+  esac
+  case "$diagnostic_outcome" in running|succeeded|failed) ;; *) return 1 ;; esac
+  case "$diagnostic_container_stop" in not-needed|pending|ok|failed) ;; *) return 1 ;; esac
+  case "$diagnostic_container_remove" in not-needed|pending|ok|failed) ;; *) return 1 ;; esac
+  case "$diagnostic_database" in not-needed|pending|ok|failed) ;; *) return 1 ;; esac
+  [[ "$diagnostic_health_status" =~ ^[0-9]+$ ]] || return 1
+  [[ "$diagnostic_probe_status" =~ ^[0-9]+$ ]] || return 1
+  local diagnostic_directory diagnostic_temporary
+  diagnostic_directory="$(dirname "$diagnostic_path")"
+  mkdir -p "$diagnostic_directory" || return 1
+  diagnostic_temporary="${diagnostic_path}.tmp.$$"
+  printf '{"schemaVersion":1,"phase":"%s","outcome":"%s","healthStatus":%s,"probeStatus":%s,"cleanup":{"containerStop":"%s","containerRemove":"%s","database":"%s"}}\n' \
+    "$diagnostic_phase" "$diagnostic_outcome" "$diagnostic_health_status" "$diagnostic_probe_status" \
+    "$diagnostic_container_stop" "$diagnostic_container_remove" "$diagnostic_database" \
+    >"$diagnostic_temporary" || return 1
+  mv "$diagnostic_temporary" "$diagnostic_path"
+}
+
+record_phase() {
+  diagnostic_phase="$1"
+  write_diagnostic || {
+    printf '%s\n' 'Failed to write previous API compatibility diagnostic.' >&2
+    exit 1
+  }
+}
+
+cleanup() {
+  status=$?
+  trap - EXIT INT TERM
+  set +e
+  cleanup_failed=false
+  if test -n "$container_id"; then
+    if docker stop "$container_id" >/dev/null 2>&1; then
+      diagnostic_container_stop='ok'
+    else
+      diagnostic_container_stop='failed'
+      cleanup_failed=true
+    fi
+    if docker rm "$container_id" >/dev/null 2>&1; then
+      diagnostic_container_remove='ok'
+    else
+      diagnostic_container_remove='failed'
+      cleanup_failed=true
+    fi
+  fi
+  if test -n "$fixture_id"; then
+    if HERMES_COMPAT_OPERATION=cleanup HERMES_COMPAT_FIXTURE_ID="$fixture_id" \
+      timeout --signal=TERM --kill-after=5s 20s bun - >/dev/null 2>&1 <<'BUN'
+import postgres from 'postgres';
+const fixtureId = process.env.HERMES_COMPAT_FIXTURE_ID;
+const databaseUrl = process.env.DATABASE_URL;
+if (!fixtureId || !databaseUrl) process.exit(1);
+const sql = postgres(databaseUrl, { max: 1 });
+const permissionId = `permission-${fixtureId}`;
+const credentialId = `credential-${fixtureId}`;
+const agentId = `hermes-compat-agent-${fixtureId}`;
+const userId = `hermes-compat-user-${fixtureId}`;
+try {
+  await sql.begin(async (tx) => {
+    await tx.unsafe('DELETE FROM agent_permissions WHERE id = $1', [permissionId]);
+    await tx.unsafe('DELETE FROM hermes_agent_credentials WHERE id = $1', [credentialId]);
+    await tx.unsafe('DELETE FROM agents WHERE id = $1', [agentId]);
+    await tx.unsafe('DELETE FROM users WHERE id = $1', [userId]);
+  });
+} finally {
+  await sql.end();
+}
+BUN
+    then
+      diagnostic_database='ok'
+    else
+      diagnostic_database='failed'
+      cleanup_failed=true
+    fi
+  fi
+  credential=''
+  credential_hash=''
+  if test -n "$temporary_directory"; then
+    rm -rf "$temporary_directory" || cleanup_failed=true
+  fi
+  if test "$cleanup_failed" = true; then
+    diagnostic_phase='cleanup'
+    printf '%s\n' 'Failed to clean up previous API compatibility fixtures.' >&2
+    test "$status" -ne 0 || status=1
+  fi
+  if test "$status" -eq 0; then
+    diagnostic_outcome='succeeded'
+  else
+    diagnostic_outcome='failed'
+  fi
+  if ! write_diagnostic; then
+    printf '%s\n' 'Failed to write previous API compatibility diagnostic.' >&2
+    status=1
+  fi
+  exit "$status"
+}
+
+write_diagnostic || {
+  printf '%s\n' 'Failed to initialize previous API compatibility diagnostic.' >&2
+  exit 1
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 fail() {
   printf '%s\n' "$1" >&2
   exit 1
@@ -56,57 +179,7 @@ canonical_repository() {
 }
 
 temporary_directory="$(mktemp -d)"
-container_id=''
-fixture_id=''
-credential=''
-credential_hash=''
-
-cleanup() {
-  status=$?
-  trap - EXIT INT TERM
-  set +e
-  cleanup_failed=false
-  if test -n "$container_id"; then
-    docker stop "$container_id" >/dev/null 2>&1 || cleanup_failed=true
-    docker rm "$container_id" >/dev/null 2>&1 || cleanup_failed=true
-  fi
-  if test -n "$fixture_id"; then
-    if ! HERMES_COMPAT_OPERATION=cleanup HERMES_COMPAT_FIXTURE_ID="$fixture_id" \
-      timeout --signal=TERM --kill-after=5s 20s bun - >/dev/null 2>&1 <<'BUN'
-import postgres from 'postgres';
-const fixtureId = process.env.HERMES_COMPAT_FIXTURE_ID;
-const databaseUrl = process.env.DATABASE_URL;
-if (!fixtureId || !databaseUrl) process.exit(1);
-const sql = postgres(databaseUrl, { max: 1 });
-const permissionId = `permission-${fixtureId}`;
-const credentialId = `credential-${fixtureId}`;
-const agentId = `hermes-compat-agent-${fixtureId}`;
-const userId = `hermes-compat-user-${fixtureId}`;
-try {
-  await sql.begin(async (tx) => {
-    await tx.unsafe('DELETE FROM agent_permissions WHERE id = $1', [permissionId]);
-    await tx.unsafe('DELETE FROM hermes_agent_credentials WHERE id = $1', [credentialId]);
-    await tx.unsafe('DELETE FROM agents WHERE id = $1', [agentId]);
-    await tx.unsafe('DELETE FROM users WHERE id = $1', [userId]);
-  });
-} finally {
-  await sql.end();
-}
-BUN
-    then
-      cleanup_failed=true
-    fi
-  fi
-  credential=''
-  credential_hash=''
-  rm -rf "$temporary_directory" || cleanup_failed=true
-  if test "$cleanup_failed" = true; then
-    printf '%s\n' 'Failed to clean up previous API compatibility fixtures.' >&2
-    test "$status" -ne 0 || status=1
-  fi
-  exit "$status"
-}
-trap cleanup EXIT INT TERM
+record_phase image
 
 if test "$immutable_input" = true; then
   docker pull "$PREVIOUS_API_IMAGE" >/dev/null
@@ -133,10 +206,13 @@ else
   [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'Mutable test fixture did not resolve to a local image ID.'
 fi
 
+record_phase seed
 fixture_id="$(HERMES_COMPAT_OPERATION=generate bun - <<'BUN'
 process.stdout.write(crypto.randomUUID());
 BUN
 )"
+diagnostic_database='pending'
+write_diagnostic || fail 'Failed to write previous API compatibility diagnostic.'
 credential="$(HERMES_COMPAT_OPERATION=generate bun - <<'BUN'
 const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
 process.stdout.write(`idxh_${secret}`);
@@ -225,6 +301,7 @@ then
   fail 'Failed to seed the dedicated compatibility credential.'
 fi
 
+record_phase current-auth
 if ! HERMES_COMPAT_OPERATION=verify-current \
   HERMES_COMPAT_FIXTURE_ID="$fixture_id" \
   HERMES_COMPAT_CREDENTIAL="$credential" \
@@ -266,6 +343,7 @@ then
   fail 'Fresh dedicated compatibility credential failed current authentication.'
 fi
 
+record_phase container
 container_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
 container_id="$(
   DATABASE_URL="$container_database_url" \
@@ -287,13 +365,20 @@ container_id="$(
       "$PREVIOUS_API_IMAGE"
 )"
 test -n "$container_id" || fail 'Previous API container did not start.'
+diagnostic_container_stop='pending'
+diagnostic_container_remove='pending'
+write_diagnostic || fail 'Failed to write previous API compatibility diagnostic.'
 
 host_port="$(docker inspect '--format={{(index (index .NetworkSettings.Ports "3001/tcp") 0).HostPort}}' "$container_id")"
 [[ "$host_port" =~ ^[0-9]+$ ]] || fail 'Previous API did not publish a random loopback port.'
 health_url="http://127.0.0.1:${host_port}/health"
+record_phase health
 ready=false
 for _attempt in $(seq 1 120); do
   health_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 1 "$health_url" 2>/dev/null || true)"
+  if [[ "$health_status" =~ ^[0-9]+$ ]]; then
+    diagnostic_health_status="$health_status"
+  fi
   if test "$health_status" = '200'; then
     ready=true
     break
@@ -301,16 +386,23 @@ for _attempt in $(seq 1 120); do
   sleep 0.25
 done
 test "$ready" = true || fail 'Previous API health readiness did not reach HTTP 200 before the deadline.'
+write_diagnostic || fail 'Failed to write previous API compatibility diagnostic.'
 
+record_phase probe
 EXPECTED_STATUS=401
 probe_status="$(
-  printf 'silent\nshow-error\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 5\nrequest = "GET"\nurl = "http://127.0.0.1:%s/agents/me"\nheader = "x-api-key: %s"\n' \
+  printf 'silent\nshow-error\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 5\nrequest = "GET"\nurl = "http://127.0.0.1:%s/api/agents/me"\nheader = "x-api-key: %s"\n' \
     "$host_port" "$credential" \
     | curl --config -
 )"
+if [[ "$probe_status" =~ ^[0-9]+$ ]]; then
+  diagnostic_probe_status="$probe_status"
+fi
+write_diagnostic || fail 'Failed to write previous API compatibility diagnostic.'
 test "$probe_status" = "$EXPECTED_STATUS" \
   || fail "Previous API compatibility failed: expected HTTP 401, received ${probe_status:-no status}."
 
+record_phase report
 checked_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 report_path="$temporary_directory/report.json"
 printf '{"imageDigest":"%s","rejected":true,"status":401,"checkedAt":"%s"}\n' \
@@ -327,3 +419,4 @@ if test -n "${HERMES_PREVIOUS_API_REPORT:-}"; then
   cp "$report_path" "$HERMES_PREVIOUS_API_REPORT"
 fi
 printf '%s\n' "$report_source"
+record_phase complete

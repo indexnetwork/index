@@ -2095,7 +2095,7 @@ export class ConversationDatabaseAdapter {
         ))
         .orderBy(asc(schema.tasks.createdAt))
         .limit(1)
-        .for('update', { skipLocked: true });
+        .for('update');
 
       if (!pending) {
         // A participant task for the other speaker is not an empty successful

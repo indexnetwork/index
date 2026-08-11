@@ -120,7 +120,17 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
           TEST_DATABASE_SAFE: "1"
           HERMES_PREVIOUS_API_REPORT: previous-api-compatibility-base-${{ steps.rollback_base.outputs.base_sha }}.json
+          HERMES_PREVIOUS_API_DIAGNOSTIC: previous-api-compatibility-diagnostic.json
         run: bun run --cwd services/api verify:hermes-previous-api-compatibility
+
+      - name: Upload previous API compatibility diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: previous-api-compatibility-diagnostic
+          path: services/api/previous-api-compatibility-diagnostic.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload non-production rollback-base compatibility evidence
         uses: actions/upload-artifact@v4
@@ -245,7 +255,17 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
           TEST_DATABASE_SAFE: "1"
           HERMES_PREVIOUS_API_REPORT: previous-api-compatibility-protected.json
+          HERMES_PREVIOUS_API_DIAGNOSTIC: previous-api-compatibility-diagnostic.json
         run: bun run --cwd services/api verify:hermes-previous-api-compatibility
+
+      - name: Upload previous API compatibility diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: previous-api-compatibility-diagnostic
+          path: services/api/previous-api-compatibility-diagnostic.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload protected compatibility evidence
         uses: actions/upload-artifact@v4
