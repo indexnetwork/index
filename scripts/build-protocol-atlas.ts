@@ -1803,7 +1803,15 @@ export function validateConfigurationExperiments(
   issues.push(...validateGeneratedConfigurationShape((content as Record<string, unknown>).configurationExperiments));
   const serializedExperiments = JSON.stringify(experiments);
   if (/"(?:generatedAt|timestamp|lineNumber|sourceLine)"/.test(serializedExperiments)) issues.push("configuration experiments must not contain timestamps or line numbers");
-  if (serializedExperiments.includes(resolve(repoRoot))) issues.push("configuration experiments must not contain absolute machine paths");
+  // Match repoRoot as a path prefix (`/app/...`), not a substring of segments like `/application/...`.
+  // Railway builds use repoRoot `/app`, which otherwise false-positive matches sourcePath values.
+  const absoluteRoot = resolve(repoRoot);
+  if (
+    serializedExperiments.includes(`${absoluteRoot}/`)
+    || serializedExperiments.includes(`"${absoluteRoot}"`)
+  ) {
+    issues.push("configuration experiments must not contain absolute machine paths");
+  }
   for (const id of duplicateIds(experiments.filter((entry): entry is { id: string } => typeof entry.id === "string"))) {
     issues.push(`duplicate configuration experiment id: ${id}`);
   }
