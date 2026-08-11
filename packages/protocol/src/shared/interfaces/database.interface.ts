@@ -1705,6 +1705,7 @@ export interface Database {
     networkIds: string[];
     excludeUserId: string;
     limit: number;
+    minScore?: number;
   }): Promise<Array<{
     premiseId: string;
     userId: string;
@@ -1744,6 +1745,7 @@ export interface Database {
     networkIds: string[];
     excludeUserId: string;
     limitPerSource: number;
+    minScore?: number;
   }): Promise<Array<{
     sourcePremiseId: string;
     premiseId: string;

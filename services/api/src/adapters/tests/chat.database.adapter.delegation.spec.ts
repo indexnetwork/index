@@ -70,8 +70,31 @@ describe('ChatDatabaseAdapter opportunity delegations', () => {
       networkIds: ['net-1'],
       excludeUserId: 'user-1',
       limit: 5,
+      minScore: 0.42,
     };
     const result = await adapter.searchPremisesBySimilarity(params);
+    expect(calls).toEqual([params]);
+    expect(result).toEqual([]);
+  });
+
+  it('searchPremisesBySimilarityBatch forwards the retrieval threshold', async () => {
+    const adapter = new ChatDatabaseAdapter();
+    const calls: unknown[] = [];
+    (adapter as unknown as { _opportunityAdapter: unknown })._opportunityAdapter = {
+      searchPremisesBySimilarityBatch: async (params: unknown) => {
+        calls.push(params);
+        return [];
+      },
+    };
+
+    const params = {
+      sources: [{ premiseId: 'premise-1', embedding: [0.1, 0.2] }],
+      networkIds: ['net-1'],
+      excludeUserId: 'user-1',
+      limitPerSource: 5,
+      minScore: 0.42,
+    };
+    const result = await adapter.searchPremisesBySimilarityBatch(params);
     expect(calls).toEqual([params]);
     expect(result).toEqual([]);
   });

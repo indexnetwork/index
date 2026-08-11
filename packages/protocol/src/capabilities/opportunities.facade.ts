@@ -10,6 +10,7 @@
 // ── Core graphs ───────────────────────────────────────────────────────────────
 export { RadarGraphFactory } from "../opportunity/radar/radar.graph.js";
 export { OpportunityGraphFactory } from "../opportunity/application/opportunity.graph.js";
+export type { OpportunityGraphThresholdOverrides } from "../opportunity/application/opportunity.graph.js";
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "../opportunity/application/opportunity.newborn-stamping.js";
 
 // ── Presentation safety ───────────────────────────────────────────────────────
@@ -30,11 +31,17 @@ export type { OpportunityToolDeps } from "../opportunity/ports/index.js";
 
 // ── Discovery env accessors ───────────────────────────────────────────────────
 export {
+  DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
+  DISCOVERY_MIN_SIMILARITY_DEFAULT,
   discoveryAllowedTypes,
+  discoveryEvaluatorMinScore,
   discoveryIntentMatchingEnabled,
+  discoveryMinSimilarity,
   discoveryProfileMatchingEnabled,
   discoveryProfileSource,
   resetDiscoveryEnvWarningsForTests,
+  validateDiscoveryEvaluatorMinScore,
+  validateDiscoveryMinSimilarity,
 } from "../opportunity/discovery.env.js";
 export type { DiscoveryMatchType, DiscoveryProfileSource } from "../opportunity/discovery.env.js";
 

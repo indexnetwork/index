@@ -60,6 +60,7 @@ const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
   'csv-enum': 'e.g. intent,profile',
   integer: 'e.g. 4',
   number: 'e.g. 7',
+  'decimal-range': 'e.g. 0.30',
   string: 'value',
   // Shows the shape rather than describing it: this is the one kind whose value
   // is structured, and its read site throws on a malformed one.
@@ -72,8 +73,9 @@ const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
  * Every harness gets one. Before this, only the comparison harness had an env
  * editor and it offered nine flags; the catalogue is now derived from each
  * harness's own import closure (HARNESS_ENV_KEYS), so a harness offers exactly
- * what its code reads — twenty-six for discovery, eight for each scorecard
- * harness — and can never offer a flag that would be recorded and then ignored.
+ * the non-credential flags its code reads — twenty-eight for discovery, eight
+ * for each scorecard harness — and can never offer a flag that would be recorded
+ * and then ignored.
  *
  * One editor renders both shapes. A single run has one value column; a
  * comparison has two that share the row's key. Rendering them from one component

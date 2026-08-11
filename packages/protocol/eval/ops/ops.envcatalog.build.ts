@@ -117,7 +117,7 @@ export function renderEnvCatalog(catalog: Record<OpsHarness, string[]>): string 
  *
  * Why derived rather than maintained: the site once offered nine flags for
  * discovery because a scan was run against a hand-written sixteen-key list.
- * The graph READS twenty-eight; two of those are credentials, so twenty-six are
+ * The graph READS thirty; two of those are credentials, so twenty-eight are
  * OFFERED. (The scorecard harnesses read ten each and offer eight, by the same
  * two exclusions.) The list was the limit, not the code — so the list is gone
  * and the code answers.
@@ -195,7 +195,7 @@ export function renderEngineFlags(catalog: Record<OpsHarness, string[]>): string
  * hand-kept list dangerous.
  *
  * The previous version of this file pinned nine keys by hand. The graph reads
- * twenty-six offerable ones. The nine were the result of scanning against a
+ * twenty-eight offerable ones. The nine were the result of scanning against a
  * sixteen-key hand-written allowlist: the list was the limit, not the code, so
  * \`NEGOTIATOR_STANCE\` and eighteen others were refused by a message asserting
  * the graph could not read them — which was false. The list is now derived and
@@ -236,7 +236,7 @@ ${credentialKeys}
  * its artifact recorded the value the operator typed.
  */
 interface EnvValueRule {
-  kind: 'enum' | 'boolean' | 'csv-enum' | 'integer' | 'number' | 'string' | 'json-model-map';
+  kind: 'enum' | 'boolean' | 'csv-enum' | 'integer' | 'number' | 'decimal-range' | 'string' | 'json-model-map';
   values?: readonly string[];
   min?: number;
   max?: number;
@@ -282,6 +282,15 @@ export function discoveryEnvValueIssue(key: string, value: string): string | nul
       if (!/^[+-]?(\\d+\\.?\\d*|\\.\\d+)(e[+-]?\\d+)?$/i.test(trimmed)) return 'must be a positive number in decimal notation';
       const parsed = Number.parseFloat(trimmed);
       if (!Number.isFinite(parsed) || parsed <= 0) return 'must be a positive number';
+      if (rule.min !== undefined && parsed < rule.min) return \`must be at least \${rule.min}\`;
+      if (rule.max !== undefined && parsed > rule.max) return \`must be at most \${rule.max}\`;
+      return null;
+    }
+    case 'decimal-range': {
+      const trimmed = value.trim();
+      if (!/^[+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(trimmed)) return 'must be a non-negative decimal without exponent notation';
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed)) return 'must be a finite decimal';
       if (rule.min !== undefined && parsed < rule.min) return \`must be at least \${rule.min}\`;
       if (rule.max !== undefined && parsed > rule.max) return \`must be at most \${rule.max}\`;
       return null;
