@@ -46,29 +46,42 @@ cleanup() {
   status=$?
   trap - EXIT INT TERM
   set +e
+  cleanup_failed=false
   if test -n "$container_id"; then
-    docker stop "$container_id" >/dev/null 2>&1
-    docker rm "$container_id" >/dev/null 2>&1
+    docker stop "$container_id" >/dev/null 2>&1 || cleanup_failed=true
+    docker rm "$container_id" >/dev/null 2>&1 || cleanup_failed=true
   fi
   if test "$seeded" = true && test -n "$fixture_id"; then
-    HERMES_COMPAT_OPERATION=cleanup HERMES_COMPAT_FIXTURE_ID="$fixture_id" bun - >/dev/null 2>&1 <<'BUN'
+    if ! HERMES_COMPAT_OPERATION=cleanup HERMES_COMPAT_FIXTURE_ID="$fixture_id" bun - >/dev/null 2>&1 <<'BUN'
 import postgres from 'postgres';
 const fixtureId = process.env.HERMES_COMPAT_FIXTURE_ID;
 const databaseUrl = process.env.DATABASE_URL;
 if (!fixtureId || !databaseUrl) process.exit(1);
 const sql = postgres(databaseUrl, { max: 1 });
+const credentialId = `credential-${fixtureId}`;
+const agentId = `hermes-compat-agent-${fixtureId}`;
+const userId = `hermes-compat-user-${fixtureId}`;
 try {
   await sql.begin(async (tx) => {
-    await tx.unsafe('DELETE FROM users WHERE id = $1', [`hermes-compat-user-${fixtureId}`]);
+    await tx.unsafe('DELETE FROM hermes_agent_credentials WHERE id = $1', [credentialId]);
+    await tx.unsafe('DELETE FROM agents WHERE id = $1', [agentId]);
+    await tx.unsafe('DELETE FROM users WHERE id = $1', [userId]);
   });
 } finally {
   await sql.end();
 }
 BUN
+    then
+      cleanup_failed=true
+    fi
   fi
   credential=''
   credential_hash=''
-  rm -rf "$temporary_directory"
+  rm -rf "$temporary_directory" || cleanup_failed=true
+  if test "$cleanup_failed" = true; then
+    printf '%s\n' 'Failed to clean up previous API compatibility fixtures.' >&2
+    test "$status" -ne 0 || status=1
+  fi
   exit "$status"
 }
 trap cleanup EXIT INT TERM
@@ -117,6 +130,20 @@ const credential = process.env.HERMES_COMPAT_CREDENTIAL;
 const credentialHash = process.env.HERMES_COMPAT_CREDENTIAL_HASH;
 const actionsJson = process.env.HERMES_COMPAT_ACTIONS_JSON;
 if (!databaseUrl || !fixtureId || !credential?.startsWith('idxh_') || !credentialHash || !actionsJson) process.exit(1);
+const canonicalActions = [
+  'manage:identity',
+  'manage:premises',
+  'manage:intents',
+  'manage:networks',
+  'manage:opportunities',
+  'manage:negotiations',
+];
+const actions = JSON.parse(actionsJson);
+if (
+  !Array.isArray(actions)
+  || actions.length !== canonicalActions.length
+  || actions.some((action, index) => action !== canonicalActions[index])
+) process.exit(1);
 const sql = postgres(databaseUrl, { max: 1 });
 const userId = `hermes-compat-user-${fixtureId}`;
 const agentId = `hermes-compat-agent-${fixtureId}`;
@@ -130,10 +157,16 @@ try {
       "INSERT INTO agents (id, owner_id, name, type, runtime_kind, installation_id, runtime_setup_attempt_id) VALUES ($1, $2, $3, 'external', 'hermes', $4, $5)",
       [agentId, userId, 'Hermes compatibility fixture', `installation-${fixtureId}`, `setup-${fixtureId}`],
     );
-    await tx.unsafe(
-      "INSERT INTO hermes_agent_credentials (id, secret_hash, owner_id, agent_id, installation_id, setup_attempt_id, audience, actions, activation_state, issued_at, expires_at, activated_at) VALUES ($1, $2, $3, $4, $5, $6, 'hermes-agent', ARRAY(SELECT jsonb_array_elements_text($7::jsonb)), 'active', now(), now() + interval '1 hour', now())",
-      [`credential-${fixtureId}`, credentialHash, userId, agentId, `installation-${fixtureId}`, `setup-${fixtureId}`, actionsJson],
-    );
+    await tx`
+      INSERT INTO hermes_agent_credentials (
+        id, secret_hash, owner_id, agent_id, installation_id, setup_attempt_id,
+        audience, actions, activation_state, issued_at, expires_at, activated_at
+      ) VALUES (
+        ${`credential-${fixtureId}`}, ${credentialHash}, ${userId}, ${agentId},
+        ${`installation-${fixtureId}`}, ${`setup-${fixtureId}`}, 'hermes-agent',
+        ${tx.array(actions)}, 'active', now(), now() + interval '1 hour', now()
+      )
+    `;
   });
 } finally {
   await sql.end();

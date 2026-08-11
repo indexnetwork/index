@@ -20,6 +20,7 @@ async function contractEnvironment(options: {
   repoDigest?: string;
   probeStatus?: number;
   seedFailure?: boolean;
+  cleanupFailure?: boolean;
 } = {}) {
   const directory = await mkdtemp(resolve(tmpdir(), 'hermes-previous-api-contract-'));
   temporaryDirectories.push(directory);
@@ -39,7 +40,10 @@ case "\${HERMES_COMPAT_OPERATION:-}" in
     test "\${HERMES_COMPAT_CREDENTIAL:-}" = idxh_contractSecret
     ${options.seedFailure ? `printf '%s\\n' "idxh_contractSecret contractCredentialHash ${disposableDatabaseUrl}" >&2; exit 68` : `printf 'seed\\n' >>"${lifecyclePath}"`}
     ;;
-  cleanup) printf 'cleanup\\n' >>"${lifecyclePath}" ;;
+  cleanup)
+    printf 'cleanup\\n' >>"${lifecyclePath}"
+    ${options.cleanupFailure ? `printf '%s\\n' "idxh_contractSecret contractCredentialHash ${disposableDatabaseUrl}" >&2; exit 69` : ':'}
+    ;;
   *) exit 64 ;;
 esac
 `);
@@ -181,6 +185,42 @@ describe('previous API compatibility shell gate', () => {
     expect(observableOutput).not.toContain('idxh_');
     expect(observableOutput).not.toContain('contractCredentialHash');
     expect(observableOutput).not.toContain(disposableDatabaseUrl);
+  });
+
+  test('binds the validated canonical actions through postgres typed-array support', async () => {
+    const script = await readFile(scriptPath, 'utf8');
+
+    expect(script).toContain('const actions = JSON.parse(actionsJson);');
+    expect(script).toContain('actions.some((action, index) => action !== canonicalActions[index])');
+    expect(script).toContain('${tx.array(actions)}');
+    expect(script).not.toContain('jsonb_array_elements_text');
+  });
+
+  test('deletes credential and agent rows before the owning user', async () => {
+    const script = await readFile(scriptPath, 'utf8');
+    const credentialDelete = script.indexOf("DELETE FROM hermes_agent_credentials WHERE id = $1");
+    const agentDelete = script.indexOf("DELETE FROM agents WHERE id = $1");
+    const userDelete = script.indexOf("DELETE FROM users WHERE id = $1");
+
+    expect(credentialDelete).toBeGreaterThan(-1);
+    expect(agentDelete).toBeGreaterThan(credentialDelete);
+    expect(userDelete).toBeGreaterThan(agentDelete);
+  });
+
+  test('fails cleanup visibly without forwarding secret-bearing diagnostics', async () => {
+    const contract = await contractEnvironment({ cleanupFailure: true });
+    const result = runCompatibility({
+      ...contract.env,
+      PREVIOUS_API_IMAGE: productionDigest,
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('Failed to clean up previous API compatibility fixtures.');
+    const observableOutput = `${result.stdout}${result.stderr}`;
+    expect(observableOutput).not.toContain('idxh_');
+    expect(observableOutput).not.toContain('contractCredentialHash');
+    expect(observableOutput).not.toContain(disposableDatabaseUrl);
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nstop\nrm\ncleanup\n');
   });
 
   test('fails protected mode when the pulled image has no RepoDigest', async () => {
