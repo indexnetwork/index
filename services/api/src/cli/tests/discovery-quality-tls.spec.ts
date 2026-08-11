@@ -41,6 +41,38 @@ describe('historical quality post-attestation TLS binding', () => {
     expect(JSON.stringify(binding.postgresOptions)).not.toContain('tls-secret');
   });
 
+  it('preserves credentials, explicit port, and database path while adding only sslmode=require', () => {
+    const externalUrl = 'postgresql://quality-user:p%40ssword-secret@ep-quality.neon.tech:5432/protocol_eval';
+    const original = new URL(externalUrl);
+    const binding = bindHistoricalQualityTls(externalUrl);
+    const internal = new URL(binding.internalDatabaseUrl);
+
+    expect(internal.protocol).toBe(original.protocol);
+    expect(internal.username).toBe(original.username);
+    expect(internal.password).toBe(original.password);
+    expect(internal.hostname).toBe(original.hostname);
+    expect(internal.port).toBe(original.port);
+    expect(internal.pathname).toBe(original.pathname);
+    expect([...internal.searchParams.entries()]).toEqual([['sslmode', 'require']]);
+    expect(internal.hash).toBe('');
+  });
+
+  it('rejects preexisting query parameters or fragments without exposing or logging their secrets', async () => {
+    const secret = 'reviewer-secret-sentinel';
+    for (const unsafeUrl of [
+      `${strictDatabaseUrl}?application_name=${secret}`,
+      `${strictDatabaseUrl}#${secret}`,
+    ]) {
+      const error = await Promise.resolve().then(() => bindHistoricalQualityTls(unsafeUrl)).catch((caught: Error) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toBe('Historical quality TLS binding requires an attested query-free database URL');
+      expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(secret);
+    }
+
+    const helperSource = await readFile(new URL('../discovery-quality-tls.ts', import.meta.url), 'utf8');
+    expect(helperSource).not.toMatch(/\bconsole\.|\blog(?:ger)?\./);
+  });
+
   it('does not weaken strict manifest or refresh-target query rejection', () => {
     expect(parseHistoricalQualityManifest(strictManifest()).baseReadReplica.databaseUrl).toBe(strictDatabaseUrl);
     expect(parseQualityBaseRefreshTarget(strictRefreshTarget()).databaseUrl).toBe(strictDatabaseUrl);

@@ -8,6 +8,9 @@ export function bindHistoricalQualityTls(alreadyAttestedDatabaseUrl: string): Re
   internalDatabaseUrl: string;
 }> {
   const internalUrl = new URL(alreadyAttestedDatabaseUrl);
+  if (internalUrl.search !== '' || internalUrl.hash !== '') {
+    throw new Error('Historical quality TLS binding requires an attested query-free database URL');
+  }
   internalUrl.searchParams.set('sslmode', 'require');
   return Object.freeze({
     postgresOptions: Object.freeze({ ssl: 'require' as const }),
