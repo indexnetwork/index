@@ -386,7 +386,8 @@ describe('Route rendering smoke tests', () => {
       route: '/download',
     });
     expect(container).toBeTruthy();
-    expect(container.textContent).toContain('Get the apps');
+    // Lowercased in the redesign; the heading copy is "get the apps".
+    expect(container.textContent).toContain('get the apps');
   });
 
   test('/u/:id — User profile page renders without crashing', async () => {

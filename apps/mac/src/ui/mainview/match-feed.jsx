@@ -96,8 +96,14 @@ function useSpinnerFrame(active) {
 }
 
 /* A pulsing mark for work happening right now on the other side of the wire.
-   The animation is defined in styles/amiga.css so it can be reused. */
-function LiveDot({ label }) {
+   The animation is defined in styles/amiga.css so it can be reused.
+
+   Not named LiveDot: every JSX file is concatenated into one shared scope by
+   assemble.py, so a second LiveDot here (loaded 18th) silently replaced the
+   primitive in tokens.jsx (loaded 1st) and every existing caller started
+   drawing this pill with no label instead of their blinking dot. Names in this
+   tree are effectively global; keep new ones distinct. */
+function LiveTag({ label }) {
   return (
     <span style={{
       display:"inline-flex", alignItems:"center", gap:4, flex:"0 0 auto",
@@ -325,7 +331,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
           {/* The agents are genuinely mid-exchange on these, and the radar
               repolls faster while any of them are open, so the row can say so
               rather than looking like a settled list. */}
-          {negotiating && <LiveDot label="live"/>}
+          {negotiating && <LiveTag label="live"/>}
         </div>
         <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4 }}>
           {person.blurb}

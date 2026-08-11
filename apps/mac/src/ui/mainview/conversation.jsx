@@ -158,11 +158,11 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               minWidth:0, flex:"0 1 auto",
               color: paused ? "var(--ink-3)" : "#000",
             }}>
-            <span style={{
-              width:7, height:7, borderRadius:"50%", flex:"0 0 auto",
-              background: paused ? "var(--ink-4)" : "#1FA95B",
-              boxShadow: paused ? "none" : "0 0 0 2px rgba(31,169,91,0.25)",
-            }}/>
+            {/* The same LiveDot the shelf puts on a running signal, rather than
+                a green pill only this header drew: one signal, two screens, one
+                mark for "working". Paused shows no dot, matching the shelf,
+                where the mark is what says it is running. */}
+            {!paused && <LiveDot size={6}/>}
             <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0 }}>
               {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
             </span>

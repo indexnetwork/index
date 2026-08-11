@@ -4,7 +4,6 @@ import { Link, useNavigate, useParams } from "react-router";
 import AuthForm from "@/components/AuthForm";
 import { DOWNLOAD_PATH } from "@/components/DeepLinkLanding";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { ensureLandingFonts } from "@/app/landing/Nav";
 import { log } from "@/lib/logger";
 import { Network } from "@/lib/types";
 import { indexesService as publicIndexesService, useNetworkService } from "@/services/networks";
@@ -35,10 +34,6 @@ export default function NetworkWebInviteLanding() {
 
   useEffect(() => {
     localStorage.setItem("alpha", "true");
-  }, []);
-
-  useEffect(() => {
-    ensureLandingFonts();
   }, []);
 
   useEffect(() => {
@@ -94,72 +89,89 @@ export default function NetworkWebInviteLanding() {
   const callbackURL =
     typeof window !== "undefined" ? window.location.href : "/";
 
+  const memberCount = network?._count?.members;
+
   return (
     <div className="invite">
-      <nav className="invite-nav" aria-label="primary">
-        <Link to="/" aria-label="Index Network">
-          <img src="/landing/index-wordmark.svg" alt="Index Network" />
+      <header className="invite-header">
+        <Link className="invite-logo" to="/" aria-label="Index Network">
+          <img src="/logos/logo-white-full.svg" alt="Index Network" />
         </Link>
-      </nav>
+      </header>
 
-      <main>
-        <div className="c">
-          {previewStep === "loading" && (
-            <p className="invite-status">Loading invitation…</p>
-          )}
+      <main className="invite-main">
+        {previewStep === "loading" && (
+          <p className="invite-status">Loading invitation…</p>
+        )}
 
-          {previewStep === "error" && (
-            <>
-              <h1>Invitation unavailable</h1>
-              <p className="invite-error">
-                {previewError || "This link is invalid or has expired."}
+        {previewStep === "error" && (
+          <>
+            <h1 className="invite-title">Invitation unavailable</h1>
+            <p className="invite-error">
+              {previewError || "This link is invalid or has expired."}
+            </p>
+          </>
+        )}
+
+        {previewStep === "ready" && network && (
+          <>
+            <p className="invite-kicker">You&apos;re invited to</p>
+            <h1 className="invite-title">{network.title}</h1>
+            {memberCount != null && (
+              <p className="invite-meta">
+                <span className="invite-meta__dot" aria-hidden="true" />
+                {memberCount} {memberCount === 1 ? "member" : "members"}
               </p>
-            </>
-          )}
+            )}
 
-          {previewStep === "ready" && network && (
-            <>
-              <p className="invite-kicker">You&apos;re invited to</p>
-              <h1>{network.title}</h1>
-              {network._count?.members != null && (
-                <p className="invite-meta">
-                  {network._count.members}{" "}
-                  {network._count.members === 1 ? "member" : "members"}
-                </p>
-              )}
+            {joining && (
+              <p className="invite-status invite-status--join">Joining…</p>
+            )}
 
-              {joining && (
-                <p className="invite-status invite-status--join">Joining…</p>
-              )}
+            {joinError && (
+              <>
+                <p className="invite-error">{joinError}</p>
+                <button
+                  type="button"
+                  className="invite-retry"
+                  onClick={() => void attemptJoin()}
+                >
+                  Retry
+                </button>
+              </>
+            )}
 
-              {joinError && (
-                <>
-                  <p className="invite-error">{joinError}</p>
-                  <button
-                    type="button"
-                    className="invite-retry"
-                    onClick={() => void attemptJoin()}
-                  >
-                    Retry
-                  </button>
-                </>
-              )}
-
-              {!joining && !joinError && !isAuthenticated && isReady && (
-                <div className="invite-auth">
-                  <div className="auth">
+            {!joining && !joinError && !isAuthenticated && isReady && (
+              <>
+                {/* The card is chrome only; AuthForm keeps every behaviour it
+                    already had (Google OAuth, magic link, password fallback).
+                    Its .av-* internals are restyled from invite.css. */}
+                <section className="invite-card">
+                  <h2 className="invite-card__bar">JOIN THE NETWORK</h2>
+                  <div className="invite-card__body auth">
                     <AuthForm
                       variant="inline"
                       callbackURL={callbackURL}
                       onAuthenticated={() => setLoginRequested(true)}
                     />
                   </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                </section>
+
+                <p className="invite-legal">
+                  by continuing you agree to the{" "}
+                  <Link to="/pages/terms-of-use">terms</Link> and{" "}
+                  <Link to="/pages/privacy-policy">privacy policy</Link>
+                </p>
+              </>
+            )}
+          </>
+        )}
       </main>
+
+      <footer className="invite-footer">
+        <span>index·network</span>
+        <span>© {new Date().getFullYear()}</span>
+      </footer>
     </div>
   );
 }

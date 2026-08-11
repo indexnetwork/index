@@ -1,166 +1,258 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+/* IBM Plex Mono is already imported once in app/globals.css (400/500/600/700),
+   so this sheet uses it without pulling a second webfont request. */
 
 .download-page {
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 64px 32px;
+  flex-direction: column;
   box-sizing: border-box;
-  background: #071410;
-  color: #e6ede7;
-  font-family: "IBM Plex Sans", "Public Sans", system-ui, sans-serif;
+  background: #0d1a13;
+  color: #fff;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   -webkit-font-smoothing: antialiased;
 }
 
-.download-page__inner {
+/* ---------- header ---------- */
+
+/* The wordmark is the only thing in here now that the status chip is gone, so
+   it sits on the left rather than being spaced against nothing. */
+.download-page__header {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 40px;
-  width: 100%;
-  max-width: 720px;
+  padding: 30px 48px;
 }
 
-.download-page__intro {
+.download-page__logo {
+  display: inline-flex;
+  line-height: 0;
+}
+
+/* 200px wide is the handoff's size; the wordmark is 522x44, so height follows. */
+.download-page__logo img {
+  display: block;
+  width: 200px;
+  height: auto;
+}
+
+/* ---------- hero ---------- */
+
+.download-page__main {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  text-align: center;
+  justify-content: center;
+  padding: 10px 48px 60px;
 }
 
 .download-page__kicker {
   margin: 0;
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  letter-spacing: 0.2em;
+  font-weight: 600;
+  letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: #e08a2e;
+  color: #e8873d;
 }
 
 .download-page__title {
-  margin: 0;
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 38px;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  color: #e6ede7;
+  margin: 22px 0 16px;
+  font-size: 52px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: #fff;
 }
 
 .download-page__lede {
   margin: 0;
   max-width: 460px;
-  font-size: 16px;
-  line-height: 1.55;
-  color: #b9c9bf;
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: center;
   text-wrap: pretty;
+  color: #9db3a4;
 }
 
+/* ---------- cards ---------- */
+
 .download-page__cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  width: 100%;
-  max-width: 620px;
+  margin-top: 56px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 28px;
 }
 
 .download-card {
+  width: 340px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  padding: 40px 28px 34px;
-  background: #0c1e17;
-  border: 1px solid rgba(230, 237, 231, 0.12);
-  color: #e6ede7;
-  text-decoration: none;
-  transition: border-color 120ms ease;
+  background: #122019;
+  border: 1px solid #2b4234;
 }
 
-a.download-card:hover {
-  border-color: #e08a2e;
-}
-
-.download-card--static {
-  cursor: default;
-}
-
-.download-card__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border: 1px solid rgba(230, 237, 231, 0.18);
-}
-
-.download-card__icon svg {
-  width: 34px;
-  height: 34px;
-  color: #e6ede7;
-}
-
-.download-card__icon img {
-  width: 38px;
-  height: 38px;
-  object-fit: contain;
-}
-
-.download-card__copy {
+/* Even top and bottom padding now that the header bar is gone: the 36px top was
+   sized against a bar sitting above it, and without one the icon looked pushed
+   down inside the card. */
+.download-card__body {
+  flex: 1;
+  padding: 40px 30px 36px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
 }
 
+.download-card__icon {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  margin-bottom: 18px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+/* The Index mark is a full-bleed tile, so it fills the box. */
+.download-card__icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The Hermes logo is a supplied raster with its own aspect ratio (121x173), so
+   it is bounded rather than stretched, and object-fit letterboxes it.
+
+   Positioned rather than sized with percentages: as a centred grid item both
+   height:100% and max-height:100% resolved against an indefinite area and were
+   ignored, so the logo rendered 66x94 and broke out of the 68px box. inset:0
+   gives it a definite containing block, which percentages can resolve against. */
+.download-card__icon img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* The Hermes mark is a supplied logo rather than a full-bleed tile, so it gets
+   the outline the Index tile does not need. */
+.download-card__icon--outlined {
+  border: 1px solid #3a5443;
+  box-sizing: border-box;
+}
+
 .download-card__name {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 15px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #fff;
 }
 
 .download-card__meta {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px;
-  color: #7e9689;
-}
-
-.download-card__action {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin: 0;
   font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 12px 24px;
+  color: #9db3a4;
 }
 
-.download-card__action--primary {
-  color: #071410;
-  background: #e08a2e;
+.download-card__note {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: #5d7466;
 }
 
-.download-card__action--ghost {
-  color: #d6e2da;
-  border: 1px solid rgba(230, 237, 231, 0.28);
-  padding: 11px 23px;
+/* ---------- buttons ---------- */
+
+.download-btn {
+  margin-top: 26px;
+  display: inline-block;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-decoration: none;
+  border-radius: 0;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.download-card__action--disabled {
-  color: #7e9689;
-  background: rgba(230, 237, 231, 0.08);
+.download-btn--primary {
+  padding: 13px 34px;
+  border: none;
+  background: #e8873d;
+  color: #0d1a13;
+  font-weight: 700;
 }
 
-@media (max-width: 720px) {
-  .download-page {
-    padding: 48px 20px;
+.download-btn--primary:hover {
+  background: #f09a55;
+  color: #0d1a13;
+}
+
+.download-btn--ghost {
+  padding: 12px 33px;
+  border: 1px solid #3a5443;
+  background: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+
+.download-btn--ghost:hover {
+  border-color: #e8873d;
+  color: #e8873d;
+}
+
+/* Same footprint as the primary button so the card does not resize when a
+   build is published; muted and inert because there is nothing to click yet. */
+.download-btn--disabled {
+  padding: 13px 34px;
+  border: none;
+  background: #1b2c22;
+  color: #5d7466;
+  font-weight: 700;
+  cursor: default;
+}
+
+/* ---------- footer ---------- */
+
+.download-page__footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 22px 48px;
+  border-top: 1px solid #1b2c22;
+  font-size: 11px;
+  color: #5d7466;
+}
+
+/* ---------- responsive ---------- */
+
+/* The handoff wraps the cards to one centred column here; the gutters come in
+   to match, and the 52px title would otherwise overflow a phone. */
+@media (max-width: 760px) {
+  .download-page__header,
+  .download-page__footer {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .download-page__header {
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .download-page__main {
+    padding: 10px 24px 48px;
+  }
+
+  .download-page__logo img {
+    width: 160px;
   }
 
   .download-page__title {
-    font-size: 30px;
+    font-size: 38px;
   }
 
-  .download-page__cards {
-    grid-template-columns: 1fr;
+  .download-card {
+    width: 100%;
+    max-width: 340px;
   }
 }
