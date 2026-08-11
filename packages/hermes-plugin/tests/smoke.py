@@ -269,7 +269,14 @@ def main() -> None:
     assert "Invitation link" in dashboard_js
     assert "/permissions" in dashboard_js
     assert "regenerate_network_invitation" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/bootstrap" in dashboard_js
+    assert "/networks/home" in dashboard_js
+    assert "/intents/" in dashboard_js
+    assert "loadIntentDetail" in dashboard_js
     plugin_api_src = (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/bootstrap" in plugin_api_src
+    assert "intent_radar" in plugin_api_src
+    assert "networks_home" in plugin_api_src
     assert "/notifications/stream" in plugin_api_src
     assert "_notification_stream" in plugin_api_src
     assert "/networks/search-users" in dashboard_js
@@ -764,7 +771,7 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                # summary → GET /auth/me (identity + onboarding gate).
+                # bootstrap → GET /auth/me (identity + onboarding gate).
                 FakeResponse({
                     "user": {
                         "id": "user-1",
@@ -787,8 +794,48 @@ def main() -> None:
                         "pagination": {"current": 1, "total": 1, "count": 1, "totalCount": 1},
                     }
                 ),
-                # _call_questions_by_intent("pending") → server-scoped per intent
-                # (identical query to the Mac app; nested detection/payload).
+            ],
+            captured,
+        )
+        boot = dashboard_api.bootstrap()
+        assert boot["success"] is True
+        assert boot["onboarding"] == {
+            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
+            "needsProfileConfirm": False,
+        }
+        intents = boot["intents"]
+        assert len(intents) == 1
+        intent = intents[0]
+        assert intent["id"] == "intent-1"
+        assert intent["title"] == "Looking for mentors in applied robotics."
+        assert intent["status"] == "live"
+        assert intent["lifecycleStatus"] == "ACTIVE"
+        assert intent["pendingCount"] == 2
+        assert "questions" not in intent
+        assert "opportunities" not in intent
+        calls = [(entry["method"], entry["url"]) for entry in captured]
+        assert calls == [
+            ("GET", "https://api.example.test/api/auth/me"),
+            ("POST", "https://api.example.test/api/intents/list"),
+        ]
+        assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
+
+        # summary is a deprecated alias for bootstrap.
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"user": {"id": "user-1", "onboarding": {"profileConfirmedAt": "2026-01-01T00:00:00.000Z"}}}),
+                FakeResponse({"intents": [{"id": "intent-1", "payload": "x", "status": "ACTIVE"}], "pagination": {"current": 1, "total": 1}}),
+            ],
+            captured,
+        )
+        summary_alias = dashboard_api.summary()
+        assert summary_alias["success"] is True
+        assert len(summary_alias["intents"]) == 1
+
+        captured = []
+        install_fake_urlopen(
+            [
                 FakeResponse(
                     {
                         "questions": [
@@ -806,8 +853,18 @@ def main() -> None:
                         ]
                     }
                 ),
-                # _call_questions_by_intent("answered") → server-scoped settled records
-                # per intent (identical scope to the Mac app), surviving reloads.
+            ],
+            captured,
+        )
+        pending = dashboard_api.intent_questions("intent-1", status="pending")
+        assert pending["success"] is True
+        assert pending["questions"][0]["id"] == "question-1"
+        assert pending["questions"][0]["options"][0]["label"] == "Hiring"
+        assert captured[-1]["url"] == "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"
+
+        captured = []
+        install_fake_urlopen(
+            [
                 FakeResponse(
                     {
                         "questions": [
@@ -830,7 +887,80 @@ def main() -> None:
                         ]
                     }
                 ),
-                # GET /networks (joined) and GET /networks/discovery/public (discover).
+            ],
+            captured,
+        )
+        answered = dashboard_api.intent_questions("intent-1", status="answered")
+        assert answered["success"] is True
+        assert answered["questions"][0]["id"] == "question-answered"
+        assert answered["questions"][0]["answerText"] == "Hiring"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "items": [
+                            {
+                                "opportunityId": "opp-1",
+                                "userId": "other",
+                                "name": "Ada",
+                                "avatar": "avatars/other/pic.png",
+                                "status": "pending",
+                                "mainText": "Can advise on robotics hiring.",
+                            },
+                            {
+                                "opportunityId": "opp-expired",
+                                "userId": "expired-other",
+                                "name": "Expired Match",
+                                "status": "expired",
+                                "mainText": "Missed window.",
+                            },
+                        ],
+                        "meta": {"totalOpportunities": 2},
+                    }
+                ),
+            ],
+            captured,
+        )
+        radar = dashboard_api.intent_radar("intent-1")
+        assert radar["success"] is True
+        assert radar["items"][0]["opportunityId"] == "opp-1"
+        assert radar["items"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
+        assert radar["items"][0]["name"] == "Ada"
+        assert radar["items"][0]["counterpartUserId"] == "other"
+        assert radar["items"][0]["intentScopeId"] == "intent-1"
+        assert "statuses=latent,pending,negotiating,stalled,accepted,expired" in captured[-1]["url"]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "items": [
+                            {
+                                "opportunityId": "opp-1",
+                                "userId": "other",
+                                "name": "Ada",
+                                "status": "pending",
+                                "mainText": "",
+                                "presentationPending": True,
+                            }
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        skeleton = dashboard_api.intent_radar("intent-1", presentation="skeleton")
+        assert skeleton["success"] is True
+        assert skeleton["items"][0]["presentationPending"] is True
+        assert "presentation=skeleton" in captured[-1]["url"]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"user": {"id": "user-1"}}),
                 FakeResponse(
                     {
                         "networks": [
@@ -846,8 +976,6 @@ def main() -> None:
                                     "joinPolicy": "invite_only",
                                     "invitationLink": {"code": "invite-abc"},
                                 },
-                                # Different from current user on purpose: role must
-                                # come from membership `role`, not network.user.id.
                                 "user": {"id": "other-owner", "name": "Owner"},
                                 "_count": {"members": 3},
                             }
@@ -856,166 +984,20 @@ def main() -> None:
                     }
                 ),
                 FakeResponse({"networks": [{"id": "network-2", "title": "Not joined", "memberCount": 5}]}),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-1",
-                                "status": "pending",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Ada",
-                                "counterpartAvatar": "avatars/other/pic.png",
-                                "interpretation": {"category": "mentor", "reasoning": "Can advise on robotics hiring."},
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "other", "networkId": "network-1", "intent": "other-intent", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-general",
-                                "status": "pending",
-                                "detection": {},
-                                "counterpartName": "Grace",
-                                "interpretation": {"category": "intro", "reasoning": "Worth a direct follow-up."},
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "role": "agent"},
-                                    {"userId": "intro", "networkId": "network-1", "role": "introducer"},
-                                    {"userId": "other-general", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-waiting-on-other",
-                                "status": "pending",
-                                "detection": {},
-                                "counterpartName": "Already Sent",
-                                "interpretation": {"category": "intro", "reasoning": "Waiting for the other side."},
-                                "actors": [
-                                    {
-                                        "userId": "user-1",
-                                        "networkId": "network-1",
-                                        "role": "agent",
-                                        "actedAt": "2026-05-12T10:00:00.000Z",
-                                    },
-                                    {"userId": "other-waiting", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-rejected",
-                                "status": "rejected",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Rejected Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                        ]
-                    }
-                ),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-expired",
-                                "status": "expired",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Expired Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "expired-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            }
-                        ]
-                    }
-                ),
             ],
             captured,
         )
-        summary = dashboard_api.summary()
-        assert summary["success"] is True
-        assert summary["onboarding"] == {
-            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
-            "needsProfileConfirm": False,
-        }
-        intents = summary["intents"]
-        assert len(intents) == 1
-        intent = intents[0]
-        assert intent["id"] == "intent-1"
-        assert intent["title"] == "Looking for mentors in applied robotics."
-        # Mac-app signalStatus parity: an active intent with no accepted or
-        # negotiating opportunities reads "live".
-        assert intent["status"] == "live"
-        assert intent["lifecycleStatus"] == "ACTIVE"
-        assert intent["questionCount"] == 1
-        assert intent["opportunityCount"] == 1
-        # Consolidated badge count from the server list fields.
-        assert intent["pendingCount"] == 2
-        assert intent["totalOpportunityCount"] == 2
-        assert intent["statusCounts"]["pending"] == 1
-        # Rejected is hidden entirely (mac-app parity): no bucket, no count.
-        assert "rejected" not in intent["statusCounts"]
-        assert intent["statusCounts"]["expired"] == 1
-        assert intent["networks"] == ["Robotics Guild"]
-        assert intent["questions"][0]["id"] == "question-1"
-        assert intent["questions"][0]["options"][0]["label"] == "Hiring"
-        # Settled records ride along per intent, pending counts unaffected.
-        assert intent["answeredQuestions"][0]["id"] == "question-answered"
-        assert intent["answeredQuestions"][0]["answerText"] == "Hiring"
-        assert intent["opportunities"][0]["opportunityId"] == "opp-1"
-        assert intent["opportunities"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
-        assert intent["opportunities"][0]["name"] == "Ada"
-        assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
-        assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
-        assert "networks" not in intent["opportunities"][0]
-        assert intent["opportunities"][0]["counterpartUserId"] == "other"
-        assert intent["opportunities"][0]["intentScopeId"] == "intent-1"
-        # Questions are server-scoped per intent, so the general questions
-        # bucket is always empty (only unlinked opportunities remain general).
-        assert summary["general"]["count"] == 1
-        assert summary["general"]["questionCount"] == 0
-        assert summary["general"]["opportunityCount"] == 1
-        assert summary["general"]["questions"] == []
-        assert summary["general"]["opportunities"][0]["opportunityId"] == "opp-general"
-        assert summary["general"]["opportunities"][0]["counterpartUserId"] == "other-general"
-        all_opp_ids = [
-            opp["opportunityId"]
-            for group in summary["intents"] + [summary["general"]]
-            for opp in group.get("opportunities", [])
-        ]
-        assert "opp-waiting-on-other" not in all_opp_ids
-        assert "opp-rejected" not in all_opp_ids
-        assert summary["general"]["statusCounts"]["pending"] == 1
-        assert summary["negotiations"]["count"] == 2
-        assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
-        assert summary["negotiations"]["items"][0]["subtitle"] == "Looking for mentors in applied robotics."
-        assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
-        assert summary["networks"]["count"] == 1
-        assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
-        assert summary["networks"]["items"][0]["role"] == "owner"
-        assert summary["networks"]["items"][0]["joinPolicy"] == "invite_only"
-        assert summary["networks"]["items"][0]["invitationLink"] == {"code": "invite-abc"}
-        assert summary["totals"] == {
-            "intents": 1,
-            "questions": 1,
-            "opportunities": 2,
-            "totalOpportunities": 3,
-            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "expired": 1},
-        }
-        # The summary is now fully REST (Mac-app parity): no MCP tool calls remain.
-        calls = [(entry["method"], entry["url"]) for entry in captured]
-        assert calls[:8] == [
-            ("GET", "https://api.example.test/api/auth/me"),
-            ("POST", "https://api.example.test/api/intents/list"),
-            ("GET", "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"),
-            ("GET", "https://api.example.test/api/questions?status=answered&scopeType=intent&scopeId=intent-1"),
-            ("GET", "https://api.example.test/api/networks"),
-            ("GET", "https://api.example.test/api/networks/discovery/public"),
-            ("GET", "https://api.example.test/api/opportunities"),
-            ("GET", "https://api.example.test/api/opportunities?status=expired"),
-        ]
-        assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
-        # No per-counterpart /users/:id fetches: cards no longer carry socials.
-        assert calls[8:] == []
+        networks_home = dashboard_api.networks_home()
+        assert networks_home["success"] is True
+        assert networks_home["networks"]["count"] == 1
+        assert networks_home["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert networks_home["networks"]["items"][0]["role"] == "owner"
+        assert networks_home["networks"]["items"][0]["joinPolicy"] == "invite_only"
+        assert networks_home["networks"]["items"][0]["invitationLink"] == {"code": "invite-abc"}
+        home_calls = [(entry["method"], entry["url"]) for entry in captured]
+        assert home_calls[0] == ("GET", "https://api.example.test/api/auth/me")
+        assert ("GET", "https://api.example.test/api/networks") in home_calls
+        assert ("GET", "https://api.example.test/api/networks/discovery/public") in home_calls
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True})], captured)

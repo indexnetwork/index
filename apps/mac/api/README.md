@@ -44,3 +44,15 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `enrichment.controller.ts`: `POST /enrichment/enrich` (`client.enrichment.trigger`; runs the full public-research enrichment inline and returns the resolved identity + discovered socials)
 
 Onboarding creates a real intent through the `create_intent` MCP tool via a single JSON-RPC `tools/call` to `/mcp` (`bridge.jsx`'s `mcpCall`), since intent creation has no plain REST POST. SSE endpoints are consumed directly via `fetch` (not through the resource methods): `POST /chat/stream` and `GET /conversations/stream`.
+
+## Data loading
+
+Matches the web app's lazy contract:
+
+| Phase | Calls | Notes |
+|-------|-------|-------|
+| **Boot** (`loadSnapshot`) | `GET /auth/me`, `POST /intents/list` (page 1, limit 100) | Blocking; `PEOPLE`, `CLARIFIERS`, and `NETWORKS` start empty |
+| **Networks** (`loadNetworks`) | `GET /networks` | Background after boot; updates `env.networks` and `window.INDEX_DATA.NETWORKS` |
+| **Intent open** (`refreshRadar`) | scoped `GET /questions` (pending + answered), `GET /opportunities/radar` (skeleton then full) | Per selected intent; same `RADAR_STATUSES` as web |
+
+Intent row badges use server `pendingQuestionCount + waitingOpportunityCount`. Deep links to opportunities fall back to `GET /opportunities/:id` when the card is not yet in loaded radar.

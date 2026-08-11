@@ -827,6 +827,15 @@
     return key in STATUS_BUCKET ? STATUS_BUCKET[key] : "pending";
   }
 
+  function statusCountsFromOpportunities(opportunities) {
+    const counts = { pending: 0, negotiating: 0, accepted: 0, expired: 0 };
+    (opportunities || []).forEach(function (opp) {
+      const bucket = bucketForStatus(opp && opp.status);
+      if (bucket && bucket in counts) counts[bucket] += 1;
+    });
+    return counts;
+  }
+
   function RadarStrip(props) {
     const counts = props.counts || {};
     return React.createElement("div", { className: "index-dashboard__radar-strip" },
@@ -2329,6 +2338,7 @@
       return bucketForStatus(opp.status) === selectedBucket;
     });
     const radarEmpty = "No matches here yet.";
+    const detailLoading = !!props.detailLoading;
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
@@ -2363,11 +2373,15 @@
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
-        React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
+        detailLoading && !(intent.questions && intent.questions.length)
+          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading questions…")
+          : React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
         React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
+          detailLoading && !allOpps.length
+            ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
+            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -3496,6 +3510,15 @@
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
+    const networksState = useState(null);
+    const networks = networksState[0];
+    const setNetworks = networksState[1];
+    const intentDetailsState = useState({});
+    const intentDetails = intentDetailsState[0];
+    const setIntentDetails = intentDetailsState[1];
+    const detailLoadingState = useState(false);
+    const detailLoading = detailLoadingState[0];
+    const setDetailLoading = detailLoadingState[1];
     const needsOnboardingState = useState(false);
     const needsOnboarding = needsOnboardingState[0];
     const setNeedsOnboarding = needsOnboardingState[1];
@@ -3561,9 +3584,94 @@
     const auth = authState[0];
     const setAuth = authState[1];
     const loadRef = useRef(null);
+    const loadIntentDetailRef = useRef(null);
+    const selectedIdRef = useRef(selectedId);
+    selectedIdRef.current = selectedId;
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
     const openMessagesRef = useRef(null);
+
+    function loadNetworks() {
+      fetchPluginJSON(API + "/networks/home")
+        .then(function (payload) {
+          if (!payload || payload.success === false) return;
+          setNetworks(payload.networks || { items: [], count: 0, discover: [] });
+        })
+        .catch(function () { /* noop */ });
+    }
+
+    function mergeIntentDetail(baseIntent, detail) {
+      if (!baseIntent) return null;
+      const opps = (detail && detail.opportunities) || [];
+      const questions = (detail && detail.questions) || [];
+      const statusCounts = statusCountsFromOpportunities(opps);
+      return Object.assign({}, baseIntent, {
+        questions: questions,
+        answeredQuestions: (detail && detail.answeredQuestions) || [],
+        opportunities: opps,
+        questionCount: questions.length,
+        opportunityCount: statusCounts.pending || 0,
+        totalOpportunityCount: opps.length,
+        statusCounts: statusCounts,
+      });
+    }
+
+    function loadIntentDetail(intentId, passive) {
+      if (!intentId) return Promise.resolve();
+      if (!passive) setDetailLoading(true);
+      const seq = Date.now();
+      const radarPath = API + "/intents/" + encodeURIComponent(intentId) + "/radar";
+      const pendingPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions?status=pending";
+      const answeredPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions?status=answered";
+      const skeletonPromise = passive
+        ? Promise.resolve(null)
+        : fetchPluginJSON(radarPath + "?presentation=skeleton").catch(function () { return null; });
+      return skeletonPromise
+        .then(function (skeleton) {
+          if (selectedIdRef.current !== intentId) return null;
+          if (skeleton && skeleton.success !== false && Array.isArray(skeleton.items)) {
+            setIntentDetails(function (prev) {
+              const existing = prev[intentId] || {};
+              return Object.assign({}, prev, {
+                [intentId]: Object.assign({}, existing, {
+                  opportunities: skeleton.items,
+                  questions: existing.questions || [],
+                  answeredQuestions: existing.answeredQuestions || [],
+                  _seq: seq,
+                }),
+              });
+            });
+          }
+          return Promise.all([
+            fetchPluginJSON(pendingPath),
+            fetchPluginJSON(answeredPath),
+            fetchPluginJSON(radarPath),
+          ]);
+        })
+        .then(function (results) {
+          if (!results || selectedIdRef.current !== intentId) return;
+          const pendingPayload = results[0];
+          const answeredPayload = results[1];
+          const radarPayload = results[2];
+          const questions = (pendingPayload && pendingPayload.questions) || [];
+          const answeredQuestions = (answeredPayload && answeredPayload.questions) || [];
+          const opportunities = (radarPayload && radarPayload.items) || [];
+          setIntentDetails(function (prev) {
+            return Object.assign({}, prev, {
+              [intentId]: {
+                questions: questions,
+                answeredQuestions: answeredQuestions,
+                opportunities: opportunities,
+                _seq: seq,
+              },
+            });
+          });
+        })
+        .catch(function () { /* keep prior detail on failure */ })
+        .finally(function () {
+          if (selectedIdRef.current === intentId && !passive) setDetailLoading(false);
+        });
+    }
 
     function load() {
       setLoading(true);
@@ -3571,9 +3679,9 @@
       if (!SDK.fetchJSON && !window.fetch) {
         setError("This Hermes dashboard host does not expose authenticated plugin fetches.");
         setLoading(false);
-        return;
+        return Promise.resolve();
       }
-      fetchPluginJSON(API + "/summary")
+      return fetchPluginJSON(API + "/bootstrap")
         .then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
@@ -3657,7 +3765,9 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Question answer could not be saved.");
           }
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           unrecordAnswer(question.id);
@@ -3676,7 +3786,9 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Question could not be skipped.");
           }
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           unrecordAnswer(question.id);
@@ -3743,7 +3855,9 @@
             throw new Error((payload && payload.error) || "That action could not be completed.");
           }
           if (onPayload) onPayload(payload);
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           setActionError(err && err.message ? err.message : String(err));
@@ -3846,7 +3960,7 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Could not join that network.");
           }
-          load();
+          loadNetworks();
         })
         .catch(function (err) {
           setActionError(err && err.message ? err.message : String(err));
@@ -3898,11 +4012,14 @@
     function closeCreate() { setCreateOpen(false); setEditingRequest(null); }
 
     loadRef.current = load;
+    loadIntentDetailRef.current = loadIntentDetail;
 
     function enterDashboard() {
       setAuth("authed");
       load();
+      loadNetworks();
       loadNetworkRequests();
+      if (initial.intentId) loadIntentDetail(initial.intentId);
     }
 
     function checkAuth() {
@@ -3938,6 +4055,12 @@
     useEffect(function () {
       checkAuth();
     }, []);
+
+    useEffect(function () {
+      if (auth !== "authed" || !selectedId) return undefined;
+      loadIntentDetail(selectedId);
+      return undefined;
+    }, [auth, selectedId]);
 
     useEffect(function () {
       const header = document.querySelector('header[role="banner"]');
@@ -4028,12 +4151,18 @@
     }, [autoRefresh, loading]);
 
     useEffect(function () {
-      // Only poll once signed in: firing /summary while the login gate (or the
+      // Only poll once signed in: firing bootstrap while the login gate (or the
       // initial auth check) is showing produces 401s that can land after the
       // login transition and clobber the fresh state, forcing a manual reload.
       if (!autoRefresh || auth !== "authed") return undefined;
       const id = setInterval(function () {
-        if (loadRef.current) loadRef.current();
+        if (loadRef.current) {
+          loadRef.current().then(function () {
+            if (selectedIdRef.current && loadIntentDetailRef.current) {
+              loadIntentDetailRef.current(selectedIdRef.current, true);
+            }
+          });
+        }
       }, 5000);
       return function () { clearInterval(id); };
     }, [autoRefresh, auth]);
@@ -4072,7 +4201,10 @@
     }
 
     const selectedIntent = selectedId
-      ? intents.filter(function (intent) { return intent.id === selectedId; })[0]
+      ? mergeIntentDetail(
+        intents.filter(function (intent) { return intent.id === selectedId; })[0],
+        intentDetails[selectedId],
+      )
       : null;
 
     // Settled records = the server-backed answered questions from the summary
@@ -4094,7 +4226,7 @@
     })();
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, detailLoading: detailLoading, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
@@ -4103,7 +4235,7 @@
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
             React.createElement(NetworksMini, {
-              networks: summary && summary.networks,
+              networks: networks,
               requests: networkRequests,
               webUrl: summary && summary.webUrl,
               apiUrl: summary && summary.apiUrl,
@@ -4117,28 +4249,21 @@
               onSelectIntent: selectIntent,
               onNetworkUpdated: function (merged) {
                 if (!merged || !merged.id) return;
-                setSummary(function (prev) {
-                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                setNetworks(function (prev) {
+                  if (!prev || !Array.isArray(prev.items)) return prev;
                   return Object.assign({}, prev, {
-                    networks: Object.assign({}, prev.networks, {
-                      items: prev.networks.items.map(function (n) {
-                        return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
-                      }),
+                    items: prev.items.map(function (n) {
+                      return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
                     }),
                   });
                 });
               },
               onNetworkRemoved: function (net) {
                 if (!net || !net.id) return;
-                setSummary(function (prev) {
-                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
-                  const items = prev.networks.items.filter(function (n) { return !n || n.id !== net.id; });
-                  return Object.assign({}, prev, {
-                    networks: Object.assign({}, prev.networks, {
-                      items: items,
-                      count: items.length,
-                    }),
-                  });
+                setNetworks(function (prev) {
+                  if (!prev || !Array.isArray(prev.items)) return prev;
+                  const items = prev.items.filter(function (n) { return !n || n.id !== net.id; });
+                  return Object.assign({}, prev, { items: items, count: items.length });
                 });
               },
             }),

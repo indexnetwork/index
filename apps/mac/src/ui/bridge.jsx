@@ -148,29 +148,35 @@ window.IndexApp = (function () {
   async function loadSnapshot() {
     const c = getClient();
     if (!c) return null;
-    const [meR, netR, intentR, questionR, radarR] = await Promise.all([
+    const [meR, intentR] = await Promise.all([
       settle(c.auth.me()),
-      settle(c.networks.list()),
-      settle(c.intents.list({})),
-      settle(c.questions.pending()),
-      settle(c.opportunities.radar()),
+      settle(c.intents.list({ page: 1, limit: 100 })),
     ]);
 
     const user = meR.ok ? (meR.value.user || meR.value) : null;
     const features = meR.ok ? (meR.value.features || {}) : {};
-    const networks = netR.ok ? normalizeList(netR.value, "networks") : [];
     const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
-    const questions = questionR.ok ? normalizeList(questionR.value, "questions") : [];
-    const radarItems = radarR.ok ? normalizeList(radarR.value, "items") : [];
 
-    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, radarItems });
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks: [], intents, questions: [], radarItems: [] });
     return {
       snapshot,
       me: mapMe(user),
-      networks: mapNetworks(networks, user),
+      networks: [],
       features,
-      raw: { user, features, networks, intents, questions, radarItems },
+      raw: { user, features, networks: [], intents, questions: [], radarItems: [] },
     };
+  }
+
+  async function loadNetworks() {
+    const c = getClient();
+    if (!c) return null;
+    const [netR, meR] = await Promise.all([
+      settle(c.networks.list()),
+      settle(c.auth.me()),
+    ]);
+    const user = meR.ok ? (meR.value.user || meR.value) : null;
+    const networks = netR.ok ? normalizeList(netR.value, "networks") : [];
+    return { networks: mapNetworks(networks, user) };
   }
 
   // Web origin for share / invitation links. Always pair with the active API
@@ -455,6 +461,7 @@ window.IndexApp = (function () {
     client: getClient,
     normalizeList,
     loadSnapshot,
+    loadNetworks,
     mapDiscoverNetworks,
     login,
     logout,

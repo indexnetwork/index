@@ -43,6 +43,33 @@ function Networks({ onClose, onOpenSignal }) {
   // loop; a single load (refreshed explicitly after mutations) is enough.
   useEffect(() => { loadRequests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Boot snapshot no longer embeds networks; fetch on open so the list is not
+  // stuck on the empty array seeded at first paint.
+  useEffect(() => {
+    if (!live || !window.IndexApp) return;
+    const load = window.IndexApp.loadNetworks
+      ? () => window.IndexApp.loadNetworks()
+      : () => {
+          const c = window.IndexApp.getClient && window.IndexApp.getClient();
+          if (!c) return Promise.resolve(null);
+          return c.networks.list().then((res) => {
+            const raw = window.IndexApp.normalizeList(res, "networks");
+            return {
+              networks: window.IndexApp.mapDiscoverNetworks
+                ? raw.map((n) => window.IndexApp.mapDiscoverNetworks([{ ...n, isMember: true }])[0])
+                : raw,
+            };
+          });
+        };
+    load()
+      .then((net) => {
+        if (!net || !Array.isArray(net.networks)) return;
+        window.INDEX_DATA.NETWORKS = net.networks;
+        setNets([...net.networks]);
+      })
+      .catch(() => {});
+  }, [live]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadPublicNetworks = () => {
     if (!client) {
       setDiscoverNets([]);

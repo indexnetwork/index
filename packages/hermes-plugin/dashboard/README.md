@@ -27,7 +27,7 @@ The stream is consumed with **`SDK.authedFetch` + a streaming body reader** (par
 
 Opportunity cards in an intent radar are clickable: selecting one opens the visible counterpart's **read-only** profile (the web `/u/:id` equivalent) in the same panel.
 
-The selected intent is mirrored into the URL hash (`#intent=<id>`) so browser Back/Forward navigate between intents; everything loads from a single `/summary` call, so switching intents is client-side.
+The selected intent is mirrored into the URL hash (`#intent=<id>`) so browser Back/Forward navigate between intents. Boot loads only auth metadata and the intents list via `GET /bootstrap`; selecting an intent triggers lazy fetches for that intent's questions and radar.
 
 The backend route reuses `../tools.py` rather than creating a second Index client. That keeps `INDEX_API_KEY`, `INDEX_MCP_URL`, timeout handling, Telegram forwarding, MCP response decoding, and network-scoped agent visibility in one place.
 
@@ -47,7 +47,20 @@ It does **not**:
 
 ## Runtime behavior
 
-The tab registers as `index-network` and fetches `/api/plugins/index-network/summary` through `SDK.fetchJSON`, so Hermes dashboard session authentication is handled by the host. The summary endpoint reads intents via the REST `POST /intents/list` endpoint (which carries each signal's `ACTIVE`/`PAUSED` status), opportunities via the REST `GET /opportunities` endpoint (whose raw rows carry the intent linkage MCP opportunity cards omit — `actors[].intent` / `detection.triggeredBy`), pending and answered questions via `GET /questions?status=…&scopeType=intent&scopeId=…` fetched per intent in parallel — the Mac app's exact queries, letting the server resolve each intent's question linkage (triggeredBy, opportunities, negotiations) — networks via REST `GET /networks` + `GET /networks/discovery/public`, and the current user id via REST `GET /auth/me` — the same endpoints the Mac app uses. Questions arrive already scoped to their intent; opportunities are grouped client-side by their raw intent linkage, with unlinked ones landing in the General bucket. The endpoint returns dashboard-safe `intents`, `general`, `negotiations`, `networks`, and `totals` (the `general` bucket stays in the payload but is no longer rendered — the intent list matches the Mac app). Question answers are submitted to `/api/plugins/index-network/questions/:id/answer`; the plugin backend validates the small answer payload and forwards it to Index's `/api/questions/:id/answer` endpoint with the configured `INDEX_API_KEY`. Negotiation conversation threads are not rendered — only the per-signal radar status counts.
+The tab registers as `index-network` and loads through `SDK.fetchJSON`, so Hermes dashboard session authentication is handled by the host.
+
+**Boot (`GET /bootstrap`, or the deprecated `/summary` alias):** `GET /auth/me` plus `POST /intents/list` (page 1, limit 100). Intent rows carry `pendingCount` from `pendingQuestionCount + waitingOpportunityCount` only — no embedded questions, opportunities, or status counts.
+
+**Intent drill-down (on selection):** parallel lazy fetches per intent:
+
+- `GET /intents/{id}/questions?status=pending|answered` → proxies to scoped `GET /questions`
+- `GET /intents/{id}/radar` → proxies to `GET /opportunities/radar?scopeType=intent&scopeId=…&statuses=latent,pending,negotiating,stalled,accepted,expired`; accepts `presentation=skeleton` for a fast first paint, then a full pass replaces it
+
+**Networks (lazy):** when the Networks column mounts, `GET /networks/home` fetches `GET /networks` and `GET /networks/discovery/public` in parallel.
+
+Auto-refresh re-fetches bootstrap intents and, when an intent is selected, that intent's detail fetches only — not a global fan-out across all intents.
+
+Question answers are submitted to `/api/plugins/index-network/questions/:id/answer`; the plugin backend validates the small answer payload and forwards it to Index's `/api/questions/:id/answer` endpoint with the configured `INDEX_API_KEY`. Negotiation conversation threads are not rendered — only the per-signal radar status counts (derived client-side from loaded radar items).
 
 ## Verify
 

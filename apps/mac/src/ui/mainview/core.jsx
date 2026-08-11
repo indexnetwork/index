@@ -279,35 +279,35 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
-    const [radarR, qR, answeredR] = await Promise.all([
-      client.opportunities.radarForIntent(forIntent, { statuses: radarStatuses }).catch(() => null),
-      client.questions.pendingForIntent(forIntent).catch(() => null),
-      client.questions.answeredForIntent(forIntent).catch(() => null),
-    ]);
-    if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
-    if (radarR) {
+    const applyRadar = (radarR) => {
+      if (!radarR) return;
       const items = window.IndexApp.normalizeList(radarR, "items");
       const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
       const apply = window.IndexApi.applyRadarPeople || ((prev, next) => next);
       setPeople((prev) => apply(prev, mapped));
-      // The radar answering fills the step counters in. It does not by itself
-      // end discovery: an empty radar means the agents have not landed anyone
-      // yet, which is the state discovery exists to describe.
-      //
-      // found/scored/advanced are three real and genuinely different numbers:
-      // everything the radar returned, the subset the backend actually scored
-      // (read off the raw items, before the mapper's 0.7 default hides which
-      // ones carried a score), and the subset that reached a stage the user
-      // can see.
       setDiscoveryMetrics((prev) => ({
         ...prev,
         found: items.length,
         scored: items.filter((it) => typeof (it && it.score) === "number").length,
         advanced: mapped.filter((p) => opportunityBucket(p) !== null).length,
       }));
-    }
+    };
+
+    const skeletonR = await client.opportunities
+      .radarForIntent(forIntent, { statuses: radarStatuses, presentation: "skeleton" })
+      .catch(() => null);
+    if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
+    applyRadar(skeletonR);
+
+    const [radarR, qR, answeredR] = await Promise.all([
+      client.opportunities.radarForIntent(forIntent, { statuses: radarStatuses }).catch(() => null),
+      client.questions.pendingForIntent(forIntent).catch(() => null),
+      client.questions.answeredForIntent(forIntent).catch(() => null),
+    ]);
+    if (radarSeqRef.current !== seq || intentIdRef.current !== forIntent) return;
+    applyRadar(radarR);
     if (answeredR) injectAnsweredClarifiers(window.IndexApp.normalizeList(answeredR, "questions"));
     if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
   }, [live, client, intentId, setPeople, injectClarifiers, injectAnsweredClarifiers]);

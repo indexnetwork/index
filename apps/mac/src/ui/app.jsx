@@ -19,6 +19,7 @@ function useIndexData() {
 function useIndexEnv() {
   return React.useContext(IndexDataContext) || {
     data: window.INDEX_DATA, me: null, networks: null, features: {}, live: false,
+    refreshNetworks: () => {},
   };
 }
 
@@ -89,6 +90,33 @@ function App() {
   const live = snapshot !== null;
   const data = snapshot || {};
   const { PEOPLE = [], POOL = [], FIELD_EVENTS = [], INTENTS = [] } = data;
+
+  const refreshNetworks = React.useCallback(async () => {
+    if (!nativeAuthed() || !window.IndexApp) return;
+    try {
+      let net = null;
+      if (window.IndexApp.loadNetworks) {
+        net = await window.IndexApp.loadNetworks();
+      } else {
+        const c = window.IndexApp.getClient && window.IndexApp.getClient();
+        if (!c) return;
+        const [listR] = await Promise.all([
+          c.networks.list().catch(() => null),
+          c.auth.me().catch(() => null),
+        ]);
+        if (!listR) return;
+        const raw = window.IndexApp.normalizeList(listR, "networks");
+        net = {
+          networks: window.IndexApp.mapDiscoverNetworks
+            ? raw.map((n) => window.IndexApp.mapDiscoverNetworks([{ ...n, isMember: true }])[0])
+            : raw.map((n) => ({ id: n.id, name: n.title || n.name || "untitled", joined: true })),
+        };
+      }
+      if (!net || !Array.isArray(net.networks)) return;
+      setNetworks(net.networks);
+      Object.assign(window.INDEX_DATA, { NETWORKS: net.networks });
+    } catch (e) { /* keep prior list */ }
+  }, []);
   const [people, setPeople] = useState([]);
   const [conversation, setConversation] = useState([]);
   const [field, setField] = useState([]);
@@ -170,6 +198,7 @@ function App() {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        Object.assign(window.INDEX_DATA, { NETWORKS: [] });
         // Drop the whole deep-link pipeline, not just what is on screen: a
         // resolve still in flight would otherwise render a counterpart's card
         // over the login screen. Clearing resolvingRef makes the in-flight
@@ -205,6 +234,9 @@ function App() {
         // now, whether this is a fresh sign-in or a relaunch mid-onboarding.
         const ob = loaded.raw && loaded.raw.user && loaded.raw.user.onboarding;
         needsProfile = !(ob && ob.profileConfirmedAt);
+        // Networks load in parallel with the loader animation; no cancelled guard
+        // here — the building effect cleanup would discard the update otherwise.
+        refreshNetworks();
       }
       // First run only: run the public-research enrichment behind this same
       // "setting up" loader so the review opens filled and the animation shows
@@ -217,7 +249,7 @@ function App() {
       setScreen(needsProfile ? "onboarding" : "intents");
     })();
     return () => { cancelled = true; };
-  }, [screen]);
+  }, [screen, refreshNetworks]);
 
   // Fold a loaded snapshot into React state and mirror ME/NETWORKS/INTENTS onto
   // window.INDEX_DATA so the side screens (settings/networks) that still read it
@@ -225,7 +257,6 @@ function App() {
   const applyLoaded = (loaded) => {
     setSnapshot(loaded.snapshot);
     setMe(loaded.me);
-    setNetworks(loaded.networks);
     setFeatures(loaded.features || {});
     setPeople([
       ...(loaded.snapshot.PEOPLE || []).map(p => ({ ...p, hidden: false })),
@@ -233,7 +264,6 @@ function App() {
     ]);
     Object.assign(window.INDEX_DATA, {
       ME: loaded.me,
-      NETWORKS: loaded.networks,
       INTENTS: loaded.snapshot.INTENTS || [],
     });
   };
@@ -244,6 +274,7 @@ function App() {
       return;
     }
     setSnapshot(null); setMe(null); setNetworks(null);
+    Object.assign(window.INDEX_DATA, { NETWORKS: [] });
     setScreen("login");
   };
 
@@ -365,7 +396,7 @@ function App() {
   };
 
   return (
-    <IndexDataContext.Provider value={{ data, me, networks, features, live }}>
+    <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks }}>
       <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",

@@ -78,6 +78,9 @@ _STATUS_BUCKET = {
 # split pending/negotiating display buckets above).
 _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
 
+# Lifecycle statuses the web intent radar requests (rejected hidden client-side).
+_RADAR_STATUSES = "latent,pending,negotiating,stalled,accepted,expired"
+
 # Static images the DESKTOP plugin fetches as base64 (its REST bridge cannot
 # address the dashboard's static file mount by URL). Allow-list only.
 _DESKTOP_ASSETS = {
@@ -813,6 +816,104 @@ def _empty_status_counts() -> dict[str, int]:
     return {"pending": 0, "negotiating": 0, "accepted": 0, "expired": 0}
 
 
+def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
+    """Shape one REST intents/list row for the dashboard home view (web DiscoverHome parity)."""
+    intent_id = _text(intent.get("id"))
+    title = (
+        _text(intent.get("description"))
+        or _text(intent.get("payload"))
+        or _text(intent.get("summary"))
+        or "Untitled intent"
+    )
+    lifecycle = _text(intent.get("status"), "ACTIVE").upper()
+    return {
+        "id": intent_id,
+        "title": title,
+        "lifecycleStatus": lifecycle,
+        "status": "paused" if lifecycle == "PAUSED" else "live",
+        "pendingCount": _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount")),
+    }
+
+
+def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str, Any]:
+    """Map a presenter radar card to the Hermes opportunity card shape."""
+    item: dict[str, Any] = {
+        "opportunityId": _text(card.get("opportunityId")),
+        "name": _text(card.get("name"), "New match"),
+        "subtitle": "Suggested connection",
+        "mainText": _truncate(card.get("mainText") or card.get("headline")),
+    }
+    avatar = _avatar_url(card.get("avatar"))
+    if avatar:
+        item["avatar"] = avatar
+    status = _text(card.get("status"))
+    if status:
+        item["status"] = status
+    user_id = _text(card.get("userId"))
+    if user_id:
+        item["counterpartUserId"] = user_id
+    if intent_id:
+        item["intentScopeId"] = intent_id
+    if card.get("presentationPending") is True:
+        item["presentationPending"] = True
+    return item
+
+
+def _fetch_scoped_questions(intent_id: str, status: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Fetch one intent's questions via the web/Mac scoped query."""
+    payload = tools._api_request(
+        "GET", f"/questions?status={status}&scopeType=intent&scopeId={quote(intent_id, safe='')}"
+    )
+    error = _section_error(payload)
+    if error:
+        return [], error
+    records: list[dict[str, Any]] = []
+    for question in _list(payload.get("questions")):
+        if not isinstance(question, dict):
+            continue
+        flat = _flatten_rest_question(question)
+        item = _question_item(flat) if flat is not None else None
+        if item is None:
+            continue
+        if flat.get("answerText") is not None:
+            item["answerText"] = _text(flat.get("answerText"))
+        if flat.get("answeredAt"):
+            item["answeredAt"] = _text(flat.get("answeredAt"))
+        records.append(item)
+    if status == "answered":
+        records.sort(key=lambda record: record.get("answeredAt", ""))
+    return records, None
+
+
+def _bootstrap_payload() -> dict[str, Any]:
+    """Fast home boot: auth metadata + intents list only (web DiscoverHome parity)."""
+    me = _fetch_me()
+    current_user_id = _text(me.get("id"))
+    onboarding = _onboarding_gate(me)
+    intents_payload = _call_read_intents()
+    intents_data = _data(intents_payload)
+    raw_intents = _list(intents_data.get("intents") if isinstance(intents_data, dict) else None)
+    intents = [
+        _normalize_intent_list_row(intent)
+        for intent in raw_intents
+        if isinstance(intent, dict) and _text(intent.get("id"))
+    ]
+    intents.sort(key=lambda item: item["lifecycleStatus"] == "PAUSED")
+    errors: dict[str, str] = {}
+    intents_error = _section_error(intents_payload)
+    if intents_error:
+        errors["intents"] = intents_error
+    return {
+        "success": True,
+        "webUrl": _web_url(),
+        "apiUrl": tools._api_url(),
+        "currentUserId": current_user_id or None,
+        "onboarding": onboarding,
+        "intents": intents,
+        "errors": errors,
+    }
+
+
 def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(body, dict):
         return None, "Answer body must be an object."
@@ -1072,57 +1173,70 @@ def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
     return {"success": True, "needsLogin": True}
 
 
+@router.get("/bootstrap")
+def bootstrap() -> dict[str, Any]:
+    """Fast home boot: auth metadata + intents list (web DiscoverHome parity)."""
+    return _bootstrap_payload()
+
+
 @router.get("/summary")
 def summary() -> dict[str, Any]:
-    """Return a intent-centric, user-scoped dashboard summary."""
+    """Deprecated alias for `/bootstrap` (kept for older clients)."""
+    return _bootstrap_payload()
+
+
+@router.get("/intents/{intent_id}/questions")
+def intent_questions(intent_id: str, status: str = "pending") -> dict[str, Any]:
+    """Pending or answered questions for one intent (web intent page parity)."""
+    intent_id = _text(intent_id)
+    if not intent_id:
+        return {"success": False, "error": "An intent id is required."}
+    normalized = _text(status).lower()
+    if normalized not in ("pending", "answered"):
+        return {"success": False, "error": "status must be pending or answered."}
+    records, error = _fetch_scoped_questions(intent_id, normalized)
+    if error:
+        return {"success": False, "error": error}
+    return {"success": True, "questions": records}
+
+
+@router.get("/intents/{intent_id}/radar")
+def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
+    """Intent-scoped radar cards via GET /opportunities/radar (web intent page parity)."""
+    intent_id = _text(intent_id)
+    if not intent_id:
+        return {"success": False, "error": "An intent id is required."}
+    query = (
+        f"/opportunities/radar?scopeType=intent&scopeId={quote(intent_id, safe='')}"
+        f"&statuses={_RADAR_STATUSES}"
+    )
+    if _text(presentation) == "skeleton":
+        query += "&presentation=skeleton"
+    payload = tools._api_request("GET", query)
+    if payload.get("success") is False:
+        return payload
+    items = [
+        _radar_item(card, intent_id)
+        for card in _list(payload.get("items"))
+        if isinstance(card, dict) and _text(card.get("opportunityId"))
+    ]
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    return {"success": True, "items": items, "meta": meta}
+
+
+@router.get("/networks/home")
+def networks_home() -> dict[str, Any]:
+    """Joined networks + public discover list (lazy Networks column)."""
     me = _fetch_me()
     current_user_id = _text(me.get("id"))
-    onboarding = _onboarding_gate(me)
-    intents_payload = _call_read_intents()
-    intents_data = _data(intents_payload)
-    intent_ids = [
-        _text(intent.get("id"))
-        for intent in _list(intents_data.get("intents") if isinstance(intents_data, dict) else None)
-        if isinstance(intent, dict) and _text(intent.get("id"))
-    ]
-    pending_by_intent, questions_error = _call_questions_by_intent("pending", intent_ids)
-    answered_by_intent, _answered_error = _call_questions_by_intent("answered", intent_ids)
-    networks_payload = tools._api_request("GET", "/networks")
-    discover_payload = tools._api_request("GET", "/networks/discovery/public")
-
-    opps_live, opps_error = _fetch_opportunities()
-    # The default list hides resolved statuses, so fetch expired explicitly to
-    # keep the radar's Missed chip count and its listed items consistent.
-    opps_expired, _ = _fetch_opportunities("?status=expired")
-
-    network_titles = _network_title_map(networks_payload)
-    dashboard = _build_dashboard(
-        intents_payload, opps_live, opps_expired, pending_by_intent, answered_by_intent, network_titles, current_user_id or None
-    )
-
-    negotiations = dashboard["negotiations"]
-    if opps_error:
-        negotiations["error"] = opps_error
-
-    errors = {
-        "intents": _section_error(intents_payload),
-        "questions": questions_error,
-        "opportunities": opps_error,
-        "networks": _section_error(networks_payload),
-    }
-
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        networks_future = pool.submit(tools._api_request, "GET", "/networks")
+        discover_future = pool.submit(tools._api_request, "GET", "/networks/discovery/public")
+        networks_payload = networks_future.result()
+        discover_payload = discover_future.result()
     return {
         "success": True,
-        "webUrl": _web_url(),
-        "apiUrl": tools._api_url(),
-        "currentUserId": current_user_id or None,
-        "onboarding": onboarding,
-        "intents": dashboard["intents"],
-        "general": dashboard["general"],
-        "negotiations": negotiations,
         "networks": _normalize_networks(networks_payload, discover_payload, current_user_id or None),
-        "totals": dashboard["totals"],
-        "errors": {key: value for key, value in errors.items() if value},
     }
 
 

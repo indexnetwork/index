@@ -192,6 +192,11 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   const joinedCount = NETWORKS.filter(n => n.joined !== false).length;
   const agentCount  = 1 + AGENTS.filter(a => a.state === "connected").length;
 
+  useEffect(() => {
+    if (!env.live || !env.refreshNetworks) return;
+    env.refreshNetworks();
+  }, [env.live, env.refreshNetworks]);
+
   // A just-onboarded user has no signals yet, the hub opens empty.
   const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
   useEffect(() => {
