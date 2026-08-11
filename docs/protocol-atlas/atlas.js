@@ -2,7 +2,6 @@
 (function installProtocolAtlasRenderer(root) {
   "use strict";
 
-  const SVG_NS = "http://www.w3.org/2000/svg";
   const HOST_BOUNDARY_TEXT = "Required from host; implementation intentionally not shown.";
   const PROTOCOL_PREFIX = "packages/protocol/";
 
