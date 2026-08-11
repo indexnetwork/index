@@ -49,6 +49,7 @@ The emergency command defaults to dry-run. Begin only after the admission fence 
 
 ```bash
 set +o history 2>/dev/null || true
+set -euo pipefail
 umask 077
 plan_file="$(mktemp)"
 receipt_file="$(mktemp)"

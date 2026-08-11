@@ -287,6 +287,21 @@ describe('Hermes final production assurance release contract', () => {
     expect(rollback).toContain('.auditReceipts == 0');
   });
 
+  it('enables fail-closed shell semantics before emergency planning and confirmation', () => {
+    expect(rollback).toContain(
+      'set +o history 2>/dev/null || true\nset -euo pipefail\numask 077',
+    );
+
+    const historyDisable = position(rollback, 'set +o history 2>/dev/null || true');
+    const failClosedShell = position(rollback, 'set -euo pipefail');
+    const planGeneration = position(rollback, '# Dry-run only: no --confirm.');
+    const planValidation = position(rollback, "jq -e '\n  (keys ==");
+    const confirmation = position(rollback, '# Separately authorized mutation. All three confirmation fields are mandatory.');
+    expect([historyDisable, failClosedShell, planGeneration, planValidation, confirmation]).toEqual(
+      [historyDisable, failClosedShell, planGeneration, planValidation, confirmation].toSorted((a, b) => a - b),
+    );
+  });
+
   it('documents forward-fix-first rollback and the exact emergency order', () => {
     const pause = position(rollback, '1. Fence admission and pause');
     const revoke = position(rollback, '2. Bulk revoke');
