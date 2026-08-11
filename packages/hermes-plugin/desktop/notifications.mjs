@@ -121,3 +121,34 @@ export function reconcileNotificationSnapshot(payload, previousState) {
     notifications,
   }
 }
+
+export async function reconcileDesktopNotificationState(ctx, state, notify) {
+  if (state.stopped || state.reconciling) return
+  state.reconciling = true
+  try {
+    const currentUserId = await refreshNotificationIdentity(function () {
+      return ctx.rest('/auth/status', { method: 'GET' })
+    })
+    if (state.stopped) return
+    state.currentUserId = currentUserId
+
+    const payload = await ctx.rest('/notifications/snapshot', { method: 'GET' })
+    if (state.stopped) return
+    const result = reconcileNotificationSnapshot(payload, {
+      hasSnapshot: state.hasSnapshot,
+      notifiedEntities: state.notifiedEntities,
+    })
+    if (state.stopped) return
+    state.hasSnapshot = result.state.hasSnapshot
+    state.notifiedEntities = result.state.notifiedEntities
+
+    if (state.stopped) return
+    ctx.storage.set(NOTIFIED_ENTITIES_KEY, state.notifiedEntities)
+    for (let index = 0; index < result.notifications.length; index += 1) {
+      if (state.stopped) return
+      notify(result.notifications[index])
+    }
+  } finally {
+    state.reconciling = false
+  }
+}

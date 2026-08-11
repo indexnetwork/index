@@ -6,6 +6,7 @@ import {
   composeNotification,
   isOwnMessage,
   notificationEntityKey,
+  reconcileDesktopNotificationState,
   reconcileNotificationSnapshot,
   refreshNotificationIdentity,
   rememberNotificationEntity,
@@ -144,5 +145,43 @@ assert.deepEqual(rememberNotificationEntity(null, null), {
   notifiedEntities: [],
   isNew: false,
 })
+
+// Disposal owns in-flight reconciliation: a snapshot that resolves afterward
+// cannot persist dedupe state or emit a native notification.
+let resolveSnapshot
+let snapshotRequested
+const snapshotRequestedPromise = new Promise((resolve) => { snapshotRequested = resolve })
+const deferredSnapshot = new Promise((resolve) => { resolveSnapshot = resolve })
+const storageWrites = []
+const nativeNotifications = []
+const disposedState = {
+  currentUserId: null,
+  hasSnapshot: true,
+  notifiedEntities: [],
+  reconciling: false,
+  stopped: false,
+}
+const reconciliation = reconcileDesktopNotificationState({
+  rest(path) {
+    if (path === '/auth/status') {
+      return Promise.resolve({ success: true, authenticated: true, user: { id: 'user-1' } })
+    }
+    assert.equal(path, '/notifications/snapshot')
+    snapshotRequested()
+    return deferredSnapshot
+  },
+  storage: {
+    set(key, value) { storageWrites.push([key, value]) },
+  },
+}, disposedState, (event) => { nativeNotifications.push(event) })
+await snapshotRequestedPromise
+disposedState.stopped = true
+resolveSnapshot({
+  events: [{ type: 'question.new', id: 'q-after-dispose', title: 'Too late', body: 'Ignore me' }],
+})
+await reconciliation
+assert.deepEqual(storageWrites, [])
+assert.deepEqual(nativeNotifications, [])
+assert.deepEqual(disposedState.notifiedEntities, [])
 
 console.log('desktop notification helper tests passed')

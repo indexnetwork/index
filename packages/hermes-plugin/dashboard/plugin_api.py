@@ -2087,12 +2087,25 @@ class _UpstreamOpenState:
             return self._response
 
 
+async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
+    """Return when the Hermes client disconnects, independent of relay writes."""
+    try:
+        while True:
+            message = await websocket.receive()
+            if not isinstance(message, dict) or message.get("type") == "websocket.disconnect":
+                return
+    except WebSocketDisconnect:
+        return
+
+
 async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
     """Relay dictionary-valued events from an authenticated Index SSE stream."""
     await websocket.accept()
-    response: Any | None = None
     open_state = _UpstreamOpenState()
-    try:
+    relay_task: asyncio.Task[None] | None = None
+    disconnect_task: asyncio.Task[None] | None = None
+
+    async def relay_upstream() -> None:
         request = _sse_request(path)
         response = await asyncio.to_thread(open_state.open, request)
         if response is None:
@@ -2104,6 +2117,16 @@ async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
             event = parse_sse_data_line(line)
             if event is not None:
                 await websocket.send_json(event)
+
+    try:
+        relay_task = asyncio.create_task(relay_upstream())
+        disconnect_task = asyncio.create_task(_watch_websocket_disconnect(websocket))
+        done, _pending = await asyncio.wait(
+            {relay_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        if disconnect_task in done:
+            return
+        await relay_task
     except WebSocketDisconnect:
         return
     except Exception as exc:  # noqa: BLE001 - terminate a failed relay without escaping the route.
@@ -2112,6 +2135,13 @@ async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
         except Exception:  # noqa: BLE001 - the WebSocket may already be disconnected.
             pass
     finally:
+        for task in (relay_task, disconnect_task):
+            if task is not None and not task.done():
+                task.cancel()
+        await asyncio.gather(
+            *(task for task in (relay_task, disconnect_task) if task is not None),
+            return_exceptions=True,
+        )
         opened_response = open_state.abandon()
         if opened_response is not None:
             await asyncio.to_thread(_close_upstream_response, opened_response)

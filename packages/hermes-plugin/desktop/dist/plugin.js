@@ -890,6 +890,15 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     return key in STATUS_BUCKET ? STATUS_BUCKET[key] : "pending";
   }
 
+  function statusCountsFromOpportunities(opportunities) {
+    const counts = { pending: 0, negotiating: 0, accepted: 0, expired: 0 };
+    (opportunities || []).forEach(function (opp) {
+      const bucket = bucketForStatus(opp && opp.status);
+      if (bucket && bucket in counts) counts[bucket] += 1;
+    });
+    return counts;
+  }
+
   function RadarStrip(props) {
     const counts = props.counts || {};
     return React.createElement("div", { className: "index-dashboard__radar-strip" },
@@ -2392,6 +2401,8 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       return bucketForStatus(opp.status) === selectedBucket;
     });
     const radarEmpty = "No matches here yet.";
+    const questionsLoading = !!props.questionsLoading;
+    const radarLoading = !!props.radarLoading;
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
@@ -2426,11 +2437,15 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
-        React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
+        questionsLoading
+          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading questions…")
+          : React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
         React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
+          radarLoading && !allOpps.length
+            ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
+            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -3559,6 +3574,18 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
+    const networksState = useState(null);
+    const networks = networksState[0];
+    const setNetworks = networksState[1];
+    const intentDetailsState = useState({});
+    const intentDetails = intentDetailsState[0];
+    const setIntentDetails = intentDetailsState[1];
+    const questionsLoadingState = useState(false);
+    const questionsLoading = questionsLoadingState[0];
+    const setQuestionsLoading = questionsLoadingState[1];
+    const radarLoadingState = useState(false);
+    const radarLoading = radarLoadingState[0];
+    const setRadarLoading = radarLoadingState[1];
     const needsOnboardingState = useState(false);
     const needsOnboarding = needsOnboardingState[0];
     const setNeedsOnboarding = needsOnboardingState[1];
@@ -3624,9 +3651,100 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const auth = authState[0];
     const setAuth = authState[1];
     const loadRef = useRef(null);
+    const loadIntentDetailRef = useRef(null);
+    const selectedIdRef = useRef(selectedId);
+    selectedIdRef.current = selectedId;
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
     const openMessagesRef = useRef(null);
+
+    function loadNetworks() {
+      fetchPluginJSON(API + "/networks/home")
+        .then(function (payload) {
+          if (!payload || payload.success === false) return;
+          setNetworks(payload.networks || { items: [], count: 0, discover: [] });
+        })
+        .catch(function () { /* noop */ });
+    }
+
+    function mergeIntentDetail(baseIntent, detail) {
+      if (!baseIntent) return null;
+      const opps = (detail && detail.opportunities) || [];
+      const questions = (detail && detail.questions) || [];
+      const statusCounts = statusCountsFromOpportunities(opps);
+      return Object.assign({}, baseIntent, {
+        questions: questions,
+        answeredQuestions: (detail && detail.answeredQuestions) || [],
+        opportunities: opps,
+        questionCount: questions.length,
+        opportunityCount: statusCounts.pending || 0,
+        totalOpportunityCount: opps.length,
+        statusCounts: statusCounts,
+      });
+    }
+
+    function loadIntentDetail(intentId, passive) {
+      if (!intentId) return Promise.resolve();
+      if (!passive) {
+        setQuestionsLoading(true);
+        setRadarLoading(true);
+      }
+      const seq = Date.now();
+      const radarPath = API + "/intents/" + encodeURIComponent(intentId) + "/radar";
+      const questionsPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions";
+
+      function mergeDetail(patch) {
+        if (selectedIdRef.current !== intentId) return;
+        setIntentDetails(function (prev) {
+          const existing = prev[intentId] || {};
+          return Object.assign({}, prev, {
+            [intentId]: Object.assign({}, existing, patch, { _seq: seq }),
+          });
+        });
+      }
+
+      const questionsPromise = fetchPluginJSON(questionsPath)
+        .then(function (payload) {
+          if (selectedIdRef.current !== intentId) return;
+          let questions = [];
+          let answeredQuestions = [];
+          if (payload && payload.pending !== undefined) {
+            questions = payload.pending || [];
+            answeredQuestions = payload.answered || [];
+          } else if (payload && payload.questions) {
+            questions = payload.questions;
+          }
+          mergeDetail({ questions: questions, answeredQuestions: answeredQuestions });
+        })
+        .catch(function () { /* keep prior detail on failure */ })
+        .finally(function () {
+          if (selectedIdRef.current === intentId && !passive) setQuestionsLoading(false);
+        });
+
+      const skeletonPromise = passive
+        ? Promise.resolve(null)
+        : fetchPluginJSON(radarPath + "?presentation=skeleton")
+            .then(function (skeleton) {
+              if (selectedIdRef.current !== intentId) return;
+              if (skeleton && skeleton.success !== false && Array.isArray(skeleton.items)) {
+                mergeDetail({ opportunities: skeleton.items });
+              }
+            })
+            .catch(function () { return null; });
+
+      const radarPromise = fetchPluginJSON(radarPath)
+        .then(function (radarPayload) {
+          if (selectedIdRef.current !== intentId) return;
+          const opportunities = (radarPayload && radarPayload.items) || [];
+          mergeDetail({ opportunities: opportunities });
+        })
+        .catch(function () { /* keep prior detail on failure */ })
+        .finally(function () {
+          if (selectedIdRef.current === intentId && !passive) setRadarLoading(false);
+        });
+
+      return Promise.all([questionsPromise, skeletonPromise, radarPromise]);
+    }
 
     function load() {
       setLoading(true);
@@ -3634,9 +3752,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       if (!SDK.fetchJSON && !window.fetch) {
         setError("This Hermes dashboard host does not expose authenticated plugin fetches.");
         setLoading(false);
-        return;
+        return Promise.resolve();
       }
-      fetchPluginJSON(API + "/summary")
+      return fetchPluginJSON(API + "/bootstrap")
         .then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
@@ -3720,7 +3838,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Question answer could not be saved.");
           }
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           unrecordAnswer(question.id);
@@ -3739,7 +3859,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Question could not be skipped.");
           }
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           unrecordAnswer(question.id);
@@ -3806,7 +3928,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
             throw new Error((payload && payload.error) || "That action could not be completed.");
           }
           if (onPayload) onPayload(payload);
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           setActionError(err && err.message ? err.message : String(err));
@@ -3909,7 +4033,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Could not join that network.");
           }
-          load();
+          loadNetworks();
         })
         .catch(function (err) {
           setActionError(err && err.message ? err.message : String(err));
@@ -3961,11 +4085,14 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     function closeCreate() { setCreateOpen(false); setEditingRequest(null); }
 
     loadRef.current = load;
+    loadIntentDetailRef.current = loadIntentDetail;
 
     function enterDashboard() {
       setAuth("authed");
       load();
+      loadNetworks();
       loadNetworkRequests();
+      if (initial.intentId) loadIntentDetail(initial.intentId);
     }
 
     function checkAuth() {
@@ -4001,6 +4128,12 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     useEffect(function () {
       checkAuth();
     }, []);
+
+    useEffect(function () {
+      if (auth !== "authed" || !selectedId) return undefined;
+      loadIntentDetail(selectedId);
+      return undefined;
+    }, [auth, selectedId]);
 
     useEffect(function () {
       const header = document.querySelector('header[role="banner"]');
@@ -4091,12 +4224,18 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }, [autoRefresh, loading]);
 
     useEffect(function () {
-      // Only poll once signed in: firing /summary while the login gate (or the
+      // Only poll once signed in: firing bootstrap while the login gate (or the
       // initial auth check) is showing produces 401s that can land after the
       // login transition and clobber the fresh state, forcing a manual reload.
       if (!autoRefresh || auth !== "authed") return undefined;
       const id = setInterval(function () {
-        if (loadRef.current) loadRef.current();
+        if (loadRef.current) {
+          loadRef.current().then(function () {
+            if (selectedIdRef.current && loadIntentDetailRef.current) {
+              loadIntentDetailRef.current(selectedIdRef.current, true);
+            }
+          });
+        }
       }, 5000);
       return function () { clearInterval(id); };
     }, [autoRefresh, auth]);
@@ -4135,7 +4274,10 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     }
 
     const selectedIntent = selectedId
-      ? intents.filter(function (intent) { return intent.id === selectedId; })[0]
+      ? mergeIntentDetail(
+        intents.filter(function (intent) { return intent.id === selectedId; })[0],
+        intentDetails[selectedId],
+      )
       : null;
 
     // Settled records = the server-backed answered questions from the summary
@@ -4157,7 +4299,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     })();
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, questionsLoading: questionsLoading, radarLoading: radarLoading, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
@@ -4166,7 +4308,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
             React.createElement(NetworksMini, {
-              networks: summary && summary.networks,
+              networks: networks,
               requests: networkRequests,
               webUrl: summary && summary.webUrl,
               apiUrl: summary && summary.apiUrl,
@@ -4180,28 +4322,21 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
               onSelectIntent: selectIntent,
               onNetworkUpdated: function (merged) {
                 if (!merged || !merged.id) return;
-                setSummary(function (prev) {
-                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                setNetworks(function (prev) {
+                  if (!prev || !Array.isArray(prev.items)) return prev;
                   return Object.assign({}, prev, {
-                    networks: Object.assign({}, prev.networks, {
-                      items: prev.networks.items.map(function (n) {
-                        return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
-                      }),
+                    items: prev.items.map(function (n) {
+                      return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
                     }),
                   });
                 });
               },
               onNetworkRemoved: function (net) {
                 if (!net || !net.id) return;
-                setSummary(function (prev) {
-                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
-                  const items = prev.networks.items.filter(function (n) { return !n || n.id !== net.id; });
-                  return Object.assign({}, prev, {
-                    networks: Object.assign({}, prev.networks, {
-                      items: items,
-                      count: items.length,
-                    }),
-                  });
+                setNetworks(function (prev) {
+                  if (!prev || !Array.isArray(prev.items)) return prev;
+                  const items = prev.items.filter(function (n) { return !n || n.id !== net.id; });
+                  return Object.assign({}, prev, { items: items, count: items.length });
                 });
               },
             }),
@@ -4389,6 +4524,37 @@ export function reconcileNotificationSnapshot(payload, previousState) {
   }
 }
 
+export async function reconcileDesktopNotificationState(ctx, state, notify) {
+  if (state.stopped || state.reconciling) return
+  state.reconciling = true
+  try {
+    const currentUserId = await refreshNotificationIdentity(function () {
+      return ctx.rest('/auth/status', { method: 'GET' })
+    })
+    if (state.stopped) return
+    state.currentUserId = currentUserId
+
+    const payload = await ctx.rest('/notifications/snapshot', { method: 'GET' })
+    if (state.stopped) return
+    const result = reconcileNotificationSnapshot(payload, {
+      hasSnapshot: state.hasSnapshot,
+      notifiedEntities: state.notifiedEntities,
+    })
+    if (state.stopped) return
+    state.hasSnapshot = result.state.hasSnapshot
+    state.notifiedEntities = result.state.notifiedEntities
+
+    if (state.stopped) return
+    ctx.storage.set(NOTIFIED_ENTITIES_KEY, state.notifiedEntities)
+    for (let index = 0; index < result.notifications.length; index += 1) {
+      if (state.stopped) return
+      notify(result.notifications[index])
+    }
+  } finally {
+    state.reconciling = false
+  }
+}
+
 ;
 /**
  * Desktop plugin TAIL fragment — concatenated by build.mjs after the shared
@@ -4468,6 +4634,7 @@ function sendOsNotification(ctx, event) {
 }
 
 function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
+  if (state.stopped) return
   const event = socketEventPayload(rawEvent)
   if (!event || event.type === 'connected') return
   if (suppressOwnMessage && isOwnMessage(event, state.currentUserId)) return
@@ -4479,36 +4646,10 @@ function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
   sendOsNotification(ctx, event)
 }
 
-function refreshDesktopIdentity(ctx, state) {
-  return refreshNotificationIdentity(function () {
-    return ctx.rest('/auth/status', { method: 'GET' })
-  }).then(function (currentUserId) {
-    // A failed or invalid refresh resolves to unknown, never a stale identity.
-    state.currentUserId = currentUserId
-  })
-}
-
 function reconcileDesktopSnapshot(ctx, state) {
-  if (state.reconciling) return
-  state.reconciling = true
-  refreshDesktopIdentity(ctx, state)
-    .then(function () { return ctx.rest('/notifications/snapshot', { method: 'GET' }) })
-    .then(function (payload) {
-      const result = reconcileNotificationSnapshot(payload, {
-        hasSnapshot: state.hasSnapshot,
-        notifiedEntities: state.notifiedEntities,
-      })
-      state.hasSnapshot = result.state.hasSnapshot
-      state.notifiedEntities = result.state.notifiedEntities
-      persistNotifiedEntities(ctx, state)
-      // reconcileNotificationSnapshot already remembered each delta entity;
-      // rendering (including rejection) must not mutate dedupe a second time.
-      for (let index = 0; index < result.notifications.length; index += 1) {
-        sendOsNotification(ctx, result.notifications[index])
-      }
-    })
-    .catch(function () { /* the next 60-second reconciliation retries */ })
-    .then(function () { state.reconciling = false })
+  reconcileDesktopNotificationState(ctx, state, function (event) {
+    sendOsNotification(ctx, event)
+  }).catch(function () { /* the next 60-second reconciliation retries */ })
 }
 
 function startDesktopNotifications(ctx) {
@@ -4518,6 +4659,7 @@ function startDesktopNotifications(ctx) {
     hasSnapshot: false,
     notifiedEntities: Array.isArray(stored) ? stored.slice(-MAX_NOTIFIED_ENTITIES) : [],
     reconciling: false,
+    stopped: false,
   }
   let notificationSocket = null
   let conversationSocket = null
@@ -4541,6 +4683,7 @@ function startDesktopNotifications(ctx) {
   }, 60000)
 
   return function dispose() {
+    state.stopped = true
     window.clearInterval(snapshotTimer)
     disposeDesktopSocket(notificationSocket)
     disposeDesktopSocket(conversationSocket)

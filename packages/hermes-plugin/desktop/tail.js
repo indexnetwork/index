@@ -76,6 +76,7 @@ function sendOsNotification(ctx, event) {
 }
 
 function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
+  if (state.stopped) return
   const event = socketEventPayload(rawEvent)
   if (!event || event.type === 'connected') return
   if (suppressOwnMessage && isOwnMessage(event, state.currentUserId)) return
@@ -87,36 +88,10 @@ function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
   sendOsNotification(ctx, event)
 }
 
-function refreshDesktopIdentity(ctx, state) {
-  return refreshNotificationIdentity(function () {
-    return ctx.rest('/auth/status', { method: 'GET' })
-  }).then(function (currentUserId) {
-    // A failed or invalid refresh resolves to unknown, never a stale identity.
-    state.currentUserId = currentUserId
-  })
-}
-
 function reconcileDesktopSnapshot(ctx, state) {
-  if (state.reconciling) return
-  state.reconciling = true
-  refreshDesktopIdentity(ctx, state)
-    .then(function () { return ctx.rest('/notifications/snapshot', { method: 'GET' }) })
-    .then(function (payload) {
-      const result = reconcileNotificationSnapshot(payload, {
-        hasSnapshot: state.hasSnapshot,
-        notifiedEntities: state.notifiedEntities,
-      })
-      state.hasSnapshot = result.state.hasSnapshot
-      state.notifiedEntities = result.state.notifiedEntities
-      persistNotifiedEntities(ctx, state)
-      // reconcileNotificationSnapshot already remembered each delta entity;
-      // rendering (including rejection) must not mutate dedupe a second time.
-      for (let index = 0; index < result.notifications.length; index += 1) {
-        sendOsNotification(ctx, result.notifications[index])
-      }
-    })
-    .catch(function () { /* the next 60-second reconciliation retries */ })
-    .then(function () { state.reconciling = false })
+  reconcileDesktopNotificationState(ctx, state, function (event) {
+    sendOsNotification(ctx, event)
+  }).catch(function () { /* the next 60-second reconciliation retries */ })
 }
 
 function startDesktopNotifications(ctx) {
@@ -126,6 +101,7 @@ function startDesktopNotifications(ctx) {
     hasSnapshot: false,
     notifiedEntities: Array.isArray(stored) ? stored.slice(-MAX_NOTIFIED_ENTITIES) : [],
     reconciling: false,
+    stopped: false,
   }
   let notificationSocket = null
   let conversationSocket = null
@@ -149,6 +125,7 @@ function startDesktopNotifications(ctx) {
   }, 60000)
 
   return function dispose() {
+    state.stopped = true
     window.clearInterval(snapshotTimer)
     disposeDesktopSocket(notificationSocket)
     disposeDesktopSocket(conversationSocket)

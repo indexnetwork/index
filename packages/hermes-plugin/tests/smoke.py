@@ -117,14 +117,38 @@ class FakeStreamingResponse:
         self.close_event.set()
 
 
+class FakeIdleStreamingResponse(FakeStreamingResponse):
+    def __init__(self):
+        super().__init__([b": keep-alive\n"])
+        self.idle_read_started = threading.Event()
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.lines:
+            return self.lines.pop(0)
+        self.idle_read_started.set()
+        self.close_event.wait()
+        return b""
+
+
 class FakeWebSocket:
-    def __init__(self, disconnect_error=None):
+    def __init__(self, disconnect_error=None, disconnect_event=None):
         self.accepted = False
         self.sent = []
         self.disconnect_error = disconnect_error
+        self.disconnect_event = disconnect_event
+        self.receive_calls = 0
 
     async def accept(self):
         self.accepted = True
+
+    async def receive(self):
+        self.receive_calls += 1
+        if self.disconnect_event is None:
+            await asyncio.Future()
+        else:
+            await asyncio.to_thread(self.disconnect_event.wait)
+        return {"type": "websocket.disconnect"}
 
     async def send_json(self, payload):
         if self.disconnect_error is not None:
@@ -364,6 +388,11 @@ def main() -> None:
     assert "authedPluginStreamFetch" not in desktop_tail
     assert "connectPluginStream" not in desktop_tail
     assert "retries > 10" not in desktop_tail
+    dispose_start = desktop_tail.index("return function dispose()")
+    stopped_index = desktop_tail.index("state.stopped = true", dispose_start)
+    timer_index = desktop_tail.index("window.clearInterval(snapshotTimer)", dispose_start)
+    socket_index = desktop_tail.index("disposeDesktopSocket(notificationSocket)", dispose_start)
+    assert dispose_start < stopped_index < timer_index < socket_index
     # Hermes Desktop ships the same browser-login gate via the built bundle.
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js
@@ -826,6 +855,7 @@ def main() -> None:
         ) == {"success": False, "error": "message is required for counter and question actions."}
 
         dashboard_api = load_dashboard_api()
+        assert hasattr(dashboard_api, "_watch_websocket_disconnect")
 
         # Hermes Desktop uses authenticated plugin WebSockets. The Python plugin
         # keeps Index SSE upstream, parsing only complete dictionary-valued
@@ -873,6 +903,19 @@ def main() -> None:
         assert all(thread_id != event_loop_thread_id for thread_id in stream_response.read_thread_ids)
         assert stream_response.closed is True
         assert stream_response.close_thread_id != event_loop_thread_id
+
+        # Client disconnect is observed concurrently even when the upstream is
+        # idle after an SSE comment, so cleanup does not depend on send_json.
+        idle_response = FakeIdleStreamingResponse()
+        urllib.request.urlopen = lambda _request, timeout: idle_response
+        idle_socket = FakeWebSocket(disconnect_event=idle_response.idle_read_started)
+        asyncio.run(dashboard_api.notifications_socket(idle_socket))
+        assert idle_socket.accepted is True
+        assert idle_socket.receive_calls == 1
+        assert idle_socket.sent == []
+        assert idle_response.closed is True
+        assert idle_response.close_thread_id != event_loop_thread_id
+        assert all(thread_id != event_loop_thread_id for thread_id in idle_response.read_thread_ids)
 
         # Cancellation while urlopen is still running must transfer cleanup
         # ownership to the worker: if it eventually returns a response, that
