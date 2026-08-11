@@ -36,7 +36,7 @@ describe('isolated test inventory', () => {
     expect(new Set(inventory.files).size).toBe(inventory.files.length);
   });
 
-  it('keeps the budgeted Hermes database fixture free of unsupported it.each calls', () => {
+  it('keeps the budgeted Hermes database fixture Bun-compatible and observes contenders immediately', () => {
     const apiRoot = path.resolve(import.meta.dir, '../../../..');
     const source = readFileSync(
       path.join(apiRoot, 'tests/negotiation-runtime-authority.database.isolated.ts'),
@@ -44,6 +44,8 @@ describe('isolated test inventory', () => {
     );
 
     expect(source.match(/\bit\.each\s*\(/g) ?? []).toHaveLength(0);
+    expect(source).toContain('const contenderOutcome = settlePromiseOutcome(contender());');
+    expect(source).not.toContain('contender: Promise<T>');
   });
 
   it('dispatches E2E entries through their own explicit gates without filename skips', () => {

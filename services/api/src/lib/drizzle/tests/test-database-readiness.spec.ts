@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { checkTestDatabaseReadiness, hasParentTestDatabaseReadiness, readOriginalProcessArgv, REQUIRED_TEST_DATABASE_COLUMNS, REQUIRED_TEST_DATABASE_OBJECTS, shouldRequireTestDatabase, validateTestDatabaseUrl } from '../test-database-readiness';
+import { checkTestDatabaseReadiness, hasParentTestDatabaseReadiness, readOriginalProcessArgv, REQUIRED_TEST_DATABASE_COLUMNS, REQUIRED_TEST_DATABASE_OBJECTS, resolveTestDatabasePreloadPolicy, shouldRequireTestDatabase, validateTestDatabaseUrl } from '../test-database-readiness';
 
 const apiRoot = path.resolve(import.meta.dir, '../../../..');
 const repositoryRoot = path.resolve(apiRoot, '../..');
@@ -263,6 +263,28 @@ describe('test database readiness', () => {
 });
 
 describe('test database preload policy', () => {
+  test('probes and closes a required targeted isolated import without full-suite fanout', () => {
+    expect(resolveTestDatabasePreloadPolicy(
+      ['/usr/bin/bun', 'test', '/api/src/lib/testing/isolated-test-import-harness.spec.ts'],
+      {
+        API_TEST_REQUIRE_DATABASE: '1',
+        API_TEST_ISOLATED_TARGET: 'tests/negotiation-runtime-authority.database.isolated.ts',
+      },
+    )).toEqual({
+      checkDatabase: true,
+      closeDatabase: true,
+      runIsolatedSuite: false,
+    });
+  });
+
+  test('keeps database readiness, closure, and isolated fanout for ordinary full suites', () => {
+    expect(resolveTestDatabasePreloadPolicy(['/usr/bin/bun', 'test'], {})).toEqual({
+      checkDatabase: true,
+      closeDatabase: true,
+      runIsolatedSuite: true,
+    });
+  });
+
   test('reads the original Bun test command on supported baseline platforms', () => {
     if (process.platform !== 'linux' && process.platform !== 'darwin') return;
     expect(readOriginalProcessArgv()).toContain('test');

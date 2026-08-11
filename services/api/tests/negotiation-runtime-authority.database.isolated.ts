@@ -7,7 +7,7 @@ process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
 import { afterAll, describe, expect, it as bunIt, mock } from 'bun:test';
 import { randomUUID } from 'crypto';
 import { eq, sql } from 'drizzle-orm';
-import { withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
+import { settlePromiseOutcome, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
 
 const it = withMinimumDatabaseTestBudget(bunIt, 60_000);
 
@@ -404,16 +404,16 @@ async function queueInvalidationBeforeContender<T>(
   value: RuntimeFixture,
   race: RuntimeInvalidation,
   contender: () => Promise<T>,
-): Promise<{ invalidation: unknown; contender: Promise<T> }> {
+): Promise<{ invalidation: unknown; contender: PromiseSettledResult<T> }> {
   const held = await holdOwnerRuntimeLock(value.owner);
   const invalidationPromise = invalidateRuntime(value, race);
   try {
     await waitForOwnerRuntimeWaiters(held.backendPid, 1);
-    const contenderPromise = contender();
+    const contenderOutcome = settlePromiseOutcome(contender());
     await waitForOwnerRuntimeWaiters(held.backendPid, 2);
     held.release();
     await held.done;
-    return { invalidation: await invalidationPromise, contender: contenderPromise };
+    return { invalidation: await invalidationPromise, contender: await contenderOutcome };
   } catch (error) {
     held.release();
     await held.done.catch(() => undefined);
@@ -563,7 +563,9 @@ describe('real negotiation runtime authority SQL seam', () => {
         const raced = await queueInvalidationBeforeContender(value, race, () => pickup(value));
 
         expect(raced.invalidation).toBeDefined();
-        await expect(raced.contender).rejects.toBeInstanceOf(UnauthorizedError);
+        expect(raced.contender.status).toBe('rejected');
+        if (raced.contender.status !== 'rejected') throw new Error('Expected pickup rejection');
+        expect(raced.contender.reason).toBeInstanceOf(UnauthorizedError);
         expect(await heartbeat(value.prepared.executorId)).toEqual(
           boundary === 'existing' ? CONTROLLED_OLD_HEARTBEAT : null,
         );
@@ -594,7 +596,9 @@ describe('real negotiation runtime authority SQL seam', () => {
       ));
 
       expect(raced.invalidation).toBeDefined();
-      await expect(raced.contender).rejects.toBeInstanceOf(UnauthorizedError);
+      expect(raced.contender.status).toBe('rejected');
+      if (raced.contender.status !== 'rejected') throw new Error('Expected respond rejection');
+      expect(raced.contender.reason).toBeInstanceOf(UnauthorizedError);
       expect(await taskState(task.id)).toEqual({ state: 'claimed', claimedByAgentId: value.prepared.executorId });
       expect(await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId)).toHaveLength(messagesBefore.length);
     });
@@ -612,7 +616,9 @@ describe('real negotiation runtime authority SQL seam', () => {
       ));
 
       expect(raced.invalidation).toBeDefined();
-      await expect(raced.contender).rejects.toBeInstanceOf(ConflictError);
+      expect(raced.contender.status).toBe('rejected');
+      if (raced.contender.status !== 'rejected') throw new Error('Expected consult rejection');
+      expect(raced.contender.reason).toBeInstanceOf(ConflictError);
       expect(await taskState(value.task.id)).toEqual({ state: 'claimed', claimedByAgentId: value.prepared.executorId });
       expect(await conversationDatabaseAdapter.getMessagesForConversation(value.conversation.id)).toHaveLength(messagesBefore.length);
     });

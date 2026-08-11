@@ -232,6 +232,32 @@ export function shouldRequireTestDatabase(
   return true;
 }
 
+export interface TestDatabasePreloadPolicy {
+  checkDatabase: boolean;
+  closeDatabase: boolean;
+  runIsolatedSuite: boolean;
+}
+
+/**
+ * Plans preload database lifecycle work independently from test discovery.
+ *
+ * @param argv - Original operating-system process arguments.
+ * @param env - Environment variables controlling readiness and isolated targets.
+ * @returns Whether to probe, close, and fan out isolated tests.
+ */
+export function resolveTestDatabasePreloadPolicy(
+  argv: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+): TestDatabasePreloadPolicy {
+  const checkDatabase = shouldRequireTestDatabase(argv, env);
+  const targetedIsolatedImport = env.API_TEST_ISOLATED_TARGET !== undefined;
+  return {
+    checkDatabase,
+    closeDatabase: checkDatabase,
+    runIsolatedSuite: checkDatabase && !targetedIsolatedImport,
+  };
+}
+
 /**
  * Identifies an isolated child whose parent already completed readiness.
  *
