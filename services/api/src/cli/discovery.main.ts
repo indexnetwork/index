@@ -32,7 +32,7 @@ import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation, assertAbSideEnvi
 import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, resetAbBranch, type AbTarget } from './discovery.neon';
 import { buildAbPlan, configDiff, isAbPair } from './discovery.plan';
 import { expectedBaseMetadata, verifyBaseFixtureIntegrity, verifyProtectedBase } from './discovery-env-matrix-base.main';
-import { ATTEMPT_TIMEOUT_MS, MatrixExecutionError, awaitMatrixChildProcess, buildMatrixArtifactEvidence, closeChildResources, collectCandidates, collectEvaluatorTraces, composeCaseRuntime, createChildDependencies, databaseCase, loadJudge, loadMatrixEval, projectFinalCandidates, resolveFixtureTriggerIntent, runBoundedChildTasks, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixCandidate, type MatrixEvaluatorTrace, type MatrixExecutionEvidence, type MatrixGraphRuntimeInput, type MatrixRetrievalCandidate, type MatrixSlotResult } from './discovery-env-matrix.main';
+import { ATTEMPT_TIMEOUT_MS, MatrixExecutionError, awaitMatrixChildProcess, buildMatrixArtifactEvidence, closeChildResources, collectCandidates, collectEvaluatorTraces, composeCaseRuntime, createChildDependencies, databaseCase, discoveryChildThresholdOverrides, loadJudge, loadMatrixEval, projectFinalCandidates, resolveFixtureTriggerIntent, runBoundedChildTasks, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type DiscoveryChildThresholdOverrides, type MatrixCandidate, type MatrixEvaluatorTrace, type MatrixExecutionEvidence, type MatrixGraphRuntimeInput, type MatrixRetrievalCandidate, type MatrixSlotResult } from './discovery-env-matrix.main';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { withDiscoveryEnvironment } from './discovery-env-matrix.runtime';
 import { baseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
@@ -43,8 +43,6 @@ import type { AbSide, AbSideId, AbSides, AbSlot } from './discovery.plan';
 const HARNESS = 'discovery';
 const HARNESS_VERSION = '1';
 const RUNS_DIR = path.resolve(import.meta.dir, '../../eval/discovery/runs');
-/** Identical to the matrix child's graph invocation, and to its policy projection. */
-const AB_MIN_SCORE = 50;
 
 /**
  * The evidence types an A/B slot may cite: all of them.
@@ -211,6 +209,7 @@ async function verifyAbBranchBase(cases: readonly HistoricalMatrixFixture[]): Pr
 async function runAbSide(
   selection: AbSideSelection,
   deps: Awaited<ReturnType<typeof createChildDependencies>>,
+  thresholdOverrides: DiscoveryChildThresholdOverrides,
 ): Promise<AbChildOutput> {
   const { HISTORICAL_MATRIX_CASES, scoreMatrixSlot, buildExecutionEvidence, executeRuns } = await loadMatrixEval();
   const assertLLM = await loadJudge();
@@ -234,7 +233,12 @@ async function runAbSide(
     )) as Record<string, unknown>;
     if (graphResult.error) throw new MatrixExecutionError('matrix_graph_failure');
     const rawCandidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
-    const candidates = projectFinalCandidates(graphResult, rawCandidates, fixtureCase.sourceUserId, AB_MIN_SCORE);
+    const candidates = projectFinalCandidates(
+      graphResult,
+      rawCandidates,
+      fixtureCase.sourceUserId,
+      thresholdOverrides.evaluatorMinScore,
+    );
     const evaluatorTraces = collectEvaluatorTraces(graphResult, rawCandidates, candidates);
     const { caseId, ...scoreInput } = buildAbSlotScoreInput(slot, { candidates, rawCandidates, evaluatorTraces, completed: true });
     const scored = await runMatrixBoundary('matrix_scoring_failure', async () => scoreMatrixSlot({
@@ -287,8 +291,9 @@ export async function runAbChild(sideId: AbSideId, slots: readonly AbSlot[], out
   const selection = selectAbSideSlots(sideId, slots);
   await runWithChildCleanup(async () => {
     const output = await withDiscoveryEnvironment(selection.side.config, async () => {
-      const deps = await createChildDependencies();
-      return runAbSide(selection, deps);
+      const thresholdOverrides = discoveryChildThresholdOverrides();
+      const deps = await createChildDependencies(thresholdOverrides);
+      return runAbSide(selection, deps, thresholdOverrides);
     });
     await Bun.write(outputPath, JSON.stringify(output));
     console.log(`Discovery child artifact written: side=${sideId} path=${outputPath}`);

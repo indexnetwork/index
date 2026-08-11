@@ -702,12 +702,23 @@ export function collectEvaluatorTraces(
   });
 }
 
+export interface DiscoveryChildThresholdOverrides {
+  evaluatorMinScore: number;
+}
+
+/** Historical matrix/smoke callers stay fixed at the audited evaluator policy. */
+export function defaultDiscoveryChildThresholdOverrides(): DiscoveryChildThresholdOverrides {
+  return { evaluatorMinScore: 50 };
+}
+
 /** Constructor-only overrides resolved after an A/B side environment is applied. */
-export function discoveryChildThresholdOverrides(): { evaluatorMinScore: number } {
+export function discoveryChildThresholdOverrides(): DiscoveryChildThresholdOverrides {
   return { evaluatorMinScore: discoveryEvaluatorMinScore() };
 }
 
-export async function createChildDependencies() {
+export async function createChildDependencies(
+  thresholdOverrides: DiscoveryChildThresholdOverrides = defaultDiscoveryChildThresholdOverrides(),
+) {
   const [adapterModule, embedderModule, cacheModule] = await Promise.all([
     import('../adapters/database.adapter'),
     import('../adapters/embedder.adapter'),
@@ -729,7 +740,7 @@ export async function createChildDependencies() {
     undefined,
     undefined,
     undefined,
-    discoveryChildThresholdOverrides(),
+    thresholdOverrides,
   ).createGraph();
   return { database, premiseGraph, contextGenerator, opportunityGraph };
 }
