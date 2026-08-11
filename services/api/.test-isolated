@@ -149,3 +149,4 @@ src/controllers/tests/webhooks.controller.isolated.ts
 
 src/controllers/tests/agent.controller.error-sanitization.isolated.ts
 src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts
+src/adapters/tests/embedder.provider-free.isolated.ts

@@ -29,6 +29,14 @@ const resolvedConfig = {
 };
 
 describe('historical quality operator runbook confirmations', () => {
+  it('keeps the eval CLI ancestry audit on a full-history checkout', () => {
+    const workflow = readFileSync(path.join(ROOT, '.github/workflows/lint.yml'), 'utf8');
+    const evalCliJob = workflow.match(/^ {2}eval-cli-tests:\n([\s\S]*?)(?=^ {2}[a-z][a-z-]*:\n)/m)?.[1];
+
+    expect(evalCliJob).toBeDefined();
+    expect(evalCliJob).toMatch(/- uses: actions\/checkout@v4\n\s+with:\n\s+fetch-depth: 0/);
+  });
+
   it('keeps every exact confirmation and its one operation in the same fail-closed shell block', () => {
     const runbook = readFileSync(path.join(ROOT, QUALITY_RUNBOOK_PATH), 'utf8');
     const shellBlocks = [...runbook.matchAll(/^[ \t]*```bash\n([\s\S]*?)\n[ \t]*```/gm)].map((match) => match[1]!);

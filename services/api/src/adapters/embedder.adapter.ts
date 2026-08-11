@@ -112,7 +112,8 @@ export interface EmbedderAdapterIdentity {
 }
 
 export class EmbedderAdapter {
-  private openai: OpenAI;
+  private openai?: OpenAI;
+  private readonly openaiOptions: NonNullable<ConstructorParameters<typeof OpenAI>[0]>;
   private dimensions: number;
   private model: string;
   readonly identity: EmbedderAdapterIdentity;
@@ -121,7 +122,7 @@ export class EmbedderAdapter {
     const baseURL = options?.baseURL ?? OPENROUTER_EMBEDDING_BASE_URL;
     this.dimensions = options?.dimensions ?? OPENROUTER_EMBEDDING_DIMENSIONS;
     this.model = OPENROUTER_EMBEDDING_MODEL;
-    this.openai = new OpenAI({
+    this.openaiOptions = {
       apiKey: options?.apiKey ?? process.env.OPENROUTER_API_KEY,
       baseURL,
       defaultHeaders: options?.baseURL
@@ -130,7 +131,7 @@ export class EmbedderAdapter {
             'HTTP-Referer': 'https://index.network',
             'X-Title': 'Index Network',
           },
-    });
+    };
     const configuration = {
       provider: 'openrouter' as const,
       model: this.model,
@@ -179,7 +180,7 @@ export class EmbedderAdapter {
     }
 
     const dim = dimensions ?? this.dimensions;
-    const response = await this.openai.embeddings.create({
+    const response = await this.getOpenAI().embeddings.create({
       model: this.model,
       input: cleanTexts,
       dimensions: dim,
@@ -192,6 +193,14 @@ export class EmbedderAdapter {
 
     const embeddings = response.data.map((d) => d.embedding);
     return Array.isArray(text) ? embeddings : embeddings[0];
+  }
+
+  private getOpenAI(): OpenAI {
+    if (!this.openaiOptions.apiKey?.trim()) {
+      throw new Error('OPENROUTER_API_KEY is required for embedding generation');
+    }
+    if (!this.openai) this.openai = new OpenAI(this.openaiOptions);
+    return this.openai;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
