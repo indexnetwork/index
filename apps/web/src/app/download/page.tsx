@@ -11,6 +11,14 @@ export const MAC_APP_DOWNLOAD_URL: string =
   import.meta.env.VITE_MAC_APP_DOWNLOAD_URL || "";
 
 /**
+ * Artifact size, shown under the install button beside the filename. There is
+ * no way to know it from the URL without fetching the file, so it is supplied
+ * at build time next to the URL above, and simply omitted when absent.
+ */
+export const MAC_APP_DOWNLOAD_SIZE: string =
+  import.meta.env.VITE_MAC_APP_DOWNLOAD_SIZE || "";
+
+/**
  * Hermes Desktop / plugin install destination. Defaults to the public Hermes
  * agent site; override with `VITE_HERMES_INSTALL_URL` for staging or docs links.
  */
@@ -20,93 +28,105 @@ export const HERMES_INSTALL_URL: string =
 /** Shown on the Index for Mac card. */
 export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
 
+/** `index-0.1.0.dmg · 84 mb`, from whichever halves are actually known. */
+function macArtifactLine(): string {
+  const filename = MAC_APP_DOWNLOAD_URL.split("?")[0].split("/").pop() || "";
+  return [filename, MAC_APP_DOWNLOAD_SIZE].filter(Boolean).join(" · ");
+}
+
 /**
- * `/download` — post-invite install page. Centered body only (no app chrome),
- * matching the card layout from the download landing mockup.
+ * `/download` — post-invite install page. Full-viewport column: header,
+ * centered hero and cards. No app chrome.
  */
 export default function Download() {
   const indexAvailable = MAC_APP_DOWNLOAD_URL.length > 0;
+  const artifactLine = indexAvailable ? macArtifactLine() : "";
 
   return (
     <div className="download-page">
-      <div className="download-page__inner">
-        <div className="download-page__intro">
-          <p className="download-page__kicker">You&apos;re in</p>
-          <h1 className="download-page__title">Get the apps</h1>
-          <p className="download-page__lede">
-            Install Index on macOS or add the Hermes plugin to stay connected to
-            your networks.
-          </p>
-        </div>
+      <header className="download-page__header">
+        <a className="download-page__logo" href="/" aria-label="Index Network">
+          <img src="/logos/logo-white-full.svg" alt="Index Network" />
+        </a>
+      </header>
+
+      <main className="download-page__main">
+        <p className="download-page__kicker">You&apos;re in</p>
+        <h1 className="download-page__title">get the apps</h1>
+        <p className="download-page__lede">
+          Install Index on macOS or add the Hermes plugin to stay connected to
+          your networks.
+        </p>
 
         <div className="download-page__cards">
-          {indexAvailable ? (
-            <a
-              className="download-card"
-              href={MAC_APP_DOWNLOAD_URL}
-              aria-label="Download Index for Mac"
-            >
-              <IndexCardBody actionLabel="Download" actionVariant="primary" />
-            </a>
-          ) : (
-            <div className="download-card download-card--static" aria-label="Index for Mac">
-              <IndexCardBody actionLabel="Coming soon" actionVariant="disabled" />
-            </div>
-          )}
+          <section className="download-card">
+            <div className="download-card__body">
+              <span className="download-card__icon">
+                <IndexMark />
+              </span>
+              {/* The card's own name, so it carries the heading the removed
+                  header bar used to. */}
+              <h2 className="download-card__name">Index for Mac</h2>
+              <p className="download-card__meta">{MAC_APP_REQUIREMENTS}</p>
 
-          <a
-            className="download-card"
-            href={HERMES_INSTALL_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Install Hermes plugin"
-          >
-            <span className="download-card__icon">
-              <img src="/logos/nous.webp" alt="" aria-hidden="true" />
-            </span>
-            <span className="download-card__copy">
-              <span className="download-card__name">Hermes plugin</span>
-              <span className="download-card__meta">one-line plugin install</span>
-            </span>
-            <span className="download-card__action download-card__action--ghost">
-              Install
-            </span>
-          </a>
+              {/* Until a notarized build is published there is nothing to link
+                  at, so the primary action holds its place disabled rather than
+                  claiming a download that would 404. */}
+              {indexAvailable ? (
+                <a
+                  className="download-btn download-btn--primary"
+                  href={MAC_APP_DOWNLOAD_URL}
+                  aria-label="Download Index for Mac"
+                >
+                  INSTALL →
+                </a>
+              ) : (
+                <span className="download-btn download-btn--disabled" aria-disabled="true">
+                  COMING SOON
+                </span>
+              )}
+
+              {artifactLine ? (
+                <p className="download-card__note">{artifactLine}</p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="download-card">
+            <div className="download-card__body">
+              <span className="download-card__icon download-card__icon--outlined">
+                <img src="/logos/nous.webp" alt="" aria-hidden="true" />
+              </span>
+              <h2 className="download-card__name">Hermes plugin</h2>
+              <p className="download-card__meta">one-line plugin install</p>
+
+              {/* Both buttons read "INSTALL"; the labels say which is which for
+                  anyone who cannot see the card they sit in. */}
+              <a
+                className="download-btn download-btn--ghost"
+                href={HERMES_INSTALL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Install Hermes plugin"
+              >
+                INSTALL
+              </a>
+            </div>
+          </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
 
-function IndexCardBody({
-  actionLabel,
-  actionVariant,
-}: {
-  actionLabel: string;
-  actionVariant: "primary" | "disabled";
-}) {
+/** The Index mark, inverted for the card: white tile, background-coloured glyph. */
+function IndexMark() {
   return (
-    <>
-      <span className="download-card__icon">
-        <AppleMark />
-      </span>
-      <span className="download-card__copy">
-        <span className="download-card__name">Index for Mac</span>
-        <span className="download-card__meta">{MAC_APP_REQUIREMENTS}</span>
-      </span>
-      <span className={`download-card__action download-card__action--${actionVariant}`}>
-        {actionLabel}
-      </span>
-    </>
-  );
-}
-
-function AppleMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg viewBox="0 0 64 64" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" fill="#fff" />
       <path
-        fill="currentColor"
-        d="M17.05 12.94c-.03-2.7 2.2-4 2.3-4.06-1.25-1.83-3.2-2.08-3.9-2.11-1.66-.17-3.24.98-4.08.98-.84 0-2.14-.96-3.52-.93-1.81.03-3.48 1.05-4.41 2.67-1.88 3.27-.48 8.1 1.35 10.75.9 1.3 1.97 2.75 3.38 2.7 1.36-.06 1.87-.88 3.51-.88 1.64 0 2.1.88 3.53.85 1.46-.02 2.38-1.32 3.27-2.62 1.03-1.5 1.46-2.96 1.48-3.03-.03-.01-2.85-1.09-2.88-4.32M14.4 4.9c.74-.9 1.24-2.15 1.1-3.4-1.07.05-2.36.72-3.13 1.61-.69.8-1.29 2.07-1.13 3.29 1.19.09 2.41-.6 3.16-1.5"
+        d="M36.5778 18.7058V45.2984H27.7592V18.7058H36.5778L27.8611 10H19V36.5502L36.4716 54H45.3327V27.4498L36.5778 18.7058Z"
+        fill="#0d1a13"
       />
     </svg>
   );

@@ -191,6 +191,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         completionHandler()
     }
 
+    // MARK: - Links out of the app
+    //
+    // The page is a file:// document and there is nothing to navigate to inside
+    // it, so every http(s) link in it (a profile's "elsewhere" links, a member's
+    // web profile) is meant for the browser. WebKit will not do that on its own:
+    // a `target="_blank"` anchor or a window.open() call is only a request for a
+    // second web view, and with no createWebViewWith the request is dropped and
+    // the click does nothing at all. Both paths below hand the URL to the
+    // browser instead, and neither ever lets the app's own document be replaced.
+
+    /// `target="_blank"` and `window.open()`. Returning nil means "no new view";
+    /// the URL is opened in the default browser instead.
+    func webView(_ webView: WKWebView,
+                 createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        openExternally(navigationAction.request.url)
+        return nil
+    }
+
+    /// A link without `target="_blank"` would otherwise load over the app's own
+    /// UI, leaving no way back. Link clicks leave for the browser; the bundled
+    /// document's own loads (file://, about:blank) are the only ones allowed.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard navigationAction.navigationType == .linkActivated,
+              let url = navigationAction.request.url,
+              isExternalScheme(url) else {
+            decisionHandler(.allow)
+            return
+        }
+        openExternally(url)
+        decisionHandler(.cancel)
+    }
+
+    /// Only web and mail addresses leave the app. A page can name any scheme it
+    /// likes in an href, and handing e.g. a file:// or a custom app scheme to
+    /// LaunchServices would let it act on this machine.
+    private func isExternalScheme(_ url: URL) -> Bool {
+        switch url.scheme?.lowercased() {
+        case "http", "https", "mailto": return true
+        default: return false
+        }
+    }
+
+    private func openExternally(_ url: URL?) {
+        guard let url, isExternalScheme(url) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     func webView(_ webView: WKWebView,
                  didFail navigation: WKNavigation!,
                  withError error: Error) {

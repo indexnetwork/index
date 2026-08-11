@@ -1,6 +1,6 @@
 import '../src/startup.env';
 
-import { afterAll as bunAfterAll, describe, expect, it as bunIt, mock } from 'bun:test';
+import { afterAll as bunAfterAll, describe, expect, it as bunIt } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
@@ -13,10 +13,7 @@ import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '..
 
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
 const it = withMinimumDatabaseTestBudget(bunIt, 30_000);
-const experimentService = new ExperimentService({
-  addEnrichUserJob: mock(async () => ({})),
-  addEnrichUserJobBulk: mock(async () => []),
-});
+const experimentService = new ExperimentService();
 
 const cleanup: Array<() => Promise<void>> = [];
 

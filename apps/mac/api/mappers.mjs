@@ -5,6 +5,7 @@
  * `window.INDEX_DATA`-style view models, but this file deliberately has no
  * dependency on the app bundles and no side effects.
  */
+import { normalizeSocial, socialHrefOf } from './socials.mjs';
 
 const DEFAULT_EVENT = {
   name: 'index',
@@ -71,7 +72,6 @@ export function mapIntent(intent, questionCount = 0) {
     title: intent.summary || intent.payload || 'untitled signal',
     edges: networkTitles.join(' · '),
     offLimits: '',
-    shape: 'warm',
     status: archived ? 'archived' : paused ? 'paused' : 'active',
     pipeline: { warm: 0, considering: 0, negotiating: 0 },
     lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
@@ -167,12 +167,10 @@ export function mapCounterpartProfile(source = {}) {
 export function mapSocials(socials) {
   if (!Array.isArray(socials)) return [];
   return socials
-    .map((entry) => {
-      const id = entry.id || entry.label || entry.platform || 'website';
-      const handle = entry.handle || entry.username || entry.value || '';
-      return { id: String(id).toLowerCase(), prefix: entry.prefix || '', handle };
-    })
-    .filter((entry) => entry.handle);
+    .map((entry) => normalizeSocial(entry))
+    // An entry that resolves to no address is dropped here rather than drawn
+    // as a link that goes nowhere. See socials.mjs for what fails to resolve.
+    .filter((entry) => entry.handle && socialHrefOf(entry));
 }
 
 /**

@@ -213,6 +213,25 @@ describe("protocol atlas curated content", () => {
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
   });
 
+  test("does not treat /application source paths as absolute /app machine paths", async () => {
+    const content = await loadAtlasContent();
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    // Railway uses repoRoot `/app`; substring matching would false-positive on `/application/...`.
+    const issues = validateConfigurationExperiments(content, artifact, input, "/app").join("\n");
+    expect(issues).not.toContain("absolute machine paths");
+  });
+
+  test("rejects configuration experiments that embed absolute repo paths", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const discovery = content.configurationExperiments.find(({ id }) => id === "discovery-corpus")!;
+    discovery.settings[0].readSites[0].path = `${repoRoot}/packages/protocol/src/opportunity/discovery.env.ts`;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n"))
+      .toContain("absolute machine paths");
+  });
+
   test("locks chapter teaching sections and source discrepancy coverage", async () => {
     const content = await loadAtlasContent() as {
       chapters: Array<{ id: string; title: string; summary: string; sections?: Array<{ id: string; title: string; summary: string; items: string[] }> }>;

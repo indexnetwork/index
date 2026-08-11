@@ -1833,6 +1833,12 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "DEFAULT_FALLBACK_HEADLINE",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "buildApiChatCardPresentationCacheKey",
       "kind": "value",
       "stability": "stable",

@@ -14,14 +14,29 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 OUT = ROOT / "Resources" / "index.html"
 API_DIR = ROOT / "api"
+# Concatenated in this order into one IIFE, so a module must come before the
+# ones that use it. Their cross-imports are stripped below: sharing a scope is
+# what replaces them here, while the files keep real imports so `bun test api/`
+# can load any of them on its own.
+API_MODULES = ("socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "radar-state.mjs")
 API_EXPORTS = [
     "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
+    "sameRadarPeople", "applyRadarPeople",
     "parseDeepLink", "isIndexDeepLink",
+    "SOCIAL_PREFIX", "EDITABLE_PLATFORMS", "parseSocial", "firstSocialValue",
+    "socialPlatformOf", "socialHandleOf", "socialHrefOf", "socialApiLabelOf",
+    "buildSocialHref", "normalizeSocial", "splitProfileSocials", "buildProfileSocials",
 ]
+
+# `import { x } from './y.mjs';` — dropped, since y.mjs is already in scope.
+LOCAL_IMPORT = re.compile(
+    r"^import\s+[^;]*?\s+from\s+['\"]\./[^'\"]+\.mjs['\"];?[ \t]*\n",
+    re.MULTILINE,
+)
 
 VENDOR = {
     "https://unpkg.com/react@18.3.1/umd/react.development.js": "react.development.js",
@@ -48,12 +63,49 @@ for url, fname in VENDOR.items():
     html = pat.sub(lambda _m, f=fname: inline_script(SRC / "vendor" / f), html, count=1)
 
 
+# Images the UI draws. The bundle is one offline file, so these ride along as
+# data URIs like the webfonts rather than being fetched over file://, which
+# WKWebView will not do reliably.
+IMAGES = ("loading2.gif",)
+
+# Magic bytes per type, so a re-exported or converted asset that no longer
+# animates is caught here rather than showing up as a frozen first frame.
+IMAGE_KINDS = {
+    ".gif": ("image/gif", lambda d: d[:6] in (b"GIF87a", b"GIF89a")),
+    ".webp": ("image/webp", lambda d: d[:4] == b"RIFF" and d[8:12] == b"WEBP"),
+    ".png": ("image/png", lambda d: d[:8] == b"\x89PNG\r\n\x1a\n"),
+}
+
+
+def build_index_assets() -> str:
+    entries = []
+    for fname in IMAGES:
+        path = SRC / "img" / fname
+        if not path.is_file():
+            raise SystemExit(f"missing image: src/img/{fname}")
+        ext = "." + fname.rsplit(".", 1)[-1].lower()
+        if ext not in IMAGE_KINDS:
+            raise SystemExit(f"src/img/{fname}: unsupported image type {ext}")
+        mime, ok = IMAGE_KINDS[ext]
+        data = path.read_bytes()
+        if not ok(data):
+            raise SystemExit(f"src/img/{fname} is not a valid {ext.lstrip('.')} file")
+        b64 = base64.b64encode(data).decode("ascii")
+        key = fname.rsplit(".", 1)[0]
+        entries.append(f'  "{key}": "data:{mime};base64,{b64}"')
+    body = ",\n".join(entries)
+    return "<script>\nwindow.IndexAssets = {\n" + body + "\n};\n</script>"
+
+
 def build_index_api() -> str:
     parts = []
-    for fname in ("client.mjs", "mappers.mjs", "deeplink.mjs"):
+    for fname in API_MODULES:
         code = (API_DIR / fname).read_text()
         if "</script" in code:
             raise SystemExit(f"refusing to inline {fname}: contains </script")
+        code = LOCAL_IMPORT.sub("", code)
+        if re.search(r"^\s*import\s", code, flags=re.MULTILINE):
+            raise SystemExit(f"{fname} has an import the bundle cannot resolve")
         code = re.sub(r'^export\s+', '', code, flags=re.MULTILINE)
         parts.append(code)
     assigns = ", ".join(f"{name}: {name}" for name in API_EXPORTS)
@@ -64,7 +116,7 @@ def build_index_api() -> str:
 anchor = '<script type="text/babel" src="ui/primitives/tokens.jsx"></script>'
 if anchor not in html:
     raise SystemExit("could not find the first babel script tag to inject IndexApi before")
-html = html.replace(anchor, build_index_api() + "\n" + anchor, 1)
+html = html.replace(anchor, build_index_assets() + "\n" + build_index_api() + "\n" + anchor, 1)
 
 
 def babel_sub(m):

@@ -1,213 +1,384 @@
-/* Exact shell from IndexApp/Sources/main.swift auth-callback page:
-   #14241f / #F4FBF6, Public Sans, wordmark nav, centered .c column. */
+/* Invite / sign-in page (`/l/:code`).
+
+   Same shell and tokens as the download page: full-viewport column, square
+   corners, no shadows. IBM Plex Mono is already imported in app/globals.css.
+
+   The auth card's contents come from the shared AuthForm, so the .av-* rules
+   near the bottom restyle that component for this page only. They are scoped
+   under .invite so AuthModal.css keeps owning it everywhere else. */
 
 .invite {
-  margin: 0;
+  --bg: #0d1a13;
+  --card: #122019;
+  --card-border: #2b4234;
+  --hairline: #22362a;
+  --hairline-soft: #1b2c22;
+  --muted: #9db3a4;
+  --faint: #5d7466;
+  --accent: #e8873d;
+  --accent-hover: #f09a55;
+  --live: #3ddc6a;
+
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #14241f;
-  color: #f4fbf6;
-  font-family: "Public Sans", system-ui, sans-serif;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: #fff;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   -webkit-font-smoothing: antialiased;
 }
 
-.invite .invite-nav {
+/* ---------- header ---------- */
+
+.invite-header {
   display: flex;
   align-items: center;
-  padding: 22px 56px;
+  padding: 30px 48px;
 }
 
-.invite .invite-nav a {
+.invite-logo {
   display: inline-flex;
-  align-items: center;
-  text-decoration: none;
+  line-height: 0;
 }
 
-.invite .invite-nav img {
-  height: 14px;
-  width: auto;
+.invite-logo img {
   display: block;
-}
-
-.invite main {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.invite .c {
-  text-align: center;
-  max-width: 420px;
-  width: 100%;
-}
-
-.invite .invite-kicker {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0 0 10px;
-  color: rgba(244, 251, 246, 0.78);
-}
-
-.invite h1 {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 10px;
-  color: #f4fbf6;
-  word-break: break-word;
-}
-
-.invite .invite-meta,
-.invite .invite-status,
-.invite .invite-error {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0;
-  color: rgba(244, 251, 246, 0.78);
-}
-
-.invite .cta-stack {
-  display: grid;
-  grid-template-columns: 158px 158px;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 26px;
-}
-
-.invite .cta-btn {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  aspect-ratio: 1;
-  width: 158px;
-  box-sizing: border-box;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  font-weight: 600;
-  text-transform: uppercase;
-  text-decoration: none;
-  text-align: center;
-  line-height: 1.35;
-  padding: 12px 8px;
-  border: 1px solid transparent;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-
-.invite .cta-btn svg,
-.invite .cta-btn img {
-  flex: 0 0 auto;
-  display: block;
-}
-
-.invite .cta-btn img {
-  width: 42px;
+  width: 200px;
   height: auto;
 }
 
-.invite .cta-btn.primary img {
-  width: 56px;
+/* ---------- hero ---------- */
+
+.invite-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px 70px;
 }
 
-.invite .cta-btn.primary {
-  background: #e08a2e;
-  color: #000;
-  border-color: #e08a2e;
+.invite-kicker {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 
-.invite .cta-btn.primary:hover {
-  background: #f0a04b;
-  border-color: #f0a04b;
-}
-
-.invite .cta-btn.ghost {
-  background: transparent;
+.invite-title {
+  margin: 18px 0 10px;
+  font-size: 44px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
   color: #fff;
-  border-color: rgba(244, 251, 246, 0.4);
 }
 
-.invite .cta-btn.ghost:hover {
-  background: rgba(244, 251, 246, 0.08);
+.invite-meta {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
-.invite .cta-btn--disabled {
-  opacity: 0.55;
-  cursor: default;
+.invite-meta__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+  flex: 0 0 auto;
 }
 
-.invite .cta-btn-note {
-  display: block;
-  margin-top: 4px;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  opacity: 0.85;
+/* ---------- states ---------- */
+
+.invite-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 
-.invite .invite-meta--spaced {
-  margin-top: 18px;
-}
-
-.invite .invite-foot {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(244, 251, 246, 0.22);
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(244, 251, 246, 0.78);
-}
-
-.invite .invite-foot a {
-  color: #e08a2e;
-  text-decoration: none;
-}
-
-.invite .invite-foot a:hover {
-  text-decoration: underline;
-}
-
-@media (max-width: 720px) {
-  .invite .invite-nav {
-    padding: 18px 22px;
-  }
-}
-
-.invite .invite-auth {
-  margin-top: 28px;
-  width: 100%;
-  max-width: 440px;
-  margin-left: auto;
-  margin-right: auto;
-  text-align: left;
-}
-
-.invite .invite-auth .auth {
-  border-top: 1px solid rgba(244, 251, 246, 0.22);
-  padding-top: 24px;
-}
-
-.invite .invite-status--join {
+.invite-status--join {
   margin-top: 24px;
 }
 
-.invite .invite-retry {
+.invite-error {
+  margin: 16px 0 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  color: #f0a08a;
+}
+
+.invite-retry {
   margin-top: 16px;
-  padding: 10px 18px;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 13px 34px;
+  border: none;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.invite-retry:hover {
+  background: var(--accent-hover);
+}
+
+/* ---------- auth card ---------- */
+
+.invite-card {
+  width: 420px;
+  max-width: 100%;
+  margin-top: 44px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+}
+
+.invite-card__bar {
+  margin: 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--hairline);
   font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.invite-card__body {
+  padding: 28px 28px 26px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- AuthForm, restyled for this page ---------- */
+
+.invite .av-oauth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  color: #111;
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.invite .av-oauth:hover:not(:disabled) {
+  background: #e9efe9;
+}
+
+.invite .av-oauth:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.invite .av-oauth svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+/* The rules either side of "or" are drawn with pseudo-elements so the divider
+   needs no extra markup in the shared component. */
+.invite .av-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 0;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #14241f;
-  background: #e08a2e;
-  border: 1px solid #e08a2e;
+  color: var(--faint);
+}
+
+.invite .av-divider::before,
+.invite .av-divider::after {
+  content: "";
+  flex: 1;
+  /* AuthModal.css draws these as a dashed border-top. Same specificity, so it
+     is not overridden by the background below, only added to; the border has to
+     be cleared or the rule renders dashed and solid at once. */
+  border: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.invite .av-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.invite .av-label {
+  margin-bottom: 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.invite .av-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 0;
+  background: var(--bg);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.invite .av-input::placeholder {
+  color: var(--faint);
+}
+
+.invite .av-input:focus {
+  border-color: var(--accent);
+}
+
+.invite .av-submit {
+  margin-top: 16px;
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 0;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.invite .av-submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.invite .av-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The password view's secondary action, which must not read as the primary. */
+.invite .av-submit.ghost {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: #fff;
+}
+
+.invite .av-submit.ghost:hover:not(:disabled) {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.invite .av-alt {
+  margin: 20px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.invite .av-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
-.invite .invite-retry:hover {
-  background: #f0a04b;
-  border-color: #f0a04b;
+.invite .av-link:hover {
+  color: var(--accent);
+}
+
+.invite .av-error {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #f0a08a;
+}
+
+.invite .av-note {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Password view: heading row + back control. */
+.invite .av-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.invite .av-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.invite .av-back {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.invite .av-back:hover {
+  color: var(--accent);
+}
+
+.invite .av-lede {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 720px) {
+  .invite-header {
+    padding-left: 24px;
+    padding-right: 24px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .invite-logo img {
+    width: 160px;
+  }
+
+  .invite-title {
+    font-size: 32px;
+  }
 }

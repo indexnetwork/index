@@ -28,6 +28,7 @@ docker-compose.yml
 env.docker
 
 # Runtime env files live at the repo root; only the canonical example is committed.
+services/api/demo-notification-stream-seref.txt
 .env*
 !.env.example
 postgres/

@@ -32,7 +32,8 @@ describe("/download", () => {
 
     expect(mod.MAC_APP_DOWNLOAD_URL).toBe("");
     expect(screen.getByText(/You're in/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Get the apps" })).toBeInTheDocument();
+    // Lowercased in the redesign; the heading copy is "get the apps".
+    expect(screen.getByRole("heading", { name: "get the apps" })).toBeInTheDocument();
     expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
     expect(screen.getByText(mod.MAC_APP_REQUIREMENTS)).toBeInTheDocument();
 

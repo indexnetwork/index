@@ -37,7 +37,6 @@ bun run typecheck:cli-specs                 # Type-check the discovery CLI specs
 bun run eval:discovery -- --help            # Discovery: contract and exit codes, no credentials needed
 
 # Maintenance/CLI tools
-bun run maintenance:backfill-premises       # Backfill: enqueue enrichment for users in a network
 bun run maintenance:backfill-context-hyde   # Backfill: generate HyDE docs for user contexts
 bun run maintenance:backfill-global-user-contexts # Backfill: generate the global user_context (networkId=null) for every user, synthesized from active premises
 bun run maintenance:backfill-intent-questions # Backfill: enqueue intent-refinement question generation (most recent active intent per user)

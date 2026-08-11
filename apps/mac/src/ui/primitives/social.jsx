@@ -3,53 +3,16 @@
    the API carries {label, value} where value is usually a whole URL. Everything
    is normalized to a platform plus a bare handle, because the logo already says
    which platform it is: showing "x.com/seren" next to an X mark is the platform
-   said twice. The prefix only comes back when a link has to be built. */
-const SOCIAL_PREFIX = {
-  x: "x.com/",
-  twitter: "x.com/",
-  linkedin: "linkedin.com/in/",
-  github: "github.com/",
-  telegram: "t.me/",
-};
+   said twice.
 
-/** Platform id from an entry's own label, or failing that from its url. */
-function socialPlatformOf(social = {}) {
-  const id = String(social.id || social.label || social.platform || "").toLowerCase().trim();
-  if (id) return id === "twitter" ? "x" : id;
-  const p = String(social.prefix || social.handle || social.value || "").toLowerCase();
-  if (p.includes("x.com") || p.includes("twitter")) return "x";
-  if (p.includes("linkedin")) return "linkedin";
-  if (p.includes("github")) return "github";
-  if (p.includes("t.me") || p.includes("telegram")) return "telegram";
-  return "website";
-}
-
-/** Just the part that identifies the person: no scheme, no platform host.
-    An unknown host keeps its domain, since there the domain IS the identity. */
-function socialHandleOf(social = {}) {
-  const raw = String(social.handle ?? social.value ?? "").trim();
-  if (!raw) return "";
-  if (!/^https?:\/\//i.test(raw) && !raw.includes("/")) return raw.replace(/^@/, "");
-  const bare = raw.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
-  const known = /^(x\.com|twitter\.com|linkedin\.com|github\.com|t\.me|telegram\.me)\/(in\/|@)?/i;
-  return known.test(bare) ? bare.replace(known, "") : bare;
-}
-
-/** The address to open. Rebuilt from the platform when we only hold a handle. */
-function socialHrefOf(social = {}) {
-  const raw = String(social.handle ?? social.value ?? "").trim();
-  if (/^https?:\/\//i.test(raw)) return raw;
-  const handle = socialHandleOf(social);
-  if (!handle) return "";
-  const prefix = social.prefix || SOCIAL_PREFIX[socialPlatformOf(social)] || "";
-  return `https://${prefix}${handle}`;
-}
-
-/** {id, prefix, handle} for editing, from any of the shapes above. */
-function normalizeSocial(social = {}) {
-  const id = socialPlatformOf(social);
-  return { id, prefix: social.prefix || SOCIAL_PREFIX[id] || "", handle: socialHandleOf(social) };
-}
+   The reading of those shapes lives in api/socials.mjs, which is where the
+   editor and the mappers read them from too, and is covered by `bun test api/`.
+   It is bundled ahead of these scripts, so it is only lifted into scope here. */
+const {
+  SOCIAL_PREFIX, EDITABLE_PLATFORMS, parseSocial, socialPlatformOf, socialHandleOf,
+  socialHrefOf, socialApiLabelOf, buildSocialHref, normalizeSocial,
+  splitProfileSocials, buildProfileSocials,
+} = window.IndexApi;
 
 /* ---------- SocialGlyph: 1-bit platform marks ----------
    Drawn rather than fetched: the bundle is offline, so a webfont or an SVG

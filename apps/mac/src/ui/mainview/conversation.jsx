@@ -111,7 +111,15 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               without limit, and opening the third window narrowed the column
               enough that the title pushed the status line straight through the
               header's bottom rule. It clips to an ellipsis instead, and the
-              whole signal is one hover away. */}
+              whole signal is one hover away.
+
+              maxHeight repeats the cap the line-clamp already implies, because
+              the clamp alone does not reliably constrain the box's layout
+              height in WebKit the way it does in Blink: the title rendered its
+              third line while the header had been sized for less, and the
+              status line came out through the rule again. lineHeight is 1.2, so
+              three lines is 3.6em, and this is what actually holds the header
+              open. Keep the two in step if either changes. */}
           <h2
             title={profile.intent || "your signal"}
             style={{
@@ -119,6 +127,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               fontSize:17, color:"#000", letterSpacing:-0.2, lineHeight:1.2,
               flex:1, minWidth:0,
               display:"-webkit-box", WebkitBoxOrient:"vertical", WebkitLineClamp:3,
+              maxHeight:"3.6em",
               overflow:"hidden",
             }}>{profile.intent || "your signal"}</h2>
           <div style={{ display:"flex", gap:6, flex:"0 0 auto" }}>
@@ -149,11 +158,11 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               minWidth:0, flex:"0 1 auto",
               color: paused ? "var(--ink-3)" : "#000",
             }}>
-            <span style={{
-              width:7, height:7, borderRadius:"50%", flex:"0 0 auto",
-              background: paused ? "var(--ink-4)" : "#1FA95B",
-              boxShadow: paused ? "none" : "0 0 0 2px rgba(31,169,91,0.25)",
-            }}/>
+            {/* The same LiveDot the shelf puts on a running signal, rather than
+                a green pill only this header drew: one signal, two screens, one
+                mark for "working". Paused shows no dot, matching the shelf,
+                where the mark is what says it is running. */}
+            {!paused && <LiveDot size={6}/>}
             <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0 }}>
               {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
             </span>
@@ -512,12 +521,6 @@ function timeAgo(t) {
   const m = Math.floor(s / 60);
   return `${m}m ago`;
 }
-function HELLO_FOR(profile) {
-  if (profile.shape === "quiet")  return "i'll stay quiet. one or two intros a week at most.";
-  if (profile.shape === "active") return "the network's busy. i'll keep the pipeline moving.";
-  return "i'll surface a handful and check in before negotiating.";
-}
-
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
 

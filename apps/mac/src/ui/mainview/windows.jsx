@@ -75,9 +75,8 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
           }}>{person.name}</div>
         </div>
 
-        {/* body, the person's own intro first, then why your agent surfaced
-            them, then where else to find them. Anything the system generated
-            about them is dropped upstream rather than repeated under a label */}
+        {/* body: their intro, then the presenter mainText (why surfaced), then
+            where else to find them. */}
         <div className="mac-scroll" style={{
           overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:15,
           alignContent:"start", background:"#fff",
@@ -93,7 +92,13 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
           )}
 
           {note && (
-            <SummarySection label="why your agent surfaced them">{note}</SummarySection>
+            <SummarySection label="why your agent surfaced them">
+              <div style={{ display:"grid", gap:9 }}>
+                {note.split(/\n{2,}/).map((para, i) => (
+                  <div key={i}>{para.trim()}</div>
+                ))}
+              </div>
+            </SummarySection>
           )}
 
           {socials.length > 0 && (
