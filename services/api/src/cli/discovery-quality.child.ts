@@ -8,6 +8,7 @@ import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger } from '..
 import { HISTORICAL_QUALITY_CHILD_RUNTIME_CONTRACT_VERSION } from './discovery-quality.child-loader';
 import { parseHistoricalQualityRuntimeEnvironment, type HistoricalQualityChildEnvironment, type HistoricalQualityRuntimeEnvironment } from './discovery-quality.environment';
 import { NamespacedHydeCache } from './discovery-quality.cache';
+import { bindHistoricalQualityTls } from './discovery-quality-tls';
 import { AB_BRANCH_NAMES, parseHistoricalQualityManifest } from './discovery.neon';
 import { createNeonControlPlane, isEndpointHost } from './discovery-env-matrix.neon';
 import { fingerprintHistoricalQualityChildResolvedConfiguration, resolveHistoricalQualityChildConfiguration, type HistoricalQualityChildOutput, type VerifiedHistoricalQualityBase } from './discovery-quality.runtime';
@@ -896,7 +897,8 @@ async function openProductionVerifier(databaseUrl: string): Promise<HistoricalQu
     import('postgres'),
     import('../schemas/database.schema'),
   ]);
-  const client = postgresModule.default(databaseUrl, { prepare: false });
+  const { postgresOptions } = bindHistoricalQualityTls(databaseUrl);
+  const client = postgresModule.default(databaseUrl, { prepare: false, ...postgresOptions });
   return {
     db: drizzle(client, { schema }) as DrizzleDB,
     close: async () => client.end({ timeout: 5 }),
@@ -963,7 +965,7 @@ function productionDependencies(environment: HistoricalQualityChildEnvironment):
     createDependencies: async ({ selectedDatabaseUrl, embedding, cache }, resources) => {
       // The process is dedicated to one slot. This assignment is the first and
       // only DATABASE_URL authority and is derived from the re-attested target.
-      process.env.DATABASE_URL = selectedDatabaseUrl;
+      process.env.DATABASE_URL = bindHistoricalQualityTls(selectedDatabaseUrl).internalDatabaseUrl;
       const drizzleModule = await import('../lib/drizzle/drizzle');
       resources.add(Object.freeze({
         kind: 'database' as const,

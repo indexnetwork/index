@@ -107,7 +107,7 @@ function parseUrl(value: string): URL | null {
  * the port rejects nothing legitimate; pinning the database name is what keeps a
  * side from being pointed at some other database on a Neon host.
  */
-function assertNeonPostgresUrl(value: string, field: string): void {
+function assertNeonPostgresUrl(value: string, field: string, strictQueryFree = false): void {
   const url = parseUrl(value);
   if (!url || (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') || !url.hostname.endsWith('.neon.tech')) {
     throw new Error(`Discovery manifest ${field} must be a postgres URL on a Neon host`);
@@ -117,6 +117,9 @@ function assertNeonPostgresUrl(value: string, field: string): void {
   }
   if (url.port && url.port !== '5432') {
     throw new Error(`Discovery manifest ${field} port must be exactly 5432`);
+  }
+  if (strictQueryFree && (url.search !== '' || url.hash !== '')) {
+    throw new Error(`Discovery manifest ${field} must not contain query parameters or fragments`);
   }
 }
 
@@ -139,7 +142,7 @@ function parseTarget(value: unknown, index: number, strict = false): AbTarget {
     endpointId: asString(entry.endpointId, `target ${index} endpointId`),
     databaseUrl: asString(entry.databaseUrl, `target ${index} databaseUrl`),
   };
-  assertNeonPostgresUrl(target.databaseUrl, `target ${index} databaseUrl`);
+  assertNeonPostgresUrl(target.databaseUrl, `target ${index} databaseUrl`, strict);
   return target;
 }
 
@@ -220,7 +223,7 @@ export function parseHistoricalQualityManifest(raw: string | undefined): Discove
     endpointId: asString(replica.endpointId, 'baseReadReplica endpointId'),
     databaseUrl: asString(replica.databaseUrl, 'baseReadReplica databaseUrl'),
   };
-  assertNeonPostgresUrl(baseReadReplica.databaseUrl, 'baseReadReplica databaseUrl');
+  assertNeonPostgresUrl(baseReadReplica.databaseUrl, 'baseReadReplica databaseUrl', true);
   const targets = parseTargets(root, baseBranchId, true);
   assertPairwiseDistinctRoleIds([
     projectId,

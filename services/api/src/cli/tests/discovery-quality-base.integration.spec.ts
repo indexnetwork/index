@@ -14,6 +14,7 @@ import { fingerprintHistoricalQualityVector, historicalQualityAttestationRoot, H
 import { assertReadOnlySession, productionHistoricalQualityBaseDependencies, readVerifiedHistoricalQualityPublishedState, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, type HistoricalQualityBaseDependencies, type HistoricalQualityBaseState, type HistoricalQualityEmbedder } from '../discovery-quality-base';
 import { proveDisposableQualityTestTarget, proveHistoricalQualityIntegrationTargets } from '../discovery-quality-db-test.guard';
 import { createNeonControlPlane, type NeonControlPlane } from '../discovery-env-matrix.neon';
+import { bindHistoricalQualityTls } from '../discovery-quality-tls';
 import { parseHistoricalQualityManifest, type DiscoveryManifestV2 } from '../discovery.neon';
 
 const projection = HISTORICAL_SHARED_POOL_SEED_PROJECTION;
@@ -197,7 +198,8 @@ let baselineAttestation: HistoricalQualityBaseAttestation;
 let providerCalls = 0;
 
 function database(databaseUrl: string): { client: SqlClient; db: DrizzleDB } {
-  const client = postgres(databaseUrl, { prepare: false, max: 2 });
+  const { postgresOptions } = bindHistoricalQualityTls(databaseUrl);
+  const client = postgres(databaseUrl, { prepare: false, max: 2, ...postgresOptions });
   return { client, db: drizzle(client, { schema }) as DrizzleDB };
 }
 
@@ -257,7 +259,17 @@ dbDescribe('historical quality protected-base integration', () => {
       controlPlane: createNeonControlPlane(apiKey),
     });
     const manifest = parseHistoricalQualityManifest(manifestRaw);
-    await checkTestDatabaseReadiness({ databaseUrl, safeMarker: TEST_DATABASE_SAFE });
+    const readinessPostgresOptions = bindHistoricalQualityTls(databaseUrl).postgresOptions;
+    await checkTestDatabaseReadiness({
+      databaseUrl,
+      safeMarker: TEST_DATABASE_SAFE,
+      createClient: (url) => postgres(url, {
+        connect_timeout: 10,
+        max: 1,
+        prepare: false,
+        ...readinessPostgresOptions,
+      }) as never,
+    });
 
     ({ client: childClient, db: childDb } = database(databaseUrl));
     ({ client: observerClient, db: observerDb } = database(databaseUrl));

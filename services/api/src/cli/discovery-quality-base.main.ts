@@ -5,6 +5,7 @@ import postgres from 'postgres';
 import * as schema from '../schemas/database.schema';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { assertReadOnlySession, productionHistoricalQualityBaseDependencies, readVerifiedHistoricalQualityPublishedState, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, type HistoricalQualityBaseDependencies, type HistoricalQualityEmbedder, type HistoricalSharedPoolSeedProjection } from './discovery-quality-base';
+import { bindHistoricalQualityTls } from './discovery-quality-tls';
 
 export interface HistoricalQualityBaseCommandDependencies {
   createVerifier(): Promise<{
@@ -91,7 +92,8 @@ async function createDatabaseConnection(): Promise<{
 }> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL is required for historical quality base runtime');
-  const client = postgres(databaseUrl, { prepare: false });
+  const { postgresOptions } = bindHistoricalQualityTls(databaseUrl);
+  const client = postgres(databaseUrl, { prepare: false, ...postgresOptions });
   const db = drizzle(client, { schema }) as DrizzleDB;
   return {
     db,
