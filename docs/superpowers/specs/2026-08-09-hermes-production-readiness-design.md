@@ -124,6 +124,24 @@ All existing dashboard and tool operations migrate through this transport. Produ
 
 The plugin verifies the connector's code signature, Team ID, embedded release identity, protocol version, file ownership, non-symlink path, and expected SHA-256 from signed release metadata before use.
 
+### Connector launch attestation
+
+macOS does not provide `fexecve` or `execveat`, and its synthetic `/dev/fd/N` vnode cannot activate a Mach-O image. The plugin therefore must not treat `/dev/fd/N` execution as a descriptor-bound verify/execute primitive.
+
+For the one-shot connector protocol, the plugin stages the verified bundle in a private random directory and launches its ordinary executable pathname with `POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_START_SUSPENDED`. Before the child can execute user code or receive request bytes, the plugin derives the child's dynamic `SecCode` from its PID and requires all of the following:
+
+- validity against the locally pinned designated requirement;
+- exact Team ID `LMQ3XNXLAD`;
+- exact bundle ID `network.index.connector`;
+- a loaded architecture CDHash that is present in the architecture-aware CDHash set from the already statically verified connector release;
+- consistency with the statically verified release SHA-256 and signed CMS metadata.
+
+The expected identity comes only from local immutable build pins plus signed release metadata. CMS-provided Team ID, bundle ID, or designated requirement values never override the local pins.
+
+Any spawn, dynamic-code lookup, validity, identity, or CDHash failure kills and reaps the still-suspended child. The plugin closes all pipe ends and returns a stable sanitized failure. Only after every check passes does it send `SIGCONT` and begin the bounded stdin write and response deadline. `POSIX_SPAWN_CLOEXEC_DEFAULT` remains mandatory; removing it would leak unrelated descriptors from the multithreaded host and would not create descriptor-based executable activation.
+
+Authenticated XPC or `SMAppService` is an allowed future hardening path, but is not required for this one-shot protocol while suspended dynamic attestation is enforced.
+
 ### Keychain layout
 
 Use separate generic-password items:
@@ -234,14 +252,25 @@ When offline, local activity stops immediately, but the encrypted Keychain crede
 
 ## Failure Handling
 
-- Any state, PKCE, callback, signature, Team ID, protocol-version, endpoint, or generation mismatch fails closed.
+- Any state, PKCE, callback, static or dynamic code signature, CDHash, Team ID, bundle ID, protocol-version, endpoint, or generation mismatch fails closed.
 - Keychain write must be followed by a read/identity verification before activation.
 - Keychain deletion occurs only after confirmed server revocation.
 - Server issuance, activation, rotation, rollback, and disconnect remain transactionally generation-fenced.
 - Connector crashes never cause Index fallback to wait beyond the existing heartbeat bound.
 - Malformed connector requests and oversized payloads return stable sanitized errors.
+- Connector request bytes are not written until the suspended child passes dynamic code attestation. Attestation failure kills and reaps the child before it runs user code.
 - Connector and plugin logs contain operation names and opaque correlation IDs, never credentials, authorization codes, PKCE verifiers, consultation prose, owner memory, or model-authored outbound text.
 - Production Web Inspector is disabled. The macOS app replaces JavaScript credential injection with a native allowlisted request bridge, so owner credentials never enter JavaScript.
+
+### Launch-attestation verification
+
+Native macOS CI proves:
+
+- a statically verified expected connector is dynamically attested, resumed, and receives input;
+- replacing the staged pathname with a differently signed executable before spawn is detected from the loaded child's dynamic identity, the suspended child is killed and reaped, and its user code never creates a sentinel;
+- an unrelated parent descriptor is absent in the child under `POSIX_SPAWN_CLOEXEC_DEFAULT`;
+- timeout, signal, pipe, dynamic-code lookup, and kill/reap failures converge without a live child or leaked request data;
+- architecture-aware CDHash admission works for Apple Silicon and Intel slices of the Universal 2 release on available runners.
 
 ## Database and Operational Assurance
 
