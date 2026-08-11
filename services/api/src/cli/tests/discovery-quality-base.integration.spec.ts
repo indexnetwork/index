@@ -474,12 +474,19 @@ dbDescribe('historical quality protected-base integration', () => {
 
   it('performs read-only base verification with zero writes and matches restored child state', async () => {
     await assertReadOnlySession(async (statement) => baseClient!.unsafe(statement));
-    await expect(baseClient!.unsafe('update eval_matrix_metadata set seeded_at = seeded_at')).rejects.toThrow();
+    let readOnlyError: unknown;
+    try {
+      await baseClient!.unsafe('update eval_matrix_metadata set seeded_at = seeded_at');
+    } catch (error) {
+      readOnlyError = error;
+    }
+    expect(readOnlyError).toBeInstanceOf(postgres.PostgresError);
+    if (readOnlyError instanceof postgres.PostgresError) expect(readOnlyError.code).toBe('25006');
     await verifyHistoricalQualityPublishedState(baseDb, projection, productionHistoricalQualityBaseDependencies);
     const childState = await currentState();
     expect(childState).toEqual(baselineState);
     expect(childState).toEqual(await currentState(baseDb));
-  }, { timeout: 240_000 });
+  });
 
   it('uses only mocked embedding seams and never constructs a model/provider adapter', () => {
     expect(providerCalls).toBeGreaterThan(0);
