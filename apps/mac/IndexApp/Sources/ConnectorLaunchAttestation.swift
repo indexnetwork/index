@@ -60,9 +60,23 @@ enum HermesConnectorCodeAttestor {
             throw HermesConnectorAttestationError.invalidIdentity
         }
 
+        // Swift does not expose SecCodeCopySigningInformation's documented
+        // implicit SecCode-to-SecStaticCode conversion. Use the explicit bridge
+        // after dynamic validity succeeds. With default flags the static view is
+        // narrowed to the architecture loaded by this child, so its labels and
+        // kSecCodeInfoUnique describe the validated running image.
+        var loadedStaticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(
+            dynamicCode,
+            SecCSFlags(),
+            &loadedStaticCode
+        ) == errSecSuccess, let loadedStaticCode else {
+            throw HermesConnectorAttestationError.invalidIdentity
+        }
+
         var signingInformation: CFDictionary?
         guard SecCodeCopySigningInformation(
-            dynamicCode,
+            loadedStaticCode,
             SecCSFlags(rawValue: kSecCSSigningInformation),
             &signingInformation
         ) == errSecSuccess,
