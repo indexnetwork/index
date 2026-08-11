@@ -855,6 +855,13 @@
       "when": 1786366934585,
       "tag": "0121_add_index_app_owner_authorizations",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1786469851097,
+      "tag": "0122_add_hermes_emergency_receipts",
+      "breakpoints": true
     }
   ]
 }

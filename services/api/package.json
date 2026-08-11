@@ -23,6 +23,7 @@
     "db:flush": "bun ./src/cli/db-flush.ts",
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:hermes-preflight": "bun ./src/cli/hermes-migration-preflight.ts",
+    "maintenance:hermes-emergency-control": "bun ./src/cli/hermes-emergency-control.ts",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:audit-experiment-emails": "bun ./src/cli/audit-experiment-email-collisions.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
