@@ -14,9 +14,8 @@
  * - ContactToolDeps — host capabilities for contact management tools.
  *
  * IND-549: canonical ports surface for the contacts capability.
- * Legacy paths:
+ * Legacy path:
  *   - shared/interfaces/contact.interface.ts → re-exports types from here
- *   - capabilities/contacts.tools.port.ts → re-exports ContactToolDeps from here
  */
 
 // ── Persistence ───────────────────────────────────────────────────────────────
