@@ -35,9 +35,28 @@ for command in bun curl docker; do
   command -v "$command" >/dev/null 2>&1 || fail "$command is required."
 done
 
+canonical_repository() {
+  local repository="${1,,}"
+  local last_component
+  last_component="${repository##*/}"
+  if [[ "$last_component" == *:* ]]; then
+    repository="${repository%:*}"
+  fi
+  case "$repository" in
+    index.docker.io/*) repository="docker.io/${repository#index.docker.io/}" ;;
+    */*)
+      case "${repository%%/*}" in
+        *.*|*:*|localhost) ;;
+        *) repository="docker.io/$repository" ;;
+      esac
+      ;;
+    *) repository="docker.io/library/$repository" ;;
+  esac
+  printf '%s' "$repository"
+}
+
 temporary_directory="$(mktemp -d)"
 container_id=''
-seeded=false
 fixture_id=''
 credential=''
 credential_hash=''
@@ -51,18 +70,20 @@ cleanup() {
     docker stop "$container_id" >/dev/null 2>&1 || cleanup_failed=true
     docker rm "$container_id" >/dev/null 2>&1 || cleanup_failed=true
   fi
-  if test "$seeded" = true && test -n "$fixture_id"; then
+  if test -n "$fixture_id"; then
     if ! HERMES_COMPAT_OPERATION=cleanup HERMES_COMPAT_FIXTURE_ID="$fixture_id" bun - >/dev/null 2>&1 <<'BUN'
 import postgres from 'postgres';
 const fixtureId = process.env.HERMES_COMPAT_FIXTURE_ID;
 const databaseUrl = process.env.DATABASE_URL;
 if (!fixtureId || !databaseUrl) process.exit(1);
 const sql = postgres(databaseUrl, { max: 1 });
+const permissionId = `permission-${fixtureId}`;
 const credentialId = `credential-${fixtureId}`;
 const agentId = `hermes-compat-agent-${fixtureId}`;
 const userId = `hermes-compat-user-${fixtureId}`;
 try {
   await sql.begin(async (tx) => {
+    await tx.unsafe('DELETE FROM agent_permissions WHERE id = $1', [permissionId]);
     await tx.unsafe('DELETE FROM hermes_agent_credentials WHERE id = $1', [credentialId]);
     await tx.unsafe('DELETE FROM agents WHERE id = $1', [agentId]);
     await tx.unsafe('DELETE FROM users WHERE id = $1', [userId]);
@@ -88,11 +109,24 @@ trap cleanup EXIT INT TERM
 
 if test "$immutable_input" = true; then
   docker pull "$PREVIOUS_API_IMAGE" >/dev/null
-  image_digest="$(docker inspect '--format={{index .RepoDigests 0}}' "$PREVIOUS_API_IMAGE" 2>/dev/null || true)"
-  test -n "$image_digest" || fail 'Protected compatibility image has no RepoDigest.'
-  [[ "$image_digest" =~ @sha256:[0-9a-f]{64}$ ]] || fail 'Protected compatibility image resolved to a mutable RepoDigest.'
-  expected_digest="${PREVIOUS_API_IMAGE##*@}"
-  test "${image_digest##*@}" = "$expected_digest" || fail 'Resolved RepoDigest does not match PREVIOUS_API_IMAGE.'
+  repo_digests="$(docker inspect '--format={{range .RepoDigests}}{{println .}}{{end}}' "$PREVIOUS_API_IMAGE" 2>/dev/null || true)"
+  test -n "$repo_digests" || fail 'Protected compatibility image has no RepoDigest.'
+  supplied_repository="$(canonical_repository "${PREVIOUS_API_IMAGE%@*}")"
+  supplied_digest="${PREVIOUS_API_IMAGE##*@}"
+  verified_repo_digest=false
+  while IFS= read -r candidate; do
+    test -n "$candidate" || continue
+    [[ "$candidate" =~ @sha256:[0-9a-f]{64}$ ]] || continue
+    candidate_repository="$(canonical_repository "${candidate%@*}")"
+    candidate_digest="${candidate##*@}"
+    if test "$candidate_repository" = "$supplied_repository" && test "$candidate_digest" = "$supplied_digest"; then
+      verified_repo_digest=true
+      break
+    fi
+  done <<<"$repo_digests"
+  test "$verified_repo_digest" = true \
+    || fail 'RepoDigests do not contain the exact supplied repository and digest.'
+  image_digest="$PREVIOUS_API_IMAGE"
 else
   image_digest="$(docker inspect '--format={{.Id}}' "$PREVIOUS_API_IMAGE" 2>/dev/null || true)"
   [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'Mutable test fixture did not resolve to a local image ID.'
@@ -147,16 +181,26 @@ if (
 const sql = postgres(databaseUrl, { max: 1 });
 const userId = `hermes-compat-user-${fixtureId}`;
 const agentId = `hermes-compat-agent-${fixtureId}`;
+const permissionId = `permission-${fixtureId}`;
 try {
   await sql.begin(async (tx) => {
     await tx.unsafe(
       'INSERT INTO users (id, email, name) VALUES ($1, $2, $3)',
       [userId, `hermes-compat-${fixtureId}@test.local`, 'Hermes compatibility fixture'],
     );
-    await tx.unsafe(
-      "INSERT INTO agents (id, owner_id, name, type, runtime_kind, installation_id, runtime_setup_attempt_id) VALUES ($1, $2, $3, 'external', 'hermes', $4, $5)",
-      [agentId, userId, 'Hermes compatibility fixture', `installation-${fixtureId}`, `setup-${fixtureId}`],
-    );
+    await tx`
+      INSERT INTO agents (
+        id, owner_id, name, type, status, runtime_kind, installation_id,
+        runtime_setup_attempt_id, handle_negotiations
+      ) VALUES (
+        ${agentId}, ${userId}, 'Hermes compatibility fixture', 'external', 'active',
+        'hermes', ${`installation-${fixtureId}`}, ${`setup-${fixtureId}`}, true
+      )
+    `;
+    await tx`
+      INSERT INTO agent_permissions (id, agent_id, user_id, scope, actions)
+      VALUES (${permissionId}, ${agentId}, ${userId}, 'global', ${tx.array(actions)})
+    `;
     await tx`
       INSERT INTO hermes_agent_credentials (
         id, secret_hash, owner_id, agent_id, installation_id, setup_attempt_id,
@@ -167,6 +211,10 @@ try {
         ${tx.array(actions)}, 'active', now(), now() + interval '1 hour', now()
       )
     `;
+    const [legacyCollision] = await tx<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM apikey WHERE key = ${credentialHash}
+    `;
+    if (Number(legacyCollision?.count ?? 0) !== 0) process.exit(1);
   });
 } finally {
   await sql.end();
@@ -175,14 +223,62 @@ BUN
 then
   fail 'Failed to seed the dedicated compatibility credential.'
 fi
-seeded=true
+
+if ! HERMES_COMPAT_OPERATION=verify-current \
+  HERMES_COMPAT_FIXTURE_ID="$fixture_id" \
+  HERMES_COMPAT_CREDENTIAL="$credential" \
+  HERMES_COMPAT_CREDENTIAL_HASH="$credential_hash" \
+  bun - >/dev/null 2>/dev/null <<'BUN'
+import postgres from 'postgres';
+import { hashApiKey } from './src/lib/apikey/credential';
+import { resolveHermesAgentCredential } from './src/guards/auth.guard';
+const databaseUrl = process.env.DATABASE_URL;
+const fixtureId = process.env.HERMES_COMPAT_FIXTURE_ID;
+const credential = process.env.HERMES_COMPAT_CREDENTIAL;
+const credentialHash = process.env.HERMES_COMPAT_CREDENTIAL_HASH;
+if (!databaseUrl || !fixtureId || !credential || !credentialHash) process.exit(1);
+const resolved = await resolveHermesAgentCredential(credential);
+if (
+  resolved.user.id !== `hermes-compat-user-${fixtureId}`
+  || resolved.principal.credentialId !== `credential-${fixtureId}`
+  || resolved.principal.agentId !== `hermes-compat-agent-${fixtureId}`
+  || resolved.principal.installationId !== `installation-${fixtureId}`
+  || resolved.principal.setupAttemptId !== `setup-${fixtureId}`
+  || resolved.principal.activationState !== 'active'
+) process.exit(1);
+const legacyHash = await hashApiKey(credential);
+if (legacyHash !== credentialHash) process.exit(1);
+const sql = postgres(databaseUrl, { max: 1 });
+try {
+  const [legacyCollision] = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM apikey WHERE key = ${legacyHash}
+  `;
+  if (Number(legacyCollision?.count ?? 0) !== 0) process.exit(1);
+} finally {
+  await sql.end();
+}
+BUN
+then
+  fail 'Fresh dedicated compatibility credential failed current authentication.'
+fi
 
 container_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
 container_id="$(
-  DATABASE_URL="$container_database_url" PORT=3001 NODE_ENV=production \
+  DATABASE_URL="$container_database_url" \
+  PORT=3001 \
+  NODE_ENV=production \
+  BETTER_AUTH_SECRET=hermes-compatibility-synthetic-auth-only \
+  CONNECT_JWT_SECRET=hermes-compatibility-synthetic-connect-only \
+  OPENROUTER_API_KEY=hermes-compatibility-provider-disabled \
+  S3_BUCKET=hermes-compatibility-synthetic-bucket \
+  S3_ACCESS_KEY_ID=hermes-compatibility-synthetic-access \
+  S3_SECRET_ACCESS_KEY=hermes-compatibility-synthetic-secret \
     docker run --detach \
+      --log-driver none \
       --add-host host.docker.internal:host-gateway \
       --env DATABASE_URL --env PORT --env NODE_ENV \
+      --env BETTER_AUTH_SECRET --env CONNECT_JWT_SECRET --env OPENROUTER_API_KEY \
+      --env S3_BUCKET --env S3_ACCESS_KEY_ID --env S3_SECRET_ACCESS_KEY \
       --publish 127.0.0.1::3001 \
       "$PREVIOUS_API_IMAGE"
 )"

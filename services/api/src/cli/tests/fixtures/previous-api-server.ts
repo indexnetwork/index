@@ -6,6 +6,12 @@ if (!databaseUrl || !Number.isInteger(port) || port < 1 || port > 65_535) proces
 
 const sql = postgres(databaseUrl, { max: 2 });
 
+/** Historical Better Auth API-key digest: SHA-256 encoded as unpadded base64url. */
+async function hashHistoricalApiKey(credential: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(credential));
+  return Buffer.from(digest).toString('base64url');
+}
+
 Bun.serve({
   hostname: '0.0.0.0',
   port,
@@ -31,11 +37,13 @@ Bun.serve({
       if (!credential) return new Response(null, { status: 401 });
       try {
         // This deliberately models the previous binary's legacy-table-only
-        // authentication boundary. It must not consult the dedicated table.
+        // authentication boundary using its actual hash algorithm. It must not
+        // consult the dedicated table.
+        const credentialHash = await hashHistoricalApiKey(credential);
         const rows = await sql`
           SELECT id
           FROM apikey
-          WHERE key = ${credential}
+          WHERE key = ${credentialHash}
             AND enabled = true
             AND (expires_at IS NULL OR expires_at > now())
           LIMIT 1

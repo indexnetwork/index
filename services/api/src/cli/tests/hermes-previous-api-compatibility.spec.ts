@@ -6,6 +6,11 @@ import { resolve } from 'node:path';
 const apiRoot = resolve(import.meta.dir, '../../..');
 const scriptPath = resolve(apiRoot, 'scripts/verify-hermes-previous-api-compatibility.sh');
 const workflowPath = resolve(apiRoot, '../../.github/workflows/hermes-backend-production-assurance.yml');
+const fixtureDockerfilePath = resolve(import.meta.dir, 'fixtures/previous-api.Dockerfile');
+const baseDockerfilePath = resolve(import.meta.dir, 'fixtures/previous-api-base.Dockerfile');
+const fixtureServerPath = resolve(import.meta.dir, 'fixtures/previous-api-server.ts');
+const taskReportPath = resolve(apiRoot, '../../.superpowers/sdd/2026-08-09-hermes-backend-production-assurance/task-4-report.md');
+const approvedRollbackBaseSha = '751f5a7ed143150488543db9a1b4ee1f1b833bfc';
 const productionDigest = `registry.example/index-api@sha256:${'a'.repeat(64)}`;
 const localImageId = `sha256:${'b'.repeat(64)}`;
 const disposableDatabaseUrl = 'postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance';
@@ -17,9 +22,11 @@ async function executable(path: string, source: string) {
 }
 
 async function contractEnvironment(options: {
-  repoDigest?: string;
+  repoDigests?: string;
   probeStatus?: number;
   seedFailure?: boolean;
+  seedCommitThenFailure?: boolean;
+  currentAuthenticationFailure?: boolean;
   cleanupFailure?: boolean;
 } = {}) {
   const directory = await mkdtemp(resolve(tmpdir(), 'hermes-previous-api-contract-'));
@@ -38,7 +45,15 @@ case "\${HERMES_COMPAT_OPERATION:-}" in
   hash) printf 'contractCredentialHash\\n' ;;
   seed)
     test "\${HERMES_COMPAT_CREDENTIAL:-}" = idxh_contractSecret
-    ${options.seedFailure ? `printf '%s\\n' "idxh_contractSecret contractCredentialHash ${disposableDatabaseUrl}" >&2; exit 68` : `printf 'seed\\n' >>"${lifecyclePath}"`}
+    ${options.seedFailure
+    ? `printf '%s\\n' "idxh_contractSecret contractCredentialHash ${disposableDatabaseUrl}" >&2; exit 68`
+    : options.seedCommitThenFailure
+      ? `printf 'seed-committed\\n' >>"${lifecyclePath}"; exit 68`
+      : `printf 'seed\\n' >>"${lifecyclePath}"`}
+    ;;
+  verify-current)
+    printf 'verify-current\\n' >>"${lifecyclePath}"
+    ${options.currentAuthenticationFailure ? `printf '%s\\n' "idxh_contractSecret contractCredentialHash ${disposableDatabaseUrl}" >&2; exit 70` : ':'}
     ;;
   cleanup)
     printf 'cleanup\\n' >>"${lifecyclePath}"
@@ -55,7 +70,7 @@ case "$command" in
   pull) exit 0 ;;
   inspect)
     case "$*" in
-      *RepoDigests*) printf '%s\\n' '${options.repoDigest ?? productionDigest}' ;;
+      *RepoDigests*) printf '%b' '${(options.repoDigests ?? `${productionDigest}\\n`).replaceAll("'", "'\\''")}' ;;
       *'.Id'*) printf '%s\\n' '${localImageId}' ;;
       *HostPort*) printf '49173\\n' ;;
       *) exit 65 ;;
@@ -169,7 +184,7 @@ describe('previous API compatibility shell gate', () => {
     expect(observableOutput).not.toContain('idxh_');
     expect(observableOutput).not.toContain('contractCredentialHash');
     expect(observableOutput).not.toContain(disposableDatabaseUrl);
-    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nstop\nrm\ncleanup\n');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
   });
 
   test('sanitizes database seeding failures instead of forwarding secret-bearing diagnostics', async () => {
@@ -185,6 +200,7 @@ describe('previous API compatibility shell gate', () => {
     expect(observableOutput).not.toContain('idxh_');
     expect(observableOutput).not.toContain('contractCredentialHash');
     expect(observableOutput).not.toContain(disposableDatabaseUrl);
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('cleanup\n');
   });
 
   test('binds the validated canonical actions through postgres typed-array support', async () => {
@@ -220,11 +236,53 @@ describe('previous API compatibility shell gate', () => {
     expect(observableOutput).not.toContain('idxh_');
     expect(observableOutput).not.toContain('contractCredentialHash');
     expect(observableOutput).not.toContain(disposableDatabaseUrl);
-    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nstop\nrm\ncleanup\n');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+  });
+
+  test('cleans up a transaction that commits before the seed process exits nonzero', async () => {
+    const contract = await contractEnvironment({ seedCommitThenFailure: true });
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('Failed to seed the dedicated compatibility credential');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed-committed\ncleanup\n');
+  });
+
+  test('fails closed when current production authentication cannot resolve the seeded credential', async () => {
+    const contract = await contractEnvironment({ currentAuthenticationFailure: true });
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('failed current authentication');
+    const observableOutput = `${result.stdout}${result.stderr}`;
+    expect(observableOutput).not.toContain('idxh_');
+    expect(observableOutput).not.toContain('contractCredentialHash');
+    expect(observableOutput).not.toContain(disposableDatabaseUrl);
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\ncleanup\n');
+  });
+
+  test('accepts an exact supplied repository digest found after another RepoDigest alias', async () => {
+    const contract = await contractEnvironment({
+      repoDigests: `other.example/index-api@sha256:${'c'.repeat(64)}\\n${productionDigest}\\n`,
+    });
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(await readFile(contract.reportPath, 'utf8')).imageDigest).toBe(productionDigest);
+  });
+
+  test('rejects a different repository alias even when its digest suffix matches', async () => {
+    const contract = await contractEnvironment({
+      repoDigests: `other.example/index-api@sha256:${'a'.repeat(64)}\\n`,
+    });
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('exact supplied repository and digest');
   });
 
   test('fails protected mode when the pulled image has no RepoDigest', async () => {
-    const contract = await contractEnvironment({ repoDigest: '' });
+    const contract = await contractEnvironment({ repoDigests: '' });
     const result = runCompatibility({
       ...contract.env,
       PREVIOUS_API_IMAGE: productionDigest,
@@ -262,21 +320,68 @@ describe('previous API compatibility shell gate', () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr.toString()).toContain('expected HTTP 401');
     expect(await Bun.file(contract.reportPath).exists()).toBe(false);
-    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nstop\nrm\ncleanup\n');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\nstop\nrm\ncleanup\n');
+  });
+
+  test('seeds and removes the complete current dedicated authority contract', async () => {
+    const script = await readFile(scriptPath, 'utf8');
+    const permissionInsert = script.indexOf('INSERT INTO agent_permissions');
+    const permissionDelete = script.indexOf('DELETE FROM agent_permissions WHERE id = $1');
+    const credentialDelete = script.indexOf('DELETE FROM hermes_agent_credentials WHERE id = $1');
+
+    expect(permissionInsert).toBeGreaterThan(-1);
+    expect(script).toContain("'global', ${tx.array(actions)}");
+    expect(script).toMatch(/status,\s+runtime_kind, installation_id,\s+runtime_setup_attempt_id/);
+    expect(script).toContain('resolveHermesAgentCredential(credential)');
+    expect(script).toContain('SELECT count(*)::int AS count FROM apikey WHERE key =');
+    expect(permissionDelete).toBeGreaterThan(-1);
+    expect(credentialDelete).toBeGreaterThan(permissionDelete);
+  });
+
+  test('disables Docker request logs and documents the external-sink boundary', async () => {
+    const script = await readFile(scriptPath, 'utf8');
+    const report = await readFile(taskReportPath, 'utf8');
+    expect(script).toContain('--log-driver none');
+    expect(report).toContain('independent external logging sink');
   });
 });
 
 describe('workflow compatibility modes', () => {
-  test('keeps PR fixture evidence separate from the protected release-ops gate', async () => {
+  test('builds the derived approved rollback-base API and keeps it distinct from protected evidence', async () => {
     const workflow = await readFile(workflowPath, 'utf8');
 
-    expect(workflow).toContain('previous-api-pr-fixture-evidence:');
-    expect(workflow).toContain('Non-production PR fixture compatibility evidence');
+    expect(workflow).toContain('previous-api-pr-base-evidence:');
+    expect(workflow).toContain('Non-production PR rollback-base API evidence');
+    expect(workflow).toContain(`EXPECTED_ROLLBACK_BASE_SHA: ${approvedRollbackBaseSha}`);
+    expect(workflow).toContain('git merge-base origin/main origin/feat/hermes-secure-standalone-connect');
+    expect(workflow).toContain('git archive "$derived_base_sha"');
+    expect(workflow).toContain('previous-api-base.Dockerfile');
+    expect(workflow).not.toContain('Build local previous-API fixture');
+    expect(workflow).toContain('previous-api-compatibility-base-${{ steps.rollback_base.outputs.base_sha }}.json');
     expect(workflow).toContain('previous-api-protected-compatibility:');
     expect(workflow).toContain('environment: production');
     expect(workflow).toContain('PREVIOUS_API_IMAGE: ${{ inputs.PREVIOUS_API_IMAGE }}');
     expect(workflow).toContain('required: true');
     const protectedJob = workflow.slice(workflow.indexOf('previous-api-protected-compatibility:'));
     expect(protectedJob).not.toMatch(/PREVIOUS_API_IMAGE:\s*(?:ghcr|docker|index-api|sha256)/);
+  });
+
+  test('pins both image harnesses and installs only from a frozen repository lockfile', async () => {
+    const fixtureDockerfile = await readFile(fixtureDockerfilePath, 'utf8');
+    const baseDockerfile = await readFile(baseDockerfilePath, 'utf8').catch(() => '');
+    for (const dockerfile of [fixtureDockerfile, baseDockerfile]) {
+      expect(dockerfile).toMatch(/^FROM oven\/bun:1\.3\.14-alpine@sha256:[0-9a-f]{64}$/m);
+      expect(dockerfile).toContain('bun install --frozen-lockfile');
+      expect(dockerfile).not.toContain('bun add');
+    }
+    expect(baseDockerfile).toContain('CMD ["bun", "--preload", "./dist/instrument.js", "./dist/main.js"]');
+  });
+
+  test('the synthetic contract server hashes legacy credentials with the historical algorithm', async () => {
+    const fixtureServer = await readFile(fixtureServerPath, 'utf8');
+    expect(fixtureServer).toContain("crypto.subtle.digest('SHA-256'");
+    expect(fixtureServer).toContain("Buffer.from(digest).toString('base64url')");
+    expect(fixtureServer).toContain('WHERE key = ${credentialHash}');
+    expect(fixtureServer).not.toContain('WHERE key = ${credential}');
   });
 });

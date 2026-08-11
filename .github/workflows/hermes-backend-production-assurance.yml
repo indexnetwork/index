@@ -21,8 +21,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  previous-api-pr-fixture-evidence:
-    name: Non-production PR fixture compatibility evidence
+  previous-api-pr-base-evidence:
+    name: Non-production PR rollback-base API evidence
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     services:
@@ -39,12 +39,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
           no-cache: true
 
-      - name: Install frozen dependencies
+      - name: Install frozen current dependencies
         run: |
           bun pm cache rm || true
           bun install --frozen-lockfile
@@ -73,27 +75,58 @@ jobs:
           TEST_DATABASE_SAFE: "1"
         run: bun run --cwd services/api db:migrate:test
 
-      - name: Build local previous-API fixture
+      - name: Derive and export approved rollback base
+        id: rollback_base
+        env:
+          EXPECTED_ROLLBACK_BASE_SHA: 751f5a7ed143150488543db9a1b4ee1f1b833bfc
         run: |
-          docker build -t index-api-previous-fixture:pr \
-            -f services/api/src/cli/tests/fixtures/previous-api.Dockerfile \
-            services/api/src/cli/tests/fixtures
+          set -euo pipefail
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/feat/hermes-secure-standalone-connect:refs/remotes/origin/feat/hermes-secure-standalone-connect
+          derived_base_sha="$(git merge-base origin/main origin/feat/hermes-secure-standalone-connect)"
+          test "$derived_base_sha" = "$EXPECTED_ROLLBACK_BASE_SHA"
+          test "$(git cat-file -t "$derived_base_sha")" = commit
+          git merge-base --is-ancestor "$derived_base_sha" "$GITHUB_SHA"
+          base_dir="$RUNNER_TEMP/hermes-rollback-base"
+          rm -rf "$base_dir"
+          mkdir -p "$base_dir"
+          git archive "$derived_base_sha" | tar -x -C "$base_dir"
+          printf 'base_sha=%s\nbase_dir=%s\n' "$derived_base_sha" "$base_dir" >>"$GITHUB_OUTPUT"
 
-      - name: Record non-production fixture denial
+      - name: Build real rollback-base API production image
+        id: rollback_image
+        env:
+          BASE_SHA: ${{ steps.rollback_base.outputs.base_sha }}
+          BASE_DIR: ${{ steps.rollback_base.outputs.base_dir }}
+        run: |
+          set -euo pipefail
+          image_tag="index-api-rollback-base:${BASE_SHA}"
+          docker build \
+            --file services/api/src/cli/tests/fixtures/previous-api-base.Dockerfile \
+            --tag "$image_tag" \
+            "$BASE_DIR"
+          image_id="$(docker inspect --format='{{.Id}}' "$image_tag")"
+          test -n "$image_id"
+          printf 'image_id=%s\n' "$image_id" >>"$GITHUB_OUTPUT"
+          printf '### Non-production rollback-base compatibility evidence\n- Base SHA: `%s`\n- Local image ID: `%s`\n' \
+            "$BASE_SHA" "$image_id" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Record non-production rollback-base denial
         env:
           NODE_ENV: test
           ALLOW_MUTABLE_PREVIOUS_IMAGE: "1"
-          PREVIOUS_API_IMAGE: index-api-previous-fixture:pr
+          PREVIOUS_API_IMAGE: ${{ steps.rollback_image.outputs.image_id }}
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
           TEST_DATABASE_SAFE: "1"
-          HERMES_PREVIOUS_API_REPORT: previous-api-compatibility-pr-fixture.json
+          HERMES_PREVIOUS_API_REPORT: previous-api-compatibility-base-${{ steps.rollback_base.outputs.base_sha }}.json
         run: bun run --cwd services/api verify:hermes-previous-api-compatibility
 
-      - name: Upload non-production compatibility evidence
+      - name: Upload non-production rollback-base compatibility evidence
         uses: actions/upload-artifact@v4
         with:
-          name: non-production-previous-api-pr-fixture-evidence
-          path: services/api/previous-api-compatibility-pr-fixture.json
+          name: non-production-previous-api-base-${{ steps.rollback_base.outputs.base_sha }}
+          path: services/api/previous-api-compatibility-base-${{ steps.rollback_base.outputs.base_sha }}.json
           if-no-files-found: error
           retention-days: 14
 
