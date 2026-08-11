@@ -59,6 +59,31 @@ describe('isolated test inventory', () => {
     expect(lifecycle).toContain("activation_state IN ('pending', 'active')");
     expect(lifecycle).toContain("sql`${schema.hermesAgentCredentials.expiresAt} <= now()`");
     expect(lifecycle).not.toContain('await Bun.sleep(');
+    expect(lifecycle).toContain("for (const first of ['prepare', 'disconnect'] as const)");
+    expect(lifecycle).toContain('await waitForOwnerRuntimeWaiters(held.backendPid, 2)');
+    expect(lifecycle).toContain("throw new AggregateError(cleanupErrors, 'Hermes lifecycle fixture cleanup failed')");
+
+    expect(authority).toContain('new HermesAuthorizationService(');
+    expect(authority).toContain('resolveHermesAgentCredential(rawCredential)');
+    expect(authority).toContain('rearmCalls.push({');
+    expect(authority).not.toContain('authorizePickup: async () => true');
+    expect(authority).toContain("throw new AggregateError(cleanupErrors, 'Negotiation authority fixture cleanup failed')");
+  });
+
+  it('keeps dedicated credential denial logging and assurance runner output identity-free', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const authGuard = readFileSync(path.join(apiRoot, 'src/guards/auth.guard.ts'), 'utf8');
+    const runner = readFileSync(path.join(apiRoot, 'scripts/test-hermes-production-assurance.sh'), 'utf8');
+    const denialLogger = authGuard.slice(
+      authGuard.indexOf('function invalidHermesAgentCredential'),
+      authGuard.indexOf('/** Resolve one exact active dedicated principal'),
+    );
+
+    expect(denialLogger).toContain("logger.warn('Hermes agent credential rejected', { reason })");
+    expect(denialLogger).not.toContain('keyHashPrefix');
+    expect(runner).toContain('API_TEST_HERMES_ASSURANCE_QUIET=1');
+    expect(runner).toContain('sanitize-hermes-assurance-output.ts');
+    expect(runner).toContain('exit "$status"');
   });
 
   it('parses every Hermes assurance target with Bun without importing database code', () => {

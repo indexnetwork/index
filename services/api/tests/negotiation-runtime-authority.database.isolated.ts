@@ -6,7 +6,7 @@ process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
 
 import { afterAll, describe, expect, it as bunIt, mock } from 'bun:test';
 import { randomUUID } from 'crypto';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { settlePromiseOutcome, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
 
 const it = withMinimumDatabaseTestBudget(bunIt, 60_000);
@@ -14,9 +14,15 @@ const it = withMinimumDatabaseTestBudget(bunIt, 60_000);
 mock.module('../src/queues/negotiations/timeout.queue', () => ({
   negotiationTimeoutQueue: {
     cancelTimeout: async () => undefined,
-    enqueueTimeout: async (negotiationId: string) => {
+    enqueueTimeout: async (
+      negotiationId: string,
+      turnNumber: number,
+      delayMs: number,
+      parkGeneration: string,
+      continuation?: unknown,
+    ) => {
+      rearmCalls.push({ negotiationId, turnNumber, delayMs, parkGeneration, continuation });
       if (failRearm) throw new Error('injected queue delivery failure');
-      rearmedNegotiations.push(negotiationId);
       return 'park-timeout';
     },
     enqueueAskUserExpiry: async () => 'expiry',
@@ -38,57 +44,120 @@ mock.module('../src/adapters/negotiator-memory.retrieval.adapter', () => ({
 
 const { NegotiationPollingService, ConflictError, UnauthorizedError } = await import('../src/services/negotiation-polling.service');
 const { AgentRuntimeService } = await import('../src/services/agent-runtime.service');
+const { HermesAuthorizationService } = await import('../src/services/hermes-authorization.service');
 const { agentDatabaseAdapter } = await import('../src/adapters/agent.database.adapter');
+const { HermesAuthorizationDatabaseAdapter } = await import('../src/adapters/hermes-authorization.database.adapter');
 const { conversationDatabaseAdapter } = await import('../src/adapters/database.adapter');
 const { HERMES_RESPONSE_ATOMIC_STEPS } = await import('../src/adapters/conversation.database.adapter');
 const { claimParkedContinuationExecutionForTimeout } = await import('../src/adapters/negotiation-continuation.atomic');
 const { default: db } = await import('../src/lib/drizzle/drizzle');
 const { computeIntentFingerprint } = await import('../src/lib/intent/intent.fingerprint');
+const { HERMES_CANONICAL_ACTIONS } = await import('../src/lib/agent/hermes-capabilities');
+const { hashHermesSecret } = await import('../src/lib/agent/hermes-authorization');
+const { resolveHermesAgentCredential } = await import('../src/guards/auth.guard');
+const { AMBIENT_PARK_WINDOW_MS } = await import('@indexnetwork/protocol');
 const schema = await import('../src/schemas/database.schema');
 
+const fixtureTag = randomUUID();
 const cleanupUsers: string[] = [];
+const cleanupAuthorizations: string[] = [];
 const cleanupConversations: string[] = [];
 const cleanupNetworks: string[] = [];
 const cleanupOpportunities: string[] = [];
 const CONTROLLED_OLD_HEARTBEAT = new Date('2020-01-02T03:04:05.000Z');
-const rearmedNegotiations: string[] = [];
+const rearmCalls: Array<{
+  negotiationId: string;
+  turnNumber: number;
+  delayMs: number;
+  parkGeneration: string;
+  continuation?: unknown;
+}> = [];
 let failRearm = false;
 
 type RuntimeFixture = Awaited<ReturnType<typeof fixture>>;
 type RuntimeInvalidation = 'deselect' | 'disconnect' | 'rotate';
 type PickupBoundary = 'empty' | 'existing' | 'new';
 
+async function prepareDedicatedRuntime(owner: string, label: string) {
+  const runtime = new AgentRuntimeService(agentDatabaseAdapter);
+  const authorization = new HermesAuthorizationService(new HermesAuthorizationDatabaseAdapter());
+  const installationId = randomUUID();
+  const state = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+  const verifier = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+  const redirectUri = 'http://127.0.0.1:49152/callback';
+  const request = await authorization.createAuthorization({
+    installationId,
+    redirectUri,
+    state,
+    codeChallenge: await hashHermesSecret(verifier),
+    actions: HERMES_CANONICAL_ACTIONS,
+  });
+  cleanupAuthorizations.push(request.requestId);
+  const approved = await authorization.approveAuthorization(owner, request.requestId, state, redirectUri);
+  const exchange = await authorization.exchangeAuthorizationCode({
+    requestId: request.requestId,
+    code: approved.code,
+    verifier,
+    redirectUri,
+  });
+  expect(exchange.credential.startsWith('idxh_')).toBe(true);
+  const pendingPrincipal = await authorization.authenticatePendingHermesCredential(exchange.credential);
+  const active = await authorization.activatePendingHermesCredential(pendingPrincipal);
+  await runtime.setRuntime(owner, {
+    runtime: 'hermes',
+    installationId,
+    executorId: active.agentId,
+    setupAttemptId: active.setupAttemptId,
+  });
+  const rawCredential = exchange.credential;
+  const resolved = await resolveHermesAgentCredential(rawCredential);
+  const credentialHash = await hashHermesSecret(rawCredential);
+  const dedicatedRows = await db.select({
+    id: schema.hermesAgentCredentials.id,
+    actions: schema.hermesAgentCredentials.actions,
+    activationState: schema.hermesAgentCredentials.activationState,
+    hashMatchesRaw: sql<boolean>`${schema.hermesAgentCredentials.secretHash} = ${rawCredential}`,
+  }).from(schema.hermesAgentCredentials)
+    .where(eq(schema.hermesAgentCredentials.secretHash, credentialHash));
+  const legacyCountRows = await db.execute(sql`
+    SELECT count(*)::int AS count FROM apikeys WHERE key = ${credentialHash}
+  `);
+  expect(dedicatedRows).toHaveLength(1);
+  expect(dedicatedRows[0]?.actions).toEqual(HERMES_CANONICAL_ACTIONS);
+  expect(dedicatedRows[0]?.activationState).toBe('active');
+  expect(dedicatedRows[0]?.hashMatchesRaw).toBe(false);
+  expect(Number((legacyCountRows as unknown as Array<{ count: number }>)[0]?.count ?? 0)).toBe(0);
+  expect(resolved.user.id).toBe(owner);
+  expect(resolved.principal.actions).toEqual(HERMES_CANONICAL_ACTIONS);
+
+  return {
+    owner,
+    runtime,
+    installationId,
+    setupAttemptId: active.setupAttemptId,
+    prepared: {
+      executorId: active.agentId,
+      credential: { id: active.credentialId, expiresAt: active.expiresAt.toISOString() },
+    },
+    principal: resolved.principal,
+    clock: { now: Date.now() },
+    label,
+  };
+}
+
 async function fixture(label: string) {
   const [owner, counterparty] = await Promise.all([label, `${label}-counterparty`].map(async (name) => {
     const [row] = await db.insert(schema.users).values({
-      email: `runtime-authority-${name}-${randomUUID()}@test.local`,
+      email: `runtime-authority-${fixtureTag}-${name}-${randomUUID()}@test.local`,
       name,
     }).returning({ id: schema.users.id });
     cleanupUsers.push(row.id);
     return row.id;
   }));
-  const runtime = new AgentRuntimeService(agentDatabaseAdapter);
-  const installationId = randomUUID();
-  const setupAttemptId = randomUUID();
-  const prepared = await runtime.prepareHermes(owner, installationId, setupAttemptId);
-  await runtime.setRuntime(owner, {
-    runtime: 'hermes',
-    installationId,
-    executorId: prepared.executorId,
-    setupAttemptId,
-  });
-  const principal = {
-    credentialId: prepared.credential.id,
-    agentId: prepared.executorId,
-    audience: 'hermes-negotiator' as const,
-    setupAttemptId,
-  };
+  const preparedRuntime = await prepareDedicatedRuntime(owner, label);
   const responseFault: { afterStep?: (step: typeof HERMES_RESPONSE_ATOMIC_STEPS[number]) => void | Promise<void> } = {};
   const service = new NegotiationPollingService(
-    {
-      authorizePickup: async () => true,
-      authorizeRespond: async () => true,
-    } as never,
+    undefined,
     conversationDatabaseAdapter,
     {
       getTask: conversationDatabaseAdapter.getTask.bind(conversationDatabaseAdapter),
@@ -101,8 +170,9 @@ async function fixture(label: string) {
         ...(responseFault.afterStep ? { faultAfterStep: responseFault.afterStep } : {}),
       }),
     },
+    () => preparedRuntime.clock.now,
   );
-  return { owner, counterparty, runtime, installationId, setupAttemptId, prepared, principal, service, responseFault };
+  return { ...preparedRuntime, counterparty, service, responseFault };
 }
 
 async function pickup(value: RuntimeFixture, runId = randomUUID()) {
@@ -110,25 +180,14 @@ async function pickup(value: RuntimeFixture, runId = randomUUID()) {
 }
 
 async function prepareRuntimeForUser(owner: string, label: string) {
-  const runtime = new AgentRuntimeService(agentDatabaseAdapter);
-  const installationId = `${label}-${randomUUID()}`;
-  const setupAttemptId = randomUUID();
-  const prepared = await runtime.prepareHermes(owner, installationId, setupAttemptId);
-  await runtime.setRuntime(owner, {
-    runtime: 'hermes', installationId, executorId: prepared.executorId, setupAttemptId,
-  });
-  const principal = {
-    credentialId: prepared.credential.id,
-    agentId: prepared.executorId,
-    audience: 'hermes-negotiator' as const,
-    setupAttemptId,
-  };
+  const preparedRuntime = await prepareDedicatedRuntime(owner, label);
   const service = new NegotiationPollingService(
-    { authorizePickup: async () => true, authorizeRespond: async () => true } as never,
+    undefined,
     conversationDatabaseAdapter,
     conversationDatabaseAdapter,
+    () => preparedRuntime.clock.now,
   );
-  return { owner, runtime, installationId, setupAttemptId, prepared, principal, service };
+  return { ...preparedRuntime, service };
 }
 
 async function seedWaitingTask(owner: string, counterparty: string) {
@@ -156,7 +215,7 @@ async function seedWaitingTask(owner: string, counterparty: string) {
 async function seedConsultableClaim(label: string) {
   const value = await fixture(label);
   const [network] = await db.insert(schema.networks).values({
-    title: `Runtime authority ${label} ${randomUUID()}`,
+    title: `Runtime authority ${fixtureTag} ${label} ${randomUUID()}`,
     description: 'isolated runtime authority fixture',
     isPersonal: false,
   }).returning({ id: schema.networks.id });
@@ -425,19 +484,54 @@ async function queueInvalidationBeforeContender<T>(
 }
 
 afterAll(async () => {
+  const cleanupErrors: unknown[] = [];
+  const capture = async (operation: () => Promise<unknown>) => {
+    try {
+      await operation();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  };
+
   for (const id of cleanupConversations) {
-    await conversationDatabaseAdapter.deleteConversation(id).catch(() => undefined);
+    await capture(() => conversationDatabaseAdapter.deleteConversation(id));
+  }
+  if (cleanupAuthorizations.length) {
+    await capture(() => db.delete(schema.hermesAuthorizations)
+      .where(inArray(schema.hermesAuthorizations.requestId, cleanupAuthorizations)));
   }
   for (const id of cleanupOpportunities) {
-    await db.delete(schema.opportunities).where(eq(schema.opportunities.id, id)).catch(() => undefined);
+    await capture(() => db.delete(schema.opportunities).where(eq(schema.opportunities.id, id)));
   }
   for (const id of cleanupNetworks) {
-    await db.delete(schema.networks).where(eq(schema.networks.id, id)).catch(() => undefined);
+    await capture(() => db.delete(schema.networks).where(eq(schema.networks.id, id)));
   }
   for (const id of cleanupUsers) {
-    await db.delete(schema.users).where(eq(schema.users.id, id)).catch(() => undefined);
+    await capture(() => db.delete(schema.users).where(eq(schema.users.id, id)));
   }
+  await capture(async () => {
+    const rows = await db.execute(sql`
+      SELECT (
+        (SELECT count(*) FROM users WHERE email LIKE ${`runtime-authority-${fixtureTag}-%`})
+        + (SELECT count(*) FROM networks WHERE title LIKE ${`Runtime authority ${fixtureTag} %`})
+      )::int AS count
+    `);
+    const remainingAuthorizations = cleanupAuthorizations.length
+      ? await db.select({ id: schema.hermesAuthorizations.requestId })
+        .from(schema.hermesAuthorizations)
+        .where(inArray(schema.hermesAuthorizations.requestId, cleanupAuthorizations))
+      : [];
+    if (
+      Number((rows as unknown as Array<{ count: number }>)[0]?.count ?? 0) !== 0
+      || remainingAuthorizations.length !== 0
+    ) {
+      throw new Error('Negotiation authority fixture rows remain after cleanup');
+    }
+  });
   mock.restore();
+  if (cleanupErrors.length) {
+    throw new AggregateError(cleanupErrors, 'Negotiation authority fixture cleanup failed');
+  }
 });
 
 describe('real negotiation runtime authority SQL seam', () => {
@@ -511,15 +605,20 @@ describe('real negotiation runtime authority SQL seam', () => {
   it('preserves the original park-start deadline across a repeated existing-claim pickup', async () => {
     const value = await fixture('existing-deadline');
     const task = await seedWaitingTask(value.owner, value.counterparty);
+    const controlledParkOrigin = new Date(value.clock.now - 60_000);
+    await db.update(schema.tasks).set({
+      metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object(
+        'hermesParkStartedAt', ${controlledParkOrigin.toISOString()}
+      )`,
+      updatedAt: controlledParkOrigin,
+    }).where(eq(schema.tasks.id, task.id));
+
     const first = await pickup(value);
-    const afterFirst = await conversationDatabaseAdapter.getTask(task.id);
-    const parkStartedAt = (afterFirst?.metadata as Record<string, unknown> | undefined)?.hermesParkStartedAt;
     const repeated = await pickup(value);
-    if (!first || !repeated || typeof parkStartedAt !== 'string') {
-      throw new Error('Expected claimed pickup results with a persisted park origin');
-    }
-    expect(new Date(first.turn.deadline).getTime()).toBeGreaterThan(new Date(parkStartedAt).getTime());
-    expect(repeated.turn.deadline).toBe(first.turn.deadline);
+    if (!first || !repeated) throw new Error('Expected claimed pickup results');
+    const expectedDeadline = new Date(controlledParkOrigin.getTime() + AMBIENT_PARK_WINDOW_MS).toISOString();
+    expect(first.turn.deadline).toBe(expectedDeadline);
+    expect(repeated.turn.deadline).toBe(expectedDeadline);
     expect(repeated.taskId).toBe(task.id);
   });
 
@@ -661,7 +760,7 @@ describe('real negotiation runtime authority SQL seam', () => {
     const pickedUp = await pickup(value, runId);
     if (!pickedUp || !('runCapability' in pickedUp)) throw new Error('Missing dedicated run capability');
     const authority = { runId, capability: pickedUp.runCapability, outcome: 'responded' as const };
-    rearmedNegotiations.length = 0;
+    rearmCalls.length = 0;
     failRearm = true;
 
     await expect(value.service.respondHermes(
@@ -669,11 +768,18 @@ describe('real negotiation runtime authority SQL seam', () => {
       { action: 'request_time', roleAlignment: 'peers' }, value.principal, authority,
     )).rejects.toThrow('injected queue delivery failure');
     expect(await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId)).toHaveLength(1);
-    expect(rearmedNegotiations).not.toContain(task.id);
+    expect(rearmCalls).toHaveLength(1);
+    const failedEnqueue = rearmCalls[0];
     const pending = await conversationDatabaseAdapter.getTask(task.id);
-    expect((pending?.metadata as Record<string, Record<string, unknown>>).hermesResponseOutbox.deliveredAt).toBeUndefined();
+    const pendingOutbox = (pending?.metadata as Record<string, Record<string, unknown>>).hermesResponseOutbox;
+    const pendingQueueIntent = pendingOutbox.queueIntent as Record<string, Record<string, unknown>>;
+    const pendingRearm = pendingQueueIntent.rearmParkTimeout;
+    const deadlineAt = String(pendingRearm.deadlineAt);
+    expect(pendingOutbox.deliveredAt).toBeUndefined();
 
     failRearm = false;
+    value.clock.now = Date.parse(String(pendingOutbox.createdAt)) + 60_000;
+    const expectedDelay = Math.max(0, Date.parse(deadlineAt) - value.clock.now);
     // A later pickup session repairs by exact current agent/owner scope without
     // retaining or replaying the old raw response capability.
     await value.service.pickup(
@@ -683,9 +789,21 @@ describe('real negotiation runtime authority SQL seam', () => {
       randomUUID(),
     );
     expect(await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId)).toHaveLength(1);
-    expect(rearmedNegotiations).toContain(task.id);
+    expect(rearmCalls).toEqual([
+      failedEnqueue,
+      {
+        negotiationId: task.id,
+        turnNumber: pendingRearm.turnNumber,
+        delayMs: expectedDelay,
+        parkGeneration: pendingRearm.parkGeneration,
+        continuation: pendingRearm.continuation,
+      },
+    ]);
     const delivered = await conversationDatabaseAdapter.getTask(task.id);
-    expect(typeof (delivered?.metadata as Record<string, Record<string, unknown>>).hermesResponseOutbox.deliveredAt).toBe('string');
+    const deliveredOutbox = (delivered?.metadata as Record<string, Record<string, unknown>>).hermesResponseOutbox;
+    const deliveredQueueIntent = deliveredOutbox.queueIntent as Record<string, Record<string, unknown>>;
+    expect(typeof deliveredOutbox.deliveredAt).toBe('string');
+    expect(deliveredQueueIntent.rearmParkTimeout.deadlineAt).toBe(deadlineAt);
   });
 
   it('parks the exact continuation fence atomically on a continue/request-time response', async () => {
@@ -1149,7 +1267,7 @@ describe('real negotiation runtime authority SQL seam', () => {
       const runId = randomUUID();
       const pickedUp = await pickup(value, runId);
       if (!pickedUp || !('runCapability' in pickedUp)) throw new Error('Missing dedicated run capability');
-      rearmedNegotiations.length = 0;
+      rearmCalls.length = 0;
 
       let consumed!: () => void;
       let release!: () => void;
@@ -1189,7 +1307,7 @@ describe('real negotiation runtime authority SQL seam', () => {
         await invalidation;
         expect(await taskState(task.id)).toEqual({ state: 'waiting_for_agent', claimedByAgentId: value.prepared.executorId });
         expect(await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId)).toHaveLength(1);
-        expect(rearmedNegotiations).toContain(task.id);
+        expect(rearmCalls.some((call) => call.negotiationId === task.id)).toBe(true);
       } finally {
         held.release();
         release();

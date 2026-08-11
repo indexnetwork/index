@@ -107,6 +107,26 @@ describe('test environment lock', () => {
     expect(environment.NODE_ENV).toBe('test');
   });
 
+  it('preserves the parent-owned quiet assurance marker against env-file overrides', () => {
+    const environment: Record<string, string | undefined> = {
+      NODE_ENV: 'test',
+      API_TEST_HERMES_ASSURANCE_QUIET: '1',
+    };
+    const load = mock(() => {
+      environment.API_TEST_HERMES_ASSURANCE_QUIET = '0';
+      return { parsed: { API_TEST_HERMES_ASSURANCE_QUIET: '0' } };
+    });
+
+    expect(() => loadEnvironmentWithTestLock({
+      requestedNodeEnv: 'test',
+      testEnvPath: '/safe/.env.test',
+      developmentEnvPath: '/safe/.env.development',
+      environment,
+      load,
+    })).toThrow('may not declare reserved variable API_TEST_HERMES_ASSURANCE_QUIET');
+    expect(environment.API_TEST_HERMES_ASSURANCE_QUIET).toBe('1');
+  });
+
   it('rejects an isolated assurance target from .env.test and restores the package target', () => {
     const packageTarget = 'tests/negotiation-runtime-authority.database.isolated.ts';
     const environment: Record<string, string | undefined> = {

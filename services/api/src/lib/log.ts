@@ -323,6 +323,10 @@ function createLogger(
   source?: string
 ): LoggerWithSource {
   function emit(level: LogLevel, message: string, meta?: Record<string, unknown>) {
+    if (
+      process.env.NODE_ENV === 'test'
+      && process.env.API_TEST_HERMES_ASSURANCE_QUIET === '1'
+    ) return;
     if (!shouldLogByContext(context) || !shouldLog(level)) return;
     emitSentryLog(level, message, context, source, meta);
     const line = fmt(message, meta);

@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { HERMES_AGENT_AUDIENCE } from '../../lib/agent/hermes-authorization';
 import { HERMES_CANONICAL_ACTIONS } from '../../lib/agent/hermes-capabilities';
-import { HermesAgentRouteDeniedError, assertHermesAgentAudienceRoute, authenticateApiKey, authenticateHermesAgentCredential, authenticateRequestApiKey, authorizeHermesAgent, type ApiKeyAuthenticationStore, type HermesAgentAuthenticationCredential, type HermesAgentAuthenticationStore } from '../auth.guard';
+import { HermesAgentRouteDeniedError, assertHermesAgentAudienceRoute, authenticateApiKey, authenticateHermesAgentCredential, authenticateRequestApiKey, authorizeHermesAgent, resolveHermesAgentCredential, type ApiKeyAuthenticationStore, type HermesAgentAuthenticationCredential, type HermesAgentAuthenticationStore } from '../auth.guard';
 
 const ownerId = 'owner-hermes';
 const agentId = 'agent-hermes';
@@ -237,6 +237,22 @@ describe('full Hermes active credential authentication', () => {
       },
     )).rejects.toThrow('Invalid API key');
     expect(userLookups).toBe(0);
+  });
+
+  it('logs only the stable denial reason without credential-derived evidence', async () => {
+    const warning = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const rawCredential = rawFixtureCredential();
+    try {
+      await expect(resolveHermesAgentCredential(rawCredential, store(null)))
+        .rejects.toThrow('Invalid API key');
+      expect(warning).toHaveBeenCalledTimes(1);
+      const emitted = String(warning.mock.calls[0]?.[0]);
+      expect(emitted).toContain('"reason":"malformed_or_inactive_row"');
+      expect(emitted).not.toContain('keyHashPrefix');
+      expect(emitted).not.toContain(rawCredential);
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it('freezes the pre-change compatibility property: legacy auth queries only its apikey fixture and finds no idxh hash', async () => {

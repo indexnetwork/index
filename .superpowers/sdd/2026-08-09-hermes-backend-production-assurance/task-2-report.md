@@ -74,3 +74,28 @@ The follow-up:
 - verified a direct Bun parser invocation (`Bun parser: pass`), targeted ESLint, `tsc --noEmit`, the API build, and repository `git diff --check`.
 
 The real PostgreSQL behavior gate remains pending CI; this follow-up changes test syntax and provider-free parser coverage only.
+
+## Deep-review fix wave
+
+All four Important findings and the Minor finding from the Task 2 deep review were addressed in one bounded wave:
+
+1. **Same-owner ordering:** both prepare-first and disconnect-first cases now hold the owner advisory lock externally, observe the first backend waiter in `pg_locks`, observe a distinct second waiter on the same key, release the holder, assert operation-kind ordering, and verify one selected/live generation without elapsed-time inference.
+2. **Dedicated authority:** the negotiation authority fixture now creates, exchanges, activates, resolves, and selects a real `idxh_` credential through `HermesAuthorizationService`. Pickup, every response fault boundary, and retry/replay use the full `hermes-agent` principal and default real `NegotiationPollingAuthorization`. The fixture asserts exact canonical actions, hash-only dedicated storage, and zero matching `apikeys` rows.
+3. **Absolute deadline:** the queue seam captures every enqueue argument. A failed delivery leaves a pending outbox, the fixture clock advances by 60 seconds without sleeping, pickup repairs delivery with `max(0, deadlineAt - controlledNow)`, and the persisted deadline remains unchanged. Repeated pickup uses an explicitly persisted park origin. Existing provider-free clock injection tests cover remaining and elapsed deadlines.
+4. **Credential-free evidence:** dedicated denials now log only a stable reason. The runner uses a parent-owned test-only quiet marker, captures child output, emits only stable success lines, sanitizes failure diagnostics, and preserves the child exit status. Sanitizer tests cover `idxh_` values, UUID identities, labeled/unlabeled hashes, stack locations, and failure summaries.
+5. **Cleanup:** both database suites aggregate cleanup failures, explicitly remove tracked authorization requests, tag fixture users/networks per process, verify zero tagged/tracked rows remain, and throw `AggregateError` instead of silently accepting deletion failures.
+
+TDD RED evidence:
+
+- the first source/output contract run failed with three unmet contracts plus the missing sanitizer module;
+- the test-environment contract failed until the quiet marker became parent-owned and reserved.
+
+Provider-free GREEN evidence:
+
+- focused auth, environment, readiness, inventory, and output contracts: `79 passed, 0 failed, 364 assertions`;
+- isolated polling clock/deadline contract under quiet mode: `10 passed, 0 failed, 29 assertions`;
+- both database target sources parse through `Bun.Transpiler`;
+- targeted ESLint, shell syntax, API build, `tsc --noEmit`, CLI-spec typecheck, and `git diff --check` pass;
+- package lint reports zero errors and the same 46 pre-existing warnings outside this diff.
+
+A typecheck launched concurrently with the protocol build briefly observed the protocol `dist` directory while it was being replaced and reported missing exports. The required sequential rerun after the build completed passed. Real PostgreSQL execution remains the pending CI gate; no local database pass is claimed.

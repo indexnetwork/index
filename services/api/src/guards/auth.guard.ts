@@ -617,11 +617,8 @@ export async function authenticateIndexAppOwnerCredential(
   return user;
 }
 
-function invalidHermesAgentCredential(reason: string, hash: string): Error {
-  logger.warn('Hermes agent credential rejected', {
-    reason,
-    keyHashPrefix: hash.slice(0, 8),
-  });
+function invalidHermesAgentCredential(reason: string): Error {
+  logger.warn('Hermes agent credential rejected', { reason });
   return new Error('Invalid API key');
 }
 
@@ -651,7 +648,7 @@ export async function resolveHermesAgentCredential(
     || row.expiresAt.getTime() <= Date.now()
     || !Array.isArray(row.actions)
     || !hasExactCanonicalHermesActions(row.actions)
-  ) throw invalidHermesAgentCredential('malformed_or_inactive_row', hash);
+  ) throw invalidHermesAgentCredential('malformed_or_inactive_row');
 
   const authority = await store.findAgentAuthority(row.agentId, row.ownerId);
   if (
@@ -665,11 +662,11 @@ export async function resolveHermesAgentCredential(
     || authority.deletedAt !== null
     || !Array.isArray(authority.actions)
     || !hasExactCanonicalHermesActions(authority.actions)
-  ) throw invalidHermesAgentCredential('stale_agent_authority', hash);
+  ) throw invalidHermesAgentCredential('stale_agent_authority');
 
   const user = await store.findUserById(row.ownerId);
   if (!user || user.id !== row.ownerId) {
-    throw invalidHermesAgentCredential('owner_not_found', hash);
+    throw invalidHermesAgentCredential('owner_not_found');
   }
 
   return {

@@ -22,6 +22,7 @@ const runtime = new AgentRuntimeService(agentDatabaseAdapter);
 const connected = new ConnectedAgentsService(new ConnectedAgentsDatabaseAdapter());
 const redirectUri = 'http://127.0.0.1:49152/callback';
 const verifier = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+const fixtureTag = randomUUID();
 const cleanupUsers: string[] = [];
 const cleanupRequests: string[] = [];
 
@@ -54,7 +55,7 @@ type ActiveGeneration = PendingGeneration & {
 
 async function createOwner(label: string): Promise<string> {
   const [owner] = await db.insert(schema.users).values({
-    email: `hermes-lifecycle-${label}-${randomUUID()}@test.local`,
+    email: `hermes-lifecycle-${fixtureTag}-${label}-${randomUUID()}@test.local`,
     name: `Hermes lifecycle ${label}`,
   }).returning({ id: schema.users.id });
   cleanupUsers.push(owner.id);
@@ -186,7 +187,7 @@ async function ownerRuntimeWaiters(holderPid: number): Promise<number[]> {
       AND holder.granted = true
       AND waiter.pid <> holder.pid
       AND waiter.granted = false
-    ORDER BY waiter.pid
+    ORDER BY waiter.waitstart, waiter.pid
   `);
   return (rows as unknown as Array<{ pid: number }>).map((row) => Number(row.pid));
 }
@@ -215,43 +216,89 @@ async function mutationAuthorized(ownerId: string, principal: HermesActivationPr
 }
 
 afterAll(async () => {
+  const cleanupErrors: unknown[] = [];
+  const capture = async (operation: () => Promise<unknown>) => {
+    try {
+      await operation();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  };
+
   if (cleanupRequests.length) {
-    await db.delete(schema.hermesAuthorizations)
-      .where(inArray(schema.hermesAuthorizations.requestId, cleanupRequests))
-      .catch(() => undefined);
+    await capture(() => db.delete(schema.hermesAuthorizations)
+      .where(inArray(schema.hermesAuthorizations.requestId, cleanupRequests)));
   }
   for (const ownerId of cleanupUsers) {
-    await db.delete(schema.users).where(eq(schema.users.id, ownerId)).catch(() => undefined);
+    await capture(() => db.delete(schema.users).where(eq(schema.users.id, ownerId)));
+  }
+  await capture(async () => {
+    const rows = await db.execute(sql`
+      SELECT count(*)::int AS count
+      FROM users
+      WHERE email LIKE ${`hermes-lifecycle-${fixtureTag}-%`}
+    `);
+    const remainingAuthorizations = cleanupRequests.length
+      ? await db.select({ id: schema.hermesAuthorizations.requestId })
+        .from(schema.hermesAuthorizations)
+        .where(inArray(schema.hermesAuthorizations.requestId, cleanupRequests))
+      : [];
+    if (
+      Number((rows as unknown as Array<{ count: number }>)[0]?.count ?? 0) !== 0
+      || remainingAuthorizations.length !== 0
+    ) {
+      throw new Error('Hermes lifecycle fixture rows remain after cleanup');
+    }
+  });
+  if (cleanupErrors.length) {
+    throw new AggregateError(cleanupErrors, 'Hermes lifecycle fixture cleanup failed');
   }
 });
 
 describe('real dedicated Hermes credential lifecycle', () => {
-  it('serializes same-owner prepare/activate against disconnect with one selected live generation', async () => {
-    const ownerId = await createOwner('same-owner-race');
-    const installationId = randomUUID();
-    const oldGeneration = await prepareAndActivate(ownerId, installationId);
-    const nextRequest = await createAuthorizationRequest(installationId);
-    const gate = createBarrier(2);
+  for (const first of ['prepare', 'disconnect'] as const) {
+    it(`serializes same-owner ${first}-first ordering on the exact owner advisory key`, async () => {
+      const ownerId = await createOwner(`same-owner-${first}-first`);
+      const installationId = randomUUID();
+      const oldGeneration = await prepareAndActivate(ownerId, installationId);
+      const nextRequest = await createAuthorizationRequest(installationId);
+      const held = await holdOwnerRuntimeLock(ownerId);
+      const startPrepare = () => prepareAndActivate(ownerId, installationId, nextRequest);
+      const startDisconnect = () => authorization.disconnectHermesCredential(oldGeneration.principal);
+      let firstOperation: Promise<unknown> | undefined;
+      let secondOperation: Promise<unknown> | undefined;
+      try {
+        firstOperation = first === 'prepare' ? startPrepare() : startDisconnect();
+        const [firstPid] = await waitForOwnerRuntimeWaiters(held.backendPid, 1);
+        if (firstPid === undefined) throw new Error('Missing first same-owner waiter');
 
-    const results = await Promise.allSettled([
-      (async () => {
-        await gate();
-        return prepareAndActivate(ownerId, installationId, nextRequest);
-      })(),
-      (async () => {
-        await gate();
-        return authorization.disconnectHermesCredential(oldGeneration.principal);
-      })(),
-    ]);
+        secondOperation = first === 'prepare' ? startDisconnect() : startPrepare();
+        const orderedWaiters = await waitForOwnerRuntimeWaiters(held.backendPid, 2);
+        expect(orderedWaiters).toHaveLength(2);
+        expect(orderedWaiters[0]).toBe(firstPid);
+        expect(orderedWaiters[1]).not.toBe(firstPid);
+      } finally {
+        held.release();
+        await held.done;
+      }
 
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
-    expect(await selectedHermesCount(ownerId)).toBeLessThanOrEqual(1);
-    expect(await validGenerationCount(ownerId, installationId)).toBeLessThanOrEqual(1);
-    expect(await credentialState(oldGeneration.credentialId)).toBe('revoked');
-    expect((await connected.list(ownerId)).connections).toEqual([
-      expect.objectContaining({ activationState: 'active', selected: true }),
-    ]);
-  });
+      const results = await Promise.allSettled([firstOperation!, secondOperation!]);
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
+      const outcomeKinds = results.map((result) => {
+        if (result.status !== 'fulfilled' || !result.value || typeof result.value !== 'object') return 'rejected';
+        return 'rawCredential' in result.value ? 'prepared' : 'disconnected';
+      });
+      expect(outcomeKinds).toEqual(first === 'prepare'
+        ? ['prepared', 'disconnected']
+        : ['disconnected', 'prepared']);
+      expect(await selectedHermesCount(ownerId)).toBeLessThanOrEqual(1);
+      expect(await validGenerationCount(ownerId, installationId)).toBeLessThanOrEqual(1);
+      expect(await credentialState(oldGeneration.credentialId)).toBe('revoked');
+      expect((await connected.list(ownerId)).connections).toEqual([
+        expect.objectContaining({ activationState: 'active', selected: true }),
+      ]);
+    });
+  }
 
   it('lets a different owner commit while the first owner remains blocked on its advisory key', async () => {
     const [ownerA, ownerB] = await Promise.all([
