@@ -18,6 +18,10 @@ deep imports are not part of the contract. Every symbol is re-exported explicitl
 See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
+Internal source is domain-first: `signals`, `communities`, `questions`,
+`participant-agents`, `contacts`, and `integrations`; opportunity and negotiation
+place state/contracts in `domain/` and workflows/tools in `application/`.
+
 ## Source-map publication policy
 
 Published `@indexnetwork/protocol` tarballs contain **no source maps**: neither

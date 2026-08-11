@@ -11,16 +11,18 @@ Connection-opportunity domain: discovers candidates, evaluates matches, persists
 
 ## Consumers
 - **Backend opportunity services/queues/MCP**: instantiate graphs/tools.
-- **Negotiation/questioner/maintenance**: consume opportunity outputs and helper contracts.
+- **Negotiation/questions/maintenance**: consume opportunity outputs and helper contracts.
 
 ## Module Structure
 ```
 opportunity/
-├── opportunity.state.ts, opportunity.graph.ts   # main discovery lifecycle
-├── opportunity.tools.ts                         # discover/list/update/poll tools
-├── evaluator/presenter/persist/utils files      # LLM, persistence, pure helpers
-├── feed/                                        # home feed projection graph
-└── tests/                                       # graph/tool/feed/presenter specs
+├── domain/opportunity.state.ts             # discovery lifecycle state/contracts
+├── application/opportunity.graph.ts        # graph workflow
+├── application/opportunity.tools.ts        # list/update/delivery tools
+├── domain/                                 # state, evidence, presentation, utility helpers
+├── application/                            # graph, evaluator, presenter, persistence helpers
+├── radar/                                  # home feed projection graph
+└── tests/                                  # graph/tool/feed/presenter specs
 ```
 
 ## Graph Factory + Scope Pattern
@@ -57,14 +59,12 @@ export function isActionableForViewer(opp: Opportunity, viewerId: string) {
 
 ## Tool + Coalescing Pattern
 ```ts
-const discover = defineTool({
-  name: 'discover_opportunities',
-  querySchema: DiscoverSchema,
+const list = defineTool({
+  name: 'list_opportunities',
+  querySchema: ListSchema,
   handler: async ({ context, query }) => {
     if (context.networkId && query.networkId !== context.networkId) return error('Scope denied');
-    const active = await deps.discoveryRuns.findEquivalent(context.userId, stableSignature(query));
-    if (active) return success({ discoveryRunId: active.id, coalesced: true });
-    return success(await runDiscoverFromQuery({ graph: deps.graphs.opportunity, userId: context.userId, query }));
+    return success(await deps.database.listOpportunities(context.userId, query));
   },
 });
 ```

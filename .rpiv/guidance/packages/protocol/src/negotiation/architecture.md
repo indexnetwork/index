@@ -16,12 +16,13 @@ Bilateral agent negotiation domain. Defines turn/outcome schemas, runs `init →
 ## Module Structure
 ```
 negotiation/
-├── negotiation.state.ts       # Zod schemas, state annotations, public types
-├── negotiation.graph.ts       # graph factory and candidate fan-out
-├── negotiation.agent.ts       # system fallback negotiator
-├── negotiation.tools.ts       # list/get/respond tools
-├── summarizer/insight files   # downstream compression/narrative helpers
-└── tests/                     # graph, tools, timeout, summarizer specs
+├── domain/negotiation.state.ts       # Zod schemas, state annotations, public types
+├── application/negotiation.graph.ts  # graph factory and candidate fan-out
+├── application/negotiation.agent.ts  # system fallback negotiator
+├── application/negotiation.tools.ts  # list/get/respond tools
+├── application/                       # summaries, insights, screen/reflect helpers
+├── domain/                            # turn protocol, memory, safety, lock policy
+└── tests/                             # graph, tools, timeout, summarizer specs
 ```
 
 ## Schema-First Turn Contract
