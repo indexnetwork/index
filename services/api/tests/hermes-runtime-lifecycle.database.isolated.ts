@@ -174,7 +174,7 @@ async function holdOwnerRuntimeLock(ownerId: string): Promise<{
 
 async function ownerRuntimeWaiters(holderPid: number): Promise<number[]> {
   const rows = await db.execute(sql`
-    SELECT DISTINCT waiter.pid AS pid
+    SELECT DISTINCT waiter.pid AS pid, waiter.waitstart AS waitstart
     FROM pg_locks holder
     JOIN pg_locks waiter
       ON waiter.locktype = holder.locktype

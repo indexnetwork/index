@@ -61,6 +61,15 @@ describe('isolated test inventory', () => {
     expect(lifecycle).not.toContain('await Bun.sleep(');
     expect(lifecycle).toContain("for (const first of ['prepare', 'disconnect'] as const)");
     expect(lifecycle).toContain('await waitForOwnerRuntimeWaiters(held.backendPid, 2)');
+    const lifecycleWaiterQuery = lifecycle.slice(
+      lifecycle.indexOf('async function ownerRuntimeWaiters'),
+      lifecycle.indexOf('async function waitForOwnerRuntimeWaiters'),
+    );
+    expect(lifecycleWaiterQuery).toContain(
+      'SELECT DISTINCT waiter.pid AS pid, waiter.waitstart AS waitstart',
+    );
+    expect(lifecycleWaiterQuery).toContain('ORDER BY waiter.waitstart, waiter.pid');
+    expect(lifecycleWaiterQuery).not.toContain('SELECT DISTINCT waiter.pid AS pid\n    FROM pg_locks');
     expect(lifecycle).toContain("throw new AggregateError(cleanupErrors, 'Hermes lifecycle fixture cleanup failed')");
 
     expect(authority).toContain('new HermesAuthorizationService(');

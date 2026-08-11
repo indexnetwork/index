@@ -99,3 +99,17 @@ Provider-free GREEN evidence:
 - package lint reports zero errors and the same 46 pre-existing warnings outside this diff.
 
 A typecheck launched concurrently with the protocol build briefly observed the protocol `dist` directory while it was being replaced and reported missing exports. The required sequential rerun after the build completed passed. Real PostgreSQL execution remains the pending CI gate; no local database pass is claimed.
+
+## PostgreSQL waiter-query follow-up (run 31488979512)
+
+The next dedicated CI run reached PostgreSQL and proved that the lifecycle fixture's waiter query was invalid: it selected `DISTINCT waiter.pid` while ordering by `waiter.waitstart, waiter.pid`, producing PostgreSQL `42P10` in all three lock-order tests. The two non-lock lifecycle tests passed before the wrapper stopped.
+
+The bounded fix adds `waiter.waitstart AS waitstart` to the distinct select list while retaining deterministic `waitstart` then PID ordering and the existing returned PID evidence. A provider-free raw-SQL source contract now freezes the valid select/order shape and rejects the exact invalid select form from the CI log.
+
+TDD and focused validation:
+
+- RED: isolated inventory contract `13 passed, 1 failed`; it exposed the missing `waitstart` projection.
+- GREEN: isolated inventory contract `14 passed, 0 failed, 51 assertions`.
+- Targeted ESLint, Bun parsing of the lifecycle target, `tsc --noEmit`, and `git diff --check` pass.
+
+No production code, readiness guard, credential behavior, or runner semantics changed. The three real PostgreSQL lock-order tests require a dedicated CI rerun; no local database pass is claimed.
