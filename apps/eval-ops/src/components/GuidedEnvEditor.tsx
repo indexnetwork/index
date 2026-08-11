@@ -83,6 +83,7 @@ const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
   'csv-enum': 'e.g. intent,profile',
   integer: 'e.g. 4',
   number: 'e.g. 7',
+  'decimal-range': 'e.g. 0.30',
   string: 'value',
   // Shows the shape rather than describing it: this is the one kind whose
   // value is structured, and its read site throws on a malformed one.

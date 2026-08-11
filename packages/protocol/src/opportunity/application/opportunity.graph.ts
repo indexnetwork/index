@@ -60,7 +60,7 @@ import { requestContext } from "../../shared/observability/request-context.js";
 import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from '../domain/opportunity.evidence.js';
-import { discoveryIntentMatchingEnabled, discoveryProfileMatchingEnabled, discoveryProfileSource } from '../discovery.env.js';
+import { DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT, discoveryEvaluatorMinScore, discoveryIntentMatchingEnabled, discoveryMinSimilarity, discoveryProfileMatchingEnabled, discoveryProfileSource, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from '../discovery.env.js';
 import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from '../domain/opportunity.actor.js';
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 import { stampEligibleNewbornOpportunities, type StampNewbornOpportunitiesFn } from './opportunity.newborn-stamping.js';
@@ -70,6 +70,11 @@ import { admitOpportunityPersistence, createEligibleOpportunityStatusUpdater } f
 export type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from './opportunity.newborn-stamping.js';
 export { buildPrioritizedNegotiationIntents } from './opportunity.existing-negotiation.js';
+
+export interface OpportunityGraphThresholdOverrides {
+  retrievalMinSimilarity?: number;
+  evaluatorMinScore?: number;
+}
 
 const logger = protocolLogger('OpportunityGraph');
 const prepLog = protocolLogger('OpportunityGraph:Prep');
@@ -286,9 +291,17 @@ export class OpportunityGraphFactory {
     private queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>,
     /** Host-side P4b stamper. Omitted by manual/introducer/enrichment roots. */
     private stampNewbornOpportunities?: StampNewbornOpportunitiesFn,
+    /** Eval/test-only overrides; production composition resolves from environment. */
+    private thresholdOverrides?: OpportunityGraphThresholdOverrides,
   ) {}
 
   public createGraph() {
+    const retrievalMinSimilarity = this.thresholdOverrides?.retrievalMinSimilarity === undefined
+      ? discoveryMinSimilarity()
+      : validateDiscoveryMinSimilarity(this.thresholdOverrides.retrievalMinSimilarity);
+    const evaluatorMinScore = this.thresholdOverrides?.evaluatorMinScore === undefined
+      ? discoveryEvaluatorMinScore()
+      : validateDiscoveryEvaluatorMinScore(this.thresholdOverrides.evaluatorMinScore);
     const evaluatorAgent = this.optionalEvaluator ?? new OpportunityEvaluator();
 
     // ═══════════════════════════════════════════════════════════════
@@ -865,8 +878,6 @@ export class OpportunityGraphFactory {
           // (The options.limit controls final output, not search pool)
           const limitPerStrategy = 30;
           const perIndexLimit = 80;
-          // Similarity threshold for recall (0.30 = 30% similarity)
-          const minScore = 0.3;
 
           // Discovery match-type gating (DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE).
           // Result filtering below is defense-in-depth: corpusGating already scopes the
@@ -1033,7 +1044,7 @@ export class OpportunityGraphFactory {
                   excludeUserId: discoveryUserId,
                   limitPerStrategy,
                   limit: perIndexLimit,
-                  minScore,
+                  minScore: retrievalMinSimilarity,
                   corpusGating,
                 });
                 if (intentResultsEnabled) for (const r of results.filter((x) => x.type === 'intent')) {
@@ -1145,6 +1156,7 @@ export class OpportunityGraphFactory {
                   networkIds: targetNetworkIds,
                   excludeUserId: discoveryUserId,
                   limitPerSource: PREMISE_MATCH_LIMIT_PER_SOURCE,
+                  minScore: retrievalMinSimilarity,
                 })
               : (await Promise.all(
                   sourcePremises.map(async (sp) => {
@@ -1153,6 +1165,7 @@ export class OpportunityGraphFactory {
                       networkIds: targetNetworkIds,
                       excludeUserId: discoveryUserId,
                       limit: PREMISE_MATCH_LIMIT_PER_SOURCE,
+                      minScore: retrievalMinSimilarity,
                     });
                     return results.map((r) => ({ ...r, sourcePremiseId: sp.premiseId }));
                   })
@@ -1234,7 +1247,7 @@ export class OpportunityGraphFactory {
                   excludeUserId: discoveryUserId,
                   limitPerStrategy: limitPerStrategy,
                   limit: 20,
-                  minScore,
+                  minScore: retrievalMinSimilarity,
                   corpusGating,
                 });
                 for (const r of results.filter(r => r.type === 'intent')) {
@@ -1257,7 +1270,7 @@ export class OpportunityGraphFactory {
                   networkIds: [ctx.networkId],
                   excludeUserId: discoveryUserId,
                   limit: 20,
-                  minScore: minScore,
+                  minScore: retrievalMinSimilarity,
                 });
                 for (const r of results) {
                   contextCandidates.push(withCandidateEvidence({
@@ -1312,7 +1325,7 @@ export class OpportunityGraphFactory {
                 networkIds: [ctx.networkId],
                 excludeUserId: discoveryUserId,
                 limit: 20,
-                minScore,
+                minScore: retrievalMinSimilarity,
               });
               for (const r of results) {
                 contextCandidates.push(withCandidateEvidence({
@@ -1448,7 +1461,7 @@ export class OpportunityGraphFactory {
                 excludeUserId: discoveryUserId,
                 limitPerStrategy,
                 limit: perIndexLimit,
-                minScore,
+                minScore: retrievalMinSimilarity,
                 corpusGating,
               });
               if (intentResultsEnabled) for (const result of results.filter((r) => r.type === 'intent')) {
@@ -1877,8 +1890,9 @@ export class OpportunityGraphFactory {
             return undefined;
           }
 
-          // Lower default threshold to 50 for better recall
-          const minScore = state.options.minScore ?? 50;
+          const minScore = state.targetUserId
+            ? DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT
+            : evaluatorMinScore;
           const evaluatorSignalConfig = getAbortSignalConfig();
 
           const evaluator = typeof (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle === 'function'
@@ -2077,15 +2091,19 @@ export class OpportunityGraphFactory {
           // Build detailed trace entries for each evaluated candidate
 
           // Threshold filter trace: how many candidates in this batch were above/below similarity threshold
-          const aboveThreshold = batchToEvaluate.filter(c => c.similarity >= 0.40).length;
+          const aboveThreshold = batchToEvaluate.filter(
+            (candidate) => candidate.similarity >= retrievalMinSimilarity,
+          ).length;
           const belowThreshold = batchToEvaluate.length - aboveThreshold;
           traceEntries.push({
             node: "threshold_filter",
-            detail: `${aboveThreshold} above 0.40, ${belowThreshold} below (batch of ${batchToEvaluate.length})`,
+            detail: `${aboveThreshold} above ${retrievalMinSimilarity}, ${belowThreshold} below (batch of ${batchToEvaluate.length})`,
             data: {
               aboveThreshold,
               belowThreshold,
-              minScore: 0.40,
+              minScore: retrievalMinSimilarity,
+              retrievalMinSimilarity,
+              evaluatorMinScore: minScore,
               batchSize: batchToEvaluate.length,
             },
           });

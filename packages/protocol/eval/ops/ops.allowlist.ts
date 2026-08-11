@@ -144,7 +144,7 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
  * The environment keys a discovery side may set: exactly what the discovery
  * graph reads, derived rather than listed.
  *
- * This was a hand-written list of nine. The graph reads twenty-six offerable
+ * This was a hand-written list of nine. The graph reads twenty-eight offerable
  * keys, and the nine were what a scan against a sixteen-key allowlist could
  * return — the list was the limit, not the code. Anything outside it was
  * refused with "is not readable by the discovery graph", which for

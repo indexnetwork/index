@@ -153,6 +153,7 @@ export { MaintenanceGraphFactory } from "./capabilities/interaction-composition.
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./capabilities/interaction-composition.facade.js";
 export { NegotiationGraphFactory, negotiateCandidates } from "./capabilities/negotiation.facade.js";
 export { OpportunityGraphFactory } from "./capabilities/opportunities.facade.js";
+export type { OpportunityGraphThresholdOverrides } from "./capabilities/opportunities.facade.js";
 export { hasUnsupportedOpportunityClaim } from "./capabilities/opportunities.facade.js";
 export type { StampNewbornOpportunitiesFn } from "./capabilities/opportunities.facade.js";
 export { opportunityOwnerActionForStatus, bindOwnerApprovalProvenance } from "./capabilities/opportunities.facade.js";
@@ -234,11 +235,17 @@ export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./capabilities/opp
 
 // Discovery env accessors (IND-XXX)
 export {
+  DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
+  DISCOVERY_MIN_SIMILARITY_DEFAULT,
   discoveryAllowedTypes,
+  discoveryEvaluatorMinScore,
   discoveryIntentMatchingEnabled,
+  discoveryMinSimilarity,
   discoveryProfileMatchingEnabled,
   discoveryProfileSource,
   resetDiscoveryEnvWarningsForTests,
+  validateDiscoveryEvaluatorMinScore,
+  validateDiscoveryMinSimilarity,
 } from "./capabilities/opportunities.facade.js";
 export type { DiscoveryMatchType, DiscoveryProfileSource } from "./capabilities/opportunities.facade.js";
 export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./capabilities/opportunities.facade.js";

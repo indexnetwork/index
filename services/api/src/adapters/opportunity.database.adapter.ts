@@ -1676,6 +1676,7 @@ export class OpportunityDatabaseAdapter {
     networkIds: string[];
     excludeUserId: string;
     limit: number;
+    minScore?: number;
   }) {
     return traceAppOperation(
       {
@@ -1691,7 +1692,7 @@ export class OpportunityDatabaseAdapter {
         },
       },
       async () => {
-    const { embedding, networkIds, excludeUserId, limit } = params;
+    const { embedding, networkIds, excludeUserId, limit, minScore } = params;
     const vectorStr = `[${embedding.join(',')}]`;
 
     const rows = await db.execute<{
@@ -1719,6 +1720,7 @@ export class OpportunityDatabaseAdapter {
         AND p.status = 'ACTIVE'
         AND p.embedding IS NOT NULL
         AND p.deleted_at IS NULL
+        ${minScore !== undefined ? sql`AND 1 - (p.embedding <=> ${vectorStr}::vector) >= ${minScore}` : sql``}
       ORDER BY p.embedding <=> ${vectorStr}::vector
       LIMIT ${limit}
     `);
@@ -1816,6 +1818,7 @@ export class OpportunityDatabaseAdapter {
     networkIds: string[];
     excludeUserId: string;
     limitPerSource: number;
+    minScore?: number;
   }) {
     if (params.sources.length === 0 || params.networkIds.length === 0 || params.limitPerSource <= 0) return [];
     return traceAppOperation(
@@ -1877,6 +1880,7 @@ export class OpportunityDatabaseAdapter {
               AND p.status = 'ACTIVE'
               AND p.embedding IS NOT NULL
               AND p.deleted_at IS NULL
+              ${params.minScore !== undefined ? sql`AND 1 - (p.embedding <=> se.embedding) >= ${params.minScore}` : sql``}
             ORDER BY p.embedding <=> se.embedding
             LIMIT ${params.limitPerSource}
           ) matches

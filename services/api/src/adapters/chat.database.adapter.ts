@@ -3558,6 +3558,7 @@ export class ChatDatabaseAdapter {
     networkIds: string[];
     excludeUserId: string;
     limit: number;
+    minScore?: number;
   }) {
     return this.opportunityAdapter.searchPremisesBySimilarity(params);
   }
@@ -3572,6 +3573,7 @@ export class ChatDatabaseAdapter {
     networkIds: string[];
     excludeUserId: string;
     limitPerSource: number;
+    minScore?: number;
   }) {
     return this.opportunityAdapter.searchPremisesBySimilarityBatch(params);
   }

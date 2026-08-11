@@ -310,6 +310,7 @@ describe('network discovery adapter isolation', () => {
       networkIds: [ids.activeNetwork],
       excludeUserId: ids.viewer,
       limit: 20,
+      minScore: 0.99,
     });
     expect(single.map((row) => row.premiseId)).toContain(ids.activePremise);
     expect(single.map((row) => row.premiseId)).not.toContain(ids.removedPremise);
@@ -319,9 +320,29 @@ describe('network discovery adapter isolation', () => {
       networkIds: [ids.activeNetwork],
       excludeUserId: ids.viewer,
       limitPerSource: 20,
+      minScore: 0.99,
     });
     expect(batch.map((row) => row.premiseId)).toContain(ids.activePremise);
     expect(batch.map((row) => row.premiseId)).not.toContain(ids.removedPremise);
+
+    const oppositeVector = vector.map((value) => -value);
+    const singleBelowThreshold = await opportunity.searchPremisesBySimilarity({
+      embedding: oppositeVector,
+      networkIds: [ids.activeNetwork],
+      excludeUserId: ids.viewer,
+      limit: 20,
+      minScore: 0.99,
+    });
+    expect(singleBelowThreshold).toEqual([]);
+
+    const batchBelowThreshold = await opportunity.searchPremisesBySimilarityBatch({
+      sources: [{ premiseId: 'source-premise', embedding: oppositeVector }],
+      networkIds: [ids.activeNetwork],
+      excludeUserId: ids.viewer,
+      limitPerSource: 20,
+      minScore: 0.99,
+    });
+    expect(batchBelowThreshold).toEqual([]);
 
     const context = await chat.searchIntentsByContextEmbedding({
       embedding: vector,
