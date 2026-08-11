@@ -796,56 +796,15 @@
   }
 
   function renderDiagram(step, atlasState, atlasContent, atlasGenerated) {
-    const wrapper = element("section", "atlas-diagram-canvas");
+    const wrapper = element("section", "atlas-flow-map");
     wrapper.setAttribute("aria-label", `${step.title} ${atlasState.layer} diagram`);
     const nodes = diagramRecords(step, atlasState, atlasContent, atlasGenerated);
-    const width = Math.max(nodes.length, 1) * 200;
-    wrapper.style.setProperty("--atlas-node-count", String(Math.max(nodes.length, 1)));
-    wrapper.style.setProperty("--atlas-diagram-width", `${width}px`);
-
-    const svg = document.createElementNS(SVG_NS, "svg");
-    const titleId = `atlas-svg-title-${step.id}-${atlasState.layer}`;
-    const descId = `atlas-svg-desc-${step.id}-${atlasState.layer}`;
-    svg.setAttribute("viewBox", `0 0 ${width} 160`);
-    svg.setAttribute("role", "img");
-    svg.setAttribute("aria-labelledby", `${titleId} ${descId}`);
-    const title = document.createElementNS(SVG_NS, "title");
-    title.id = titleId;
-    title.textContent = `${step.title}: ${atlasState.layer} layer`;
-    const description = document.createElementNS(SVG_NS, "desc");
-    description.id = descId;
-    description.textContent = `${nodes.length} ordered nodes. Select a node button to inspect its evidence.`;
-    svg.append(title, description);
 
     const comparison = activeConfigurationComparison(atlasState, atlasContent, atlasGenerated);
     if (comparison) wrapper.classList.add("configuration-comparison-active");
     const deltaByTarget = new Map(records(comparison && comparison.deltas).map((delta) => [delta.targetId, delta]));
-    const positions = new Map(nodes.map((node, index) => [node.id, { x: 100 + index * 200, y: 80 }]));
-    const visibleIds = new Set(positions.keys());
+    const visibleIds = new Set(nodes.map((node) => node.id));
     const visibleEdges = diagramEdges(step, atlasState, atlasContent, atlasGenerated, visibleIds);
-    for (const edge of visibleEdges) {
-      const source = positions.get(edge.sourceId);
-      const target = positions.get(edge.targetId);
-      if (!source || !target) continue;
-      const group = document.createElementNS(SVG_NS, "g");
-      const edgeDelta = deltaByTarget.get(edge.id);
-      group.setAttribute("class", `atlas-edge atlas-edge--${edge.kind || "conceptual"}${edgeDelta ? ` configuration-delta--${edgeDelta.effect}` : ""}`);
-      group.setAttribute("data-edge-kind", edge.kind || "conceptual");
-      const line = document.createElementNS(SVG_NS, "line");
-      line.setAttribute("x1", String(source.x));
-      line.setAttribute("y1", String(source.y));
-      line.setAttribute("x2", String(target.x));
-      line.setAttribute("y2", String(target.y));
-      const edgeTitle = document.createElementNS(SVG_NS, "title");
-      edgeTitle.textContent = edge.label || edge.kind || "relationship";
-      const edgeLabel = document.createElementNS(SVG_NS, "text");
-      edgeLabel.setAttribute("x", String((source.x + target.x) / 2));
-      edgeLabel.setAttribute("y", String((source.y + target.y) / 2 - 6));
-      edgeLabel.setAttribute("text-anchor", "middle");
-      edgeLabel.textContent = edge.kind || "conceptual";
-      group.append(edgeTitle, line, edgeLabel);
-      svg.append(group);
-    }
 
     const relationshipSection = element("section", "atlas-relationship-fallback");
     appendText(relationshipSection, "h3", null, "Relationships");
@@ -866,7 +825,7 @@
     }
     relationshipSection.append(relationshipList);
 
-    const overlay = element("ol", "atlas-diagram-nodes");
+    const overlay = element("ol", "atlas-node-grid");
     if (nodes.length === 0) {
       const filtersActive = atlasState.layer === "implementation"
         && Object.values(atlasState.filters).some((values) => values.length > 0);
@@ -908,7 +867,7 @@
       item.append(button);
       overlay.append(item);
     }
-    wrapper.append(svg, overlay, relationshipSection);
+    wrapper.append(overlay, relationshipSection);
     return wrapper;
   }
 
