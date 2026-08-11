@@ -369,11 +369,11 @@ async function holdOwnerRuntimeLock(ownerId: string): Promise<{
   return { backendPid: await acquiredPromise, release, done };
 }
 
-async function waitForOwnerRuntimeWaiters(holderPid: number, expected: number): Promise<void> {
+async function waitForOwnerRuntimeWaiters(holderPid: number, expected: number): Promise<number[]> {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     const rows = await db.execute(sql`
-      SELECT COUNT(*)::int AS count
+      SELECT DISTINCT waiter.pid AS pid
       FROM pg_locks holder
       JOIN pg_locks waiter
         ON waiter.locktype = holder.locktype
@@ -386,9 +386,10 @@ async function waitForOwnerRuntimeWaiters(holderPid: number, expected: number): 
         AND holder.granted = true
         AND waiter.pid <> holder.pid
         AND waiter.granted = false
+      ORDER BY waiter.pid
     `);
-    const count = Number((rows as unknown as Array<{ count: number }>)[0]?.count ?? 0);
-    if (count >= expected) return;
+    const waiterPids = (rows as unknown as Array<{ pid: number }>).map((row) => Number(row.pid));
+    if (waiterPids.length >= expected) return waiterPids;
     await Bun.sleep(10);
   }
   throw new Error(`Timed out waiting for ${expected} owner-runtime lock waiter(s) behind backend ${holderPid}`);
@@ -1073,8 +1074,10 @@ describe('real negotiation runtime authority SQL seam', () => {
         await releasePromise;
       };
 
+      const held = await holdOwnerRuntimeLock(value.owner);
+      let response: ReturnType<typeof value.service.respondHermes> | undefined;
       try {
-        const response = value.service.respondHermes(
+        response = value.service.respondHermes(
           value.prepared.executorId,
           value.owner,
           task.id,
@@ -1082,11 +1085,16 @@ describe('real negotiation runtime authority SQL seam', () => {
           value.principal,
           { runId, capability: pickedUp.runCapability, outcome: 'responded' },
         );
+        const [responseBackendPid] = await waitForOwnerRuntimeWaiters(held.backendPid, 1);
+        if (responseBackendPid === undefined) throw new Error('Missing queued response backend');
+        held.release();
+        await held.done;
         await consumedPromise;
+
         const invalidation = invalidateRuntime(value, race);
         let invalidated = false;
         void invalidation.then(() => { invalidated = true; });
-        await Bun.sleep(50);
+        await waitForOwnerRuntimeWaiters(responseBackendPid, 1);
         expect(invalidated).toBe(false);
 
         release();
@@ -1096,7 +1104,10 @@ describe('real negotiation runtime authority SQL seam', () => {
         expect(await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId)).toHaveLength(1);
         expect(rearmedNegotiations).toContain(task.id);
       } finally {
+        held.release();
         release();
+        await held.done.catch(() => undefined);
+        await response?.catch(() => undefined);
         value.responseFault.afterStep = undefined;
       }
     });

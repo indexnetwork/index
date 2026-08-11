@@ -238,19 +238,35 @@ export interface TestDatabasePreloadPolicy {
   runIsolatedSuite: boolean;
 }
 
+const ISOLATED_IMPORT_HARNESS = 'src/lib/testing/isolated-test-import-harness.spec.ts';
+
+function isExactIsolatedImportHarnessInvocation(argv: readonly string[]): boolean {
+  const testCommandIndex = argv.findIndex((arg) => arg === 'test');
+  if (testCommandIndex === -1) return false;
+  const testArgs = argv.slice(testCommandIndex + 1);
+  if (testArgs.length !== 1) return false;
+  const target = testArgs[0].startsWith('./') ? testArgs[0].slice(2) : testArgs[0];
+  return target === ISOLATED_IMPORT_HARNESS;
+}
+
 /**
  * Plans preload database lifecycle work independently from test discovery.
  *
  * @param argv - Original operating-system process arguments.
  * @param env - Environment variables controlling readiness and isolated targets.
+ * @param registeredIsolatedTargets - Manifest-validated isolated test targets.
  * @returns Whether to probe, close, and fan out isolated tests.
  */
 export function resolveTestDatabasePreloadPolicy(
   argv: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
+  registeredIsolatedTargets: readonly string[],
 ): TestDatabasePreloadPolicy {
   const checkDatabase = shouldRequireTestDatabase(argv, env);
-  const targetedIsolatedImport = env.API_TEST_ISOLATED_TARGET !== undefined;
+  const isolatedTarget = env.API_TEST_ISOLATED_TARGET;
+  const targetedIsolatedImport = isolatedTarget !== undefined
+    && registeredIsolatedTargets.includes(isolatedTarget)
+    && isExactIsolatedImportHarnessInvocation(argv);
   return {
     checkDatabase,
     closeDatabase: checkDatabase,

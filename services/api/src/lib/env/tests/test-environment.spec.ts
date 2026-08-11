@@ -107,6 +107,33 @@ describe('test environment lock', () => {
     expect(environment.NODE_ENV).toBe('test');
   });
 
+  it('rejects an isolated assurance target from .env.test and restores the package target', () => {
+    const packageTarget = 'tests/negotiation-runtime-authority.database.isolated.ts';
+    const environment: Record<string, string | undefined> = {
+      NODE_ENV: 'test',
+      API_TEST_ISOLATED_TARGET: packageTarget,
+    };
+    const load = mock(() => {
+      environment.API_TEST_ISOLATED_TARGET = 'src/services/tests/negotiation-polling.consult.isolated.ts';
+      return {
+        parsed: {
+          API_TEST_ISOLATED_TARGET: 'src/services/tests/negotiation-polling.consult.isolated.ts',
+        },
+      };
+    });
+
+    expect(() =>
+      loadEnvironmentWithTestLock({
+        requestedNodeEnv: 'test',
+        testEnvPath: '/safe/.env.test',
+        developmentEnvPath: '/safe/.env.development',
+        environment,
+        load,
+      }),
+    ).toThrow('may not declare reserved variable API_TEST_ISOLATED_TARGET');
+    expect(environment.API_TEST_ISOLATED_TARGET).toBe(packageTarget);
+  });
+
   it('cannot bypass the test migration marker after dotenv mutates NODE_ENV', () => {
     const environment = { NODE_ENV: 'test', TEST_DATABASE_SAFE: '0' };
     const load = mock(() => {

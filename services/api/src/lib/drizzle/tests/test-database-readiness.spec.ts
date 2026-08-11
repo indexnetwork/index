@@ -263,13 +263,17 @@ describe('test database readiness', () => {
 });
 
 describe('test database preload policy', () => {
-  test('probes and closes a required targeted isolated import without full-suite fanout', () => {
+  const registeredTarget = 'tests/negotiation-runtime-authority.database.isolated.ts';
+  const registeredTargets = [registeredTarget];
+
+  test('probes and closes a required exact isolated import without full-suite fanout', () => {
     expect(resolveTestDatabasePreloadPolicy(
-      ['/usr/bin/bun', 'test', '/api/src/lib/testing/isolated-test-import-harness.spec.ts'],
+      ['/usr/bin/bun', 'test', 'src/lib/testing/isolated-test-import-harness.spec.ts'],
       {
         API_TEST_REQUIRE_DATABASE: '1',
-        API_TEST_ISOLATED_TARGET: 'tests/negotiation-runtime-authority.database.isolated.ts',
+        API_TEST_ISOLATED_TARGET: registeredTarget,
       },
+      registeredTargets,
     )).toEqual({
       checkDatabase: true,
       closeDatabase: true,
@@ -277,8 +281,42 @@ describe('test database preload policy', () => {
     });
   });
 
+  test('keeps database readiness, closure, and fanout for bare suites with an ambient target', () => {
+    expect(resolveTestDatabasePreloadPolicy(
+      ['/usr/bin/bun', 'test'],
+      { API_TEST_ISOLATED_TARGET: registeredTarget },
+      registeredTargets,
+    )).toEqual({
+      checkDatabase: true,
+      closeDatabase: true,
+      runIsolatedSuite: true,
+    });
+  });
+
+  test('suppresses fanout only for the exact harness and a registered target', () => {
+    const requiredTarget = {
+      API_TEST_REQUIRE_DATABASE: '1',
+      API_TEST_ISOLATED_TARGET: registeredTarget,
+    };
+    expect(resolveTestDatabasePreloadPolicy(
+      ['/usr/bin/bun', 'test', 'src/lib/drizzle/tests/test-database-readiness.spec.ts'],
+      requiredTarget,
+      registeredTargets,
+    ).runIsolatedSuite).toBe(true);
+    expect(resolveTestDatabasePreloadPolicy(
+      ['/usr/bin/bun', 'test', 'src/lib/testing/isolated-test-import-harness.spec.ts'],
+      requiredTarget,
+      [],
+    ).runIsolatedSuite).toBe(true);
+    expect(resolveTestDatabasePreloadPolicy(
+      ['/usr/bin/bun', 'test', './src/lib/testing/isolated-test-import-harness.spec.ts'],
+      requiredTarget,
+      registeredTargets,
+    ).runIsolatedSuite).toBe(false);
+  });
+
   test('keeps database readiness, closure, and isolated fanout for ordinary full suites', () => {
-    expect(resolveTestDatabasePreloadPolicy(['/usr/bin/bun', 'test'], {})).toEqual({
+    expect(resolveTestDatabasePreloadPolicy(['/usr/bin/bun', 'test'], {}, [])).toEqual({
       checkDatabase: true,
       closeDatabase: true,
       runIsolatedSuite: true,

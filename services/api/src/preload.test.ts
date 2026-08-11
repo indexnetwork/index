@@ -24,9 +24,15 @@ requireTestMode(loadedEnvironment);
 
 const apiRoot = path.resolve(import.meta.dir, '..');
 const isolatedChild = process.env.API_TEST_ISOLATED_CHILD === '1';
-const preloadPolicy = resolveTestDatabasePreloadPolicy(readOriginalProcessArgv(), process.env);
+const registeredIsolatedTargets = isolatedChild
+  ? []
+  : loadIsolatedTestInventory(apiRoot).files;
+const preloadPolicy = resolveTestDatabasePreloadPolicy(
+  readOriginalProcessArgv(),
+  process.env,
+  registeredIsolatedTargets,
+);
 if (!isolatedChild) {
-  loadIsolatedTestInventory(apiRoot);
   assertNoDiscoverableModuleMocks(apiRoot);
 }
 

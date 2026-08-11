@@ -46,6 +46,8 @@ describe('isolated test inventory', () => {
     expect(source.match(/\bit\.each\s*\(/g) ?? []).toHaveLength(0);
     expect(source).toContain('const contenderOutcome = settlePromiseOutcome(contender());');
     expect(source).not.toContain('contender: Promise<T>');
+    expect(source).toContain('await waitForOwnerRuntimeWaiters(responseBackendPid, 1);');
+    expect(source).not.toContain('await Bun.sleep(50);');
   });
 
   it('dispatches E2E entries through their own explicit gates without filename skips', () => {
