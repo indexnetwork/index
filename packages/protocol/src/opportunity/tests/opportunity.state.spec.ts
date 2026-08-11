@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'bun:test';
 import { END, START, StateGraph } from '@langchain/langgraph';
-import { OpportunityGraphState } from '../opportunity.state.js';
+import { OpportunityGraphState } from '../domain/opportunity.state.js';
 
 function buildPassThroughGraph() {
   return new StateGraph(OpportunityGraphState)

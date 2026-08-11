@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ActiveIntent, Id, IntentRecord, Opportunity } from '../../shared/interfaces/database.interface.js';
-import { negotiateExistingOpportunity, type ExistingOpportunityNegotiationPort } from '../opportunity.existing-negotiation.js';
+import { negotiateExistingOpportunity, type ExistingOpportunityNegotiationPort } from '../application/opportunity.existing-negotiation.js';
 
 const FLAG = 'NEGOTIATION_INCLUDE_OTHER_INTENTS';
 

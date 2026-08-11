@@ -1,4 +1,4 @@
-import type { NegotiationTurn } from "./negotiation.state.js";
+import type { NegotiationTurn } from "./domain/negotiation.state.js";
 
 /**
  * Prior-dialogue attribution (IND-569).

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { getPreset } from "../questioner.presets.js";
+import { getPreset } from "../../questions/application/question.presets.js";
 import { QuestionModeSchema, QuestionSchema } from "../../shared/schemas/question.schema.js";
 
 const standaloneModeExpectations = [

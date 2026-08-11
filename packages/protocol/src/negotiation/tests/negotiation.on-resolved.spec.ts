@@ -4,9 +4,9 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from '../negotiation.graph.js';
-import type { NegotiationGraphLike, UserNegotiationContext } from '../negotiation.state.js';
-import type { NegotiationOutcome } from '../negotiation.state.js';
+import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from '../application/negotiation.graph.js';
+import type { NegotiationGraphLike, UserNegotiationContext } from '../domain/negotiation.state.js';
+import type { NegotiationOutcome } from '../domain/negotiation.state.js';
 
 function makeCandidate(userId: string, opportunityId: string): NegotiationCandidate {
   return {

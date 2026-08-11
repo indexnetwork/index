@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { MATCHING_MIN_SCORE } from "../matching.constants.js";
 import { runCase, type EvaluatorLike } from "../matching.runner.js";
 import type { MatchingCase } from "../matching.types.js";
-import type { EvaluatedOpportunityWithActors } from "../../../src/opportunity/opportunity.evaluator.js";
+import type { EvaluatedOpportunityWithActors } from "../../../src/opportunity/application/opportunity.evaluator.js";
 
 const c: MatchingCase = {
   id: "t/case",

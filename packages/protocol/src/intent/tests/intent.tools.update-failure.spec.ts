@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { describeIntentUpdateFailure } from "../intent.tools.js";
+import { describeIntentUpdateFailure } from "../../signals/application/intent.tools.js";
 
 describe("describeIntentUpdateFailure", () => {
   it("reports ASSERTIVE speech as non-actionable and does not blame broadness", () => {

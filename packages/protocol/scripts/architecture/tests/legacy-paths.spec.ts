@@ -145,7 +145,6 @@ async function legacyPathViolations(): Promise<Violation[]> {
   const violations: Violation[] = [];
   for (const importer of await sourceFiles(REPOSITORY_ROOT)) {
     const importerPath = repositoryPath(importer);
-    if (!importerPath.startsWith("services/api/") && !importerPath.startsWith("packages/protocol/eval/clarification/")) continue;
     if (LEGACY_PATH_SET.has(importerPath)) continue;
     for (const specifier of specifiers(await readFile(importer, "utf8"), importer)) {
       for (const legacyPath of resolvedPaths(importer, specifier)) {

@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { presentOpportunity, truncateAtBoundary } from '../opportunity.presentation.js';
+import { presentOpportunity, truncateAtBoundary } from '../domain/opportunity.presentation.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 
 describe('presentOpportunity', () => {

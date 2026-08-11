@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
 import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { NegotiationScreener, type ScreenDecision } from "../negotiation.screen.js";
-import type { NegotiationTurn } from "../negotiation.state.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
+import { NegotiationScreener, type ScreenDecision } from "../application/negotiation.screen.js";
+import type { NegotiationTurn } from "../domain/negotiation.state.js";
 
 /**
  * IND-611 prerequisite — an honest turn-0 refusal must stand.

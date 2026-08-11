@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
-import { createNetworkTools } from "../network.tools.js";
+import { createNetworkTools } from "../../communities/application/index.js";
 
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 

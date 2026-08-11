@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
-import { InitiatorTurnSchema, CounterpartyTurnSchema, FinalInitiatorTurnSchema, FinalCounterpartyTurnSchema, allowedActionsFor, turnSchemaFor, isTerminalAction, isRejectLikeAction, fallbackActionFor, rejectActionFor, readProtocolVersion, configuredProtocolVersion, resolveSeat, seatViolationMessage } from "../negotiation.protocol.js";
-import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
+import { InitiatorTurnSchema, CounterpartyTurnSchema, FinalInitiatorTurnSchema, FinalCounterpartyTurnSchema, allowedActionsFor, turnSchemaFor, isTerminalAction, isRejectLikeAction, fallbackActionFor, rejectActionFor, readProtocolVersion, configuredProtocolVersion, resolveSeat, seatViolationMessage } from "../domain/negotiation.protocol.js";
+import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../domain/negotiation.state.js";
 
 /**
  * IND-397 — seat-scoped turn schemas + counterparty-only accept.
