@@ -40,6 +40,12 @@ describe('Hermes production assurance contract', () => {
     );
   });
 
+  test('runs pull-request assurance for the canonical and stacked base branches', () => {
+    expect(assuranceWorkflow).toContain(
+      'branches: [dev, main, feat/hermes-secure-standalone-connect]',
+    );
+  });
+
   test('uses a healthy disposable PostgreSQL 16 service with frozen dependencies', () => {
     expect(existsSync(assuranceWorkflowPath)).toBe(true);
     expect(assuranceWorkflow).toContain('image: postgres:16');
