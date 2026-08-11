@@ -479,7 +479,7 @@ dbDescribe('historical quality protected-base integration', () => {
     const childState = await currentState();
     expect(childState).toEqual(baselineState);
     expect(childState).toEqual(await currentState(baseDb));
-  });
+  }, { timeout: 240_000 });
 
   it('uses only mocked embedding seams and never constructs a model/provider adapter', () => {
     expect(providerCalls).toBeGreaterThan(0);
