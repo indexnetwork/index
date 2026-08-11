@@ -390,7 +390,8 @@ async function waitForOwnerRuntimeWaiters(holderPid: number, expected: number): 
     `);
     const waiterPids = (rows as unknown as Array<{ pid: number }>).map((row) => Number(row.pid));
     if (waiterPids.length >= expected) return waiterPids;
-    await Bun.sleep(10);
+    // Cadence only: pg_locks rows, not elapsed time, are the synchronization evidence.
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${expected} owner-runtime lock waiter(s) behind backend ${holderPid}`);
 }
@@ -511,9 +512,13 @@ describe('real negotiation runtime authority SQL seam', () => {
     const value = await fixture('existing-deadline');
     const task = await seedWaitingTask(value.owner, value.counterparty);
     const first = await pickup(value);
-    await Bun.sleep(25);
+    const afterFirst = await conversationDatabaseAdapter.getTask(task.id);
+    const parkStartedAt = (afterFirst?.metadata as Record<string, unknown> | undefined)?.hermesParkStartedAt;
     const repeated = await pickup(value);
-    if (!first || !repeated) throw new Error('Expected claimed pickup results');
+    if (!first || !repeated || typeof parkStartedAt !== 'string') {
+      throw new Error('Expected claimed pickup results with a persisted park origin');
+    }
+    expect(new Date(first.turn.deadline).getTime()).toBeGreaterThan(new Date(parkStartedAt).getTime());
     expect(repeated.turn.deadline).toBe(first.turn.deadline);
     expect(repeated.taskId).toBe(task.id);
   });
@@ -770,15 +775,19 @@ describe('real negotiation runtime authority SQL seam', () => {
 
   for (const step of HERMES_RESPONSE_ATOMIC_STEPS) {
     it(`rolls back every response effect after an injected ${step} boundary fault, then exact-retries`, async () => {
-      const value = await seedConsultableClaim(`fault-${step}`);
+      // A terminal continuation makes message/task/artifact/opportunity and the
+      // real continuation settlement meaningful before receipt/outbox commit.
+      const value = await seedClaimedContinuation(`fault-${step}`);
       const authority = {
         runId: value.runId,
         capability: value.runCapability,
         outcome: 'responded' as const,
       };
       const beforeMessages = await conversationDatabaseAdapter.getMessagesForConversation(value.conversation.id);
+      const beforeSessions = await db.select({ id: schema.conversationSessions.id })
+        .from(schema.conversationSessions).where(eq(schema.conversationSessions.taskId, value.successorTaskId));
       const [beforeOpportunity] = await db.select({ status: schema.opportunities.status })
-        .from(schema.opportunities).where(eq(schema.opportunities.id, (value.task.metadata as Record<string, string>).opportunityId));
+        .from(schema.opportunities).where(eq(schema.opportunities.id, value.opportunity.id));
       value.responseFault.afterStep = (candidate) => {
         if (candidate === step) throw new Error(`injected response fault after ${step}`);
       };
@@ -786,45 +795,123 @@ describe('real negotiation runtime authority SQL seam', () => {
       await expect(value.service.respondHermes(
         value.prepared.executorId,
         value.owner,
-        value.task.id,
+        value.successorTaskId,
         { action: 'decline', roleAlignment: 'peers' },
         value.principal,
         authority,
       )).rejects.toThrow(`injected response fault after ${step}`);
 
-      expect(await taskState(value.task.id)).toEqual({ state: 'claimed', claimedByAgentId: value.prepared.executorId });
+      expect(await taskState(value.successorTaskId)).toEqual({ state: 'claimed', claimedByAgentId: value.prepared.executorId });
       expect(await conversationDatabaseAdapter.getMessagesForConversation(value.conversation.id)).toHaveLength(beforeMessages.length);
-      expect(await conversationDatabaseAdapter.getArtifacts(value.task.id)).toHaveLength(0);
-      const rolledBack = await conversationDatabaseAdapter.getTask(value.task.id);
-      expect((rolledBack?.metadata as Record<string, Record<string, unknown>>).hermesRunCapability.consumedAt).toBeUndefined();
+      expect(await db.select({ id: schema.conversationSessions.id })
+        .from(schema.conversationSessions).where(eq(schema.conversationSessions.taskId, value.successorTaskId)))
+        .toEqual(beforeSessions);
+      expect(await conversationDatabaseAdapter.getArtifacts(value.successorTaskId)).toHaveLength(0);
+      const rolledBack = await conversationDatabaseAdapter.getTask(value.successorTaskId);
+      const rolledBackMetadata = rolledBack?.metadata as Record<string, Record<string, unknown>>;
+      expect(rolledBackMetadata.hermesRunCapability.consumedAt).toBeUndefined();
+      expect(rolledBackMetadata.hermesResponseReceipt).toBeUndefined();
+      expect(rolledBackMetadata.hermesResponseOutbox).toBeUndefined();
+      expect(rolledBackMetadata.continuationExecution.status).toBe('claimed');
+      const priorAfterFault = await conversationDatabaseAdapter.getTask(value.priorTaskId);
+      expect(((priorAfterFault?.metadata as Record<string, Record<string, unknown>>).questionSettlement).continuationStatus)
+        .toBe('requested');
       const [opportunityAfterFault] = await db.select({ status: schema.opportunities.status })
-        .from(schema.opportunities).where(eq(schema.opportunities.id, (value.task.metadata as Record<string, string>).opportunityId));
+        .from(schema.opportunities).where(eq(schema.opportunities.id, value.opportunity.id));
       expect(opportunityAfterFault.status).toBe(beforeOpportunity.status);
 
       value.responseFault.afterStep = undefined;
       await expect(value.service.respondHermes(
         value.prepared.executorId,
         value.owner,
-        value.task.id,
+        value.successorTaskId,
         { action: 'decline', roleAlignment: 'peers' },
         value.principal,
         authority,
       )).resolves.toEqual({ success: true });
+      const committed = await conversationDatabaseAdapter.getTask(value.successorTaskId);
+      const committedMetadata = committed?.metadata as Record<string, Record<string, unknown>>;
+      const committedReceipt = structuredClone(committedMetadata.hermesResponseReceipt);
+      const committedOutbox = structuredClone(committedMetadata.hermesResponseOutbox);
+      expect(committedReceipt.receiptId).toBe(committedOutbox.receiptId);
+
       await expect(value.service.respondHermes(
         value.prepared.executorId,
         value.owner,
-        value.task.id,
+        value.successorTaskId,
         { action: 'decline', roleAlignment: 'peers' },
         value.principal,
         authority,
       )).resolves.toEqual({ success: true });
+      const replayed = await conversationDatabaseAdapter.getTask(value.successorTaskId);
+      const replayedMetadata = replayed?.metadata as Record<string, Record<string, unknown>>;
+      expect(replayedMetadata.hermesResponseReceipt).toEqual(committedReceipt);
+      expect(replayedMetadata.hermesResponseOutbox).toEqual(committedOutbox);
       expect(await conversationDatabaseAdapter.getMessagesForConversation(value.conversation.id)).toHaveLength(beforeMessages.length + 1);
-      expect(await conversationDatabaseAdapter.getArtifacts(value.task.id)).toHaveLength(1);
+      expect(await conversationDatabaseAdapter.getArtifacts(value.successorTaskId)).toHaveLength(1);
+      expect(await db.select({ id: schema.conversationSessions.id })
+        .from(schema.conversationSessions).where(eq(schema.conversationSessions.taskId, value.successorTaskId)))
+        .toHaveLength(1);
+      expect(replayedMetadata.continuationExecution.status).toBe('completed');
+      const priorAfterRetry = await conversationDatabaseAdapter.getTask(value.priorTaskId);
+      expect(((priorAfterRetry?.metadata as Record<string, Record<string, unknown>>).questionSettlement).continuationStatus)
+        .toBe('completed');
       const [opportunityAfterRetry] = await db.select({ status: schema.opportunities.status })
-        .from(schema.opportunities).where(eq(schema.opportunities.id, (value.task.metadata as Record<string, string>).opportunityId));
+        .from(schema.opportunities).where(eq(schema.opportunities.id, value.opportunity.id));
       expect(opportunityAfterRetry.status).toBe('rejected');
     });
   }
+
+  it('keeps exactly one committed receipt/outbox and the first absolute continuation deadline on exact replay', async () => {
+    const value = await seedClaimedContinuation('response-absolute-deadline');
+    const authority = {
+      runId: value.runId,
+      capability: value.runCapability,
+      outcome: 'responded' as const,
+    };
+    const beforeMessages = await conversationDatabaseAdapter.getMessagesForConversation(value.conversation.id);
+
+    await expect(value.service.respondHermes(
+      value.prepared.executorId,
+      value.owner,
+      value.successorTaskId,
+      { action: 'request_time', roleAlignment: 'peers' },
+      value.principal,
+      authority,
+    )).resolves.toEqual({ success: true });
+    const committed = await conversationDatabaseAdapter.getTask(value.successorTaskId);
+    const committedMetadata = committed?.metadata as Record<string, Record<string, unknown>>;
+    const receipt = structuredClone(committedMetadata.hermesResponseReceipt);
+    const outbox = structuredClone(committedMetadata.hermesResponseOutbox);
+    const queueIntent = outbox.queueIntent as Record<string, Record<string, unknown>>;
+    const deadlineAt = queueIntent.rearmParkTimeout.deadlineAt;
+    expect(typeof deadlineAt).toBe('string');
+    expect(new Date(String(deadlineAt)).getTime()).toBeGreaterThan(new Date(String(outbox.createdAt)).getTime());
+
+    await expect(value.service.respondHermes(
+      value.prepared.executorId,
+      value.owner,
+      value.successorTaskId,
+      { action: 'request_time', roleAlignment: 'peers' },
+      value.principal,
+      authority,
+    )).resolves.toEqual({ success: true });
+    const replayed = await conversationDatabaseAdapter.getTask(value.successorTaskId);
+    const replayedMetadata = replayed?.metadata as Record<string, Record<string, unknown>>;
+    expect(replayedMetadata.hermesResponseReceipt).toEqual(receipt);
+    expect(replayedMetadata.hermesResponseOutbox).toEqual(outbox);
+    expect((((replayedMetadata.hermesResponseOutbox.queueIntent as Record<string, Record<string, unknown>>)
+      .rearmParkTimeout).deadlineAt)).toBe(deadlineAt);
+    expect(await conversationDatabaseAdapter.getMessagesForConversation(value.conversation.id)).toHaveLength(beforeMessages.length + 1);
+    expect(await conversationDatabaseAdapter.getArtifacts(value.successorTaskId)).toHaveLength(0);
+    expect(replayedMetadata.continuationExecution.status).toBe('parked');
+    const prior = await conversationDatabaseAdapter.getTask(value.priorTaskId);
+    expect(((prior?.metadata as Record<string, Record<string, unknown>>).questionSettlement).continuationStatus)
+      .toBe('requested');
+    const [opportunity] = await db.select({ status: schema.opportunities.status })
+      .from(schema.opportunities).where(eq(schema.opportunities.id, value.opportunity.id));
+    expect(opportunity.status).toBe('negotiating');
+  });
 
   it('linearizes ordinary waiting-timeout CAS against real pickup on the exact park generation', async () => {
     const value = await fixture('ordinary-timeout-pickup');

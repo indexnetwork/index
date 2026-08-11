@@ -34,10 +34,22 @@ describe('Hermes production assurance contract', () => {
     )).toThrow('production-like database name');
   });
 
-  test('exposes the exact isolated database assurance script', () => {
+  test('exposes the exact fresh-process database assurance wrapper', () => {
     expect(apiPackage.scripts?.['test:hermes-production-assurance']).toBe(
-      'API_TEST_ISOLATED_TARGET=tests/negotiation-runtime-authority.database.isolated.ts bun test src/lib/testing/isolated-test-import-harness.spec.ts',
+      'bash scripts/test-hermes-production-assurance.sh',
     );
+
+    const runnerPath = path.join(apiRoot, 'scripts/test-hermes-production-assurance.sh');
+    expect(existsSync(runnerPath)).toBe(true);
+    const runner = existsSync(runnerPath) ? readFileSync(runnerPath, 'utf8') : '';
+    expect(runner).toContain('tests/hermes-runtime-lifecycle.database.isolated.ts');
+    expect(runner).toContain('tests/negotiation-runtime-authority.database.isolated.ts');
+    expect(runner.match(/bun test src\/lib\/testing\/isolated-test-import-harness\.spec\.ts/g) ?? [])
+      .toHaveLength(1);
+    expect(runner).toContain('for target in');
+    expect(runner).toContain('API_TEST_ISOLATED_TARGET="$target"');
+    expect(runner).not.toContain('API_TEST_DATABASE_READY');
+    expect(runner).not.toContain('API_TEST_REQUIRE_DATABASE=');
   });
 
   test('runs pull-request assurance for the canonical and stacked base branches', () => {

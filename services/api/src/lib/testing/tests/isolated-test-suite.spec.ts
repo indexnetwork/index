@@ -36,18 +36,29 @@ describe('isolated test inventory', () => {
     expect(new Set(inventory.files).size).toBe(inventory.files.length);
   });
 
-  it('keeps the budgeted Hermes database fixture Bun-compatible and observes contenders immediately', () => {
+  it('keeps the budgeted Hermes database fixtures registered and synchronization evidence state-based', () => {
     const apiRoot = path.resolve(import.meta.dir, '../../../..');
-    const source = readFileSync(
+    const inventory = loadIsolatedTestInventory(apiRoot);
+    const authority = readFileSync(
       path.join(apiRoot, 'tests/negotiation-runtime-authority.database.isolated.ts'),
       'utf8',
     );
+    const lifecycle = readFileSync(
+      path.join(apiRoot, 'tests/hermes-runtime-lifecycle.database.isolated.ts'),
+      'utf8',
+    );
 
-    expect(source.match(/\bit\.each\s*\(/g) ?? []).toHaveLength(0);
-    expect(source).toContain('const contenderOutcome = settlePromiseOutcome(contender());');
-    expect(source).not.toContain('contender: Promise<T>');
-    expect(source).toContain('await waitForOwnerRuntimeWaiters(responseBackendPid, 1);');
-    expect(source).not.toContain('await Bun.sleep(50);');
+    expect(inventory.files).toContain('tests/negotiation-runtime-authority.database.isolated.ts');
+    expect(inventory.files).toContain('tests/hermes-runtime-lifecycle.database.isolated.ts');
+    expect(authority.match(/\bit\.each\s*\(/g) ?? []).toHaveLength(0);
+    expect(authority).toContain('const contenderOutcome = settlePromiseOutcome(contender());');
+    expect(authority).not.toContain('contender: Promise<T>');
+    expect(authority).toContain('await waitForOwnerRuntimeWaiters(responseBackendPid, 1);');
+    expect(authority).not.toContain('await Bun.sleep(');
+    expect(lifecycle).toContain('function createBarrier(parties: number)');
+    expect(lifecycle).toContain("activation_state IN ('pending', 'active')");
+    expect(lifecycle).toContain("sql`${schema.hermesAgentCredentials.expiresAt} <= now()`");
+    expect(lifecycle).not.toContain('await Bun.sleep(');
   });
 
   it('dispatches E2E entries through their own explicit gates without filename skips', () => {
