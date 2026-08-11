@@ -218,22 +218,27 @@ PR B is not merge-ready until both commands below actually pass at the reviewed 
 First bind `DATABASE_URL` to the exact selected side `a` URL from manifest v2. Do not copy any other URL.
 
 ```bash
-cd services/api
-test "${TEST_DATABASE_SAFE:-}" = '1'
-test -n "${DATABASE_URL:-}"
-test -n "${NEON_API_KEY:-}"
-test -n "${DISCOVERY_TARGETS:-}"
-bun run eval:discovery-quality-db-target:prove -- --side a
+(
+  set -euo pipefail
+  guarded_test_cwd=''
+  trap 'if test -n "$guarded_test_cwd"; then rm -rf -- "$guarded_test_cwd"; fi' EXIT
+
+  cd services/api
+  test "${TEST_DATABASE_SAFE:-}" = '1'
+  test -n "${DATABASE_URL:-}"
+  test -n "${NEON_API_KEY:-}"
+  test -n "${DISCOVERY_TARGETS:-}"
+  bun run eval:discovery-quality-db-target:prove -- --side a
+
+  integration_spec="$PWD/src/cli/tests/discovery-quality-base.integration.spec.ts"
+  guarded_test_cwd="$(mktemp -d)"
+  chmod 700 "$guarded_test_cwd"
+  cd "$guarded_test_cwd"
+  TEST_DATABASE_SAFE=1 bun test "$integration_spec"
+)
 ```
 
-The proof must identify only project, non-primary side-a branch, `read_write` endpoint ID/type, parent base branch, and `databaseName=protocol_eval`. If it fails, do not run the suite.
-
-Only after that proof succeeds:
-
-```bash
-cd services/api
-TEST_DATABASE_SAFE=1 bun test src/cli/tests/discovery-quality-base.integration.spec.ts
-```
+The proof must identify only project, non-primary side-a branch, `read_write` endpoint ID/type, parent base branch, and `databaseName=protocol_eval`. If it fails, the shell exits before creating the test directory or running the suite. The suite runs by absolute path from a fresh, empty mode-`0700` directory so Bun cannot auto-load the repository `.env.test` over the already attested `DATABASE_URL`; the exit trap removes that directory.
 
 Record command, git revision, identifier-only proof output, exit code, and test counts in the PR validation receipt. The integration suite repeats the internal proof before opening a DB connection and mocks all provider seams.
 

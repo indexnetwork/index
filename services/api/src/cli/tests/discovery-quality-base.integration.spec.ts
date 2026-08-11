@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test';
 import { createHash } from 'node:crypto';
 
 import { HISTORICAL_SHARED_POOL_SEED_PROJECTION } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
@@ -19,6 +19,16 @@ import { parseHistoricalQualityManifest, type DiscoveryManifestV2 } from '../dis
 
 const projection = HISTORICAL_SHARED_POOL_SEED_PROJECTION;
 const TEST_DATABASE_SAFE = process.env.TEST_DATABASE_SAFE;
+
+if (TEST_DATABASE_SAFE === '1') setDefaultTimeout(120_000);
+
+function lexicalCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function fixtureValuesByPrimaryId<T extends { id: string }, K>(rows: readonly T[], value: (row: T) => K): K[] {
+  return [...rows].sort((left, right) => lexicalCompare(left.id, right.id)).map(value);
+}
 
 function fixtureManifest(): DiscoveryManifestV2 {
   return parseHistoricalQualityManifest(JSON.stringify({
@@ -295,17 +305,17 @@ dbDescribe('historical quality protected-base integration', () => {
 
   it('reads exact ordered seed ownership, memberships, assignments, documents, and legacy-null metadata', async () => {
     const state = await currentState();
-    expect(state.users.map((row) => row.id)).toEqual(projection.users.map((row) => row.id));
-    expect(state.networks.map((row) => row.id)).toEqual(projection.networks.map((row) => row.id));
-    expect(state.memberships.map((row) => `${row.networkId}:${row.userId}`).sort()).toEqual(
-      projection.memberships.map((row) => `${row.networkId}:${row.userId}`).sort(),
+    expect(state.users.map((row) => row.id)).toEqual(fixtureValuesByPrimaryId(projection.users, (row) => row.id));
+    expect(state.networks.map((row) => row.id)).toEqual(fixtureValuesByPrimaryId(projection.networks, (row) => row.id));
+    expect(state.memberships.map((row) => `${row.networkId}:${row.userId}`).sort(lexicalCompare)).toEqual(
+      projection.memberships.map((row) => `${row.networkId}:${row.userId}`).sort(lexicalCompare),
     );
-    expect(state.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`).sort()).toEqual(
-      projection.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`).sort(),
+    expect(state.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`).sort(lexicalCompare)).toEqual(
+      projection.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`).sort(lexicalCompare),
     );
-    expect(state.premises.map((row) => row.userId)).toEqual(projection.premises.map((row) => row.userId));
-    expect(state.contexts.map((row) => row.userId)).toEqual(projection.contexts.map((row) => row.userId));
-    expect(state.documents.map((row) => row.documentId).sort()).toEqual(projection.documents.map((row) => row.documentId).sort());
+    expect(state.premises.map((row) => row.userId)).toEqual(fixtureValuesByPrimaryId(projection.premises, (row) => row.userId));
+    expect(state.contexts.map((row) => row.userId)).toEqual(fixtureValuesByPrimaryId(projection.contexts, (row) => row.userId));
+    expect(state.documents.map((row) => row.documentId).sort(lexicalCompare)).toEqual(projection.documents.map((row) => row.documentId).sort(lexicalCompare));
     expect(state.legacyMetadata.length).toBeGreaterThan(0);
     expect(state.legacyMetadata.every((row) => row.qualityAttestation === null)).toBe(true);
     await verifyHistoricalQualityPublishedState(childDb, projection, productionHistoricalQualityBaseDependencies);
