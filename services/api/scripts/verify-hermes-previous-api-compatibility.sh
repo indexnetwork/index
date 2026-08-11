@@ -31,7 +31,7 @@ else
   fail 'PREVIOUS_API_IMAGE must be supplied by release operations as an immutable digest.'
 fi
 
-for command in bun curl docker; do
+for command in bun curl docker timeout; do
   command -v "$command" >/dev/null 2>&1 || fail "$command is required."
 done
 
@@ -71,7 +71,8 @@ cleanup() {
     docker rm "$container_id" >/dev/null 2>&1 || cleanup_failed=true
   fi
   if test -n "$fixture_id"; then
-    if ! HERMES_COMPAT_OPERATION=cleanup HERMES_COMPAT_FIXTURE_ID="$fixture_id" bun - >/dev/null 2>&1 <<'BUN'
+    if ! HERMES_COMPAT_OPERATION=cleanup HERMES_COMPAT_FIXTURE_ID="$fixture_id" \
+      timeout --signal=TERM --kill-after=5s 20s bun - >/dev/null 2>&1 <<'BUN'
 import postgres from 'postgres';
 const fixtureId = process.env.HERMES_COMPAT_FIXTURE_ID;
 const databaseUrl = process.env.DATABASE_URL;
@@ -156,7 +157,7 @@ if ! HERMES_COMPAT_OPERATION=seed \
   HERMES_COMPAT_CREDENTIAL="$credential" \
   HERMES_COMPAT_CREDENTIAL_HASH="$credential_hash" \
   HERMES_COMPAT_ACTIONS_JSON="$actions_json" \
-  bun - >/dev/null 2>/dev/null <<'BUN'
+  timeout --signal=TERM --kill-after=5s 20s bun - >/dev/null 2>/dev/null <<'BUN'
 import postgres from 'postgres';
 const databaseUrl = process.env.DATABASE_URL;
 const fixtureId = process.env.HERMES_COMPAT_FIXTURE_ID;
@@ -228,7 +229,7 @@ if ! HERMES_COMPAT_OPERATION=verify-current \
   HERMES_COMPAT_FIXTURE_ID="$fixture_id" \
   HERMES_COMPAT_CREDENTIAL="$credential" \
   HERMES_COMPAT_CREDENTIAL_HASH="$credential_hash" \
-  bun - >/dev/null 2>/dev/null <<'BUN'
+  timeout --signal=TERM --kill-after=5s 20s bun - >/dev/null 2>/dev/null <<'BUN'
 import postgres from 'postgres';
 import { hashApiKey } from './src/lib/apikey/credential';
 import { resolveHermesAgentCredential } from './src/guards/auth.guard';
@@ -245,18 +246,21 @@ if (
   || resolved.principal.installationId !== `installation-${fixtureId}`
   || resolved.principal.setupAttemptId !== `setup-${fixtureId}`
   || resolved.principal.activationState !== 'active'
-) process.exit(1);
+) throw new Error('Dedicated compatibility principal mismatch');
 const legacyHash = await hashApiKey(credential);
-if (legacyHash !== credentialHash) process.exit(1);
+if (legacyHash !== credentialHash) throw new Error('Dedicated compatibility hash mismatch');
 const sql = postgres(databaseUrl, { max: 1 });
 try {
   const [legacyCollision] = await sql<{ count: number }[]>`
     SELECT count(*)::int AS count FROM apikey WHERE key = ${legacyHash}
   `;
-  if (Number(legacyCollision?.count ?? 0) !== 0) process.exit(1);
+  if (Number(legacyCollision?.count ?? 0) !== 0) {
+    throw new Error('Dedicated compatibility hash exists in legacy authority');
+  }
 } finally {
   await sql.end();
 }
+process.exit(0);
 BUN
 then
   fail 'Fresh dedicated compatibility credential failed current authentication.'

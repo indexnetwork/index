@@ -27,6 +27,7 @@ async function contractEnvironment(options: {
   seedFailure?: boolean;
   seedCommitThenFailure?: boolean;
   currentAuthenticationFailure?: boolean;
+  currentAuthenticationHang?: boolean;
   cleanupFailure?: boolean;
 } = {}) {
   const directory = await mkdtemp(resolve(tmpdir(), 'hermes-previous-api-contract-'));
@@ -53,7 +54,11 @@ case "\${HERMES_COMPAT_OPERATION:-}" in
     ;;
   verify-current)
     printf 'verify-current\\n' >>"${lifecyclePath}"
-    ${options.currentAuthenticationFailure ? `printf '%s\\n' "idxh_contractSecret contractCredentialHash ${disposableDatabaseUrl}" >&2; exit 70` : ':'}
+    ${options.currentAuthenticationHang
+    ? '/bin/sleep 3'
+    : options.currentAuthenticationFailure
+      ? `printf '%s\\n' "idxh_contractSecret contractCredentialHash ${disposableDatabaseUrl}" >&2; exit 70`
+      : ':'}
     ;;
   cleanup)
     printf 'cleanup\\n' >>"${lifecyclePath}"
@@ -61,6 +66,14 @@ case "\${HERMES_COMPAT_OPERATION:-}" in
     ;;
   *) exit 64 ;;
 esac
+`);
+  await executable(resolve(bin, 'timeout'), `#!/usr/bin/env bash
+set -euo pipefail
+if test "\${HERMES_COMPAT_OPERATION:-}" = verify-current && test "\${FAKE_TIMEOUT_CURRENT_PROOF:-}" = 1; then
+  printf 'verify-timeout\\n' >>"${lifecyclePath}"
+  exit 124
+fi
+exec /usr/bin/timeout "$@"
 `);
   await executable(resolve(bin, 'docker'), `#!/usr/bin/env bash
 set -euo pipefail
@@ -111,6 +124,7 @@ esac
       NODE_ENV: 'production',
       ALLOW_MUTABLE_PREVIOUS_IMAGE: '',
       HERMES_PREVIOUS_API_REPORT: reportPath,
+      FAKE_TIMEOUT_CURRENT_PROOF: options.currentAuthenticationHang ? '1' : '',
     },
   };
 }
@@ -261,6 +275,18 @@ describe('previous API compatibility shell gate', () => {
     expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-current\ncleanup\n');
   });
 
+  test('bounds a proof subprocess with open handles and still cleans up', async () => {
+    const contract = await contractEnvironment({ currentAuthenticationHang: true });
+    const startedAt = performance.now();
+    const result = runCompatibility({ ...contract.env, PREVIOUS_API_IMAGE: productionDigest });
+    const durationMs = performance.now() - startedAt;
+
+    expect(durationMs).toBeLessThan(1_000);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('failed current authentication');
+    expect(await readFile(contract.lifecyclePath, 'utf8')).toBe('seed\nverify-timeout\ncleanup\n');
+  });
+
   test('accepts an exact supplied repository digest found after another RepoDigest alias', async () => {
     const contract = await contractEnvironment({
       repoDigests: `other.example/index-api@sha256:${'c'.repeat(64)}\\n${productionDigest}\\n`,
@@ -336,6 +362,14 @@ describe('previous API compatibility shell gate', () => {
     expect(script).toContain('SELECT count(*)::int AS count FROM apikey WHERE key =');
     expect(permissionDelete).toBeGreaterThan(-1);
     expect(credentialDelete).toBeGreaterThan(permissionDelete);
+  });
+
+  test('bounds every database Bun subprocess and exits proof only after local pool shutdown', async () => {
+    const script = await readFile(scriptPath, 'utf8');
+    expect(script.match(/timeout --signal=TERM --kill-after=5s 20s bun -/g)).toHaveLength(3);
+    const proof = script.slice(script.indexOf('HERMES_COMPAT_OPERATION=verify-current'));
+    expect(proof).toContain('process.exit(0);');
+    expect(proof.indexOf('process.exit(0);')).toBeGreaterThan(proof.indexOf('await sql.end();'));
   });
 
   test('disables Docker request logs and documents the external-sink boundary', async () => {
