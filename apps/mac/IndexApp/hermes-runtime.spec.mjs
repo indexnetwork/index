@@ -4,6 +4,9 @@ const runtimeFile = new URL('./Sources/HermesRuntime.swift', import.meta.url);
 const runtime = await Bun.file(runtimeFile).exists()
   ? await Bun.file(runtimeFile).text()
   : '';
+const launchAttestation = await Bun.file(
+  new URL('./Sources/ConnectorLaunchAttestation.swift', import.meta.url),
+).text();
 const main = await Bun.file(new URL('./Sources/main.swift', import.meta.url)).text();
 const build = await Bun.file(new URL('./build.sh', import.meta.url)).text();
 const nativeCompatibilityFile = new URL('./Tests/HermesPersistenceCompatibility.swift', import.meta.url);
@@ -441,10 +444,7 @@ test('uses a verified credential-free connector status boundary for runtime auth
     'stagingRoot', 'copyItem', 'hardenAndRejectSymlinks',
     'sourceAfter.identity == sourceBefore.identity',
     'openRegularFileDescriptor', 'O_RDONLY | O_NOFOLLOW',
-    'O_EXEC | O_NOFOLLOW', 'readableRawValue', 'executableRawValue',
-    'posix_spawn', 'posix_spawn_file_actions_addinherit_np',
-    'let inheritedDescriptor = executableDescriptor.rawValue',
-    '/dev/fd/', 'expectedIdentity',
+    'posix_spawn', 'expectedFileIdentity',
   ]) expect(runtime).toContain(token);
   expect(runtime).toContain('CharacterSet.alphanumerics.contains');
   expect(runtime).toContain('status.st_mode & mode_t(S_IFMT) != mode_t(S_IFLNK)');
@@ -453,12 +453,22 @@ test('uses a verified credential-free connector status boundary for runtime auth
   expect(build).toContain('production connector trust pins missing or mismatched');
   expect(runtime).not.toContain('credentialId');
   expect(runtime).not.toContain('CommandLine.arguments');
-  expect(nativeCompatibility).toContain('descriptorBoundExecutionFixture');
-  expect(nativeCompatibility).toContain('posix_spawn');
-  expect(nativeCompatibility).toContain('posix_spawn_file_actions_addinherit_np');
-  expect(nativeCompatibility).toContain('let inherited = opened');
-  expect(nativeCompatibility).toContain('O_EXEC | O_NOFOLLOW');
-  expect(nativeCompatibility).toContain('/dev/fd/');
+  for (const token of [
+    'POSIX_SPAWN_START_SUSPENDED',
+    'HermesConnectorCodeAttestor.attestSuspendedChild',
+    'SecCodeCopyGuestWithAttributes',
+    'kSecCodeInfoUnique',
+    'Darwin.kill(child, SIGCONT)',
+  ]) expect(runtime + launchAttestation).toContain(token);
+
+  for (const forbidden of [
+    'posix_spawn_file_actions_addinherit_np',
+    'O_EXEC | O_NOFOLLOW',
+    'let descriptorPath = "/dev/fd/',
+  ]) expect(runtime).not.toContain(forbidden);
+  expect(build).toContain('Tests/ConnectorLaunchAttestationFixture.swift');
+  expect(nativeCompatibility).not.toContain('/dev/fd/');
+  expect(nativeCompatibility).not.toContain('posix_spawn');
   const connectorBoundary = runtime.slice(
     runtime.indexOf('final class HermesVerifiedConnectorStatusProvider'),
     runtime.indexOf('final class HermesRuntimeManager'),

@@ -111,6 +111,7 @@ swiftc -Onone "${SWIFT_DEFINES[@]}" \
     ../Security/Sources/IndexKeychainStore.swift \
     Sources/OwnerCredentialStore.swift \
     Sources/NativeAPIRequestBridge.swift \
+    Sources/ConnectorLaunchAttestation.swift \
     Sources/HermesRuntime.swift \
     Sources/main.swift
 
