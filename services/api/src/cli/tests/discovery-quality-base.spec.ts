@@ -380,6 +380,41 @@ describe('historical quality base state', () => {
     expect(state.fixtureOpportunityIds).toEqual(['opportunity-a', 'opportunity-z']);
   });
 
+  it('orders colliding composite text tuples component-by-component independent of DB order', async () => {
+    const memberships = [
+      { networkId: 'a', userId: 'b:c', permissions: ['member'], autoAssign: false, deletedAt: null },
+      { networkId: 'a:b', userId: 'c', permissions: ['member'], autoAssign: false, deletedAt: null },
+    ];
+    const intentAssignments = [
+      { networkId: 'a', intentId: 'b:c', relevancyScore: '1' },
+      { networkId: 'a:b', intentId: 'c', relevancyScore: '1' },
+    ];
+    const premiseAssignments = [
+      { networkId: 'a', premiseId: 'b:c', relevancyScore: '1' },
+      { networkId: 'a:b', premiseId: 'c', relevancyScore: '1' },
+    ];
+    const readCollisionState = (reverse: boolean) => productionHistoricalQualityBaseDependencies.readState(queuedReadDb([
+      [],
+      [],
+      reverse ? [...memberships].reverse() : memberships,
+      [],
+      reverse ? [...intentAssignments].reverse() : intentAssignments,
+      [],
+      reverse ? [...premiseAssignments].reverse() : premiseAssignments,
+      [],
+      [],
+      [],
+      [],
+    ]), projection);
+
+    const expected = [['a', 'b:c'], ['a:b', 'c']];
+    for (const state of [await readCollisionState(false), await readCollisionState(true)]) {
+      expect(state.memberships.map((row) => [row.networkId, row.userId])).toEqual(expected);
+      expect(state.intentNetworkAssignments.map((row) => [row.networkId, row.intentId])).toEqual(expected);
+      expect(state.premiseNetworkAssignments.map((row) => [row.networkId, row.premiseId])).toEqual(expected);
+    }
+  });
+
   it('canonicalizes every production pgvector select at the DB readback boundary', async () => {
     const seed = exactSeedState();
     const drizzleReadback = [0.1, -0, 3.25];

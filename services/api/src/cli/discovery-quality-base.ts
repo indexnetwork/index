@@ -141,6 +141,19 @@ function sorted<T>(rows: readonly T[], key: (row: T) => string): T[] {
   return [...rows].sort((left, right) => compareText(key(left), key(right)));
 }
 
+function compareTextTuple(left: readonly string[], right: readonly string[]): number {
+  const sharedLength = Math.min(left.length, right.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    const comparison = compareText(left[index]!, right[index]!);
+    if (comparison !== 0) return comparison;
+  }
+  return left.length < right.length ? -1 : left.length > right.length ? 1 : 0;
+}
+
+function sortedByTuple<T>(rows: readonly T[], key: (row: T) => readonly string[]): T[] {
+  return [...rows].sort((left, right) => compareTextTuple(key(left), key(right)));
+}
+
 function fail(label: string, detail = 'mismatch'): never {
   throw new Error(`Historical quality base integrity failed: ${label} ${detail}`);
 }
@@ -464,11 +477,11 @@ async function readProductionState(dbValue: unknown, projection: HistoricalShare
   return {
     users: sorted(users, (row) => row.id),
     networks: sorted(networks, (row) => row.id),
-    memberships: sorted(memberships, (row) => `${row.networkId}:${row.userId}`),
+    memberships: sortedByTuple(memberships, (row) => [row.networkId, row.userId]),
     intents: sorted(intents, (row) => row.id),
-    intentNetworkAssignments: sorted(assignments, (row) => `${row.networkId}:${row.intentId}`),
+    intentNetworkAssignments: sortedByTuple(assignments, (row) => [row.networkId, row.intentId]),
     premises: sorted(premises, (row) => row.id),
-    premiseNetworkAssignments: sorted(premiseAssignments, (row) => `${row.networkId}:${row.premiseId}`),
+    premiseNetworkAssignments: sortedByTuple(premiseAssignments, (row) => [row.networkId, row.premiseId]),
     contexts: sorted(contexts, (row) => row.id),
     documents: sorted(documents.map((row) => {
       const expected = documentProjection.get(row.id);
