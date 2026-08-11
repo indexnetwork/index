@@ -12,7 +12,7 @@ npm install -g @indexnetwork/cli
 
 Index helps you find the right people—and helps the right people find you—based on what you are actually trying to do, not just a profile headline. The value is grounded intros: suggestions come from communities you share (syndicates, founder groups, firm networks), not from spraying the open web.
 
-The flow below is one complete story—shape a room, invite people, publish an approved signal, let matching run in the background, then review a persisted match.
+The flow below is one complete story—shape a room, invite people, publish an approved signal, let broker agents evaluate in the background, then review a persisted match.
 
 ```bash
 # login + setup
@@ -22,8 +22,10 @@ index profile
 # 1. express intent (signals)
 index intent create "federated learning collaboration"
 
-# 2. background matching evaluates approved signals
-# Wait for persisted opportunities to be created, then review outcomes.
+# 2. broker agents evaluate approved signals in the background
+index negotiation list
+
+# 3. wait for persisted opportunities, then review outcomes
 index opportunity list --status pending
 index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
@@ -177,11 +179,14 @@ index sync --json                      # Output to stdout as JSON
 
 ## Examples: Reviewing Opportunities
 
-Approved signals are matched in the background. `opportunity list` only reviews persisted results; it does not trigger matching.
+Approved signals are evaluated in the background. `opportunity list` only reviews persisted results; it does not start evaluation.
 
 ### Review and act
 
 ```bash
+# Inspect agent negotiations
+index negotiation list
+
 # List persisted pending opportunities
 index opportunity list --status pending
 
