@@ -45,6 +45,24 @@ jobs:
       - name: Build protocol package
         run: bun run --cwd packages/protocol build
 
+      - name: Install pgvector in PostgreSQL service
+        env:
+          POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          test -n "$POSTGRES_SERVICE_CONTAINER"
+          test "$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")" = "postgres:16"
+          docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            apt-get update
+            apt-get install -y --no-install-recommends postgresql-16-pgvector
+            rm -rf /var/lib/apt/lists/*
+          '
+          docker exec "$POSTGRES_SERVICE_CONTAINER" \
+            psql --username postgres --dbname hermes_assurance \
+              --no-psqlrc --tuples-only --no-align \
+              --command "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" \
+            | grep -qx 1
+
       - name: Run Hermes production assurance
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance

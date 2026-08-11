@@ -46,6 +46,27 @@ describe('Hermes production assurance contract', () => {
     );
   });
 
+  test('installs pgvector into the exact PostgreSQL service before migrations', () => {
+    expect(assuranceWorkflow).toContain(
+      'POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}',
+    );
+    expect(assuranceWorkflow).toContain(
+      `test "$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")" = "postgres:16"`,
+    );
+    expect(assuranceWorkflow).toContain(
+      `docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu`,
+    );
+    expect(assuranceWorkflow).toContain(
+      'apt-get install -y --no-install-recommends postgresql-16-pgvector',
+    );
+    expect(assuranceWorkflow).toContain(
+      `SELECT 1 FROM pg_available_extensions WHERE name = 'vector'`,
+    );
+    expect(assuranceWorkflow.indexOf('- name: Install pgvector in PostgreSQL service')).toBeLessThan(
+      assuranceWorkflow.indexOf('- name: Run Hermes production assurance'),
+    );
+  });
+
   test('uses a healthy disposable PostgreSQL 16 service with frozen dependencies', () => {
     expect(existsSync(assuranceWorkflowPath)).toBe(true);
     expect(assuranceWorkflow).toContain('image: postgres:16');
