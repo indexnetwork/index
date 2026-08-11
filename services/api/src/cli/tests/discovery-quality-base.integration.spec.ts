@@ -476,8 +476,9 @@ dbDescribe('historical quality protected-base integration', () => {
     await assertReadOnlySession(async (statement) => baseClient!.unsafe(statement));
     await expect(baseClient!.unsafe('update eval_matrix_metadata set seeded_at = seeded_at')).rejects.toThrow();
     await verifyHistoricalQualityPublishedState(baseDb, projection, productionHistoricalQualityBaseDependencies);
-    await restoreBaseline();
-    expect(await currentState()).toEqual(await currentState(baseDb));
+    const childState = await currentState();
+    expect(childState).toEqual(baselineState);
+    expect(childState).toEqual(await currentState(baseDb));
   });
 
   it('uses only mocked embedding seams and never constructs a model/provider adapter', () => {
