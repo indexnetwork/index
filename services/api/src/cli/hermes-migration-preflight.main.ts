@@ -10,8 +10,8 @@ function requiredNumber(args: readonly string[], name: '--max-lock-ms' | '--max-
   if (positions.length !== 1) throw new Error(`${name} must be provided exactly once`);
   const raw = args[positions[0]! + 1];
   const value = raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${name} must be a non-negative finite number`);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive finite number`);
   }
   return value;
 }
@@ -37,14 +37,14 @@ export function parseHermesPreflightArguments(args: readonly string[]): HermesPr
 
 export async function runHermesPreflightMain(input: {
   args: readonly string[];
-  run: () => Promise<HermesPreflightReport>;
+  run: (thresholds: HermesPreflightThresholds) => Promise<HermesPreflightReport>;
   now?: () => number;
   write?: (output: string) => void;
 }): Promise<HermesPreflightReport> {
   const options = parseHermesPreflightArguments(input.args);
   const now = input.now ?? (() => performance.now());
   const startedAt = now();
-  const report = await input.run();
+  const report = await input.run({ maxLockMs: options.maxLockMs, maxTotalMs: options.maxTotalMs });
   const totalDurationMs = Math.max(0, now() - startedAt);
   // Failure reports are evidence too. Emit the same fixed count-only shape
   // before enforcing data and duration gates.

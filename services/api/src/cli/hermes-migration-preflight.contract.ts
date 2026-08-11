@@ -20,8 +20,8 @@ export interface HermesPreflightThresholds {
 export function parseLegacyMetadata(metadata: string | null): { valid: boolean } {
   if (metadata === null) return { valid: true };
   try {
-    const parsed: unknown = JSON.parse(metadata);
-    return { valid: parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) };
+    JSON.parse(metadata);
+    return { valid: true };
   } catch {
     return { valid: false };
   }

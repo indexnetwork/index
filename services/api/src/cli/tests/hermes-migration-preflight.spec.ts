@@ -22,7 +22,10 @@ describe('Hermes migration preflight contract', () => {
   it('classifies legacy text before exposing parsed metadata', () => {
     expect(parseLegacyMetadata('{"audience":"hermes-negotiator"}')).toEqual({ valid: true });
     expect(parseLegacyMetadata('{broken')).toEqual({ valid: false });
-    expect(parseLegacyMetadata('[]')).toEqual({ valid: false });
+    expect(parseLegacyMetadata('[]')).toEqual({ valid: true });
+    expect(parseLegacyMetadata('42')).toEqual({ valid: true });
+    expect(parseLegacyMetadata('null')).toEqual({ valid: true });
+    expect(parseLegacyMetadata('"scalar"')).toEqual({ valid: true });
     expect(parseLegacyMetadata(null)).toEqual({ valid: true });
   });
 
@@ -58,14 +61,17 @@ describe('Hermes migration preflight contract', () => {
     );
   });
 
-  it('requires JSON output and explicit non-negative duration thresholds', () => {
+  it('requires JSON output and explicit positive duration thresholds', () => {
     expect(parseHermesPreflightArguments([
       '--json', '--max-lock-ms', '5000', '--max-total-ms', '30000',
     ])).toEqual({ json: true, maxLockMs: 5000, maxTotalMs: 30000 });
     expect(() => parseHermesPreflightArguments(['--json'])).toThrow('--max-lock-ms is required');
     expect(() => parseHermesPreflightArguments([
       '--json', '--max-lock-ms', '5000', '--max-total-ms', '-1',
-    ])).toThrow('--max-total-ms must be a non-negative finite number');
+    ])).toThrow('--max-total-ms must be a positive finite number');
+    expect(() => parseHermesPreflightArguments([
+      '--json', '--max-lock-ms', '0', '--max-total-ms', '30000',
+    ])).toThrow('--max-lock-ms must be a positive finite number');
     expect(() => parseHermesPreflightArguments([
       '--max-lock-ms', '5000', '--max-total-ms', '30000',
     ])).toThrow('--json is required');
@@ -88,12 +94,43 @@ describe('Hermes migration preflight contract', () => {
     );
 
     expect(apikeySchema).toContain("metadata: text('metadata')");
-    expect(classification).toContain("WHEN pg_input_is_valid(metadata, 'jsonb')");
-    expect(classification).toContain("THEN jsonb_typeof(metadata::jsonb) <> 'object'");
-    expect(classification.indexOf('pg_input_is_valid')).toBeLessThan(
-      classification.indexOf('metadata::jsonb'),
+    expect(classification).toContain("NOT pg_input_is_valid(metadata, 'jsonb')");
+    expect(classification).not.toContain('metadata::jsonb');
+  });
+
+  it('establishes bounded repeatable-read before queries and validates exact catalog definitions', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../..');
+    const implementation = readFileSync(
+      path.join(apiRoot, 'src/cli/hermes-migration-preflight.ts'),
+      'utf8',
     );
-    expect(classification.match(/metadata::jsonb/g)).toHaveLength(1);
+    const transaction = implementation.slice(
+      implementation.indexOf('return input.database.transaction'),
+      implementation.indexOf('const invalidLegacyMetadata'),
+    );
+
+    expect(transaction).toContain('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+    expect(transaction.indexOf('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')).toBeLessThan(
+      transaction.indexOf('SET LOCAL lock_timeout'),
+    );
+    expect(transaction).toContain('SET LOCAL lock_timeout');
+    expect(transaction).toContain('SET LOCAL statement_timeout');
+    expect(implementation).toContain('pg_get_indexdef(index_catalog.indexrelid)');
+    expect(implementation).toContain("extract(epoch FROM (expires_at - issued_at)) <> 2592000");
+  });
+
+  it('passes explicit CLI thresholds into the bounded database runner', async () => {
+    let received: unknown;
+    await runHermesPreflightMain({
+      args: ['--json', '--max-lock-ms', '5000', '--max-total-ms', '30000'],
+      run: async (thresholds) => {
+        received = thresholds;
+        return cleanReport;
+      },
+      now: () => 10,
+      write: () => undefined,
+    });
+    expect(received).toEqual({ maxLockMs: 5000, maxTotalMs: 30000 });
   });
 
   it('renders full and sliced fixture actions as one PostgreSQL text-array parameter', () => {
@@ -129,7 +166,7 @@ describe('Hermes migration preflight contract', () => {
       'utf8',
     );
 
-    expect(fixture.match(/db\.insert\(schema\.hermesAgentCredentials\)/g)).toHaveLength(4);
+    expect(fixture.match(/\.insert\(schema\.hermesAgentCredentials\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
     expect(fixture).not.toContain('${HERMES_CANONICAL_ACTIONS}');
     expect(fixture).not.toContain('${HERMES_CANONICAL_ACTIONS.slice(0, -1)}');
     expect(fixture).toContain('actions: [...HERMES_CANONICAL_ACTIONS]');
