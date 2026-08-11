@@ -23,6 +23,44 @@ import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const envLog = protocolLogger('Discovery:env');
 
+export const DISCOVERY_MIN_SIMILARITY_DEFAULT = 0.30;
+export const DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT = 50;
+
+const DECIMAL_VALUE = /^[+]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+function validateThreshold(name: string, value: number, max: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > max) {
+    throw new Error(`${name} must be a finite decimal between 0 and ${max} (inclusive)`);
+  }
+  return value;
+}
+
+function readThreshold(name: string, fallback: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const normalized = raw.trim();
+  if (!DECIMAL_VALUE.test(normalized)) {
+    throw new Error(`${name} must be a finite decimal between 0 and ${max} (inclusive)`);
+  }
+  return validateThreshold(name, Number(normalized), max);
+}
+
+export function validateDiscoveryMinSimilarity(value: number): number {
+  return validateThreshold('DISCOVERY_MIN_SIMILARITY', value, 1);
+}
+
+export function validateDiscoveryEvaluatorMinScore(value: number): number {
+  return validateThreshold('DISCOVERY_EVALUATOR_MIN_SCORE', value, 100);
+}
+
+export function discoveryMinSimilarity(): number {
+  return readThreshold('DISCOVERY_MIN_SIMILARITY', DISCOVERY_MIN_SIMILARITY_DEFAULT, 1);
+}
+
+export function discoveryEvaluatorMinScore(): number {
+  return readThreshold('DISCOVERY_EVALUATOR_MIN_SCORE', DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT, 100);
+}
+
 /** Data types allowed to participate in opportunity matching. */
 export type DiscoveryMatchType = 'intent' | 'profile';
 

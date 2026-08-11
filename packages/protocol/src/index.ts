@@ -234,11 +234,17 @@ export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./capabilities/opp
 
 // Discovery env accessors (IND-XXX)
 export {
+  DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
+  DISCOVERY_MIN_SIMILARITY_DEFAULT,
   discoveryAllowedTypes,
+  discoveryEvaluatorMinScore,
   discoveryIntentMatchingEnabled,
+  discoveryMinSimilarity,
   discoveryProfileMatchingEnabled,
   discoveryProfileSource,
   resetDiscoveryEnvWarningsForTests,
+  validateDiscoveryEvaluatorMinScore,
+  validateDiscoveryMinSimilarity,
 } from "./capabilities/opportunities.facade.js";
 export type { DiscoveryMatchType, DiscoveryProfileSource } from "./capabilities/opportunities.facade.js";
 export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./capabilities/opportunities.facade.js";

@@ -123,11 +123,17 @@ export {
 
 // discovery env accessors
 export {
+  DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
+  DISCOVERY_MIN_SIMILARITY_DEFAULT,
   discoveryAllowedTypes,
+  discoveryEvaluatorMinScore,
   discoveryIntentMatchingEnabled,
+  discoveryMinSimilarity,
   discoveryProfileMatchingEnabled,
   discoveryProfileSource,
   resetDiscoveryEnvWarningsForTests,
+  validateDiscoveryEvaluatorMinScore,
+  validateDiscoveryMinSimilarity,
 } from "../discovery.env.js";
 export type {
   DiscoveryMatchType,
