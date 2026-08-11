@@ -88,13 +88,12 @@ function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
 }
 
 function refreshDesktopIdentity(ctx, state) {
-  return Promise.resolve()
-    .then(function () { return ctx.rest('/auth/status', { method: 'GET' }) })
-    .then(function (payload) {
-      const user = payload && payload.authenticated && payload.user
-      state.currentUserId = user && typeof user.id === 'string' && user.id ? user.id : null
-    })
-    .catch(function () { /* unknown identity intentionally keeps message alerts suppressed */ })
+  return refreshNotificationIdentity(function () {
+    return ctx.rest('/auth/status', { method: 'GET' })
+  }).then(function (currentUserId) {
+    // A failed or invalid refresh resolves to unknown, never a stale identity.
+    state.currentUserId = currentUserId
+  })
 }
 
 function reconcileDesktopSnapshot(ctx, state) {

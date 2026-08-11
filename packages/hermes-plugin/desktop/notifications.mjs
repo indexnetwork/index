@@ -33,6 +33,17 @@ export function isOwnMessage(event, currentUserId) {
   return !senderId || senderId === currentUserId || senderId === `agent:${currentUserId}`
 }
 
+export async function refreshNotificationIdentity(loadAuthStatus) {
+  try {
+    const payload = await loadAuthStatus()
+    const user = payload && payload.success === true && payload.authenticated === true && payload.user
+    const userId = user && typeof user.id === 'string' ? user.id.trim() : ''
+    return userId || null
+  } catch (error) {
+    return null
+  }
+}
+
 export function composeNotification(event) {
   if (!event || typeof event.type !== 'string') return null
   if (event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0) {

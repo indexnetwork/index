@@ -4300,6 +4300,17 @@ export function isOwnMessage(event, currentUserId) {
   return !senderId || senderId === currentUserId || senderId === `agent:${currentUserId}`
 }
 
+export async function refreshNotificationIdentity(loadAuthStatus) {
+  try {
+    const payload = await loadAuthStatus()
+    const user = payload && payload.success === true && payload.authenticated === true && payload.user
+    const userId = user && typeof user.id === 'string' ? user.id.trim() : ''
+    return userId || null
+  } catch (error) {
+    return null
+  }
+}
+
 export function composeNotification(event) {
   if (!event || typeof event.type !== 'string') return null
   if (event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0) {
@@ -4469,13 +4480,12 @@ function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
 }
 
 function refreshDesktopIdentity(ctx, state) {
-  return Promise.resolve()
-    .then(function () { return ctx.rest('/auth/status', { method: 'GET' }) })
-    .then(function (payload) {
-      const user = payload && payload.authenticated && payload.user
-      state.currentUserId = user && typeof user.id === 'string' && user.id ? user.id : null
-    })
-    .catch(function () { /* unknown identity intentionally keeps message alerts suppressed */ })
+  return refreshNotificationIdentity(function () {
+    return ctx.rest('/auth/status', { method: 'GET' })
+  }).then(function (currentUserId) {
+    // A failed or invalid refresh resolves to unknown, never a stale identity.
+    state.currentUserId = currentUserId
+  })
 }
 
 function reconcileDesktopSnapshot(ctx, state) {

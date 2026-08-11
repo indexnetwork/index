@@ -7,6 +7,7 @@ import {
   isOwnMessage,
   notificationEntityKey,
   reconcileNotificationSnapshot,
+  refreshNotificationIdentity,
   rememberNotificationEntity,
   snapshotNotificationEvents,
 } from '../desktop/notifications.mjs'
@@ -41,6 +42,36 @@ assert.equal(isOwnMessage(messageFrom('user-2'), 'user-1'), false)
 assert.equal(isOwnMessage(messageFrom('user-2'), ''), true)
 assert.equal(isOwnMessage(messageFrom('user-2'), null), true)
 assert.equal(isOwnMessage({ type: 'message' }, 'user-1'), true)
+
+// A failed or invalid refresh must replace a previously valid identity with
+// unknown, keeping every message suppressed until identity resolves again.
+let refreshedUserId = await refreshNotificationIdentity(async () => ({
+  success: true,
+  authenticated: true,
+  user: { id: 'user-1' },
+}))
+assert.equal(refreshedUserId, 'user-1')
+assert.equal(isOwnMessage(messageFrom('user-1'), refreshedUserId), true)
+
+refreshedUserId = await refreshNotificationIdentity(async () => {
+  throw new Error('auth unavailable')
+})
+assert.equal(refreshedUserId, null)
+assert.equal(isOwnMessage(messageFrom('user-1'), refreshedUserId), true)
+assert.equal(isOwnMessage(messageFrom('user-2'), refreshedUserId), true)
+
+refreshedUserId = await refreshNotificationIdentity(async () => ({
+  success: true,
+  authenticated: true,
+  user: { id: 'user-1' },
+}))
+assert.equal(refreshedUserId, 'user-1')
+refreshedUserId = await refreshNotificationIdentity(async () => ({
+  authenticated: true,
+  user: { id: 'user-1' },
+}))
+assert.equal(refreshedUserId, null)
+assert.equal(isOwnMessage(messageFrom('user-2'), refreshedUserId), true)
 
 // Server-projected notification copy is retained; message copy has safe fallbacks.
 assert.deepEqual(
