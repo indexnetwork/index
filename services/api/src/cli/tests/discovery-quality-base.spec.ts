@@ -308,10 +308,10 @@ describe('historical quality base state', () => {
   });
 
   for (const mutation of [
-    { label: 'premise ID', input: { premiseId: 'wrong-premise-id' }, select: (state: HistoricalQualityBaseState) => state.premises[0]!.id, expected: 'wrong-premise-id' },
+    { label: 'premise ID', input: { premiseId: 'wrong-premise-id' }, select: (state: HistoricalQualityBaseState) => state.premises.find((row) => row.id === 'wrong-premise-id')?.id, expected: 'wrong-premise-id' },
     { label: 'premise user ownership', input: { premiseUserId: 'wrong-premise-owner' }, select: (state: HistoricalQualityBaseState) => state.premises[0]!.userId, expected: 'wrong-premise-owner' },
     { label: 'premise text', input: { premiseText: 'mutated database premise text' }, select: (state: HistoricalQualityBaseState) => state.premises[0]!.assertion.text, expected: 'mutated database premise text' },
-    { label: 'context ID', input: { contextId: 'wrong-context-id' }, select: (state: HistoricalQualityBaseState) => state.contexts[0]!.id, expected: 'wrong-context-id' },
+    { label: 'context ID', input: { contextId: 'wrong-context-id' }, select: (state: HistoricalQualityBaseState) => state.contexts.find((row) => row.id === 'wrong-context-id')?.id, expected: 'wrong-context-id' },
     { label: 'context user ownership', input: { contextUserId: 'wrong-context-owner' }, select: (state: HistoricalQualityBaseState) => state.contexts[0]!.userId, expected: 'wrong-context-owner' },
     { label: 'context text', input: { contextText: 'mutated database context text' }, select: (state: HistoricalQualityBaseState) => state.contexts[0]!.text, expected: 'mutated database context text' },
   ] as const) {
@@ -323,6 +323,62 @@ describe('historical quality base state', () => {
       await expect(verifyHistoricalQualitySeedState(new FakeDb() as unknown as DrizzleDB, projection, deps)).rejects.toThrow();
     });
   }
+
+  it('canonicalizes every production state collection by its stable key', async () => {
+    const seed = exactSeedState();
+    const selectedDocuments = projection.documents.slice(0, 2).reverse().map((document) => ({
+      id: document.documentId,
+      sourceId: document.sourceRowId,
+      sourceText: document.text,
+      strategy: document.strategy,
+      targetCorpus: document.targetCorpus,
+      context: {
+        participantId: document.participantId,
+        sourceType: document.sourceType,
+        sourcePaths: document.sourcePaths,
+        targetFrame: document.targetFrame,
+        contentFingerprint: document.contentFingerprint,
+      },
+      hydeText: document.text,
+      embedding: [0],
+    }));
+    const fixtureUserId = projection.users[0]!.id;
+    const state = await productionHistoricalQualityBaseDependencies.readState(queuedReadDb([
+      [...seed.users].reverse(),
+      [{ ...seed.networks[0]!, id: 'network-z' }, { ...seed.networks[0]!, id: 'network-a' }],
+      [...seed.memberships].reverse(),
+      [...seed.intents].reverse(),
+      [...seed.intentNetworkAssignments].reverse(),
+      [...seed.premises].reverse(),
+      [...seed.premiseNetworkAssignments].reverse(),
+      [...seed.contexts].reverse(),
+      selectedDocuments,
+      [
+        { key: 'legacy-z', schemaMigrationFingerprint: 'z', fixtureFingerprint: 'z', fixtureCorpusVersion: 'z', qualityAttestation: null },
+        { key: HISTORICAL_QUALITY_METADATA_KEY, schemaMigrationFingerprint: 'quality', fixtureFingerprint: 'quality', fixtureCorpusVersion: 'quality', qualityAttestation: null },
+        { key: 'legacy-a', schemaMigrationFingerprint: 'a', fixtureFingerprint: 'a', fixtureCorpusVersion: 'a', qualityAttestation: null },
+      ],
+      [
+        { id: 'opportunity-z', actors: [{ userId: fixtureUserId }] },
+        { id: 'opportunity-ignored', actors: [{ userId: 'unrelated-user' }] },
+        { id: 'opportunity-a', actors: [{ userId: fixtureUserId }] },
+      ],
+    ]), projection);
+    const compare = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
+
+    expect(state.users.map((row) => row.id)).toEqual(seed.users.map((row) => row.id).sort(compare));
+    expect(state.networks.map((row) => row.id)).toEqual(['network-a', 'network-z']);
+    expect(state.memberships.map((row) => `${row.networkId}:${row.userId}`)).toEqual(seed.memberships.map((row) => `${row.networkId}:${row.userId}`).sort(compare));
+    expect(state.intents.map((row) => row.id)).toEqual(seed.intents.map((row) => row.id).sort(compare));
+    expect(state.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`)).toEqual(seed.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`).sort(compare));
+    expect(state.premises.map((row) => row.id)).toEqual(seed.premises.map((row) => row.id).sort(compare));
+    expect(state.premiseNetworkAssignments.map((row) => `${row.networkId}:${row.premiseId}`)).toEqual(seed.premiseNetworkAssignments.map((row) => `${row.networkId}:${row.premiseId}`).sort(compare));
+    expect(state.contexts.map((row) => row.id)).toEqual(seed.contexts.map((row) => row.id).sort(compare));
+    expect(state.documents.map((row) => row.documentId)).toEqual(selectedDocuments.map((row) => row.id).sort(compare));
+    expect(state.qualityMetadata?.key).toBe(HISTORICAL_QUALITY_METADATA_KEY);
+    expect(state.legacyMetadata.map((row) => row.key)).toEqual(['legacy-a', 'legacy-z']);
+    expect(state.fixtureOpportunityIds).toEqual(['opportunity-a', 'opportunity-z']);
+  });
 
   it('canonicalizes every production pgvector select at the DB readback boundary', async () => {
     const seed = exactSeedState();

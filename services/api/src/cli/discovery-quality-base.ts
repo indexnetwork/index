@@ -462,15 +462,15 @@ async function readProductionState(dbValue: unknown, projection: HistoricalShare
   const documentProjection = new Map(projection.documents.map((row) => [row.documentId, row]));
   const qualityMetadata = metadata.find((row) => row.key === HISTORICAL_QUALITY_METADATA_KEY) ?? null;
   return {
-    users,
-    networks,
-    memberships,
-    intents,
-    intentNetworkAssignments: assignments,
-    premises,
-    premiseNetworkAssignments: premiseAssignments,
-    contexts,
-    documents: documents.map((row) => {
+    users: sorted(users, (row) => row.id),
+    networks: sorted(networks, (row) => row.id),
+    memberships: sorted(memberships, (row) => `${row.networkId}:${row.userId}`),
+    intents: sorted(intents, (row) => row.id),
+    intentNetworkAssignments: sorted(assignments, (row) => `${row.networkId}:${row.intentId}`),
+    premises: sorted(premises, (row) => row.id),
+    premiseNetworkAssignments: sorted(premiseAssignments, (row) => `${row.networkId}:${row.premiseId}`),
+    contexts: sorted(contexts, (row) => row.id),
+    documents: sorted(documents.map((row) => {
       const expected = documentProjection.get(row.id);
       const context = row.context && typeof row.context === 'object' ? row.context as Record<string, unknown> : {};
       return {
@@ -486,10 +486,13 @@ async function readProductionState(dbValue: unknown, projection: HistoricalShare
         contentFingerprint: String(context.contentFingerprint ?? expected?.contentFingerprint ?? ''),
         embedding: row.embedding,
       };
-    }),
+    }), (row) => row.documentId),
     qualityMetadata,
-    legacyMetadata: metadata.filter((row) => row.key !== HISTORICAL_QUALITY_METADATA_KEY).map((row) => ({ key: row.key, qualityAttestation: row.qualityAttestation })),
-    fixtureOpportunityIds: opportunities.filter((row) => Array.isArray(row.actors) && row.actors.some((actor) => userIds.includes(String(actor.userId)))).map((row) => row.id),
+    legacyMetadata: sorted(metadata.filter((row) => row.key !== HISTORICAL_QUALITY_METADATA_KEY).map((row) => ({ key: row.key, qualityAttestation: row.qualityAttestation })), (row) => row.key),
+    fixtureOpportunityIds: opportunities
+      .filter((row) => Array.isArray(row.actors) && row.actors.some((actor) => userIds.includes(String(actor.userId))))
+      .map((row) => String(row.id))
+      .sort(compareText),
   };
 }
 

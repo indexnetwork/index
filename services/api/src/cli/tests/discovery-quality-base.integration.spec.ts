@@ -26,8 +26,12 @@ function lexicalCompare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function fixtureValuesByKey<T, K>(rows: readonly T[], key: (row: T) => string, value: (row: T) => K): K[] {
+  return [...rows].sort((left, right) => lexicalCompare(key(left), key(right))).map(value);
+}
+
 function fixtureValuesByPrimaryId<T extends { id: string }, K>(rows: readonly T[], value: (row: T) => K): K[] {
-  return [...rows].sort((left, right) => lexicalCompare(left.id, right.id)).map(value);
+  return fixtureValuesByKey(rows, (row) => row.id, value);
 }
 
 function fixtureManifest(): DiscoveryManifestV2 {
@@ -307,17 +311,25 @@ dbDescribe('historical quality protected-base integration', () => {
     const state = await currentState();
     expect(state.users.map((row) => row.id)).toEqual(fixtureValuesByPrimaryId(projection.users, (row) => row.id));
     expect(state.networks.map((row) => row.id)).toEqual(fixtureValuesByPrimaryId(projection.networks, (row) => row.id));
-    expect(state.memberships.map((row) => `${row.networkId}:${row.userId}`).sort(lexicalCompare)).toEqual(
-      projection.memberships.map((row) => `${row.networkId}:${row.userId}`).sort(lexicalCompare),
+    expect(state.memberships.map((row) => `${row.networkId}:${row.userId}`)).toEqual(
+      fixtureValuesByKey(projection.memberships, (row) => `${row.networkId}:${row.userId}`, (row) => `${row.networkId}:${row.userId}`),
     );
-    expect(state.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`).sort(lexicalCompare)).toEqual(
-      projection.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`).sort(lexicalCompare),
+    expect(state.intents.map((row) => row.userId)).toEqual(fixtureValuesByPrimaryId(projection.intents, (row) => row.userId));
+    expect(state.intentNetworkAssignments.map((row) => `${row.networkId}:${row.intentId}`)).toEqual(
+      fixtureValuesByKey(projection.intentNetworkAssignments, (row) => `${row.networkId}:${row.intentId}`, (row) => `${row.networkId}:${row.intentId}`),
     );
     expect(state.premises.map((row) => row.userId)).toEqual(fixtureValuesByPrimaryId(projection.premises, (row) => row.userId));
+    expect(state.premiseNetworkAssignments.map((row) => `${row.networkId}:${row.premiseId}`)).toEqual(
+      fixtureValuesByKey(projection.premises, (row) => `${projection.networks[0]!.id}:${row.id}`, (row) => `${projection.networks[0]!.id}:${row.id}`),
+    );
     expect(state.contexts.map((row) => row.userId)).toEqual(fixtureValuesByPrimaryId(projection.contexts, (row) => row.userId));
-    expect(state.documents.map((row) => row.documentId).sort(lexicalCompare)).toEqual(projection.documents.map((row) => row.documentId).sort(lexicalCompare));
+    expect(state.documents.map((row) => row.documentId)).toEqual(
+      fixtureValuesByKey(projection.documents, (row) => row.documentId, (row) => row.documentId),
+    );
     expect(state.legacyMetadata.length).toBeGreaterThan(0);
+    expect(state.legacyMetadata.map((row) => row.key)).toEqual([...state.legacyMetadata.map((row) => row.key)].sort(lexicalCompare));
     expect(state.legacyMetadata.every((row) => row.qualityAttestation === null)).toBe(true);
+    expect(state.fixtureOpportunityIds).toEqual([]);
     await verifyHistoricalQualityPublishedState(childDb, projection, productionHistoricalQualityBaseDependencies);
   });
 
