@@ -35,8 +35,7 @@ function validateThreshold(name: string, value: number, max: number): number {
   return value;
 }
 
-function readThreshold(name: string, fallback: number, max: number): number {
-  const raw = process.env[name];
+function readThreshold(raw: string | undefined, name: string, fallback: number, max: number): number {
   if (raw === undefined || raw.trim() === '') return fallback;
   const normalized = raw.trim();
   if (!DECIMAL_VALUE.test(normalized)) {
@@ -54,11 +53,21 @@ export function validateDiscoveryEvaluatorMinScore(value: number): number {
 }
 
 export function discoveryMinSimilarity(): number {
-  return readThreshold('DISCOVERY_MIN_SIMILARITY', DISCOVERY_MIN_SIMILARITY_DEFAULT, 1);
+  return readThreshold(
+    process.env.DISCOVERY_MIN_SIMILARITY,
+    'DISCOVERY_MIN_SIMILARITY',
+    DISCOVERY_MIN_SIMILARITY_DEFAULT,
+    1,
+  );
 }
 
 export function discoveryEvaluatorMinScore(): number {
-  return readThreshold('DISCOVERY_EVALUATOR_MIN_SCORE', DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT, 100);
+  return readThreshold(
+    process.env.DISCOVERY_EVALUATOR_MIN_SCORE,
+    'DISCOVERY_EVALUATOR_MIN_SCORE',
+    DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
+    100,
+  );
 }
 
 /** Data types allowed to participate in opportunity matching. */

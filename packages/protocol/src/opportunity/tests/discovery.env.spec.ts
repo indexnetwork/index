@@ -37,7 +37,7 @@ describe('discovery thresholds', () => {
     }
   });
 
-  it.each(['nope', 'NaN', 'Infinity', '0x1', '-0.01', '1.01'])(
+  it.each(['nope', 'NaN', 'Infinity', '0x1', '-0', '-0.01', '1e0', '1.01'])(
     'rejects invalid similarity %s',
     (raw) => {
       process.env.DISCOVERY_MIN_SIMILARITY = raw;
@@ -45,7 +45,7 @@ describe('discovery thresholds', () => {
     },
   );
 
-  it.each(['nope', 'NaN', 'Infinity', '0x32', '-1', '100.01'])(
+  it.each(['nope', 'NaN', 'Infinity', '0x32', '-0', '-1', '5e1', '100.01'])(
     'rejects invalid evaluator score %s',
     (raw) => {
       process.env.DISCOVERY_EVALUATOR_MIN_SCORE = raw;

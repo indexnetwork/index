@@ -217,7 +217,7 @@ fixed message and never the control plane's own — control-plane responses and
 `DATABASE_URL`s carry credentials — so do not expect the specific mismatch to be
 named.
 
-**The 26 flags it can offer.** `DISCOVERY_ENV_KEYS` in
+**The 28 flags it can offer.** `DISCOVERY_ENV_KEYS` in
 `services/api/src/cli/discovery.flags.ts`, **generated** from a scan of the
 discovery graph's own transitive import closure rather than hand-maintained
 (`packages/protocol/eval/ops/ops.envcatalog.build.ts`), and regenerated-and-diffed
@@ -226,6 +226,7 @@ by `eval/ops/tests/envcatalog.spec.ts` so the committed copy cannot drift:
 ```
 CHAT_MODEL                           CHAT_REASONING_EFFORT
 DISCOVERY_ALLOWED_TYPES              DISCOVERY_CONTEXT_TO_INTENT
+DISCOVERY_EVALUATOR_MIN_SCORE        DISCOVERY_MIN_SIMILARITY
 DISCOVERY_PROFILE_SOURCE             DISCOVERY_REJECTION_COOLDOWN_DAYS
 DISCOVERY_SOURCE_PREMISE_LIMIT       EVAL_MODEL_OVERRIDES
 HYDE_FRAME_CONSTRAINTS_ENABLED       NEGOTIATION_ASK_USER_ENABLED
@@ -579,7 +580,7 @@ maintained by hand.** `DISCOVERY_ENV_KEYS` is `HARNESS_ENV_KEYS.discovery`
 graph's transitive import closure and collecting its `process.env` reads
 (`ops.envcatalog.build.ts`); `eval/ops/tests/envcatalog.spec.ts` regenerates it
 and fails on any difference, so the committed file cannot drift from the code.
-That is **26 keys**, not the nine an earlier hand-written list offered: the nine
+That is **28 keys**, not the nine an earlier hand-written list offered: the nine
 were an artefact of scanning against the sixteen-key `PROFILE_ENV_ALLOWLIST`
 rather than against the graph. The launch form's key picker offers exactly
 `HARNESS_ENV_KEYS[harness]` and nothing else, and every offered key must also

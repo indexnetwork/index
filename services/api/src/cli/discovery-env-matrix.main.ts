@@ -11,7 +11,7 @@ import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityEvaluator, OpportunityGraphFactory, PremiseGraphFactory, UserContextGenerator, type HydeGraphDatabase, type OpportunityGraphDatabase, type PremiseGraphDatabase } from '@indexnetwork/protocol';
+import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityEvaluator, OpportunityGraphFactory, PremiseGraphFactory, UserContextGenerator, discoveryEvaluatorMinScore, type HydeGraphDatabase, type OpportunityGraphDatabase, type PremiseGraphDatabase } from '@indexnetwork/protocol';
 
 import { baseSeedPayload, type BaseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 import { expectedBaseMetadata, verifyBaseFixtureIntegrity, verifyProtectedBase } from './discovery-env-matrix-base.main';
@@ -702,6 +702,11 @@ export function collectEvaluatorTraces(
   });
 }
 
+/** Constructor-only overrides resolved after an A/B side environment is applied. */
+export function discoveryChildThresholdOverrides(): { evaluatorMinScore: number } {
+  return { evaluatorMinScore: discoveryEvaluatorMinScore() };
+}
+
 export async function createChildDependencies() {
   const [adapterModule, embedderModule, cacheModule] = await Promise.all([
     import('../adapters/database.adapter'),
@@ -724,7 +729,7 @@ export async function createChildDependencies() {
     undefined,
     undefined,
     undefined,
-    { evaluatorMinScore: 50 },
+    discoveryChildThresholdOverrides(),
   ).createGraph();
   return { database, premiseGraph, contextGenerator, opportunityGraph };
 }

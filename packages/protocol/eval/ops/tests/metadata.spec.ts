@@ -165,14 +165,14 @@ describe("ENV_FLAG_METADATA", () => {
     // that reads as enforced and enforces nothing.
     for (const meta of ENV_FLAG_METADATA) {
       if (meta.min === undefined) continue;
-      expect(["integer", "number"], `${meta.key} declares min on kind ${meta.kind}`).toContain(meta.kind);
+      expect(["integer", "number", "decimal-range"], `${meta.key} declares min on kind ${meta.kind}`).toContain(meta.kind);
     }
   });
 
   it("declares a maximum only where it would be honoured, and above its own minimum", () => {
     for (const meta of ENV_FLAG_METADATA) {
       if (meta.max === undefined) continue;
-      expect(["integer", "number"], `${meta.key} declares max on kind ${meta.kind}`).toContain(meta.kind);
+      expect(["integer", "number", "decimal-range"], `${meta.key} declares max on kind ${meta.kind}`).toContain(meta.kind);
       if (meta.min !== undefined) expect(meta.max, `${meta.key} max is below its min`).toBeGreaterThan(meta.min);
     }
   });
@@ -193,6 +193,25 @@ describe("ENV_FLAG_METADATA", () => {
     expect(envFlagValueIssue(meta, "0")).not.toBeNull();
     expect(envFlagValueIssue(meta, String(Number.MAX_SAFE_INTEGER + 10))).not.toBeNull();
     expect(envFlagValueIssue(meta, "15000")).toBeNull();
+  });
+
+  it.each([
+    ["DISCOVERY_MIN_SIMILARITY", 0, 1, "0.30"],
+    ["DISCOVERY_EVALUATOR_MIN_SCORE", 0, 100, "50"],
+  ] as const)("mirrors %s strict decimal grammar and inclusive range", (key, min, max, defaultValue) => {
+    const meta = ENV_FLAG_METADATA.find((candidate) => candidate.key === key)!;
+    expect(meta, `${key} metadata`).toBeDefined();
+    expect(meta.kind).toBe("decimal-range");
+    expect(meta.min).toBe(min);
+    expect(meta.max).toBe(max);
+    expect(meta.defaultDescription).toContain(defaultValue);
+
+    for (const value of [String(min), `+${min}`, ".5", String(max), `${max}.0`]) {
+      expect(envFlagValueIssue(meta, value), `${key} should accept ${value}`).toBeNull();
+    }
+    for (const value of ["-0", "-0.1", "1e0", "0x1", "NaN", "Infinity", "1.2.3", String(max + 0.01)]) {
+      expect(envFlagValueIssue(meta, value), `${key} should refuse ${value}`).not.toBeNull();
+    }
   });
 
   it("lets the retry count be zero, because its read site honours zero", () => {
@@ -370,6 +389,8 @@ describe("ENV_FLAG_METADATA", () => {
           [...upstreamValues].sort(),
         );
         expect(meta!.kind === "enum" || meta!.kind === "boolean").toBe(true);
+      } else if (/^optionalDecimalInRange\(/.test(declaration.trim())) {
+        expect(meta!.kind, `${key} should use the strict decimal range validator`).toBe("decimal-range");
       } else if (/regex\(\/\^\\d\+\$\//.test(declaration)) {
         expect(meta!.kind, `${key} should be integer`).toBe("integer");
       } else {
