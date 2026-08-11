@@ -12,8 +12,6 @@
  *   negotiationDatabase, agentDispatcher (optional), negotiationTimeoutQueue (optional).
  *
  * IND-550: canonical ports surface for the negotiation capability.
- * Legacy paths:
- *   - capabilities/negotiation.tools.port.ts → re-exports NegotiationToolDeps from here
  */
 
 // ── Tool host ─────────────────────────────────────────────────────────────────

@@ -22,7 +22,6 @@
  * Legacy paths:
  *   - shared/interfaces/agent.interface.ts → re-exports AgentDatabase from here
  *   - shared/interfaces/agent-dispatcher.interface.ts → re-exports from here
- *   - capabilities/participant-agents.tools.port.ts → re-exports AgentToolDeps from here
  */
 
 // ── Persistence ───────────────────────────────────────────────────────────────

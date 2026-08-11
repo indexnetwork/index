@@ -11,9 +11,8 @@
  * shared/interfaces/integration.interface.ts, which after IND-549 forwards
  * to integrations/ports — creating a cycle back here.
  *
- * Structural equivalence with the Pick<ToolRegistryCompositionDeps,
- * "integration" | "integrationImporter" | "contactsEnabled"> definition in
- * the legacy shim is preserved.
+ * Its shape remains structurally equivalent to the matching
+ * ToolRegistryCompositionDeps fields.
  *
  * IND-549: extracted from capabilities/integrations.tools.port.ts into the
  * integrations capability's dedicated ports layer.

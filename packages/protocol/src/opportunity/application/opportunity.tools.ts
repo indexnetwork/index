@@ -4,7 +4,7 @@ import { requestContext } from "../../shared/observability/request-context.js";
 
 
 import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { OpportunityToolDeps } from "../../capabilities/opportunities.tools.port.js";
+import type { OpportunityToolDeps } from "../ports/index.js";
 import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
 import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "../domain/opportunity.labels.js";
