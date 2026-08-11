@@ -111,10 +111,15 @@ function specifiers(source: string, path: string): string[] {
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   const found: string[] = [];
   const stringArgument = (node: ts.Node | undefined): string | undefined =>
-    node && ts.isStringLiteral(node) ? node.text : undefined;
+    node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      ? node.text
+      : undefined;
   const visit = (node: ts.Node): void => {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
       const value = stringArgument(node.moduleSpecifier);
+      if (value) found.push(value);
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      const value = stringArgument(node.moduleReference.expression);
       if (value) found.push(value);
     } else if (ts.isCallExpression(node)) {
       const value = stringArgument(node.arguments[0]);
@@ -154,6 +159,28 @@ async function legacyPathViolations(): Promise<Violation[]> {
   }
   return violations.sort((left, right) => left.importer.localeCompare(right.importer) || left.specifier.localeCompare(right.specifier));
 }
+
+test("finds static template and import-equals legacy specifiers", () => {
+  const importer = resolve(REPOSITORY_ROOT, "services/api/tests/legacy-path-fixture.ts");
+  const source = [
+    "await import(`../../../packages/protocol/src/intent/intent.graph.ts`);",
+    "require(`../../../packages/protocol/src/agent/agent.tools.ts`);",
+    "new URL(`../../../packages/protocol/src/negotiation/negotiation.graph.ts`, import.meta.url);",
+    "import legacy = require(\"../../../packages/protocol/src/intent/intent.clarifier.ts\");",
+  ].join("\n");
+
+  const paths = specifiers(source, importer)
+    .flatMap((specifier) => resolvedPaths(importer, specifier))
+    .filter((path) => LEGACY_PATH_SET.has(path))
+    .sort();
+
+  expect(paths).toEqual([
+    "packages/protocol/src/agent/agent.tools.ts",
+    "packages/protocol/src/intent/intent.clarifier.ts",
+    "packages/protocol/src/intent/intent.graph.ts",
+    "packages/protocol/src/negotiation/negotiation.graph.ts",
+  ]);
+});
 
 test("repository source does not reference deprecated protocol paths", async () => {
   expect(LEGACY_PATHS).toHaveLength(77);
