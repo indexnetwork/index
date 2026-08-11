@@ -4,7 +4,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, expect, it } from "bun:test";
 import type { Runnable } from "@langchain/core/runnables";
-import { OpportunityEvaluator, type EvaluatorInput } from "../opportunity.evaluator.js";
+import { OpportunityEvaluator, type EvaluatorInput } from "../application/opportunity.evaluator.js";
 
 describe('OpportunityEvaluator', () => {
   const evaluator = new OpportunityEvaluator();

@@ -67,6 +67,7 @@ pin a supported release, use `latest`.
   `SynthesisResult` types. Minor bump: additive surface only.
 
 ### Changed
+- Remove unsupported deprecated source/deep forwarding shims after migrating repository consumers to canonical modules; stable package-root exports are unchanged.
 - Add a fail-closed isolated provider-free test gate (10.1.1). Tooling-only
   safety foundation; no runtime or public API behavior changes.
 - Share capability classification metadata between the existing architecture

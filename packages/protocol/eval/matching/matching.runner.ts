@@ -1,4 +1,4 @@
-import type { EvaluatorInput, EvaluatedOpportunityWithActors } from "../../src/opportunity/opportunity.evaluator.js";
+import type { EvaluatorInput, EvaluatedOpportunityWithActors } from "../../src/opportunity/application/opportunity.evaluator.js";
 
 import { executeRuns, type EvalEvidencePolicy, type EvalRunBatch } from "../shared/index.js";
 import { MATCHING_EVAL_ATTEMPT_TIMEOUT_MS, MATCHING_EVAL_MAX_ATTEMPTS, MATCHING_EVAL_RETRY_DELAY_MS, MATCHING_MIN_SCORE } from "./matching.constants.js";

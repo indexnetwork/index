@@ -28,11 +28,6 @@
   --edge-runtime: var(--green);
   --edge-injected: var(--amber);
   --edge-conceptual: var(--violet);
-  --edge-static-pattern: 10 5;
-  --edge-runtime-pattern: none;
-  --edge-injected-pattern: 2 5;
-  --edge-conceptual-pattern: 1 5;
-
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -399,92 +394,10 @@ button.atlas-node {
   text-transform: uppercase;
 }
 
-.atlas-edge {
-  --edge-color: var(--edge-static);
-  --edge-pattern: var(--edge-static-pattern);
-  --edge-label: "static";
-  color: var(--edge-color);
-  stroke: var(--edge-color);
-  stroke-dasharray: var(--edge-pattern);
-  stroke-linecap: round;
-  stroke-width: 2;
-}
-
-.atlas-edge[data-edge-kind="runtime"],
-.atlas-edge--runtime {
-  --edge-color: var(--edge-runtime);
-  --edge-pattern: var(--edge-runtime-pattern);
-  --edge-label: "runtime";
-}
-
-.atlas-edge[data-edge-kind="injected"],
-.atlas-edge--injected {
-  --edge-color: var(--edge-injected);
-  --edge-pattern: var(--edge-injected-pattern);
-  --edge-label: "injected";
-}
-
-.atlas-edge[data-edge-kind="conceptual"],
-.atlas-edge--conceptual {
-  --edge-color: var(--edge-conceptual);
-  --edge-pattern: var(--edge-conceptual-pattern);
-  --edge-label: "conceptual";
-}
-
-.atlas-edge[data-edge-kind="static"],
-.atlas-edge--static {
-  --edge-color: var(--edge-static);
-  --edge-pattern: var(--edge-static-pattern);
-  --edge-label: "static";
-}
-
-.atlas-edge text {
-  fill: currentcolor;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  paint-order: stroke;
-  stroke: var(--surface);
-  stroke-width: 3px;
-  text-transform: uppercase;
-}
-
-.atlas-edge__line {
-  border-top: 2px solid var(--edge-color);
-}
-
-.atlas-edge--runtime .atlas-edge__line,
-.atlas-edge[data-edge-kind="runtime"] .atlas-edge__line {
-  border-top-style: solid;
-}
-
-.atlas-edge--static .atlas-edge__line,
-.atlas-edge[data-edge-kind="static"] .atlas-edge__line {
-  border-top-style: dashed;
-}
-
-.atlas-edge--injected .atlas-edge__line,
-.atlas-edge[data-edge-kind="injected"] .atlas-edge__line {
-  border-top-style: dotted;
-  border-top-width: 3px;
-}
-
-.atlas-edge--conceptual .atlas-edge__line,
-.atlas-edge[data-edge-kind="conceptual"] .atlas-edge__line {
-  border-top-style: dashed;
-  border-top-width: 1px;
-}
-
-.atlas-edge__label::before,
-.atlas-edge-key::before {
-  content: var(--edge-label);
-}
-
-.atlas-edge__label,
-.atlas-edge-key {
-  color: var(--edge-color);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
+.atlas-node__meta {
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  text-transform: none;
 }
 
 .atlas-stepper {
@@ -771,24 +684,37 @@ button.atlas-chip {
   gap: var(--space-3);
 }
 
-.atlas-diagram-canvas {
-  position: relative;
+.atlas-flow-map {
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: rgb(5 11 22 / 0.72);
 }
 
-.atlas-diagram-canvas svg,
-.atlas-diagram-nodes {
-  width: var(--atlas-diagram-width);
-  min-width: var(--atlas-diagram-width);
+.atlas-node-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: stretch;
+  margin: 0;
+  padding: var(--space-4);
+  list-style: none;
 }
 
-.atlas-diagram-canvas svg {
+.atlas-node-grid > li {
+  display: flex;
+  min-width: 0;
+}
+
+.atlas-node-grid > li.atlas-empty {
+  grid-column: 1 / -1;
   display: block;
-  height: 10rem;
+}
+
+.atlas-node-grid .atlas-node {
+  height: 100%;
+  overflow: visible;
 }
 
 .atlas-relationship-fallback {
@@ -828,43 +754,6 @@ button.atlas-chip {
 }
 
 .atlas-relationship__kind::before { content: "→ "; }
-
-.atlas-diagram-nodes {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--atlas-node-count), 12.5rem);
-  align-items: center;
-  height: 10rem;
-  margin: 0;
-  padding: var(--space-3) var(--space-2);
-  list-style: none;
-  pointer-events: none;
-}
-
-.atlas-diagram-nodes > li {
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  padding-inline: var(--space-2);
-}
-
-.atlas-diagram-nodes > li.atlas-empty {
-  min-height: 8rem;
-}
-
-.atlas-diagram-nodes .atlas-node {
-  position: relative;
-  z-index: 2;
-  max-height: 8.5rem;
-  overflow-y: auto;
-  pointer-events: auto;
-}
-
-.atlas-diagram-canvas line {
-  fill: none;
-  vector-effect: non-scaling-stroke;
-}
 
 .atlas-node--boundary {
   border-style: dashed;
@@ -1106,8 +995,7 @@ noscript {
   text-transform: uppercase;
 }
 
-.configuration-comparison-active .atlas-node:not(.configuration-delta--activated, .configuration-delta--bypassed, .configuration-delta--changed, .configuration-delta--unresolved),
-.configuration-comparison-active .atlas-edge:not(.configuration-delta--activated, .configuration-delta--bypassed, .configuration-delta--changed, .configuration-delta--unresolved) {
+.configuration-comparison-active .atlas-node:not(.configuration-delta--activated, .configuration-delta--bypassed, .configuration-delta--changed, .configuration-delta--unresolved) {
   opacity: 0.48;
 }
 
@@ -1165,6 +1053,19 @@ noscript {
     border-top: 1px solid var(--border);
     border-left: 0;
   }
+
+  .atlas-node-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .atlas-relationship {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .atlas-relationship__kind {
+    text-align: left;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1219,48 +1120,13 @@ noscript {
     grid-template-columns: 1fr;
   }
 
-  .atlas-diagram-canvas {
-    overflow: visible;
-    border: 0;
-    background: transparent;
+  .atlas-flow-map {
+    border-inline: 0;
   }
 
-  .atlas-diagram-canvas svg {
-    display: none;
-  }
-
-  .atlas-diagram-nodes {
-    position: static;
-    display: grid;
+  .atlas-node-grid {
     grid-template-columns: 1fr;
-    gap: var(--space-3);
-    width: auto;
-    min-width: 0;
-    height: auto;
-    padding: 0;
-  }
-
-  .atlas-diagram-nodes > li {
-    display: block;
-    padding: 0;
-  }
-
-  .atlas-diagram-relations {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .atlas-diagram-nodes .atlas-node {
-    max-height: none;
-  }
-
-  .atlas-relationship {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-
-  .atlas-relationship__kind {
-    text-align: left;
+    padding: var(--space-2);
   }
 
   .configuration-assignments {

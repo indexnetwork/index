@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import { createContactTools } from "../contact.tools.js";
+import { createContactTools } from "../../contacts/application/index.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 // ─── Minimal context stub ─────────────────────────────────────────────────────

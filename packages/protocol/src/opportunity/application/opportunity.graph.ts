@@ -2504,15 +2504,15 @@ export class OpportunityGraphFactory {
             onCandidateResolved },
         );
 
-        // MCP-only: race the whole negotiate phase against a budget. When the
-        // timer wins we return early with a `timed_out` trace; the unresolved
-        // promise keeps running in the Bun event loop and each candidate's
-        // finalize node updates its opp status in the DB. We deliberately do
-        // NOT await it, NOT abort it, and NOT mutate state.opportunities —
-        // the MCP tool handler refreshes statuses from the DB before
-        // responding. Bounded blast radius: at most ~20 s of background work
-        // per request; orphans heal via maintenance scripts or IND-279 when
-        // it lands.
+        // Optionally bound this opportunity-matching continuation phase. When
+        // the timer wins, return a `timed_out` trace while the unresolved
+        // continuation keeps running in the Bun event loop; each candidate's
+        // finalize node persists its opportunity status in the DB. Deliberately
+        // do NOT await it, abort it, or add unfinished results to
+        // state.opportunities: later opportunity reads observe the persisted
+        // continuation state. The budget limits this invocation's wait, not
+        // background matching work; orphans heal via maintenance scripts or
+        // IND-279 when it lands.
         const budgetMs = state.options.negotiateTimeoutMs;
         let acceptedResults: Awaited<typeof negotiationWork>;
         if (budgetMs !== undefined) {

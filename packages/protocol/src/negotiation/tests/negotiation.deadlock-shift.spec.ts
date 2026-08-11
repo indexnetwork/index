@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { z } from "zod";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { createNegotiationTools } from "../negotiation.tools.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
+import { createNegotiationTools } from "../application/negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown ? (...args: any[]) => any : T extends object ? { [K in keyof T]?: Fixture<T[K]> } : T;

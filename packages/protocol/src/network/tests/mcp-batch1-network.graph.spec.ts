@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { NetworkGraphFactory } from "../network.graph.js";
+import { NetworkGraphFactory } from "../../communities/application/index.js";
 
 describe("NetworkGraphFactory MCP Batch 1 read serialization", () => {
   test("scoped read includes the personal network alongside the bound network", async () => {
