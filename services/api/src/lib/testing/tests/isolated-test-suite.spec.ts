@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { getTableName } from 'drizzle-orm';
+import { getTableName, sql } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 import { apikeys } from '../../../schemas/database.schema';
 import { assertNoDiscoverableModuleMocks, loadIsolatedTestInventory } from '../isolated-test-suite';
@@ -85,6 +86,33 @@ describe('isolated test inventory', () => {
     expect(authority).toContain('resolveHermesAgentCredential(rawCredential)');
     expect(authority).toContain('rearmCalls.push({');
     expect(authority).not.toContain('authorizePickup: async () => true');
+
+    const deadlineFixture = authority.slice(
+      authority.indexOf("it('preserves the original park-start deadline"),
+      authority.indexOf('const pickupLockBoundaries'),
+    );
+    expect(deadlineFixture).toContain('${controlledParkOrigin.toISOString()}::text');
+    const renderedDeadlineMetadata = new PgDialect().sqlToQuery(sql`
+      jsonb_build_object('hermesParkStartedAt', ${'2020-01-02T03:04:05.000Z'}::text)
+    `);
+    expect(renderedDeadlineMetadata.sql).toContain('$1::text');
+
+    const cleanupBlock = authority.slice(
+      authority.indexOf('afterAll(async () => {'),
+      authority.indexOf("describe('real negotiation runtime authority SQL seam'"),
+    );
+    const cleanupDeleteOrder = [
+      'db.delete(schema.intentNetworks)',
+      'db.delete(schema.networkMembers)',
+      'db.delete(schema.intents)',
+      'db.delete(schema.networks)',
+      'db.delete(schema.users)',
+    ].map((statement) => cleanupBlock.indexOf(statement));
+    for (const position of cleanupDeleteOrder) expect(position).toBeGreaterThan(-1);
+    expect(cleanupDeleteOrder).toEqual([...cleanupDeleteOrder].sort((left, right) => left - right));
+    expect(cleanupBlock).toContain('remainingNetworkMembers.length !== 0');
+    expect(cleanupBlock).toContain('remainingIntentNetworks.length !== 0');
+    expect(cleanupBlock).toContain('remainingIntents.length !== 0');
     expect(authority).toContain("throw new AggregateError(cleanupErrors, 'Negotiation authority fixture cleanup failed')");
   });
 

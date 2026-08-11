@@ -63,6 +63,7 @@ const cleanupUsers: string[] = [];
 const cleanupAuthorizations: string[] = [];
 const cleanupConversations: string[] = [];
 const cleanupNetworks: string[] = [];
+const cleanupIntents: string[] = [];
 const cleanupOpportunities: string[] = [];
 const CONTROLLED_OLD_HEARTBEAT = new Date('2020-01-02T03:04:05.000Z');
 const rearmCalls: Array<{
@@ -228,6 +229,7 @@ async function seedConsultableClaim(label: string) {
     db.insert(schema.intents).values({ userId: value.owner, payload: 'Find a collaborator', status: 'ACTIVE' }).returning({ id: schema.intents.id }),
     db.insert(schema.intents).values({ userId: value.counterparty, payload: 'Offer collaboration', status: 'ACTIVE' }).returning({ id: schema.intents.id }),
   ]).then((rows) => [rows[0][0], rows[1][0]]);
+  cleanupIntents.push(ownerIntent.id, counterpartyIntent.id);
   await db.insert(schema.intentNetworks).values([
     { intentId: ownerIntent.id, networkId: network.id },
     { intentId: counterpartyIntent.id, networkId: network.id },
@@ -503,6 +505,15 @@ afterAll(async () => {
   for (const id of cleanupOpportunities) {
     await capture(() => db.delete(schema.opportunities).where(eq(schema.opportunities.id, id)));
   }
+  if (cleanupNetworks.length) {
+    await capture(() => db.delete(schema.intentNetworks)
+      .where(inArray(schema.intentNetworks.networkId, cleanupNetworks)));
+    await capture(() => db.delete(schema.networkMembers)
+      .where(inArray(schema.networkMembers.networkId, cleanupNetworks)));
+  }
+  if (cleanupIntents.length) {
+    await capture(() => db.delete(schema.intents).where(inArray(schema.intents.id, cleanupIntents)));
+  }
   for (const id of cleanupNetworks) {
     await capture(() => db.delete(schema.networks).where(eq(schema.networks.id, id)));
   }
@@ -521,9 +532,26 @@ afterAll(async () => {
         .from(schema.hermesAuthorizations)
         .where(inArray(schema.hermesAuthorizations.requestId, cleanupAuthorizations))
       : [];
+    const [remainingNetworkMembers, remainingIntentNetworks, remainingIntents] = await Promise.all([
+      cleanupNetworks.length
+        ? db.select({ id: schema.networkMembers.userId }).from(schema.networkMembers)
+          .where(inArray(schema.networkMembers.networkId, cleanupNetworks))
+        : [],
+      cleanupNetworks.length
+        ? db.select({ id: schema.intentNetworks.intentId }).from(schema.intentNetworks)
+          .where(inArray(schema.intentNetworks.networkId, cleanupNetworks))
+        : [],
+      cleanupIntents.length
+        ? db.select({ id: schema.intents.id }).from(schema.intents)
+          .where(inArray(schema.intents.id, cleanupIntents))
+        : [],
+    ]);
     if (
       Number((rows as unknown as Array<{ count: number }>)[0]?.count ?? 0) !== 0
       || remainingAuthorizations.length !== 0
+      || remainingNetworkMembers.length !== 0
+      || remainingIntentNetworks.length !== 0
+      || remainingIntents.length !== 0
     ) {
       throw new Error('Negotiation authority fixture rows remain after cleanup');
     }
@@ -608,7 +636,7 @@ describe('real negotiation runtime authority SQL seam', () => {
     const controlledParkOrigin = new Date(value.clock.now - 60_000);
     await db.update(schema.tasks).set({
       metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object(
-        'hermesParkStartedAt', ${controlledParkOrigin.toISOString()}
+        'hermesParkStartedAt', ${controlledParkOrigin.toISOString()}::text
       )`,
       updatedAt: controlledParkOrigin,
     }).where(eq(schema.tasks.id, task.id));

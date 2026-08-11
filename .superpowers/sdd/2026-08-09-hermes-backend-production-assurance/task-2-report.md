@@ -127,3 +127,23 @@ TDD and focused validation:
 - Targeted ESLint, Bun parsing of both assurance targets, `tsc --noEmit`, and `git diff --check` pass.
 
 No production code, schema, migration, readiness guard, credential behavior, or runner semantics changed. The real authority suite requires a dedicated CI rerun; no local database pass is claimed.
+
+## Deadline parameter and cleanup-order follow-up (run 31489779852)
+
+The next CI run passed the lifecycle suite and 48 of 49 authority behavior tests. The repeated-deadline fixture failed with PostgreSQL `42P18` because its ISO timestamp parameter was untyped inside `jsonb_build_object`. The fail-visible `afterAll` then correctly exposed FK-unsafe cleanup: tracked networks and users were deleted while tracked `network_members`, `intent_networks`, and intents still referenced them, and the final zero-leak check also failed.
+
+The bounded fixture correction:
+
+- applies the repository's explicit text-parameter SQL pattern, `${value}::text`, to the controlled park-origin JSONB value;
+- adds a provider-free rendered SQL assertion proving the fragment becomes `$1::text`;
+- tracks the exact inserted intent IDs;
+- deletes tracked `intent_networks`, `network_members`, and intents before networks and users;
+- retains per-operation error capture, final `AggregateError`, and the tagged parent-row check while extending zero-leak verification to every tracked dependent table.
+
+TDD and focused validation:
+
+- RED: isolated inventory contract `13 passed, 1 failed`; the explicit text cast was absent, before the same contract could reach the missing cleanup-order assertions.
+- GREEN: isolated inventory contract `14 passed, 0 failed, 65 assertions`.
+- Targeted ESLint, rendered PostgreSQL SQL-shape coverage, Bun parsing of both assurance targets, `tsc --noEmit`, and `git diff --check` pass.
+
+No production code, schema, migration, readiness guard, credential behavior, or runner semantics changed. The real authority suite and fail-visible cleanup require a dedicated CI rerun; no local database pass is claimed.
