@@ -1479,3 +1479,8 @@ test('includes the runtime source in the Swift build', () => {
   expect(build).toContain('Sources/HermesRuntime.swift');
   expect(build).toContain('Sources/main.swift');
 });
+
+test('uses a Bash-3-safe optional Swift define expansion', () => {
+  expect(build).toContain('swiftc -Onone ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"} \\');
+  expect(build).not.toContain('swiftc -Onone "${SWIFT_DEFINES[@]}" \\');
+});

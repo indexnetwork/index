@@ -104,7 +104,7 @@ else
         && grep -Fq 'anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\" and identifier \"\(expectedBundleID)\"' Sources/HermesRuntime.swift \
         || { echo 'production connector trust pins missing or mismatched' >&2; exit 1; }
 fi
-swiftc -Onone "${SWIFT_DEFINES[@]}" \
+swiftc -Onone ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"} \
     -target "$(uname -m)-apple-macosx13.0" \
     -framework Cocoa -framework WebKit -framework Network -framework Security \
     -o "${CONTENTS}/MacOS/${APP_NAME}" \
