@@ -325,7 +325,7 @@ function RunDetail({ runId }: { runId: string }) {
    * The distinction is the subject of the result, not the presence of defaults:
    * a single discovery run's pass rate IS the pass rate of the configuration
    * named on this line, whereas a scorecard harness's result is a corpus score
-   * that this environment modifies. (Discovery has 26 committed defaults of its
+   * that this environment modifies. (Discovery has 28 committed defaults of its
    * own — ops.sides.ts and ops.server.ts both say so — so "it has no baseline"
    * would be false.)
    *
