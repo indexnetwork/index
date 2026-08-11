@@ -646,6 +646,6 @@ describe('workflow compatibility modes', () => {
     expect(workflow.match(/if: always\(\)/g)).toHaveLength(2);
     expect(workflow.match(/name: previous-api-compatibility-diagnostic/g)).toHaveLength(2);
     expect(workflow.match(/path: services\/api\/previous-api-compatibility-diagnostic\.json/g)).toHaveLength(2);
-    expect(workflow.match(/if-no-files-found: error/g)).toHaveLength(4);
+    expect(workflow.match(/if-no-files-found: error/g)).toHaveLength(5);
   });
 });

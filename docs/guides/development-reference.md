@@ -31,7 +31,13 @@ bun test --watch                            # Run tests in watch mode
 
 # Code quality
 bun run lint                                # Run ESLint
+bun run typecheck                           # Type-check the API without emitting
 bun run typecheck:cli-specs                 # Type-check the discovery CLI specs (see tsconfig.spec.json)
+
+# Hermes production assurance (provider-free; DB commands require the dedicated guard below)
+bun run test:hermes-production-assurance    # Fresh-process guarded PostgreSQL suites + explicit-threshold preflight
+bun run maintenance:hermes-preflight -- --json --max-lock-ms <approved-ms> --max-total-ms <approved-ms>
+bun run maintenance:hermes-emergency-control -- --audience hermes-agent # Dry-run plan; confirmation is incident-authorized only
 
 # Evals (gated, mutating, cost tokens — see ### Discovery Eval)
 bun run eval:discovery -- --help            # Discovery: contract and exit codes, no credentials needed
@@ -741,6 +747,16 @@ bun run dev:eval-ops                         # Eval ops UI on 127.0.0.1:5174 (se
 bun run build:eval-ops                       # Build the eval ops UI (excluded from root build)
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
+
+### Hermes Backend Production Assurance
+
+`.github/workflows/hermes-backend-production-assurance.yml` is the provider-free release gate. Its PostgreSQL 16 service uses only the disposable `hermes_assurance` database, installs pgvector, runs migrations, and then executes the guarded authority, lifecycle, 100,000-row preflight, aggregate expiry-telemetry, and emergency concurrency/rollback suites in separate fresh Bun processes. `TEST_DATABASE_SAFE=1` and `API_TEST_REQUIRE_DATABASE=1` are scoped to that exact database step; never set the marker until the URL has been proven dedicated and disposable.
+
+The same job runs API/protocol build, API typecheck, CLI-spec typecheck, lint, static isolated-test inventory, and the stale/expired `indexCovering: true` smoke. Preflight has no hidden duration defaults: protected dispatches require release-approved `HERMES_PREFLIGHT_MAX_LOCK_MS` and `HERMES_PREFLIGHT_MAX_TOTAL_MS` inputs; PR runs use the explicitly labeled non-production 5,000/30,000 ms fixture thresholds. Emergency control is dry-run only in CI and must never receive `--confirm` there.
+
+Protected dispatch also requires the release-ops supplied immutable `PREVIOUS_API_IMAGE` digest and the GitHub `production` environment. The PR rollback-base image is explicitly non-production evidence and is not a substitute. CI uploads one aggregate credential-free artifact plus only the established fixed-schema preflight/compatibility reports—never raw logs, database URLs, identities, credential values/hashes, request data, or transcript/private prose.
+
+Operators must follow [the rollout assurance checklist](../rollout/hermes-backend-production-assurance.md) and [the emergency rollback runbook](../runbooks/hermes-emergency-rollback.md). Those documents do not authorize migrations, deployment, or production mutation; approvals remain separate. Rollout is server before client. Rollback is forward-fix-first and, if authorized, strictly pause → bulk revoke → verify zero live dedicated authority and zero selected Hermes → restore the approved older immutable binary.
 
 ### Deployment Config
 

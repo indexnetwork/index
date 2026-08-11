@@ -43,10 +43,14 @@ describe('Hermes production assurance contract', () => {
     expect(existsSync(runnerPath)).toBe(true);
     const runner = existsSync(runnerPath) ? readFileSync(runnerPath, 'utf8') : '';
     expect(runner).toContain('src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts');
+    expect(runner).toContain('src/lib/drizzle/tests/hermes-runtime-telemetry.database.isolated.ts');
+    expect(runner).toContain('src/lib/drizzle/tests/hermes-emergency-control.database.isolated.ts');
     expect(runner).toContain('tests/hermes-runtime-lifecycle.database.isolated.ts');
     expect(runner).toContain('tests/negotiation-runtime-authority.database.isolated.ts');
     expect(runner).toContain('bun run maintenance:hermes-preflight --');
-    expect(runner).toContain('--json --max-lock-ms 5000 --max-total-ms 30000');
+    expect(runner).toContain('--max-lock-ms "$HERMES_PREFLIGHT_MAX_LOCK_MS"');
+    expect(runner).toContain('--max-total-ms "$HERMES_PREFLIGHT_MAX_TOTAL_MS"');
+    expect(runner).not.toContain('--max-lock-ms 5000 --max-total-ms 30000');
     expect(runner.match(/bun test src\/lib\/testing\/isolated-test-import-harness\.spec\.ts/g) ?? [])
       .toHaveLength(1);
     expect(runner).toContain('for target in');
@@ -88,7 +92,7 @@ describe('Hermes production assurance contract', () => {
     expect(assuranceWorkflow).toContain('POSTGRES_DB: hermes_assurance');
     expect(assuranceWorkflow).toContain('pg_isready -U postgres -d hermes_assurance');
     expect(assuranceWorkflow).toContain('bun install --frozen-lockfile');
-    expect(assuranceWorkflow).toContain('bun run --cwd packages/protocol build');
+    expect(assuranceWorkflow).toContain('bun run --cwd services/api build');
     expect(assuranceWorkflow).toContain('bun run --cwd services/api db:migrate:test');
     expect(assuranceWorkflow).toContain('bun run --cwd services/api test:hermes-production-assurance');
   });
@@ -104,17 +108,19 @@ describe('Hermes production assurance contract', () => {
           API_TEST_REQUIRE_DATABASE: "1"`);
   });
 
-  test('scopes the disposable-database marker to the exact database test step', () => {
+  test('scopes disposable-database markers to exact database operations', () => {
     const safetyMarkers = assuranceWorkflow.match(/TEST_DATABASE_SAFE:\s*["']1["']/g) ?? [];
-    expect(safetyMarkers).toHaveLength(1);
+    expect(safetyMarkers).toHaveLength(6);
     expect(assuranceWorkflow).toContain(`- name: Run Hermes production assurance
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
           TEST_DATABASE_SAFE: "1"
-          API_TEST_REQUIRE_DATABASE: "1"
-        run: |
-          bun run --cwd services/api db:migrate:test
-          bun run --cwd services/api test:hermes-production-assurance`);
+          API_TEST_REQUIRE_DATABASE: "1"`);
+    expect(assuranceWorkflow).toContain(`- name: Run emergency control dry-run only
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"`);
+    expect(assuranceWorkflow).not.toMatch(/jobs:\n(?:[ ]{2}[^\n]+\n)*\s*env:\n\s*TEST_DATABASE_SAFE/);
   });
 });
 

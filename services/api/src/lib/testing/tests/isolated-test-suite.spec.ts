@@ -137,6 +137,8 @@ describe('isolated test inventory', () => {
     const transpiler = new Bun.Transpiler({ loader: 'ts' });
     const targets = [
       'src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts',
+      'src/lib/drizzle/tests/hermes-runtime-telemetry.database.isolated.ts',
+      'src/lib/drizzle/tests/hermes-emergency-control.database.isolated.ts',
       'tests/hermes-runtime-lifecycle.database.isolated.ts',
       'tests/negotiation-runtime-authority.database.isolated.ts',
     ];

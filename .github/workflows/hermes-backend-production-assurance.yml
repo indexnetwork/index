@@ -15,6 +15,14 @@ on:
         description: "Release-ops supplied immutable digest of the currently deployed API image (repository@sha256:...)"
         required: true
         type: string
+      HERMES_PREFLIGHT_MAX_LOCK_MS:
+        description: "Release-approved positive maximum preflight lock duration in milliseconds"
+        required: true
+        type: number
+      HERMES_PREFLIGHT_MAX_TOTAL_MS:
+        description: "Release-approved positive maximum total preflight duration in milliseconds"
+        required: true
+        type: number
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -166,8 +174,48 @@ jobs:
           bun pm cache rm || true
           bun install --frozen-lockfile
 
-      - name: Build protocol package
-        run: bun run --cwd packages/protocol build
+      - name: Build API and protocol
+        run: bun run --cwd services/api build
+
+      - name: Typecheck API and CLI specifications
+        run: |
+          bun run --cwd services/api typecheck
+          bun run --cwd services/api typecheck:cli-specs
+
+      - name: Lint API
+        run: bun run --cwd services/api lint
+
+      - name: Verify static isolated inventory and release contracts
+        run: |
+          bun test services/api/src/lib/testing/tests/isolated-test-suite.spec.ts \
+            services/api/src/cli/tests/hermes-production-assurance-release.spec.ts
+
+      - name: Run stale and expired Index coverage smoke
+        run: >-
+          bun test services/api/src/services/tests/connected-agents.service.spec.ts
+          --test-name-pattern "smoke reports stale and expired Hermes as indexCovering true"
+
+      - name: Select explicit preflight thresholds
+        id: preflight_thresholds
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          APPROVED_MAX_LOCK_MS: ${{ inputs.HERMES_PREFLIGHT_MAX_LOCK_MS }}
+          APPROVED_MAX_TOTAL_MS: ${{ inputs.HERMES_PREFLIGHT_MAX_TOTAL_MS }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            max_lock_ms="$APPROVED_MAX_LOCK_MS"
+            max_total_ms="$APPROVED_MAX_TOTAL_MS"
+            threshold_source="release-approved workflow_dispatch inputs"
+          else
+            max_lock_ms="5000"
+            max_total_ms="30000"
+            threshold_source="non-production PR fixture thresholds"
+          fi
+          [[ "$max_lock_ms" =~ ^[1-9][0-9]*$ ]]
+          [[ "$max_total_ms" =~ ^[1-9][0-9]*$ ]]
+          printf 'max_lock_ms=%s\nmax_total_ms=%s\n' "$max_lock_ms" "$max_total_ms" >>"$GITHUB_OUTPUT"
+          printf 'Preflight threshold source: %s.\n' "$threshold_source" >>"$GITHUB_STEP_SUMMARY"
 
       - name: Install pgvector in PostgreSQL service
         env:
@@ -192,9 +240,67 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
           TEST_DATABASE_SAFE: "1"
           API_TEST_REQUIRE_DATABASE: "1"
+          HERMES_PREFLIGHT_MAX_LOCK_MS: ${{ steps.preflight_thresholds.outputs.max_lock_ms }}
+          HERMES_PREFLIGHT_MAX_TOTAL_MS: ${{ steps.preflight_thresholds.outputs.max_total_ms }}
+          HERMES_PREFLIGHT_REPORT: hermes-migration-preflight-report.json
         run: |
           bun run --cwd services/api db:migrate:test
           bun run --cwd services/api test:hermes-production-assurance
+
+      - name: Run emergency control dry-run only
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+        run: |
+          set -euo pipefail
+          plan_file="$(mktemp)"
+          trap 'rm -f "$plan_file"' EXIT
+          bun run --cwd services/api maintenance:hermes-emergency-control -- --audience hermes-agent >"$plan_file"
+          bun -e '
+            const value = await Bun.file(process.argv[1]).json();
+            if (value.audience !== "hermes-agent" || value.reason !== "planned") process.exit(1);
+            for (const field of ["installations", "credentials", "permissions", "owners"]) {
+              if (!Number.isSafeInteger(value[field]) || value[field] < 0) process.exit(1);
+            }
+          ' "$plan_file"
+          rm -f "$plan_file"
+          trap - EXIT
+
+      - name: Create aggregate credential-free assurance evidence
+        env:
+          MAX_LOCK_MS: ${{ steps.preflight_thresholds.outputs.max_lock_ms }}
+          MAX_TOTAL_MS: ${{ steps.preflight_thresholds.outputs.max_total_ms }}
+        run: |
+          bun -e '
+            const preflight = await Bun.file("services/api/hermes-migration-preflight-report.json").json();
+            const allowed = ["checkedAt", "duplicateSelections", "expiryMismatches", "invalidDedicatedCredentials", "invalidLegacyMetadata", "lockDurationMs", "missingIndexes"];
+            if (Object.keys(preflight).sort().join(",") !== allowed.sort().join(",")) process.exit(1);
+            const evidence = {
+              schemaVersion: 1,
+              result: "passed",
+              gates: [
+                "migrations", "authority", "lifecycle", "preflight-100k", "telemetry-aggregate",
+                "emergency-concurrency-rollback", "emergency-dry-run", "stale-index-coverage",
+                "expired-index-coverage", "build", "typecheck", "cli-typecheck", "lint", "static-inventory",
+              ],
+              preflightThresholdsMs: {
+                maxLock: Number(process.env.MAX_LOCK_MS),
+                maxTotal: Number(process.env.MAX_TOTAL_MS),
+              },
+              reports: ["hermes-migration-preflight-report.json"],
+            };
+            await Bun.write("services/api/hermes-backend-assurance.json", JSON.stringify(evidence, null, 2) + "\n");
+          '
+
+      - name: Upload aggregate assurance and sanitized reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-backend-production-assurance
+          path: |
+            services/api/hermes-backend-assurance.json
+            services/api/hermes-migration-preflight-report.json
+          if-no-files-found: error
+          retention-days: 30
 
   previous-api-protected-compatibility:
     name: Protected currently-deployed API compatibility gate

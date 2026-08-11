@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.79.0",
+  "version": "0.80.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "bun run --cwd ../../packages/protocol build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
     "typecheck:cli-specs": "tsc -p tsconfig.spec.json",
     "test:isolated": "NODE_ENV=test bash scripts/test-isolated.sh",
     "test:hermes-production-assurance": "bash scripts/test-hermes-production-assurance.sh",

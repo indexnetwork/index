@@ -48,7 +48,7 @@ class MemoryStore implements ConnectedAgentsStore {
 }
 
 describe('ConnectedAgentsService', () => {
-  it('derives the closed health enum and fallback from authoritative records', async () => {
+  it('smoke reports stale and expired Hermes as indexCovering true', async () => {
     const store = new MemoryStore();
     store.records = [
       base,
@@ -69,6 +69,7 @@ describe('ConnectedAgentsService', () => {
     expect(connections[0]?.indexCovering).toBe(false);
     expect(connections[1]?.indexCovering).toBe(true);
     expect(connections[2]?.indexCovering).toBe(true);
+    expect(connections[4]?.indexCovering).toBe(true);
   });
 
   it('pauses under the owner store contract and returns a refreshed view without revoking', async () => {
