@@ -44,143 +44,115 @@ function ensureAssets() {
   return assetsPromise
 }
 
-// Native OS alerts via Hermes ctx.os door (hermes-agent#78685). Events arrive on
-// plugin SSE relays (notifications + conversations). Gated by Settings ▸ Plugin
-// notifications; no-op without ctx.os.
-const PLUGIN_STREAM_PREFIX = '/api/plugins/index-network'
-const NOTIFIED_IDS_KEY = 'notifiedStreamIds'
-const MAX_NOTIFIED_IDS = 200
-
-function rememberNotified(ctx, key) {
-  const seen = ctx.storage.get(NOTIFIED_IDS_KEY, []) || []
-  if (seen.indexOf(key) !== -1) return false
-  ctx.storage.set(NOTIFIED_IDS_KEY, seen.concat(key).slice(-MAX_NOTIFIED_IDS))
-  return true
+// Native OS alerts use only the authenticated Hermes SDK doors. Question and
+// opportunity sockets share canonical persisted dedupe with the 60-second
+// snapshot fallback; messages remain realtime-only and fail closed until the
+// current user's identity is known.
+function socketEventPayload(value) {
+  const data = value && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value
+  if (typeof data !== 'string') return data
+  try { return JSON.parse(data) } catch (e) { return null }
 }
 
-function composeNotification(event) {
-  if (!event || !event.type) return null
-  if (event.type === 'question.new' || event.type === 'opportunity.new') {
-    if (!event.title) return null
-    return { title: event.title, body: event.body || '' }
-  }
-  if (event.type === 'message') {
-    const msg = event.message || {}
-    const sender = (msg.senderName || 'Someone').toString()
-    let text = ''
-    if (Array.isArray(msg.parts)) {
-      for (let i = 0; i < msg.parts.length; i++) {
-        const part = msg.parts[i]
-        // Accept typed text parts and bare { text } payloads from mobile/web.
-        if (part && typeof part.text === 'string' && part.text.trim()) {
-          text = part.text.trim()
-          break
-        }
-      }
-    }
-    return { title: `New message from ${sender}`, body: text || 'Open Index to read the message.' }
-  }
-  return null
+function disposeDesktopSocket(socket) {
+  try {
+    if (typeof socket === 'function') socket()
+    else if (socket && typeof socket.dispose === 'function') socket.dispose()
+    else if (socket && typeof socket.close === 'function') socket.close()
+  } catch (e) { /* best-effort plugin disposal */ }
 }
 
-function notifyFromEvent(ctx, event) {
-  if (!ctx.os || !ctx.os.notify) return
+function persistNotifiedEntities(ctx, state) {
+  ctx.storage.set(NOTIFIED_ENTITIES_KEY, state.notifiedEntities)
+}
+
+function sendOsNotification(ctx, event) {
+  if (!ctx.os || typeof ctx.os.notify !== 'function') return
   const copy = composeNotification(event)
   if (!copy) return
-  const entityId = event.id || (event.message && event.message.id) || ''
-  if (entityId) {
-    const dedupeKey = event.type + ':' + entityId
-    if (!rememberNotified(ctx, dedupeKey)) return
-  }
-  ctx.os.notify(copy)
+  try {
+    Promise.resolve(ctx.os.notify(copy)).catch(function () { /* notification rendering is fail-open */ })
+  } catch (e) { /* synchronous host errors are fail-open too */ }
 }
 
-function authedPluginStreamFetch(path) {
-  const rel = PLUGIN_STREAM_PREFIX + path
-  const bridge = typeof window !== 'undefined' ? window.hermesDesktop : null
-  if (bridge && bridge.getConnection) {
-    return bridge.getConnection().then(function (conn) {
-      if (!conn || !conn.baseUrl) throw new Error('gateway unavailable')
-      const headers = { Accept: 'text/event-stream' }
-      if (conn.authMode !== 'oauth' && conn.token) {
-        headers['X-Hermes-Session-Token'] = conn.token
-      }
-      return window.fetch(conn.baseUrl.replace(/\/$/, '') + rel, {
-        headers: headers,
-        credentials: 'include',
-      })
+function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
+  const event = socketEventPayload(rawEvent)
+  if (!event || event.type === 'connected') return
+  if (suppressOwnMessage && isOwnMessage(event, state.currentUserId)) return
+  if (!composeNotification(event)) return
+  const remembered = rememberNotificationEntity(state.notifiedEntities, notificationEntityKey(event))
+  if (!remembered.isNew) return
+  state.notifiedEntities = remembered.notifiedEntities
+  persistNotifiedEntities(ctx, state)
+  sendOsNotification(ctx, event)
+}
+
+function refreshDesktopIdentity(ctx, state) {
+  return Promise.resolve()
+    .then(function () { return ctx.rest('/auth/status', { method: 'GET' }) })
+    .then(function (payload) {
+      const user = payload && payload.authenticated && payload.user
+      state.currentUserId = user && typeof user.id === 'string' && user.id ? user.id : null
     })
-  }
-  return window.fetch(rel, { headers: { Accept: 'text/event-stream' }, credentials: 'include' })
+    .catch(function () { /* unknown identity intentionally keeps message alerts suppressed */ })
 }
 
-function connectPluginStream(path, onEvent) {
-  let stopped = false
-  let reader = null
-  let retryTimer = null
-  let retries = 0
-
-  function scheduleRetry() {
-    if (stopped) return
-    retries += 1
-    if (retries > 10) return
-    const delay = Math.min(5000 * Math.pow(2, retries - 1), 60000)
-    retryTimer = window.setTimeout(connect, delay)
-  }
-
-  function connect() {
-    authedPluginStreamFetch(path)
-      .then(function (response) {
-        if (!response || !response.ok || !response.body || !response.body.getReader) throw new Error('stream unavailable')
-        retries = 0
-        reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        function pump() {
-          return reader.read().then(function (result) {
-            if (stopped) { try { reader.cancel() } catch (e) { /* noop */ } return }
-            if (result.done) { scheduleRetry(); return }
-            buffer += decoder.decode(result.value, { stream: true })
-            let sep
-            while ((sep = buffer.indexOf('\n\n')) >= 0) {
-              const frame = buffer.slice(0, sep)
-              buffer = buffer.slice(sep + 2)
-              const lines = frame.split('\n')
-              for (let i = 0; i < lines.length; i++) {
-                if (lines[i].indexOf('data:') !== 0) continue
-                const dataStr = lines[i].slice(5).trim()
-                if (!dataStr) continue
-                let data
-                try { data = JSON.parse(dataStr) } catch (e) { continue }
-                if (data && data.type !== 'connected') onEvent(data)
-              }
-            }
-            return pump()
-          })
-        }
-        return pump()
+function reconcileDesktopSnapshot(ctx, state) {
+  if (state.reconciling) return
+  state.reconciling = true
+  refreshDesktopIdentity(ctx, state)
+    .then(function () { return ctx.rest('/notifications/snapshot', { method: 'GET' }) })
+    .then(function (payload) {
+      const result = reconcileNotificationSnapshot(payload, {
+        hasSnapshot: state.hasSnapshot,
+        notifiedEntities: state.notifiedEntities,
       })
-      .catch(function () { if (!stopped) scheduleRetry() })
-  }
-
-  connect()
-  return function dispose() {
-    stopped = true
-    if (retryTimer) window.clearTimeout(retryTimer)
-    if (reader) { try { reader.cancel() } catch (e) { /* noop */ } }
-  }
+      state.hasSnapshot = result.state.hasSnapshot
+      state.notifiedEntities = result.state.notifiedEntities
+      persistNotifiedEntities(ctx, state)
+      // reconcileNotificationSnapshot already remembered each delta entity;
+      // rendering (including rejection) must not mutate dedupe a second time.
+      for (let index = 0; index < result.notifications.length; index += 1) {
+        sendOsNotification(ctx, result.notifications[index])
+      }
+    })
+    .catch(function () { /* the next 60-second reconciliation retries */ })
+    .then(function () { state.reconciling = false })
 }
 
 function startDesktopNotifications(ctx) {
-  const stopNotifications = connectPluginStream('/notifications/stream', function (event) {
-    notifyFromEvent(ctx, event)
-  })
-  const stopMessages = connectPluginStream('/conversations/stream', function (event) {
-    notifyFromEvent(ctx, event)
-  })
+  const stored = ctx.storage.get(NOTIFIED_ENTITIES_KEY, [])
+  const state = {
+    currentUserId: null,
+    hasSnapshot: false,
+    notifiedEntities: Array.isArray(stored) ? stored.slice(-MAX_NOTIFIED_ENTITIES) : [],
+    reconciling: false,
+  }
+  let notificationSocket = null
+  let conversationSocket = null
+
+  if (typeof ctx.socket === 'function') {
+    try {
+      notificationSocket = ctx.socket('/notifications/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event, false)
+      })
+    } catch (e) { /* snapshot reconciliation remains available */ }
+    try {
+      conversationSocket = ctx.socket('/conversations/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event, true)
+      })
+    } catch (e) { /* messages intentionally have no catch-up path */ }
+  }
+
+  reconcileDesktopSnapshot(ctx, state)
+  const snapshotTimer = window.setInterval(function () {
+    reconcileDesktopSnapshot(ctx, state)
+  }, 60000)
+
   return function dispose() {
-    stopNotifications()
-    stopMessages()
+    window.clearInterval(snapshotTimer)
+    disposeDesktopSocket(notificationSocket)
+    disposeDesktopSocket(conversationSocket)
   }
 }
 

@@ -22,7 +22,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "python3 tests/smoke.py",
+    "test": "node tests/desktop-notifications.mjs && python3 tests/smoke.py",
     "build:desktop": "node desktop/build.mjs"
   }
 }

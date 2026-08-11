@@ -345,10 +345,25 @@ def main() -> None:
     assert "index-dashboard__setting-up" in desktop_js
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
     assert "startDesktopNotifications" in desktop_js
-    assert "/notifications/stream" in desktop_js
-    assert "authedPluginStreamFetch" in desktop_js
-    assert "getConnection" in desktop_js
+    assert "ctx.socket" in desktop_js
+    assert "/notifications/socket" in desktop_js
+    assert "/conversations/socket" in desktop_js
+    assert "/notifications/snapshot" in desktop_js
+    assert "60000" in desktop_js
+    assert "notifiedEntitiesV2" in desktop_js
     assert "checkOpportunities" not in desktop_js
+    # Native notifications use only authenticated SDK doors. Keep this assertion
+    # on the source fragment because the shared dashboard bundle has its own
+    # browser transport implementation in the same generated module.
+    desktop_tail = (ROOT / "desktop" / "tail.js").read_text()
+    assert "ctx.socket" in desktop_tail
+    assert "ctx.rest" in desktop_tail
+    assert "window.fetch" not in desktop_tail
+    assert "getConnection" not in desktop_tail
+    assert "X-Hermes-Session-Token" not in desktop_tail
+    assert "authedPluginStreamFetch" not in desktop_tail
+    assert "connectPluginStream" not in desktop_tail
+    assert "retries > 10" not in desktop_tail
     # Hermes Desktop ships the same browser-login gate via the built bundle.
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js
