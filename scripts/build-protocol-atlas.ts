@@ -1803,15 +1803,6 @@ export function validateConfigurationExperiments(
   issues.push(...validateGeneratedConfigurationShape((content as Record<string, unknown>).configurationExperiments));
   const serializedExperiments = JSON.stringify(experiments);
   if (/"(?:generatedAt|timestamp|lineNumber|sourceLine)"/.test(serializedExperiments)) issues.push("configuration experiments must not contain timestamps or line numbers");
-  // Match repoRoot as a path prefix (`/app/...`), not a substring of segments like `/application/...`.
-  // Railway builds use repoRoot `/app`, which otherwise false-positive matches sourcePath values.
-  const absoluteRoot = resolve(repoRoot);
-  if (
-    serializedExperiments.includes(`${absoluteRoot}/`)
-    || serializedExperiments.includes(`"${absoluteRoot}"`)
-  ) {
-    issues.push("configuration experiments must not contain absolute machine paths");
-  }
   for (const id of duplicateIds(experiments.filter((entry): entry is { id: string } => typeof entry.id === "string"))) {
     issues.push(`duplicate configuration experiment id: ${id}`);
   }
@@ -1890,6 +1881,10 @@ export function validateConfigurationExperiments(
         ? [{ path: entrySite.path, symbol: String(setting.entryAccessorSymbol) }]
         : [];
       const remaining = closureHops.filter((hop): hop is Record<string, unknown> & { path: string; symbol: string } => {
+        if (typeof hop.path === "string") {
+          const pathError = pathIssue(hop.path, repoRoot, `${experimentId}.${key} accessor closure hop`);
+          if (pathError) issues.push(pathError);
+        }
         if (typeof hop.path !== "string" || typeof hop.symbol !== "string" || !sourceDeclaresSymbol(hop.path, hop.symbol, input.sourceFiles)) {
           issues.push(`${experimentId}.${key} accessor closure hop is missing`);
           return false;
@@ -1992,6 +1987,10 @@ export function validateConfigurationExperiments(
         if (chain.length === 0) issues.push(`${deltaId} reference chain must not be empty`);
         const locations: SymbolLocation[] = [];
         for (const hop of chain) {
+          if (typeof hop.path === "string") {
+            const pathError = pathIssue(hop.path, repoRoot, `${deltaId} reference-chain hop`);
+            if (pathError) issues.push(pathError);
+          }
           if (typeof hop.path !== "string" || typeof hop.symbol !== "string" || !sourceDeclaresSymbol(hop.path, hop.symbol, input.sourceFiles)) issues.push(`${deltaId} reference-chain hop is missing`);
           else locations.push({ path: hop.path, symbol: hop.symbol });
         }

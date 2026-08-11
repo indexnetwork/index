@@ -213,25 +213,6 @@ describe("protocol atlas curated content", () => {
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
   });
 
-  test("does not treat /application source paths as absolute /app machine paths", async () => {
-    const content = await loadAtlasContent();
-    const input = await loadProtocolGeneratorInput(repoRoot);
-    const artifact = buildAtlasArtifact(input, content);
-    // Railway uses repoRoot `/app`; substring matching would false-positive on `/application/...`.
-    const issues = validateConfigurationExperiments(content, artifact, input, "/app").join("\n");
-    expect(issues).not.toContain("absolute machine paths");
-  });
-
-  test("rejects configuration experiments that embed absolute repo paths", async () => {
-    const content = await loadAtlasContent() as MutableConfigurationContent;
-    const discovery = content.configurationExperiments.find(({ id }) => id === "discovery-corpus")!;
-    discovery.settings[0].readSites[0].path = `${repoRoot}/packages/protocol/src/opportunity/discovery.env.ts`;
-    const input = await loadProtocolGeneratorInput(repoRoot);
-    const artifact = buildAtlasArtifact(input, content);
-    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n"))
-      .toContain("absolute machine paths");
-  });
-
   test("locks chapter teaching sections and source discrepancy coverage", async () => {
     const content = await loadAtlasContent() as {
       chapters: Array<{ id: string; title: string; summary: string; sections?: Array<{ id: string; title: string; summary: string; items: string[] }> }>;
@@ -574,6 +555,155 @@ describe("protocol atlas generator", () => {
     expect(issues).toContain("references missing node");
     expect(issues).toContain("duplicate delta targets");
     expect(issues).toContain("must not contain timestamps");
+  });
+
+  test("keeps curated /application paths valid when the repository root is /app", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    const serializedExperiments = JSON.stringify(content.configurationExperiments);
+
+    expect(serializedExperiments).toContain("/application/");
+
+    const issues = validateConfigurationExperiments(content, artifact, input, "/app");
+    const simulatedRootMissingPath = / (?:read site|accessor closure hop|consumerPath|reference-chain hop|behavior test) does not exist: packages\/protocol\//;
+    const unexpectedIssues = issues.filter((issue) => !simulatedRootMissingPath.test(issue));
+
+    expect(unexpectedIssues).toEqual([]);
+  });
+
+  test("schema-aware validation ignores machine-like paths in non-path prose", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    content.configurationExperiments[0].modes[0].caveats.push("Operator note: /app/runtime output is deployment-local prose.");
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+
+    const issues = validateConfigurationExperiments(content, artifact, input, repoRoot);
+
+    expect(issues).toEqual([]);
+  });
+
+  test("schema-aware validation rejects absolute values in every configuration path field", async () => {
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const base = await loadAtlasContent() as MutableConfigurationContent;
+    const closureExperiment = base.configurationExperiments.find((candidate) =>
+      candidate.settings.some((setting) => setting.accessorClosure.length > 0))!;
+    const closureSetting = closureExperiment.settings.find((setting) => setting.accessorClosure.length > 0)!;
+    const definitiveExperiment = base.configurationExperiments.find((candidate) =>
+      candidate.modes.some((mode) => mode.deltas.some((delta) =>
+        delta.consumerPath && delta.referenceChain?.length && delta.behaviorTest)))!;
+    const definitiveMode = definitiveExperiment.modes.find((candidate) => candidate.deltas.some((delta) =>
+      delta.consumerPath && delta.referenceChain?.length && delta.behaviorTest))!;
+    const definitiveDelta = definitiveMode.deltas.find((candidate) =>
+      candidate.consumerPath && candidate.referenceChain?.length && candidate.behaviorTest)!;
+    const deltaId = `${definitiveExperiment.id}.${definitiveMode.id}.${definitiveDelta.id}`;
+    const selectedSetting = (content: MutableConfigurationContent) => content.configurationExperiments
+      .find(({ id }) => id === closureExperiment.id)!.settings.find(({ key }) => key === closureSetting.key)!;
+    const selectedDelta = (content: MutableConfigurationContent) => content.configurationExperiments
+      .find(({ id }) => id === definitiveExperiment.id)!.modes.find(({ id }) => id === definitiveMode.id)!
+      .deltas.find(({ id }) => id === definitiveDelta.id)!;
+
+    const cases: Array<{
+      name: string;
+      mutate: (content: MutableConfigurationContent) => void;
+      expected: string;
+    }> = [
+      {
+        name: "setting.readSites[].path",
+        mutate: (content) => { selectedSetting(content).readSites[0].path = "/app/read-site.ts"; },
+        expected: `${closureExperiment.id}.${closureSetting.key} read site must begin with packages/protocol/`,
+      },
+      {
+        name: "setting.accessorClosure[].path",
+        mutate: (content) => { selectedSetting(content).accessorClosure[0].path = "/app/accessor.ts"; },
+        expected: `${closureExperiment.id}.${closureSetting.key} accessor closure hop must begin with packages/protocol/`,
+      },
+      {
+        name: "definitive delta.consumerPath",
+        mutate: (content) => { selectedDelta(content).consumerPath = "/app/consumer.ts"; },
+        expected: `${deltaId} consumerPath must begin with packages/protocol/`,
+      },
+      {
+        name: "definitive delta.referenceChain[].path",
+        mutate: (content) => { selectedDelta(content).referenceChain![0].path = "/app/reference.ts"; },
+        expected: `${deltaId} reference-chain hop must begin with packages/protocol/`,
+      },
+      {
+        name: "definitive delta.behaviorTest.path",
+        mutate: (content) => { selectedDelta(content).behaviorTest!.path = "/app/behavior.spec.ts"; },
+        expected: `${deltaId} behavior test must begin with packages/protocol/`,
+      },
+    ];
+
+    for (const { name, mutate, expected } of cases) {
+      const content = structuredClone(base);
+      mutate(content);
+      const artifact = buildAtlasArtifact(input, content);
+      const issues = validateConfigurationExperiments(content, artifact, input, repoRoot);
+      expect(issues, name).toContain(expected);
+      expect(issues.filter((issue) => issue === expected), name).toHaveLength(1);
+    }
+  });
+
+  test("schema-aware validation preserves one field-specific error for every non-string path", async () => {
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const base = await loadAtlasContent() as MutableConfigurationContent;
+    const closureExperiment = base.configurationExperiments.find((candidate) =>
+      candidate.settings.some((setting) => setting.accessorClosure.length > 0))!;
+    const closureSetting = closureExperiment.settings.find((setting) => setting.accessorClosure.length > 0)!;
+    const definitiveExperiment = base.configurationExperiments.find((candidate) =>
+      candidate.modes.some((mode) => mode.deltas.some((delta) =>
+        delta.consumerPath && delta.referenceChain?.length && delta.behaviorTest)))!;
+    const definitiveMode = definitiveExperiment.modes.find((candidate) => candidate.deltas.some((delta) =>
+      delta.consumerPath && delta.referenceChain?.length && delta.behaviorTest))!;
+    const definitiveDelta = definitiveMode.deltas.find((candidate) =>
+      candidate.consumerPath && candidate.referenceChain?.length && candidate.behaviorTest)!;
+    const deltaId = `${definitiveExperiment.id}.${definitiveMode.id}.${definitiveDelta.id}`;
+    const selectedSetting = (content: MutableConfigurationContent) => content.configurationExperiments
+      .find(({ id }) => id === closureExperiment.id)!.settings.find(({ key }) => key === closureSetting.key)!;
+    const selectedDelta = (content: MutableConfigurationContent) => content.configurationExperiments
+      .find(({ id }) => id === definitiveExperiment.id)!.modes.find(({ id }) => id === definitiveMode.id)!
+      .deltas.find(({ id }) => id === definitiveDelta.id)!;
+
+    const cases: Array<{
+      name: string;
+      mutate: (content: MutableConfigurationContent) => void;
+      expected: string;
+    }> = [
+      {
+        name: "setting.readSites[].path",
+        mutate: (content) => { (selectedSetting(content).readSites[0] as { path: unknown }).path = 42; },
+        expected: `${closureExperiment.id}.${closureSetting.key} read site must name a path`,
+      },
+      {
+        name: "setting.accessorClosure[].path",
+        mutate: (content) => { (selectedSetting(content).accessorClosure[0] as { path: unknown }).path = 42; },
+        expected: `${closureExperiment.id}.${closureSetting.key} accessor closure hop is missing`,
+      },
+      {
+        name: "definitive delta.consumerPath",
+        mutate: (content) => { (selectedDelta(content) as { consumerPath: unknown }).consumerPath = 42; },
+        expected: `${deltaId} must name consumerPath`,
+      },
+      {
+        name: "definitive delta.referenceChain[].path",
+        mutate: (content) => { (selectedDelta(content).referenceChain![0] as { path: unknown }).path = 42; },
+        expected: `${deltaId} reference-chain hop is missing`,
+      },
+      {
+        name: "definitive delta.behaviorTest.path",
+        mutate: (content) => { (selectedDelta(content).behaviorTest! as { path: unknown }).path = 42; },
+        expected: `${deltaId} behavior test must name a path`,
+      },
+    ];
+
+    for (const { name, mutate, expected } of cases) {
+      const content = structuredClone(base);
+      mutate(content);
+      const artifact = buildAtlasArtifact(input, content);
+      const issues = validateConfigurationExperiments(content, artifact, input, repoRoot);
+      expect(issues.filter((issue) => issue === expected), name).toEqual([expected]);
+    }
   });
 
   test("binds each environment read to its actual enclosing source symbol", async () => {
