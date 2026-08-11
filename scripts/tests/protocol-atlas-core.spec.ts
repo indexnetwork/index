@@ -543,15 +543,17 @@ describe("Protocol Atlas guided renderer", () => {
     }
   });
 
-  test("dispatches semantic step controls, describes SVGs, and excludes interactive controls from arrow navigation", async () => {
+  test("dispatches semantic step controls, renders a content-first flow map, and excludes interactive controls from arrow navigation", async () => {
     const harness = await rendererHarness();
     try {
       buttonWithText(harness.document, "#atlas-nav button", "Discovery")?.click();
       expect(activeStep(harness.document)).toBe("Resolve scope");
 
-      const svg = harness.document.querySelector(".atlas-diagram-canvas svg");
-      expect(svg?.querySelector("title")?.textContent).toContain("Resolve scope");
-      expect(svg?.querySelector("desc")?.textContent).toContain("ordered nodes");
+      const flowMap = harness.document.querySelector(".atlas-flow-map");
+      expect(flowMap?.getAttribute("aria-label")).toContain("Resolve scope protocol diagram");
+      expect(flowMap?.querySelector("svg")).toBeNull();
+      expect(flowMap?.querySelectorAll(".atlas-node-grid .atlas-node").length).toBeGreaterThan(0);
+      expect(flowMap?.lastElementChild?.classList.contains("atlas-relationship-fallback")).toBe(true);
 
       const stepActions = harness.document.querySelectorAll<HTMLButtonElement>(".atlas-step-actions button");
       expect([...stepActions].map((button) => button.tagName)).toEqual(["BUTTON", "BUTTON"]);
@@ -638,6 +640,12 @@ describe("Protocol Atlas chapter teaching and relationship fallback", () => {
     try {
       const rows = protocolHarness.document.querySelectorAll(".atlas-diagram-relations li");
       expect(rows.length).toBeGreaterThan(0);
+      const first = rows[0];
+      expect(Array.from(first?.children ?? [], (child) => child.className)).toEqual([
+        "atlas-relationship__source",
+        "atlas-relationship__kind",
+        "atlas-relationship__target",
+      ]);
       expect(rows[0]?.textContent).toMatch(/Effective Scope[\s\S]*(bounds retrieval of|conceptual)[\s\S]*Candidate/);
     } finally {
       protocolHarness.cleanup();
