@@ -5,9 +5,9 @@ import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
 import * as dbSchema from '../schemas/database.schema';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
+import { log } from '../lib/log';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
-import { log } from '../lib/log';
 import { allowedHermesActionsFor, buildHermesNegotiationTurn, consultationPromptFor, HERMES_OWNER_DIRECTIVE, isNegotiationTurnCapReached, type HermesNegotiationAction, type HermesNegotiationResponse, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment, type NegotiationAction, type NegotiationConsultationReason, type NegotiationSeat, type NegotiationProtocolVersion, type NegotiatorMemoryEntry } from '@indexnetwork/protocol';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
@@ -20,6 +20,7 @@ import type { AtomicHermesResponseInput, AtomicHermesResponseResult, HermesRunMu
 import { remainingDeadlineDelayMs } from '../lib/negotiation/timeout-execution';
 import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
 import { hermesRuntimeTelemetry, type HermesRuntimeTelemetry } from '../lib/agent/hermes-runtime-telemetry';
+import { logNegotiationPickupConflict } from '../lib/agent/negotiation-polling.log';
 
 const logger = log.service.from('NegotiationPollingService');
 
@@ -328,7 +329,7 @@ export class NegotiationPollingService {
     }
     if (pickup.kind === 'conflict') {
       this.telemetry.increment('conflict', { reason: 'runtime_conflict' });
-      logger.info('Lost race to claim negotiation task', { agentId, userId });
+      logNegotiationPickupConflict();
       return null;
     }
 

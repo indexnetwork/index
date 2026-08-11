@@ -3,7 +3,7 @@ import { sql, type SQL } from 'drizzle-orm/sql';
 
 import db, { closeDb, type DrizzleDB } from '../lib/drizzle/drizzle';
 import { runHermesPreflightMain } from './hermes-migration-preflight.main';
-import type { HermesPreflightReport, HermesPreflightThresholds } from './hermes-migration-preflight.contract';
+import type { HermesPreflightCheckReport, HermesPreflightThresholds } from './hermes-migration-preflight.contract';
 
 type Transaction = Parameters<Parameters<DrizzleDB['transaction']>[0]>[0];
 type CountRow = { count: number };
@@ -171,7 +171,7 @@ export async function runHermesMigrationPreflight(input: {
   monotonicNow?: () => number;
   checkedAt?: () => Date;
   afterSnapshotEstablished?: () => Promise<void>;
-}): Promise<HermesPreflightReport> {
+}): Promise<HermesPreflightCheckReport> {
   const monotonicNow = input.monotonicNow ?? (() => performance.now());
   const checkedAt = input.checkedAt ?? (() => new Date());
   const lockTimeoutMs = boundedMilliseconds(input.thresholds.maxLockMs, 'maxLockMs');

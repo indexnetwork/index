@@ -90,8 +90,10 @@ describe('Hermes final production assurance release contract', () => {
     expect(workflow).toContain('Run stale and expired Index coverage smoke');
     expect(workflow).toContain('src/lib/agent/tests/hermes-runtime-telemetry.spec.ts');
     expect(workflow).toContain('src/lib/testing/tests/hermes-assurance-output.spec.ts');
+    expect(workflow).toContain('src/services/tests/negotiation-polling.logging.spec.ts');
     expect(workflow).toContain('API_TEST_ISOLATED_TARGET=src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts');
     expect(workflow).toContain('bun test services/api/src/lib/testing/isolated-test-import-harness.spec.ts');
+    expect(workflow).toContain('bun test apps/mac/api/agent-runtime-saga.spec.mjs');
     expect(workflow).toContain('maintenance:hermes-emergency-control -- --audience hermes-agent');
     expect(workflow).not.toContain('maintenance:hermes-emergency-control -- --confirm');
     expect(workflow).not.toMatch(/OPENAI_API_KEY|OPENROUTER_API_KEY|ANTHROPIC_API_KEY/);
@@ -172,6 +174,9 @@ describe('Hermes final production assurance release contract', () => {
     const actualGates = [...gatesSource.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
     expect(actualGates).toEqual(expectedGates);
     expect(workflow).toContain('hermes-migration-preflight-report.json');
+    expect(workflow).toContain('"totalDurationMs"');
+    expect(workflow).toContain('preflightDurationsMs:');
+    expect(workflow).toContain('total: preflight.totalDurationMs');
     expect(workflow).toContain('previous-api-compatibility-diagnostic.json');
     expect(workflow).toContain('previous-api-compatibility-protected.json');
     expect(workflow).not.toMatch(/path:.*(?:\.log|stdout|stderr|DATABASE_URL)/);
@@ -255,8 +260,35 @@ describe('Hermes final production assurance release contract', () => {
       .toEqual([connectorPost, denialProbe, exactCas, finalCleanup].toSorted((a, b) => a - b));
   });
 
+  it('documents a durable verified rollback fence and exact receipt validation', () => {
+    for (const phrase of [
+      'separately incident-authorized',
+      'admission fence',
+      'drain all in-flight requests',
+      'prove denial before the dry-run',
+      'remains held through zero verification and older-binary restoration',
+      'transaction table and advisory locks end at commit',
+      're-verify the three zero counts while the fence remains held',
+      'approved immutable public image digest only inside the sanitized compatibility report',
+      'credential- or identity-derived hashes',
+    ]) expect(rollback).toContain(phrase);
+    for (const route of [
+      'POST /api/hermes-authorizations',
+      'POST /api/hermes-authorizations/:id/approve',
+      'POST /api/hermes-authorizations/exchange',
+      'POST /api/hermes-authorizations/activate',
+      'POST /api/agent-runtime/hermes/prepare',
+      'PUT /api/agent-runtime',
+    ]) expect(rollback).toContain(route);
+    expect(rollback).toContain('keys == ["audience", "auditReceipts", "credentials", "credentialsRevoked", "durationMs", "installations", "installationsDisconnected", "owners", "permissions", "permissionsRemoved", "planId", "reason", "receiptId", "selectedPaused"]');
+    expect(rollback).toContain('.receiptId == $planId');
+    expect(rollback).toContain('.permissionsRemoved == .permissions');
+    expect(rollback).toContain('.auditReceipts == 1');
+    expect(rollback).toContain('.auditReceipts == 0');
+  });
+
   it('documents forward-fix-first rollback and the exact emergency order', () => {
-    const pause = position(rollback, '1. Pause');
+    const pause = position(rollback, '1. Fence admission and pause');
     const revoke = position(rollback, '2. Bulk revoke');
     const verify = position(rollback, '3. Verify zero active dedicated credentials and zero selected Hermes');
     const restore = position(rollback, '4. Restore older binary');
@@ -274,14 +306,23 @@ describe('Hermes final production assurance release contract', () => {
     expect(rollback).not.toContain('body: {}');
   });
 
+  it('requires an empty reselect pickup or sanctioned settlement before restarting the final sequence', () => {
+    expect(rollout).toContain('require `pending:false`');
+    expect(rollout).not.toContain('successful empty pickup (`pending:false`) or the next sanctioned turn');
+    expect(rollout).toContain('sanctioned respond or consult mutation');
+    expect(rollout).toContain('verify settlement completed');
+    expect(rollout).toContain('restart the final reselect → empty pickup → disconnect sequence');
+  });
+
+  it('triggers on the complete Mac trust surface and runs the provider-free Mac saga contract', () => {
+    expect(workflow).toContain('- "apps/mac/**"');
+    expect(workflow).toContain('bun test apps/mac/api/agent-runtime-saga.spec.mjs');
+    expect(workflow).not.toMatch(/swift build|xcodebuild/);
+  });
+
   it('runs for every contracted Task 7 source, runbook, plan, and report path', () => {
     for (const sourcePath of [
-      'apps/mac/api/agent-runtime-saga.mjs',
-      'apps/mac/api/agent-runtime-saga.spec.mjs',
-      'apps/mac/api/client.mjs',
-      'apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift',
-      'apps/mac/IndexConnector/Sources/ConnectorRuntime.swift',
-      'apps/mac/IndexApp/Sources/HermesRuntime.swift',
+      'apps/mac/**',
       'docs/rollout/hermes-backend-production-assurance.md',
       'docs/runbooks/hermes-emergency-rollback.md',
       'docs/guides/development-reference.md',

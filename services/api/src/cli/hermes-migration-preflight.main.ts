@@ -1,4 +1,4 @@
-import { assertPreflightPass, formatPreflightReport, type HermesPreflightReport, type HermesPreflightThresholds } from './hermes-migration-preflight.contract';
+import { assertPreflightPass, formatPreflightReport, type HermesPreflightCheckReport, type HermesPreflightReport, type HermesPreflightThresholds } from './hermes-migration-preflight.contract';
 
 export interface HermesPreflightArguments extends HermesPreflightThresholds {
   json: true;
@@ -37,18 +37,21 @@ export function parseHermesPreflightArguments(args: readonly string[]): HermesPr
 
 export async function runHermesPreflightMain(input: {
   args: readonly string[];
-  run: (thresholds: HermesPreflightThresholds) => Promise<HermesPreflightReport>;
+  run: (thresholds: HermesPreflightThresholds) => Promise<HermesPreflightCheckReport>;
   now?: () => number;
   write?: (output: string) => void;
 }): Promise<HermesPreflightReport> {
   const options = parseHermesPreflightArguments(input.args);
   const now = input.now ?? (() => performance.now());
   const startedAt = now();
-  const report = await input.run({ maxLockMs: options.maxLockMs, maxTotalMs: options.maxTotalMs });
-  const totalDurationMs = Math.max(0, now() - startedAt);
-  // Failure reports are evidence too. Emit the same fixed count-only shape
+  const checks = await input.run({ maxLockMs: options.maxLockMs, maxTotalMs: options.maxTotalMs });
+  const report: HermesPreflightReport = {
+    ...checks,
+    totalDurationMs: Math.max(0, now() - startedAt),
+  };
+  // Failure reports are evidence too. Emit the same fixed count/duration shape
   // before enforcing data and duration gates.
   (input.write ?? console.log)(formatPreflightReport(report));
-  assertPreflightPass(report, { ...options, totalDurationMs });
+  assertPreflightPass(report, options);
   return report;
 }

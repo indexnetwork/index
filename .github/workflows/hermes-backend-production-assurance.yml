@@ -9,12 +9,7 @@ on:
       - "package.json"
       - "bun.lock"
       - ".github/workflows/hermes-backend-production-assurance.yml"
-      - "apps/mac/api/agent-runtime-saga.mjs"
-      - "apps/mac/api/agent-runtime-saga.spec.mjs"
-      - "apps/mac/api/client.mjs"
-      - "apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift"
-      - "apps/mac/IndexConnector/Sources/ConnectorRuntime.swift"
-      - "apps/mac/IndexApp/Sources/HermesRuntime.swift"
+      - "apps/mac/**"
       - "docs/rollout/hermes-backend-production-assurance.md"
       - "docs/runbooks/hermes-emergency-rollback.md"
       - "docs/guides/development-reference.md"
@@ -254,11 +249,17 @@ jobs:
       - name: Verify provider-free privacy boundaries
         run: |
           bun test services/api/src/lib/agent/tests/hermes-runtime-telemetry.spec.ts \
-            services/api/src/lib/testing/tests/hermes-assurance-output.spec.ts
+            services/api/src/lib/testing/tests/hermes-assurance-output.spec.ts \
+            services/api/src/services/tests/negotiation-polling.logging.spec.ts
           # Separate Bun invocation guarantees a fresh module graph for the mocked production Sentry sink.
           API_TEST_ISOLATED_TARGET=src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts \
             bun test services/api/src/lib/testing/isolated-test-import-harness.spec.ts
 
+      - name: Run provider-free Mac agent-runtime saga contract
+        run: bun test apps/mac/api/agent-runtime-saga.spec.mjs
+
+      # This Ubuntu gate executes the portable JavaScript saga/contract only.
+      # Native Swift/macOS builds remain owned by the existing Mac workflows.
       - name: Run stale and expired Index coverage smoke
         run: >-
           bun test services/api/src/services/tests/connected-agents.service.spec.ts
@@ -375,8 +376,18 @@ jobs:
         run: |
           bun -e '
             const preflight = await Bun.file("services/api/hermes-migration-preflight-report.json").json();
-            const allowed = ["checkedAt", "duplicateSelections", "expiryMismatches", "invalidDedicatedCredentials", "invalidLegacyMetadata", "lockDurationMs", "missingIndexes"];
+            const allowed = ["checkedAt", "duplicateSelections", "expiryMismatches", "invalidDedicatedCredentials", "invalidLegacyMetadata", "lockDurationMs", "missingIndexes", "totalDurationMs"];
             if (Object.keys(preflight).sort().join(",") !== allowed.sort().join(",")) process.exit(1);
+            for (const field of ["duplicateSelections", "expiryMismatches", "invalidDedicatedCredentials", "invalidLegacyMetadata", "missingIndexes"]) {
+              if (!Number.isSafeInteger(preflight[field]) || preflight[field] !== 0) process.exit(1);
+            }
+            for (const field of ["lockDurationMs", "totalDurationMs"]) {
+              if (!Number.isFinite(preflight[field]) || preflight[field] < 0) process.exit(1);
+            }
+            const maxLock = Number(process.env.MAX_LOCK_MS);
+            const maxTotal = Number(process.env.MAX_TOTAL_MS);
+            if (!Number.isFinite(maxLock) || maxLock <= 0 || preflight.lockDurationMs > maxLock) process.exit(1);
+            if (!Number.isFinite(maxTotal) || maxTotal <= 0 || preflight.totalDurationMs > maxTotal) process.exit(1);
             const evidence = {
               schemaVersion: 1,
               result: "passed",
@@ -386,9 +397,10 @@ jobs:
                 "expired-index-coverage", "build", "typecheck", "cli-typecheck", "lint", "static-inventory",
                 "telemetry-privacy", "assurance-output-sanitization", "sentry-sink",
               ],
-              preflightThresholdsMs: {
-                maxLock: Number(process.env.MAX_LOCK_MS),
-                maxTotal: Number(process.env.MAX_TOTAL_MS),
+              preflightThresholdsMs: { maxLock, maxTotal },
+              preflightDurationsMs: {
+                lock: preflight.lockDurationMs,
+                total: preflight.totalDurationMs,
               },
               reports: ["hermes-migration-preflight-report.json"],
             };

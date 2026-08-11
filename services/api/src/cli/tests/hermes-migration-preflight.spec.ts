@@ -15,6 +15,7 @@ const cleanReport: HermesPreflightReport = {
   expiryMismatches: 0,
   missingIndexes: 0,
   lockDurationMs: 12,
+  totalDurationMs: 20,
   checkedAt: '2026-08-09T12:00:00.000Z',
 };
 
@@ -57,6 +58,9 @@ describe('Hermes migration preflight contract', () => {
   it('accepts a clean report and rejects malformed numeric report fields', () => {
     expect(() => assertPreflightPass(cleanReport)).not.toThrow();
     expect(() => assertPreflightPass({ ...cleanReport, lockDurationMs: Number.NaN })).toThrow(
+      'invalid preflight report',
+    );
+    expect(() => assertPreflightPass({ ...cleanReport, totalDurationMs: Number.NaN })).toThrow(
       'invalid preflight report',
     );
   });
@@ -125,12 +129,32 @@ describe('Hermes migration preflight contract', () => {
       args: ['--json', '--max-lock-ms', '5000', '--max-total-ms', '30000'],
       run: async (thresholds) => {
         received = thresholds;
-        return cleanReport;
+        const { totalDurationMs: _totalDurationMs, ...checks } = cleanReport;
+        return checks;
       },
       now: () => 10,
       write: () => undefined,
     });
     expect(received).toEqual({ maxLockMs: 5000, maxTotalMs: 30000 });
+  });
+
+  it('measures, validates, and serializes total duration in the exact report schema', async () => {
+    const outputs: string[] = [];
+    const values = [100, 123];
+    const { totalDurationMs: _totalDurationMs, ...checks } = cleanReport;
+    const report = await runHermesPreflightMain({
+      args: ['--json', '--max-lock-ms', '5000', '--max-total-ms', '30000'],
+      run: async () => checks,
+      now: () => values.shift()!,
+      write: (output) => outputs.push(output),
+    });
+
+    expect(report.totalDurationMs).toBe(23);
+    expect(Object.keys(JSON.parse(outputs[0]!)).sort()).toEqual([
+      'checkedAt', 'duplicateSelections', 'expiryMismatches', 'invalidDedicatedCredentials',
+      'invalidLegacyMetadata', 'lockDurationMs', 'missingIndexes', 'totalDurationMs',
+    ]);
+    expect(JSON.parse(outputs[0]!).totalDurationMs).toBe(23);
   });
 
   it('renders full and sliced fixture actions as one PostgreSQL text-array parameter', () => {
@@ -177,14 +201,21 @@ describe('Hermes migration preflight contract', () => {
     const outputs: string[] = [];
     await expect(runHermesPreflightMain({
       args: ['--json', '--max-lock-ms', '5000', '--max-total-ms', '30000'],
-      run: async () => ({ ...cleanReport, invalidLegacyMetadata: 1 }),
+      run: async () => {
+        const { totalDurationMs: _totalDurationMs, ...checks } = cleanReport;
+        return { ...checks, invalidLegacyMetadata: 1 };
+      },
       now: (() => {
         const values = [10, 20];
         return () => values.shift()!;
       })(),
       write: (output) => outputs.push(output),
     })).rejects.toThrow('invalid legacy API-key metadata');
-    expect(outputs).toEqual([formatPreflightReport({ ...cleanReport, invalidLegacyMetadata: 1 })]);
+    expect(outputs).toEqual([formatPreflightReport({
+      ...cleanReport,
+      invalidLegacyMetadata: 1,
+      totalDurationMs: 10,
+    })]);
   });
 
   it('never includes credential/provider environment names in the provider-free contract', () => {

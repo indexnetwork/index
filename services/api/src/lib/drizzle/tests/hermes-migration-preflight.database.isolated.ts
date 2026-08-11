@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm/sql';
 import postgres from 'postgres';
 
-import { assertPreflightPass, formatPreflightReport, type HermesPreflightReport } from '../../../cli/hermes-migration-preflight.contract';
+import { assertPreflightPass, formatPreflightReport, type HermesPreflightCheckReport } from '../../../cli/hermes-migration-preflight.contract';
 import { runHermesMigrationPreflight } from '../../../cli/hermes-migration-preflight';
 import { HERMES_CANONICAL_ACTIONS } from '../../../lib/agent/hermes-capabilities';
 import type { DrizzleDB } from '../../../lib/drizzle/drizzle';
@@ -92,7 +92,7 @@ async function insertPermission(targetAgentId: string, actions = [...HERMES_CANO
 async function timedPreflight(
   database: DrizzleDB = db,
   afterSnapshotEstablished?: () => Promise<void>,
-): Promise<HermesPreflightReport> {
+): Promise<HermesPreflightCheckReport> {
   const startedAt = performance.now();
   const report = await runHermesMigrationPreflight({
     database,
@@ -238,7 +238,7 @@ describe('Hermes migration preflight on disposable PostgreSQL', () => {
       const malformed = await timedPreflight();
       expect(malformed.invalidLegacyMetadata).toBe(1);
       expect(() => assertPreflightPass(malformed)).toThrow('invalid legacy API-key metadata');
-      expect(formatPreflightReport(malformed)).not.toContain(fixture);
+      expect(formatPreflightReport({ ...malformed, totalDurationMs: 0 })).not.toContain(fixture);
       await db.delete(schema.apikeys).where(sql`${schema.apikeys.id} = ${`${fixture}_malformed`}`);
 
       await db.update(schema.agents).set({ status: 'inactive' }).where(sql`${schema.agents.id} = ${agentId}`);

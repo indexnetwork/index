@@ -1,4 +1,4 @@
-export interface HermesPreflightReport {
+export interface HermesPreflightCheckReport {
   invalidLegacyMetadata: number;
   duplicateSelections: number;
   invalidDedicatedCredentials: number;
@@ -6,6 +6,10 @@ export interface HermesPreflightReport {
   missingIndexes: number;
   lockDurationMs: number;
   checkedAt: string;
+}
+
+export interface HermesPreflightReport extends HermesPreflightCheckReport {
+  totalDurationMs: number;
 }
 
 export interface HermesPreflightThresholds {
@@ -27,7 +31,7 @@ export function parseLegacyMetadata(metadata: string | null): { valid: boolean }
   }
 }
 
-function assertValidReport(report: HermesPreflightReport): void {
+function assertValidReport(report: HermesPreflightCheckReport & { totalDurationMs?: number }): void {
   const counts = [
     report.invalidLegacyMetadata,
     report.duplicateSelections,
@@ -39,6 +43,8 @@ function assertValidReport(report: HermesPreflightReport): void {
   if (counts.some((value) => !Number.isSafeInteger(value) || value < 0)
     || !Number.isFinite(report.lockDurationMs)
     || report.lockDurationMs < 0
+    || (report.totalDurationMs !== undefined
+      && (!Number.isFinite(report.totalDurationMs) || report.totalDurationMs < 0))
     || Number.isNaN(checkedAt.getTime())
     || checkedAt.toISOString() !== report.checkedAt) {
     throw new Error('invalid preflight report');
@@ -48,6 +54,9 @@ function assertValidReport(report: HermesPreflightReport): void {
 /** Serialize the fixed, low-cardinality report and discard any extra runtime fields. */
 export function formatPreflightReport(report: HermesPreflightReport): string {
   assertValidReport(report);
+  if (!Number.isFinite(report.totalDurationMs) || report.totalDurationMs < 0) {
+    throw new Error('invalid preflight report');
+  }
   return JSON.stringify({
     invalidLegacyMetadata: report.invalidLegacyMetadata,
     duplicateSelections: report.duplicateSelections,
@@ -55,12 +64,13 @@ export function formatPreflightReport(report: HermesPreflightReport): string {
     expiryMismatches: report.expiryMismatches,
     missingIndexes: report.missingIndexes,
     lockDurationMs: report.lockDurationMs,
+    totalDurationMs: report.totalDurationMs,
     checkedAt: report.checkedAt,
   });
 }
 
 export function assertPreflightPass(
-  report: HermesPreflightReport,
+  report: HermesPreflightCheckReport & { totalDurationMs?: number },
   thresholds?: HermesPreflightThresholds & { totalDurationMs?: number },
 ): void {
   assertValidReport(report);
@@ -73,8 +83,8 @@ export function assertPreflightPass(
   if (report.missingIndexes > 0) failures.push('missing or invalid indexes/constraints');
   if (thresholds) {
     if (report.lockDurationMs > thresholds.maxLockMs) failures.push('lock duration threshold exceeded');
-    if (thresholds.totalDurationMs !== undefined
-      && thresholds.totalDurationMs > thresholds.maxTotalMs) {
+    const totalDurationMs = report.totalDurationMs ?? thresholds.totalDurationMs;
+    if (totalDurationMs !== undefined && totalDurationMs > thresholds.maxTotalMs) {
       failures.push('total duration threshold exceeded');
     }
   }
