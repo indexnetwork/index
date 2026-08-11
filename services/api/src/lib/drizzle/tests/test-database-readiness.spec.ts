@@ -1,6 +1,21 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 
 import { checkTestDatabaseReadiness, hasParentTestDatabaseReadiness, readOriginalProcessArgv, REQUIRED_TEST_DATABASE_COLUMNS, REQUIRED_TEST_DATABASE_OBJECTS, shouldRequireTestDatabase, validateTestDatabaseUrl } from '../test-database-readiness';
+
+const apiRoot = path.resolve(import.meta.dir, '../../../..');
+const repositoryRoot = path.resolve(apiRoot, '../..');
+const assuranceWorkflowPath = path.join(
+  repositoryRoot,
+  '.github/workflows/hermes-backend-production-assurance.yml',
+);
+const assuranceWorkflow = existsSync(assuranceWorkflowPath)
+  ? readFileSync(assuranceWorkflowPath, 'utf8')
+  : '';
+const apiPackage = JSON.parse(
+  readFileSync(path.join(apiRoot, 'package.json'), 'utf8'),
+) as { scripts?: Record<string, string> };
 
 function makeClient(rows: ReadonlyArray<Record<string, unknown>> = [{ missing: [] }]) {
   return {
@@ -8,6 +23,46 @@ function makeClient(rows: ReadonlyArray<Record<string, unknown>> = [{ missing: [
     end: mock(async () => undefined),
   };
 }
+
+describe('Hermes production assurance contract', () => {
+  test('allows the assurance database while rejecting its production-like variant', () => {
+    expect(() => validateTestDatabaseUrl(
+      'postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance',
+    )).not.toThrow();
+    expect(() => validateTestDatabaseUrl(
+      'postgres://postgres:postgres@127.0.0.1:5432/hermes_prod',
+    )).toThrow('production-like database name');
+  });
+
+  test('exposes the exact isolated database assurance script', () => {
+    expect(apiPackage.scripts?.['test:hermes-production-assurance']).toBe(
+      'API_TEST_ISOLATED_TARGET=tests/negotiation-runtime-authority.database.isolated.ts bun test src/lib/testing/isolated-test-import-harness.spec.ts',
+    );
+  });
+
+  test('uses a healthy disposable PostgreSQL 16 service with frozen dependencies', () => {
+    expect(existsSync(assuranceWorkflowPath)).toBe(true);
+    expect(assuranceWorkflow).toContain('image: postgres:16');
+    expect(assuranceWorkflow).toContain('POSTGRES_DB: hermes_assurance');
+    expect(assuranceWorkflow).toContain('pg_isready -U postgres -d hermes_assurance');
+    expect(assuranceWorkflow).toContain('bun install --frozen-lockfile');
+    expect(assuranceWorkflow).toContain('bun run --cwd packages/protocol build');
+    expect(assuranceWorkflow).toContain('bun run --cwd services/api db:migrate:test');
+    expect(assuranceWorkflow).toContain('bun run --cwd services/api test:hermes-production-assurance');
+  });
+
+  test('scopes the disposable-database marker to the exact database test step', () => {
+    const safetyMarkers = assuranceWorkflow.match(/TEST_DATABASE_SAFE:\s*["']1["']/g) ?? [];
+    expect(safetyMarkers).toHaveLength(1);
+    expect(assuranceWorkflow).toContain(`- name: Run Hermes production assurance
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+        run: |
+          bun run --cwd services/api db:migrate:test
+          bun run --cwd services/api test:hermes-production-assurance`);
+  });
+});
 
 describe('test database readiness', () => {
   test('rejects missing and malformed database URLs clearly', () => {

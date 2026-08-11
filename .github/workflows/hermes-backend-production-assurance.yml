@@ -1,0 +1,54 @@
+name: Hermes backend production assurance
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "services/api/**"
+      - "packages/protocol/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/hermes-backend-production-assurance.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  disposable-postgres-assurance:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hermes_assurance
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres -d hermes_assurance"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+          no-cache: true
+
+      - name: Install frozen dependencies
+        run: |
+          bun pm cache rm || true
+          bun install --frozen-lockfile
+
+      - name: Build protocol package
+        run: bun run --cwd packages/protocol build
+
+      - name: Run Hermes production assurance
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance
+          TEST_DATABASE_SAFE: "1"
+        run: |
+          bun run --cwd services/api db:migrate:test
+          bun run --cwd services/api test:hermes-production-assurance

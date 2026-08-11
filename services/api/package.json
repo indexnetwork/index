@@ -10,6 +10,7 @@
     "lint": "eslint src/",
     "typecheck:cli-specs": "tsc -p tsconfig.spec.json",
     "test:isolated": "NODE_ENV=test bash scripts/test-isolated.sh",
+    "test:hermes-production-assurance": "API_TEST_ISOLATED_TARGET=tests/negotiation-runtime-authority.database.isolated.ts bun test src/lib/testing/isolated-test-import-harness.spec.ts",
     "test:all": "NODE_ENV=test API_TEST_REQUIRE_DATABASE=1 bun test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

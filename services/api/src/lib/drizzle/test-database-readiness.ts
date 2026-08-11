@@ -146,7 +146,7 @@ export function validateTestDatabaseUrl(value: string | undefined): string {
   // at a disposable database instead of teaching it to ignore the warning.
   if (REAL_DATA_DATABASE_NAMES.test(databaseName)) {
     throw new Error(
-      `[test-db] Refusing to run tests against a database that carries real data ("${databaseName}"). `
+      `[test-db] Refusing to run tests against a database that carries real data: production-like database name ("${databaseName}"). `
       + 'Database-backed tests truncate and rewrite tables. Point DATABASE_URL in the repository-root '
       + '.env.test at a disposable database — for example the empty "neondb" on a Neon dev branch with '
       + 'migrations applied (cd services/api && bun run db:migrate) — never a *_prod/*_production database.',
