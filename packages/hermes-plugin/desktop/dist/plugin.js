@@ -4466,12 +4466,16 @@ function composeNotification(event) {
   }
   if (event.type === 'message') {
     const msg = event.message || {}
-    const sender = (msg.senderName || msg.senderId || 'Someone').toString()
+    const sender = (msg.senderName || 'Someone').toString()
     let text = ''
     if (Array.isArray(msg.parts)) {
       for (let i = 0; i < msg.parts.length; i++) {
         const part = msg.parts[i]
-        if (part && part.type === 'text' && part.text) { text = part.text; break }
+        // Accept typed text parts and bare { text } payloads from mobile/web.
+        if (part && typeof part.text === 'string' && part.text.trim()) {
+          text = part.text.trim()
+          break
+        }
       }
     }
     return { title: `New message from ${sender}`, body: text || 'Open Index to read the message.' }
