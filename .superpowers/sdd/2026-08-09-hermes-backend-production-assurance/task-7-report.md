@@ -100,3 +100,30 @@ Per task instruction, no local database suite or migration was run, no `DATABASE
 - Production rollout/mutation remains unauthorized by these changes; the protected environment and separate operator approvals are mandatory.
 - The four requested independent reviews completed; every Important finding in artifacts `c23160c2`, `12b4b047`, `11d45c09`, and `6f6018b3` is addressed by code/docs plus release contracts.
 - No push, deployment, production mutation, database operation, `DATABASE_URL`, or local `TEST_DATABASE_SAFE=1` use occurred.
+
+## Important re-review follow-up
+
+The three validated Important follow-up findings in reviewer artifacts `e144c5e0`, `b235d837`, and `7d9084bf` are now resolved.
+
+- The rollout smoke no longer uses the legacy direct DELETE endpoint. Its exact Disconnect step is the approved client-owned saga: durable local pause/scrub, connector-owned authenticated `POST /api/hermes-authorizations/disconnect`, matching receipt plus old-credential 401 denial proof and connector Keychain deletion, exact-generation `POST /api/agent-runtime/reconcile-index` CAS, then exact local schedule/plugin/dashboard/environment cleanup. The runbook requires final server and signed-connector verification, forbids reproducing connector-owned credential requests manually, preserves credential-free evidence, and names the exact Mac/server release-contract sources and workflow path filters.
+- The aggregate artifact now records stable `telemetry-privacy`, `assurance-output-sanitization`, and `sentry-sink` gates. The release contract parses and compares the complete ordered 17-gate array, rather than checking loose containment, and the rollout checklist names the same exact set.
+- All three jobs retain the reviewed official `postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b` multi-architecture image. They share PGDG package version `0.8.6-1.pgdg13+1`, extension version `0.8.6`, SHA-256 `9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc`, and the historical archive object's S3 version ID `x3lsgKtr53BtiGMRJqIlPZr52kLw0jvS`. Each job downloads that exact versioned object on the runner, verifies its hardcoded SHA-256 before copying it, proves the base already has installed `postgresql-16` and `libc6` and lacks the incompatible optional JIT package, validates package metadata, installs only with `dpkg`, and asserts the installed package and live extension versions. No apt index or unversioned package resolution remains.
+
+### Package provenance and availability
+
+The pinned image's independently inspected Linux/amd64 child is `sha256:670391653713782e51974845b217c56fed4dd8729142299c43c919a8d3e15e00`; its OCI config identifies Debian trixie, PostgreSQL `16.14-1.pgdg13+1`, and image creation on 2026-08-05. The PGDG package is dated 2026-08-02 and was archived on 2026-08-03, so it predates that pinned image. The `trixie-pgdg-archive` InRelease signature verified with PostgreSQL Debian Repository fingerprint `B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8`; its signed `Packages.bz2` checksum verified, and that package record independently resolved the hardcoded SHA-256 above. A separate download of the version-ID URL reproduced the hash and exact package/version/architecture metadata.
+
+Residual availability risk is now limited to the external PGDG archive/CDN being reachable from GitHub-hosted runners. The object version and SHA prevent silent byte drift, but this repository does not mirror the package, so an archive outage fails the release gate closed. Service-container installation and extension execution remain CI-owned; no local Docker or database operation was run.
+
+### Follow-up validation
+
+- Provider-free focused matrix: PASS — 122 tests, 794 expectations.
+- Fresh-process mocked production Sentry sink: PASS — 1 test, 3 expectations.
+- Release/readiness contracts after final package pin: PASS — 39 tests, 308 expectations, also included in the final matrix, with exact source, gate-set, package, dependency, and step-order assertions.
+- Workflow YAML and all 22 shell run blocks: PASS.
+- Version-pinned archive package download/hash/metadata: PASS.
+- Frozen root install: PASS — 878 installs checked across 988 packages, no changes.
+- API/protocol build: PASS; API typecheck and CLI-spec typecheck: PASS when run after the protocol build; API lint: PASS with the same 46 pre-existing warnings and zero errors.
+- `git diff --check`: PASS.
+
+No database suite, Docker command, production authorization, secret, `DATABASE_URL`, or `TEST_DATABASE_SAFE=1` was used locally. No push occurred.

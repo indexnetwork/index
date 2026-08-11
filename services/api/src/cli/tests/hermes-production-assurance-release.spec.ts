@@ -15,7 +15,23 @@ const preflightFixture = readFileSync(
 );
 const emergencyContract = readFileSync(path.join(apiRoot, 'src/cli/hermes-emergency-control.contract.ts'), 'utf8');
 const runtimeService = readFileSync(path.join(apiRoot, 'src/services/agent-runtime.service.ts'), 'utf8');
-const macRuntimeSaga = readFileSync(path.join(repositoryRoot, 'apps/mac/api/agent-runtime-saga.spec.mjs'), 'utf8');
+const runtimeController = readFileSync(path.join(apiRoot, 'src/controllers/agent-runtime.controller.ts'), 'utf8');
+const authorizationController = readFileSync(path.join(apiRoot, 'src/controllers/hermes-authorization.controller.ts'), 'utf8');
+const macRuntimeSaga = readFileSync(path.join(repositoryRoot, 'apps/mac/api/agent-runtime-saga.mjs'), 'utf8');
+const macRuntimeSagaSpec = readFileSync(path.join(repositoryRoot, 'apps/mac/api/agent-runtime-saga.spec.mjs'), 'utf8');
+const macApiClient = readFileSync(path.join(repositoryRoot, 'apps/mac/api/client.mjs'), 'utf8');
+const connectorHTTPClient = readFileSync(
+  path.join(repositoryRoot, 'apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift'),
+  'utf8',
+);
+const connectorRuntime = readFileSync(
+  path.join(repositoryRoot, 'apps/mac/IndexConnector/Sources/ConnectorRuntime.swift'),
+  'utf8',
+);
+const nativeHermesRuntime = readFileSync(
+  path.join(repositoryRoot, 'apps/mac/IndexApp/Sources/HermesRuntime.swift'),
+  'utf8',
+);
 const rolloutPath = path.join(repositoryRoot, 'docs/rollout/hermes-backend-production-assurance.md');
 const rollbackPath = path.join(repositoryRoot, 'docs/runbooks/hermes-emergency-rollback.md');
 const rollout = existsSync(rolloutPath) ? readFileSync(rolloutPath, 'utf8') : '';
@@ -106,9 +122,33 @@ describe('Hermes final production assurance release contract', () => {
     expect(workflow).toContain('[[ "$remote_url" =~ ^https://github\\.com/[^/]+/[^/]+(\\.git)?$ ]]');
     expect(workflow).toContain('git fetch --no-tags origin');
     expect(workflow.match(new RegExp(`image: ${postgresReference}`, 'g'))).toHaveLength(3);
-    expect(workflow.match(new RegExp(`test "\\$image_ref" = "${postgresReference}"`, 'g'))).toHaveLength(3);
-    expect(workflow.match(new RegExp(`test "\\$\\{image_ref##\\*@\\}" = "${postgresDigest}"`, 'g'))).toHaveLength(3);
+    expect(workflow).toContain(`POSTGRES_ASSURANCE_REFERENCE: ${postgresReference}`);
+    expect(workflow.match(/test "\$image_ref" = "\$POSTGRES_ASSURANCE_REFERENCE"/g)).toHaveLength(3);
+    expect(workflow.match(/test "\$\{image_ref##\*@\}" = "\$\{POSTGRES_ASSURANCE_REFERENCE##\*@\}"/g)).toHaveLength(3);
     expect(workflow).not.toMatch(/image:\s+postgres:16\s*$/m);
+  });
+
+  it('installs one independently hashed pgvector package without mutable apt resolution', () => {
+    const packageVersion = '0.8.6-1.pgdg13+1';
+    const extensionVersion = '0.8.6';
+    const packageSha256 = '9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc';
+    const archiveObjectVersion = 'x3lsgKtr53BtiGMRJqIlPZr52kLw0jvS';
+    const packageUrl = 'https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pgvector/'
+      + `postgresql-16-pgvector_${packageVersion}_amd64.deb?versionId=${archiveObjectVersion}`;
+
+    expect(workflow).toContain(`PGVECTOR_PACKAGE_VERSION: ${packageVersion}`);
+    expect(workflow).toContain(`PGVECTOR_EXTENSION_VERSION: ${extensionVersion}`);
+    expect(workflow).toContain(`PGVECTOR_PACKAGE_SHA256: ${packageSha256}`);
+    expect(workflow).toContain(`PGVECTOR_PACKAGE_URL: ${packageUrl}`);
+    expect(workflow.match(/sha256sum --check --strict/g)).toHaveLength(3);
+    expect(workflow.match(/showformat=\\\$\{db:Status-Status\} postgresql-16\)" = installed/g)).toHaveLength(3);
+    expect(workflow.match(/showformat=\\\$\{db:Status-Status\} libc6\)" = installed/g)).toHaveLength(3);
+    expect(workflow.match(/! dpkg-query --show postgresql-16-jit-llvm/g)).toHaveLength(3);
+    expect(workflow.match(/dpkg --install "\$package_file"/g)).toHaveLength(3);
+    expect(workflow.match(/dpkg-query --show --showformat=\\\$\{Version\} postgresql-16-pgvector/g)).toHaveLength(3);
+    expect(workflow.match(/SELECT extversion FROM pg_extension WHERE extname = 'vector'/g)).toHaveLength(3);
+    expect(workflow).not.toMatch(/apt-get\s+(?:update|install)/);
+    expect(workflow).not.toMatch(/dpkg --install.*(?:http|\$PGVECTOR_PACKAGE_URL)/);
   });
 
   it('validates the exact emergency dry-run plan schema and reason', () => {
@@ -120,8 +160,17 @@ describe('Hermes final production assurance release contract', () => {
     expect(rollback).not.toContain('.reason == "planned"');
   });
 
-  it('uploads only the aggregate evidence and established sanitized JSON reports', () => {
+  it('uploads only the exact aggregate gate set and established sanitized JSON reports', () => {
     expect(workflow).toContain('hermes-backend-assurance.json');
+    const expectedGates = [
+      'migrations', 'authority', 'lifecycle', 'preflight-100k', 'telemetry-aggregate',
+      'emergency-concurrency-rollback', 'emergency-dry-run', 'stale-index-coverage',
+      'expired-index-coverage', 'build', 'typecheck', 'cli-typecheck', 'lint', 'static-inventory',
+      'telemetry-privacy', 'assurance-output-sanitization', 'sentry-sink',
+    ];
+    const gatesSource = workflow.match(/gates:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+    const actualGates = [...gatesSource.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(actualGates).toEqual(expectedGates);
     expect(workflow).toContain('hermes-migration-preflight-report.json');
     expect(workflow).toContain('previous-api-compatibility-diagnostic.json');
     expect(workflow).toContain('previous-api-compatibility-protected.json');
@@ -158,12 +207,52 @@ describe('Hermes final production assurance release contract', () => {
     }
     expect(rollout).toContain('never call the legacy `/api/agent-runtime/hermes/prepare` route');
     expect(rollout).not.toContain('call `POST /api/agent-runtime/hermes/prepare`');
-    expect(macRuntimeSaga).toContain("legacy prepare must not run");
-    expect(macRuntimeSaga).toContain('selects only the exact active connector authority without preparing or carrying plaintext');
+    expect(macRuntimeSagaSpec).toContain("legacy prepare must not run");
+    expect(macRuntimeSagaSpec).toContain('selects only the exact active connector authority without preparing or carrying plaintext');
     expect(runtimeService).toContain("lastPickup === null\n      ? 'never-seen'");
     expect(runtimeService).toContain("indexCovering: selectedRuntime === 'index' || health !== 'active'");
     expect(position(rollout, 'health:"never-seen"')).toBeLessThan(position(rollout, 'health:"active"'));
     expect(position(rollout, 'indexCovering:true')).toBeLessThan(position(rollout, 'indexCovering:false'));
+  });
+
+  it('contracts the connector-owned production disconnect saga and verification order', () => {
+    for (const phrase of [
+      'approved client Disconnect control',
+      '`POST /api/hermes-authorizations/disconnect`',
+      '`{protocolVersion:1}`',
+      '`GET /api/auth/me` returns `401`',
+      '`POST /api/agent-runtime/reconcile-index`',
+      '`{agentId,installationId,setupAttemptId}`',
+      '`connected:false`, `revocationPending:false`, `health:"disconnected"`',
+      '`agentId:null`, `setupAttemptId:null`',
+      '`pluginInstalled:false`, `schedulePresent:false`, `scheduleEnabled:false`',
+      'Keychain',
+    ]) expect(rollout).toContain(phrase);
+    expect(rollout).not.toContain('`DELETE /api/agent-runtime/hermes/:installationId`');
+
+    expect(authorizationController).toContain("const disconnectSchema = z.object({\n  protocolVersion: z.literal(1),\n}).strict();");
+    expect(authorizationController).toContain("@Post('/disconnect')");
+    expect(runtimeController).toContain("const compareSelectIndexSchema = z.object({\n  agentId: uuid,\n  installationId: uuid,\n  setupAttemptId: uuid,\n}).strict();");
+    expect(runtimeController).toContain("@Post('/reconcile-index')");
+    expect(runtimeController).toContain("@UseGuards(RateLimit('write'), OwnerControlGuard)");
+    expect(connectorHTTPClient).toContain('path: "/hermes-authorizations/disconnect"');
+    expect(connectorHTTPClient).toContain('body: .object(["protocolVersion": .number(1)])');
+    expect(connectorHTTPClient).toContain('path: "/auth/me"');
+    expect(connectorHTTPClient).toContain('guard result.status == 401');
+    expect(connectorRuntime).toContain('receipt.setupAttemptId == working.setupAttemptId');
+    expect(connectorRuntime).toContain('http.requireRevokedCredentialProbe');
+    expect(connectorRuntime).toContain('credentialStore.compareAndSet(expected: working, replacement: nil)');
+    expect(macApiClient).toContain("'/agent-runtime/reconcile-index'");
+    expect(macRuntimeSaga).toContain('Only its terminal proof permits this owner-locked exact-generation CAS.');
+    expect(nativeHermesRuntime).toContain('arguments: ["plugins", "remove", "index-network"]');
+    expect(nativeHermesRuntime).toContain('try verifyDisconnectPostconditions');
+
+    const connectorPost = position(rollout, '`POST /api/hermes-authorizations/disconnect`');
+    const denialProbe = position(rollout, '`GET /api/auth/me` returns `401`');
+    const exactCas = position(rollout, '`POST /api/agent-runtime/reconcile-index`');
+    const finalCleanup = position(rollout, '`pluginInstalled:false`, `schedulePresent:false`, `scheduleEnabled:false`');
+    expect([connectorPost, denialProbe, exactCas, finalCleanup])
+      .toEqual([connectorPost, denialProbe, exactCas, finalCleanup].toSorted((a, b) => a - b));
   });
 
   it('documents forward-fix-first rollback and the exact emergency order', () => {
@@ -187,6 +276,12 @@ describe('Hermes final production assurance release contract', () => {
 
   it('runs for every contracted Task 7 source, runbook, plan, and report path', () => {
     for (const sourcePath of [
+      'apps/mac/api/agent-runtime-saga.mjs',
+      'apps/mac/api/agent-runtime-saga.spec.mjs',
+      'apps/mac/api/client.mjs',
+      'apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift',
+      'apps/mac/IndexConnector/Sources/ConnectorRuntime.swift',
+      'apps/mac/IndexApp/Sources/HermesRuntime.swift',
       'docs/rollout/hermes-backend-production-assurance.md',
       'docs/runbooks/hermes-emergency-rollback.md',
       'docs/guides/development-reference.md',

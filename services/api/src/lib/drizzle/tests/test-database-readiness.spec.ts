@@ -14,7 +14,11 @@ const assuranceWorkflow = existsSync(assuranceWorkflowPath)
   ? readFileSync(assuranceWorkflowPath, 'utf8')
   : '';
 const POSTGRES_ASSURANCE_REFERENCE = 'postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b';
-const POSTGRES_ASSURANCE_DIGEST = 'sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b';
+const PGVECTOR_PACKAGE_VERSION = '0.8.6-1.pgdg13+1';
+const PGVECTOR_EXTENSION_VERSION = '0.8.6';
+const PGVECTOR_PACKAGE_SHA256 = '9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc';
+const PGVECTOR_ARCHIVE_OBJECT_VERSION = 'x3lsgKtr53BtiGMRJqIlPZr52kLw0jvS';
+const PGVECTOR_PACKAGE_URL = `https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pgvector/postgresql-16-pgvector_${PGVECTOR_PACKAGE_VERSION}_amd64.deb?versionId=${PGVECTOR_ARCHIVE_OBJECT_VERSION}`;
 const apiPackage = JSON.parse(
   readFileSync(path.join(apiRoot, 'package.json'), 'utf8'),
 ) as { scripts?: Record<string, string> };
@@ -74,20 +78,30 @@ describe('Hermes production assurance contract', () => {
     expect(assuranceWorkflow).toContain(
       `image_ref="$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")"`,
     );
-    expect(assuranceWorkflow).toContain(`test "$image_ref" = "${POSTGRES_ASSURANCE_REFERENCE}"`);
-    expect(assuranceWorkflow).toContain(`test "\${image_ref##*@}" = "${POSTGRES_ASSURANCE_DIGEST}"`);
+    expect(assuranceWorkflow).toContain(`POSTGRES_ASSURANCE_REFERENCE: ${POSTGRES_ASSURANCE_REFERENCE}`);
+    expect(assuranceWorkflow).toContain('test "$image_ref" = "$POSTGRES_ASSURANCE_REFERENCE"');
+    expect(assuranceWorkflow).toContain('test "${image_ref##*@}" = "${POSTGRES_ASSURANCE_REFERENCE##*@}"');
+    expect(assuranceWorkflow).toContain(`PGVECTOR_PACKAGE_VERSION: ${PGVECTOR_PACKAGE_VERSION}`);
+    expect(assuranceWorkflow).toContain(`PGVECTOR_EXTENSION_VERSION: ${PGVECTOR_EXTENSION_VERSION}`);
+    expect(assuranceWorkflow).toContain(`PGVECTOR_PACKAGE_SHA256: ${PGVECTOR_PACKAGE_SHA256}`);
+    expect(assuranceWorkflow).toContain(`PGVECTOR_PACKAGE_URL: ${PGVECTOR_PACKAGE_URL}`);
     expect(assuranceWorkflow).toContain(
       `docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu`,
     );
+    expect(assuranceWorkflow).toContain('showformat=\\${db:Status-Status} postgresql-16)" = installed');
+    expect(assuranceWorkflow).toContain('showformat=\\${db:Status-Status} libc6)" = installed');
+    expect(assuranceWorkflow).toContain('! dpkg-query --show postgresql-16-jit-llvm');
+    expect(assuranceWorkflow).toContain('sha256sum --check --strict');
+    expect(assuranceWorkflow).toContain('dpkg --install "$package_file"');
     expect(assuranceWorkflow).toContain(
-      'apt-get install -y --no-install-recommends postgresql-16-pgvector',
+      `SELECT extversion FROM pg_extension WHERE extname = 'vector'`,
     );
-    expect(assuranceWorkflow).toContain(
-      `SELECT 1 FROM pg_available_extensions WHERE name = 'vector'`,
-    );
-    expect(assuranceWorkflow.indexOf('- name: Install pgvector in PostgreSQL service')).toBeLessThan(
-      assuranceWorkflow.indexOf('- name: Run Hermes production assurance'),
-    );
+    expect(assuranceWorkflow).not.toMatch(/apt-get\s+(?:update|install)/);
+    const installStep = assuranceWorkflow.indexOf('- name: Install verified pgvector in PostgreSQL service');
+    const assuranceStep = assuranceWorkflow.indexOf('- name: Run Hermes production assurance');
+    expect(installStep).toBeGreaterThan(-1);
+    expect(assuranceStep).toBeGreaterThan(-1);
+    expect(installStep).toBeLessThan(assuranceStep);
   });
 
   test('uses a healthy disposable PostgreSQL 16 service with frozen dependencies', () => {

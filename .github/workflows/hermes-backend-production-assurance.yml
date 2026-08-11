@@ -9,6 +9,12 @@ on:
       - "package.json"
       - "bun.lock"
       - ".github/workflows/hermes-backend-production-assurance.yml"
+      - "apps/mac/api/agent-runtime-saga.mjs"
+      - "apps/mac/api/agent-runtime-saga.spec.mjs"
+      - "apps/mac/api/client.mjs"
+      - "apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift"
+      - "apps/mac/IndexConnector/Sources/ConnectorRuntime.swift"
+      - "apps/mac/IndexApp/Sources/HermesRuntime.swift"
       - "docs/rollout/hermes-backend-production-assurance.md"
       - "docs/runbooks/hermes-emergency-rollback.md"
       - "docs/guides/development-reference.md"
@@ -35,6 +41,18 @@ concurrency:
 
 permissions:
   contents: read
+
+# Reviewed together: the official PostgreSQL index digest resolves to a trixie
+# amd64 image built after this archived PGDG package was published. The package
+# SHA-256 was independently resolved from the signed PGDG Packages index and
+# verified again from the version-pinned archive object bytes; no apt index
+# participates in a run.
+env:
+  POSTGRES_ASSURANCE_REFERENCE: postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b
+  PGVECTOR_PACKAGE_VERSION: 0.8.6-1.pgdg13+1
+  PGVECTOR_EXTENSION_VERSION: 0.8.6
+  PGVECTOR_PACKAGE_SHA256: 9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc
+  PGVECTOR_PACKAGE_URL: https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pgvector/postgresql-16-pgvector_0.8.6-1.pgdg13+1_amd64.deb?versionId=x3lsgKtr53BtiGMRJqIlPZr52kLw0jvS
 
 jobs:
   previous-api-pr-base-evidence:
@@ -68,25 +86,52 @@ jobs:
           bun pm cache rm || true
           bun install --frozen-lockfile
 
-      - name: Install pgvector in exact PostgreSQL service
+      - name: Install verified pgvector in exact PostgreSQL service
         env:
           POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           test -n "$POSTGRES_SERVICE_CONTAINER"
           image_ref="$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")"
-          test "$image_ref" = "postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b"
-          test "${image_ref##*@}" = "sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b"
+          test "$image_ref" = "$POSTGRES_ASSURANCE_REFERENCE"
+          test "${image_ref##*@}" = "${POSTGRES_ASSURANCE_REFERENCE##*@}"
+          package_name="postgresql-16-pgvector_${PGVECTOR_PACKAGE_VERSION}_amd64.deb"
+          package_path="$RUNNER_TEMP/$package_name"
+          rm -f "$package_path"
+          trap 'rm -f "$package_path"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$package_path" "$PGVECTOR_PACKAGE_URL"
+          printf '%s  %s\n' "$PGVECTOR_PACKAGE_SHA256" "$package_path" \
+            | sha256sum --check --strict
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
-            apt-get update
-            apt-get install -y --no-install-recommends postgresql-16-pgvector
-            rm -rf /var/lib/apt/lists/*
+            test "$(dpkg --print-architecture)" = amd64
+            dpkg --audit
+            test "$(dpkg-query --show --showformat=\${db:Status-Status} postgresql-16)" = installed
+            test "$(dpkg-query --show --showformat=\${db:Status-Status} libc6)" = installed
+            ! dpkg-query --show postgresql-16-jit-llvm >/dev/null 2>&1
           '
+          docker cp "$package_path" "$POSTGRES_SERVICE_CONTAINER:/tmp/$package_name"
+          docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            package_file="$1"
+            expected_version="$2"
+            test "$(dpkg-deb --field "$package_file" Package)" = postgresql-16-pgvector
+            test "$(dpkg-deb --field "$package_file" Version)" = "$expected_version"
+            test "$(dpkg-deb --field "$package_file" Architecture)" = amd64
+            dpkg --install "$package_file"
+            test "$(dpkg-query --show --showformat=\${Version} postgresql-16-pgvector)" = "$expected_version"
+            dpkg --audit
+            rm -f "$package_file"
+          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION"
+          rm -f "$package_path"
+          trap - EXIT
+          docker exec "$POSTGRES_SERVICE_CONTAINER" \
+            psql --username postgres --dbname hermes_assurance \
+              --no-psqlrc --command "CREATE EXTENSION IF NOT EXISTS vector" >/dev/null
           docker exec "$POSTGRES_SERVICE_CONTAINER" \
             psql --username postgres --dbname hermes_assurance \
               --no-psqlrc --tuples-only --no-align \
-              --command "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" \
-            | grep -qx 1
+              --command "SELECT extversion FROM pg_extension WHERE extname = 'vector'" \
+            | grep -qx "$PGVECTOR_EXTENSION_VERSION"
 
       - name: Migrate disposable compatibility database
         env:
@@ -241,25 +286,52 @@ jobs:
           printf 'max_lock_ms=%s\nmax_total_ms=%s\n' "$max_lock_ms" "$max_total_ms" >>"$GITHUB_OUTPUT"
           printf 'Preflight threshold source: %s.\n' "$threshold_source" >>"$GITHUB_STEP_SUMMARY"
 
-      - name: Install pgvector in PostgreSQL service
+      - name: Install verified pgvector in PostgreSQL service
         env:
           POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           test -n "$POSTGRES_SERVICE_CONTAINER"
           image_ref="$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")"
-          test "$image_ref" = "postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b"
-          test "${image_ref##*@}" = "sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b"
+          test "$image_ref" = "$POSTGRES_ASSURANCE_REFERENCE"
+          test "${image_ref##*@}" = "${POSTGRES_ASSURANCE_REFERENCE##*@}"
+          package_name="postgresql-16-pgvector_${PGVECTOR_PACKAGE_VERSION}_amd64.deb"
+          package_path="$RUNNER_TEMP/$package_name"
+          rm -f "$package_path"
+          trap 'rm -f "$package_path"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$package_path" "$PGVECTOR_PACKAGE_URL"
+          printf '%s  %s\n' "$PGVECTOR_PACKAGE_SHA256" "$package_path" \
+            | sha256sum --check --strict
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
-            apt-get update
-            apt-get install -y --no-install-recommends postgresql-16-pgvector
-            rm -rf /var/lib/apt/lists/*
+            test "$(dpkg --print-architecture)" = amd64
+            dpkg --audit
+            test "$(dpkg-query --show --showformat=\${db:Status-Status} postgresql-16)" = installed
+            test "$(dpkg-query --show --showformat=\${db:Status-Status} libc6)" = installed
+            ! dpkg-query --show postgresql-16-jit-llvm >/dev/null 2>&1
           '
+          docker cp "$package_path" "$POSTGRES_SERVICE_CONTAINER:/tmp/$package_name"
+          docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            package_file="$1"
+            expected_version="$2"
+            test "$(dpkg-deb --field "$package_file" Package)" = postgresql-16-pgvector
+            test "$(dpkg-deb --field "$package_file" Version)" = "$expected_version"
+            test "$(dpkg-deb --field "$package_file" Architecture)" = amd64
+            dpkg --install "$package_file"
+            test "$(dpkg-query --show --showformat=\${Version} postgresql-16-pgvector)" = "$expected_version"
+            dpkg --audit
+            rm -f "$package_file"
+          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION"
+          rm -f "$package_path"
+          trap - EXIT
+          docker exec "$POSTGRES_SERVICE_CONTAINER" \
+            psql --username postgres --dbname hermes_assurance \
+              --no-psqlrc --command "CREATE EXTENSION IF NOT EXISTS vector" >/dev/null
           docker exec "$POSTGRES_SERVICE_CONTAINER" \
             psql --username postgres --dbname hermes_assurance \
               --no-psqlrc --tuples-only --no-align \
-              --command "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" \
-            | grep -qx 1
+              --command "SELECT extversion FROM pg_extension WHERE extname = 'vector'" \
+            | grep -qx "$PGVECTOR_EXTENSION_VERSION"
 
       - name: Run Hermes production assurance
         env:
@@ -312,6 +384,7 @@ jobs:
                 "migrations", "authority", "lifecycle", "preflight-100k", "telemetry-aggregate",
                 "emergency-concurrency-rollback", "emergency-dry-run", "stale-index-coverage",
                 "expired-index-coverage", "build", "typecheck", "cli-typecheck", "lint", "static-inventory",
+                "telemetry-privacy", "assurance-output-sanitization", "sentry-sink",
               ],
               preflightThresholdsMs: {
                 maxLock: Number(process.env.MAX_LOCK_MS),
@@ -363,25 +436,52 @@ jobs:
           bun pm cache rm || true
           bun install --frozen-lockfile
 
-      - name: Install pgvector in exact PostgreSQL service
+      - name: Install verified pgvector in exact PostgreSQL service
         env:
           POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           test -n "$POSTGRES_SERVICE_CONTAINER"
           image_ref="$(docker inspect --format '{{.Config.Image}}' "$POSTGRES_SERVICE_CONTAINER")"
-          test "$image_ref" = "postgres:16@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b"
-          test "${image_ref##*@}" = "sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b"
+          test "$image_ref" = "$POSTGRES_ASSURANCE_REFERENCE"
+          test "${image_ref##*@}" = "${POSTGRES_ASSURANCE_REFERENCE##*@}"
+          package_name="postgresql-16-pgvector_${PGVECTOR_PACKAGE_VERSION}_amd64.deb"
+          package_path="$RUNNER_TEMP/$package_name"
+          rm -f "$package_path"
+          trap 'rm -f "$package_path"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$package_path" "$PGVECTOR_PACKAGE_URL"
+          printf '%s  %s\n' "$PGVECTOR_PACKAGE_SHA256" "$package_path" \
+            | sha256sum --check --strict
           docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
-            apt-get update
-            apt-get install -y --no-install-recommends postgresql-16-pgvector
-            rm -rf /var/lib/apt/lists/*
+            test "$(dpkg --print-architecture)" = amd64
+            dpkg --audit
+            test "$(dpkg-query --show --showformat=\${db:Status-Status} postgresql-16)" = installed
+            test "$(dpkg-query --show --showformat=\${db:Status-Status} libc6)" = installed
+            ! dpkg-query --show postgresql-16-jit-llvm >/dev/null 2>&1
           '
+          docker cp "$package_path" "$POSTGRES_SERVICE_CONTAINER:/tmp/$package_name"
+          docker exec --user root "$POSTGRES_SERVICE_CONTAINER" bash -ceu '
+            package_file="$1"
+            expected_version="$2"
+            test "$(dpkg-deb --field "$package_file" Package)" = postgresql-16-pgvector
+            test "$(dpkg-deb --field "$package_file" Version)" = "$expected_version"
+            test "$(dpkg-deb --field "$package_file" Architecture)" = amd64
+            dpkg --install "$package_file"
+            test "$(dpkg-query --show --showformat=\${Version} postgresql-16-pgvector)" = "$expected_version"
+            dpkg --audit
+            rm -f "$package_file"
+          ' -- "/tmp/$package_name" "$PGVECTOR_PACKAGE_VERSION"
+          rm -f "$package_path"
+          trap - EXIT
+          docker exec "$POSTGRES_SERVICE_CONTAINER" \
+            psql --username postgres --dbname hermes_assurance \
+              --no-psqlrc --command "CREATE EXTENSION IF NOT EXISTS vector" >/dev/null
           docker exec "$POSTGRES_SERVICE_CONTAINER" \
             psql --username postgres --dbname hermes_assurance \
               --no-psqlrc --tuples-only --no-align \
-              --command "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" \
-            | grep -qx 1
+              --command "SELECT extversion FROM pg_extension WHERE extname = 'vector'" \
+            | grep -qx "$PGVECTOR_EXTENSION_VERSION"
 
       - name: Migrate disposable compatibility database
         env:
