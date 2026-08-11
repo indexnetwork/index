@@ -166,6 +166,12 @@ Dedicated tests or static assertions cover these composition points. Eval and sm
 
 No per-run graph state, queue job payload, public tool schema, controller input, or MCP input exposes either override.
 
+## Compatibility and versioning
+
+`OpportunityGraphOptions.minScore` is currently part of the published protocol contract. Removing it is an intentional breaking API change: callers that need deterministic evaluator thresholds must move to the constructor-time eval/test seam, while production callers use deployment configuration.
+
+Under repository SemVer policy, implementation bumps `@indexnetwork/protocol` from `10.1.0` to `11.0.0`. Because the API package is also changed to validate and document the new environment variables, it receives the feature-level bump from `0.78.0` to `0.79.0`. The root `bun.lock` is regenerated and committed with both package version changes.
+
 ## Testing
 
 ### Environment accessor tests
@@ -225,7 +231,7 @@ After deployment, absence of both variables preserves existing behavior. Any lat
 - Invalid values fail startup instead of falling back or clamping.
 - All semantic opportunity-discovery strategies receive the same resolved retrieval threshold.
 - Categorical evaluator rejection and safety guards remain authoritative.
-- Production requests cannot supply threshold overrides.
+- Production requests cannot supply threshold overrides, and the published removal of `OpportunityGraphOptions.minScore` is released as `@indexnetwork/protocol` 11.0.0.
 - Eval/test composition can inject deterministic overrides.
 - Traces report the actual effective thresholds with no hardcoded `0.40` discrepancy.
 - No Railway or local active environment values are changed.
