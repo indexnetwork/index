@@ -1,4 +1,5 @@
 import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
+import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
@@ -1924,7 +1925,7 @@ export class ConversationDatabaseAdapter {
         updatedAt: new Date(),
         ...(state === 'waiting_for_agent' && parkGeneration
           ? {
-              metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('negotiationParkGeneration', ${parkGeneration})`,
+              metadata: buildNegotiationParkMetadataSql(parkGeneration),
             }
           : {}),
       }).where(eq(schema.tasks.id, taskId)).returning();
@@ -3169,12 +3170,12 @@ export class ConversationDatabaseAdapter {
       };
       const completedBinding = { ...consumedBinding, completedAt };
       await tx.update(schema.tasks).set({
-        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object(
-          'hermesRunCapability', ${JSON.stringify(completedBinding)}::jsonb,
-          'hermesResponseReceipt', ${JSON.stringify(receipt)}::jsonb,
-          'negotiationParkGeneration', ${input.finalState === 'waiting_for_agent' ? receipt.receiptId : null},
-          'hermesParkStartedAt', ${input.finalState === 'waiting_for_agent' ? completedAt : null}
-        )`,
+        metadata: buildHermesResponseMetadataSql({
+          completedBinding,
+          receipt,
+          parkGeneration: input.finalState === 'waiting_for_agent' ? receipt.receiptId : null,
+          parkStartedAt: input.finalState === 'waiting_for_agent' ? completedAt : null,
+        }),
         updatedAt: now,
       }).where(eq(schema.tasks.id, input.taskId));
       await fault('receipt');
