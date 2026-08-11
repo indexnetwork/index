@@ -126,7 +126,7 @@ Lower-level generic embedder defaults remain unchanged. The opportunity graph al
 
 For semantic runs, the resolved evaluator score replaces `state.options.minScore ?? 50` in the evaluation node. It is supplied to `OpportunityEvaluator.invokeEntityBundle` and used by the graph's deterministic post-evaluation score filtering.
 
-Non-semantic direct-target runs keep their existing score behavior: the direct-target discovery path retains a `50` floor, while the separate human-curated `create_introduction` path retains its existing `minScore: 0` and fallback behavior. Neither path reads the new semantic-discovery threshold variables.
+Non-semantic direct-target runs keep their existing score behavior: the direct-target discovery path retains a `50` floor, while the separate human-curated `create_introduction` path retains its existing `minScore: 0` and fallback behavior. Graph construction validates deployment configuration consistently, but neither path uses the new values for scoring.
 
 Admission order for semantic runs remains:
 
