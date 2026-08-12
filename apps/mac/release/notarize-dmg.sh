@@ -2,14 +2,14 @@
 # Sign, notarize, staple, and mounted-verify a private candidate DMG.
 set -euo pipefail
 set +x
-readonly RELEASE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$RELEASE_DIRECTORY/notarize-bundle.sh"
+DMG_RELEASE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DMG_RELEASE_DIRECTORY/notarize-bundle.sh"
 source "$NOTARY_MAC_DIRECTORY/IndexApp/provisioning-profile.sh"
 dmg_notary_error() { printf 'production DMG notarization refused: %s\n' "$1" >&2; return 1; }
 sha256_dmg() { shasum -a 256 "$1" | awk '{print $1}'; }
 require_same_digest() { [[ "$(sha256_dmg "$1")" == "$2" ]] || dmg_notary_error "$3 bytes changed unexpectedly"; }
-run_final_verification() { bash "$RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$1"; }
-verify_mounted_candidate() { bash "$RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$1"; }
+run_final_verification() { bash "$DMG_RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$1"; }
+verify_mounted_candidate() { bash "$DMG_RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$1"; }
 
 validate_production_identity() {
   local identity="$1" team
@@ -25,36 +25,43 @@ verify_disk_image_signature() {
   grep -Fq 'Authority=Developer ID Application:' <<<"$details" || dmg_notary_error "DMG is not Developer ID signed"
   grep -Fqx 'TeamIdentifier=LMQ3XNXLAD' <<<"$details" || dmg_notary_error "DMG Team ID does not match production"
   bash -c 'set -euo pipefail; source "$1"; validate_secure_timestamp "$2"' \
-    _ "$RELEASE_DIRECTORY/verify-signatures.sh" "$details" \
+    _ "$DMG_RELEASE_DIRECTORY/verify-signatures.sh" "$details" \
     || dmg_notary_error "DMG secure timestamp is missing or malformed"
   # Disk images do not carry a Hardened Runtime CodeDirectory contract.
 }
 
-require_private_transaction_candidate() {
-  local dmg="$1" parent canonical parent_name
-  canonical="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$dmg")"
-  parent="$(dirname "$canonical")"; parent_name="$(basename "$parent")"
-  [[ "$parent_name" == .index-final-transaction.* && "$canonical" == "$parent/$(basename "$dmg")" ]] \
-    || dmg_notary_error "DMG must be inside a private release transaction root"
-  [[ "$(stat -c %a "$parent" 2>/dev/null || stat -f %Lp "$parent")" =~ ^7?00$ ]] \
-    || dmg_notary_error "private release transaction permissions are unsafe"
+candidate_inode_device() { stat -c '%d:%i' "$1" 2>/dev/null || stat -f '%d:%i' "$1"; }
+require_bound_candidate() {
+  local candidate="$1" allowed="$2" expected_inode_device="$3" canonical
+  canonical="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$candidate")"
+  [[ "$canonical" == "$allowed" && "$(candidate_inode_device "$candidate")" == "$expected_inode_device" ]] \
+    || dmg_notary_error "candidate is not the orchestrator-bound inode"
 }
 
-notarize_dmg_main() (
-  [[ "$(uname -s)" == Darwin ]] || dmg_notary_error "macOS is required"; [[ "$#" -eq 1 ]] || dmg_notary_error "usage"
+notarize_dmg_internal() (
+  [[ "$(uname -s)" == Darwin ]] || dmg_notary_error "macOS is required"; [[ "$#" -eq 3 ]] || dmg_notary_error "internal usage"
   local dmg="$1" response unsigned_digest signed_digest stapled_digest
   [[ -f "$dmg" && ! -L "$dmg" ]] || dmg_notary_error "DMG missing or linked"
-  require_private_transaction_candidate "$dmg"
+  [[ "$#" -eq 3 ]] || dmg_notary_error "internal notarization binding is required"
+  local -r allowed_candidate="$2" allowed_inode_device="$3"
+  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
   case "$(basename "$dmg")" in Index-macOS-1.0.0-universal.dmg|IndexConnector-1.0.0-universal.dmg);; *) dmg_notary_error "unapproved filename"; return 1;; esac
   [[ -n "${CODESIGN_IDENTITY:-}" && -n "${NOTARYTOOL_PROFILE:-}" ]] || dmg_notary_error "protected inputs required"
   for t in codesign security xcrun python3 shasum hdiutil; do command -v "$t" >/dev/null || dmg_notary_error "$t required"; done
   validate_production_identity "$CODESIGN_IDENTITY"
+  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
   unsigned_digest="$(sha256_dmg "$dmg")"; verify_mounted_candidate "$dmg"; require_same_digest "$dmg" "$unsigned_digest" unsigned
+  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
   codesign --force --timestamp --sign "$CODESIGN_IDENTITY" "$dmg"; verify_disk_image_signature "$dmg"
   signed_digest="$(sha256_dmg "$dmg")"; response="$(mktemp)"; trap 'rm -f "$response"' EXIT
+  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
   xcrun notarytool submit "$dmg" --keychain-profile "$NOTARYTOOL_PROFILE" --wait --output-format json >"$response"
   require_same_digest "$dmg" "$signed_digest" submitted; parse_accepted_status <"$response"
+  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
   xcrun stapler staple "$dmg"; xcrun stapler validate "$dmg"; verify_disk_image_signature "$dmg"
   stapled_digest="$(sha256_dmg "$dmg")"; run_final_verification "$dmg"; require_same_digest "$dmg" "$stapled_digest" final
 )
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then notarize_dmg_main "$@"; fi
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  printf 'production DMG notarization refused: standalone execution is forbidden\n' >&2
+  exit 1
+fi

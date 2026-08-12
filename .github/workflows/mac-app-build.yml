@@ -90,6 +90,7 @@ jobs:
             apps/mac/release/tests/packaging-order.spec.mjs \
             apps/mac/release/tests/packaging-security.spec.mjs \
             apps/mac/release/tests/packaging-fix-round-2.spec.mjs \
+            apps/mac/release/tests/packaging-fix-round-3.spec.mjs \
             apps/mac/release/tests/packaging-integration.spec.mjs
           bash -n \
             apps/mac/IndexApp/build.sh \
