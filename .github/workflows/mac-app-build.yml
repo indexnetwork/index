@@ -82,17 +82,16 @@ jobs:
           fi
           ./build.sh --signed-access-fixture
 
-      - name: macOS shell, release, and handoff tests
+      - name: macOS shell and handoff tests
         run: |
-          bun test apps/mac/IndexApp/*.spec.mjs apps/mac/release/tests/*.spec.mjs
+          bun test apps/mac/IndexApp/*.spec.mjs apps/mac/release/tests/release-contract.spec.mjs
           bash -n \
             apps/mac/IndexApp/build.sh \
             apps/mac/IndexApp/link-host.sh \
             apps/mac/IndexApp/provisioning-profile.sh \
             apps/mac/IndexApp/notarize.sh \
             apps/mac/IndexConnector/build.sh \
-            apps/mac/release/release-config.sh \
-            apps/mac/release/build-universal.sh
+            apps/mac/release/release-config.sh
 
       - name: Native owner credential migration and Keychain failure fixture
         working-directory: apps/mac/IndexApp
@@ -131,6 +130,43 @@ jobs:
             exit 1
           fi
 
+      - name: Build and sign the app bundle
+        working-directory: apps/mac/IndexApp
+        run: ./build.sh
+
+      - name: Verify bundle, URL scheme, and entitlements
+        working-directory: apps/mac/IndexApp
+        run: |
+          set -euo pipefail
+          test -x dist/index.app/Contents/MacOS/index
+          plutil -lint dist/index.app/Contents/Info.plist
+          echo "--- registered URL schemes:"
+          plutil -extract CFBundleURLTypes json -o - dist/index.app/Contents/Info.plist
+          echo "--- signature:"
+          codesign -dvv dist/index.app 2>&1 | sed -n '1,12p'
+          echo "--- entitlements actually applied (empty means the ad-hoc retry dropped them):"
+          codesign -d --entitlements :- dist/index.app 2>&1 | sed -n '1,20p'
+
+  # This PR-safe job deliberately has no environment protection and no secret
+  # references. It proves the real cross-architecture build using ad-hoc signing.
+  universal:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.20"
+
+      - name: Universal build contract and shell syntax
+        run: |
+          bun test apps/mac/release/tests/universal-build-contract.spec.mjs
+          bash -n \
+            apps/mac/IndexApp/build.sh \
+            apps/mac/IndexConnector/build.sh \
+            apps/mac/release/release-config.sh \
+            apps/mac/release/build-universal.sh
+
       - name: Build unsigned Universal 2 production bundles
         env:
           INDEX_RELEASE_VERSION: "1.0.0"
@@ -156,26 +192,10 @@ jobs:
             for arch in arm64 x86_64; do
               otool -arch "$arch" -l "$binary" | grep -A6 LC_BUILD_VERSION
               [[ "$(otool -arch "$arch" -l "$binary" | awk '/LC_BUILD_VERSION/{seen=1; next} seen && $1=="minos" {print $2; exit}')" == "13.0" ]]
+              otool -arch "$arch" -s __TEXT __indexcfg "$binary"
             done
           done
           plutil -extract IndexReleaseChannel raw -o - apps/mac/dist/unsigned/Index.app/Contents/Info.plist | grep -Fx production
           plutil -extract IndexDevelopmentBuild raw -o - apps/mac/dist/unsigned/Index.app/Contents/Info.plist | grep -Fx false
           plutil -extract IndexReleaseChannel raw -o - apps/mac/dist/unsigned/IndexConnector.app/Contents/Info.plist | grep -Fx production
           plutil -extract IndexDevelopmentBuild raw -o - apps/mac/dist/unsigned/IndexConnector.app/Contents/Info.plist | grep -Fx false
-
-      - name: Build and sign the app bundle
-        working-directory: apps/mac/IndexApp
-        run: ./build.sh
-
-      - name: Verify bundle, URL scheme, and entitlements
-        working-directory: apps/mac/IndexApp
-        run: |
-          set -euo pipefail
-          test -x dist/index.app/Contents/MacOS/index
-          plutil -lint dist/index.app/Contents/Info.plist
-          echo "--- registered URL schemes:"
-          plutil -extract CFBundleURLTypes json -o - dist/index.app/Contents/Info.plist
-          echo "--- signature:"
-          codesign -dvv dist/index.app 2>&1 | sed -n '1,12p'
-          echo "--- entitlements actually applied (empty means the ad-hoc retry dropped them):"
-          codesign -d --entitlements :- dist/index.app 2>&1 | sed -n '1,20p'

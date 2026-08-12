@@ -30,7 +30,7 @@ require_clean_release_inputs() {
   [[ "$#" -eq 0 ]] || release_error "this build accepts immutable environment inputs only"
 }
 
-cleanup_failed_build() {
+cleanup_build() {
   local status=$?
   if [[ "$status" -ne 0 ]]; then
     rm -rf "$DIST_DIRECTORY"
@@ -41,10 +41,10 @@ cleanup_failed_build() {
 
 # compile_slice(target, arch, output)
 compile_slice() {
-  local target="$1" arch="$2" output="$3"
+  local target="$1" arch="$2" output="$3" identity="$4"
   case "$target" in
-    app) bash "$MAC_DIRECTORY/IndexApp/build.sh" --release-slice "$arch" "$output" ;;
-    connector) bash "$MAC_DIRECTORY/IndexConnector/build.sh" --release-slice "$arch" "$output" ;;
+    app) bash "$MAC_DIRECTORY/IndexApp/build.sh" --release-slice "$arch" "$output" "$identity" ;;
+    connector) bash "$MAC_DIRECTORY/IndexConnector/build.sh" --release-slice "$arch" "$output" "$identity" ;;
     *) release_error "unknown native target: $target" ;;
   esac
 }
@@ -89,25 +89,68 @@ plist_value() {
   /usr/libexec/PlistBuddy -c "Print :$2" "$1"
 }
 
-write_slice_configuration() {
-  local target="$1" destination="$2"
-  cat >"$destination" <<EOF
-checkout=$INDEX_RELEASE_COMMIT
-target=$target
-arch-independent-release=$INDEX_RELEASE_VERSION
-build=$INDEX_BUILD_NUMBER
-api=$INDEX_API_URL
-web=$INDEX_WEB_URL
-team=$INDEX_EXPECTED_TEAM_ID
-protocol=$INDEX_CONNECTOR_PROTOCOL_VERSION
-EOF
+# write_compiled_identity(target, plist, destination)
+write_compiled_identity() {
+  local target="$1" plist="$2" destination="$3"
+  python3 - "$target" "$plist" "$destination" <<'PY'
+import hashlib
+import json
+import plistlib
+import sys
+
+target, plist_path, destination = sys.argv[1:]
+with open(plist_path, 'rb') as stream:
+    plist = plistlib.load(stream)
+keys = [
+    'CFBundleIdentifier',
+    'CFBundleShortVersionString',
+    'CFBundleVersion',
+    'IndexReleaseChannel',
+    'IndexReleaseVersion',
+    'IndexReleaseCommit',
+    'IndexAPIURL',
+    'IndexWebURL',
+    'IndexExpectedTeamID',
+    'IndexConnectorProtocolVersion',
+    'IndexDevelopmentBuild',
+]
+identity = {'IndexBuildTarget': target, **{key: plist[key] for key in keys}}
+canonical = json.dumps(identity, sort_keys=True, separators=(',', ':'))
+identity['IndexBuildID'] = hashlib.sha256(canonical.encode()).hexdigest()
+with open(destination, 'w', encoding='utf-8') as stream:
+    json.dump(identity, stream, sort_keys=True, separators=(',', ':'))
+    stream.write('\n')
+PY
 }
 
-compare_slice_configuration() {
-  local arm64="$1" x86_64="$2"
-  # Architecture is carried by the filename, not the immutable contents.
-  cmp -s "$arm64" "$x86_64" \
-    || release_error "native slices were not compiled from one immutable configuration"
+# extract_compiled_identity(binary, arch, destination)
+extract_compiled_identity() {
+  local binary="$1" arch="$2" destination="$3" hex
+  hex="$(otool -arch "$arch" -s __TEXT __indexcfg "$binary" | tail -n +3 | awk '{$1=""; printf "%s", $0}' | tr -d '[:space:]')"
+  [[ -n "$hex" ]] || { release_error "$binary $arch has no compiled identity section"; return 1; }
+  python3 - "$hex" "$destination" <<'PY'
+import binascii
+import json
+import sys
+
+raw = binascii.unhexlify(sys.argv[1]).rstrip(b'\0')
+identity = json.loads(raw.decode('utf-8'))
+with open(sys.argv[2], 'w', encoding='utf-8') as stream:
+    json.dump(identity, stream, sort_keys=True, separators=(',', ':'))
+    stream.write('\n')
+PY
+}
+
+compare_compiled_identities() {
+  local arm_binary="$1" x86_binary="$2" expected="$3" prefix="$4"
+  local arm_export="$WORK_DIRECTORY/${prefix}.arm64.exported.json"
+  local x86_export="$WORK_DIRECTORY/${prefix}.x86_64.exported.json"
+  extract_compiled_identity "$arm_binary" arm64 "$arm_export"
+  extract_compiled_identity "$x86_binary" x86_64 "$x86_export"
+  cmp -s "$arm_export" "$x86_export" \
+    || release_error "$prefix slices have different compiled identities"
+  cmp -s "$arm_export" "$expected" \
+    || release_error "$prefix compiled identity does not match generated bundle configuration"
 }
 
 verify_slice_configuration() {
@@ -141,6 +184,10 @@ prepare_bundles() {
 }
 
 main() {
+  trap cleanup_build EXIT
+  # Remove stale/incomplete artifacts before platform, tool, or input checks.
+  rm -rf "$DIST_DIRECTORY" "$WORK_DIRECTORY"
+
   require_clean_release_inputs "$@"
   require_tool swiftc
   require_tool lipo
@@ -155,26 +202,25 @@ main() {
   [[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$INDEX_RELEASE_COMMIT" ]] \
     || release_error "INDEX_RELEASE_COMMIT must equal the one checked-out commit"
 
-  rm -rf "$DIST_DIRECTORY" "$WORK_DIRECTORY"
   mkdir -p "$DIST_DIRECTORY" "$WORK_DIRECTORY"
-  trap cleanup_failed_build EXIT
   prepare_bundles
 
-  compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64"
-  write_slice_configuration app "$WORK_DIRECTORY/Index.app.arm64.config"
-  compile_slice app x86_64 "$WORK_DIRECTORY/Index.x86_64"
-  write_slice_configuration app "$WORK_DIRECTORY/Index.app.x86_64.config"
-  compile_slice connector arm64 "$WORK_DIRECTORY/IndexConnector.arm64"
-  write_slice_configuration connector "$WORK_DIRECTORY/IndexConnector.arm64.config"
-  compile_slice connector x86_64 "$WORK_DIRECTORY/IndexConnector.x86_64"
-  write_slice_configuration connector "$WORK_DIRECTORY/IndexConnector.x86_64.config"
+  local app_identity="$WORK_DIRECTORY/Index.app.identity.json"
+  local connector_identity="$WORK_DIRECTORY/IndexConnector.identity.json"
+  write_compiled_identity app "$APP_BUNDLE/Contents/Info.plist" "$app_identity"
+  write_compiled_identity connector "$CONNECTOR_BUNDLE/Contents/Info.plist" "$connector_identity"
 
-  compare_slice_configuration \
-    "$WORK_DIRECTORY/Index.app.arm64.config" \
-    "$WORK_DIRECTORY/Index.app.x86_64.config"
-  compare_slice_configuration \
-    "$WORK_DIRECTORY/IndexConnector.arm64.config" \
-    "$WORK_DIRECTORY/IndexConnector.x86_64.config"
+  compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64" "$app_identity"
+  compile_slice app x86_64 "$WORK_DIRECTORY/Index.x86_64" "$app_identity"
+  compile_slice connector arm64 "$WORK_DIRECTORY/IndexConnector.arm64" "$connector_identity"
+  compile_slice connector x86_64 "$WORK_DIRECTORY/IndexConnector.x86_64" "$connector_identity"
+
+  compare_compiled_identities \
+    "$WORK_DIRECTORY/Index.arm64" "$WORK_DIRECTORY/Index.x86_64" \
+    "$app_identity" Index
+  compare_compiled_identities \
+    "$WORK_DIRECTORY/IndexConnector.arm64" "$WORK_DIRECTORY/IndexConnector.x86_64" \
+    "$connector_identity" IndexConnector
 
   merge_universal "$WORK_DIRECTORY/Index.arm64" "$WORK_DIRECTORY/Index.x86_64" "$APP_BINARY"
   merge_universal \
@@ -195,8 +241,8 @@ main() {
   printf 'Built unsigned/ad-hoc development-labeled Universal 2 bundles in apps/mac/dist/unsigned\n'
   lipo -archs "$APP_BINARY"
   lipo -archs "$CONNECTOR_BINARY"
-  trap - EXIT
   rm -rf "$WORK_DIRECTORY"
+  trap - EXIT
 }
 
 main "$@"

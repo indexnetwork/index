@@ -15,8 +15,8 @@ verify_production_connector_pins() {
 }
 
 compile_app_binary() {
-    local arch="$1" output="$2"
-    shift 2
+    local arch="$1" output="$2" compiled_identity="${3:-}"
+    if [ "$#" -ge 3 ]; then shift 3; else shift 2; fi
     local -a target_flags
     case "$arch" in
         arm64) target_flags=(-target arm64-apple-macos13.0) ;;
@@ -24,8 +24,13 @@ compile_app_binary() {
         *) echo "unsupported production architecture: $arch" >&2; return 64 ;;
     esac
     mkdir -p "$(dirname "$output")"
+    local -a identity_flags=()
+    if [ -n "$compiled_identity" ]; then
+        [ -f "$compiled_identity" ] || { echo "missing compiled identity record" >&2; return 64; }
+        identity_flags=(-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __indexcfg -Xlinker "$compiled_identity")
+    fi
     swiftc -O -whole-module-optimization \
-        "${target_flags[@]}" "$@" \
+        "${target_flags[@]}" "${identity_flags[@]}" "$@" \
         -framework Cocoa -framework WebKit -framework Network -framework Security \
         -o "$output" \
         ../Security/Sources/IndexKeychainStore.swift \
@@ -37,12 +42,12 @@ compile_app_binary() {
 }
 
 if [ "${1:-}" = "--release-slice" ]; then
-    if [ "$#" -ne 3 ]; then
-        echo "usage: $0 --release-slice <arm64|x86_64> <output>" >&2
+    if [ "$#" -ne 4 ]; then
+        echo "usage: $0 --release-slice <arm64|x86_64> <output> <compiled-identity>" >&2
         exit 64
     fi
     verify_production_connector_pins
-    compile_app_binary "$2" "$3"
+    compile_app_binary "$2" "$3" "$4"
     chmod 0755 "$3"
     exit 0
 fi
@@ -100,7 +105,7 @@ if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIQuarantineFixture" ] && 
     exit 0
 fi
 if [ "$#" -ne 0 ]; then
-    echo "usage: $0 [--release-slice <arm64|x86_64> <output>|--fixture ConnectorLaunchAttestationFixture|--fixture OwnerCredentialMigrationFixture|--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
+    echo "usage: $0 [--release-slice <arm64|x86_64> <output> <compiled-identity>|--fixture ConnectorLaunchAttestationFixture|--fixture OwnerCredentialMigrationFixture|--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
     exit 64
 fi
 
@@ -141,7 +146,7 @@ if [ "${INDEX_DEVELOPMENT_BUILD:-0}" = "1" ]; then
 else
     verify_production_connector_pins
 fi
-compile_app_binary "$(uname -m)" "${CONTENTS}/MacOS/${APP_NAME}" \
+compile_app_binary "$(uname -m)" "${CONTENTS}/MacOS/${APP_NAME}" "" \
     ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"}
 
 echo "==> Copying resources"
