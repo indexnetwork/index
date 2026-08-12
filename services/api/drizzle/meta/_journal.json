@@ -869,6 +869,13 @@
       "when": 1786527543775,
       "tag": "0124_add_hermes_emergency_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1786542875613,
+      "tag": "0125_add_eval_matrix_quality_attestation",
+      "breakpoints": true
     }
   ]
 }

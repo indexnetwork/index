@@ -70,8 +70,15 @@ function sendOsNotification(ctx, event) {
   if (!ctx.os || typeof ctx.os.notify !== 'function') return
   const copy = composeNotification(event)
   if (!copy) return
+  // `activate` makes a click open the Index page instead of only focusing the
+  // Hermes window; hosts without activate support ignore the extra field.
+  const payload = {
+    title: copy.title,
+    body: copy.body,
+    ...(copy.url ? { activate: copy.url } : {})
+  }
   try {
-    Promise.resolve(ctx.os.notify(copy)).catch(function () { /* notification rendering is fail-open */ })
+    Promise.resolve(ctx.os.notify(payload)).catch(function () { /* notification rendering is fail-open */ })
   } catch (e) { /* synchronous host errors are fail-open too */ }
 }
 

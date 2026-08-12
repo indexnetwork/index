@@ -1,3 +1,4 @@
+/* global useIndexEnv */
 // NewIntent — the signal-creation flow. Mac System 6 chrome, conversational.
 // + Calibrating screen.
 // Live-only: clarifying questions after the opening prompt come from the
@@ -38,6 +39,7 @@ function NewIntent({ onDone, onBack }) {
 
   const intentIdRef = useRef(null);       // set once the live signal exists
   const createdRef = useRef(false);
+  const createdDescriptionRef = useRef(null);
   const sessionRef = useRef(null);        // chat conversation id
   const answersRef = useRef({});          // mirror of `answers` for async handlers
   const flowStartRef = useRef(Date.now());
@@ -48,13 +50,14 @@ function NewIntent({ onDone, onBack }) {
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
   const stepIdx = Math.min(turns.length, STEP_COUNT - 1);
+  const stepId = step && step.id;
 
   useEffect(() => {
     setDraft("");
     if (inputRef.current) {
       setTimeout(() => inputRef.current && inputRef.current.focus(), 50);
     }
-  }, [step && step.id, thinking]);
+  }, [stepId, thinking]);
 
   // Fold the collected steps into one signal description for create_intent.
   const composeDescription = (a) => {
@@ -68,10 +71,10 @@ function NewIntent({ onDone, onBack }) {
   // ---- fast intake (the web app's /intents/intake funnel) ------------------
   //
   // Round 1 comes from /start, follow-ups from /question until the locked
-  // total, then /prepare + /proposal synthesize the draft (a 422 carries a
-  // clarification question). The signal always looks everywhere (no networkId),
-  // and a one-button summary gates /intents/confirm. The server holds no funnel
-  // session: every call resends the answered rounds.
+  // total, then /prepare starts synthesis while the user chooses where to look.
+  // /proposal resolves that speculative work (a 422 carries a clarification
+  // question), and a one-button summary gates /intents/confirm. The server holds
+  // no funnel session: every call resends the answered rounds.
 
   const fastRounds = useRef([]);          // [{ prompt, answer }]
   const fastQueue = useRef([]);           // prefetched follow-up questions
@@ -79,6 +82,10 @@ function NewIntent({ onDone, onBack }) {
   const fastPrepare = useRef(null);       // in-flight /prepare promise
   const fastRunId = useRef(null);
   const fastProposal = useRef(null);      // resolved proposal shown on the summary
+  const fastChoice = useRef({});          // { networkId } or { whereText }, matching web
+  const fastWhereLabel = useRef("everywhere");
+
+  const fastCommunities = (env.networks || []).filter((network) => !network.isPersonal);
 
   const showFastQuestion = (q, kind = "question") => {
     setThinking(false);
@@ -92,6 +99,15 @@ function NewIntent({ onDone, onBack }) {
     });
   };
 
+  const showFastWhere = () => {
+    setThinking(false);
+    setStep({
+      id: `fast-where-${Date.now()}`,
+      fast: "where",
+      prompt: "where should we look?",
+    });
+  };
+
   // Summary gate: rendered as a dedicated card (SignalSummaryCard), not the
   // generic question layout. `choices` stays so submit() resolves the label.
   const showFastSummary = (p, note) => {
@@ -102,8 +118,9 @@ function NewIntent({ onDone, onBack }) {
       fast: "summary",
       prompt: p.description,
       proposal: p,
+      whereLabel: fastWhereLabel.current,
       note: note || "",
-      choices: [{ value: "create", label: "create this signal", sub: "looking everywhere" }],
+      choices: [{ value: "create", label: "create this signal", sub: `looking in ${fastWhereLabel.current}` }],
     });
   };
 
@@ -159,6 +176,12 @@ function NewIntent({ onDone, onBack }) {
     }
     fastPrepare.current = client.intents.intake.prepare({ rounds });
     fastPrepare.current.then((r) => { fastRunId.current = r.runId; }).catch(() => {});
+    showFastWhere();
+  };
+
+  const chooseFastWhere = (choice, label) => {
+    fastChoice.current = choice;
+    fastWhereLabel.current = label;
     fastResolve();
   };
 
@@ -174,6 +197,7 @@ function NewIntent({ onDone, onBack }) {
       const p = await client.intents.intake.proposal({
         runId: fastRunId.current,
         rounds: fastRounds.current,
+        ...fastChoice.current,
       });
       if (!cancelledRef.current) showFastSummary(p);
     } catch (e) {
@@ -194,9 +218,11 @@ function NewIntent({ onDone, onBack }) {
       const res = await client.intents.confirm({
         proposalId: p.proposalId,
         description: p.description,
+        ...(fastChoice.current.networkId ? { networkId: fastChoice.current.networkId } : {}),
       });
       if (cancelledRef.current) return;
       if (res && res.intentId) intentIdRef.current = res.intentId;
+      createdDescriptionRef.current = p.description;
       createdRef.current = true;
       finish(ans);
     } catch (_e) {
@@ -208,6 +234,9 @@ function NewIntent({ onDone, onBack }) {
   useEffect(() => {
     if (!fastEnabled) return;
     loadFastStart();
+    // The intake is one mounted flow. Retrying is an explicit UI action; a
+    // client/closure identity change must not silently restart answered rounds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- chat-driven clarification (same machinery as the web app) ----------
@@ -251,6 +280,7 @@ function NewIntent({ onDone, onBack }) {
         description: p.description,
       });
       if (res && res.intentId) intentIdRef.current = res.intentId;
+      createdDescriptionRef.current = p.description;
       createdRef.current = true;
     } catch (e) { /* finish() falls back to a direct create */ }
   };
@@ -273,13 +303,17 @@ function NewIntent({ onDone, onBack }) {
         // The agent never created the signal (no proposal, or the guided beat
         // was cut short), so create it from the composed answers.
         try {
-          await window.IndexApp.createIntent(composeDescription(ans));
+          const description = composeDescription(ans);
+          const result = await window.IndexApp.createIntent(description);
+          intentIdRef.current = result && (result.intentId || result.id) || intentIdRef.current;
+          createdDescriptionRef.current = description;
           created = true;
         } catch (_e) { /* fall through to the calibrating transition */ }
       }
-      // Keep the calibrating beat visible even if the calls are fast.
-      await new Promise((r) => setTimeout(r, created ? 1200 : 2000));
-      onDone(ans, created);
+      const completedAnswers = createdDescriptionRef.current
+        ? { ...ans, intent: createdDescriptionRef.current }
+        : ans;
+      onDone(completedAnswers, created, intentIdRef.current);
     })();
   };
 
@@ -498,11 +532,17 @@ function NewIntent({ onDone, onBack }) {
                     </span>
                   </AgentBubble>
                 </div>
+              ) : step.fast === "where" ? (
+              <div key={step.id} className="fade-up" style={{ display:"grid", gap:12 }}>
+                <AgentBubble>{step.prompt}</AgentBubble>
+                <FastWherePicker networks={fastCommunities} onSelect={chooseFastWhere}/>
+              </div>
               ) : step.fast === "summary" ? (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:12 }}>
                 <AgentBubble>Here's your signal.</AgentBubble>
                 <SignalSummaryCard
                   proposal={step.proposal}
+                  whereLabel={step.whereLabel}
                   note={step.note}
                   onCreate={() => submit("create")}
                 />
@@ -647,7 +687,49 @@ function PastTurn({ step, answer }) {
 
 // The fast-intake summary gate, kept quiet: the signal as an indented quote in
 // the conversation, small detail lines, one button. No card chrome.
-function SignalSummaryCard({ proposal, note, onCreate }) {
+function FastWherePicker({ networks, onSelect }) {
+  const [whereText, setWhereText] = useState("");
+  return (
+    <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:10 }}>
+      {networks.map((network) => (
+        <ChoiceRow
+          key={network.id}
+          c={{ value:network.id, label:network.name, sub:"look in this community" }}
+          onClick={() => onSelect({ networkId:network.id }, network.name)}
+        />
+      ))}
+      <ChoiceRow
+        c={{ value:"everywhere", label:"Everywhere", sub:"no community or place constraint" }}
+        onClick={() => onSelect({}, "everywhere")}
+      />
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const value = whereText.trim();
+          if (value) onSelect({ whereText:value }, value);
+        }}
+        style={{ display:"flex", gap:12, alignItems:"center", marginTop:6 }}
+      >
+        <input
+          value={whereText}
+          onChange={(event) => setWhereText(event.target.value)}
+          placeholder="Somewhere more specific?"
+          style={{
+            flex:1, background:"#fff", border:"none", borderBottom:"1px solid #000",
+            outline:"none", color:"#000", fontFamily:"var(--mac-sans)", fontSize:15,
+            padding:"7px 0",
+          }}
+        />
+        <Btn primary type="submit" disabled={!whereText.trim()}>continue</Btn>
+      </form>
+      <div style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>
+        naming a place rewrites your signal, so it takes a moment longer.
+      </div>
+    </div>
+  );
+}
+
+function SignalSummaryCard({ proposal, whereLabel, note, onCreate }) {
   return (
     <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:14 }}>
       <div style={{
@@ -658,13 +740,14 @@ function SignalSummaryCard({ proposal, note, onCreate }) {
           fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
           lineHeight:1.4, color:"#000",
         }}>{proposal.description}</div>
-        {(proposal.lookingFor || proposal.youBring) && (
+        {(proposal.lookingFor || proposal.youBring || whereLabel) && (
           <div style={{
             fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
             lineHeight:1.6, display:"grid", gap:2,
           }}>
             {proposal.lookingFor && <div>looking for · {proposal.lookingFor}</div>}
             {proposal.youBring && <div>you bring · {proposal.youBring}</div>}
+            {whereLabel && <div>looking in · {whereLabel}</div>}
           </div>
         )}
       </div>

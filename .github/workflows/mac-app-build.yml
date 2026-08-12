@@ -55,6 +55,7 @@ jobs:
           bun test \
             api/agent-runtime.spec.mjs \
             api/agent-runtime-saga.spec.mjs \
+            api/intent-intake-ui.spec.mjs \
             api/client.spec.mjs \
             api/deeplink.spec.mjs \
             IndexConnector/connector-contract.spec.mjs

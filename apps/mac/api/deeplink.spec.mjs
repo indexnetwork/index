@@ -25,6 +25,17 @@ describe('mac deep-link routing contract', () => {
       .toEqual({ route: 'legacy-connect', code: CONNECT_CODE });
   });
 
+  it('routes notification activate links for questions and conversations', () => {
+    const QUESTION_ID = '00000000-0000-4000-8000-00000000d444';
+    const CONVERSATION_ID = '00000000-0000-4000-8000-00000000e555';
+    expect(parseDeepLink(`index://q/${QUESTION_ID}`))
+      .toEqual({ route: 'question', id: QUESTION_ID });
+    expect(parseDeepLink(`index://chat/${CONVERSATION_ID}`))
+      .toEqual({ route: 'conversation', id: CONVERSATION_ID });
+    expect(parseDeepLink('index://q/')).toBeNull();
+    expect(parseDeepLink('index://chat')).toBeNull();
+  });
+
   it('accepts the scheme alias without an authority and with extra slashes', () => {
     expect(parseDeepLink(`index:o/${OPPORTUNITY_ID}`))
       .toEqual({ route: 'card', id: OPPORTUNITY_ID });

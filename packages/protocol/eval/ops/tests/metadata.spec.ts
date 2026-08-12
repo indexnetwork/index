@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { resolveCanonicalAllAgentModels } from "../../../src/shared/agent/model.resolver.js";
 import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
 import { HARNESS_ENV_KEYS } from "../ops.envcatalog.js";
 import { ALLOWED_CONFIG_MODELS } from "../ops.profiles.js";
@@ -125,39 +126,64 @@ describe("ENV_FLAG_METADATA", () => {
     expect(envFlagValueIssue(meta, '{"opportunityEvaluator":"google/gemini-2.5-flash"}', bounds)).toBeNull();
   });
 
-  it("pins the read site's rules for EVAL_MODEL_OVERRIDES, so a rewrite there fails here", () => {
-    const source = readFileSync(
+  it("pins the canonical resolver's EVAL_MODEL_OVERRIDES safety rules and its model.config consumer", () => {
+    const invalidOverrides = [
+      ["{not json", /not valid JSON/],
+      ["[]", /must be a JSON object/],
+      ['{"noSuchAgent":"google/gemini-2.5-flash"}', /unknown agent/],
+      ['{"opportunityEvaluator":""}', /non-empty model id string/],
+      ['{"opportunityEvaluator":7}', /non-empty model id string/],
+    ] as const;
+    for (const [raw, message] of invalidOverrides) {
+      expect(() => resolveCanonicalAllAgentModels({ EVAL_MODEL_OVERRIDES: raw })).toThrow(message);
+    }
+
+    const resolverSource = readFileSync(
+      path.join(import.meta.dir, "..", "..", "..", "src", "shared", "agent", "model.resolver.ts"),
+      "utf8",
+    );
+    expect(resolverSource).toContain("EVAL_MODEL_OVERRIDES is not valid JSON");
+    expect(resolverSource).toContain("EVAL_MODEL_OVERRIDES must be a JSON object of agent -> model id");
+    expect(resolverSource).toContain("names an unknown agent");
+    expect(resolverSource).toContain("must be a non-empty model id string");
+
+    const consumerSource = readFileSync(
       path.join(import.meta.dir, "..", "..", "..", "src", "shared", "agent", "model.config.ts"),
       "utf8",
     );
-    expect(source).toContain("EVAL_MODEL_OVERRIDES is not valid JSON");
-    expect(source).toContain("EVAL_MODEL_OVERRIDES must be a JSON object of agent -> model id");
-    expect(source).toContain("names an unknown agent");
-    expect(source).toContain("must be a non-empty model id string");
+    expect(consumerSource, "model.config no longer consumes the canonical resolver")
+      .toContain('import { resolveCanonicalAllAgentModels } from "./model.resolver.js";');
+    expect(consumerSource).toContain("resolveCanonicalAllAgentModels({");
+    expect(consumerSource).toContain("EVAL_MODEL_OVERRIDES: process.env.EVAL_MODEL_OVERRIDES");
   });
 
-  it("documents that EVAL_MODEL_OVERRIDES outranks CHAT_MODEL, because it does", () => {
+  it("documents that EVAL_MODEL_OVERRIDES outranks CHAT_MODEL, because the canonical resolver does", () => {
     // Both flags can set the chat agent's model, and the launch form's per-agent
-    // pickers write EVAL_MODEL_OVERRIDES — so an operator can set both and see
-    // only one take effect. Verified against the read site rather than assumed:
-    // getBaseModelConfig seeds chat.model from CHAT_MODEL, then getModelConfig
-    // applies the overrides map over the result.
-    const source = readFileSync(
+    // pickers write EVAL_MODEL_OVERRIDES. Assert the resolver's actual result,
+    // then pin model.config's environment projection and production policy so
+    // this test follows the current authority instead of a deleted inline parser.
+    const environment = {
+      CHAT_MODEL: "test/chat-base",
+      EVAL_MODEL_OVERRIDES: JSON.stringify({ chat: "test/chat-override" }),
+    };
+    expect(resolveCanonicalAllAgentModels(environment).chat).toBe("test/chat-override");
+    expect(resolveCanonicalAllAgentModels(environment, { applyEvalOverrides: false }).chat).toBe("test/chat-base");
+
+    const consumerSource = readFileSync(
       path.join(import.meta.dir, "..", "..", "..", "src", "shared", "agent", "model.config.ts"),
       "utf8",
     );
-    expect(source, "CHAT_MODEL is no longer the base for the chat agent")
-      .toContain("process.env.CHAT_MODEL");
-    expect(source, "overrides are no longer applied over the base config")
-      .toMatch(/const base = getBaseModelConfig\(config\);\s*\n\s*const overrides = readModelOverrides/);
-    expect(source, "EVAL_MODEL_OVERRIDES is no longer production-inert")
-      .toContain('if (process.env.NODE_ENV === "production") return {};');
+    expect(consumerSource, "explicit ModelConfig no longer outranks ambient CHAT_MODEL")
+      .toContain("CHAT_MODEL: config?.chatModel ?? process.env.CHAT_MODEL");
+    expect(consumerSource, "model.config no longer disables eval overrides in production")
+      .toContain('applyEvalOverrides: process.env.NODE_ENV !== "production"');
 
     const chat = ENV_FLAG_METADATA.find((m) => m.key === "CHAT_MODEL")!;
     const overrides = ENV_FLAG_METADATA.find((m) => m.key === "EVAL_MODEL_OVERRIDES")!;
     expect(chat.description).toContain("EVAL_MODEL_OVERRIDES");
     expect(overrides.description).toContain("CHAT_MODEL");
     expect(overrides.description).toContain("production");
+    expect(overrides.description).toContain("model.resolver.ts");
   });
 
   it("declares a minimum only where a number can be given and where it would be honoured", () => {
@@ -296,7 +322,7 @@ describe("ENV_FLAG_METADATA", () => {
    *
    * EVAL_MODEL_OVERRIDES is declared there but as free text, and its shape is
    * a JSON object no zod string schema describes; its rules are pinned directly
-   * against readModelOverrides by the tests above.
+   * against the canonical model.resolver.ts parser by the tests above.
    */
   const NOT_IN_STARTUP_SCHEMA = [...SITE_NARROWED_MODEL_FLAGS, "EVAL_MODEL_OVERRIDES"];
 

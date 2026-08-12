@@ -20,6 +20,30 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 11.2.1 - 2026-08-11
+
+### Added
+
+- Added the guarded historical-quality runtime for single-configuration,
+  dual-trigger shared-pool evaluation.
+
+### Fixed
+
+- Hardened historical-quality readiness with attested database credentials,
+  frozen embedding requests, and fail-closed protected-base refresh gating.
+
+## 10.2.0 - 2026-08-10
+
+### Changed
+
+- Refined the canonical V2 historical-quality artifact contract so execution
+  completeness is independent of verdict availability: complete filtered
+  case/trigger selections are valid descriptive evidence with
+  `completeness.complete: true` and
+  `measurement.qualityVerdictAvailable: false`; only complete full-corpus,
+  full-trigger selections may publish a quality verdict. Legacy and canonical
+  parser selection remain unchanged.
+
 ## 10.1.0 - 2026-08-07
 
 ### Added
@@ -81,6 +105,13 @@ pin a supported release, use `latest`.
 - Remove unsupported deprecated source/deep forwarding shims after migrating repository consumers to canonical modules; stable package-root exports are unchanged.
 - Add a fail-closed isolated provider-free test gate (10.1.1). Tooling-only
   safety foundation; no runtime or public API behavior changes.
+- For the planned 10.2.0 release, refine the canonical V2 historical-quality
+  artifact contract so execution completeness is independent of verdict
+  availability: complete filtered case/trigger selections are valid descriptive
+  evidence with `completeness.complete: true` and
+  `measurement.qualityVerdictAvailable: false`; only complete full-corpus,
+  full-trigger selections may publish a quality verdict. Legacy and canonical
+  parser selection remain unchanged.
 - Share capability classification metadata between the existing architecture
   boundary gate and the protocol atlas generator; allowed dependency directions
   are unchanged.

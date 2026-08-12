@@ -14,11 +14,15 @@
 /** Hosts whose https:// links this app claims (see the web AASA). */
 const DEFAULT_HOSTS = ['index.network'];
 
-/** First path segment -> route name. The web serves the same paths. */
+/** First path segment -> route name. The web serves the same paths, except
+ * `q` and `chat`, which exist only as notification activate links: the app's
+ * own OS toasts mint them, so no web page or AASA entry ever serves them. */
 const ROUTE_BY_SEGMENT = {
   o: 'card',
   u: 'profile',
   c: 'legacy-connect',
+  q: 'question',
+  chat: 'conversation',
 };
 
 /** Routes whose second segment is an opaque code rather than an entity id. */
@@ -27,7 +31,9 @@ const CODE_ROUTES = new Set(['legacy-connect']);
 /**
  * @typedef {{ route: 'card', id: string }
  *   | { route: 'profile', id: string }
- *   | { route: 'legacy-connect', code: string }} DeepLinkRoute
+ *   | { route: 'legacy-connect', code: string }
+ *   | { route: 'question', id: string }
+ *   | { route: 'conversation', id: string }} DeepLinkRoute
  */
 
 /**

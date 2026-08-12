@@ -823,8 +823,13 @@ function refineHistoricalQualityArtifactEnvelope(
     && completedSlots === measurement.requestedSlots
     && exactRepetitionCoverage
     && requestedSlotMath;
-  if (measurement.qualityVerdictAvailable !== completeEvidence) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "qualityVerdictAvailable"], message: "quality verdict availability must exactly match complete requested evidence with exact repetition coverage and requested-slot math" });
+  const selectedTriggers = new Set(artifact.payload.cases.map((row) => row.trigger));
+  const fullTriggerSelection = selectedTriggers.size === 2
+    && selectedTriggers.has("intent")
+    && selectedTriggers.has("enrichment");
+  const qualityVerdictAvailable = completeEvidence && artifact.selection.fullCorpus && fullTriggerSelection;
+  if (measurement.qualityVerdictAvailable !== qualityVerdictAvailable) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["measurement", "qualityVerdictAvailable"], message: "quality verdict availability requires complete requested evidence with exact repetition coverage and requested-slot math from a full-corpus, full-trigger selection" });
   }
   if (artifact.completeness.complete !== completeEvidence) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["completeness", "complete"], message: "quality completeness must exactly match complete requested evidence with exact repetition coverage and requested-slot math" });

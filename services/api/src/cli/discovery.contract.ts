@@ -217,6 +217,50 @@ export class AbSpentRunError extends Error {
 }
 
 /**
+ * Historical quality operational failures carry only fixed opaque classes.
+ * A secondary report-write failure is appended rather than replacing the
+ * restore/spawn/supervision failure that determines exit 4.
+ */
+export class HistoricalQualitySpentRunError extends AbSpentRunError {
+  readonly primaryFailureClass: string;
+  readonly artifactFailureClass?: string;
+  readonly diagnosticReportPath?: string;
+  readonly priorSideStarted: boolean;
+
+  constructor(
+    stage: AbRunStage,
+    primaryFailureClass: string,
+    artifactFailureClass?: string,
+    options?: ErrorOptions & AbSpentRunDetail & { diagnosticReportPath?: string; priorSideStarted?: boolean },
+  ) {
+    super(stage, options);
+    this.name = 'HistoricalQualitySpentRunError';
+    this.primaryFailureClass = primaryFailureClass;
+    if (artifactFailureClass !== undefined) this.artifactFailureClass = artifactFailureClass;
+    if (options?.diagnosticReportPath !== undefined) this.diagnosticReportPath = options.diagnosticReportPath;
+    this.priorSideStarted = options?.priorSideStarted === true;
+    const currentStage = stage === 'resetting'
+      ? `while restoring ${AB_BRANCH_NAMES.a}; the branch may have been overwritten`
+      : stage === 'reset'
+        ? `after restoring ${AB_BRANCH_NAMES.a} and before the current side was confirmed started`
+        : `after restoring ${AB_BRANCH_NAMES.a} and starting the current side process`;
+    const cumulativeSpend = this.priorSideStarted
+      ? '; a prior slot side process was started, so provider spend and wall-clock time may already be gone'
+      : stage === 'resetting'
+        ? ' and no side was confirmed started'
+        : '';
+    const operation = `${currentStage}${cumulativeSpend}`;
+    const artifact = this.diagnosticReportPath === undefined
+      ? 'No diagnostic run report was written.'
+      : `Diagnostic unavailable-verdict report written: ${this.diagnosticReportPath}.`;
+    this.message = `Historical quality failed ${operation}. Operational failure: ${primaryFailureClass}. ${artifact}`;
+    if (artifactFailureClass !== undefined) {
+      this.message += ` Diagnostic artifact reporting failure: ${artifactFailureClass}.`;
+    }
+  }
+}
+
+/**
  * Classifies a parent failure by how far the run got, so the two halves of the
  * old catch-all can be told apart.
  *
@@ -228,6 +272,28 @@ export class AbSpentRunError extends Error {
  */
 export function classifyAbParentFailure(stage: AbRunStage | null, error: unknown, detail?: AbSpentRunDetail): unknown {
   return stage === null ? error : new AbSpentRunError(stage, { cause: error, ...detail });
+}
+
+/**
+ * Sanitized release failure wrapper. When a primary failure already exists its
+ * classification remains authoritative; this wrapper only appends the fixed
+ * secondary lease class. Without a primary, release failure is operational
+ * exit 4 even if report generation otherwise completed.
+ */
+export class HistoricalQualityLeaseReleaseError extends Error {
+  readonly primaryError?: unknown;
+  readonly artifactPath?: string;
+
+  constructor(options: { primaryError?: unknown; artifactPath?: string } = {}) {
+    super(
+      'Historical quality operation lease release failed. Operational failure: lease-release-failure. '
+      + 'No successful result may be reported; retain and manually reconcile the fail-closed lease directory or tombstone.',
+      options.primaryError === undefined ? undefined : { cause: options.primaryError },
+    );
+    this.name = 'HistoricalQualityLeaseReleaseError';
+    if (options.primaryError !== undefined) this.primaryError = options.primaryError;
+    if (options.artifactPath !== undefined) this.artifactPath = options.artifactPath;
+  }
 }
 
 export interface AbFailureReport { exitCode: number; message: string }
@@ -256,6 +322,17 @@ export type AbInvocationRole = 'parent' | 'child';
  * which is the process that knows.
  */
 export function describeAbFailure(error: unknown, role: AbInvocationRole = 'parent'): AbFailureReport {
+  if (error instanceof HistoricalQualityLeaseReleaseError) {
+    if (error.primaryError !== undefined) {
+      const primary = describeAbFailure(error.primaryError, role);
+      return {
+        exitCode: primary.exitCode,
+        message: `${primary.message} Secondary operational failure: lease-release-failure. `
+          + 'Retain and manually reconcile the fail-closed lease directory or tombstone.',
+      };
+    }
+    return { exitCode: AB_EXIT_SPENT_WITHOUT_ARTIFACT, message: error.message };
+  }
   if (error instanceof AbSpentRunError) {
     return { exitCode: AB_EXIT_SPENT_WITHOUT_ARTIFACT, message: error.message };
   }
@@ -318,6 +395,8 @@ export function abUsage(): string {
     '  TEST_DATABASE_SAFE=1',
     '  NEON_API_KEY=<neon api key>',
     `  DISCOVERY_TARGETS='${manifest}'`,
+    '  A strict version-2 historical-quality manifest is also accepted here; legacy',
+    '  A/B projects only its two child targets and never binds the base read replica.',
     '',
     'This command never creates or deletes Neon branches. It resets the attested',
     `branch of every side it runs from ${AB_BASE_BRANCH} before it spawns anything:`,

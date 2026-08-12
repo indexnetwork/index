@@ -23,9 +23,6 @@ export const HISTORICAL_QUALITY_APPROVED_FINGERPRINTS = Object.freeze({
 
 export const HISTORICAL_QUALITY_DEFAULT_REPETITIONS = 3;
 export const HISTORICAL_QUALITY_MAX_GRAPH_INVOCATIONS = 200;
-export const HISTORICAL_QUALITY_PR_A_REFUSAL =
-  'Historical quality runtime is not available in PR A; no provider or infrastructure operation was started.';
-
 export type HistoricalQualityTrigger = 'intent' | 'enrichment';
 export interface HistoricalQualityRequest {
   caseIds: string[];
@@ -39,6 +36,13 @@ export interface HistoricalQualityRequest {
 export interface HistoricalQualityCost {
   graphInvocations: number;
   evaluatorCalls: number;
+}
+
+/** Quality slots require one bundled evaluator call so one slot has one known cost. */
+export function assertHistoricalQualitySerialEvaluation(config: Readonly<Record<string, string>>): void {
+  if (config.RUN_OPPORTUNITY_EVAL_IN_PARALLEL === 'true') {
+    throw new Error('Historical quality refuses parallel opportunity evaluation; one bundled evaluator call is required per slot');
+  }
 }
 
 const VALUE_FLAGS = new Set(['--case', '--trigger', '--runs', '--env', '--report']);
@@ -158,22 +162,13 @@ export function formatHistoricalQualityCost(request: HistoricalQualityRequest): 
     `Historical quality cost: ${request.caseIds.length} cases x ${request.triggers.length} triggers x ${repetitions} = ${graphInvocations} graph invocations and ${evaluatorCalls} evaluator calls.`,
     'Execution policy: restore before every slot; one attempt and one evaluator call per slot.',
     'Verdict policy: a case or trigger subset produces evidence only; no subset verdict.',
-    'PR A performs no base verification; pre-reset read-only base verification is delivered by PR B.',
+    'Safety order: attest topology; verify the protected base read-only; then restore side a before each serial slot.',
   ].join('\n');
-}
-
-export function runHistoricalQualityPrARefusal(
-  request: HistoricalQualityRequest,
-  io: Pick<Console, 'log' | 'error'>,
-): 2 {
-  io.log(formatHistoricalQualityCost(request));
-  io.error(HISTORICAL_QUALITY_PR_A_REFUSAL);
-  return 2;
 }
 
 export function historicalQualityUsage(): string {
   return [
-    'Discovery historical quality pilot (PR A contract only)',
+    'Discovery historical quality pilot',
     '',
     '  --historical-quality  Select the dedicated one-configuration quality pilot.',
     '  --case <id>           Select an approved historical case. Repeatable; default: all five.',
@@ -187,8 +182,6 @@ export function historicalQualityUsage(): string {
     'The default is 5 cases x 2 triggers x 3 repetitions = 30 graph invocations and 30 evaluator calls.',
     'Execution will restore before every slot and permits one attempt and one evaluator call per slot.',
     'A case or trigger subset produces evidence only; there is no subset verdict.',
-    'PR A performs no base verification; pre-reset read-only base verification is delivered by PR B.',
-    '',
-    `PR A exits 2 with: ${HISTORICAL_QUALITY_PR_A_REFUSAL}`,
+    'The parent attests topology and verifies the protected base read-only before the first restore.',
   ].join('\n');
 }

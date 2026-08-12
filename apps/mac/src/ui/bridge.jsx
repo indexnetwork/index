@@ -391,6 +391,136 @@ window.IndexApp = (function () {
     return { close: () => controller.abort() };
   }
 
+  // ---- desktop notifications ------------------------------------------------
+
+  // Post one OS toast through the Swift indexNotify bridge. Fire-and-forget;
+  // false in browser preview where there is no native side.
+  function notify(payload) {
+    const handlers = window.webkit && window.webkit.messageHandlers;
+    if (!handlers || !handlers.indexNotify) return false;
+    handlers.indexNotify.postMessage(payload || {});
+    return true;
+  }
+
+  // Persist the settings-pane notification toggles in UserDefaults via Swift
+  // (file:// localStorage does not survive a relaunch). Mirror onto
+  // INDEX_NATIVE so the running page reads its own save back.
+  function setNotifyPrefs(prefs) {
+    if (window.INDEX_NATIVE) window.INDEX_NATIVE.notifyPrefs = prefs || null;
+    if (!hasBridge()) return false;
+    window.webkit.messageHandlers.indexAuth.postMessage({ action: "setNotifyPrefs", value: prefs || null });
+    return true;
+  }
+
+  // Current notification preferences: the in-session edit (mirrored onto ME by
+  // the settings save) wins over the durable native store; null means default
+  // (everything on) and is how notificationEventAllowed fails open.
+  function notifyPrefs() {
+    const me = window.INDEX_DATA && window.INDEX_DATA.ME;
+    if (me && me.notify) return me.notify;
+    return (native().notifyPrefs) || null;
+  }
+
+  // App-wide OS notification pipeline, mirroring the Hermes Desktop plugin
+  // (packages/hermes-plugin/desktop/tail.js): realtime SSE for question/
+  // opportunity events plus a 60s snapshot catch-up, and the conversation
+  // stream for messages — realtime-only, own messages suppressed, fail-closed
+  // until the signed-in identity is known. Dedupe keys persist to localStorage
+  // best-effort; losing them across a relaunch is safe because the first
+  // snapshot after boot primes the seen-set without toasting.
+  function startDesktopNotifications({ getUserId, getPrefs = notifyPrefs } = {}) {
+    const N = window.IndexApi || {};
+    if (!N.composeNotification) return () => {};
+    let stopped = false;
+    const state = { hasSnapshot: false, notifiedEntities: readNotified() };
+
+    function readNotified() {
+      try {
+        const list = JSON.parse(localStorage.getItem(N.NOTIFIED_ENTITIES_KEY) || "[]");
+        return Array.isArray(list) ? list.slice(-N.MAX_NOTIFIED_ENTITIES) : [];
+      } catch (e) { return []; }
+    }
+    function persistNotified() {
+      try { localStorage.setItem(N.NOTIFIED_ENTITIES_KEY, JSON.stringify(state.notifiedEntities)); }
+      catch (e) { /* best-effort under file:// */ }
+    }
+    function send(event) {
+      const copy = N.composeNotification(event, { avatarUrl });
+      if (copy) notify(copy);
+    }
+    function onRealtime(event, suppressOwnMessage) {
+      if (stopped || !event || event.type === "connected") return;
+      if (suppressOwnMessage && N.isOwnMessage(event, getUserId ? getUserId() : null)) return;
+      if (!N.notificationEventAllowed(event, getPrefs ? getPrefs() : null)) return;
+      if (!N.composeNotification(event)) return;
+      const remembered = N.rememberNotificationEntity(state.notifiedEntities, N.notificationEntityKey(event));
+      if (!remembered.isNew) return;
+      state.notifiedEntities = remembered.notifiedEntities;
+      persistNotified();
+      send(event);
+    }
+
+    function authedHeaders() {
+      const headers = {};
+      const key = apiKey();
+      if (key) headers["x-api-key"] = key;
+      return headers;
+    }
+
+    // Keep an SSE stream alive for the pipeline's lifetime; a dropped or
+    // refused stream reconnects after a pause instead of dying silently.
+    function keepStream(path, handler) {
+      let close = null;
+      (async () => {
+        while (!stopped) {
+          await new Promise((done) => {
+            const controller = new AbortController();
+            close = () => controller.abort();
+            fetch(`${apiBaseUrl()}${path}`, { headers: authedHeaders(), signal: controller.signal })
+              .then((response) => (response.ok ? readSSE(response, handler) : null))
+              .catch(() => { /* aborted or network drop */ })
+              .finally(done);
+          });
+          if (!stopped) await new Promise((r) => setTimeout(r, 15000));
+        }
+      })();
+      return () => { if (close) close(); };
+    }
+
+    const closeNotifications = keepStream("/notifications/stream", (e) => onRealtime(e, false));
+    const closeInbox = keepStream("/conversations/stream", (e) => onRealtime(e, true));
+
+    let reconciling = false;
+    async function reconcile() {
+      if (stopped || reconciling) return;
+      reconciling = true;
+      try {
+        const response = await fetch(`${apiBaseUrl()}/notifications/snapshot`, { headers: authedHeaders() });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (stopped) return;
+        const result = N.reconcileNotificationSnapshot(payload, state);
+        state.hasSnapshot = result.state.hasSnapshot;
+        state.notifiedEntities = result.state.notifiedEntities;
+        persistNotified();
+        const prefs = getPrefs ? getPrefs() : null;
+        for (const event of result.notifications) {
+          if (!stopped && N.notificationEventAllowed(event, prefs)) send(event);
+        }
+      } catch (e) { /* the next reconciliation retries */ }
+      finally { reconciling = false; }
+    }
+    reconcile();
+    const snapshotTimer = setInterval(reconcile, 60000);
+
+    return function dispose() {
+      stopped = true;
+      clearInterval(snapshotTimer);
+      closeNotifications();
+      closeInbox();
+    };
+  }
+
   // ---- MCP tools/call -----------------------------------------------------
 
   // Single structured tools/call through native /mcp. Used for intent creation,
@@ -463,6 +593,10 @@ window.IndexApp = (function () {
     parseIntentProposals,
     streamChat,
     streamInbox,
+    notify,
+    setNotifyPrefs,
+    notifyPrefs,
+    startDesktopNotifications,
     readUserContexts,
     previewUserContext,
     confirmUserContext,

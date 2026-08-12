@@ -74,6 +74,12 @@ export interface AttemptAwareRunOptions extends RetryOptions {
   policy?: EvalEvidencePolicy;
   /** Hard deadline for each provider invocation. */
   attemptTimeoutMs: number;
+  /**
+   * After aborting a timeout/cancellation, await the invocation's settlement
+   * before recording terminal evidence. Work that ignores abort therefore
+   * keeps the run fail-closed instead of becoming detached.
+   */
+  drainAttemptOnAbort?: boolean;
   /** Cancels the active attempt and marks all not-yet-started slots cancelled. */
   signal?: AbortSignal;
   /** Retry classification. Defaults to retrying every non-cancellation failure. */
@@ -297,6 +303,7 @@ async function invokeAttempt<T>(
   context: { runId: string; attemptId: string; runIndex: number; attemptNumber: number },
   timeoutMs: number,
   externalSignal?: AbortSignal,
+  drainAttemptOnAbort = false,
 ): Promise<T> {
   if (externalSignal?.aborted) throw new EvalCancelledError();
 
@@ -321,12 +328,17 @@ async function invokeAttempt<T>(
     }, timeoutMs);
   });
 
+  const invocation = Promise.resolve().then(() => invoke({ ...context, signal: controller.signal }));
   try {
-    return await Promise.race([
-      invoke({ ...context, signal: controller.signal }),
-      cancellation,
-    ]);
+    return await Promise.race([invocation, cancellation]);
   } catch (error) {
+    if (drainAttemptOnAbort && (externallyCancelled || externalSignal?.aborted || timedOut)) {
+      try {
+        await invocation;
+      } catch {
+        // The timeout/cancellation remains authoritative after the invocation drains.
+      }
+    }
     if (externallyCancelled || externalSignal?.aborted) throw new EvalCancelledError();
     if (timedOut) throw new EvalAttemptTimeoutError(timeoutMs);
     throw error;
@@ -383,6 +395,7 @@ export async function executeRuns<T>(
           { runId, attemptId, runIndex, attemptNumber },
           options.attemptTimeoutMs,
           options.signal,
+          options.drainAttemptOnAbort,
         );
         const completedMs = Date.now();
         attempts.push({

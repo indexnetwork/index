@@ -122,10 +122,10 @@ insufficient evidence.
 Lives in `services/api` (not `packages/protocol`) because it drives the real
 discovery graph against real Neon databases.
 
-#### Historical shared-pool quality contract (PR A)
+#### Historical shared-pool quality contract
 
-PR A exposes a provider- and infrastructure-free command contract only. Its
-exact quality-mode syntax is:
+Historical quality is an operator-only guarded runtime over the approved shared
+pool. Its exact quality-mode syntax is:
 
 ```text
 bun run eval:discovery -- --historical-quality --env KEY=VALUE [--case <approved-id>]... [--trigger intent|enrichment]... [--runs <n>] [--report <path>] [--force]
@@ -147,14 +147,29 @@ evidence only: they do not produce a subset verdict, and quality artifacts do
 not read, write, update, or compare against a baseline. Stage-funnel metrics are
 descriptive, not a pass/fail comparison.
 
-In PR A, `--help` prints the contract without provider credentials. A non-help
-quality request parses the selection and prints its exact cost provider-free,
-then exits with the classified refusal that runtime is unavailable; it performs
-no confirmation, protected-base verification, reset, database, Neon, Redis, or
-provider operation. Historical-quality runtime, protected-base handling, and
-all operational commands are explicitly deferred to PR B and are not documented
-here. Eval Ops can render historical-quality reports and execution completeness,
-but it cannot launch quality mode.
+`--help` remains provider-free. A confirmed execution requires strict manifest
+v2, a separately attested writable protected-base refresh target, the approved
+read-only base replica, provider/Redis runtime configuration, and a parent-only
+provider-account fingerprint. Before child preflight or any control-plane call,
+the parent atomically acquires a fail-closed host-local filesystem lease keyed
+by strict manifest-v2 project and side-`a` branch identity; crash-left leases are
+never automatically removed, and operators must not launch from another host.
+Before any reset, the parent jointly attests the roles and verifies published
+base state in a fresh read-only process. It then runs slots serially: restore
+existing side `a`, re-attest and verify, invoke one
+trigger attempt, validate one identifier-only child result, and clean up. Side
+`b` remains untouched. Failed terminal rows continue without retry and suppress
+the whole quality verdict; restore/spawn/malformed/supervisor failures stop
+scheduling. Nothing automatically reruns.
+
+Quality remains absent from the Eval Ops launch registry. Eval Ops can render
+historical-quality reports and execution completeness, while its existing
+`discovery` launch continues to use only the v2 manifest's legacy child
+projection. Protected-base provisioning, atomic secret migration, refresh,
+read-only verify, guarded DB proof, smokes, and pilot are documented in the
+[IND-638 operator runbook](./ind-638-historical-quality-pilot.md). The target
+proof and full guarded DB suite are hard pre-merge gates; skipped or `not run`
+evidence is not merge-ready.
 
 ```bash
 cd services/api
@@ -203,25 +218,34 @@ anything that can compose a database:
 
 ```json
 {
-  "projectId": "...",
-  "baseBranchId": "br-...",
+  "version": 2,
+  "projectId": "<project-id>",
+  "baseBranchId": "<base-branch-id>",
+  "baseReadReplica": {
+    "endpointId": "<read-only-endpoint-id>",
+    "databaseUrl": "<secret-postgresql-protocol_eval-url>"
+  },
   "targets": [
-    { "sideId": "a", "branchId": "br-...", "endpointId": "ep-...", "databaseUrl": "postgres://...neon.tech/protocol_eval" },
-    { "sideId": "b", "branchId": "br-...", "endpointId": "ep-...", "databaseUrl": "postgres://...neon.tech/protocol_eval" }
+    { "sideId": "a", "branchId": "<side-a-branch-id>", "endpointId": "<side-a-read-write-endpoint-id>", "databaseUrl": "<secret-postgresql-protocol_eval-url>" },
+    { "sideId": "b", "branchId": "<side-b-branch-id>", "endpointId": "<side-b-read-write-endpoint-id>", "databaseUrl": "<secret-postgresql-protocol_eval-url>" }
   ]
 }
 ```
 
 The manifest must name **exactly two** sides even for a single-configuration
-run (`parseAbManifest`): both are attested up front, and the run then resets
-and uses only the branches its shape needs (`abRunningTargets`).
+run: both are attested up front, and the run then resets and uses only the
+branches its shape needs (`abRunningTargets`). Legacy A/B continues accepting
+its old unversioned shape, but manifest v2 is also accepted by projecting only
+project/base and the two child targets. Historical quality accepts **only** v2.
 
-Attestation checks each side is the exactly-named designated branch, is not
-primary, is parented on a base branch named `eval-discovery-base`, and has an
-endpoint whose host matches its `databaseUrl`. A failed attestation prints one
-fixed message and never the control plane's own — control-plane responses and
-`DATABASE_URL`s carry credentials — so do not expect the specific mismatch to be
-named.
+Legacy attestation checks each child is exactly named, non-primary, parented on
+`eval-discovery-base`, and host-bound. Historical quality additionally requires
+one distinct `read_only` base replica and two distinct `read_write` children,
+and jointly binds them to the separately declared `read_write` base refresh
+endpoint. Every URL names exactly `/protocol_eval`. A failed attestation prints
+one fixed message and never the control plane's own — control-plane responses
+and database URLs carry credentials — so do not expect the specific mismatch to
+be named.
 
 **The 28 flags it can offer.** `DISCOVERY_ENV_KEYS` in
 `services/api/src/cli/discovery.flags.ts`, **generated** from a scan of the

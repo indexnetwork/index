@@ -25,6 +25,28 @@ enum AgentFaceStore {
     }
 }
 
+/// Which OS notifications interrupt the user (the settings pane's toggles).
+/// Purely local preference state, so like the agent face it lives in
+/// UserDefaults, which — unlike file:// localStorage — survives a relaunch.
+enum NotifyPrefsStore {
+    private static let key = "NOTIFY_PREFS"
+
+    static func save(_ value: [String: Any]?) {
+        guard let value = value,
+              let data = try? JSONSerialization.data(withJSONObject: value),
+              let json = String(data: data, encoding: .utf8) else {
+            UserDefaults.standard.removeObject(forKey: key)
+            return
+        }
+        UserDefaults.standard.set(json, forKey: key)
+    }
+
+    /// The stored JSON, ready to interpolate into the injection script.
+    static func loadJSON() -> String {
+        UserDefaults.standard.string(forKey: key) ?? "null"
+    }
+}
+
 /// JSON-encode a string (or null) so it can be interpolated safely into JS.
 func jsonValue(_ s: String?) -> String {
     guard let s = s, let d = try? JSONEncoder().encode(s), let out = String(data: d, encoding: .utf8) else {

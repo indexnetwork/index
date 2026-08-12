@@ -38,6 +38,85 @@ Generated HTML must be regenerated through `assemble.py`, never hand-edited. The
 
 Production distribution is direct Developer ID distribution, not the Mac App Store. It requires macOS 13+, Universal 2 artifacts, Hardened Runtime, Developer ID signing, notarization, stapling, checksums, immutable production HTTPS endpoint inputs, and a clean-account acceptance run. **App Sandbox is not a production requirement** for this direct-distribution model; release validation rejects unexpected sandbox/debug entitlements rather than requiring them.
 
+### Development: Hot-Reload Mode
+
+For rapid iteration without rebuilding the Swift binary each time:
+
+```bash
+cd apps/mac
+./dev.sh
+```
+
+This will:
+- Watch `src/` for changes (JSX, HTML, CSS)
+- Re-run `assemble.py` on each change to update `Resources/index.html`
+- Automatically open the app (if not running) or trigger a reload
+
+The app will hot-reload as you edit files, great for UI tweaking.
+
+**To manually reload** during development, press **Cmd+R** (standard browser reload) in the app, or close and relaunch.
+
+### Troubleshooting Build
+
+**"AssertionError: no @font-face url() references found"**
+- The CSS must reference fonts at `fonts/jetbrains-mono-latin-var.woff2` etc.
+- Check `src/index.html` for correct paths.
+
+**Swift compilation fails**
+- Ensure you have Xcode Command Line Tools: `xcode-select --install`
+- Try `swiftc -version` to verify.
+
+**"codesign failed"**
+- Ad-hoc signing is skipped for local builds. The app will still run locally.
+
+### Deep links
+
+The app opens two URL families, and **all** routing lives in one pure function,
+`parseDeepLink` in `api/deeplink.mjs` (unit tested in `api/deeplink.spec.mjs`,
+inlined into the bundle as `window.IndexApi.parseDeepLink`). The Swift shell
+only delivers URLs — it raises the window and forwards the raw string to the
+page as an `index-deeplink` `CustomEvent`, queuing anything that arrives before
+the web view has finished loading (cold launch).
+
+| URL | Opens |
+| --- | --- |
+| `https://index.network/o/<id>` · `index://o/<id>` | that opportunity's card |
+| `https://index.network/u/<id>` · `index://u/<id>` | that person's profile |
+| `https://index.network/c/<code>` · `index://c/<code>` | nothing — retired connect links get a one-line notice |
+| `index://q/<question-id>` | the signal that owns that pending question |
+| `index://chat/<conversation-id>` | that conversation's chat inside its signal |
+
+The `q`/`chat` routes are minted only by the app's own desktop notifications
+(no web page serves them), so they matter mostly as the toast tap target.
+
+Query strings, fragments and trailing slashes are ignored; foreign hosts,
+unknown paths and malformed URLs are ignored silently. Extra hosts (staging)
+are a `hosts` argument, not a code change.
+
+#### Known limitation: universal links need a real signature
+
+The `https://` half only works in a **Developer ID-signed, notarized** build.
+`build.sh` generates the `com.apple.developer.associated-domains` entitlement
+for the selected `INDEX_LINK_HOST` and passes that generated plist to
+`codesign`; `Index.entitlements` is not the signed build input.
+macOS verifies the resulting signed-app entitlement (for the default profile,
+`applinks:index.network`) against the host's `apple-app-site-association`,
+which lists `<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
+`APPLE_TEAM_ID` set. Inspect the built artifact with
+`codesign -d --entitlements :- dist/Index.app`. An ad-hoc dev build has no team,
+so macOS never hands it a universal link and `build.sh` says so.
+
+The `index://` scheme (registered via `CFBundleURLTypes` in `Info.plist`) has no
+such requirement and is the way to exercise deep links locally:
+
+```bash
+open "index://o/<opportunity-id>"
+open "index://u/<user-id>"
+open "index://c/<code>"            # expect the "no longer supported" notice
+# only on a signed, notarized build:
+open "https://index.network/o/<opportunity-id>"
+```
+
 ### Developer ID dev handoff
 
 This operator-only handoff runs on macOS with a Developer ID Application identity and local notarytool profile. It never places endpoint credentials in the bundle.

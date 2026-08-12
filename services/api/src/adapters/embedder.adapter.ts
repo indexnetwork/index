@@ -6,7 +6,7 @@
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
-import db from '../lib/drizzle/drizzle';
+import { embeddingConfigurationFingerprint } from '../lib/embedding/embedding.identity';
 import { traceAppOperation } from '../lib/sentry-performance';
 import * as schema from '../schemas/database.schema';
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,22 +100,55 @@ export function planHydeCorpusSearches(
 // Adapter implementation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class EmbedderAdapter {
-  private openai: OpenAI;
-  private dimensions: number;
+async function getDb() {
+  return (await import('../lib/drizzle/drizzle')).default;
+}
 
-  constructor(options?: { apiKey?: string; baseURL?: string; dimensions?: number }) {
-    this.openai = new OpenAI({
+export interface EmbedderAdapterIdentity {
+  provider: 'openrouter';
+  model: string;
+  dimensions: number;
+  configurationFingerprint: string;
+}
+
+export class EmbedderAdapter {
+  private openai?: OpenAI;
+  private readonly openaiOptions: NonNullable<ConstructorParameters<typeof OpenAI>[0]>;
+  private dimensions: number;
+  private model: string;
+  readonly identity: EmbedderAdapterIdentity;
+
+  constructor(options?: {
+    apiKey?: string;
+    baseURL?: string;
+    dimensions?: number;
+    maxRetries?: number;
+    timeout?: number;
+  }) {
+    const baseURL = options?.baseURL ?? OPENROUTER_EMBEDDING_BASE_URL;
+    this.dimensions = options?.dimensions ?? OPENROUTER_EMBEDDING_DIMENSIONS;
+    this.model = OPENROUTER_EMBEDDING_MODEL;
+    this.openaiOptions = {
       apiKey: options?.apiKey ?? process.env.OPENROUTER_API_KEY,
-      baseURL: options?.baseURL ?? OPENROUTER_EMBEDDING_BASE_URL,
+      baseURL,
       defaultHeaders: options?.baseURL
         ? undefined
         : {
             'HTTP-Referer': 'https://index.network',
             'X-Title': 'Index Network',
           },
+      ...(options?.maxRetries === undefined ? {} : { maxRetries: options.maxRetries }),
+      ...(options?.timeout === undefined ? {} : { timeout: options.timeout }),
+    };
+    const configuration = {
+      provider: 'openrouter' as const,
+      model: this.model,
+      dimensions: this.dimensions,
+    };
+    this.identity = Object.freeze({
+      ...configuration,
+      configurationFingerprint: embeddingConfigurationFingerprint(configuration),
     });
-    this.dimensions = options?.dimensions ?? OPENROUTER_EMBEDDING_DIMENSIONS;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -134,7 +167,7 @@ export class EmbedderAdapter {
         attributes: {
           subsystem: 'embedding',
           provider: 'openrouter',
-          model: OPENROUTER_EMBEDDING_MODEL,
+          model: this.model,
           'embedding.input_count': Array.isArray(text) ? text.length : 1,
           'embedding.dimensions': dimensions ?? this.dimensions,
         },
@@ -155,8 +188,8 @@ export class EmbedderAdapter {
     }
 
     const dim = dimensions ?? this.dimensions;
-    const response = await this.openai.embeddings.create({
-      model: OPENROUTER_EMBEDDING_MODEL,
+    const response = await this.getOpenAI().embeddings.create({
+      model: this.model,
       input: cleanTexts,
       dimensions: dim,
       encoding_format: 'float',
@@ -168,6 +201,14 @@ export class EmbedderAdapter {
 
     const embeddings = response.data.map((d) => d.embedding);
     return Array.isArray(text) ? embeddings : embeddings[0];
+  }
+
+  private getOpenAI(): OpenAI {
+    if (!this.openaiOptions.apiKey?.trim()) {
+      throw new Error('OPENROUTER_API_KEY is required for embedding generation');
+    }
+    if (!this.openai) this.openai = new OpenAI(this.openaiOptions);
+    return this.openai;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -269,6 +310,7 @@ export class EmbedderAdapter {
     lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 
@@ -321,6 +363,7 @@ export class EmbedderAdapter {
     lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { premises, premiseNetworks } = schema;
 
@@ -373,6 +416,7 @@ export class EmbedderAdapter {
     lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { userContexts } = schema;
 
@@ -458,6 +502,7 @@ export class EmbedderAdapter {
     limit: number,
     minScore: number
   ): Promise<VectorSearchResult<unknown>[]> {
+    const db = await getDb();
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentNetworks } = schema;
 

@@ -19,7 +19,7 @@ API_DIR = ROOT / "api"
 # what replaces them here, while the files keep real imports so `bun test api/`
 # can load any of them on its own.
 API_MODULES = (
-    "socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "radar-state.mjs",
+    "socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "notifications.mjs", "radar-state.mjs",
     "markdown.mjs", "agent-runtime.mjs", "agent-runtime-saga.mjs",
 )
 API_EXPORTS = [
@@ -30,6 +30,10 @@ API_EXPORTS = [
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
     "sameRadarPeople", "applyRadarPeople",
     "parseDeepLink", "isIndexDeepLink",
+    "NOTIFIED_ENTITIES_KEY", "MAX_NOTIFIED_ENTITIES",
+    "notificationEntityKey", "isOwnMessage", "notificationEventAllowed",
+    "composeNotification", "rememberNotificationEntity",
+    "snapshotNotificationEvents", "reconcileNotificationSnapshot",
     "SOCIAL_PREFIX", "EDITABLE_PLATFORMS", "parseSocial", "firstSocialValue",
     "socialPlatformOf", "socialHandleOf", "socialHrefOf", "socialApiLabelOf",
     "buildSocialHref", "normalizeSocial", "splitProfileSocials", "buildProfileSocials",
