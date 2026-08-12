@@ -46,7 +46,7 @@ test("production orchestration notarizes both inner bundles before either exact 
   const stapleApp = script.indexOf('notarize-bundle.sh" "$SIGNED_DIRECTORY/Index.app');
   const stapleConnector = script.indexOf('notarize-bundle.sh" "$SIGNED_DIRECTORY/IndexConnector.app');
   const createDmg = script.indexOf('create-dmg.sh"');
-  const stapleDmg = script.indexOf('notarize_dmg_transaction "$app_dmg"');
+  const stapleDmg = script.indexOf('notarize_dmg_transform "$app_source" "$app_dmg"');
   expect(stapleApp).toBeGreaterThan(-1);
   expect(stapleConnector).toBeGreaterThan(stapleApp);
   expect(createDmg).toBeGreaterThan(stapleConnector);
@@ -182,11 +182,15 @@ test("DMG creation requires both sibling bundles already stapled and emits read-
 test("DMG rejection prevents stapling and mounted verification", () => {
   const root = fixture();
   const bin = join(root, "bin");
-  const transaction = join(root, ".index-final-transaction.fixture");
+  const sourceTransaction = join(root, ".index-final-source.fixture");
+  const transaction = join(root, ".index-final-candidate.fixture");
+  const sourceDmg = join(sourceTransaction, "Index-macOS-1.0.0-universal.dmg");
   const dmg = join(transaction, "Index-macOS-1.0.0-universal.dmg");
   const log = join(root, "commands");
+  mkdirSync(sourceTransaction, { mode: 0o700 });
   mkdirSync(transaction, { mode: 0o700 });
-  writeFileSync(dmg, "fixture");
+  writeFileSync(sourceDmg, "fixture");
+  writeFileSync(`${sourceDmg}.reproducibility.txt`, "artifact.sha256=old\n");
   mkdirSync(bin);
   executable(join(bin, "codesign"), '#!/usr/bin/env bash\nprintf "codesign:%s\\n" "$*" >> "$LOG"\n');
   executable(join(bin, "security"), "#!/usr/bin/env bash\nexit 0\n");
@@ -195,8 +199,9 @@ test("DMG rejection prevents stapling and mounted verification", () => {
 printf '%s\\n' "$*" >> "$LOG"
 if [[ "$1 $2" == "notarytool submit" ]]; then printf '{"status":"Invalid"}\\n'; fi
 `);
-  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; validate_production_identity() { :; }; verify_mounted_candidate() { :; }; verify_disk_image_signature() { :; }; run_final_verification() { printf "mounted\\n" >> "$LOG"; }; notarize_dmg_transaction "$DMG"', {
+  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; validate_production_identity() { :; }; verify_mounted_candidate() { :; }; verify_disk_image_signature() { :; }; run_final_verification() { printf "mounted\\n" >> "$LOG"; }; notarize_dmg_transform "$SOURCE_DMG" "$DMG"', {
     SCRIPT: dmgPath,
+    SOURCE_DMG: sourceDmg,
     DMG: dmg,
     LOG: log,
     CODESIGN_IDENTITY: "Developer ID Application: Provider Free Fixture",
