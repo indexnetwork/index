@@ -37,6 +37,9 @@ jobs:
         with:
           bun-version: "1.2.20"
 
+      - name: Install frozen test dependencies
+        run: bun install --frozen-lockfile
+
       - name: Show toolchain
         run: |
           sw_vers
@@ -118,7 +121,8 @@ jobs:
             apps/mac/release/verify-release-metadata.sh \
             apps/mac/release/verify-prior-release-metadata.sh \
             apps/mac/release/build-release-isolation-guard.sh \
-            apps/mac/release/build-release.sh
+            apps/mac/release/build-release.sh \
+            apps/mac/scripts/dmg.sh
           python3 -m py_compile \
             apps/mac/release/process-isolation.py \
             apps/mac/release/sealed-inventory.py

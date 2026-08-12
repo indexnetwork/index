@@ -247,5 +247,5 @@ test('README handoff documents the DMG packaging step', () => {
 });
 
 test('macOS CI syntax-checks dmg.sh alongside the other scripts', () => {
-  expect(workflow).toContain('bash -n scripts/build.sh scripts/link-host.sh scripts/provisioning-profile.sh scripts/notarize.sh scripts/dmg.sh');
+  expect(workflow).toMatch(/bash -n[\s\S]*apps\/mac\/scripts\/build\.sh[\s\S]*apps\/mac\/scripts\/dmg\.sh/);
 });

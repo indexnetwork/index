@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -171,7 +171,7 @@ test("DMG creation requires both sibling bundles already stapled and emits read-
     INDEX_RELEASE_MACOS_BUILD: "23G80",
     PATH: `${bin}:${process.env.PATH}`,
   });
-  expect(result.exitCode).toBe(0);
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
   const commands = readFileSync(log, "utf8");
   expect(commands.match(/stapler validate/g)?.length).toBe(2);
   expect(commands.match(/spctl:/g)?.length).toBe(2);
@@ -245,6 +245,6 @@ fi
   const verifiedPath = commands.match(/^verified:(.*\/Index\.app)$/m)?.[1];
   expect(verifiedPath).toBeTruthy();
   expect(verifiedPath).toContain(`${root}/index-dmg-mount.`);
-  expect(commands).toContain(`detach ${verifiedPath.replace(/\/Index\.app$/, "")}`);
+  expect(commands).toContain(`detach ${realpathSync(verifiedPath.replace(/\/Index\.app$/, ""))}`);
   expect(commands).not.toContain("dist/signed");
 });

@@ -34,8 +34,6 @@ compile_app_binary() {
             -framework Cocoa -framework WebKit -framework Network -framework Security \
             -o "$output" \
             Security/Sources/IndexKeychainStore.swift \
-            Sources/OwnerCredentialStore.swift \
-            Sources/NativeAPIRequestBridge.swift \
             Sources/*.swift
     else
         swiftc -O -whole-module-optimization \
@@ -43,8 +41,6 @@ compile_app_binary() {
             -framework Cocoa -framework WebKit -framework Network -framework Security \
             -o "$output" \
             Security/Sources/IndexKeychainStore.swift \
-            Sources/OwnerCredentialStore.swift \
-            Sources/NativeAPIRequestBridge.swift \
             Sources/*.swift
     fi
 }
