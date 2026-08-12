@@ -486,6 +486,36 @@ describe('strict historical quality manifest parsing and attestation', () => {
     expect(error!.message).not.toContain('hunter2');
   });
 
+  it.each([
+    'postgresql://ep-replica.neon.tech/protocol_eval',
+    'postgresql://user@ep-replica.neon.tech/protocol_eval',
+    'postgresql://:secret@ep-replica.neon.tech/protocol_eval',
+    'postgresql://user:@ep-replica.neon.tech/protocol_eval',
+    'postgresql://%20:secret@ep-replica.neon.tech/protocol_eval',
+    'postgresql://user:%20@ep-replica.neon.tech/protocol_eval',
+    'postgresql://user:%ZZ-secret@ep-replica.neon.tech/protocol_eval',
+  ])('rejects missing, blank, or malformed strict v2 credentials without echoing them: %s', (databaseUrl) => {
+    let error: Error | undefined;
+    try {
+      parseHistoricalQualityManifest(qualityManifestJson({
+        baseReadReplica: { ...qualityManifest.baseReadReplica, databaseUrl },
+      }));
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(error!.message).toBe('Discovery manifest baseReadReplica databaseUrl must contain database credentials');
+    expect(error!.message).not.toContain(databaseUrl);
+    expect(error!.message).not.toContain('secret');
+  });
+
+  it('accepts percent-encoded non-empty strict v2 credentials', () => {
+    const databaseUrl = 'postgresql://quality%2Dreader:quality%2Dsecret@ep-replica.neon.tech/protocol_eval';
+    expect(parseHistoricalQualityManifest(qualityManifestJson({
+      baseReadReplica: { ...qualityManifest.baseReadReplica, databaseUrl },
+    })).baseReadReplica.databaseUrl).toBe(databaseUrl);
+  });
+
   it('accepts the strict v2 manifest for quality attestation', async () => {
     await expect(attestQuality()).resolves.toBeDefined();
   });
@@ -593,9 +623,15 @@ describe('strict historical quality manifest parsing and attestation', () => {
 });
 
 describe('legacy A/B manifest compatibility', () => {
-  it('continues accepting unversioned and version-1 legacy manifests', () => {
-    expect(parseLegacyAbManifest(manifestJson())).toEqual(manifest);
-    expect(parseLegacyAbManifest(manifestJson({ version: 1 }))).toEqual(manifest);
+  it('continues accepting unversioned and version-1 legacy manifests without database credentials', () => {
+    const credentialless = {
+      targets: [
+        { ...manifest.targets[0], databaseUrl: 'postgresql://ep-a.neon.tech/protocol_eval' },
+        { ...manifest.targets[1], databaseUrl: 'postgresql://ep-b.neon.tech/protocol_eval' },
+      ] as const,
+    };
+    expect(parseLegacyAbManifest(manifestJson(credentialless)).targets).toEqual(credentialless.targets);
+    expect(parseLegacyAbManifest(manifestJson({ version: 1, ...credentialless })).targets).toEqual(credentialless.targets);
   });
 
   it('accepts v2 by projecting exactly the same two child targets', () => {

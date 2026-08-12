@@ -59,6 +59,32 @@ describe('historical quality writable refresh target', () => {
     ]) expect(() => parseQualityBaseRefreshTarget(malformed)).toThrow();
   });
 
+  it.each([
+    'postgresql://ep-quality-base.neon.tech/protocol_eval',
+    'postgresql://user@ep-quality-base.neon.tech/protocol_eval',
+    'postgresql://:secret@ep-quality-base.neon.tech/protocol_eval',
+    'postgresql://user:@ep-quality-base.neon.tech/protocol_eval',
+    'postgresql://%20:secret@ep-quality-base.neon.tech/protocol_eval',
+    'postgresql://user:%20@ep-quality-base.neon.tech/protocol_eval',
+    'postgresql://user:%ZZ-secret@ep-quality-base.neon.tech/protocol_eval',
+  ])('rejects missing, blank, or malformed refresh credentials without echoing them: %s', (databaseUrl) => {
+    let error: Error | undefined;
+    try {
+      parseQualityBaseRefreshTarget(JSON.stringify({ ...target, databaseUrl }));
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(error!.message).toBe('Historical quality refresh target must contain database credentials');
+    expect(error!.message).not.toContain(databaseUrl);
+    expect(error!.message).not.toContain('secret');
+  });
+
+  it('accepts percent-encoded non-empty refresh credentials', () => {
+    const databaseUrl = 'postgresql://quality%2Downer:quality%2Dsecret@ep-quality-base.neon.tech/protocol_eval';
+    expect(parseQualityBaseRefreshTarget(JSON.stringify({ ...target, databaseUrl })).databaseUrl).toBe(databaseUrl);
+  });
+
   it('attests the exact non-primary base branch, endpoint host, database, and read_write type', async () => {
     const parsed = parseQualityBaseRefreshTarget(JSON.stringify(target));
     const attested = await attestWritableQualityBaseTarget({ target: parsed, controlPlane: controlPlane() });

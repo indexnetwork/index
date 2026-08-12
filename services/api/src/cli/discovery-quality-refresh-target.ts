@@ -30,9 +30,11 @@ function assertTargetUrl(value: string): URL {
   if (url.port && url.port !== '5432') throw new Error('Historical quality refresh target port must be omitted or exactly 5432');
   if (!url.hostname.endsWith('.neon.tech')) throw new Error('Historical quality refresh target must use a Neon host');
   try {
-    if (!decodeURIComponent(url.username) || !decodeURIComponent(url.password)) throw new Error('missing credentials');
+    if (decodeURIComponent(url.username).trim().length === 0 || decodeURIComponent(url.password).trim().length === 0) {
+      throw new Error('missing credentials');
+    }
   } catch {
-    throw new Error('Historical quality refresh target must contain valid credentials');
+    throw new Error('Historical quality refresh target must contain database credentials');
   }
   return url;
 }

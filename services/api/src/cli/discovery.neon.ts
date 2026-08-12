@@ -107,6 +107,15 @@ function parseUrl(value: string): URL | null {
  * the port rejects nothing legitimate; pinning the database name is what keeps a
  * side from being pointed at some other database on a Neon host.
  */
+function hasNonBlankDecodedCredentials(url: URL): boolean {
+  try {
+    return decodeURIComponent(url.username).trim().length > 0
+      && decodeURIComponent(url.password).trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function assertNeonPostgresUrl(value: string, field: string, strictQueryFree = false): void {
   const url = parseUrl(value);
   if (!url || (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') || !url.hostname.endsWith('.neon.tech')) {
@@ -117,6 +126,9 @@ function assertNeonPostgresUrl(value: string, field: string, strictQueryFree = f
   }
   if (url.port && url.port !== '5432') {
     throw new Error(`Discovery manifest ${field} port must be exactly 5432`);
+  }
+  if (strictQueryFree && !hasNonBlankDecodedCredentials(url)) {
+    throw new Error(`Discovery manifest ${field} must contain database credentials`);
   }
   if (strictQueryFree && (url.search !== '' || url.hash !== '')) {
     throw new Error(`Discovery manifest ${field} must not contain query parameters or fragments`);
