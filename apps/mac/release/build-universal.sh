@@ -135,7 +135,6 @@ canonical = json.dumps(identity, sort_keys=True, separators=(',', ':'))
 identity['IndexBuildID'] = hashlib.sha256(canonical.encode()).hexdigest()
 with open(destination, 'w', encoding='utf-8') as stream:
     json.dump(identity, stream, sort_keys=True, separators=(',', ':'))
-    stream.write('\n')
 PY
 }
 
@@ -152,17 +151,51 @@ import json
 import re
 import sys
 
-words = []
-for token in sys.argv[1].split():
-    if re.fullmatch(r'[0-9A-Fa-f]+', token) and len(token) % 2 == 0:
-        words.append(token)
-if not words:
+dump, destination = sys.argv[1:]
+lines = dump.splitlines()
+if not lines:
     raise SystemExit('compiled identity section contains no hexadecimal bytes')
-raw = bytes.fromhex(''.join(words)).rstrip(b'\0')
-identity = json.loads(raw.decode('utf-8'))
-with open(sys.argv[2], 'w', encoding='utf-8') as stream:
-    json.dump(identity, stream, sort_keys=True, separators=(',', ':'))
-    stream.write('\n')
+
+width = None
+words = []
+for line in lines:
+    tokens = line.split()
+    if not tokens:
+        raise SystemExit('compiled identity section contains a blank row')
+    row_width = len(tokens[0])
+    expected_fields = {8: 4, 16: 2}.get(row_width)
+    if expected_fields is None or not 1 <= len(tokens) <= expected_fields or any(
+        len(token) != row_width or not re.fullmatch(r'[0-9A-Fa-f]+', token)
+        for token in tokens
+    ):
+        raise SystemExit('compiled identity section contains a malformed data row')
+    if width is None:
+        width = row_width
+    elif width != row_width:
+        raise SystemExit('compiled identity section mixes data field widths')
+    words.extend(tokens)
+
+raw = bytes.fromhex(''.join(words))
+try:
+    text = raw.decode('utf-8')
+except UnicodeDecodeError as error:
+    raise SystemExit('compiled identity section is not UTF-8') from error
+decoder = json.JSONDecoder()
+try:
+    identity, end = decoder.raw_decode(text)
+except json.JSONDecodeError as error:
+    raise SystemExit('compiled identity section is not one JSON value') from error
+if not isinstance(identity, dict):
+    raise SystemExit('compiled identity section JSON is not an object')
+canonical = json.dumps(identity, sort_keys=True, separators=(',', ':')).encode('utf-8')
+if raw[:len(canonical)] != canonical:
+    raise SystemExit('compiled identity section is not canonical JSON')
+padding = raw[len(canonical):]
+expected_padding = (-len(canonical)) % 16
+if padding != b'\0' * expected_padding:
+    raise SystemExit('compiled identity section has invalid compiler section padding')
+with open(destination, 'wb') as stream:
+    stream.write(canonical)
 PY
 }
 

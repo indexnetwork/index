@@ -59,20 +59,11 @@ describe("macOS Universal 2 production build contract", () => {
     expect(buildSource).not.toContain('compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64" "$app_identity"');
   });
 
-  test("extracts arbitrary-width otool hex fields into the compiled identity", () => {
+  function extractFixture(lines) {
     const fixtureRoot = mkdtempSync(resolve(tmpdir(), "universal-otool-"));
     const otoolFixture = resolve(fixtureRoot, "otool.txt");
     const destination = resolve(fixtureRoot, "identity.json");
-    writeFileSync(
-      otoolFixture,
-      [
-        "Contents of (__TEXT,__indexcfg) section",
-        "7b22496e64657842 75696c6454617267",
-        "6574223a22617070 227d000000000000",
-        "",
-      ].join("\n"),
-    );
-
+    writeFileSync(otoolFixture, `${lines.join("\n")}\n`);
     const result = Bun.spawnSync(
       [
         "bash",
@@ -89,12 +80,85 @@ describe("macOS Universal 2 production build contract", () => {
         stderr: "pipe",
       },
     );
-
-    expect(result.exitCode).toBe(0);
-    expect(JSON.parse(readFileSync(destination, "utf8"))).toEqual({
-      IndexBuildTarget: "app",
-    });
+    const output = result.exitCode === 0 ? readFileSync(destination, "utf8") : null;
     rmSync(fixtureRoot, { recursive: true, force: true });
+    return { result, output };
+  }
+
+  test.each([
+    [
+      "8-hex-digit fields",
+      [
+        "7b22496e 64657842 75696c64 54617267",
+        "6574223a 22617070 227d0000 00000000",
+      ],
+    ],
+    [
+      "16-hex-digit fields",
+      [
+        "7b22496e64657842 75696c6454617267",
+        "6574223a22617070 227d000000000000",
+      ],
+    ],
+  ])("extracts strict otool -X section rows with %s", (_name, lines) => {
+    const { result, output } = extractFixture(lines);
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(output).toBe('{"IndexBuildTarget":"app"}');
+  });
+
+  test.each([
+    [
+      "a hex-looking section header",
+      [
+        "feedface",
+        "7b22496e 64657842 75696c64 64546172",
+        "67657422 3a226170 70227d00 00000000",
+      ],
+    ],
+    [
+      "a leading address field",
+      [
+        "0000000100003f40 7b22496e64657842 75696c6454617267",
+        "0000000100003f50 6574223a22617070 227d000000000000",
+      ],
+    ],
+    [
+      "trailing JSON whitespace",
+      [
+        "7b22496e 64657842 75696c64 64546172",
+        "67657422 3a226170 70227d20 00000000",
+      ],
+    ],
+    [
+      "interior NUL contamination",
+      [
+        "7b22496e 64657842 75696c64 64005461",
+        "72676574 223a2261 7070227d 00000000",
+      ],
+    ],
+    [
+      "nonzero trailing contamination",
+      [
+        "7b22496e 64657842 75696c64 64546172",
+        "67657422 3a226170 70227d01 00000000",
+      ],
+    ],
+    [
+      "an unsupported field width",
+      ["7b22496e6465 784275696c64 546172676574 223a22617070"],
+    ],
+    [
+      "a malformed token",
+      [
+        "7b22496e 64657842 75696c64 64546172",
+        "67657422 3a226170 70227d0g 00000000",
+      ],
+    ],
+  ])("rejects otool output containing %s", (_name, lines) => {
+    const { result, output } = extractFixture(lines);
+    expect(result.exitCode).not.toBe(0);
+    expect(output).toBeNull();
   });
 
   test("extracts and compares embedded compiled identity records before merge", () => {
