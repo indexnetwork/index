@@ -162,6 +162,21 @@
   color: #5d7466;
 }
 
+.download-card__checksum {
+  width: 100%;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  font-size: 9px;
+  line-height: 1.4;
+  color: #789080;
+}
+
+.download-card__metadata {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #9db3a4;
+}
+
 /* ---------- buttons ---------- */
 
 .download-btn {

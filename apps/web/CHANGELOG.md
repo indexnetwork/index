@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Publish the macOS 1.0.0 app and standalone connector only from strict immutable GitHub release metadata; the download page fails closed when metadata or its exact authority is absent or invalid (web 0.52.0).
+
 ### Removed
 - Remove the "Automatic Member Enrichment" policy section from network Access
   settings (web 0.49.0); the backing `profileEnrichment` network permission was

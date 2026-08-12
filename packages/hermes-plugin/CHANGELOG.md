@@ -7,6 +7,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-12
+### Added
+- Add the protected connector CMS handoff contract for the production macOS candidate. The source package remains fail-closed until release/security operators separately review and commit the exact CMS bytes and matching digest pin.
+
 ## [0.20.0] - 2026-08-12
 ### Added
 - Secure standalone macOS connection (0.20.0): production Hermes uses the signed Index Connector, canonical PKCE loopback approval, a dedicated Keychain-only `idxh_` identity, and fixed production endpoints rather than persisted plugin credentials. Full mode receives the exact six canonical actions while negotiator mode remains the four-handler, server-fenced execution surface.

@@ -41,7 +41,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.51.0",
+      "version": "0.52.0",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -106,7 +106,7 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.20.0",
+      "version": "0.21.0",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",

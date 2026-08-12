@@ -1517,6 +1517,6 @@ test('includes the runtime source in the Swift build', () => {
 });
 
 test('uses a Bash-3-safe optional Swift define expansion', () => {
-  expect(build).toContain('swiftc -Onone ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"} \\');
-  expect(build).not.toContain('swiftc -Onone "${SWIFT_DEFINES[@]}" \\');
+  expect(build).toContain('${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"}');
+  expect(build).not.toContain('${SWIFT_DEFINES[@]:-}');
 });

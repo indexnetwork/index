@@ -1,22 +1,10 @@
+import { useEffect, useState } from "react";
+import { loadMacReleaseMetadata, macReleaseCmsUrl, type MacReleaseMetadata } from "@/lib/mac-release";
 import "./download.css";
 
-/**
- * Single source of truth for the macOS app artifact.
- *
- * Set `VITE_MAC_APP_DOWNLOAD_URL` at build time once a Developer ID-signed,
- * notarized build is published (IND-616); until then the Mac card stays visible
- * with a disabled action rather than linking at nothing.
- */
-export const MAC_APP_DOWNLOAD_URL: string =
-  import.meta.env.VITE_MAC_APP_DOWNLOAD_URL || "";
-
-/**
- * Artifact size, shown under the install button beside the filename. There is
- * no way to know it from the URL without fetching the file, so it is supplied
- * at build time next to the URL above, and simply omitted when absent.
- */
-export const MAC_APP_DOWNLOAD_SIZE: string =
-  import.meta.env.VITE_MAC_APP_DOWNLOAD_SIZE || "";
+/** Immutable signed release JSON. The page fails closed when absent/invalid. */
+export const MAC_RELEASE_METADATA_URL: string =
+  import.meta.env.VITE_MAC_RELEASE_METADATA_URL || "";
 
 /**
  * Hermes Desktop / plugin install destination. Defaults to the public Hermes
@@ -26,21 +14,45 @@ export const HERMES_INSTALL_URL: string =
   import.meta.env.VITE_HERMES_INSTALL_URL || "https://hermes-agent.nousresearch.com/";
 
 /** Shown on the Index for Mac card. */
-export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
+export const MAC_APP_REQUIREMENTS = "macOS 13+ · Universal 2";
 
-/** `index-0.1.0.dmg · 84 mb`, from whichever halves are actually known. */
-function macArtifactLine(): string {
-  const filename = MAC_APP_DOWNLOAD_URL.split("?")[0].split("/").pop() || "";
-  return [filename, MAC_APP_DOWNLOAD_SIZE].filter(Boolean).join(" · ");
+function artifactSize(size: number): string {
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
  * `/download` — post-invite install page. Full-viewport column: header,
  * centered hero and cards. No app chrome.
  */
-export default function Download() {
-  const indexAvailable = MAC_APP_DOWNLOAD_URL.length > 0;
-  const artifactLine = indexAvailable ? macArtifactLine() : "";
+export default function Download({
+  metadataUrl = MAC_RELEASE_METADATA_URL,
+  release: suppliedRelease,
+}: {
+  metadataUrl?: string;
+  release?: MacReleaseMetadata | null;
+}) {
+  const [release, setRelease] = useState<MacReleaseMetadata | null>(suppliedRelease ?? null);
+  const [settled, setSettled] = useState(suppliedRelease !== undefined);
+
+  useEffect(() => {
+    if (suppliedRelease !== undefined) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setRelease(null);
+      setSettled(!metadataUrl);
+    });
+    if (!metadataUrl) return () => { active = false; };
+    loadMacReleaseMetadata(metadataUrl)
+      .then((value) => { if (active) setRelease(value); })
+      .catch(() => { if (active) setRelease(null); })
+      .finally(() => { if (active) setSettled(true); });
+    return () => { active = false; };
+  }, [metadataUrl, suppliedRelease]);
+
+  const app = release?.artifacts.find((artifact) => artifact.kind === "app-dmg");
+  const connector = release?.artifacts.find((artifact) => artifact.kind === "connector-dmg");
+  const releaseAvailable = settled && release && app && connector;
 
   return (
     <div className="download-page">
@@ -69,26 +81,28 @@ export default function Download() {
               <h2 className="download-card__name">Index for Mac</h2>
               <p className="download-card__meta">{MAC_APP_REQUIREMENTS}</p>
 
-              {/* Until a notarized build is published there is nothing to link
-                  at, so the primary action holds its place disabled rather than
-                  claiming a download that would 404. */}
-              {indexAvailable ? (
-                <a
-                  className="download-btn download-btn--primary"
-                  href={MAC_APP_DOWNLOAD_URL}
-                  aria-label="Download Index for Mac"
-                >
-                  INSTALL →
-                </a>
+              {releaseAvailable ? (
+                <>
+                  <a
+                    className="download-btn download-btn--primary"
+                    href={app.url}
+                    aria-label="Download Index for Mac"
+                  >
+                    INSTALL →
+                  </a>
+                  <p className="download-card__note">
+                    v{release.releaseVersion} · {artifactSize(app.size)}
+                  </p>
+                  <code className="download-card__checksum">{app.sha256}</code>
+                </>
               ) : (
-                <span className="download-btn download-btn--disabled" aria-disabled="true">
-                  COMING SOON
-                </span>
+                <>
+                  <span className="download-btn download-btn--disabled" aria-disabled="true">
+                    DOWNLOAD UNAVAILABLE
+                  </span>
+                  <p className="download-card__note">Verified release metadata is unavailable.</p>
+                </>
               )}
-
-              {artifactLine ? (
-                <p className="download-card__note">{artifactLine}</p>
-              ) : null}
             </div>
           </section>
 
@@ -97,20 +111,34 @@ export default function Download() {
               <span className="download-card__icon download-card__icon--outlined">
                 <img src="/logos/nous.webp" alt="" aria-hidden="true" />
               </span>
-              <h2 className="download-card__name">Hermes plugin</h2>
-              <p className="download-card__meta">one-line plugin install</p>
+              <h2 className="download-card__name">Index Connector</h2>
+              <p className="download-card__meta">Standalone Hermes connector</p>
 
-              {/* Both buttons read "INSTALL"; the labels say which is which for
-                  anyone who cannot see the card they sit in. */}
-              <a
-                className="download-btn download-btn--ghost"
-                href={HERMES_INSTALL_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Install Hermes plugin"
-              >
-                INSTALL
-              </a>
+              {releaseAvailable ? (
+                <>
+                  <a
+                    className="download-btn download-btn--ghost"
+                    href={connector.url}
+                    aria-label="Download Index Connector"
+                  >
+                    INSTALL
+                  </a>
+                  <p className="download-card__note">{artifactSize(connector.size)}</p>
+                  <code className="download-card__checksum">{connector.sha256}</code>
+                  <a className="download-card__metadata" href={metadataUrl}>Release metadata</a>
+                  <a className="download-card__metadata" href={macReleaseCmsUrl(metadataUrl)}>CMS signature</a>
+                </>
+              ) : (
+                <a
+                  className="download-btn download-btn--ghost"
+                  href={HERMES_INSTALL_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Install Hermes plugin"
+                >
+                  HERMES INFO
+                </a>
+              )}
             </div>
           </section>
         </div>

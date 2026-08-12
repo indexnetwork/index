@@ -61,11 +61,11 @@ jobs:
         run: |
           bash -n build.sh
           plutil -lint Info.plist IndexConnector.entitlements
-          ./scripts/build.sh --fixture ConnectorProtocolFixture
-          ./scripts/build.sh --fixture KeychainIntegrationFixture
-          ./scripts/build.sh --fixture AuthorizationFixture
-          ./scripts/build.sh --fixture TransportFixture
-          ./scripts/build.sh --fixture InstallationStoreMultiprocessFixture
+          ./build.sh --fixture ConnectorProtocolFixture
+          ./build.sh --fixture KeychainIntegrationFixture
+          ./build.sh --fixture AuthorizationFixture
+          ./build.sh --fixture TransportFixture
+          ./build.sh --fixture InstallationStoreMultiprocessFixture
           ./build.sh
           test -x dist/IndexConnector.app/Contents/MacOS/IndexConnector
 
@@ -91,7 +91,7 @@ jobs:
       - name: macOS shell and handoff tests
         run: |
           bun test \
-            apps/mac/scripts/*.spec.mjs
+            apps/mac/scripts/*.spec.mjs \
             apps/mac/*.spec.mjs \
             apps/mac/release/tests/release-contract.spec.mjs \
             apps/mac/release/tests/packaging-order.spec.mjs \
@@ -150,7 +150,7 @@ jobs:
 
       - name: Assemble web layer
         working-directory: apps/mac
-        run: python3 assemble.py
+        run: python3 scripts/assemble.py
 
       - name: Fail if the committed bundle is stale
         run: |

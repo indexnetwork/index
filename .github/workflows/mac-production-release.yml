@@ -82,7 +82,7 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          151abda3181bf9fecf718b50823ba3248b0e9f02ffaac7fa5d2f7d8b64304366  apps/mac/release/build-release.sh
+          13740811b9578be4baa0ad0c05abbb50dc8b39bee9082d3ccefbaea3eb2a90a4  apps/mac/release/build-release.sh
           f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
           94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
           c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
@@ -104,7 +104,7 @@ jobs:
           INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          151abda3181bf9fecf718b50823ba3248b0e9f02ffaac7fa5d2f7d8b64304366  apps/mac/release/build-release.sh
+          13740811b9578be4baa0ad0c05abbb50dc8b39bee9082d3ccefbaea3eb2a90a4  apps/mac/release/build-release.sh
           f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
           94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
           c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
@@ -112,6 +112,25 @@ jobs:
           PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
           apps/mac/release/build-release.sh candidate
+
+      - name: Verify sealed connector plugin handoff
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
+        run: apps/mac/release/build-release.sh verify-plugin-handoff
+
+      # This private one-day handoff is intentionally not a GitHub Release asset.
+      # Release/security operators must review the exact CMS and digest, then
+      # commit both the CMS bytes and the matching plugin pin in a separate PR.
+      - name: Upload private connector plugin handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: connector-plugin-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/plugin-handoff/connector-release.cms
+            ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/plugin-handoff/connector-release.cms.sha256
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Attest the exact immutable publication asset set
         id: attest
@@ -138,7 +157,7 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          151abda3181bf9fecf718b50823ba3248b0e9f02ffaac7fa5d2f7d8b64304366  apps/mac/release/build-release.sh
+          13740811b9578be4baa0ad0c05abbb50dc8b39bee9082d3ccefbaea3eb2a90a4  apps/mac/release/build-release.sh
           f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
           94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
           c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
@@ -154,7 +173,7 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          151abda3181bf9fecf718b50823ba3248b0e9f02ffaac7fa5d2f7d8b64304366  apps/mac/release/build-release.sh
+          13740811b9578be4baa0ad0c05abbb50dc8b39bee9082d3ccefbaea3eb2a90a4  apps/mac/release/build-release.sh
           PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
           apps/mac/release/build-release.sh assert-absence
