@@ -142,11 +142,11 @@ describe('discovery bootstrap child compatibility', () => {
       attestTargets: async () => { calls.push('attest'); },
       importRuntime: async () => ({ main: async (received) => { seen.push([...received]); } }),
     };
-    const env = {};
+    const env = { DATABASE_URL: 'postgres://u:p@a.neon.tech/protocol_eval' };
     await runDiscoveryBootstrap(args, env, { log: () => {}, error: () => {} }, dependencies);
     expect(calls).toEqual(['gate', 'runtime-prerequisites', 'attest']);
     expect(seen).toEqual([args]);
-    expect(env).toMatchObject({ DATABASE_URL: 'postgres://u:p@a.neon.tech/protocol_eval' });
+    expect(env).toMatchObject({ DATABASE_URL: 'postgres://u:p@a.neon.tech/protocol_eval?sslmode=require' });
   });
 });
 

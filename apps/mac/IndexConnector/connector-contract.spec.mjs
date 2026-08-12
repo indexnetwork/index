@@ -148,7 +148,14 @@ test('production app profile, signed entitlements, and operator docs carry the o
   const readme = read('../README.md');
 
   expect(profileHelper).toContain('keychain-access-groups');
-  expect(profileHelper).toContain('does not authorize exactly the owner Keychain group');
+  // Apple issues Developer ID profiles with the team wildcard, so the profile
+  // may carry the exact owner group or that wildcard and nothing else. Pin the
+  // predicate itself: silently re-tightening it breaks Developer ID signing,
+  // and widening it further would admit a foreign team's groups. The runtime
+  // behaviour is covered in scripts/provisioning-profile.spec.mjs.
+  expect(profileHelper).toContain("groups not in ([expected_owner_group], [f'{expected_team}.*'])");
+  expect(profileHelper).toContain('does not authorize the owner Keychain group');
+  // The signed entitlement stays exact even when the profile carries the wildcard.
   expect(profileHelper).toContain('does not match the signed owner Keychain entitlement');
   expect(appBuild).toContain('validate_embedded_profile "${APP}" "$LINK_HOST"');
   expect(readme).toContain('all four required inputs');

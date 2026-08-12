@@ -54,6 +54,10 @@ enum NativeAPIBodyValidationFixture {
         }
 
         try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/notifications/snapshot", body: nil), "valid notification snapshot rejected")
+        // Discover tab pages the public list; the wrapper always sends page+limit.
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public", body: nil), "public network discovery rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public?page=1&limit=50", body: nil), "paged public network discovery rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public?cursor=1", body: nil), "unknown discovery query accepted")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "GET", path: "/notifications/stream", body: nil), "valid notification stream rejected")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("negotiator")])), "valid chat stream rejected")
         try require(NativeAPIRequestBridge.validateMCPForFixture(arguments: object(["description": string("Meet founders"), "autoApprove": .bool(true)])), "valid create_intent rejected")

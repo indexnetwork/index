@@ -252,6 +252,7 @@ final class NativeAPIRequestBridge {
         ("PUT", #"^/agent-runtime$"#),
         ("POST", #"^/agent-runtime/(?:hermes/prepare|rollback|reconcile-index)$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
+        ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
         ("GET", #"^/networks/[^/?]+/(?:overview|my-intents)$"#),
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
         ("GET", #"^/network-requests$"#), ("POST", #"^/network-requests$"#),
@@ -753,6 +754,7 @@ final class NativeAPIRequestBridge {
         switch route {
         case "/agent-runtime": allowed = ["installationId"]
         case "/users/batch": allowed = ["ids"]
+        case "/networks/discovery/public": allowed = ["page", "limit"]
         case let value where value.range(of: #"^/users/[^/?]+/negotiations$"#, options: .regularExpression) != nil:
             allowed = ["status", "limit", "offset"]
         case "/opportunities", "/opportunities/radar":
