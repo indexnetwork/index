@@ -1,0 +1,62 @@
+name: Publish macOS dev prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Unique prerelease tag (macos-dev-YYYYMMDD.N)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-dev-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/dev'
+    environment: macos-dev-release
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - name: Checkout the dispatched dev commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned Bun runtime
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.14"
+
+      - name: Verify dev release source
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/dev
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff-index --quiet "$GITHUB_SHA" --
+          bash -n apps/mac/scripts/dev-release.sh
+          cd apps/mac
+          bun test \
+            scripts/assemble.spec.mjs \
+            api/client.spec.mjs \
+            api/native-api-bridge.spec.mjs \
+            api/agent-runtime-ui.spec.mjs \
+            api/notifications.spec.mjs
+
+      - name: Build, notarize, and publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEX_DEV_RELEASE_TAG: ${{ inputs.tag }}
+          INDEX_DEVELOPER_ID_CERTIFICATE_P12: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_P12 }}
+          INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          INDEX_APP_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_APP_PROVISIONING_PROFILE_BASE64 }}
+          INDEX_NOTARY_API_KEY_BASE64: ${{ secrets.INDEX_NOTARY_API_KEY_BASE64 }}
+          INDEX_NOTARY_KEY_ID: ${{ secrets.INDEX_NOTARY_KEY_ID }}
+          INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
+        run: apps/mac/scripts/dev-release.sh
