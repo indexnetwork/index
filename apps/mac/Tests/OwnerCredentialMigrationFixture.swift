@@ -131,5 +131,58 @@ enum OwnerCredentialMigrationFixture {
             try keychainOwner.putAndVerify(record)
             throw FixtureFailure.assertion("Keychain read-back mismatch accepted")
         } catch IndexKeychainStoreError.verificationFailed {}
+
+        // Access groups only exist in the data protection keychain on macOS.
+        // Without kSecUseDataProtectionKeychain the group attribute is ignored
+        // and a signed build can never read back what it just wrote, so assert
+        // the flag rides along on exactly the queries carrying an access group.
+        var captured: [NSDictionary] = []
+        var stored = Data()
+        let capturing = IndexKeychainSecurityOperations(
+            add: { query, _ in
+                let attributes = query as NSDictionary
+                captured.append(attributes)
+                stored = (attributes[kSecValueData as String] as? Data) ?? Data()
+                return errSecSuccess
+            },
+            copyMatching: { query, result in
+                captured.append(query as NSDictionary)
+                result?.pointee = stored as CFData
+                return errSecSuccess
+            },
+            update: { query, _ in captured.append(query as NSDictionary); return errSecSuccess },
+            delete: { query in captured.append(query as NSDictionary); return errSecSuccess }
+        )
+        let flagStore = IndexKeychainStore(security: capturing)
+        let probe = Data("data-protection-probe".utf8)
+
+        let grouped = IndexKeychainItemDescriptor(
+            service: "index.fixture", account: "grouped", accessGroup: group
+        )
+        try flagStore.putAndVerify(probe, descriptor: grouped)
+        _ = try flagStore.read(descriptor: grouped)
+        try flagStore.delete(descriptor: grouped)
+        try require(!captured.isEmpty, "no grouped Keychain queries were issued")
+        for query in captured {
+            try require(
+                query[kSecUseDataProtectionKeychain as String] as? Bool == true,
+                "access-group query omitted kSecUseDataProtectionKeychain"
+            )
+        }
+
+        // The flag is scoped to grouped descriptors; an ungrouped descriptor
+        // must not silently opt into a different keychain.
+        captured.removeAll()
+        let ungrouped = IndexKeychainItemDescriptor(service: "index.fixture", account: "ungrouped")
+        try flagStore.putAndVerify(probe, descriptor: ungrouped)
+        _ = try flagStore.read(descriptor: ungrouped)
+        try flagStore.delete(descriptor: ungrouped)
+        try require(!captured.isEmpty, "no ungrouped Keychain queries were issued")
+        for query in captured {
+            try require(
+                query[kSecUseDataProtectionKeychain as String] == nil,
+                "ungrouped query opted into the data protection keychain"
+            )
+        }
     }
 }

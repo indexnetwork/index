@@ -352,6 +352,33 @@ describe('native owner migration and transport source contracts', () => {
     expect(mainSwift).not.toMatch(/api_key|session_token|targetKey/);
   });
 
+  it('percent-encodes the authorize query with exactly encodeURIComponent semantics', () => {
+    // The authorize page parses the tuple with decodeURIComponent, so the
+    // native side has to match it character for character. URLQueryItem leaves
+    // ':' and '/' literal, which is what broke loopback redirect_uri sign-in.
+    const declared = appDelegate.match(
+      /static func encodeURIComponent[\s\S]*?charactersIn:\s*"([^"]*)"/,
+    )?.[1];
+    expect(declared).toBeTruthy();
+
+    // Derive the expectation from the real thing rather than restating the
+    // literal, so a hand-edited charset cannot quietly agree with a hand-edited
+    // test. Every ASCII character encodeURIComponent leaves alone, and no other.
+    const unreserved = Array.from({ length: 128 }, (_, code) => String.fromCharCode(code))
+      .filter((character) => encodeURIComponent(character) === character)
+      .join('');
+    expect([...declared].sort().join('')).toBe([...unreserved].sort().join(''));
+
+    // Guard the specific regression: these must not survive unescaped.
+    for (const character of [':', '/', '+', '&', '=', '?', '#', ' ']) {
+      expect(declared).not.toContain(character);
+    }
+
+    // And the encoded string has to actually reach the URL.
+    expect(appDelegate).toContain('percentEncodedQuery');
+    expect(appDelegate).not.toMatch(/page\?\.queryItems\s*=/);
+  });
+
   it('requires the owner-only access group and macOS 13 production inspection boundary', () => {
     expect(ownerStore).toContain('network.index.system6.owner-credentials');
     expect(ownerStore).not.toContain('network.index.connector.credentials');
