@@ -18,6 +18,7 @@ equivalent env) — harnesses call real models.
 | `profile`     | `bun run eval:profile`     | `EnrichmentGenerator.invoke` (incl. the PII-redaction guarantee)              |
 | `opportunity` | `bun run eval:opportunity` | `OpportunityPresenter.present` (the user-facing card: headline/summary/greeting) |
 | `clarification` | `bun run eval:clarification` | `IntentClarifier` QUD underspecification taxonomy (exact-match corpus)     |
+| `intake` | `bun run eval:intake` | `SignalIntakeOrchestrator.generateFollowUps` answer-first semantic cases |
 | `discovery-retrieval` | `bun run eval:discovery-retrieval` | paired real HyDE/embedding retrieval over frozen premise vs user-context profile corpora |
 
 ### Historical discovery quality v2 contracts
@@ -37,7 +38,7 @@ Each harness has its own README with full flag docs:
 [`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·
 [`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
 [`opportunity`](./opportunity/README.md) · [`clarification`](./clarification/README.md) ·
-[`discovery-retrieval`](./discovery-retrieval/README.md).
+[`intake`](./intake/README.md) · [`discovery-retrieval`](./discovery-retrieval/README.md).
 
 ## Public artifact viewer
 
@@ -186,6 +187,7 @@ eval/
 ├── profile/                # profile corpus, scorer, PII detectors, reporter
 ├── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
 ├── clarification/          # IntentClarifier QUD taxonomy corpus + scorer
+├── intake/                 # answer-first signal-intake semantic corpus + scorer
 ├── viewer/                 # provider-free, privacy-aware static artifact viewer
 ├── ops/                    # eval ops core: artifact index, run launcher, compare, fixture guard
 └── verify.ts               # provider-free CI gate: per-suite typecheck + tests (see below)
@@ -376,7 +378,7 @@ One command verifies every suite without touching a provider:
    have a `tsconfig.json` and a `tests/` directory. New suites cannot escape CI
    unnoticed: an unlisted directory fails the run.
 2. **Per-suite typecheck** — `tsc --noEmit -p eval/<suite>/tsconfig.json` for all
-   eight suites (including `shared` and the provider-free `viewer`; the regular protocol build only covers `src/`).
+   every manifest suite (including `shared` and the provider-free `viewer`; the regular protocol build only covers `src/`).
 3. **Provider-free tests** — `bun test --timeout 30000 eval/<suite>/tests/` per
    suite, each in its own process (so `mock.module()` state never leaks between
    suites). The per-test timeout is capped at 30 seconds (vs Bun's 5s default)
