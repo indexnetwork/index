@@ -126,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // toast tapped while the app was closed still routes once it boots.
         config.userContentController.add(self, name: "indexNotify")
         UNUserNotificationCenter.current().delegate = self
-        if CredentialStore.load() != nil {
+        if currentOwnerCredential() != nil {
             // Signed-in relaunch: surface the permission prompt now rather than
             // at the moment the first toast would otherwise silently drop.
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
