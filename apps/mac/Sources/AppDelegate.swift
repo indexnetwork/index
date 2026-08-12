@@ -690,17 +690,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func configureOwnerCredentialStore() {
-        guard let accessGroup = AppConfig.ownerKeychainAccessGroup,
-              let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        guard let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             ownerStartupFailure = "This build has no authorized owner Keychain group. Use a signed Index build."
             return
         }
         let support = root.appendingPathComponent(CredentialStore.service, isDirectory: true)
         do {
-            var store = try OwnerCredentialStore(
-                accessGroup: accessGroup,
-                applicationSupportDirectory: support
-            )
+            var store: OwnerCredentialStore
+            if let accessGroup = AppConfig.ownerKeychainAccessGroup {
+                store = try OwnerCredentialStore(
+                    accessGroup: accessGroup,
+                    applicationSupportDirectory: support
+                )
+            } else {
+#if INDEX_DEVELOPMENT_BUILD
+                store = OwnerCredentialStore(developmentLoginKeychainAt: support)
+#else
+                ownerStartupFailure = "This build has no authorized owner Keychain group. Use a signed Index build."
+                return
+#endif
+            }
             ownerMigrationJournal = try store.prepareForStartup(installationId: ownerInstallationId)
             ownerCredentialStore = store
         } catch {

@@ -91,6 +91,27 @@ struct OwnerCredentialStore {
         self.files = files
     }
 
+#if INDEX_DEVELOPMENT_BUILD
+    /// Ad-hoc development builds carry no provisioning-profile-authorized
+    /// access group, so the data-protection keychain is unavailable to them.
+    /// Store the credential in the login keychain instead. Never compiled
+    /// into production builds.
+    init(
+        developmentLoginKeychainAt applicationSupportDirectory: URL,
+        keychain: IndexKeychainStore = IndexKeychainStore(),
+        files: OwnerCredentialFileOperations = .live
+    ) {
+        self.keychain = keychain
+        self.descriptor = IndexKeychainItemDescriptor(
+            service: Self.service,
+            account: Self.account,
+            accessGroup: nil
+        )
+        self.applicationSupportDirectory = applicationSupportDirectory
+        self.files = files
+    }
+#endif
+
     var legacyCredentialURL: URL {
         applicationSupportDirectory.appendingPathComponent(Self.legacyCredentialFileName, isDirectory: false)
     }
