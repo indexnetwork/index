@@ -1,4 +1,4 @@
-import { isCredentialEnvKey } from "../ops/ops.allowlist.js";
+import { DISCOVERY_ENV_KEYS, isCredentialEnvKey } from "../ops/ops.allowlist.js";
 
 export const HISTORICAL_QUALITY_TRIGGERS = ["intent", "enrichment"] as const;
 export type HistoricalQualityTrigger = typeof HISTORICAL_QUALITY_TRIGGERS[number];
@@ -62,15 +62,26 @@ function mapDiff(kind: "model" | "env", a: Record<string, string>, b: Record<str
     .map((key) => ({ kind, key, a: a[key] ?? null, b: b[key] ?? null }));
 }
 
-function assertNoOpaqueModelOverrides(config: HistoricalResolvedConfig): void {
+export function assertHistoricalResolvedConfig(config: HistoricalResolvedConfig): void {
   if (Object.prototype.hasOwnProperty.call(config.env, "EVAL_MODEL_OVERRIDES")) {
     throw new Error("Historical resolved env must not contain EVAL_MODEL_OVERRIDES; put resolved agent assignments in the resolved models map");
+  }
+  for (const [agent, modelId] of Object.entries(config.models)) {
+    if (agent.trim() === "" || modelId.trim() === "") throw new Error("Historical resolved model assignments must be non-empty");
+  }
+  for (const [key, value] of Object.entries(config.env)) {
+    if (isCredentialEnvKey(key)) throw new Error(`Historical resolved config contains credential key ${key}`);
+    if (!DISCOVERY_ENV_KEYS.includes(key)) throw new Error(`Historical resolved env key ${key} is not allowed for discovery`);
+    if (value.trim() === "") throw new Error(`Historical resolved env ${key} must be non-empty`);
+  }
+  for (const [key, value] of Object.entries(config.fixed)) {
+    if (value.trim() === "") throw new Error(`Historical fixed resource ${key} must be non-empty`);
   }
 }
 
 export function diffResolvedHistoricalConfigs(a: HistoricalResolvedConfig, b: HistoricalResolvedConfig): HistoricalFactorDifference[] {
-  assertNoOpaqueModelOverrides(a);
-  assertNoOpaqueModelOverrides(b);
+  assertHistoricalResolvedConfig(a);
+  assertHistoricalResolvedConfig(b);
   return [...mapDiff("model", a.models, b.models), ...mapDiff("env", a.env, b.env)];
 }
 
@@ -102,19 +113,7 @@ export function buildHistoricalExperimentPlan(input: HistoricalExperimentInput):
   if (input.sides[0].id !== "a" || (input.sides.length === 2 && input.sides[1].id !== "b")) {
     throw new Error("Historical sides must be [a] or [a, b]");
   }
-  for (const side of input.sides) {
-    assertNoOpaqueModelOverrides(side.config);
-    for (const [agent, modelId] of Object.entries(side.config.models)) {
-      if (agent.trim() === "" || modelId.trim() === "") throw new Error("Historical resolved model assignments must be non-empty");
-    }
-    for (const [key, value] of Object.entries(side.config.env)) {
-      if (isCredentialEnvKey(key)) throw new Error(`Historical resolved config contains credential key ${key}`);
-      if (value.trim() === "") throw new Error(`Historical resolved env ${key} must be non-empty`);
-    }
-    for (const [key, value] of Object.entries(side.config.fixed)) {
-      if (value.trim() === "") throw new Error(`Historical fixed resource ${key} must be non-empty`);
-    }
-  }
+  for (const side of input.sides) assertHistoricalResolvedConfig(side.config);
   if (input.mode === "exploratory" && input.sides.length !== 2) {
     throw new Error("Historical exploratory mode requires two sides");
   }

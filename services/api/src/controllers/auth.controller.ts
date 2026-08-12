@@ -6,7 +6,6 @@ import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { cliCredentialService, type CliCredentialService } from '../services/clicredential.service';
 import { userService } from '../services/user.service';
-import { enrichmentService } from '../services/enrichment.service';
 import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
 import { isWebSignalAgentEnabled } from '../lib/signal-feature';
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
@@ -42,19 +41,6 @@ const updateProfileSchema = z.object({
   }).optional(),
 });
 
-export function hasAtLeastOneSocial(socials: unknown): boolean {
-  return Array.isArray(socials) && socials.length > 0;
-}
-
-export function shouldAutoGenerateProfile(user: {
-  name?: string | null;
-  socials?: unknown;
-  hasProfile?: boolean;
-}): boolean {
-  const hasName = typeof user.name === 'string' && user.name.trim().length > 0;
-  return hasName && hasAtLeastOneSocial(user.socials) && !user.hasProfile;
-}
-
 @Controller('/auth')
 export class AuthController {
   constructor(
@@ -85,16 +71,6 @@ export class AuthController {
     const fullUser = await userService.findWithGraph(user.id);
     if (!fullUser) {
       return Response.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    if (shouldAutoGenerateProfile(fullUser)) {
-      logger.verbose('Auto-generating profile', { userId: user.id });
-      enrichmentService.syncProfile(user.id).catch((error) => {
-        logger.error('Background profile sync failed', {
-          userId: user.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
     }
 
     const { hasProfile: _hasProfile, notificationPreferences, ...userFields } = fullUser;

@@ -20,6 +20,25 @@ export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 
 export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
+export interface HistoricalQualityBaseAttestation {
+  version: 1;
+  corpusVersion: string;
+  planFingerprint: string;
+  seedProjectionFingerprint: string;
+  documentSetFingerprint: string;
+  embedding: {
+    provider: string;
+    model: string;
+    dimensions: number;
+    configurationFingerprint: string;
+  };
+  vectors: Array<{
+    documentId: string;
+    textFingerprint: string;
+    vectorFingerprint: string;
+  }>;
+}
+
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
   networkId: string;
@@ -383,6 +402,7 @@ export const evalMatrixMetadata = pgTable('eval_matrix_metadata', {
   fixtureFingerprint: text('fixture_fingerprint').notNull(),
   fixtureCorpusVersion: text('fixture_corpus_version').notNull(),
   seededAt: timestamp('seeded_at', { withTimezone: true }).notNull(),
+  qualityAttestation: jsonb('quality_attestation').$type<HistoricalQualityBaseAttestation>(),
 });
 /** Precomputed fast-intake artifact: one row per user. */
 export const signalIntakePacks = pgTable('signal_intake_packs', {
@@ -1100,7 +1120,11 @@ export const agents = pgTable('agents', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  lastNegotiationPickupAt: timestamp('last_negotiation_pickup_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  runtimeKind: text('runtime_kind').$type<'hermes' | null>(),
+  installationId: text('installation_id'),
+  runtimeSetupAttemptId: text('runtime_setup_attempt_id'),
   notifyOnOpportunity: boolean('notify_on_opportunity').notNull().default(true),
   dailySummaryEnabled: boolean('daily_summary_enabled').notNull().default(true),
   handleNegotiations: boolean('handle_negotiations').notNull().default(false),
@@ -1109,11 +1133,154 @@ export const agents = pgTable('agents', {
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
   lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
+  lastNegotiationPickupAtIdx: index('agents_last_negotiation_pickup_at_idx').on(table.lastNegotiationPickupAt),
   // One active personal negotiator row per owner. External (poller) and system
   // rows are unconstrained.
   uniquePersonalPerOwner: uniqueIndex('uniq_agents_personal_per_owner')
     .on(table.ownerId)
     .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
+  uniqueHermesInstallation: uniqueIndex('uniq_agents_hermes_installation')
+    .on(table.ownerId, table.runtimeKind, table.installationId)
+    .where(sql`${table.type} = 'external' AND ${table.runtimeKind} = 'hermes' AND ${table.installationId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+  uniqueSelectedNegotiationExecutor: uniqueIndex('uniq_agents_selected_negotiation_executor')
+    .on(table.ownerId)
+    .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
+}));
+
+export const indexAppOwnerAuthorizations = pgTable('index_app_owner_authorizations', {
+  requestId: text('request_id').primaryKey(),
+  ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
+  installationId: text('installation_id').notNull(),
+  redirectUri: text('redirect_uri').notNull(),
+  state: text('state').notNull(),
+  codeChallenge: text('code_challenge').notNull(),
+  codeChallengeMethod: text('code_challenge_method').notNull(),
+  legacyKeyId: text('legacy_key_id'),
+  codeHash: text('code_hash'),
+  replayReceipt: text('replay_receipt'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+}, (table) => ({
+  methodS256: check('index_app_owner_authorizations_s256_check', sql`${table.codeChallengeMethod} = 'S256'`),
+  positiveExpiry: check('index_app_owner_authorizations_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+  stateUnique: uniqueIndex('index_app_owner_authorization_state_unique').on(table.state),
+  codeHashUnique: uniqueIndex('index_app_owner_authorization_code_hash_unique')
+    .on(table.codeHash).where(sql`${table.codeHash} IS NOT NULL`),
+  installationIdx: index('index_app_owner_authorizations_installation_idx').on(table.installationId),
+  expiryIdx: index('index_app_owner_authorizations_expiry_idx').on(table.expiresAt),
+}));
+
+export const indexAppOwnerCredentials = pgTable('index_app_owner_credentials', {
+  id: text('id').primaryKey(),
+  secretHash: text('secret_hash').notNull(),
+  activationProofHash: text('activation_proof_hash'),
+  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  installationId: text('installation_id').notNull(),
+  generation: text('generation').notNull(),
+  audience: text('audience').notNull(),
+  activationState: text('activation_state').notNull().$type<'pending' | 'active' | 'revoked'>(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  audienceCheck: check('index_app_owner_credentials_audience_check', sql`${table.audience} = 'index-app-owner'`),
+  stateCheck: check('index_app_owner_credentials_state_check', sql`${table.activationState} IN ('pending', 'active', 'revoked')`),
+  positiveExpiry: check('index_app_owner_credentials_expiry_check', sql`${table.expiresAt} > ${table.issuedAt}`),
+  secretHashUnique: uniqueIndex('index_app_owner_credentials_secret_hash_unique').on(table.secretHash),
+  liveInstallationUnique: uniqueIndex('index_app_owner_credentials_live_installation_unique')
+    .on(table.ownerId, table.installationId)
+    .where(sql`${table.activationState} IN ('pending', 'active')`),
+  generationUnique: uniqueIndex('index_app_owner_credentials_generation_unique')
+    .on(table.ownerId, table.installationId, table.generation),
+  expiryIdx: index('index_app_owner_credentials_expiry_idx').on(table.expiresAt),
+}));
+
+export const hermesAuthorizations = pgTable('hermes_authorizations', {
+  requestId: text('request_id').primaryKey(),
+  ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
+  agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
+  installationId: text('installation_id').notNull(),
+  redirectUri: text('redirect_uri').notNull(),
+  state: text('state').notNull(),
+  codeChallenge: text('code_challenge').notNull(),
+  codeChallengeMethod: text('code_challenge_method').notNull(),
+  actions: text('actions').array().notNull(),
+  codeHash: text('code_hash'),
+  setupAttemptId: text('setup_attempt_id'),
+  replayReceipt: text('replay_receipt'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+}, (table) => ({
+  methodS256: check('hermes_authorizations_s256_check', sql`${table.codeChallengeMethod} = 'S256'`),
+  canonicalActions: check('hermes_authorizations_actions_check', sql`${table.actions} = ARRAY['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities', 'manage:negotiations']::text[]`),
+  positiveExpiry: check('hermes_authorizations_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+  stateUnique: uniqueIndex('hermes_authorization_state_unique').on(table.state),
+  codeHashUnique: uniqueIndex('hermes_authorization_code_hash_unique')
+    .on(table.codeHash)
+    .where(sql`${table.codeHash} IS NOT NULL`),
+  installationIdx: index('hermes_authorizations_installation_idx').on(table.installationId),
+  expiryIdx: index('hermes_authorizations_expiry_idx').on(table.expiresAt),
+}));
+
+export const hermesAgentCredentials = pgTable('hermes_agent_credentials', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  secretHash: text('secret_hash').notNull(),
+  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  installationId: text('installation_id').notNull(),
+  setupAttemptId: text('setup_attempt_id').notNull(),
+  audience: text('audience').notNull(),
+  actions: text('actions').array().notNull(),
+  activationState: text('activation_state').notNull().$type<'pending' | 'active' | 'revoked'>(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  audienceCheck: check('hermes_agent_credentials_audience_check', sql`${table.audience} = 'hermes-agent'`),
+  canonicalActions: check('hermes_agent_credentials_actions_check', sql`${table.actions} = ARRAY['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities', 'manage:negotiations']::text[]`),
+  stateCheck: check('hermes_agent_credentials_state_check', sql`${table.activationState} IN ('pending', 'active', 'revoked')`),
+  positiveExpiry: check('hermes_agent_credentials_expiry_check', sql`${table.expiresAt} > ${table.issuedAt}`),
+  secretHashUnique: uniqueIndex('hermes_agent_credentials_secret_hash_unique').on(table.secretHash),
+  liveInstallationUnique: uniqueIndex('hermes_agent_credentials_live_installation_unique')
+    .on(table.ownerId, table.installationId)
+    .where(sql`${table.activationState} IN ('pending', 'active')`),
+  liveGenerationUnique: uniqueIndex('hermes_agent_credentials_live_generation_unique')
+    .on(table.agentId, table.setupAttemptId)
+    .where(sql`${table.activationState} IN ('pending', 'active')`),
+  expiryIdx: index('hermes_agent_credentials_expiry_idx').on(table.expiresAt),
+}));
+
+export const hermesEmergencyReceipts = pgTable('hermes_emergency_receipts', {
+  planId: text('plan_id').primaryKey(),
+  audience: text('audience').notNull(),
+  installations: integer('installations').notNull(),
+  credentials: integer('credentials').notNull(),
+  permissions: integer('permissions').notNull(),
+  owners: integer('owners').notNull(),
+  selectedPaused: integer('selected_paused').notNull(),
+  credentialsRevoked: integer('credentials_revoked').notNull(),
+  permissionsRemoved: integer('permissions_removed').notNull(),
+  installationsDisconnected: integer('installations_disconnected').notNull(),
+  resultReason: text('result_reason').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  planIdCheck: check('hermes_emergency_receipts_plan_id_check', sql`${table.planId} ~ '^hecp_[A-Za-z0-9_-]{43}$'`),
+  audienceCheck: check('hermes_emergency_receipts_audience_check', sql`${table.audience} = 'hermes-agent'`),
+  resultCheck: check('hermes_emergency_receipts_result_check', sql`${table.resultReason} = 'executed'`),
+  countsCheck: check('hermes_emergency_receipts_counts_check', sql`
+    ${table.installations} >= 0 AND ${table.credentials} >= 0
+    AND ${table.permissions} >= 0 AND ${table.owners} >= 0
+    AND ${table.selectedPaused} >= 0 AND ${table.selectedPaused} <= ${table.installations}
+    AND ${table.credentialsRevoked} >= 0 AND ${table.credentialsRevoked} <= ${table.credentials}
+    AND ${table.permissionsRemoved} >= 0 AND ${table.permissionsRemoved} <= ${table.permissions}
+    AND ${table.installationsDisconnected} >= 0 AND ${table.installationsDisconnected} <= ${table.installations}
+  `),
 }));
 
 export const agentTransports = pgTable('agent_transports', {
@@ -1520,6 +1687,16 @@ export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
 export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
+export type IndexAppOwnerAuthorization = typeof indexAppOwnerAuthorizations.$inferSelect;
+export type NewIndexAppOwnerAuthorization = typeof indexAppOwnerAuthorizations.$inferInsert;
+export type IndexAppOwnerCredential = typeof indexAppOwnerCredentials.$inferSelect;
+export type NewIndexAppOwnerCredential = typeof indexAppOwnerCredentials.$inferInsert;
+export type HermesAuthorization = typeof hermesAuthorizations.$inferSelect;
+export type NewHermesAuthorization = typeof hermesAuthorizations.$inferInsert;
+export type HermesAgentCredential = typeof hermesAgentCredentials.$inferSelect;
+export type NewHermesAgentCredential = typeof hermesAgentCredentials.$inferInsert;
+export type HermesEmergencyReceiptRow = typeof hermesEmergencyReceipts.$inferSelect;
+export type NewHermesEmergencyReceiptRow = typeof hermesEmergencyReceipts.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;

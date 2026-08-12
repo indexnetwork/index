@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
-import { EVAL_ARTIFACT_SCHEMA_VERSION, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_LEGACY_UNAVAILABLE, EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, canonicalizeForFingerprint, fingerprintCanonicalJson, fingerprintEvalConfig, fingerprintEvalCorpus, getExecutionEvidence, isEvalArtifactV2, looksLikeLegacyScorecard, migrateLegacyBaseline, parseEvalArtifact, readEvalGitProvenance } from "../artifact.js";
+import { EVAL_ARTIFACT_SCHEMA_VERSION, EVAL_BASELINE_ARTIFACT_TYPE, EVAL_LEGACY_UNAVAILABLE, EVAL_RUN_REPORT_ARTIFACT_TYPE, HistoricalQualityExecutionRunSchema, HistoricalQualityMeasurementSchema, HistoricalQualityTransportRowSchema, buildEvalArtifact, canonicalizeForFingerprint, fingerprintCanonicalJson, fingerprintEvalConfig, fingerprintEvalCorpus, getExecutionEvidence, isEvalArtifactV2, isHistoricalQualityArtifact, looksLikeLegacyScorecard, migrateLegacyBaseline, parseEvalArtifact, readEvalGitProvenance } from "../artifact.js";
 import { buildScorecard } from "../scorecard.js";
 import type { CaseResultLike, ScorecardLike } from "../types.js";
-import { TEST_REVISION, makeSuccessfulExecution, makeTestMeta } from "./artifact.fixtures.js";
+import { TEST_REVISION, makeHistoricalQualityArtifact, makeIncompleteHistoricalQualityArtifact, makeSuccessfulExecution, makeTestMeta, reassignHistoricalQualitySlot } from "./artifact.fixtures.js";
 
 const caseResult = (caseId: string, rule: string, passes: number, runs = 3): CaseResultLike => ({
   caseId,
@@ -246,7 +246,249 @@ describe("buildEvalArtifact + parseEvalArtifact", () => {
     const meta = makeTestMeta({ runs: 1, execution: failedRun });
     const report = buildEvalArtifact(EVAL_RUN_REPORT_ARTIFACT_TYPE, incomplete, meta);
     expect(report.completeness).toMatchObject({ requestedRuns: 1, completedRuns: 0, failedRuns: 1, complete: false });
+    expect(() => parseEvalArtifact({ ...report, completeness: { ...report.completeness, complete: true } }, { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE }))
+      .toThrow(/completeness\.complete is inconsistent with the payload\/execution \(expected false\)/);
+    expect(() => parseEvalArtifact({ ...validEnvelope(), completeness: { ...validEnvelope().completeness, complete: false } }, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE }))
+      .toThrow(/completeness\.complete is inconsistent with the payload\/execution \(expected true\)/);
     expect(() => buildEvalArtifact(EVAL_BASELINE_ARTIFACT_TYPE, incomplete, meta)).toThrow(/baseline artifacts require complete/);
+  });
+});
+
+describe("historical quality artifact governance", () => {
+  const parseQuality = (value: unknown) => parseEvalArtifact(value, { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE });
+  const mutation = (change: (value: ReturnType<typeof makeHistoricalQualityArtifact>) => void) => {
+    const value = structuredClone(makeHistoricalQualityArtifact());
+    change(value);
+    return value;
+  };
+
+  it("exports canonical measurement, transport-row, and single-attempt execution schemas", () => {
+    const artifact = makeHistoricalQualityArtifact();
+    expect(HistoricalQualityMeasurementSchema.safeParse(artifact.measurement).success).toBeTrue();
+    const { caseId: _caseId, rule: _rule, runs: _runs, passes: _passes, passRate: _passRate, flaky: _flaky, scoredRunIds: _ids, ...transport } = artifact.payload.cases[0];
+    expect(HistoricalQualityTransportRowSchema.safeParse(transport).success).toBeTrue();
+    expect(HistoricalQualityExecutionRunSchema.safeParse(artifact.execution.runs[0]).success).toBeTrue();
+  });
+
+  it("binds execution completeness to exact coverage and reserves verdicts for complete full-corpus selections", () => {
+    const completeSubset = structuredClone(makeHistoricalQualityArtifact());
+    completeSubset.selection = { fullCorpus: false, filters: { case: "historical/case-1" } };
+    completeSubset.measurement.qualityVerdictAvailable = false;
+    const completeTriggerSubset = makeHistoricalQualityArtifact({ emittedSlots: 1, requestedSlots: 1 });
+    completeTriggerSubset.measurement.qualityVerdictAvailable = false;
+
+    const uneven = makeHistoricalQualityArtifact({ repetitions: 3 });
+    reassignHistoricalQualitySlot(uneven, 2, {
+      logicalCaseId: "historical/safe-replacement",
+      trigger: "intent",
+      repetition: 0,
+    });
+    uneven.measurement.qualityVerdictAvailable = false;
+    uneven.completeness.complete = false;
+
+    const diagnostics = [
+      { name: "complete full corpus", artifact: makeHistoricalQualityArtifact(), complete: true, verdict: true },
+      { name: "complete filtered subset", artifact: completeSubset, complete: true, verdict: false },
+      { name: "complete trigger subset", artifact: completeTriggerSubset, complete: true, verdict: false },
+      { name: "partial group", artifact: makeHistoricalQualityArtifact({ repetitions: 3, emittedSlots: 29, requestedSlots: 30 }), complete: false, verdict: false },
+      { name: "ten of eleven emitted", artifact: makeHistoricalQualityArtifact({ requestedSlots: 11 }), complete: false, verdict: false },
+      { name: "zero of eleven emitted", artifact: makeHistoricalQualityArtifact({ emittedSlots: 0, requestedSlots: 11 }), complete: false, verdict: false },
+      { name: "count-preserving uneven replacement", artifact: uneven, complete: false, verdict: false },
+    ];
+
+    for (const { name, artifact, complete, verdict } of diagnostics) {
+      expect(parseQuality(artifact), `${name}: matching indicators`).toBeTruthy();
+
+      const wrongCompleteness = structuredClone(artifact);
+      wrongCompleteness.completeness.complete = !complete;
+      expect(() => parseQuality(wrongCompleteness), `${name}: completeness.complete`).toThrow(/completeness\.complete/);
+
+      const wrongVerdict = structuredClone(artifact);
+      wrongVerdict.measurement.qualityVerdictAvailable = !verdict;
+      expect(() => parseQuality(wrongVerdict), `${name}: measurement.qualityVerdictAvailable`).toThrow(/quality verdict availability/);
+    }
+  });
+
+  it("rejects complete claims for holes, uneven groups, count-preserving replacement, and invalid group-count math", () => {
+    const replacement = makeHistoricalQualityArtifact({ repetitions: 3 });
+    reassignHistoricalQualitySlot(replacement, 2, {
+      logicalCaseId: "historical/safe-replacement",
+      trigger: "intent",
+      repetition: 0,
+    });
+    expect(() => parseQuality(replacement)).toThrow(/repetition coverage|requested-slot math/i);
+
+    const invalidMath = makeHistoricalQualityArtifact();
+    invalidMath.measurement.repetitionsRequested = 3;
+    expect(() => parseQuality(invalidMath)).toThrow(/repetition coverage|requested-slot math/i);
+  });
+
+  it("accepts complete and incomplete diagnostics, identifies quality, and forbids baselines/V1", () => {
+    const complete = parseQuality(makeHistoricalQualityArtifact());
+    expect(isHistoricalQualityArtifact(complete)).toBeTrue();
+    expect((parseQuality(makeIncompleteHistoricalQualityArtifact()).completeness as { complete: boolean }).complete).toBeFalse();
+    expect(() => parseEvalArtifact({ ...makeHistoricalQualityArtifact(), artifactType: EVAL_BASELINE_ARTIFACT_TYPE }, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE })).toThrow();
+    expect(() => parseEvalArtifact({ ...makeHistoricalQualityArtifact(), schemaVersion: 1 }, { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE })).toThrow();
+  });
+
+  it("rejects terminal-failed rows with final ranks despite coherent execution-stage metrics", () => {
+    const artifact = structuredClone(makeIncompleteHistoricalQualityArtifact());
+    const failedRow = artifact.payload.cases[9];
+    failedRow.participantMetrics = structuredClone(artifact.payload.cases[0].participantMetrics)
+      .map((metric) => ({ ...metric, failureStage: "execution" as const }));
+
+    expect(() => parseQuality(artifact)).toThrow(/failed transport row final ranks must be null/);
+  });
+
+  it("rejects every independent completion/pass/execution/funnel/verdict inconsistency", () => {
+    const changes: Array<(value: ReturnType<typeof makeHistoricalQualityArtifact>) => void> = [
+      (value) => { value.runs = 2 as never; },
+      (value) => { value.payload.runs = 2 as never; },
+      (value) => { value.payload.cases[0].completed = false; },
+      (value) => { value.payload.cases[0].passes = 0; },
+      (value) => { value.payload.cases[0].passRate = 0; },
+      (value) => { value.payload.cases[0].stageFunnel = null; },
+      (value) => { value.execution.runs[0].outcome = "failed"; },
+      (value) => { value.execution.runs[0].attempts[0].outcome = "failure"; },
+      (value) => { value.execution.runs[0].attempts.push(structuredClone(value.execution.runs[0].attempts[0])); },
+      (value) => { value.execution.runs[0].recovered = true as never; },
+      (value) => { value.execution.runs[0].attempts[0].retryable = true as never; },
+      (value) => { value.execution.runs[0].attempts[0].backoffMs = 1 as never; },
+      (value) => { value.measurement.completedSlots -= 1; },
+      (value) => { value.measurement.qualityVerdictAvailable = false; },
+      (value) => { value.payload.cases[0].rule = "other" as never; },
+      (value) => { value.measurement.scorecardSemantics = "other" as never; },
+      (value) => { value.payload.cases[0].participantMetrics.pop(); },
+      (value) => { value.payload.cases[0].stageFunnel!.participants = 23; },
+    ];
+    for (const [index, change] of changes.entries()) {
+      expect(() => parseQuality(mutation(change)), `mutation ${index}`).toThrow();
+    }
+  });
+
+  it("enforces deterministic unique transport slots and one execution row per emitted slot", () => {
+    expect(() => parseQuality(mutation((value) => {
+      value.payload.cases[1].caseId = value.payload.cases[0].caseId;
+      value.payload.cases[1].logicalCaseId = value.payload.cases[0].logicalCaseId;
+      value.payload.cases[1].trigger = value.payload.cases[0].trigger;
+    }))).toThrow(/duplicate|deterministic|transport/i);
+    expect(() => parseQuality(mutation((value) => { value.payload.cases[0].caseId = "invented"; }))).toThrow(/deterministic|transport/i);
+    expect(() => parseQuality(mutation((value) => { value.execution.runs.pop(); }))).toThrow(/execution|row/i);
+  });
+
+  it("preserves every legacy attempt/run refinement across independent mutations", () => {
+    type LegacyEnvelope = ReturnType<typeof validEnvelope>;
+    const invalid = (
+      expected: RegExp,
+      change: (value: LegacyEnvelope) => void,
+      seed: () => LegacyEnvelope = () => structuredClone(validEnvelope()),
+    ): void => {
+      const value = seed();
+      change(value);
+      expect(() => parseEvalArtifact(value, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE })).toThrow(expected);
+    };
+    const recovered = (): LegacyEnvelope => {
+      const value = structuredClone(validEnvelope());
+      const run = value.execution.runs[0];
+      const first = run.attempts[0];
+      first.outcome = "failure";
+      first.error = { class: "Error", message: "sanitized" };
+      first.retryable = true;
+      first.backoffMs = 1;
+      const second = {
+        ...structuredClone(first),
+        attemptId: `${run.runId}::attempt:2`,
+        attemptNumber: 2,
+        startedAt: "2026-01-01T00:00:00.020Z",
+        completedAt: "2026-01-01T00:00:00.030Z",
+        outcome: "success" as const,
+        error: undefined,
+        retryable: false,
+        backoffMs: 0,
+      };
+      run.attempts.push(second);
+      run.recovered = true;
+      value.completeness.totalAttempts += 1;
+      value.completeness.recoveredRuns += 1;
+      return value;
+    };
+
+    invalid(/precedes startedAt/, (value) => { value.execution.runs[0].attempts[0].completedAt = "2025-12-31T23:59:59.999Z"; });
+    invalid(/durationMs is inconsistent/, (value) => { value.execution.runs[0].attempts[0].durationMs = 12; });
+    invalid(/successful attempt must not have an error/, (value) => { value.execution.runs[0].attempts[0].error = { class: "Error", message: "safe" }; });
+    invalid(/successful attempt cannot be retryable/, (value) => { value.execution.runs[0].attempts[0].retryable = true; });
+    invalid(/successful attempt cannot schedule backoff/, (value) => { value.execution.runs[0].attempts[0].backoffMs = 1; });
+    invalid(/requires a sanitized error/, (value) => { value.execution.runs[0].attempts[0].outcome = "failure"; });
+    invalid(/unsanitized secret/, (value) => {
+      value.execution.runs[0].attempts[0].outcome = "failure";
+      value.execution.runs[0].attempts[0].error = { class: "Error", message: "Authorization: Bearer secret" };
+    });
+    invalid(/runId must be deterministic/, (value) => { value.execution.runs[0].runId = "invented"; });
+    invalid(/does not belong to its run/, (value) => { value.execution.runs[0].attempts[0].runId = "other"; });
+    invalid(/attempt numbers must be contiguous/, (value) => { value.execution.runs[0].attempts[0].attemptNumber = 2; });
+    invalid(/attemptId must be deterministic/, (value) => { value.execution.runs[0].attempts[0].attemptId = "invented"; });
+    invalid(/only retryable attempts/, (value) => { value.execution.runs[0].attempts[0].retryable = false; }, recovered);
+    invalid(/cancelled attempts are terminal/, (value) => {
+      const first = value.execution.runs[0].attempts[0];
+      first.outcome = "cancelled";
+      first.error = { class: "Error", message: "cancelled" };
+    }, recovered);
+    invalid(/chronological and non-overlapping/, (value) => {
+      value.execution.runs[0].attempts[1].startedAt = "2026-01-01T00:00:00.005Z";
+      value.execution.runs[0].attempts[1].completedAt = "2026-01-01T00:00:00.015Z";
+    }, recovered);
+    invalid(/non-retryable attempts cannot schedule backoff/, (value) => {
+      const first = value.execution.runs[0].attempts[0];
+      first.retryable = false;
+      first.backoffMs = 1;
+    }, recovered);
+    invalid(/exactly one successful attempt/, (value) => {
+      const first = value.execution.runs[0].attempts[0];
+      first.outcome = "success";
+      first.error = undefined;
+      first.retryable = true;
+      first.backoffMs = 0;
+    }, recovered);
+    invalid(/recovered is inconsistent/, (value) => { value.execution.runs[0].recovered = true; });
+    invalid(/non-success run cannot contain a successful attempt/, (value) => { value.execution.runs[0].outcome = "failed"; });
+    invalid(/non-success run cannot be recovered/, (value) => { value.execution.runs[0].outcome = "failed"; }, recovered);
+    invalid(/failed run requires at least one attempt/, (value) => {
+      value.execution.runs[0].outcome = "failed";
+      value.execution.runs[0].attempts = [];
+    });
+    invalid(/run ending in a cancelled attempt must be cancelled/, (value) => {
+      const run = value.execution.runs[0];
+      run.outcome = "failed";
+      run.attempts[0].outcome = "cancelled";
+      run.attempts[0].error = { class: "Error", message: "cancelled" };
+    });
+    invalid(/cancelled attempt requires a cancelled run/, (value) => {
+      const run = value.execution.runs[0];
+      run.outcome = "failed";
+      run.attempts[0].outcome = "cancelled";
+      run.attempts[0].error = { class: "Error", message: "cancelled" };
+      run.attempts.push({
+        ...structuredClone(run.attempts[0]),
+        attemptId: `${run.runId}::attempt:2`,
+        attemptNumber: 2,
+        outcome: "failure",
+      });
+    });
+  });
+
+  it("keeps representative legacy V1/V2 parse outcomes and issue paths stable", () => {
+    const v2 = validEnvelope();
+    expect(parseEvalArtifact(v2, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE })).toEqual(v2);
+    const invalid = structuredClone(v2);
+    invalid.execution.runs[0].attempts[0].durationMs = 999;
+    try {
+      parseEvalArtifact(invalid, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE });
+      throw new Error("expected invalid legacy fixture");
+    } catch (error) {
+      expect(String(error)).toContain("execution.runs.0.attempts.0.durationMs: attempt durationMs is inconsistent with timestamps");
+    }
+    const v1 = migrateLegacyBaseline(legacyScorecard(), { harness: "test-harness", harnessVersion: "1" });
+    expect(parseEvalArtifact(v1, { expectedType: EVAL_BASELINE_ARTIFACT_TYPE })).toEqual(v1);
   });
 });
 

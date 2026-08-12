@@ -16,7 +16,7 @@ import { createDefaultOpsContext, createOpsHandler, HARNESS_CREDENTIALS, PUBLIC_
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, buildScorecard } from "../../shared/index.js";
-import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
+import { makeHistoricalQualityArtifact, makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
 
 const DATABASE_URL = "postgres://u:p@host/neondb";
 
@@ -33,17 +33,22 @@ const AB_GATE_SOURCE = path.resolve(import.meta.dir, "../../../../../services/ap
  * connection strings, passwords included — so the tests below assert on these
  * exact strings never appearing in anything the server returns, stores or logs.
  *
- * The manifest is shaped the way `parseAbManifest` (discovery.neon.ts)
- * actually requires: `projectId`, `baseBranchId` and a two-element `targets`
- * array of `{ sideId, branchId, endpointId, databaseUrl }`. This server treats
- * the value as opaque and would not notice a different shape — which is exactly
- * why the fixture must be real, since this file is where a reader learns what
- * the server is holding. "guard parity with the engine" below pins it.
+ * The server-held secret now uses strict manifest v2. Legacy A/B launch still
+ * consumes only its `projectId`, `baseBranchId`, and two writable child targets;
+ * the protected-base read replica remains unreachable from that launch path.
+ * This server treats the value as opaque and would not notice a different shape,
+ * so "guard parity with the engine" below exercises both strict parsing and the
+ * legacy projection.
  */
 const NEON_API_KEY = "napi_test_key_that_must_never_leave_the_server";
 const AB_MANIFEST = {
+  version: 2 as const,
   projectId: "eval-project-id",
   baseBranchId: "br-eval-discovery-base",
+  baseReadReplica: {
+    endpointId: "ep-base-readonly",
+    databaseUrl: "postgres://u:pw-base-readonly@ep-base-readonly.neon.tech/protocol_eval",
+  },
   targets: [
     { sideId: "a", branchId: "br-eval-ab-a", endpointId: "ep-a", databaseUrl: "postgres://u:pw-side-a@ep-a.neon.tech/protocol_eval" },
     { sideId: "b", branchId: "br-eval-ab-b", endpointId: "ep-b", databaseUrl: "postgres://u:pw-side-b@ep-b.neon.tech/protocol_eval" },
@@ -692,26 +697,20 @@ describe("guard parity with the engine's own gate", () => {
     expect(HARNESS_CREDENTIALS["discovery"].asserts).toEqual(constants);
   });
 
-  it("holds the manifest in the shape parseAbManifest requires", async () => {
-    // The server treats DISCOVERY_TARGETS as opaque, so a wrong-shaped fixture
-    // would pass every other test in this file while documenting something the
-    // engine would refuse.
-    const source = await readFile(AB_NEON_SOURCE, "utf8");
-    const parser = source.match(/export function parseAbManifest\([\s\S]*?\n\}/);
-    if (!parser) throw new Error(`parseAbManifest not found in ${AB_NEON_SOURCE}`);
-    const target = source.match(/function parseTarget\([\s\S]*?\n\}/);
-    if (!target) throw new Error(`parseTarget not found in ${AB_NEON_SOURCE}`);
-
-    const rootFields = [...new Set([...parser[0].matchAll(/root\.([A-Za-z]+)/g)].map((match) => match[1]!))];
-    const targetFields = [...new Set([...target[0].matchAll(/entry\.([A-Za-z]+)/g)].map((match) => match[1]!))];
-    expect(rootFields.length).toBeGreaterThan(0);
-    expect(targetFields.length).toBeGreaterThan(0);
-
-    expect(Object.keys(AB_MANIFEST).sort()).toEqual([...rootFields].sort());
-    for (const entry of AB_MANIFEST.targets) expect(Object.keys(entry).sort()).toEqual([...targetFields].sort());
-    // The two things parseAbManifest checks beyond field names.
-    expect(AB_MANIFEST.targets.map((entry) => entry.sideId)).toEqual(["a", "b"]);
-    expect(AB_MANIFEST.targets.map((entry) => entry.branchId)).not.toContain(AB_MANIFEST.baseBranchId);
+  it("holds a strict v2 manifest whose child projection remains legacy A/B compatible", async () => {
+    // The server treats DISCOVERY_TARGETS as opaque. Exercise the engine parser
+    // itself so the server-held v2 secret cannot drift from either the strict
+    // quality shape or the legacy launch projection it still supplies.
+    const engine = await import(AB_NEON_SOURCE) as {
+      parseHistoricalQualityManifest(raw: string): unknown;
+      parseLegacyAbManifest(raw: string): unknown;
+    };
+    expect(engine.parseHistoricalQualityManifest(DISCOVERY_TARGETS)).toEqual(AB_MANIFEST);
+    expect(engine.parseLegacyAbManifest(DISCOVERY_TARGETS)).toEqual({
+      projectId: AB_MANIFEST.projectId,
+      baseBranchId: AB_MANIFEST.baseBranchId,
+      targets: AB_MANIFEST.targets,
+    });
   });
 });
 
@@ -804,7 +803,7 @@ describe("launching discovery", () => {
     await context.queue.drain();
 
     const surfaces = `${body}\n${await readableSurfaces(record.id)}`;
-    for (const secret of [NEON_API_KEY, DISCOVERY_TARGETS, OPENROUTER_API_KEY, REDIS_URL, "pw-side-a", "pw-side-b", "eval-ab-a"]) {
+    for (const secret of [NEON_API_KEY, DISCOVERY_TARGETS, OPENROUTER_API_KEY, REDIS_URL, "pw-base-readonly", "pw-side-a", "pw-side-b", "eval-ab-a"]) {
       expect(surfaces).not.toContain(secret);
     }
     // Not even the names: a record that mentioned them would invite an operator
@@ -1465,6 +1464,28 @@ describe("GET /api/compare", () => {
     expect((await response.json()).error).toMatch(/reference/i);
   });
 
+  it("422s the fixed refusal when either artifact id is a quality measurement", async () => {
+    const dir = path.join(context.evalDir, "discovery/runs");
+    await mkdir(dir, { recursive: true });
+    const quality = makeHistoricalQualityArtifact();
+    const { measurement: _measurement, ...scorecard } = structuredClone(quality);
+    await writeFile(path.join(dir, "quality.json"), JSON.stringify(quality));
+    await writeFile(path.join(dir, "scorecard.json"), JSON.stringify(scorecard));
+    const qualityId = Buffer.from("discovery/runs/quality.json").toString("base64url");
+    const scorecardId = Buffer.from("discovery/runs/scorecard.json").toString("base64url");
+
+    for (const query of [
+      `reference=${qualityId}&subject=${scorecardId}`,
+      `reference=${scorecardId}&subject=${qualityId}`,
+    ]) {
+      const response = await get(`/api/compare?${query}`);
+      expect(response.status).toBe(422);
+      expect((await response.json()).error).toBe(
+        "Historical quality pilot artifacts are descriptive measurements and cannot be compared as scorecards.",
+      );
+    }
+  });
+
   describe("run-vs-run", () => {
     const caseResult = (caseId: string, passes: number, runs: number) => ({
       caseId,
@@ -1510,6 +1531,20 @@ describe("GET /api/compare", () => {
       return created;
     }
 
+    async function seedQualityRun(): Promise<RunRecord> {
+      const created = await store.create({
+        spec: { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 } },
+        argv: ["bun", "run", "eval:discovery"],
+        env: {},
+        profileFingerprint: "quality-fingerprint",
+        experimental: true,
+        workload: 10,
+      });
+      await Bun.write(store.reportPath(created.id), JSON.stringify(makeHistoricalQualityArtifact()));
+      await store.update(created.id, { status: "passed", exitCode: 0, endedAt: new Date().toISOString() });
+      return created;
+    }
+
     it("diffs two run reports across configs and labels each side", async () => {
       const reference = await seedRunWithReport({
         profile: "default",
@@ -1542,6 +1577,23 @@ describe("GET /api/compare", () => {
         profileFingerprint: "fp-subject",
         complete: true,
       });
+    });
+
+    it("422s the fixed refusal when either run report is a quality measurement", async () => {
+      const scorecard = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+      const quality = await seedQualityRun();
+      for (const [reference, subject] of [[quality, scorecard], [scorecard, quality]] as const) {
+        const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=${subject.id}`);
+        expect(response.status).toBe(422);
+        expect((await response.json()).error).toBe(
+          "Historical quality pilot artifacts are descriptive measurements and cannot be compared as scorecards.",
+        );
+      }
     });
 
     it("422s naming the side whose report is missing", async () => {

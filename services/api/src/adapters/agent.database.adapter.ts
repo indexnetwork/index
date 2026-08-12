@@ -1,9 +1,14 @@
-import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm/sql';
-
+import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
+import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
+import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../lib/apikey/credential';
 import * as schema from '../schemas/database.schema';
 import { log } from '../lib/log';
+import { HERMES_AGENT_AUDIENCE } from '../lib/agent/hermes-authorization';
+import { HERMES_CANONICAL_ACTIONS } from '../lib/agent/hermes-capabilities';
+import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS } from '../lib/agent/hermes-credential';
+import { hermesRuntimeTelemetry, observeHermesAdvisoryLockWait } from '../lib/agent/hermes-runtime-telemetry';
 
 const logger = log.lib.from('agent.database.adapter');
 
@@ -31,7 +36,11 @@ export interface AgentRow {
   type: AgentType;
   status: AgentStatus;
   metadata: Record<string, unknown>;
+  runtimeKind: 'hermes' | null;
+  installationId: string | null;
+  runtimeSetupAttemptId: string | null;
   lastSeenAt: Date | null;
+  lastNegotiationPickupAt: Date | null;
   notifyOnOpportunity: boolean;
   dailySummaryEnabled: boolean;
   handleNegotiations: boolean;
@@ -121,6 +130,14 @@ export interface AgentRegistryStore {
   findAuthorizedAgents(userId: string, action: string, scope?: AgentScope): Promise<AgentWithRelations[]>;
   getSystemAgentIds(): AgentSystemIds;
   touchLastSeen(agentId: string): Promise<void>;
+  touchNegotiationPickup(agentId: string): Promise<void>;
+  setNegotiationExecutorBinding(input: {
+    ownerId: string;
+    targetAgentId: string | null;
+    exactTargetPermissions: boolean;
+    expectedSetupAttemptId?: string;
+    disableTargetAgentId?: string;
+  }): Promise<AgentWithRelations | null>;
   ensureNegotiatorAgent(userId: string): Promise<string | null>;
 }
 
@@ -225,6 +242,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       await tx.delete(schema.apikeys).where(
         sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${agentId}`,
       );
+      await tx.update(schema.hermesAgentCredentials).set({
+        activationState: 'revoked',
+        revokedAt: new Date(),
+      }).where(and(
+        eq(schema.hermesAgentCredentials.agentId, agentId),
+        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
+      ));
     });
 
     logger.info('Soft-deleted agent and revoked linked tokens', { agentId });
@@ -521,20 +545,581 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     if (agentIds.length === 0) {
       return new Set();
     }
-    const rows = await db
-      .select({ agentId: sql<string>`(${schema.apikeys.metadata}::jsonb ->> 'agentId')` })
-      .from(schema.apikeys)
-      .where(
-        and(
-          eq(schema.apikeys.enabled, true),
-          or(
-            isNull(schema.apikeys.expiresAt),
-            sql`${schema.apikeys.expiresAt} > now()`,
+    const [legacyRows, dedicatedRows] = await Promise.all([
+      db
+        .select({ agentId: sql<string>`(${schema.apikeys.metadata}::jsonb ->> 'agentId')` })
+        .from(schema.apikeys)
+        .where(
+          and(
+            eq(schema.apikeys.enabled, true),
+            or(
+              isNull(schema.apikeys.expiresAt),
+              sql`${schema.apikeys.expiresAt} > now()`,
+            ),
+            inArray(sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId')`, agentIds),
           ),
-          inArray(sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId')`, agentIds),
         ),
+      db.select({ agentId: schema.hermesAgentCredentials.agentId })
+        .from(schema.hermesAgentCredentials)
+        .where(and(
+          inArray(schema.hermesAgentCredentials.agentId, agentIds),
+          eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
+          eq(schema.hermesAgentCredentials.activationState, 'active'),
+          sql`${schema.hermesAgentCredentials.expiresAt} > now()`,
+        )),
+    ]);
+    return new Set(
+      [...legacyRows, ...dedicatedRows].map((row) => row.agentId).filter((id): id is string => !!id),
+    );
+  }
+
+  /**
+   * Create or rotate one Hermes installation credential under the owner's
+   * runtime lock. Preparation deliberately removes negotiation authority; the
+   * matching setup generation must be activated separately.
+   */
+  async prepareHermesInstallation(input: {
+    ownerId: string;
+    installationId: string;
+    setupAttemptId: string;
+  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string; expiresAt: string } }> {
+    const prepared = await db.transaction(async (tx) => {
+      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
+
+      let [row] = await tx
+        .select()
+        .from(schema.agents)
+        .where(and(
+          eq(schema.agents.ownerId, input.ownerId),
+          eq(schema.agents.type, 'external'),
+          eq(schema.agents.runtimeKind, 'hermes'),
+          eq(schema.agents.installationId, input.installationId),
+          isNull(schema.agents.deletedAt),
+        ))
+        .limit(1)
+        .for('update');
+
+      if (!row) {
+        [row] = await tx
+          .insert(schema.agents)
+          .values({
+            ownerId: input.ownerId,
+            name: 'Hermes Negotiator',
+            description: 'Negotiation-only Hermes runtime',
+            type: 'external',
+            status: 'active',
+            metadata: {},
+            runtimeKind: 'hermes',
+            installationId: input.installationId,
+            runtimeSetupAttemptId: input.setupAttemptId,
+            notifyOnOpportunity: false,
+            dailySummaryEnabled: false,
+            handleNegotiations: false,
+          })
+          .returning();
+      } else {
+        [row] = await tx
+          .update(schema.agents)
+          .set({
+            status: 'active',
+            runtimeSetupAttemptId: input.setupAttemptId,
+            handleNegotiations: false,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.agents.id, row.id))
+          .returning();
+      }
+
+      // A prepared principal has no authority until the exact generation is
+      // selected. Hermes permissions are replaced, not merged.
+      await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.agentId, row.id));
+      await tx.delete(schema.apikeys).where(
+        sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${row.id}`,
       );
-    return new Set(rows.map((r) => r.agentId).filter((id): id is string => !!id));
+
+      const plainKey = generateApiKey();
+      const hashedKey = await hashApiKey(plainKey);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS);
+      const [credential] = await tx
+        .insert(schema.apikeys)
+        .values({
+          key: hashedKey,
+          userId: input.ownerId,
+          referenceId: input.ownerId,
+          name: 'Hermes Negotiator API Key',
+          start: plainKey.substring(0, API_KEY_START_LENGTH),
+          metadata: JSON.stringify({
+            agentId: row.id,
+            setupAttemptId: input.setupAttemptId,
+            audience: HERMES_NEGOTIATOR_AUDIENCE,
+            kind: HERMES_NEGOTIATOR_CREDENTIAL_KIND,
+            expiresAt: expiresAt.toISOString(),
+          }),
+          createdAt: now,
+          updatedAt: now,
+          enabled: true,
+          expiresAt,
+        })
+        .returning({ id: schema.apikeys.id });
+
+      return { row, credential: { id: credential.id, key: plainKey, expiresAt: expiresAt.toISOString() } };
+    });
+
+    const agent = await this.getAgentWithRelations(prepared.row.id);
+    if (!agent) throw new Error('Prepared Hermes executor not found');
+    return { agent, credential: prepared.credential };
+  }
+
+  /**
+   * Atomically choose the sole external negotiation executor for an owner.
+   * Negotiator credentials retain negotiation-only authority; an active full
+   * dedicated row retains its exact canonical actions. The generic legacy path
+   * preserves other actions.
+   */
+  async setNegotiationExecutorBinding(input: {
+    ownerId: string;
+    targetAgentId: string | null;
+    exactTargetPermissions: boolean;
+    expectedSetupAttemptId?: string;
+    disableTargetAgentId?: string;
+  }): Promise<AgentWithRelations | null> {
+    const selectedId = await db.transaction(async (tx) => {
+      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
+
+      const [currentlySelected] = await tx
+        .select({ id: schema.agents.id })
+        .from(schema.agents)
+        .where(and(
+          eq(schema.agents.ownerId, input.ownerId),
+          eq(schema.agents.type, 'external'),
+          eq(schema.agents.handleNegotiations, true),
+          isNull(schema.agents.deletedAt),
+        ))
+        .limit(1)
+        .for('update');
+
+      // Generic `false` updates are conditional: disabling an unselected agent
+      // must not clear the owner's actual selected executor.
+      if (
+        input.targetAgentId === null
+        && input.disableTargetAgentId
+        && currentlySelected?.id !== input.disableTargetAgentId
+      ) {
+        return currentlySelected?.id ?? null;
+      }
+
+      let target: typeof schema.agents.$inferSelect | null = null;
+      let exactTargetActions: readonly string[] = ['manage:negotiations'];
+      if (input.targetAgentId) {
+        const [candidate] = await tx
+          .select()
+          .from(schema.agents)
+          .where(and(
+            eq(schema.agents.id, input.targetAgentId),
+            eq(schema.agents.ownerId, input.ownerId),
+            eq(schema.agents.type, 'external'),
+            eq(schema.agents.status, 'active'),
+            isNull(schema.agents.deletedAt),
+          ))
+          .limit(1)
+          .for('update');
+        if (!candidate) throw new RuntimeNotFoundError();
+        if (input.exactTargetPermissions && (
+          candidate.runtimeKind !== 'hermes'
+          || !input.expectedSetupAttemptId
+          || candidate.runtimeSetupAttemptId !== input.expectedSetupAttemptId
+        )) {
+          throw new RuntimeConflictError();
+        }
+        const [[legacyCredential], [dedicatedCredential]] = await Promise.all([
+          tx.select({ id: schema.apikeys.id })
+            .from(schema.apikeys)
+            .where(and(
+              eq(schema.apikeys.enabled, true),
+              or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
+              sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${candidate.id}`,
+              input.exactTargetPermissions
+                ? and(
+                    isNotNull(schema.apikeys.expiresAt),
+                    sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}`,
+                    sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
+                    sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
+                  )
+                : undefined,
+            ))
+            .limit(1),
+          tx.select({ id: schema.hermesAgentCredentials.id, actions: schema.hermesAgentCredentials.actions })
+            .from(schema.hermesAgentCredentials)
+            .where(and(
+              eq(schema.hermesAgentCredentials.ownerId, input.ownerId),
+              eq(schema.hermesAgentCredentials.agentId, candidate.id),
+              eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
+              eq(schema.hermesAgentCredentials.activationState, 'active'),
+              sql`${schema.hermesAgentCredentials.expiresAt} > now()`,
+              eq(schema.hermesAgentCredentials.installationId, candidate.installationId ?? ''),
+              input.exactTargetPermissions
+                ? eq(schema.hermesAgentCredentials.setupAttemptId, input.expectedSetupAttemptId ?? '')
+                : undefined,
+            ))
+            .limit(1),
+        ]);
+        if (!legacyCredential && !dedicatedCredential) throw new RuntimeConflictError();
+        if (input.exactTargetPermissions && dedicatedCredential && !legacyCredential) {
+          if (
+            dedicatedCredential.actions.length !== HERMES_CANONICAL_ACTIONS.length
+            || !HERMES_CANONICAL_ACTIONS.every((action, index) => dedicatedCredential.actions[index] === action)
+            || !dedicatedCredential.actions.includes('manage:negotiations')
+          ) throw new RuntimeConflictError();
+          exactTargetActions = dedicatedCredential.actions;
+        }
+        target = candidate;
+      }
+
+      const excludedTarget = target?.id ?? '';
+      await tx.execute(sql`
+        UPDATE agent_permissions
+        SET actions = array_remove(actions, 'manage:negotiations')
+        WHERE agent_id IN (
+          SELECT id FROM agents
+          WHERE owner_id = ${input.ownerId}
+            AND type = 'external'
+            AND deleted_at IS NULL
+        )
+          AND agent_id <> ${excludedTarget}
+          AND 'manage:negotiations' = ANY(actions)
+      `);
+      await tx.execute(sql`
+        DELETE FROM agent_permissions
+        WHERE cardinality(actions) = 0
+          AND agent_id IN (
+            SELECT id FROM agents
+            WHERE owner_id = ${input.ownerId}
+              AND type = 'external'
+              AND deleted_at IS NULL
+          )
+      `);
+      await tx
+        .update(schema.agents)
+        .set({ handleNegotiations: false, updatedAt: new Date() })
+        .where(and(
+          eq(schema.agents.ownerId, input.ownerId),
+          eq(schema.agents.type, 'external'),
+          isNull(schema.agents.deletedAt),
+        ));
+
+      if (!target) return null;
+
+      if (input.exactTargetPermissions) {
+        await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.agentId, target.id));
+        await tx.insert(schema.agentPermissions).values({
+          agentId: target.id,
+          userId: input.ownerId,
+          scope: 'global',
+          scopeId: null,
+          actions: [...exactTargetActions],
+        });
+      } else {
+        await tx.execute(sql`
+          INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)
+          VALUES (${target.id}, ${input.ownerId}, 'global', NULL, ARRAY['manage:negotiations']::text[])
+          ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
+          DO UPDATE SET actions = CASE
+            WHEN 'manage:negotiations' = ANY(agent_permissions.actions)
+              THEN agent_permissions.actions
+            ELSE array_append(agent_permissions.actions, 'manage:negotiations')
+          END
+        `);
+      }
+
+      await tx
+        .update(schema.agents)
+        .set({ handleNegotiations: true, status: 'active', updatedAt: new Date() })
+        .where(eq(schema.agents.id, target.id));
+      return target.id;
+    });
+
+    return selectedId ? this.getAgentWithRelations(selectedId) : null;
+  }
+
+  /** Owner-locked CAS that can only deselect the exact observed Hermes authority. */
+  async compareAndSelectIndex(input: {
+    ownerId: string;
+    expectedAgentId: string;
+    expectedInstallationId: string;
+    expectedSetupAttemptId: string;
+  }): Promise<'selected' | 'already_index' | 'preserved'> {
+    return db.transaction(async (tx) => {
+      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
+      const [selected] = await tx.select().from(schema.agents).where(and(
+        eq(schema.agents.ownerId, input.ownerId),
+        eq(schema.agents.type, 'external'),
+        eq(schema.agents.handleNegotiations, true),
+        isNull(schema.agents.deletedAt),
+      )).limit(1).for('update');
+      if (!selected) return 'already_index';
+      if (selected.id !== input.expectedAgentId
+        || selected.runtimeKind !== 'hermes'
+        || selected.installationId !== input.expectedInstallationId
+        || selected.runtimeSetupAttemptId !== input.expectedSetupAttemptId) {
+        return 'preserved';
+      }
+      await tx.update(schema.agents).set({
+        handleNegotiations: false,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(schema.agents.id, input.expectedAgentId),
+        eq(schema.agents.handleNegotiations, true),
+        eq(schema.agents.installationId, input.expectedInstallationId),
+        eq(schema.agents.runtimeSetupAttemptId, input.expectedSetupAttemptId),
+      ));
+      await tx.execute(sql`
+        UPDATE agent_permissions
+        SET actions = array_remove(actions, 'manage:negotiations')
+        WHERE agent_id = ${input.expectedAgentId}
+          AND 'manage:negotiations' = ANY(actions)
+      `);
+      await tx.execute(sql`
+        DELETE FROM agent_permissions
+        WHERE agent_id = ${input.expectedAgentId} AND cardinality(actions) = 0
+      `);
+      return 'selected';
+    });
+  }
+
+  /** Compare-and-clear one current legacy setup generation and only its token. */
+  async rollbackHermesSetup(input: { ownerId: string; expectedSetupAttemptId: string }): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
+      const [target] = await tx
+        .select()
+        .from(schema.agents)
+        .where(and(
+          eq(schema.agents.ownerId, input.ownerId),
+          eq(schema.agents.type, 'external'),
+          eq(schema.agents.runtimeKind, 'hermes'),
+          eq(schema.agents.runtimeSetupAttemptId, input.expectedSetupAttemptId),
+          isNull(schema.agents.deletedAt),
+        ))
+        .orderBy(desc(schema.agents.updatedAt), desc(schema.agents.id))
+        .limit(1)
+        .for('update');
+      if (!target) return false;
+
+      await tx
+        .update(schema.agents)
+        .set({
+          handleNegotiations: false,
+          status: 'inactive',
+          runtimeSetupAttemptId: null,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(schema.agents.id, target.id),
+          eq(schema.agents.runtimeSetupAttemptId, input.expectedSetupAttemptId),
+        ));
+      await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.agentId, target.id));
+      await tx.delete(schema.apikeys).where(sql`
+        ${schema.apikeys.metadata} IS NOT NULL
+        AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}
+        AND ${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}
+      `);
+      await tx.update(schema.hermesAgentCredentials).set({
+        activationState: 'revoked',
+        revokedAt: new Date(),
+      }).where(and(
+        eq(schema.hermesAgentCredentials.agentId, target.id),
+        eq(schema.hermesAgentCredentials.setupAttemptId, input.expectedSetupAttemptId),
+        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
+      ));
+      return true;
+    });
+  }
+
+  /** Return the one admitted selected executor, clearing stale authority atomically. */
+  async getNegotiationExecutorBinding(ownerId: string): Promise<AgentWithRelations | null> {
+    return db.transaction(async (tx) => {
+      await this.acquireOwnerRuntimeLock(tx, ownerId);
+      const [selected] = await tx
+        .select()
+        .from(schema.agents)
+        .where(and(
+          eq(schema.agents.ownerId, ownerId),
+          eq(schema.agents.type, 'external'),
+          eq(schema.agents.handleNegotiations, true),
+          isNull(schema.agents.deletedAt),
+        ))
+        .limit(1)
+        .for('update');
+      if (!selected) return null;
+
+      const permissionRows = await tx
+        .select()
+        .from(schema.agentPermissions)
+        .where(eq(schema.agentPermissions.agentId, selected.id));
+      const hasGlobalAuthority = permissionRows.some((permission) =>
+        permission.userId === ownerId
+        && permission.scope === 'global'
+        && permission.actions.includes('manage:negotiations'));
+      const [[legacyCredential], [dedicatedCredential]] = await Promise.all([
+        tx.select({ id: schema.apikeys.id })
+          .from(schema.apikeys)
+          .where(and(
+            eq(schema.apikeys.enabled, true),
+            or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
+            sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${selected.id}`,
+            selected.runtimeKind === 'hermes'
+              ? and(
+                  isNotNull(schema.apikeys.expiresAt),
+                  sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${selected.runtimeSetupAttemptId}`,
+                  sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
+                  sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
+                )
+              : undefined,
+          ))
+          .limit(1),
+        tx.select({ id: schema.hermesAgentCredentials.id, actions: schema.hermesAgentCredentials.actions })
+          .from(schema.hermesAgentCredentials)
+          .where(and(
+            eq(schema.hermesAgentCredentials.ownerId, ownerId),
+            eq(schema.hermesAgentCredentials.agentId, selected.id),
+            eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
+            eq(schema.hermesAgentCredentials.activationState, 'active'),
+            eq(schema.hermesAgentCredentials.installationId, selected.installationId ?? ''),
+            eq(schema.hermesAgentCredentials.setupAttemptId, selected.runtimeSetupAttemptId ?? ''),
+            sql`${schema.hermesAgentCredentials.expiresAt} > now()`,
+          ))
+          .limit(1),
+      ]);
+      const fullPermission = permissionRows.find((permission) =>
+        permission.userId === ownerId && permission.scope === 'global');
+      const dedicatedValid = Boolean(
+        dedicatedCredential
+        && dedicatedCredential.actions.length === HERMES_CANONICAL_ACTIONS.length
+        && HERMES_CANONICAL_ACTIONS.every((action, index) => dedicatedCredential.actions[index] === action)
+        && fullPermission?.actions.length === HERMES_CANONICAL_ACTIONS.length
+        && HERMES_CANONICAL_ACTIONS.every((action, index) => fullPermission.actions[index] === action)
+      );
+
+      if (selected.status !== 'active' || !hasGlobalAuthority || (!legacyCredential && !dedicatedValid)) {
+        await tx.execute(sql`
+          UPDATE agent_permissions
+          SET actions = array_remove(actions, 'manage:negotiations')
+          WHERE agent_id = ${selected.id}
+            AND 'manage:negotiations' = ANY(actions)
+        `);
+        await tx.execute(sql`
+          DELETE FROM agent_permissions
+          WHERE agent_id = ${selected.id} AND cardinality(actions) = 0
+        `);
+        await tx
+          .update(schema.agents)
+          .set({ handleNegotiations: false, updatedAt: new Date() })
+          .where(eq(schema.agents.id, selected.id));
+        return null;
+      }
+
+      const transportRows = await tx
+        .select()
+        .from(schema.agentTransports)
+        .where(eq(schema.agentTransports.agentId, selected.id))
+        .orderBy(desc(schema.agentTransports.priority));
+      return this.mapAgentWithRelations(this.toAgentRow(selected), transportRows, permissionRows);
+    });
+  }
+
+  /** Resolve one owned Hermes installation independently of current selection. */
+  async getHermesInstallation(ownerId: string, installationId: string): Promise<AgentWithRelations | null> {
+    const [row] = await db
+      .select({ id: schema.agents.id })
+      .from(schema.agents)
+      .where(and(
+        eq(schema.agents.ownerId, ownerId),
+        eq(schema.agents.type, 'external'),
+        eq(schema.agents.runtimeKind, 'hermes'),
+        eq(schema.agents.installationId, installationId),
+        isNull(schema.agents.deletedAt),
+      ))
+      .limit(1);
+    return row ? this.getAgentWithRelations(row.id) : null;
+  }
+
+  /** Select Index and remove one installation and all of its credentials. */
+  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }): Promise<'disconnected' | 'absent' | 'owner_mismatch'> {
+    return db.transaction(async (tx) => {
+      await this.acquireOwnerRuntimeLock(tx, input.ownerId);
+      // First resolve and lock only this owner's exact installation. Installation
+      // UUIDs may coincide across owners, so if it is absent, a separate
+      // non-locking existence read distinguishes proven global absence (safe
+      // idempotent logout) from a cross-owner target (non-enumerating 404).
+      const [target] = await tx
+        .select()
+        .from(schema.agents)
+        .where(and(
+          eq(schema.agents.ownerId, input.ownerId),
+          eq(schema.agents.type, 'external'),
+          eq(schema.agents.runtimeKind, 'hermes'),
+          eq(schema.agents.installationId, input.installationId),
+          isNull(schema.agents.deletedAt),
+        ))
+        .limit(1)
+        .for('update');
+      if (!target) {
+        const [otherOwner] = await tx.select({ id: schema.agents.id }).from(schema.agents)
+          .where(and(
+            ne(schema.agents.ownerId, input.ownerId),
+            eq(schema.agents.type, 'external'),
+            eq(schema.agents.runtimeKind, 'hermes'),
+            eq(schema.agents.installationId, input.installationId),
+            isNull(schema.agents.deletedAt),
+          ))
+          .limit(1);
+        return otherOwner ? 'owner_mismatch' : 'absent';
+      }
+
+      await tx.execute(sql`
+        UPDATE agent_permissions
+        SET actions = array_remove(actions, 'manage:negotiations')
+        WHERE agent_id IN (
+          SELECT id FROM agents
+          WHERE owner_id = ${input.ownerId} AND type = 'external' AND deleted_at IS NULL
+        )
+          AND 'manage:negotiations' = ANY(actions)
+      `);
+      await tx.execute(sql`
+        DELETE FROM agent_permissions
+        WHERE cardinality(actions) = 0
+          AND agent_id IN (
+            SELECT id FROM agents
+            WHERE owner_id = ${input.ownerId} AND type = 'external' AND deleted_at IS NULL
+          )
+      `);
+      await tx
+        .update(schema.agents)
+        .set({ handleNegotiations: false, updatedAt: new Date() })
+        .where(and(
+          eq(schema.agents.ownerId, input.ownerId),
+          eq(schema.agents.type, 'external'),
+          isNull(schema.agents.deletedAt),
+        ));
+      await tx
+        .update(schema.agents)
+        .set({ status: 'inactive', runtimeSetupAttemptId: null, updatedAt: new Date() })
+        .where(eq(schema.agents.id, target.id));
+      await tx.delete(schema.apikeys).where(
+        sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}`,
+      );
+      await tx.update(schema.hermesAgentCredentials).set({
+        activationState: 'revoked',
+        revokedAt: new Date(),
+      }).where(and(
+        eq(schema.hermesAgentCredentials.ownerId, input.ownerId),
+        eq(schema.hermesAgentCredentials.agentId, target.id),
+        eq(schema.hermesAgentCredentials.installationId, input.installationId),
+        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
+      ));
+      return 'disconnected';
+    });
   }
 
   getSystemAgentIds(): AgentSystemIds {
@@ -626,6 +1211,35 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     }
   }
 
+  /** Stamp the negotiation-specific polling heartbeat used for runtime health. */
+  async touchNegotiationPickup(agentId: string): Promise<void> {
+    try {
+      await db
+        .update(schema.agents)
+        .set({ lastNegotiationPickupAt: new Date() })
+        .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
+    } catch (err: unknown) {
+      logger.warn('touchNegotiationPickup failed', {
+        agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async acquireOwnerRuntimeLock(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    ownerId: string,
+  ): Promise<void> {
+    await observeHermesAdvisoryLockWait(
+      hermesRuntimeTelemetry,
+      () => tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`agent-runtime:${ownerId}`}, 0)
+        )
+      `),
+    );
+  }
+
   private buildScopeCondition(scope?: AgentScope) {
     if (!scope || scope.type === 'global') {
       return eq(schema.agentPermissions.scope, 'global');
@@ -712,7 +1326,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       type: row.type,
       status: row.status,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      runtimeKind: row.runtimeKind ?? null,
+      installationId: row.installationId ?? null,
+      runtimeSetupAttemptId: row.runtimeSetupAttemptId ?? null,
       lastSeenAt: row.lastSeenAt ?? null,
+      lastNegotiationPickupAt: row.lastNegotiationPickupAt ?? null,
       notifyOnOpportunity: row.notifyOnOpportunity,
       dailySummaryEnabled: row.dailySummaryEnabled,
       handleNegotiations: row.handleNegotiations,

@@ -9,6 +9,7 @@ const CHILD_TIMEOUT_OVERRIDES: Readonly<Record<string, number>> = {
   'src/controllers/tests/chat.negotiator.isolated.ts': 300_000,
   'src/services/tests/negotiation-polling.seat.isolated.ts': 300_000,
   'src/services/tests/opportunity-delivery.isolated.ts': 300_000,
+  'tests/negotiation-runtime-authority.database.isolated.ts': 300_000,
   'tests/experiment-signup-lookup.isolated.ts': 300_000,
   'tests/network-scoped-import.isolated.ts': 240_000,
 };
@@ -91,10 +92,15 @@ async function runIsolatedFile(apiRoot: string, file: string): Promise<IsolatedT
   environment.API_TEST_DATABASE_READY = '1';
   environment.API_TEST_ISOLATED_CHILD = '1';
   environment.API_TEST_PARENT_PID = String(process.pid);
+  environment.API_TEST_ISOLATED_TARGET = file;
   environment.NODE_ENV = 'test';
 
   const childTimeoutMs = CHILD_TIMEOUT_OVERRIDES[file] ?? CHILD_TIMEOUT_MS;
-  const child = await runBoundedChild(['bun', 'test', `./${file}`], {
+  const child = await runBoundedChild([
+    'bun',
+    'test',
+    './src/lib/testing/isolated-test-import-harness.spec.ts',
+  ], {
     cwd: apiRoot,
     env: environment,
     timeoutMs: childTimeoutMs,

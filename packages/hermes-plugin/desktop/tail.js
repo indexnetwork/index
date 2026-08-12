@@ -44,50 +44,99 @@ function ensureAssets() {
   return assetsPromise
 }
 
-// Native OS alerts for newly actionable opportunities, via the ctx.os door
-// (hermes-agent#78685). Fires only while the user is away from Hermes and is
-// gated by Settings ▸ Notifications ▸ "Plugin notifications"; on older desktop
-// shells without ctx.os it silently no-ops.
-const SEEN_OPPORTUNITIES_KEY = 'notifiedOpportunityIds'
-const OPPORTUNITY_POLL_MS = 30 * 1000
-
-function collectPendingOpportunities(data) {
-  const lists = [(data.general && data.general.opportunities) || []]
-  ;(data.intents || []).forEach(function (intent) { lists.push(intent.opportunities || []) })
-  const pending = []
-  lists.forEach(function (list) {
-    list.forEach(function (item) {
-      if (item.opportunityId && (item.status === 'pending' || item.status === 'latent')) pending.push(item)
-    })
-  })
-  return pending
+// Native OS alerts use only the authenticated Hermes SDK doors. Question and
+// opportunity sockets share canonical persisted dedupe with the 60-second
+// snapshot fallback; messages remain realtime-only and fail closed until the
+// current user's identity is known.
+function socketEventPayload(value) {
+  const data = value && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value
+  if (typeof data !== 'string') return data
+  try { return JSON.parse(data) } catch (e) { return null }
 }
 
-function checkOpportunities(ctx) {
-  restCall('/summary', { method: 'GET' })
-    .then(function (data) {
-      if (!data || data.success === false) return
-      const pending = collectPendingOpportunities(data)
-      const seen = ctx.storage.get(SEEN_OPPORTUNITIES_KEY, null)
-      const ids = pending.map(function (item) { return item.opportunityId })
-      if (seen === null) {
-        ctx.storage.set(SEEN_OPPORTUNITIES_KEY, ids) // first run — baseline silently
-        return
-      }
-      const fresh = pending.filter(function (item) { return seen.indexOf(item.opportunityId) === -1 })
-      if (!fresh.length) return
-      ctx.storage.set(SEEN_OPPORTUNITIES_KEY, seen.concat(ids).filter(function (id, i, all) {
-        return all.indexOf(id) === i
-      }).slice(-200))
-      if (!ctx.os || !ctx.os.notify) return
-      ctx.os.notify({
-        title: 'Index Network',
-        body: fresh.length === 1
-          ? 'New opportunity: ' + fresh[0].name
-          : fresh.length + ' new opportunities are waiting'
+function disposeDesktopSocket(socket) {
+  try {
+    if (typeof socket === 'function') socket()
+    else if (socket && typeof socket.dispose === 'function') socket.dispose()
+    else if (socket && typeof socket.close === 'function') socket.close()
+  } catch (e) { /* best-effort plugin disposal */ }
+}
+
+function persistNotifiedEntities(ctx, state) {
+  ctx.storage.set(NOTIFIED_ENTITIES_KEY, state.notifiedEntities)
+}
+
+function sendOsNotification(ctx, event) {
+  if (!ctx.os || typeof ctx.os.notify !== 'function') return
+  const copy = composeNotification(event)
+  if (!copy) return
+  // `activate` makes a click open the Index page instead of only focusing the
+  // Hermes window; hosts without activate support ignore the extra field.
+  const payload = {
+    title: copy.title,
+    body: copy.body,
+    ...(copy.url ? { activate: copy.url } : {})
+  }
+  try {
+    Promise.resolve(ctx.os.notify(payload)).catch(function () { /* notification rendering is fail-open */ })
+  } catch (e) { /* synchronous host errors are fail-open too */ }
+}
+
+function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
+  if (state.stopped) return
+  const event = socketEventPayload(rawEvent)
+  if (!event || event.type === 'connected') return
+  if (suppressOwnMessage && isOwnMessage(event, state.currentUserId)) return
+  if (!composeNotification(event)) return
+  const remembered = rememberNotificationEntity(state.notifiedEntities, notificationEntityKey(event))
+  if (!remembered.isNew) return
+  state.notifiedEntities = remembered.notifiedEntities
+  persistNotifiedEntities(ctx, state)
+  sendOsNotification(ctx, event)
+}
+
+function reconcileDesktopSnapshot(ctx, state) {
+  reconcileDesktopNotificationState(ctx, state, function (event) {
+    sendOsNotification(ctx, event)
+  }).catch(function () { /* the next 60-second reconciliation retries */ })
+}
+
+function startDesktopNotifications(ctx) {
+  const stored = ctx.storage.get(NOTIFIED_ENTITIES_KEY, [])
+  const state = {
+    currentUserId: null,
+    hasSnapshot: false,
+    notifiedEntities: Array.isArray(stored) ? stored.slice(-MAX_NOTIFIED_ENTITIES) : [],
+    reconciling: false,
+    stopped: false,
+  }
+  let notificationSocket = null
+  let conversationSocket = null
+
+  if (typeof ctx.socket === 'function') {
+    try {
+      notificationSocket = ctx.socket('/notifications/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event, false)
       })
-    })
-    .catch(function () { /* backend not reachable — the next poll retries */ })
+    } catch (e) { /* snapshot reconciliation remains available */ }
+    try {
+      conversationSocket = ctx.socket('/conversations/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event, true)
+      })
+    } catch (e) { /* messages intentionally have no catch-up path */ }
+  }
+
+  reconcileDesktopSnapshot(ctx, state)
+  const snapshotTimer = window.setInterval(function () {
+    reconcileDesktopSnapshot(ctx, state)
+  }, 60000)
+
+  return function dispose() {
+    state.stopped = true
+    window.clearInterval(snapshotTimer)
+    disposeDesktopSocket(notificationSocket)
+    disposeDesktopSocket(conversationSocket)
+  }
 }
 
 function DesktopPage() {
@@ -116,9 +165,8 @@ export default {
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
 
-    const opportunityTimer = window.setInterval(function () { checkOpportunities(ctx) }, OPPORTUNITY_POLL_MS)
-    checkOpportunities(ctx)
-    ctx.onDispose(function () { window.clearInterval(opportunityTimer) })
+    const stopNotifications = startDesktopNotifications(ctx)
+    ctx.onDispose(stopNotifications)
 
     ctx.registerMany([
       {

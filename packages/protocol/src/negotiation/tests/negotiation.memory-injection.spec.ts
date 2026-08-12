@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import type { NegotiatorMemoryEntry, NegotiatorMemoryQuery } from "../negotiation.memory.js";
-import type { NegotiationTurn } from "../negotiation.state.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
+import type { NegotiatorMemoryEntry, NegotiatorMemoryQuery } from "../domain/negotiation.memory.js";
+import type { NegotiationTurn } from "../domain/negotiation.state.js";
 
 /**
  * IND-407 (P5.3) — graph-level memory injection wiring.

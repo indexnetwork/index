@@ -14,7 +14,6 @@
  * - createAgentTools: application layer — lives in participant-agents/application.
  *
  * IND-548: canonical domain layer for the participant-agents capability.
- * Legacy path (shared/interfaces/agent.interface.ts) is a thin compatibility shim.
  */
 export type {
   AgentRecord,

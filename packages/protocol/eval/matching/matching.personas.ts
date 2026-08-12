@@ -1,4 +1,4 @@
-import type { EvaluatorEntity } from "../../src/opportunity/opportunity.evaluator.js";
+import type { EvaluatorEntity } from "../../src/opportunity/application/opportunity.evaluator.js";
 
 const NETWORK = "idx-commons";
 

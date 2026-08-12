@@ -25,13 +25,5 @@
  * - negotiation-evidence/ — Lens C evidence extraction and mining
  * - outcome/ — Lens B outcome hypothesis mining
  * - radar/ — radar graph (flat presenter-card list) and radar health
- *
- * ## Legacy paths (thin inward shims)
- * The following old flat-file paths are preserved as thin re-export shims for
- * backward compatibility with test files and runtime composition. All shims
- * delegate to opportunity/domain or opportunity/application.
- *
- * IND-551 completion gate: remove compatibility shims only after an approved
- * deprecation/SemVer plan is in place.
  */
 export * from "./public/index.js";

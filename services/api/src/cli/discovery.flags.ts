@@ -16,7 +16,7 @@
  * hand-kept list dangerous.
  *
  * The previous version of this file pinned nine keys by hand. The graph reads
- * twenty-six offerable ones. The nine were the result of scanning against a
+ * twenty-eight offerable ones. The nine were the result of scanning against a
  * sixteen-key hand-written allowlist: the list was the limit, not the code, so
  * `NEGOTIATOR_STANCE` and eighteen others were refused by a message asserting
  * the graph could not read them — which was false. The list is now derived and
@@ -32,6 +32,8 @@ export const DISCOVERY_ENV_KEYS: readonly string[] = Object.freeze([
   'CHAT_REASONING_EFFORT',
   'DISCOVERY_ALLOWED_TYPES',
   'DISCOVERY_CONTEXT_TO_INTENT',
+  'DISCOVERY_EVALUATOR_MIN_SCORE',
+  'DISCOVERY_MIN_SIMILARITY',
   'DISCOVERY_PROFILE_SOURCE',
   'DISCOVERY_REJECTION_COOLDOWN_DAYS',
   'DISCOVERY_SOURCE_PREMISE_LIMIT',
@@ -83,7 +85,7 @@ const CREDENTIAL_KEYS: readonly string[] = Object.freeze([
  * its artifact recorded the value the operator typed.
  */
 interface EnvValueRule {
-  kind: 'enum' | 'boolean' | 'csv-enum' | 'integer' | 'number' | 'string' | 'json-model-map';
+  kind: 'enum' | 'boolean' | 'csv-enum' | 'integer' | 'number' | 'decimal-range' | 'string' | 'json-model-map';
   values?: readonly string[];
   min?: number;
   max?: number;
@@ -99,6 +101,8 @@ export const ENV_VALUE_RULES: Readonly<Record<string, EnvValueRule>> = Object.fr
   CHAT_REASONING_EFFORT: { kind: 'enum', values: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
   DISCOVERY_ALLOWED_TYPES: { kind: 'csv-enum', values: ['intent', 'profile'] },
   DISCOVERY_CONTEXT_TO_INTENT: { kind: 'enum', values: ['0', '1'] },
+  DISCOVERY_EVALUATOR_MIN_SCORE: { kind: 'decimal-range', min: 0, max: 100 },
+  DISCOVERY_MIN_SIMILARITY: { kind: 'decimal-range', min: 0, max: 1 },
   DISCOVERY_PROFILE_SOURCE: { kind: 'enum', values: ['premise', 'user_context'] },
   DISCOVERY_REJECTION_COOLDOWN_DAYS: { kind: 'number' },
   DISCOVERY_SOURCE_PREMISE_LIMIT: { kind: 'integer' },
@@ -158,6 +162,15 @@ export function discoveryEnvValueIssue(key: string, value: string): string | nul
       if (rule.max !== undefined && parsed > rule.max) return `must be at most ${rule.max}`;
       return null;
     }
+    case 'decimal-range': {
+      const trimmed = value.trim();
+      if (!/^[+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(trimmed)) return 'must be a non-negative decimal without exponent notation';
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed)) return 'must be a finite decimal';
+      if (rule.min !== undefined && parsed < rule.min) return `must be at least ${rule.min}`;
+      if (rule.max !== undefined && parsed > rule.max) return `must be at most ${rule.max}`;
+      return null;
+    }
     case 'json-model-map':
       // Deliberately not validated here. The site's rule for this flag is not
       // 'parseable JSON' but 'names a reviewed model and a known agent', and the
@@ -165,8 +178,8 @@ export function discoveryEnvValueIssue(key: string, value: string): string | nul
       // import (services/api sets rootDir ./src). Duplicating that list here is
       // the drift this whole module exists to prevent, and a stale copy would
       // refuse a model the site had just approved. A malformed value still fails
-      // at the read site rather than being silently ignored — readModelOverrides
-      // throws — so the failure is loud either way.
+      // at the read site rather than being silently ignored — the canonical
+      // parser in model.resolver.ts throws — so the failure is loud either way.
       return null;
     case 'string':
       return null;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { DISCOVERY_SYSTEM_PROMPT, buildDiscoveryQuestionPrompt } from "../questioner.discovery.prompt.js";
+import { DISCOVERY_SYSTEM_PROMPT, buildDiscoveryQuestionPrompt } from "../../questions/application/question.discovery.prompt.js";
 import type { DiscoveryQuestionInput } from "../../shared/schemas/discovery-question.schema.js";
 import type { DiscoveryNegotiationDigest } from "../../shared/schemas/negotiation-digest.schema.js";
 import type { ChatContextDigest } from "../../shared/schemas/chat-context.schema.js";

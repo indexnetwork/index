@@ -9,7 +9,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { enrichOrCreate, DEFAULT_ENRICHER_EXCLUDE_STATUSES } from '../opportunity.enricher.js';
+import { enrichOrCreate, DEFAULT_ENRICHER_EXCLUDE_STATUSES } from '../application/opportunity.enricher.js';
 import type { CreateOpportunityData, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 

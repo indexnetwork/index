@@ -8,6 +8,7 @@ export {
 export { parseDeepLink } from './deeplink.mjs';
 
 export {
+  applyMappedIntentStatus,
   mapClarifier,
   mapClarifiers,
   mapEventSummary,
@@ -19,3 +20,5 @@ export {
   mapPeopleFromRadarItems,
   mapPersonFromRadarCard,
 } from './mappers.mjs';
+
+export { applyRadarPeople, sameRadarPeople } from './radar-state.mjs';

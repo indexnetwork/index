@@ -31,6 +31,7 @@ mock.module('../../queues/negotiations/claim-timeout.queue', () => ({
 }));
 
 const { conversationDatabaseAdapter } = await import('../database.adapter');
+const { agentDatabaseAdapter } = await import('../agent.database.adapter');
 const { negotiationPollingService } = await import('../../services/negotiation-polling.service');
 const { notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere } = await import('../negotiation-attempt.atomic');
 const { default: db } = await import('../../lib/drizzle/drizzle');
@@ -49,6 +50,8 @@ const cleanupOpportunities: string[] = [];
 let userA: string;
 let userB: string;
 let agentA: string;
+type LegacyPrincipal = { credentialId: string; agentId: string; audience: null; setupAttemptId: null };
+let principalA: LegacyPrincipal;
 
 async function seedUser(name: string): Promise<string> {
   const [u] = await db
@@ -58,12 +61,29 @@ async function seedUser(name: string): Promise<string> {
   return u.id;
 }
 
-async function seedAgent(ownerId: string): Promise<string> {
-  const [a] = await db
+async function seedAgent(ownerId: string): Promise<{ id: string; principal: LegacyPrincipal }> {
+  const [agent] = await db
     .insert(dbSchema.agents)
     .values({ ownerId, name: 'archive-test-agent', type: 'external' })
     .returning({ id: dbSchema.agents.id });
-  return a.id;
+  const [credential] = await db.insert(dbSchema.apikeys)
+    .values({
+      key: `archive-test-key-${randomUUID()}`,
+      userId: ownerId,
+      referenceId: ownerId,
+      metadata: JSON.stringify({ agentId: agent.id }),
+      enabled: true,
+    })
+    .returning({ id: dbSchema.apikeys.id });
+  await agentDatabaseAdapter.setNegotiationExecutorBinding({
+    ownerId,
+    targetAgentId: agent.id,
+    exactTargetPermissions: false,
+  });
+  return {
+    id: agent.id,
+    principal: { credentialId: credential.id, agentId: agent.id, audience: null, setupAttemptId: null },
+  };
 }
 
 async function seedOpportunity(status = 'negotiating'): Promise<string> {
@@ -139,7 +159,7 @@ async function stampArchivedAt(taskId: string, isoTimestamp: string): Promise<vo
 beforeAll(async () => {
   userA = await seedUser('Archive Test A');
   userB = await seedUser('Archive Test B');
-  agentA = await seedAgent(userA);
+  ({ id: agentA, principal: principalA } = await seedAgent(userA));
 }, 30_000);
 
 afterAll(async () => {
@@ -257,7 +277,7 @@ describe('archive legacy negotiations — polling pickup', () => {
     await stampArchivedAt(archivedId, new Date().toISOString());
 
     // pickup should not return the archived task
-    const result = await negotiationPollingService.pickup(agentA, userA);
+    const result = await negotiationPollingService.pickup(agentA, userA, principalA);
     if (result) {
       expect(result.negotiationId).not.toBe(archivedId);
     }
@@ -267,7 +287,7 @@ describe('archive legacy negotiations — polling pickup', () => {
   it('pickup returns non-archived waiting_for_agent tasks normally', async () => {
     const { taskId: activeId } = await seedNegotiationTask({ state: 'waiting_for_agent' });
 
-    const result = await negotiationPollingService.pickup(agentA, userA);
+    const result = await negotiationPollingService.pickup(agentA, userA, principalA);
     // May pick up this or another waiting task; confirm we got one
     expect(result).not.toBeNull();
 

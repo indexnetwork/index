@@ -8,6 +8,14 @@ interface ConversationEventMessage {
   conversationId: string;
   id: string;
   senderId: string;
+  /** Display name for OS/inbox previews; omitted when unresolved. */
+  senderName?: string;
+  /**
+   * Sender avatar for OS notification attachments: either a full URL (legacy
+   * OAuth photos) or an S3 object key served at `{base}/storage/<key>`.
+   * Omitted when the sender has none.
+   */
+  senderAvatar?: string;
   role: 'user' | 'agent';
   parts: unknown;
   createdAt: Date;

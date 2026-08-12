@@ -1,7 +1,11 @@
 import { diffBaseline, type BaselineDiff, type EvalArtifactEnvelope } from "../shared/index.js";
+import { isHistoricalQualityArtifact } from "../shared/artifact.js";
+
+export const HISTORICAL_QUALITY_COMPARISON_REFUSAL =
+  "Historical quality pilot artifacts are descriptive measurements and cannot be compared as scorecards.";
 
 export interface ComparabilityFinding {
-  dimension: "harness" | "corpusFingerprint" | "configFingerprint" | "selection";
+  dimension: "measurement" | "harness" | "corpusFingerprint" | "configFingerprint" | "selection";
   reference: string;
   subject: string;
 }
@@ -45,6 +49,16 @@ export function compareArtifacts(
   alpha = 0.05,
   opts: { allowConfigMismatch?: boolean } = {},
 ): CompareOutcome {
+  if (isHistoricalQualityArtifact(reference) || isHistoricalQualityArtifact(subject)) {
+    return {
+      comparable: false,
+      findings: [{
+        dimension: "measurement",
+        reference: isHistoricalQualityArtifact(reference) ? reference.measurement.kind : "scorecard",
+        subject: isHistoricalQualityArtifact(subject) ? subject.measurement.kind : "scorecard",
+      }],
+    };
+  }
   const findings: ComparabilityFinding[] = [];
   if (reference.harness !== subject.harness) {
     findings.push({ dimension: "harness", reference: reference.harness, subject: subject.harness });

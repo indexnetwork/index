@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createIndexApiClient, normalizeApiBaseUrl, toQueryString } from './client.mjs';
+import {
+  createIndexApiClient, normalizeApiBaseUrl, toQueryString,
+} from './client.mjs';
 
 const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
 
@@ -44,9 +46,59 @@ describe('mac Index API client endpoint contract', () => {
     expect(toQueryString({ status: 'pending', empty: '', nil: null, missing: undefined, limit: 20 })).toBe('?status=pending&limit=20');
   });
 
+  it('routes owner operations through credential-free native structured requests', async () => {
+    const operations = [];
+    const client = createIndexApiClient({
+      nativeRequest: async (operation) => {
+        operations.push(operation);
+        return { status: 200, body: { ok: true }, headers: {} };
+      },
+    });
+    await client.getRuntimeBinding('installation-1');
+    await client.compareAndSelectIndex({
+      agentId: 'agent-1', installationId: 'installation-1', setupAttemptId: 'setup-1',
+    });
+    await client.rollbackHermesRuntime('setup-1');
+    expect(operations).toEqual([
+      { kind: 'http', method: 'GET', path: '/agent-runtime?installationId=installation-1' },
+      { kind: 'http', method: 'POST', path: '/agent-runtime/reconcile-index', body: {
+        agentId: 'agent-1', installationId: 'installation-1', setupAttemptId: 'setup-1',
+      } },
+      { kind: 'http', method: 'POST', path: '/agent-runtime/rollback', body: { setupAttemptId: 'setup-1' } },
+    ]);
+  });
+
+  it('uses generation-fenced owner-control runtime endpoints', async () => {
+    const installationId = '00000000-0000-4000-8000-000000000001';
+    const executorId = '00000000-0000-4000-8000-000000000002';
+    const setupAttemptId = '00000000-0000-4000-8000-000000000003';
+    await expectCall('getRuntimeBinding', (client) => client.getRuntimeBinding(installationId), {
+      path: `/agent-runtime?installationId=${installationId}`,
+    });
+    await expectCall('prepareHermesRuntime', (client) => client.prepareHermesRuntime(installationId, setupAttemptId), {
+      path: '/agent-runtime/hermes/prepare', method: 'POST', body: { installationId, setupAttemptId },
+    });
+    await expectCall('setRuntimeBinding index', (client) => client.setRuntimeBinding({ runtime: 'index' }), {
+      path: '/agent-runtime', method: 'PUT', body: { runtime: 'index' },
+    });
+    await expectCall('setRuntimeBinding hermes', (client) => client.setRuntimeBinding({ runtime: 'hermes', installationId, executorId, setupAttemptId }), {
+      path: '/agent-runtime', method: 'PUT', body: { runtime: 'hermes', installationId, executorId, setupAttemptId },
+    });
+    await expectCall('compareAndSelectIndex', (client) => client.compareAndSelectIndex({
+      agentId: executorId, installationId, setupAttemptId,
+    }), {
+      path: '/agent-runtime/reconcile-index', method: 'POST',
+      body: { agentId: executorId, installationId, setupAttemptId },
+    });
+    await expectCall('rollbackHermesRuntime', (client) => client.rollbackHermesRuntime(setupAttemptId), {
+      path: '/agent-runtime/rollback', method: 'POST', body: { setupAttemptId },
+    });
+  });
+
   it('uses controller-backed auth/network/intent endpoints', async () => {
     await expectCall('auth.me', (client) => client.auth.me(), { path: '/auth/me' });
     await expectCall('networks.list', (client) => client.networks.list(), { path: '/networks' });
+    await expectCall('networks.discoverPublic', (client) => client.networks.discoverPublic(1, 50), { path: '/networks/discovery/public?page=1&limit=50' });
     await expectCall('networks.overview', (client) => client.networks.overview('net/1'), { path: '/networks/net%2F1/overview' });
     await expectCall('networks.myIntents', (client) => client.networks.myIntents('net/1'), { path: '/networks/net%2F1/my-intents' });
     await expectCall('networks.update', (client) => client.networks.update('net/1', { title: 'n' }), { path: '/networks/net%2F1', method: 'PUT', body: { title: 'n' } });
@@ -84,6 +136,22 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('opportunities.updateStatusForIntent', (client) => client.opportunities.updateStatusForIntent('opp/1', 'accepted', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/status', method: 'PATCH', body: { status: 'accepted', scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
     await expectCall('opportunities.startChat', (client) => client.opportunities.startChat('opp/1'), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: {} });
     await expectCall('opportunities.startChatForIntent', (client) => client.opportunities.startChatForIntent('opp/1', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: { scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
+  });
+
+  it('exposes only the three exact REST owner tool wrappers', async () => {
+    const operations = [];
+    const client = createIndexApiClient({ nativeRequest: async (operation) => {
+      operations.push(operation); return { status: 200, body: {}, headers: {} };
+    } });
+    await client.tools.readUserContexts();
+    await client.tools.previewUserContext({ bioOrDescription: 'builder' });
+    await client.tools.confirmUserContext({ identity: {}, narrative: {}, attributes: {} });
+    expect(Object.keys(client.tools)).toEqual(['readUserContexts', 'previewUserContext', 'confirmUserContext']);
+    expect(operations).toEqual([
+      { kind: 'http', method: 'POST', path: '/tools/read_user_contexts', body: { query: {} } },
+      { kind: 'http', method: 'POST', path: '/tools/preview_user_context', body: { query: { bioOrDescription: 'builder' } } },
+      { kind: 'http', method: 'POST', path: '/tools/confirm_user_context', body: { query: { draft: { identity: {}, narrative: {}, attributes: {} } } } },
+    ]);
   });
 
   it('uses controller-backed question and conversation endpoints', async () => {

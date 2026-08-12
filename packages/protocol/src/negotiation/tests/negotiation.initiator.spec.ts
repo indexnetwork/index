@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
-import { IndexNegotiator } from "../negotiation.agent.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
+import { IndexNegotiator } from "../application/negotiation.agent.js";
 
 /**
  * IND-396 — initiator seat stamping (v2 client-advocate protocol).
@@ -200,7 +200,7 @@ describe("negotiation graph — initiatorUserId stamping (IND-396)", () => {
   });
 
   it("emits initiatorUserId on negotiation_session_start via negotiateCandidates", async () => {
-    const { negotiateCandidates } = await import("../negotiation.graph.js");
+    const { negotiateCandidates } = await import("../application/negotiation.graph.js");
     const events: Array<Record<string, unknown>> = [];
     const fakeGraph = {
       invoke: async (input: Record<string, unknown>) => {

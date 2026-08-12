@@ -10,8 +10,8 @@ import { StateGraph, START, END } from '@langchain/langgraph';
 
 import { MaintenanceGraphState } from './maintenance.state.js';
 import { computeRadarHealth } from '../opportunity/radar/radar.health.js';
-import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer, RADAR_SOFT_TARGETS } from '../opportunity/opportunity.utils.js';
-import { shouldRunIntroducerDiscovery, runIntroducerDiscovery, type IntroducerDiscoveryDatabase, type IntroducerDiscoveryQueue } from '../opportunity/opportunity.introducer.js';
+import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer, RADAR_SOFT_TARGETS } from '../opportunity/domain/opportunity.utils.js';
+import { shouldRunIntroducerDiscovery, runIntroducerDiscovery, type IntroducerDiscoveryDatabase, type IntroducerDiscoveryQueue } from '../opportunity/application/opportunity.introducer.js';
 import { isIntroducerDiscoveryEnabled } from '../opportunity/application/opportunity.introducer-feature.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 

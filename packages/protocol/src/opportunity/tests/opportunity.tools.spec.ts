@@ -4,8 +4,8 @@ config({ path: ".env.test", override: true });
 import { describe, expect, it, test } from "bun:test";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
 import type { ToolDeps } from "../../shared/agent/tool.helpers.js";
-import { buildMinimalOpportunityCard, createOpportunityTools } from "../opportunity.tools.js";
-import { deduplicateByPerson } from "../opportunity.utils.js";
+import { buildMinimalOpportunityCard, createOpportunityTools } from "../application/opportunity.tools.js";
+import { deduplicateByPerson } from "../domain/opportunity.utils.js";
 
 describe("opportunity tool registry", () => {
   it("does not register retired direct discovery tools", () => {
@@ -237,7 +237,7 @@ describe('buildMinimalOpportunityCard - introducer discovery (IND-140)', () => {
   });
 });
 
-import { buildOpportunityPresentation, attachProfileLink, attachOpportunityAppLink, buildProfileUrl, buildOpportunityAppUrl } from "../opportunity.tools.js";
+import { buildOpportunityPresentation, attachProfileLink, attachOpportunityAppLink, buildProfileUrl, buildOpportunityAppUrl } from "../application/opportunity.tools.js";
 
 // ---------------------------------------------------------------------------
 // attachProfileLink — profileUrl attachment (no actionable URLs are minted)

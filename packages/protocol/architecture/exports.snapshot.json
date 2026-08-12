@@ -138,37 +138,37 @@
       "name": "QuestionGeneratorReader",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/question-generator.interface.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionerDatabase",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/questioner.interface.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "PersistableQuestion",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/questioner.interface.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "PersistedQuestion",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/questioner.interface.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionFilters",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/questioner.interface.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "ChatQuestionsHost",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/questioner.interface.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "NegotiationSummaryReader",
@@ -192,7 +192,7 @@
       "name": "ContactServiceAdapter",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/contact.interface.js"
+      "source": "./capabilities/contacts.facade.js"
     },
     {
       "name": "ChatGraphCompositeDatabase",
@@ -366,31 +366,31 @@
       "name": "IntegrationAdapter",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/integration.interface.js"
+      "source": "./capabilities/integrations.facade.js"
     },
     {
       "name": "IntegrationConnection",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/integration.interface.js"
+      "source": "./capabilities/integrations.facade.js"
     },
     {
       "name": "IntegrationSession",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/integration.interface.js"
+      "source": "./capabilities/integrations.facade.js"
     },
     {
       "name": "IntegrationSessionOptions",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/integration.interface.js"
+      "source": "./capabilities/integrations.facade.js"
     },
     {
       "name": "ToolActionResponse",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/interfaces/integration.interface.js"
+      "source": "./capabilities/integrations.facade.js"
     },
     {
       "name": "IntentGraphQueue",
@@ -429,6 +429,12 @@
       "source": "./shared/interfaces/negotiation-events.interface.js"
     },
     {
+      "name": "NegotiationContinuationTimeoutIdentity",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/interfaces/negotiation-events.interface.js"
+    },
+    {
       "name": "AgentDispatcher",
       "kind": "type",
       "stability": "stable",
@@ -450,7 +456,7 @@
       "name": "SYSTEM_AGENT_IDS",
       "kind": "value",
       "stability": "stable",
-      "source": "./shared/interfaces/agent.interface.js"
+      "source": "./capabilities/participant-agents.facade.js"
     },
     {
       "name": "ChatContextDigestSchema",
@@ -468,91 +474,91 @@
       "name": "Question",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "UnderspecificationType",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionStrategy",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionGenerationResult",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionPurpose",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "NegotiationQuestionPurpose",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "NegotiationQuestionCandidate",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "NegotiationQuestionProvenance",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "NegotiationQuestionCandidateSchema",
       "kind": "value",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "NegotiationQuestionProvenanceSchema",
       "kind": "value",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionPoolPush",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionRecoverySnapshot",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionVoidedReason",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionPoolPushRequestStatus",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionPoolPushRequestReason",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "PendingQuestionSummary",
@@ -899,6 +905,12 @@
     {
       "name": "OpportunityGraphFactory",
       "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityGraphThresholdOverrides",
+      "kind": "type",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
     },
@@ -1401,13 +1413,37 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "DISCOVERY_MIN_SIMILARITY_DEFAULT",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "discoveryAllowedTypes",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "discoveryEvaluatorMinScore",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "discoveryIntentMatchingEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryMinSimilarity",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1426,6 +1462,18 @@
     },
     {
       "name": "resetDiscoveryEnvWarningsForTests",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "validateDiscoveryEvaluatorMinScore",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "validateDiscoveryMinSimilarity",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1524,13 +1572,13 @@
       "name": "QuestionPoolDiscriminator",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "QuestionPoolSnapshot",
       "kind": "type",
       "stability": "stable",
-      "source": "./shared/schemas/question.schema.js"
+      "source": "./capabilities/questions.facade.js"
     },
     {
       "name": "PoolCandidate",
@@ -1828,6 +1876,12 @@
     },
     {
       "name": "safeFallbackSummary",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "DEFAULT_FALLBACK_HEADLINE",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -2313,6 +2367,24 @@
       "source": "./mcp/mcp.authorization-policy.js"
     },
     {
+      "name": "AskUserPayloadSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
+      "name": "NEGOTIATION_CONSULTATION_REASONS",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
+      "name": "NegotiationConsultationReasonSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
       "name": "UserNegotiationContext",
       "kind": "type",
       "stability": "experimental",
@@ -2343,6 +2415,12 @@
       "source": "./shared/schemas/negotiation-state.schema.js"
     },
     {
+      "name": "NegotiationConsultationReason",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
       "name": "NegotiationSeat",
       "kind": "type",
       "stability": "experimental",
@@ -2361,7 +2439,109 @@
       "source": "./capabilities/negotiation.facade.js"
     },
     {
+      "name": "HERMES_OWNER_DIRECTIVE",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HERMES_SHARED_MESSAGE_TEMPLATES",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationActionSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationResponseSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesOwnerDirectiveSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesRoleAlignmentSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "allowedHermesActionsFor",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "buildHermesNegotiationTurn",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationAction",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationResponse",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesOwnerDirective",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesRoleAlignment",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "DEFAULT_NEGOTIATION_MAX_TURNS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "isNegotiationTurnCapReached",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "expectedNegotiationSpeaker",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
       "name": "allowedActionsFor",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "askUserAnswerWindowMs",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "configuredAskUserEnabled",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/negotiation.facade.js"
@@ -2397,6 +2577,18 @@
       "source": "./capabilities/negotiation.facade.js"
     },
     {
+      "name": "NegotiationSpeakerParticipants",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "NegotiationSpeakerMessage",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
       "name": "assessConsultationEligibility",
       "kind": "value",
       "stability": "stable",
@@ -2428,12 +2620,6 @@
     },
     {
       "name": "NegotiationConsultationPolicyMode",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./capabilities/negotiation.facade.js"
-    },
-    {
-      "name": "NegotiationConsultationReason",
       "kind": "type",
       "stability": "stable",
       "source": "./capabilities/negotiation.facade.js"

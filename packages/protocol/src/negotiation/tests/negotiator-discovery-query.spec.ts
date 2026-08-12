@@ -3,8 +3,8 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import { IndexNegotiator } from "../negotiation.agent.js";
-import type { UserNegotiationContext, SeedAssessment } from "../negotiation.state.js";
+import { IndexNegotiator } from "../application/negotiation.agent.js";
+import type { UserNegotiationContext, SeedAssessment } from "../domain/negotiation.state.js";
 import { assertLLM } from "../../shared/agent/tests/llm-assert.js";
 
 /**

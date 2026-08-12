@@ -40,11 +40,13 @@ const SCORECARD_KEYS = [
  */
 const VERIFIER_ONLY_KEY = "SMARTEST_VERIFIER_MODEL";
 
-/** The twenty-six discovery reads, in full. */
+/** The twenty-eight offerable discovery reads, in full. */
 const DISCOVERY_KEYS = [
   ...SCORECARD_KEYS.filter((key) => key !== VERIFIER_ONLY_KEY),
   "DISCOVERY_ALLOWED_TYPES",
   "DISCOVERY_CONTEXT_TO_INTENT",
+  "DISCOVERY_EVALUATOR_MIN_SCORE",
+  "DISCOVERY_MIN_SIMILARITY",
   "DISCOVERY_PROFILE_SOURCE",
   "DISCOVERY_REJECTION_COOLDOWN_DAYS",
   "DISCOVERY_SOURCE_PREMISE_LIMIT",
@@ -87,8 +89,9 @@ describe("HARNESS_ENV_KEYS", () => {
     expect(Object.keys(HARNESS_ENV_KEYS).sort()).toEqual([...OPS_HARNESSES].sort());
   });
 
-  it("offers discovery exactly the twenty-six keys its graph reads", () => {
-    expect([...HARNESS_ENV_KEYS.discovery]).toEqual(DISCOVERY_KEYS);
+  it("offers discovery exactly the twenty-eight non-credential keys its graph reads", () => {
+    expect(buildEnvCatalog().discovery, "fresh scan").toEqual(DISCOVERY_KEYS);
+    expect([...HARNESS_ENV_KEYS.discovery], "committed site catalogue").toEqual(DISCOVERY_KEYS);
   });
 
   it.each(["matching", "profile", "premise", "opportunity"] as const)(

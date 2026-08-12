@@ -43,6 +43,9 @@ let userA: string; // initiator
 let userB: string; // counterparty
 let agentA: string; // external polling agent (claims)
 let agentB: string;
+type LegacyPrincipal = { credentialId: string; agentId: string; audience: null; setupAttemptId: null };
+let principalA: LegacyPrincipal;
+let principalB: LegacyPrincipal;
 const cleanupConversations: string[] = [];
 const origFlag = process.env.NEGOTIATOR_MEMORY_INJECT;
 
@@ -53,14 +56,31 @@ async function seedUser(name: string): Promise<string> {
   return u.id;
 }
 
-async function seedExternalAgent(ownerId: string): Promise<string> {
-  const [a] = await db.insert(dbSchema.agents)
+async function seedExternalAgent(ownerId: string): Promise<{ id: string; principal: LegacyPrincipal }> {
+  const [agent] = await db.insert(dbSchema.agents)
     .values({ ownerId, name: 'mem-pickup-agent', type: 'external' })
     .returning({ id: dbSchema.agents.id });
-  return a.id;
+  const [credential] = await db.insert(dbSchema.apikeys)
+    .values({
+      key: `mem-pickup-key-${randomUUID()}`,
+      userId: ownerId,
+      referenceId: ownerId,
+      metadata: JSON.stringify({ agentId: agent.id }),
+      enabled: true,
+    })
+    .returning({ id: dbSchema.apikeys.id });
+  await agentDatabaseAdapter.setNegotiationExecutorBinding({
+    ownerId,
+    targetAgentId: agent.id,
+    exactTargetPermissions: false,
+  });
+  return {
+    id: agent.id,
+    principal: { credentialId: credential.id, agentId: agent.id, audience: null, setupAttemptId: null },
+  };
 }
 
-async function seedNegotiation(): Promise<{ taskId: string }> {
+async function seedNegotiation(priorTurnByInitiator = false): Promise<{ taskId: string }> {
   const conv = await conversationDatabaseAdapter.createConversation([
     { participantId: `agent:${userA}`, participantType: 'agent' as const },
     { participantId: `agent:${userB}`, participantType: 'agent' as const },
@@ -74,6 +94,19 @@ async function seedNegotiation(): Promise<{ taskId: string }> {
     protocolVersion: 'v2',
     maxTurns: 6,
   });
+  if (priorTurnByInitiator) {
+    await conversationDatabaseAdapter.createMessage({
+      conversationId: conv.id,
+      senderId: `agent:${userA}`,
+      role: 'agent',
+      parts: [{ kind: 'data', data: {
+        action: 'outreach',
+        message: null,
+        assessment: { reasoning: 'fixture', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+      } }],
+      taskId: task.id,
+    });
+  }
   await conversationDatabaseAdapter.updateTaskState(task.id, 'waiting_for_agent');
   return { taskId: task.id };
 }
@@ -105,8 +138,8 @@ beforeAll(async () => {
 
   userA = await seedUser('Mem Pickup Initiator');
   userB = await seedUser('Mem Pickup Counterparty');
-  agentA = await seedExternalAgent(userA);
-  agentB = await seedExternalAgent(userB);
+  ({ id: agentA, principal: principalA } = await seedExternalAgent(userA));
+  ({ id: agentB, principal: principalB } = await seedExternalAgent(userB));
 
   // Personal negotiator agents own the memories (retrieval resolves these).
   const personalA = await agentDatabaseAdapter.ensureNegotiatorAgent(userA);
@@ -142,11 +175,12 @@ describe('pickup — negotiatorMemory (IND-407)', () => {
   it("includes the claiming user's own memory only (initiator seat)", async () => {
     const { taskId } = await seedNegotiation();
     await claimFor(taskId, 'A');
-    const result = await negotiationPollingService.pickup(agentA, userA);
+    const result = await negotiationPollingService.pickup(agentA, userA, principalA);
 
     expect(result).not.toBeNull();
     expect(result!.taskId).toBe(taskId);
-    const contents = (result!.negotiatorMemory ?? []).map((m) => m.content);
+    if (!result || 'ownerDirective' in result) throw new Error('Expected legacy pickup projection');
+    const contents = (result.negotiatorMemory ?? []).map((m) => m.content);
     expect(contents).toContain(MEM_A);
     expect(contents).toContain(MEM_A_DOSSIER); // dossier about the counterparty of THIS task
     expect(contents).not.toContain(MEM_B);
@@ -154,13 +188,15 @@ describe('pickup — negotiatorMemory (IND-407)', () => {
   }, 30_000);
 
   it("includes the claiming user's own memory only (counterparty seat)", async () => {
-    const { taskId } = await seedNegotiation();
+    // A persisted initiator turn makes B the authoritative next speaker.
+    const { taskId } = await seedNegotiation(true);
     await claimFor(taskId, 'B');
-    const result = await negotiationPollingService.pickup(agentB, userB);
+    const result = await negotiationPollingService.pickup(agentB, userB, principalB);
 
     expect(result).not.toBeNull();
     expect(result!.taskId).toBe(taskId);
-    const contents = (result!.negotiatorMemory ?? []).map((m) => m.content);
+    if (!result || 'ownerDirective' in result) throw new Error('Expected legacy pickup projection');
+    const contents = (result.negotiatorMemory ?? []).map((m) => m.content);
     expect(contents).toContain(MEM_B);
     expect(contents).not.toContain(MEM_A);
     expect(contents).not.toContain(MEM_A_DOSSIER);
@@ -172,10 +208,11 @@ describe('pickup — negotiatorMemory (IND-407)', () => {
     await claimFor(taskId, 'A');
     process.env.NEGOTIATOR_MEMORY_INJECT = 'false';
     try {
-      const result = await negotiationPollingService.pickup(agentA, userA);
+      const result = await negotiationPollingService.pickup(agentA, userA, principalA);
       expect(result).not.toBeNull();
       expect(result!.taskId).toBe(taskId);
-      expect(result!.negotiatorMemory).toBeUndefined();
+      if (!result || 'ownerDirective' in result) throw new Error('Expected legacy pickup projection');
+      expect(result.negotiatorMemory).toBeUndefined();
     } finally {
       process.env.NEGOTIATOR_MEMORY_INJECT = 'true';
       await releaseClaim(taskId);

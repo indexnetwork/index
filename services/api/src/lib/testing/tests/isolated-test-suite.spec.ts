@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { getTableName, sql } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
+import { apikeys } from '../../../schemas/database.schema';
 import { assertNoDiscoverableModuleMocks, loadIsolatedTestInventory } from '../isolated-test-suite';
 
 const temporaryDirectories: string[] = [];
@@ -36,6 +39,116 @@ describe('isolated test inventory', () => {
     expect(new Set(inventory.files).size).toBe(inventory.files.length);
   });
 
+  it('keeps the budgeted Hermes database fixtures registered and synchronization evidence state-based', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const inventory = loadIsolatedTestInventory(apiRoot);
+    const authority = readFileSync(
+      path.join(apiRoot, 'tests/negotiation-runtime-authority.database.isolated.ts'),
+      'utf8',
+    );
+    const lifecycle = readFileSync(
+      path.join(apiRoot, 'tests/hermes-runtime-lifecycle.database.isolated.ts'),
+      'utf8',
+    );
+
+    expect(inventory.files).toContain('tests/negotiation-runtime-authority.database.isolated.ts');
+    expect(inventory.files).toContain('tests/hermes-runtime-lifecycle.database.isolated.ts');
+    expect(authority.match(/\bit\.each\s*\(/g) ?? []).toHaveLength(0);
+    expect(authority).toContain('const contenderOutcome = settlePromiseOutcome(contender());');
+    expect(authority).not.toContain('contender: Promise<T>');
+    expect(authority).toContain('await waitForOwnerRuntimeWaiters(responseBackendPid, 1);');
+    expect(authority).not.toContain('await Bun.sleep(');
+    expect(lifecycle).toContain('function createBarrier(parties: number)');
+    expect(lifecycle).toContain("activation_state IN ('pending', 'active')");
+    expect(lifecycle).toContain("sql`${schema.hermesAgentCredentials.expiresAt} <= now()`");
+    expect(lifecycle).not.toContain('await Bun.sleep(');
+    expect(lifecycle).toContain("for (const first of ['prepare', 'disconnect'] as const)");
+    expect(lifecycle).toContain('await waitForOwnerRuntimeWaiters(held.backendPid, 2)');
+    const lifecycleWaiterQuery = lifecycle.slice(
+      lifecycle.indexOf('async function ownerRuntimeWaiters'),
+      lifecycle.indexOf('async function waitForOwnerRuntimeWaiters'),
+    );
+    expect(lifecycleWaiterQuery).toContain(
+      'SELECT DISTINCT waiter.pid AS pid, waiter.waitstart AS waitstart',
+    );
+    expect(lifecycleWaiterQuery).toContain('ORDER BY waiter.waitstart, waiter.pid');
+    expect(lifecycleWaiterQuery).not.toContain('SELECT DISTINCT waiter.pid AS pid\n    FROM pg_locks');
+    expect(lifecycle).toContain("throw new AggregateError(cleanupErrors, 'Hermes lifecycle fixture cleanup failed')");
+
+    expect(authority).toContain('new HermesAuthorizationService(');
+    const dedicatedRuntimeFixture = authority.slice(
+      authority.indexOf('async function prepareDedicatedRuntime'),
+      authority.indexOf('async function fixture('),
+    );
+    expect(getTableName(apikeys)).toBe('apikey');
+    expect(dedicatedRuntimeFixture).toContain('.from(schema.apikeys)');
+    expect(dedicatedRuntimeFixture).not.toContain('FROM apikeys');
+    expect(authority).toContain('resolveHermesAgentCredential(rawCredential)');
+    expect(authority).toContain('rearmCalls.push({');
+    expect(authority).not.toContain('authorizePickup: async () => true');
+
+    const deadlineFixture = authority.slice(
+      authority.indexOf("it('preserves the original park-start deadline"),
+      authority.indexOf('const pickupLockBoundaries'),
+    );
+    expect(deadlineFixture).toContain('${controlledParkOrigin.toISOString()}::text');
+    const renderedDeadlineMetadata = new PgDialect().sqlToQuery(sql`
+      jsonb_build_object('hermesParkStartedAt', ${'2020-01-02T03:04:05.000Z'}::text)
+    `);
+    expect(renderedDeadlineMetadata.sql).toContain('$1::text');
+
+    const cleanupBlock = authority.slice(
+      authority.indexOf('afterAll(async () => {'),
+      authority.indexOf("describe('real negotiation runtime authority SQL seam'"),
+    );
+    const cleanupDeleteOrder = [
+      'db.delete(schema.intentNetworks)',
+      'db.delete(schema.networkMembers)',
+      'db.delete(schema.intents)',
+      'db.delete(schema.networks)',
+      'db.delete(schema.users)',
+    ].map((statement) => cleanupBlock.indexOf(statement));
+    for (const position of cleanupDeleteOrder) expect(position).toBeGreaterThan(-1);
+    expect(cleanupDeleteOrder).toEqual([...cleanupDeleteOrder].sort((left, right) => left - right));
+    expect(cleanupBlock).toContain('remainingNetworkMembers.length !== 0');
+    expect(cleanupBlock).toContain('remainingIntentNetworks.length !== 0');
+    expect(cleanupBlock).toContain('remainingIntents.length !== 0');
+    expect(authority).toContain("throw new AggregateError(cleanupErrors, 'Negotiation authority fixture cleanup failed')");
+  });
+
+  it('keeps dedicated credential denial logging and assurance runner output identity-free', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const authGuard = readFileSync(path.join(apiRoot, 'src/guards/auth.guard.ts'), 'utf8');
+    const runner = readFileSync(path.join(apiRoot, 'scripts/test-hermes-production-assurance.sh'), 'utf8');
+    const denialLogger = authGuard.slice(
+      authGuard.indexOf('function invalidHermesAgentCredential'),
+      authGuard.indexOf('/** Resolve one exact active dedicated principal'),
+    );
+
+    expect(denialLogger).toContain("logger.warn('Hermes agent credential rejected', { reason })");
+    expect(denialLogger).not.toContain('keyHashPrefix');
+    expect(runner).toContain('API_TEST_HERMES_ASSURANCE_QUIET=1');
+    expect(runner).toContain('sanitize-hermes-assurance-output.ts');
+    expect(runner).toContain('exit "$status"');
+  });
+
+  it('parses every Hermes assurance target with Bun without importing database code', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const transpiler = new Bun.Transpiler({ loader: 'ts' });
+    const targets = [
+      'src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts',
+      'src/lib/drizzle/tests/hermes-runtime-telemetry.database.isolated.ts',
+      'src/lib/drizzle/tests/hermes-emergency-control.database.isolated.ts',
+      'tests/hermes-runtime-lifecycle.database.isolated.ts',
+      'tests/negotiation-runtime-authority.database.isolated.ts',
+    ];
+
+    for (const target of targets) {
+      const source = readFileSync(path.join(apiRoot, target), 'utf8');
+      expect(() => transpiler.transformSync(source), target).not.toThrow();
+    }
+  });
+
   it('dispatches E2E entries through their own explicit gates without filename skips', () => {
     const apiRoot = path.resolve(import.meta.dir, '../../../..');
     const inventory = loadIsolatedTestInventory(apiRoot);
@@ -45,6 +158,7 @@ describe('isolated test inventory', () => {
     expect(e2eFiles).toEqual([
       'tests/contacts-disabled.e2e.isolated.ts',
       'tests/limiter.e2e.isolated.ts',
+      'tests/negotiation-polling-consultation.e2e.isolated.ts',
       'tests/negotiation.ask-user.e2e.isolated.ts',
       'tests/negotiation.e2e.isolated.ts',
       'tests/network-resend-invite.e2e.isolated.ts',
@@ -81,6 +195,62 @@ describe('isolated test inventory', () => {
     expect(() => loadIsolatedTestInventory(root)).toThrow(
       'Unregistered files: tests/unregistered.isolated.ts',
     );
+  });
+});
+
+describe('isolated import harness', () => {
+  const harness = './src/lib/testing/isolated-test-import-harness.spec.ts';
+
+  function runHarness(apiRoot: string, target: string, marker?: string) {
+    const environment = {
+      ...process.env,
+      API_TEST_ISOLATED_CHILD: '1',
+      API_TEST_ISOLATED_TARGET: target,
+      ...(marker ? { API_TEST_ISOLATED_MARKER: marker } : {}),
+    };
+    delete environment.API_TEST_REQUIRE_DATABASE;
+    delete environment.API_TEST_DATABASE_READY;
+    delete environment.API_TEST_PARENT_PID;
+    return Bun.spawnSync(['bun', 'test', harness], {
+      cwd: apiRoot,
+      env: environment,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+  }
+
+  it('executes a registered non-discoverable test in a real fresh Bun process', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const markerRoot = makeApiRoot();
+    const marker = path.join(markerRoot, 'isolated-executed.txt');
+    const child = runHarness(
+      apiRoot,
+      'src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts',
+      marker,
+    );
+
+    expect(child.exitCode).toBe(0);
+    expect(readFileSync(marker, 'utf8')).toMatch(/^executed:\d+$/);
+    const output = new TextDecoder().decode(child.stdout) + new TextDecoder().decode(child.stderr);
+    expect(output).toContain('1 pass');
+  });
+
+  it.each([
+    ['invalid empty target', ''],
+    ['path traversal', '../src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts'],
+    ['absolute path', '/tmp/isolated-import-target.isolated.ts'],
+  ])('rejects %s before import', (_label, target) => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const child = runHarness(apiRoot, target);
+    expect(child.exitCode).not.toBe(0);
+    expect(new TextDecoder().decode(child.stderr)).toContain('Invalid API_TEST_ISOLATED_TARGET');
+  });
+
+  it('rejects a well-formed but unregistered target', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const child = runHarness(apiRoot, 'src/lib/testing/tests/not-registered.isolated.ts');
+    expect(child.exitCode).not.toBe(0);
+    expect(new TextDecoder().decode(child.stderr)).toContain('Target is not registered in .test-isolated');
   });
 });
 

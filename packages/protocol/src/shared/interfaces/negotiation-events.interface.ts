@@ -4,6 +4,15 @@
  * for external agents that haven't responded yet.
  */
 
+/** Exact parked continuation generation carried by a delayed timeout job. */
+export interface NegotiationContinuationTimeoutIdentity {
+  priorTaskId: string;
+  settlementId: string;
+  successorTaskId: string;
+  token: string;
+  fence: number;
+}
+
 /**
  * Manages delayed timeout jobs for negotiations waiting on external agents.
  * When a negotiation yields, a timeout is enqueued. If the external agent
@@ -15,15 +24,23 @@ export interface NegotiationTimeoutQueue {
    * @param negotiationId - The negotiation task ID
    * @param turnNumber - Current turn number (used to detect stale jobs)
    * @param delayMs - Delay in milliseconds before the timeout fires
+   * @param parkGeneration - Exact generation token persisted when this turn was parked
+   * @param continuation - Exact continuation attempt/fence when the parked task is a continuation
    * @returns The BullMQ job ID for cancellation
    */
-  enqueueTimeout(negotiationId: string, turnNumber: number, delayMs: number): Promise<string>;
+  enqueueTimeout(
+    negotiationId: string,
+    turnNumber: number,
+    delayMs: number,
+    parkGeneration: string,
+    continuation?: NegotiationContinuationTimeoutIdentity,
+  ): Promise<string>;
 
   /**
    * Cancel a pending timeout job for a negotiation.
    * @param negotiationId - The negotiation task ID
    */
-  cancelTimeout(negotiationId: string): Promise<void>;
+  cancelTimeout(negotiationId: string, parkGeneration: string): Promise<void>;
 
   /**
    * Arm the answer-window timer for an `ask_user` pause (P3.2). Fires after

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 
 import { SUPPORTS_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
+import { QualityCompleteness } from '../components/QualityCompleteness';
 import { StatusChip } from '../components/StatusChip';
 import { api, type HarnessDescriptor, type ArtifactRef, type IndexIssue, type RunRecord, type FixtureStatus } from '../api/client';
 
@@ -126,7 +127,12 @@ function HarnessHealth({
               >
                 {harness.harness}
               </Link>
-              {SUPPORTS_SIDES[harness.harness] ? (
+              {latestRun?.measurementKind === 'historical-quality-pilot' ? (
+                <>
+                  <span className="text-term-dim">historical quality:</span>
+                  <QualityCompleteness completeness={latestRun.qualityCompleteness} />
+                </>
+              ) : SUPPORTS_SIDES[harness.harness] ? (
                 /**
                  * This harness gets neither cell, because neither number exists
                  * for it. It reads, writes and compares no baseline by design —

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { Harness } from '../src/routes/Harness';
 import { encodeArtifactId } from '../src/api/client';
 import type { HarnessDescriptor } from '../src/api/client';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, historicalQualityRef } from './historical-quality.fixture';
 
 const BASELINE_PATH = 'matching/baselines/matching.baseline.json';
 const RUN_PATH = 'matching/runs/2026-07-30.json';
@@ -162,6 +163,44 @@ describe('Harness', () => {
     expect(screen.getByText('97.1%')).toBeInTheDocument();
     expect(screen.getByText('baseline')).toBeInTheDocument();
     expect(screen.getByText('run')).toBeInTheDocument();
+  });
+
+  it('shows a quality artifact as completed/requested instead of a pass-rate score', async () => {
+    const qualityRef = historicalQualityRef(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, 'quality');
+    const completeQualityRef = historicalQualityRef(COMPLETE_HISTORICAL_QUALITY_ARTIFACT, 'quality-complete');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const href = String(url);
+        if (href.endsWith('/api/harnesses')) {
+          return new Response(JSON.stringify({
+            harnesses: [{
+              harness: 'discovery',
+              script: 'eval:discovery',
+              flags: [],
+              defaultRuns: 1,
+              caseCount: 5,
+              question: 'Does discovery return useful candidates?',
+              detail: 'detail',
+              agents: [],
+            }],
+          }));
+        }
+        return new Response(JSON.stringify({ refs: [qualityRef, completeQualityRef], issues: [] }));
+      }),
+    );
+
+    renderHarness('discovery');
+
+    expect(await screen.findByText('29/30')).toBeInTheDocument();
+    expect(screen.getByText('30/30')).toBeInTheDocument();
+    expect(screen.getAllByText(/completed\/requested/i)).toHaveLength(2);
+    expect(document.body.textContent).not.toContain('90.0%');
+    expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner/i);
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain('/api/artifacts/quality');
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain('/api/artifacts/quality-complete');
   });
 
   it('surfaces index issues for this harness and hides unrelated ones', async () => {

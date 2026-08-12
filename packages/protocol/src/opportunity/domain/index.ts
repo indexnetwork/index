@@ -14,7 +14,6 @@
  * - Cache key builders (opportunity.presentation-cache.ts)
  * - Discovery-run coalescing (opportunity.discovery-run-coalescing.ts)
  * - Negotiation-summary mappers (negotiation-summary.builder.ts)
- * - Discovery question input helper (discovery-question.helper.ts)
  *
  * ## What lives in subdirectories (exported by path, not moved)
  * - discriminator/ — pool discriminator types, env, scorer, adjustments, question, push
@@ -36,7 +35,6 @@ export * from "./opportunity.presentation.js";
 export * from "./opportunity.safe-presentation.js";
 export * from "./opportunity.presentation-cache.js";
 export * from "./negotiation-summary.builder.js";
-export * from "./discovery-question.helper.js";
 
 // ── Subdirectory domain exports ───────────────────────────────────────────────
 // discriminator domain

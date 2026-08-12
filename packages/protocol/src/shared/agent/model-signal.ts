@@ -37,10 +37,14 @@ export function getAbortSignalConfig(signal?: AbortSignal): { signal: AbortSigna
 
 /** Invokes a LangChain runnable with the current request AbortSignal when present. */
 export async function invokeWithAbortSignal<TInput, TOutput>(
-  runnable: { invoke(input: TInput, config?: { signal?: AbortSignal }): Promise<TOutput> },
+  runnable: { invoke(input: TInput, config?: { signal?: AbortSignal; metadata?: Record<string, unknown>; tags?: string[] }): Promise<TOutput> },
   input: TInput,
   signal?: AbortSignal,
+  invocation?: { metadata?: Record<string, unknown>; tags?: string[] },
 ): Promise<TOutput> {
-  const config = getAbortSignalConfig(signal);
+  const signalConfig = getAbortSignalConfig(signal);
+  const config = signalConfig || invocation
+    ? { ...invocation, ...signalConfig }
+    : undefined;
   return config ? runnable.invoke(input, config) : runnable.invoke(input);
 }

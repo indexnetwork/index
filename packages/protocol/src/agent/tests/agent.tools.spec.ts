@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createAgentTools } from '../agent.tools.js';
+import { createAgentTools } from '../../participant-agents/application/index.js';
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 import { createFakeAgentDb } from './fakes.js';
 

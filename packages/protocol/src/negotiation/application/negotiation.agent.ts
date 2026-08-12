@@ -63,7 +63,7 @@ const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side sur
  * prompt (or the schema) otherwise.
  */
 const ASK_USER_RULE = `
-- "ask_user" if you need {userName}'s OWN input before you can proceed — typically permission to disclose something sensitive (budget, availability, private details) or a fact only they know. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation — spend it well. Set askUser: { disclosureSubject: what you need permission for or need to know, draftQuestion: the question in your words }. Use "question" (not "ask_user") when the clarification should come from the other side.`;
+- "ask_user" if you need {userName}'s OWN input before you can proceed. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation. Set askUser to exactly one closed server category: { reason: "unresolved_owner_constraint" | "consequential_disclosure_permission" | "repeated_non_convergence" | "insufficient_commitment_authority" }. Never write question text or instructions in askUser; the server owns all owner-facing copy. Use "question" (not "ask_user") when clarification should come from the other side.`;
 
 /** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
 const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
@@ -134,6 +134,12 @@ export interface NegotiationAgentInput {
    * falls back to the flat continuation history (byte-identical to before).
    */
   priorDialogue?: AttributedPriorDialogue;
+  /**
+   * Durable caller-owned execution identity. Timeout workers reuse this exact
+   * value across delivery retries; it is forwarded as model-run metadata for
+   * deterministic provider tracing/idempotency without entering the prompt.
+   */
+  executionId?: string;
 }
 
 export interface IndexNegotiatorConfig {
@@ -339,7 +345,7 @@ ${input.history.length === 0 && !input.isContinuation ? (version === "v2" && sea
     // out-of-vocabulary actions. Validate; retry once; then fall back to the
     // conservative seat-valid action instead of poisoning the turn history.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await this.callModel(model, chatMessages);
+      const result = await this.callModel(model, chatMessages, input.executionId);
       const parsed = schema.safeParse(result);
       if (parsed.success) return parsed.data as NegotiationTurn;
       agentLog.warn("Negotiator output failed seat-schema validation", {
@@ -372,7 +378,15 @@ ${input.history.length === 0 && !input.isContinuation ? (version === "v2" && sea
   protected async callModel(
     model: ReturnType<typeof createStructuredModel>,
     chatMessages: Array<{ role: string; content: string }>,
+    executionId?: string,
   ): Promise<unknown> {
-    return invokeWithAbortSignal(model, chatMessages, AbortSignal.timeout(this.turnTimeoutMs));
+    return invokeWithAbortSignal(
+      model,
+      chatMessages,
+      AbortSignal.timeout(this.turnTimeoutMs),
+      executionId
+        ? { metadata: { timeoutExecutionId: executionId }, tags: ['negotiation-timeout'] }
+        : undefined,
+    );
   }
 }

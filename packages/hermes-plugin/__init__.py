@@ -9,7 +9,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from . import schemas, tools
+from . import schemas, tools, transport
+from ._mode import resolve_plugin_mode
 
 _INDEX_HINT = (
     'For Index Network signals/intents/opportunities/discovery requests, load '
@@ -29,7 +30,7 @@ _INDEX_TERMS = (
 )
 
 
-def _register_skills(ctx):
+def _register_skills(ctx, allowed_names: set[str] | None = None):
     """Register bundled plugin skills when skills are added.
 
     Plugin skills are namespaced and read-only in Hermes; they are not copied
@@ -42,7 +43,7 @@ def _register_skills(ctx):
 
     for child in sorted(skills_dir.iterdir()):
         skill_md = child / "SKILL.md"
-        if child.is_dir() and skill_md.exists():
+        if child.is_dir() and skill_md.exists() and (allowed_names is None or child.name in allowed_names):
             ctx.register_skill(child.name, skill_md)
 
 
@@ -102,8 +103,41 @@ def _install_desktop_plugin():
         pass
 
 
+def _remove_desktop_plugin():
+    """Remove a stale Index dashboard copy when the runtime is negotiation-only."""
+    dest = Path.home() / ".hermes" / "desktop-plugins" / "index-network"
+    try:
+        if dest.is_symlink():
+            dest.unlink()
+        else:
+            shutil.rmtree(dest, ignore_errors=True)
+    except Exception:  # noqa: BLE001 - dashboard cleanup must not break startup.
+        pass
+
+
+def _plugin_mode() -> str:
+    """Resolve the shared runtime authorization mode."""
+    return resolve_plugin_mode()
+
+
+def _register_negotiation_tools(ctx):
+    for name, schema, handler in (
+        ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
+        ("index_pickup_negotiation", schemas.INDEX_PICKUP_NEGOTIATION, tools.index_pickup_negotiation),
+        ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
+        ("index_consult_owner", schemas.INDEX_CONSULT_OWNER, tools.index_consult_owner),
+    ):
+        ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
+
+
 def register(ctx):
-    """Register Index Network plugin capabilities with Hermes."""
+    """Register the mode-authorized Index Network capabilities with Hermes."""
+    if _plugin_mode() == "negotiator":
+        _remove_desktop_plugin()
+        _register_negotiation_tools(ctx)
+        _register_skills(ctx, {"index-negotiator"})
+        return
+
     _install_desktop_plugin()
     ctx.register_tool(
         name="index_read_intents",
@@ -118,30 +152,14 @@ def register(ctx):
             schema=schemas.forwarded_mcp_schema(tool_name),
             handler=tools.make_mcp_tool_handler(tool_name),
         )
-    ctx.register_tool(
-        name="index_agent_me",
-        toolset="index-network",
-        schema=schemas.INDEX_AGENT_ME,
-        handler=tools.index_agent_me,
-    )
-    ctx.register_tool(
-        name="index_open_app",
-        toolset="index-network",
-        schema=schemas.INDEX_OPEN_APP,
-        handler=tools.index_open_app,
-    )
-    ctx.register_tool(
-        name="index_pickup_negotiation",
-        toolset="index-network",
-        schema=schemas.INDEX_PICKUP_NEGOTIATION,
-        handler=tools.index_pickup_negotiation,
-    )
-    ctx.register_tool(
-        name="index_respond_negotiation",
-        toolset="index-network",
-        schema=schemas.INDEX_RESPOND_NEGOTIATION,
-        handler=tools.index_respond_negotiation,
-    )
+    for name, schema, handler in (
+        ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
+        ("index_open_app", schemas.INDEX_OPEN_APP, tools.index_open_app),
+        ("index_pickup_negotiation", schemas.INDEX_PICKUP_NEGOTIATION, tools.index_pickup_negotiation),
+        ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
+        ("index_consult_owner", schemas.INDEX_CONSULT_OWNER, tools.index_consult_owner),
+    ):
+        ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
     if hasattr(ctx, "register_hook"):
         ctx.register_hook("pre_llm_call", _index_context_hint)
     if hasattr(ctx, "register_command"):

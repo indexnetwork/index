@@ -4,9 +4,9 @@ config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
 
-import { IndexNegotiator } from "../negotiation.agent.js";
-import type { NegotiatorMemoryEntry } from "../negotiation.memory.js";
-import type { UserNegotiationContext, NegotiationTurn } from "../negotiation.state.js";
+import { IndexNegotiator } from "../application/negotiation.agent.js";
+import type { NegotiatorMemoryEntry } from "../domain/negotiation.memory.js";
+import type { UserNegotiationContext, NegotiationTurn } from "../domain/negotiation.state.js";
 
 /**
  * IND-407 (P5.3) — disclosure-rule honored end-to-end (real LLM).

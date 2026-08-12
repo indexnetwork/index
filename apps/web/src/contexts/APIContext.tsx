@@ -8,7 +8,6 @@ import { createSynthesisService } from '@/services/synthesis';
 import { createDiscoverService } from '@/services/discover';
 import { createAuthService } from '@/services/auth';
 import { createIntegrationsService } from '@/services/integrations';
-import { createAdminService } from '@/services/admin';
 import { createUsersService } from '@/services/users';
 import { createOpportunitiesService } from '@/services/opportunities';
 import { createConversationService } from '@/services/conversation';
@@ -25,7 +24,6 @@ export interface APIContextType {
   discoverService: ReturnType<typeof createDiscoverService>;
   authService: ReturnType<typeof createAuthService>;
   integrationsService: ReturnType<typeof createIntegrationsService>;
-  adminService: ReturnType<typeof createAdminService>;
   usersService: ReturnType<typeof createUsersService>;
   opportunitiesService: ReturnType<typeof createOpportunitiesService>;
   conversationService: ReturnType<typeof createConversationService>;
@@ -48,7 +46,6 @@ export function APIProvider({ children }: { children: ReactNode }) {
     discoverService: createDiscoverService(api),
     authService: createAuthService(api),
     integrationsService: createIntegrationsService(api),
-    adminService: createAdminService(api),
     usersService: createUsersService(api),
     opportunitiesService: createOpportunitiesService(api),
     conversationService: createConversationService(api),
@@ -105,11 +102,6 @@ export function useDiscover() {
 export function useAuth() {
   const { authService } = useAPI();
   return authService;
-}
-
-export function useAdmin() {
-  const { adminService } = useAPI();
-  return adminService;
 }
 
 export function useUsers() {

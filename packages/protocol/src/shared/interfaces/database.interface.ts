@@ -1705,6 +1705,7 @@ export interface Database {
     networkIds: string[];
     excludeUserId: string;
     limit: number;
+    minScore?: number;
   }): Promise<Array<{
     premiseId: string;
     userId: string;
@@ -1744,6 +1745,7 @@ export interface Database {
     networkIds: string[];
     excludeUserId: string;
     limitPerSource: number;
+    minScore?: number;
   }): Promise<Array<{
     sourcePremiseId: string;
     premiseId: string;
@@ -2665,7 +2667,13 @@ export type NegotiationGraphDatabase = Pick<
   }): Promise<{ id: string; conversationId: string; state: string; created: boolean } | null>;
 
   /** Transitions a task to a new state (e.g. working, completed, failed). */
-  updateTaskState(taskId: string, state: string, statusMessage?: unknown, continuationExecution?: NegotiationContinuationExecution): Promise<{ id: string; conversationId: string; state: string }>;
+  updateTaskState(
+    taskId: string,
+    state: string,
+    statusMessage?: unknown,
+    continuationExecution?: NegotiationContinuationExecution,
+    parkGeneration?: string,
+  ): Promise<{ id: string; conversationId: string; state: string }>;
 
   /** Persists a negotiation outcome artifact attached to a task. */
   createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null; continuationExecution?: NegotiationContinuationExecution }): Promise<{ id: string }>;

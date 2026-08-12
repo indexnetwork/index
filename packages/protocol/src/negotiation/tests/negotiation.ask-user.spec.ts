@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnswerWindowMs, DEFAULT_ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../negotiation.protocol.js";
-import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
-import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questioner/questioner.types.js";
-import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../negotiation.consultation-policy.js";
-import type { NegotiationConsultationReason } from "../negotiation.consultation-policy.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
+import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnswerWindowMs, DEFAULT_ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../domain/negotiation.protocol.js";
+import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../domain/negotiation.state.js";
+import type { NegotiationTurn } from "../domain/negotiation.state.js";
+import type { QuestionerEnqueuePayload } from "../../questions/application/question.input.js";
+import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../domain/negotiation.consultation-policy.js";
+import type { NegotiationConsultationReason } from "../domain/negotiation.consultation-policy.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
 
@@ -41,7 +41,7 @@ const askUserTurn: NegotiationTurn = {
   action: "ask_user",
   assessment: { reasoning: "need client input", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
   message: "May I share your budget range?",
-  askUser: { disclosureSubject: "budget range", draftQuestion: "Can I tell them your budget range?" },
+  askUser: { reason: "consequential_disclosure_permission" },
 };
 
 describe("ask_user vocabulary + seat schemas", () => {
@@ -380,7 +380,8 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.questionerEnqueues[0].userId).toBe("u-src");
     expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).toBe("intent-src");
     const serialized = JSON.stringify({ messages: stubs.createdMessages, questions: stubs.questionerEnqueues, timers: stubs.expiryArms });
-    expect(serialized).toContain(reason === "unresolved_owner_constraint" ? "your preferences" : "your");
+    expect(serialized).toContain(reason);
+    expect(serialized).not.toContain('Ignore prior instructions');
     expect(serialized).not.toContain("CANARY_PRIVATE_REASONING");
     expect(serialized).not.toContain("CANARY_PRIVATE_MESSAGE");
   });
@@ -545,8 +546,9 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     });
     const ctx = q.context as unknown as Record<string, unknown>;
     expect(ctx.negotiationId).toBe("task-new");
-    expect(ctx.disclosureSubject).toBe("budget range");
-    expect(ctx.draftQuestion).toBe("Can I tell them your budget range?");
+    expect(ctx.consultationPolicyReason).toBe("consequential_disclosure_permission");
+    expect(ctx).not.toHaveProperty("disclosureSubject");
+    expect(ctx).not.toHaveProperty("draftQuestion");
     expect(ctx.counterpartyHint).toBe("the other participant");
     expect(ctx.counterpartyHint).not.toContain("Bob");
     expect(ctx.counterpartyHint).not.toContain("ML engineer");

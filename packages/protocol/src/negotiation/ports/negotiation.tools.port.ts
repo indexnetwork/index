@@ -10,7 +10,6 @@ import type { NegotiationTimeoutQueue } from "../../shared/interfaces/negotiatio
  * same pattern as contacts/ports/contact.tools.port.ts.
  *
  * IND-550: canonical port type for negotiation tool host dependencies.
- * Legacy path (capabilities/negotiation.tools.port.ts) re-exports from here.
  */
 export interface NegotiationToolDeps {
   negotiationDatabase: NegotiationGraphDatabase;

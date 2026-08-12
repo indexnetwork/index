@@ -4,8 +4,6 @@
  * No application logic, no LLM calls, no cross-capability imports.
  *
  * IND-549: canonical domain layer for the contacts capability.
- * Legacy path (shared/interfaces/contact.interface.ts) is a thin
- * compatibility shim pointing here.
  */
 
 /** Input for importing a single contact. */

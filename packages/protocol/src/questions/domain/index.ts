@@ -20,7 +20,6 @@
  * - Persistence/generator ports: questions/ports.
  *
  * IND-547: canonical home for question domain types.
- * Legacy path (shared/schemas/question.schema.ts) is a thin compatibility shim.
  */
 
 export * from "./question.schema.js";

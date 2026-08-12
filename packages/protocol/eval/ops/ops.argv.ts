@@ -311,8 +311,9 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   // unwritten key would be inherited by the child: a default-profile run would
   // silently use overridden models while being recorded and displayed as
   // experimental: false with env {} — false provenance on a run the harness
-  // auto-saves into eval/<harness>/runs/. readModelOverrides trims and treats
-  // an empty value as "no overrides", so "" fully neutralises an inherited one.
+  // auto-saves into eval/<harness>/runs/. The canonical parser in
+  // model.resolver.ts trims and treats an empty value as "no overrides", so
+  // "" fully neutralises an inherited one.
   if (!("EVAL_MODEL_OVERRIDES" in env)) {
     env.EVAL_MODEL_OVERRIDES = "";
   }

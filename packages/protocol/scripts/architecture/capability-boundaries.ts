@@ -24,129 +24,10 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 
-type Capability =
-  | "signals"
-  | "participant-context"
-  | "communities"
-  | "opportunities"
-  | "negotiation"
-  | "questions"
-  | "participant-agents"
-  | "contacts"
-  | "integrations"
-  | "interaction-composition"
-  // IND-543 outer shells
-  | "ambient-background"
-  | "neutral-platform"
-  | "public-compatibility";
+import { ALLOWED_CAPABILITY_DIRECTIONS, capabilityForSourcePath, DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES, facadeCapabilityForSourcePath, implementationCapabilityForSourcePath } from "./capability-model.ts";
 
 const packageRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const sourceRoot = resolve(packageRoot, "src");
-
-/** Single-segment top-level directories with a fixed capability assignment. */
-const capabilityDirectories: Readonly<Record<string, Capability>> = {
-  // IND-544: signals/ is the canonical capability directory; intent/ is the
-  // legacy compatibility-shim directory kept for backward compat (both map to
-  // the same capability so cross-shim imports are treated as self-imports).
-  signals: "signals",
-  intent: "signals",
-  // IND-545: participant-context/ is the canonical domain-first directory;
-  // enrichment/, premise/, and context/ are legacy directories that remain as
-  // compatibility paths — all four map to the same capability.
-  "participant-context": "participant-context",
-  enrichment: "participant-context",
-  premise: "participant-context",
-  context: "participant-context",
-  // IND-546: communities/ is the canonical domain-first directory; network/,
-  // network/membership/, and network/indexer/ are legacy compatibility shims.
-  communities: "communities",
-  network: "communities",
-  opportunity: "opportunities",
-  negotiation: "negotiation",
-  questioner: "questions",
-  // IND-548: participant-agents/ is the canonical domain-first directory;
-  // chat/ and agent/ are legacy directories kept as compatibility paths —
-  // all three map to the same capability.
-  "participant-agents": "participant-agents",
-  chat: "participant-agents",
-  agent: "participant-agents",
-  // IND-549: contacts/ is the canonical domain-first directory;
-  // contact/ is the legacy compatibility-shim directory (both map to the
-  // same capability so cross-shim imports are treated as self-imports).
-  contacts: "contacts",
-  contact: "contacts",
-  // IND-549: integrations/ is the canonical domain-first directory;
-  // integration/ is the legacy compatibility-shim directory (both map to the
-  // same capability so cross-shim imports are treated as self-imports).
-  integrations: "integrations",
-  integration: "integrations",
-  maintenance: "interaction-composition",
-  // IND-543 outer shells (single-segment entries that have a fixed mapping)
-  platform: "neutral-platform",
-  public: "public-compatibility",
-};
-
-/** Every permitted direction is deliberately named and reviewed here. */
-const allowedDirections: Readonly<Record<Capability, readonly Capability[]>> = {
-  signals: ["participant-agents", "questions"],
-  "participant-context": ["participant-agents", "questions"],
-  communities: ["participant-agents", "signals"],
-  opportunities: ["participant-agents", "signals", "negotiation", "questions"],
-  negotiation: ["opportunities", "questions"],
-  questions: ["negotiation"],
-  "participant-agents": ["negotiation"],
-  contacts: ["opportunities"],
-  integrations: [],
-  "interaction-composition": [
-    "signals",
-    "participant-context",
-    "communities",
-    "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-  ],
-  // IND-543 outer shells
-  "ambient-background": [
-    "signals",
-    "participant-context",
-    "communities",
-    "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-  ],
-  // neutral-platform must not import any capability — empty set enforces this.
-  "neutral-platform": [],
-  // public-compatibility mirrors root-index rules: may reference all capabilities
-  // but only through their facade contracts (enforced in the main loop below).
-  "public-compatibility": [
-    "signals",
-    "participant-context",
-    "communities",
-    "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-    "interaction-composition",
-  ],
-};
-
-/**
- * Capabilities that are exempt from the "must use a facade" direct-impl check.
- * interaction-composition is the original exemption; ambient-background has the
- * same wiring rights for background adapters.
- */
-const DIRECT_IMPL_EXEMPT = new Set<Capability>([
-  "interaction-composition",
-  "ambient-background",
-]);
 
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory);
@@ -161,58 +42,6 @@ async function sourceFiles(directory: string): Promise<string[]> {
     }
   }
   return files;
-}
-
-function sourceCapability(path: string): Capability | undefined {
-  const pathFromSource = relative(sourceRoot, path).replace(/\\/g, "/");
-  const parts = pathFromSource.split("/");
-  const topLevel = parts[0];
-
-  // IND-543: multi-segment runtime shell — sub-classify by second segment.
-  if (topLevel === "runtime") {
-    const sub = parts[1];
-    if (sub === "foreground") return "interaction-composition";
-    if (sub === "background") return "ambient-background";
-    return undefined; // unknown runtime sub-directory — will be skipped
-  }
-
-  if (topLevel === "capabilities") return facadeCapability(path);
-
-  // The three shared/agent composition files retain their interaction-composition
-  // classification even though the registry has physically moved; the shim at
-  // shared/agent/tool.registry.ts is a pass-through so it keeps the same role.
-  if (
-    topLevel === "shared" &&
-    /^shared\/agent\/tool\.(?:factory|registry|helpers)\.ts$/.test(pathFromSource)
-  ) {
-    return "interaction-composition";
-  }
-
-  // IND-545: shared/hyde/ is a cross-capability technology binding (participant-
-  // context generates HyDE docs; opportunities consumes them for semantic search).
-  // It remains unclassified shared infrastructure so both capabilities may access
-  // it without a cross-capability facade constraint.
-
-  return capabilityDirectories[topLevel];
-}
-
-function implementationCapability(path: string): Capability | undefined {
-  const pathFromSource = relative(sourceRoot, path).replace(/\\/g, "/");
-  const parts = pathFromSource.split("/");
-  const topLevel = parts[0];
-  if (topLevel === "runtime") {
-    const sub = parts[1];
-    if (sub === "foreground") return "interaction-composition";
-    if (sub === "background") return "ambient-background";
-    return undefined;
-  }
-  return capabilityDirectories[topLevel];
-}
-
-function facadeCapability(path: string): Capability | undefined {
-  const pathFromSource = relative(sourceRoot, path).replace(/\\/g, "/");
-  const match = /^capabilities\/([a-z-]+)(?:\.[a-z-]+)?\.facade\.ts$/.exec(pathFromSource);
-  return match?.[1] as Capability | undefined;
 }
 
 function importSpecifiers(sourceFile: ts.SourceFile): string[] {
@@ -247,8 +76,9 @@ function resolveImport(importer: string, specifier: string): string | undefined 
 
 const violations: string[] = [];
 for (const filePath of await sourceFiles(sourceRoot)) {
-  const from = sourceCapability(filePath);
-  const isRootIndex = relative(sourceRoot, filePath).replace(/\\/g, "/") === "index.ts";
+  const pathFromSource = relative(sourceRoot, filePath);
+  const from = capabilityForSourcePath(pathFromSource);
+  const isRootIndex = pathFromSource.replace(/\\/g, "/") === "index.ts";
   if (!from && !isRootIndex) continue;
 
   const sourceFile = ts.createSourceFile(
@@ -261,8 +91,9 @@ for (const filePath of await sourceFiles(sourceRoot)) {
   for (const specifier of importSpecifiers(sourceFile)) {
     const importedPath = resolveImport(filePath, specifier);
     if (!importedPath) continue;
-    const directTarget = implementationCapability(importedPath);
-    const facadeTarget = facadeCapability(importedPath);
+    const importedPathFromSource = relative(sourceRoot, importedPath);
+    const directTarget = implementationCapabilityForSourcePath(importedPathFromSource);
+    const facadeTarget = facadeCapabilityForSourcePath(importedPathFromSource);
     const target = facadeTarget ?? directTarget;
     if (!target || target === from) continue;
 
@@ -275,13 +106,13 @@ for (const filePath of await sourceFiles(sourceRoot)) {
       continue;
     }
 
-    if (!allowedDirections[from!].includes(target)) {
+    if (!ALLOWED_CAPABILITY_DIRECTIONS[from!].includes(target)) {
       violations.push(
         `${relative(packageRoot, filePath)} uses forbidden ${from} → ${target} direction via ${specifier}`,
       );
       continue;
     }
-    if (!facadeTarget && !DIRECT_IMPL_EXEMPT.has(from!)) {
+    if (!facadeTarget && !DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES.has(from!)) {
       violations.push(
         `${relative(packageRoot, filePath)} imports ${target} implementation directly via ${specifier}; use its capabilities/*.facade.ts contract`,
       );
@@ -295,7 +126,7 @@ if (violations.length > 0) {
   );
 }
 
-const directions = Object.entries(allowedDirections).flatMap(([from, targets]) =>
+const directions = Object.entries(ALLOWED_CAPABILITY_DIRECTIONS).flatMap(([from, targets]) =>
   targets.map((to) => `${from} → ${to}`),
 );
 console.log(

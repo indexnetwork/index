@@ -6,18 +6,26 @@ function row(status: string): PendingOpportunityEvent {
   return { id: 'opp', status };
 }
 
-const original = OpportunityEvents.onPending;
-afterEach(() => { OpportunityEvents.onPending = original; });
+const originalPending = OpportunityEvents.onPending;
+const originalActionable = OpportunityEvents.onActionable;
+afterEach(() => {
+  OpportunityEvents.onPending = originalPending;
+  OpportunityEvents.onActionable = originalActionable;
+});
 
 describe('OpportunityEvents pending emission', () => {
-  it('emits only pending rows', async () => {
-    const handler = mock(async () => {});
-    OpportunityEvents.onPending = handler;
+  it('preserves the deprecated helper as pending-only', async () => {
+    const pending = mock(async () => {});
+    const actionable = mock(async () => {});
+    OpportunityEvents.onPending = pending;
+    OpportunityEvents.onActionable = actionable;
     emitOpportunityPendingBestEffort(row('pending'));
+    emitOpportunityPendingBestEffort(row('latent'));
     emitOpportunityPendingBestEffort(row('draft'));
     await Promise.resolve();
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0].opportunity.id).toBe('opp');
+    expect(pending).toHaveBeenCalledTimes(1);
+    expect(pending.mock.calls[0][0].opportunity.id).toBe('opp');
+    expect(actionable).not.toHaveBeenCalled();
   });
 
   it('swallows synchronous and asynchronous handler failures', async () => {

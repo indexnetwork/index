@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
-import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
+import { AuthGuard, authorizeIndexAppOwnerOpportunityStatus, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -279,6 +279,9 @@ export class OpportunityController {
     if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 
     const rawStatus = typeof body.status === 'string' ? body.status : undefined;
+    if (rawStatus && !authorizeIndexAppOwnerOpportunityStatus(req, rawStatus)) {
+      return Response.json({ error: 'Index app owner status operation denied' }, { status: 403 });
+    }
     const status = rawStatus as 'latent' | 'draft' | 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
     const allowed = ['latent', 'draft', 'pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {

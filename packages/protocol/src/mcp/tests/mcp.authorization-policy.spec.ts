@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { McpResolvedIdentity } from '../../shared/schemas/mcp-auth.schema.js';
 import type { McpPolicyAgentSnapshot } from '../mcp.authorization-policy.js';
-import { CANONICAL_MCP_TOOL_ACCESS_RULES, MCP_PERMISSION_ACTIONS, McpCapabilityPolicy, defineMcpToolAccessRules, defineMcpToolPermissionMap, projectStoredPermissionActions, resolveMcpCapabilitySubject } from '../mcp.authorization-policy.js';
+import { CANONICAL_MCP_TOOL_ACCESS_RULES, HERMES_AGENT_MCP_TOOL_PERMISSIONS, MCP_PERMISSION_ACTIONS, McpCapabilityPolicy, defineMcpToolAccessRules, defineMcpToolPermissionMap, projectStoredPermissionActions, resolveMcpCapabilitySubject } from '../mcp.authorization-policy.js';
 
 const USER_ID = 'user-1';
 const AGENT_ID = 'agent-1';
@@ -272,6 +272,121 @@ describe('MCP capability policy principal inventory', () => {
         'read_docs',
         'create_intent',
       ])).toEqual([]);
+    }
+  });
+});
+
+describe('dedicated Hermes agent MCP profile', () => {
+  const exactToolMapping = {
+    read_user_contexts: 'manage:identity',
+    preview_user_context: 'manage:identity',
+    confirm_user_context: 'manage:identity',
+    create_user_context: 'manage:identity',
+    update_user_context: 'manage:identity',
+    get_enrichment_run: 'manage:identity',
+    cancel_enrichment_run: 'manage:identity',
+    read_intents: 'manage:intents',
+    search_intents: 'manage:intents',
+    create_intent: 'manage:intents',
+    update_intent: 'manage:intents',
+    read_intent_indexes: 'manage:intents',
+    create_intent_index: 'manage:intents',
+    list_negotiations: 'manage:negotiations',
+    get_negotiation: 'manage:negotiations',
+    respond_to_negotiation: 'manage:negotiations',
+    read_networks: 'manage:networks',
+    read_network_memberships: 'manage:networks',
+    create_network: 'manage:networks',
+    update_network: 'manage:networks',
+    create_network_membership: 'manage:networks',
+    list_opportunities: 'manage:opportunities',
+    update_opportunity: 'manage:opportunities',
+    confirm_opportunity_delivery: 'manage:opportunities',
+    read_premises: 'manage:premises',
+    create_premise: 'manage:premises',
+    update_premise: 'manage:premises',
+    retract_premise: 'manage:premises',
+    read_pending_questions: 'manage:identity',
+    read_activity_summary: 'manage:identity',
+    read_docs: 'manage:identity',
+  } as const;
+
+  test('freezes one canonical action for every exposed Hermes MCP tool', () => {
+    expect(Object.fromEntries(
+      [...HERMES_AGENT_MCP_TOOL_PERMISSIONS].map(([toolName, requirement]) => [toolName, requirement.action]),
+    )).toEqual(exactToolMapping);
+    for (const requirement of HERMES_AGENT_MCP_TOOL_PERMISSIONS.values()) {
+      expect(MCP_PERMISSION_ACTIONS).toContain(requirement.action);
+    }
+  });
+
+  test('allows only the exact mapped inventory and defaults unknown, human, deletion, permission, and admin tools to deny', () => {
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID, isHermesAgent: true }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'global',
+          scopeId: null,
+          actions: [...MCP_PERMISSION_ACTIONS],
+        }],
+      }),
+    });
+
+    expect(subject.profile).toBe('hermes_agent');
+    expect(policy.visibleToolNames(subject, [
+      ...Object.keys(exactToolMapping),
+      'register_agent',
+      'list_agents',
+      'grant_agent_permission',
+      'delete_intent',
+      'delete_intent_index',
+      'delete_network',
+      'delete_network_membership',
+      'complete_onboarding',
+      'list_conversations',
+      'get_conversation',
+      'unknown_future_tool',
+      'read_user_profiles',
+      'add_contact',
+    ])).toEqual(Object.keys(exactToolMapping));
+  });
+
+  test('requires the mapped canonical action independently instead of inheriting authenticated access', () => {
+    for (const [toolName, requirement] of HERMES_AGENT_MCP_TOOL_PERMISSIONS) {
+      const allowed = resolveMcpCapabilitySubject({
+        identity: identity({ agentId: AGENT_ID, isHermesAgent: true }),
+        isOnboarding: false,
+        agent: agentSnapshot({
+          permissions: [{
+            agentId: AGENT_ID,
+            userId: USER_ID,
+            scope: 'global',
+            scopeId: null,
+            actions: [requirement.action],
+          }],
+        }),
+      });
+      expect(policy.authorize(allowed, toolName)).toEqual({
+        allowed: true,
+        reason: 'permission_granted',
+        reach: requirement.reach,
+        requiredPermissions: [requirement.action],
+      });
+
+      const denied = resolveMcpCapabilitySubject({
+        identity: identity({ agentId: AGENT_ID, isHermesAgent: true }),
+        isOnboarding: false,
+        agent: agentSnapshot({ permissions: [] }),
+      });
+      expect(policy.authorize(denied, toolName)).toEqual({
+        allowed: false,
+        reason: 'permission_missing',
+        reach: requirement.reach,
+        requiredPermissions: [requirement.action],
+      });
     }
   });
 });

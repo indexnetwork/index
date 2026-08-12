@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { isValidQuestionerInputContract, type QuestionerInput } from '../questioner.types.js';
+import { isValidQuestionerInputContract, type QuestionerInput } from '../../questions/application/question.input.js';
 
 const base = {
   userId: 'user-1',
@@ -45,7 +45,7 @@ const inflight: QuestionerInput = {
     negotiationId: 'task-1',
     counterpartyHint: 'the other participant',
     indexContext: 'the selected network',
-    disclosureSubject: 'budget range',
+    consultationPolicyReason: 'consequential_disclosure_permission',
   },
 };
 

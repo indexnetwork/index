@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { EVAL_BASELINE_ARTIFACT_TYPE, EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact, type EvalArtifactEnvelope } from "../shared/index.js";
+import { isHistoricalQualityArtifact } from "../shared/artifact.js";
 import { OPS_HARNESSES } from "./ops.registry.js";
 import type { ArtifactRef, IndexIssue, IndexResult, OpsHarness } from "./ops.types.js";
 
@@ -112,10 +113,10 @@ export class FsArtifactSource implements ArtifactSource {
     const envelope = this.parse(value);
     const stats = await stat(absolute);
     const completeness = envelope.completeness as { complete?: boolean };
-    return {
+    const baseRef = {
       id: encodeArtifactId(relPath),
       harness,
-      kind: envelope.artifactType === EVAL_BASELINE_ARTIFACT_TYPE ? "baseline" : "run",
+      kind: (envelope.artifactType === EVAL_BASELINE_ARTIFACT_TYPE ? "baseline" : "run") as "baseline" | "run",
       path: relPath,
       schemaVersion: envelope.schemaVersion,
       createdAt: envelope.createdAt,
@@ -131,6 +132,19 @@ export class FsArtifactSource implements ArtifactSource {
       sizeBytes: stats.size,
       mtimeMs: stats.mtimeMs,
     };
+
+    if (isHistoricalQualityArtifact(envelope)) {
+      return {
+        ...baseRef,
+        measurementKind: envelope.measurement.kind,
+        qualityCompleteness: {
+          requestedSlots: envelope.measurement.requestedSlots,
+          completedSlots: envelope.measurement.completedSlots,
+        },
+      };
+    }
+
+    return { ...baseRef, measurementKind: null };
   }
 }
 

@@ -404,7 +404,7 @@ describe("RunSpecSchema sides", () => {
 
     // Guards the pin against passing vacuously on an empty or unparsed match.
     // Not a fixed count: a count is what let "nine" look correct while the
-    // graph read twenty-six. The set equality below is the real assertion.
+    // graph read twenty-eight. The set equality below is the real assertion.
     expect(engineKeys.length).toBeGreaterThan(0);
     expect([...DISCOVERY_ENV_KEYS].sort()).toEqual([...engineKeys].sort());
   });

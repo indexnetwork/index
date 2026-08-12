@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { IndexNegotiator } from "../negotiation.agent.js";
-import type { NegotiationAgentInput } from "../negotiation.agent.js";
+import { IndexNegotiator } from "../application/negotiation.agent.js";
+import type { NegotiationAgentInput } from "../application/negotiation.agent.js";
 
 /**
  * IND-401 — IndexNegotiator `canAskUser` contract.
@@ -45,7 +45,7 @@ const askUserOutput = {
   action: "ask_user",
   assessment: { reasoning: "need permission", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
   message: null,
-  askUser: { disclosureSubject: "budget range", draftQuestion: "Share your budget?" },
+  askUser: { reason: "consequential_disclosure_permission" },
 };
 
 function validTurn(action: string) {
@@ -61,7 +61,7 @@ describe("IndexNegotiator — canAskUser (IND-401)", () => {
     const agent = new CapturingNegotiator([askUserOutput]);
     const turn = await agent.invoke({ ...baseInput, canAskUser: true });
     expect(turn.action).toBe("ask_user");
-    expect(turn.askUser?.disclosureSubject).toBe("budget range");
+    expect(turn.askUser?.reason).toBe("consequential_disclosure_permission");
     expect(agent.calls).toBe(1);
     expect(agent.systemPrompts[0]).toContain('"ask_user"');
     expect(agent.systemPrompts[0]).toContain("AT MOST ONE client consultation");

@@ -161,6 +161,18 @@ describe("createUtilityTools surface profile", () => {
     }
   });
 
+  test("identity guidance does not claim retired profile-vector matching", async () => {
+    const mcp = capture();
+    createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
+    const doc = (await readDocs(mcp.tools, "identity-context")).toLowerCase();
+
+    for (const fact of ["identity", "context", "premise", "signals", "network membership", "opportunity", "negotiation"]) {
+      expect(doc).toContain(fact);
+    }
+    expect(doc).not.toContain("profile embeddings");
+    expect(doc).not.toContain("profile is used for semantic matching");
+  });
+
   test("MCP read_docs per-topic content states current entity, capability, and lifecycle facts", async () => {
     const mcp = capture();
     createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });

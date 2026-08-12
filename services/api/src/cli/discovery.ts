@@ -18,12 +18,14 @@
  * imports nothing that can compose a database: an operator has to be able to
  * read what the command requires *before* they have any of it.
  */
-import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } from './discovery.neon';
+import { AB_BRANCH_NAMES, attestAbTargets, parseLegacyAbManifest, type AbManifest } from './discovery.neon';
 import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery.gate';
 import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
+import { formatHistoricalQualityCost, hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, type HistoricalQualityRequest } from './discovery-quality.contract';
 
 import type { AbSideId } from './discovery.plan';
+import type { HistoricalQualityChildEnvironment } from './discovery-quality.environment';
 
 /**
  * Attests both targets, reporting a refusal an operator can act on without
@@ -63,26 +65,99 @@ function childSideId(args: readonly string[]): AbSideId | undefined {
   return side === 'a' || side === 'b' ? side : undefined;
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+interface DiscoveryRuntime {
+  main(args: readonly string[]): Promise<void>;
+}
+
+/**
+ * The complete provider-facing boundary below quality argument handling.
+ * Production supplies the existing legacy operations; tests can instrument the
+ * same boundary without importing or composing the runtime.
+ */
+export interface DiscoveryBootstrapDependencies {
+  assertConfirmation(env: NodeJS.ProcessEnv): void;
+  parseManifest(raw: string | undefined): AbManifest;
+  attestTargets(manifest: AbManifest, role: AbInvocationRole): Promise<void>;
+  importRuntime(): Promise<DiscoveryRuntime>;
+  importQualityRuntime?(): Promise<{
+    runHistoricalQualityRuntime(request: HistoricalQualityRequest): Promise<unknown>;
+  }>;
+  importQualityChildRuntime?(environment: Readonly<Record<string, string | undefined>>): Promise<{
+    runHistoricalQualityChild(args: readonly string[], environment: HistoricalQualityChildEnvironment): Promise<void>;
+  }>;
+}
+
+const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
+  assertConfirmation: assertAbConfirmation,
+  parseManifest: parseLegacyAbManifest,
+  attestTargets: attestOrRefuse,
+  importRuntime: async () => await import('./discovery.main'),
+  importQualityRuntime: async () => await import('./discovery-quality.runtime'),
+  importQualityChildRuntime: async (environment) => {
+    const loader = await import('./discovery-quality.child-loader');
+    return loader.loadAvailableHistoricalQualityChildRuntime(environment);
+  },
+};
+
+/**
+ * Runs the dependency-free bootstrap contract. A numeric result is a complete
+ * pre-runtime response; undefined means the legacy runtime completed normally.
+ */
+export async function runDiscoveryBootstrap(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  io: Pick<Console, 'log' | 'error'>,
+  dependencies: DiscoveryBootstrapDependencies = productionBootstrapDependencies,
+): Promise<0 | 2 | undefined> {
+  // Child recognition must precede every legacy gate, manifest parser, and
+  // runtime import. The shared loader has no fallback, so a missing Task 6
+  // implementation refuses here rather than after a parent restore.
+  if (args.includes('--historical-quality-child')) {
+    const runtime = await (dependencies.importQualityChildRuntime
+      ?? productionBootstrapDependencies.importQualityChildRuntime!)(env);
+    await runtime.runHistoricalQualityChild(args, env as HistoricalQualityChildEnvironment);
+    return undefined;
+  }
+  // Help remains above every parent gate, environment read, runtime import, and live operation.
+  if (isHistoricalQualityRequest(args)) {
+    if (hasHistoricalQualityHelp(args)) {
+      io.log(historicalQualityUsage());
+      return 0;
+    }
+    const request = parseHistoricalQualityArgs(args);
+    io.log(formatHistoricalQualityCost(request));
+    const runtime = await (dependencies.importQualityRuntime ?? productionBootstrapDependencies.importQualityRuntime!)();
+    await runtime.runHistoricalQualityRuntime(request);
+    return undefined;
+  }
   // Before the gate, and before any environment variable is read: the full
-  // contract, printed to anyone who asks for it.
-  if (args.includes('--help') || args.includes('-h')) return void console.log(abUsage());
+  // legacy contract, printed to anyone who asks for it.
+  if (args.includes('--help') || args.includes('-h')) {
+    io.log(abUsage());
+    return 0;
+  }
   // First, and before any network call: an unconfirmed run must not even
   // reach the control plane, let alone a database.
-  assertAbConfirmation(process.env);
-  const manifest = parseAbManifest(process.env.DISCOVERY_TARGETS);
-  await attestOrRefuse(manifest, abInvocationRole(args));
+  dependencies.assertConfirmation(env);
+  const manifest = dependencies.parseManifest(env.DISCOVERY_TARGETS);
+  await dependencies.attestTargets(manifest, abInvocationRole(args));
   const sideId = childSideId(args);
   if (sideId !== undefined) {
     const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
     if (!target) throw new Error(`Discovery manifest does not name side ${sideId}`);
     // The branch label is derived from the attested manifest, never from
     // operator-supplied text, so the child's gate checks an attested fact.
-    process.env.DATABASE_URL = target.databaseUrl;
-    process.env[AB_SIDE_BRANCH_ENV] = AB_BRANCH_NAMES[sideId];
+    env.DATABASE_URL = target.databaseUrl;
+    env[AB_SIDE_BRANCH_ENV] = AB_BRANCH_NAMES[sideId];
   }
-  await (await import('./discovery.main')).main(args);
+  const runtime = await dependencies.importRuntime();
+  await runtime.main(args);
+  return undefined;
+}
+
+async function main(): Promise<void> {
+  const result = await runDiscoveryBootstrap(process.argv.slice(2), process.env, console);
+  if (result !== undefined) process.exitCode = result;
 }
 
 if (import.meta.main) {

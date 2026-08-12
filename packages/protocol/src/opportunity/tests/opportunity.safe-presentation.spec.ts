@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { safeFallbackSummary, getSafePresentationOrSkip, SAFE_FALLBACK_MAX_CHARS, DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_HEADLINE, DEFAULT_FALLBACK_ACTION } from "../opportunity.safe-presentation.js";
+import { safeFallbackSummary, getSafePresentationOrSkip, SAFE_FALLBACK_MAX_CHARS, DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_HEADLINE, DEFAULT_FALLBACK_ACTION } from "../domain/opportunity.safe-presentation.js";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 

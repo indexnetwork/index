@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { buildLifecycleNarration, createNegotiationTools } from "../negotiation.tools.js";
-import { readAuthorizedNegotiationDetail } from '../negotiation.detail-reader.js';
+import { buildLifecycleNarration, createNegotiationTools } from "../application/negotiation.tools.js";
+import { readAuthorizedNegotiationDetail } from '../application/negotiation.detail-reader.js';
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown
@@ -40,7 +40,7 @@ function makeTask(
   state: string,
   sourceUserId: string,
   candidateUserId: string,
-  options: { networkId?: string; id?: string; opportunityId?: string } = {},
+  options: { networkId?: string; id?: string; opportunityId?: string; maxTurns?: number | null; omitMaxTurns?: boolean } = {},
 ) {
   return {
     id: options.id ?? "task-1",
@@ -50,7 +50,7 @@ function makeTask(
       type: "negotiation",
       sourceUserId,
       candidateUserId,
-      maxTurns: 6,
+      ...(!options.omitMaxTurns ? { maxTurns: options.maxTurns ?? 6 } : {}),
       ...(options.networkId ? { networkId: options.networkId } : {}),
       ...(options.opportunityId ? { opportunityId: options.opportunityId } : {}),
     },
@@ -64,6 +64,15 @@ function makeMessage(action: string, reasoning: string, message: string | null, 
     parts: [{ kind: "data", data: { action, assessment: { reasoning, suggestedRoles }, message } }],
   };
 }
+
+function makeSpeakerMessage(senderUserId: string, action: string) {
+  return { ...makeMessage(action, 'reasoning', action), senderId: `agent:${senderUserId}` };
+}
+
+const settlementNoise = {
+  senderId: 'system:index',
+  parts: [{ kind: 'data', data: { action: 'consultation_settled' } }],
+};
 
 // ── isUsersTurn ────────────────────────────────────────────────────────────────
 
@@ -107,6 +116,29 @@ describe("list_negotiations — isUsersTurn", () => {
     expect(result.data.negotiations[0].status).toBe("active");
     expect(result.data.negotiations[0].isUsersTurn).toBe(true);
   });
+
+  test.each(['user-src', 'user-cand'] as const)(
+    'retains the %s floor after ask_user and ignores settlement noise',
+    async (speaker) => {
+      const task = makeTask('waiting_for_agent', 'user-src', 'user-cand');
+      const other = speaker === 'user-src' ? 'user-cand' : 'user-src';
+      const deps = {
+        negotiationDatabase: {
+          getTasksForUser: async () => [task],
+          getMessagesForConversation: async () => [
+            makeSpeakerMessage(other, 'counter'),
+            makeSpeakerMessage(speaker, 'ask_user'),
+            settlementNoise,
+          ],
+        },
+      };
+
+      const tool = captureTool('list_negotiations', deps);
+      const result = JSON.parse(await tool.handler({ context: makeContext(speaker), query: {} }));
+
+      expect(result.data.negotiations[0].isUsersTurn).toBe(true);
+    },
+  );
 });
 
 // ── latestMessagePreview ───────────────────────────────────────────────────────
@@ -382,6 +414,31 @@ describe('readAuthorizedNegotiationDetail', () => {
     });
     expect(detail.lifecycle.lifecycleLabel).not.toMatch(/owner explicitly accepted|completed connection|H2H/i);
   });
+
+  test.each([
+    ['source', 'user-src', 'user-cand'],
+    ['candidate', 'user-cand', 'user-src'],
+  ] as const)('retains the %s caller floor for the ask_user successor', async (callerRole, callerUserId, otherUserId) => {
+    const at = new Date('2026-01-01');
+    const detail = await readAuthorizedNegotiationDetail({
+      task: {
+        id: 'task-1', conversationId: 'conv-1', state: 'waiting_for_agent',
+        createdAt: at, updatedAt: at,
+      },
+      metadata: { sourceUserId: 'user-src', candidateUserId: 'user-cand' },
+      callerUserId,
+      callerRole,
+      readMessages: async () => [
+        { ...makeSpeakerMessage(otherUserId, 'counter'), createdAt: at },
+        { ...makeSpeakerMessage(callerUserId, 'ask_user'), createdAt: at },
+        { ...settlementNoise, createdAt: at },
+      ],
+      readArtifacts: async () => [],
+      readLifecycleEvidence: async () => ({}),
+    });
+
+    expect(detail.isUsersTurn).toBe(true);
+  });
 });
 
 // ── respond_to_negotiation — schema validation ───────────────────────────────
@@ -450,23 +507,72 @@ describe("respond_to_negotiation — schema validation", () => {
 // ── respond_to_negotiation — turn data and success messages ──────────────────
 
 describe("respond_to_negotiation — handler", () => {
-  function makeRespondDeps(turnCount: number, opts?: { dispatchResult?: unknown }) {
+  function makeRespondDeps(turnCount: number, opts?: {
+    dispatchResult?: unknown;
+    maxTurns?: number | null;
+    omitMaxTurns?: boolean;
+    messages?: Array<{ senderId?: string; parts: unknown[] }>;
+  }) {
     const createdMessages: unknown[] = [];
+    const taskStates: string[] = [];
+    const artifacts: unknown[] = [];
+    const dispatchPayloads: unknown[] = [];
     return {
       deps: {
         negotiationDatabase: {
-          getTask: async () => makeTask("waiting_for_agent", "user-src", "user-cand"),
-          getMessagesForConversation: async () => Array(turnCount).fill(makeMessage("counter", "r", "m")),
+          getTask: async () => makeTask("waiting_for_agent", "user-src", "user-cand", {
+            ...(opts?.omitMaxTurns ? { omitMaxTurns: true } : {}),
+            ...(opts && Object.hasOwn(opts, 'maxTurns') ? { maxTurns: opts.maxTurns } : {}),
+          }),
+          getMessagesForConversation: async () => opts?.messages ?? Array.from({ length: turnCount }, () => ({
+            ...makeMessage("counter", "r", "m"),
+            senderId: 'agent:user-cand',
+          })),
           createMessage: async (msg: unknown) => { createdMessages.push(msg); return { id: "msg-1", senderId: "s", role: "agent", parts: [], createdAt: new Date() }; },
-          updateTaskState: async () => {},
-          createArtifact: async () => {},
+          updateTaskState: async (_id: string, state: string) => { taskStates.push(state); },
+          createArtifact: async (artifact: unknown) => { artifacts.push(artifact); },
         },
         negotiationTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
-        agentDispatcher: { dispatch: async () => opts?.dispatchResult ?? { handled: false, reason: "waiting" } },
+        agentDispatcher: { dispatch: async (_userId: string, _scope: unknown, payload: unknown) => {
+          dispatchPayloads.push(payload);
+          return opts?.dispatchResult ?? { handled: false, reason: "waiting" };
+        } },
       } as ToolDepsFixture,
       createdMessages,
+      taskStates,
+      artifacts,
+      dispatchPayloads,
     };
   }
+
+  test.each(['user-src', 'user-cand'] as const)(
+    'admits the %s ask_user consultation successor and persists its response',
+    async (speaker) => {
+      const other = speaker === 'user-src' ? 'user-cand' : 'user-src';
+      const fixture = makeRespondDeps(3, {
+        messages: [
+          makeSpeakerMessage(other, 'counter'),
+          makeSpeakerMessage(speaker, 'ask_user'),
+          settlementNoise,
+        ],
+      });
+      const tool = captureTool('respond_to_negotiation', fixture.deps);
+
+      const result = JSON.parse(await tool.handler({
+        context: makeContext(speaker),
+        query: {
+          negotiationId: 'task-1',
+          action: 'counter',
+          reasoning: 'Consultation resolved',
+          suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+          message: 'Continue after consultation',
+        },
+      }));
+
+      expect(result.success).toBe(true);
+      expect(fixture.createdMessages).toHaveLength(1);
+    },
+  );
 
   test("turn data uses query.reasoning and query.suggestedRoles", async () => {
     const { deps, createdMessages } = makeRespondDeps(0);
@@ -486,6 +592,54 @@ describe("respond_to_negotiation — handler", () => {
     const turnData = msg.parts[0].data;
     expect(turnData.assessment.reasoning).toBe("Strong synergy");
     expect(turnData.assessment.suggestedRoles).toEqual({ ownUser: "agent", otherUser: "patient" });
+  });
+
+  test.each([
+    ["uncapped zero", { maxTurns: 0 }, 20, false],
+    ["absent defaults to six", { omitMaxTurns: true }, 5, true],
+    ["positive boundary", { maxTurns: 3 }, 2, true],
+    ["positive before boundary", { maxTurns: 4 }, 2, false],
+  ] as const)("respond tool applies %s cap semantics", async (_label, options, priorTurns, completed) => {
+    const fixture = makeRespondDeps(priorTurns, options);
+    const tool = captureTool("respond_to_negotiation", fixture.deps);
+
+    await tool.handler({
+      context: makeContext("user-src"),
+      query: {
+        negotiationId: "task-1",
+        action: "counter",
+        reasoning: "Continue",
+        suggestedRoles: { ownUser: "peer", otherUser: "peer" },
+        message: "Keep negotiating",
+      },
+    });
+
+    expect(fixture.taskStates.includes("completed")).toBe(completed);
+    expect(fixture.artifacts.length > 0).toBe(completed);
+    expect(fixture.dispatchPayloads.length > 0).toBe(!completed);
+  });
+
+  test.each([
+    ["uncapped zero", { maxTurns: 0 }, 20, false],
+    ["absent defaults to six", { omitMaxTurns: true }, 4, true],
+    ["positive next-turn boundary", { maxTurns: 4 }, 2, true],
+    ["positive before next-turn boundary", { maxTurns: 5 }, 2, false],
+  ] as const)("counterparty dispatch applies %s final-turn semantics", async (_label, options, priorTurns, expectedFinal) => {
+    const fixture = makeRespondDeps(priorTurns, options);
+    const tool = captureTool("respond_to_negotiation", fixture.deps);
+
+    await tool.handler({
+      context: makeContext("user-src"),
+      query: {
+        negotiationId: "task-1",
+        action: "counter",
+        reasoning: "Continue",
+        suggestedRoles: { ownUser: "peer", otherUser: "peer" },
+        message: "Keep negotiating",
+      },
+    });
+
+    expect(fixture.dispatchPayloads[0]).toMatchObject({ isFinalTurn: expectedFinal });
   });
 
   test("accept finalizes with correct success message", async () => {
