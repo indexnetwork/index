@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://index.network/schemas/macos-release-1.json",
+  "title": "Index macOS production release metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseVersion",
+    "buildNumber",
+    "commit",
+    "teamId",
+    "apiUrl",
+    "webUrl",
+    "architectures",
+    "minimumMacOS",
+    "connectorProtocolVersion",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "releaseVersion": { "const": "1.0.0" },
+    "buildNumber": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "teamId": { "const": "LMQ3XNXLAD" },
+    "apiUrl": { "const": "https://protocol.index.network" },
+    "webUrl": { "const": "https://index.network" },
+    "architectures": {
+      "type": "array",
+      "prefixItems": [{ "const": "arm64" }, { "const": "x86_64" }],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "minimumMacOS": { "const": "13.0" },
+    "connectorProtocolVersion": { "const": 1 },
+    "artifacts": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "allOf": [
+            { "$ref": "#/$defs/artifact" },
+            {
+              "properties": {
+                "kind": { "const": "app-dmg" },
+                "name": { "const": "Index-macOS-1.0.0-universal.dmg" },
+                "url": { "const": "https://github.com/indexnetwork/index/releases/download/v1.0.0/Index-macOS-1.0.0-universal.dmg" }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/artifact" },
+            {
+              "properties": {
+                "kind": { "const": "connector-dmg" },
+                "name": { "const": "IndexConnector-1.0.0-universal.dmg" },
+                "url": { "const": "https://github.com/indexnetwork/index/releases/download/v1.0.0/IndexConnector-1.0.0-universal.dmg" }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url", "sha256", "size", "kind"],
+      "properties": {
+        "kind": { "enum": ["app-dmg", "connector-dmg"] },
+        "name": { "enum": ["Index-macOS-1.0.0-universal.dmg", "IndexConnector-1.0.0-universal.dmg"] },
+        "url": {
+          "enum": [
+            "https://github.com/indexnetwork/index/releases/download/v1.0.0/Index-macOS-1.0.0-universal.dmg",
+            "https://github.com/indexnetwork/index/releases/download/v1.0.0/IndexConnector-1.0.0-universal.dmg"
+          ]
+        },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
