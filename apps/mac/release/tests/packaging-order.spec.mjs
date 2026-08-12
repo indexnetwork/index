@@ -246,6 +246,6 @@ fi
   const verifiedPath = commands.match(/^verified:(.*\/Index\.app)$/m)?.[1];
   expect(verifiedPath).toBeTruthy();
   expect(verifiedPath).toContain(`${root}/index-dmg-mount.`);
-  expect(commands).toContain(`detach ${verifiedPath.replace(/\/Index\.app$/, "").replace("/private/var/", "/var/")}`);
+  expect(commands).toContain(`detach ${verifiedPath.replace(/^\/private/, "").replace(/\/Index\.app$/, "")}`);
   expect(commands).not.toContain("dist/signed");
 });

@@ -20,6 +20,9 @@ async function makeSignedApp() {
 <key>CFBundleExecutable</key><string>index</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>IndexDeepLinkHost</key><string>dev.index.network</string>
+<key>IndexReleaseChannel</key><string>production</string>
+<key>IndexDevelopmentBuild</key><false/>
+<key>IndexReleaseVersion</key><string>1.0.0</string>
 </dict></plist>`);
   const signed = Bun.spawnSync(['codesign', '--force', '--deep', '--sign', '-', app]);
   expect(signed.exitCode).toBe(0);
