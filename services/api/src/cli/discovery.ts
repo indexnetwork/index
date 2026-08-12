@@ -19,7 +19,7 @@
  * read what the command requires *before* they have any of it.
  */
 import { AB_BRANCH_NAMES, attestAbTargets, parseLegacyAbManifest, type AbManifest } from './discovery.neon';
-import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery.gate';
+import { AB_SIDE_BRANCH_ENV, assertAbConfirmation, assertAbRuntimePrerequisites } from './discovery.gate';
 import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { formatHistoricalQualityCost, hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, type HistoricalQualityRequest } from './discovery-quality.contract';
@@ -76,6 +76,7 @@ interface DiscoveryRuntime {
  */
 export interface DiscoveryBootstrapDependencies {
   assertConfirmation(env: NodeJS.ProcessEnv): void;
+  assertRuntimePrerequisites(env: NodeJS.ProcessEnv): void;
   parseManifest(raw: string | undefined): AbManifest;
   attestTargets(manifest: AbManifest, role: AbInvocationRole): Promise<void>;
   importRuntime(): Promise<DiscoveryRuntime>;
@@ -89,6 +90,7 @@ export interface DiscoveryBootstrapDependencies {
 
 const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
   assertConfirmation: assertAbConfirmation,
+  assertRuntimePrerequisites: assertAbRuntimePrerequisites,
   parseManifest: parseLegacyAbManifest,
   attestTargets: attestOrRefuse,
   importRuntime: async () => await import('./discovery.main'),
@@ -139,6 +141,10 @@ export async function runDiscoveryBootstrap(
   // First, and before any network call: an unconfirmed run must not even
   // reach the control plane, let alone a database.
   dependencies.assertConfirmation(env);
+  // Pure value-shape validation only: no secret is derived or checked against
+  // a provider. This precedes manifest parsing and every live boundary so a
+  // missing runtime cannot destroy disposable branches before failing.
+  dependencies.assertRuntimePrerequisites(env);
   const manifest = dependencies.parseManifest(env.DISCOVERY_TARGETS);
   await dependencies.attestTargets(manifest, abInvocationRole(args));
   const sideId = childSideId(args);

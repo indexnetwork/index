@@ -298,6 +298,27 @@ export class HistoricalQualityLeaseReleaseError extends Error {
 
 export interface AbFailureReport { exitCode: number; message: string }
 
+/** Fixed, value-free operational boundaries reported by a discovery child. */
+export const AB_CHILD_FAILURE_STAGES = [
+  'dependency-initialization',
+  'base-verification',
+  'run-execution',
+  'artifact-write',
+  'resource-cleanup',
+] as const;
+export type AbChildFailureStage = (typeof AB_CHILD_FAILURE_STAGES)[number];
+
+/** Keeps a raw cause in memory while exposing only its code-owned stage. */
+export class AbChildStageError extends Error {
+  readonly stage: AbChildFailureStage;
+
+  constructor(stage: AbChildFailureStage, options?: ErrorOptions) {
+    super(`Discovery side process failed at stage ${stage}.`, options);
+    this.name = 'AbChildStageError';
+    this.stage = stage;
+  }
+}
+
 /**
  * Which invocation is reporting. A parent owns the run-level cost report; a
  * child owns nothing but its own outcome.
@@ -338,6 +359,12 @@ export function describeAbFailure(error: unknown, role: AbInvocationRole = 'pare
   }
   if (error instanceof AbGateError) {
     return { exitCode: AB_EXIT_PREFLIGHT_REFUSED, message: error.message };
+  }
+  if (error instanceof AbChildStageError) {
+    return {
+      exitCode: AB_EXIT_PREFLIGHT_REFUSED,
+      message: `${error.message} The parent invocation remains authoritative for mutation and spend uncertainty.`,
+    };
   }
   return {
     exitCode: AB_EXIT_PREFLIGHT_REFUSED,
@@ -397,6 +424,12 @@ export function abUsage(): string {
     `  DISCOVERY_TARGETS='${manifest}'`,
     '  A strict version-2 historical-quality manifest is also accepted here; legacy',
     '  A/B projects only its two child targets and never binds the base read replica.',
+    '',
+    'Required runtime prerequisites (checked without contacting either service):',
+    '  OPENROUTER_API_KEY=<provider key>',
+    '  Exactly one Redis form:',
+    '    REDIS_URL=<Redis URL>',
+    '    or REDIS_HOST + REDIS_PORT + REDIS_PASSWORD + REDIS_DB',
     '',
     'This command never creates or deletes Neon branches. It resets the attested',
     `branch of every side it runs from ${AB_BASE_BRANCH} before it spawns anything:`,
