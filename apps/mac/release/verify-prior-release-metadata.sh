@@ -17,7 +17,7 @@ try { value=JSON.parse(bytes); } catch { throw new Error("historical metadata is
 const keys=["apiUrl","architectures","artifacts","buildNumber","commit","connectorProtocolVersion","minimumMacOS","releaseVersion","schemaVersion","teamId","webUrl"];
 if (!value || typeof value!=="object" || Array.isArray(value) || JSON.stringify(Object.keys(value).sort())!==JSON.stringify(keys)) throw new Error("historical metadata keys are not exact");
 if (value.schemaVersion!==1 || value.apiUrl!=="https://protocol.index.network" || value.webUrl!=="https://index.network" || value.teamId!=="LMQ3XNXLAD" || value.minimumMacOS!=="13.0" || value.connectorProtocolVersion!==1) throw new Error("historical release authority is invalid");
-if (!/^\d+\.\d+\.\d+$/.test(value.releaseVersion) || !/^[1-9]\d*$/.test(value.buildNumber) || !/^[0-9a-f]{40}$/.test(value.commit)) throw new Error("historical version/build/commit is noncanonical");
+if (!/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(value.releaseVersion) || !/^[1-9]\d*$/.test(value.buildNumber) || !/^[0-9a-f]{40}$/.test(value.commit)) throw new Error("historical version/build/commit is noncanonical");
 if (JSON.stringify(value.architectures)!==JSON.stringify(["arm64","x86_64"]) || !Array.isArray(value.artifacts) || value.artifacts.length!==2) throw new Error("historical artifacts are incomplete");
 const expected=[[`Index-macOS-${value.releaseVersion}-universal.dmg`,"app-dmg"],[`IndexConnector-${value.releaseVersion}-universal.dmg`,"connector-dmg"]];
 for(let i=0;i<2;i++){const a=value.artifacts[i],[name,kind]=expected[i]; const exact=["kind","name","sha256","size","url"];

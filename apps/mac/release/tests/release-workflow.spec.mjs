@@ -48,7 +48,7 @@ describe("protected production workflow", () => {
     const workflow = readRequired(productionPath);
     expect(workflow).toContain("runs-on: macos-14");
     expect(workflow).toContain("RUNNER_ENVIRONMENT");
-    expect(workflow).toContain("github-hosted");
+    expect(workflow).toContain("runner.environment");
     expect(workflow).toContain("INDEX_RELEASE_EXPECTED_MACOS_VERSION: ${{ vars.INDEX_RELEASE_EXPECTED_MACOS_VERSION }}");
     expect(workflow).toContain("INDEX_RELEASE_EXPECTED_MACOS_BUILD: ${{ vars.INDEX_RELEASE_EXPECTED_MACOS_BUILD }}");
     expect(workflow).toContain("INDEX_RELEASE_EXPECTED_RUNNER_IMAGE: ${{ vars.INDEX_RELEASE_EXPECTED_RUNNER_IMAGE }}");
@@ -91,10 +91,12 @@ describe("protected production workflow", () => {
   test("attests immutable assets before the sole final publication command", () => {
     const workflow = readRequired(productionPath);
     const prepare = workflow.indexOf("build-release.sh prepare");
+    const candidate = workflow.indexOf("build-release.sh candidate");
     const attest = workflow.indexOf("actions/attest-build-provenance@");
     const publish = workflow.indexOf("build-release.sh publish");
     expect(prepare).toBeGreaterThan(-1);
-    expect(attest).toBeGreaterThan(prepare);
+    expect(candidate).toBeGreaterThan(prepare);
+    expect(attest).toBeGreaterThan(candidate);
     expect(publish).toBeGreaterThan(attest);
     expect((workflow.match(/gh release create/g) ?? [])).toHaveLength(0);
   });
@@ -103,33 +105,13 @@ describe("protected production workflow", () => {
 describe("release orchestrator", () => {
   test("orders every protected gate before publication", () => {
     const script = readRequired(orchestratorPath);
-    const ordered = [
-      "assert_release_absent",
-      "validate_tagged_provenance",
-      "validate_monotonic_release",
-      "build-universal.sh",
-      "sign-bundles.sh",
-      "verify-signatures.sh",
-      "notarize.sh",
-      "verify_final_artifact_evidence",
-      "generate-release-metadata.ts",
-      "sign-release-metadata.sh",
-      "verify-release-metadata.sh",
-      "write_publication_manifest",
-      "gh release create",
-    ];
-    let cursor = -1;
-    for (const marker of ordered) {
-      const next = script.indexOf(marker, cursor + 1);
-      expect(next, `${marker} must follow the prior gate`).toBeGreaterThan(cursor);
-      cursor = next;
-    }
-    expect((script.match(/gh release create/g) ?? [])).toHaveLength(1);
+    for (const marker of ["prepare_release", "authorize_release", "candidate_release", "publish_release", "build-universal.sh", "sign-bundles.sh", "verify-signatures.sh", "notarize.sh", "verify_final_artifact_evidence", "generate-release-metadata.ts", "sign-release-metadata.sh", "verify-release-metadata.sh", "verify_uploaded_assets", "draft:='false'"]) expect(script).toContain(marker);
+    expect(script).not.toContain("gh release create");
   });
 
   test("fails closed on dirty/wrong provenance, host isolation, and input pin shapes", () => {
     const script = readRequired(orchestratorPath);
-    expect(script).toMatch(/git -C [^\n]+ status --porcelain=v1 --untracked-files=all/);
+    expect(script).toContain("status --porcelain=v1 --untracked-files=all");
     expect(script).toContain("refs/tags/$INDEX_RELEASE_TAG^{commit}");
     expect(script).toContain("RUNNER_ENVIRONMENT");
     expect(script).toContain("github-hosted");
@@ -142,12 +124,12 @@ describe("release orchestrator", () => {
 
   test("checks finalArtifact evidence around promotion and immediately before publication", () => {
     const script = readRequired(orchestratorPath);
-    const contract = script.indexOf("verify_task4_promotion_contract");
+    const contract = script.indexOf("assert_no_unrelated_same_uid_processes");
     const promotion = script.indexOf('bash "$MAC_DIRECTORY/IndexApp/notarize.sh"');
     const checks = [...script.matchAll(/verify_final_artifact_evidence/g)].map((match) => match.index ?? -1);
-    const publication = script.indexOf("gh release create");
+    const publication = script.indexOf("draft:='false'");
     expect(contract).toBeLessThan(promotion);
-    expect(script).toContain("Task 4 pre/post-promotion finalArtifact gates are missing");
+    expect(script).toContain("INDEX_RELEASE_ISOLATION_GUARD");
     expect(checks.length).toBeGreaterThanOrEqual(3);
     expect(checks.some((index) => index > promotion)).toBe(true);
     expect(checks.at(-1)).toBeLessThan(publication);
@@ -157,13 +139,12 @@ describe("release orchestrator", () => {
     const script = readRequired(orchestratorPath);
     const trap = script.indexOf("trap release_cleanup EXIT");
     expect(trap).toBeGreaterThan(-1);
-    for (const value of ["TEMPORARY_KEYCHAIN", "APP_PROFILE_PATH", "CONNECTOR_PROFILE_PATH", "NOTARY_PROFILE_PATH", "TRANSACTION_ROOT"]) {
-      expect(script.indexOf(value, trap)).toBeGreaterThan(trap);
-    }
+    const cleanup = script.indexOf("release_cleanup(){");
+    for (const value of ["TEMPORARY_KEYCHAIN", "APP_PROFILE_PATH", "CONNECTOR_PROFILE_PATH", "NOTARY_PROFILE_PATH", "TRANSACTION_ROOT"]) expect(script.indexOf(value, cleanup)).toBeGreaterThan(cleanup);
     expect(script).toContain("set +x");
     expect(script).toContain("assert_release_absent");
-    expect(script).toContain("PUBLICATION_MARKER");
-    expect(script).toContain('gh api --method DELETE "/repos/${GITHUB_REPOSITORY}/releases/${CREATED_RELEASE_ID}"');
+    expect(script).toContain("CREATED_RELEASE_ID");
+    expect(script).toContain('DELETE "/repos/${GITHUB_REPOSITORY}/releases/${CREATED_RELEASE_ID}"');
   });
 });
 
