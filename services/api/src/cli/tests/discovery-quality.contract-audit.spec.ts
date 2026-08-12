@@ -106,11 +106,11 @@ describe('merged PR A historical quality authority audit', () => {
     const evalOpsPackage = JSON.parse(readFileSync(path.join(ROOT, 'apps/eval-ops/package.json'), 'utf8'));
     const lock = readFileSync(path.join(ROOT, 'bun.lock'), 'utf8');
 
-    expect(protocolPackage.version).toBe('11.0.2');
-    expect(apiPackage.version).toBe('0.80.0');
+    expect(protocolPackage.version).toBe('11.0.3');
+    expect(apiPackage.version).toBe('0.80.1');
     expect(evalOpsPackage.version).toBe('0.6.0');
-    expect(lock).toContain('"packages/protocol": {\n      "name": "@indexnetwork/protocol",\n      "version": "11.0.2"');
-    expect(lock).toContain('"services/api": {\n      "name": "@indexnetwork/api",\n      "version": "0.80.0"');
+    expect(lock).toContain('"packages/protocol": {\n      "name": "@indexnetwork/protocol",\n      "version": "11.0.3"');
+    expect(lock).toContain('"services/api": {\n      "name": "@indexnetwork/api",\n      "version": "0.80.1"');
     expect(lock).toContain('"apps/eval-ops": {\n      "name": "@indexnetwork/eval-ops",\n      "version": "0.6.0"');
   });
 

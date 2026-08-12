@@ -20,6 +20,18 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 11.0.3 - 2026-08-11
+
+### Added
+
+- Added the guarded historical-quality runtime for single-configuration,
+  dual-trigger shared-pool evaluation.
+
+### Fixed
+
+- Hardened historical-quality readiness with attested database credentials,
+  frozen embedding requests, and fail-closed protected-base refresh gating.
+
 ## 10.2.0 - 2026-08-10
 
 ### Changed

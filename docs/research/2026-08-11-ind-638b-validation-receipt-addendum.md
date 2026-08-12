@@ -1,6 +1,6 @@
 # IND-638B validation receipt addendum: provider-free eval CLI CI
 
-Date: 2026-08-11  
+Date: 2026-08-11
 PR: `#1365`
 
 ## Addendum boundary

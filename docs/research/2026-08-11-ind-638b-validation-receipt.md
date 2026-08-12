@@ -1,7 +1,7 @@
 # IND-638B guarded historical-quality runtime validation receipt
 
-Date: 2026-08-11  
-Issue: IND-638  
+Date: 2026-08-11
+Issue: IND-638
 Branch: `feat/historical-quality-runtime`
 
 ## Receipt boundary
