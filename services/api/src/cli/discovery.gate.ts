@@ -18,6 +18,7 @@
  * and the offending field name are reported, exactly as the matrix gate does.
  */
 import { AB_BRANCH_NAMES } from './discovery.neon';
+import { DiscoveryRuntimePrerequisiteError, parseDiscoveryRuntimePrerequisites } from './discovery.runtime-prerequisites';
 
 import type { AbSideId } from './discovery.plan';
 
@@ -43,6 +44,18 @@ export const AB_SIDE_BRANCH_ENV = 'DISCOVERY_SIDE_BRANCH';
 export interface AbSideEnvironment {
   databaseUrl: URL;
   branch: string;
+}
+
+/** Requires provider and Redis inputs before parsing or attesting a target. */
+export function assertAbRuntimePrerequisites(env: NodeJS.ProcessEnv): void {
+  try {
+    parseDiscoveryRuntimePrerequisites(env);
+  } catch (error) {
+    if (error instanceof DiscoveryRuntimePrerequisiteError) {
+      throw new AbGateError(`Refusing to run: ${error.message}`, { cause: error });
+    }
+    throw error;
+  }
 }
 
 /**
