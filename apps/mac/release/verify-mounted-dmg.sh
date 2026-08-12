@@ -48,7 +48,7 @@ verify_mounted_dmg_main() (
   local dmg="$1" plist mount name bundle mounted=0 status=0
   [[ -f "$dmg" && ! -L "$dmg" ]] || mounted_error "DMG is missing or linked"
   name="$(mounted_bundle_name "$dmg")"; plist="$(mktemp)"; mount="$(mktemp -d "${TMPDIR:-/tmp}/index-dmg-mount.XXXXXX")"
-  cleanup() { local cleanup_status=$?; if [[ "$mounted" -eq 1 ]]; then hdiutil detach "$mount" >/dev/null 2>&1 || cleanup_status=1; fi; rm -f "$plist"; rmdir "$mount" >/dev/null 2>&1 || cleanup_status=1; return "$cleanup_status"; }
+  cleanup() { local cleanup_status=$?; if [[ "$mounted" -eq 1 ]]; then hdiutil detach "$mount" || cleanup_status=1; fi; rm -f "$plist"; rmdir "$mount" >/dev/null 2>&1 || cleanup_status=1; return "$cleanup_status"; }
   trap cleanup EXIT
   hdiutil attach -readonly -nobrowse -mountpoint "$mount" -plist "$dmg" >"$plist"
   mounted=1

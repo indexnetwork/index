@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { verifyCleanAccountEvidencePair } from "./verify-clean-account-evidence";
+import { verifySignedCleanAccountEvidencePair } from "./verify-clean-account-evidence";
 
 const FILES = [
   "Index-macOS-1.0.0-universal.dmg",
@@ -82,24 +82,17 @@ export async function verifyCandidateHandoff(directory: string): Promise<Record<
   return { ...manifest, candidateSealSha256: expected };
 }
 
-function readEvidence(path: string): Record<string, unknown> {
-  const bytes = readFileSync(path, "utf8");
-  if (!bytes.endsWith("\n")) refuse("evidence is not line terminated");
-  return JSON.parse(bytes);
-}
-
-export async function verifyCandidateForPublish(directory: string, armPath: string, intelPath: string, runId?: string, runAttempt?: string): Promise<Record<string, unknown>> {
+export async function verifyCandidateForPublish(directory: string, armPath: string, armCmsPath: string, intelPath: string, intelCmsPath: string, runId?: string, runAttempt?: string): Promise<Record<string, unknown>> {
   const manifest = await verifyCandidateHandoff(directory);
   if ((runId !== undefined || runAttempt !== undefined) && (manifest.candidateRunId !== runId || manifest.candidateRunAttempt !== runAttempt)) refuse("candidate run identity differs from downloaded handoff");
-  const records = [readEvidence(armPath), readEvidence(intelPath)];
-  verifyCleanAccountEvidencePair(records);
+  const records = verifySignedCleanAccountEvidencePair(armPath, armCmsPath, intelPath, intelCmsPath);
   const files = Object.fromEntries((manifest.publicationFiles as { name: string; sha256: string }[]).map((item) => [item.name, item.sha256]));
   const expectedArtifacts = {
     app: files[`Index-macOS-${manifest.releaseVersion}-universal.dmg`],
     connector: files[`IndexConnector-${manifest.releaseVersion}-universal.dmg`],
   };
   for (const record of records) {
-    if (record.releaseVersion !== manifest.releaseVersion || record.commit !== manifest.commit || record.minimumMacOS !== manifest.minimumMacOS || record.attestationUrl !== manifest.attestationUrl || record.candidateSealSha256 !== manifest.candidateSealSha256 || JSON.stringify(record.artifactSha256) !== JSON.stringify(expectedArtifacts)) refuse("clean-account evidence differs from sealed candidate authority");
+    if (record.releaseVersion !== manifest.releaseVersion || record.commit !== manifest.commit || record.minimumMacOS !== manifest.minimumMacOS || record.attestationUrl !== manifest.attestationUrl || record.candidateSealSha256 !== manifest.candidateSealSha256 || record.candidateManifestSha256 !== manifest.candidateSealSha256 || JSON.stringify(record.artifactSha256) !== JSON.stringify(expectedArtifacts)) refuse("clean-account evidence differs from sealed candidate authority");
   }
   return manifest;
 }
@@ -110,8 +103,8 @@ if (import.meta.main) {
   else if (mode === "verify" && args.length === 1) {
     const manifest = await verifyCandidateHandoff(args[0]);
     process.stdout.write(JSON.stringify(manifest) + "\n");
-  } else if (mode === "verify-for-publish" && args.length === 5) {
-    const manifest = await verifyCandidateForPublish(args[0], args[1], args[2], args[3], args[4]);
+  } else if (mode === "verify-for-publish" && args.length === 7) {
+    const manifest = await verifyCandidateForPublish(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
     process.stdout.write(JSON.stringify(manifest) + "\n");
-  } else refuse("usage: candidate-handoff.ts create CANDIDATE ATTESTATION OUTPUT RUN_ID RUN_ATTEMPT | verify HANDOFF | verify-for-publish HANDOFF ARM64_EVIDENCE X86_64_EVIDENCE RUN_ID RUN_ATTEMPT");
+  } else refuse("usage: candidate-handoff.ts create CANDIDATE ATTESTATION OUTPUT RUN_ID RUN_ATTEMPT | verify HANDOFF | verify-for-publish HANDOFF ARM64_JSON ARM64_CMS X86_64_JSON X86_64_CMS RUN_ID RUN_ATTEMPT");
 }

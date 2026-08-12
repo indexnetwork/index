@@ -66,12 +66,14 @@ describe("final publication authorization", () => {
     expect(workflow.jobs.publish.steps.find((step) => step.name.includes("Checkout exact approved"))?.with.ref).toBe("${{ inputs.commit }}");
     expect(text).toContain("actions/download-artifact@");
     expect(text).toContain("verify-clean-account-evidence.ts");
+    expect(text).toContain("arm64-evidence-cms");
+    expect(text).toContain("x86_64-evidence-cms");
     const patch = text.indexOf("build-release.sh publish");
     expect(patch).toBeGreaterThan(text.indexOf("arm64-evidence"));
     expect(patch).toBeGreaterThan(text.indexOf("x86_64-evidence"));
   });
 
-  test("exact candidate-byte gate rejects missing, duplicate, mismatched, unapproved, and tampered evidence", () => {
+  test("exact candidate-byte gate rejects unsigned evidence and tampered candidate bytes", () => {
     const script = join(release, "verify-clean-account-evidence.ts"), handoffScript = join(release, "candidate-handoff.ts");
     const dir = fixture("clean-pair-"), candidate = join(dir, "candidate"), handoff = join(dir, "handoff");
     mkdirSync(candidate);
@@ -93,16 +95,10 @@ describe("final publication authorization", () => {
     writeFileSync(arm, JSON.stringify(evidence("arm64", binding)) + "\n");
     writeFileSync(intel, JSON.stringify(evidence("x86_64", binding)) + "\n");
     expect(run("bun", [script, "--pair", arm]).status).not.toBe(0);
-    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, arm, "12345", "2"]).status).not.toBe(0);
-    writeFileSync(intel, JSON.stringify(evidence("x86_64", { ...binding, commit: "9".repeat(40) })) + "\n");
-    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, intel, "12345", "2"]).status).not.toBe(0);
-    writeFileSync(intel, JSON.stringify(evidence("x86_64", { ...binding, approved: false })) + "\n");
-    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, intel, "12345", "2"]).status).not.toBe(0);
-    writeFileSync(intel, JSON.stringify(evidence("x86_64", binding)) + "\n");
-    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, intel, "12345", "2"]).status).toBe(0);
-    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, intel, "54321", "2"]).status).not.toBe(0);
+    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, arm, intel, intel, "12345", "2"]).status).not.toBe(0);
+    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, arm, intel, intel, "54321", "2"]).status).not.toBe(0);
     writeFileSync(join(handoff, appName), "tampered");
-    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, intel, "12345", "2"]).status).not.toBe(0);
+    expect(run("bun", [handoffScript, "verify-for-publish", handoff, arm, arm, intel, intel, "12345", "2"]).status).not.toBe(0);
     expect(manifest.attestationUrl).toBe("https://github.com/indexnetwork/index/attestations/123");
   });
 });

@@ -35,11 +35,19 @@ on:
         required: false
         type: string
       arm64-evidence:
-        description: Base64 canonical approved arm64 clean-account JSON (publish only)
+        description: Base64 canonical arm64 clean-account JSON (publish only)
+        required: false
+        type: string
+      arm64-evidence-cms:
+        description: Base64 detached-authority arm64 approval CMS (publish only)
         required: false
         type: string
       x86_64-evidence:
-        description: Base64 canonical approved x86_64 clean-account JSON (publish only)
+        description: Base64 canonical x86_64 clean-account JSON (publish only)
+        required: false
+        type: string
+      x86_64-evidence-cms:
+        description: Base64 detached-authority x86_64 approval CMS (publish only)
         required: false
         type: string
 
@@ -107,7 +115,7 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          04d6847e770f3818bb892cc9a37bd291599ec8495e7b665301123048bf3a431e  apps/mac/release/build-release.sh
+          cf1faf8f1c366c40c24b70599afc9a0e06c1fc7e6e0b7c1d5c1763cf1418fd78  apps/mac/release/build-release.sh
           5662639d841785123b3c890254a78f5399b3933a671777f45872bf1b29f304ac  apps/mac/release/sealed-inventory.py
           94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
           c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
@@ -129,7 +137,7 @@ jobs:
           INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          04d6847e770f3818bb892cc9a37bd291599ec8495e7b665301123048bf3a431e  apps/mac/release/build-release.sh
+          cf1faf8f1c366c40c24b70599afc9a0e06c1fc7e6e0b7c1d5c1763cf1418fd78  apps/mac/release/build-release.sh
           5662639d841785123b3c890254a78f5399b3933a671777f45872bf1b29f304ac  apps/mac/release/sealed-inventory.py
           94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
           c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
@@ -226,6 +234,8 @@ jobs:
       INDEX_RELEASE_RUNNER_LISTENER_SHA256: ${{ vars.INDEX_RELEASE_RUNNER_LISTENER_SHA256 }}
       INDEX_RELEASE_RUNNER_WORKER_PATH: ${{ vars.INDEX_RELEASE_RUNNER_WORKER_PATH }}
       INDEX_RELEASE_RUNNER_WORKER_SHA256: ${{ vars.INDEX_RELEASE_RUNNER_WORKER_SHA256 }}
+      INDEX_RELEASE_APPROVAL_CERT_SHA256_ARM64: ${{ vars.INDEX_RELEASE_APPROVAL_CERT_SHA256_ARM64 }}
+      INDEX_RELEASE_APPROVAL_CERT_SHA256_X86_64: ${{ vars.INDEX_RELEASE_APPROVAL_CERT_SHA256_X86_64 }}
     steps:
       - name: Checkout exact approved candidate commit without credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -251,17 +261,21 @@ jobs:
       - name: Materialize approved two-architecture evidence without logging it
         env:
           INDEX_ARM64_EVIDENCE_BASE64: ${{ inputs['arm64-evidence'] }}
+          INDEX_ARM64_EVIDENCE_CMS_BASE64: ${{ inputs['arm64-evidence-cms'] }}
           INDEX_X86_64_EVIDENCE_BASE64: ${{ inputs['x86_64-evidence'] }}
+          INDEX_X86_64_EVIDENCE_CMS_BASE64: ${{ inputs['x86_64-evidence-cms'] }}
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set +x
           umask 077
           mkdir -p "$INDEX_RELEASE_WORK_ROOT/authority/evidence"
           printf '%s' "$INDEX_ARM64_EVIDENCE_BASE64" | bun -e 'process.stdout.write(Buffer.from(await Bun.stdin.text(), "base64"))' > "$INDEX_RELEASE_WORK_ROOT/authority/evidence/arm64.json"
+          printf '%s' "$INDEX_ARM64_EVIDENCE_CMS_BASE64" | bun -e 'process.stdout.write(Buffer.from(await Bun.stdin.text(), "base64"))' > "$INDEX_RELEASE_WORK_ROOT/authority/evidence/arm64.cms"
           printf '%s' "$INDEX_X86_64_EVIDENCE_BASE64" | bun -e 'process.stdout.write(Buffer.from(await Bun.stdin.text(), "base64"))' > "$INDEX_RELEASE_WORK_ROOT/authority/evidence/x86_64.json"
+          printf '%s' "$INDEX_X86_64_EVIDENCE_CMS_BASE64" | bun -e 'process.stdout.write(Buffer.from(await Bun.stdin.text(), "base64"))' > "$INDEX_RELEASE_WORK_ROOT/authority/evidence/x86_64.cms"
           bun apps/mac/release/verify-clean-account-evidence.ts --pair \
-            "$INDEX_RELEASE_WORK_ROOT/authority/evidence/arm64.json" \
-            "$INDEX_RELEASE_WORK_ROOT/authority/evidence/x86_64.json"
+            "$INDEX_RELEASE_WORK_ROOT/authority/evidence/arm64.json" "$INDEX_RELEASE_WORK_ROOT/authority/evidence/arm64.cms" \
+            "$INDEX_RELEASE_WORK_ROOT/authority/evidence/x86_64.json" "$INDEX_RELEASE_WORK_ROOT/authority/evidence/x86_64.cms"
 
       - name: Revalidate exact candidate, evidence, attestation, and publish
         env:
@@ -269,10 +283,12 @@ jobs:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
           INDEX_ARM64_EVIDENCE_PATH: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/authority/evidence/arm64.json
+          INDEX_ARM64_EVIDENCE_CMS_PATH: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/authority/evidence/arm64.cms
           INDEX_X86_64_EVIDENCE_PATH: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/authority/evidence/x86_64.json
+          INDEX_X86_64_EVIDENCE_CMS_PATH: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/authority/evidence/x86_64.cms
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          04d6847e770f3818bb892cc9a37bd291599ec8495e7b665301123048bf3a431e  apps/mac/release/build-release.sh
+          cf1faf8f1c366c40c24b70599afc9a0e06c1fc7e6e0b7c1d5c1763cf1418fd78  apps/mac/release/build-release.sh
           5662639d841785123b3c890254a78f5399b3933a671777f45872bf1b29f304ac  apps/mac/release/sealed-inventory.py
           94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
           c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
@@ -288,7 +304,7 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          04d6847e770f3818bb892cc9a37bd291599ec8495e7b665301123048bf3a431e  apps/mac/release/build-release.sh
+          cf1faf8f1c366c40c24b70599afc9a0e06c1fc7e6e0b7c1d5c1763cf1418fd78  apps/mac/release/build-release.sh
           PINS
           /usr/bin/git diff-index --quiet "$INDEX_RELEASE_COMMIT" --
           apps/mac/release/build-release.sh assert-absence

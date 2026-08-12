@@ -86,7 +86,7 @@ describe("historical release target authority", () => {
 describe("executable production handoff and upload routes", () => {
   test("real external handoff route cleans checkout before sealing and refuses unclean source", () => {
     const dir = fixture(), checkout = join(dir, "checkout"), external = join(dir, "external"), seal = join(dir, "authority", "prepare.tsv"), route = join(dir, "route");
-    mkdirSync(checkout); mkdirSync(join(dir, "authority")); writeFileSync(join(checkout, "Index.app"), "unsigned");
+    mkdirSync(checkout); mkdirSync(join(dir, "authority")); chmodSync(checkout, 0o700); writeFileSync(join(checkout, "Index.app"), "unsigned");
     const command = `export BUILD_RELEASE_SOURCE_ONLY=1; source "$SCRIPT"
 cleanup_checkout_outputs(){ [[ -f "$EXTERNAL/Index.app" ]] || return 31; rm -rf "$CHECKOUT"; printf 'cleanup\\n' >>"$ROUTE"; }
 validate_source_checkout(){ [[ ! -e "$CHECKOUT" && ! -e "$UNCLEAN" ]] || return 32; printf 'clean\\n' >>"$ROUTE"; }
@@ -101,7 +101,7 @@ externalize_prepare_handoff "$CHECKOUT" "$EXTERNAL" "$SEAL"`;
     const names = ["Index-macOS-1.0.0-universal.dmg", "IndexConnector-1.0.0-universal.dmg", "macos-release.json", "macos-release.cms", "SHA256SUMS"];
     const execute = (shape) => {
       const dir = fixture(), work = join(dir, "work"), candidate = join(work, "artifacts", "candidate"), authority = join(work, "authority"), seal = join(authority, "publication.seal.tsv"), route = join(dir, "route");
-      mkdirSync(candidate, { recursive: true }); mkdirSync(authority, { recursive: true });
+      mkdirSync(candidate, { recursive: true }); mkdirSync(authority, { recursive: true }); chmodSync(join(work, "artifacts"), 0o700); chmodSync(candidate, 0o700);
       for (const name of names) writeFileSync(join(candidate, name), name);
       if (shape === "missing") rmSync(join(candidate, names[4]));
       if (shape === "extra") writeFileSync(join(candidate, "extra.txt"), "extra");

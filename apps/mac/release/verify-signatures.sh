@@ -189,7 +189,7 @@ for_each_macho() (
 validate_embedded_release_profile() (
   local bundle="$1" role="$2" bundle_id="$3" host="$4" group="$5"
   local profile="$bundle/Contents/embedded.provisionprofile" decoded=''
-  trap '[[ -z "$decoded" ]] || rm -f "$decoded"' EXIT
+  trap '[[ -z "${decoded:-}" ]] || rm -f "$decoded"' EXIT
   [[ -f "$profile" ]] || verify_error "embedded.provisionprofile is missing"
   decoded="$(mktemp "${TMPDIR:-/tmp}/index-release-profile.XXXXXX")"
   security cms -D -i "$profile" -o "$decoded" >/dev/null 2>&1 \

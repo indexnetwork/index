@@ -91,7 +91,7 @@ export function validateMacReleaseMetadataUrl(value: string): URL {
   let url: URL;
   try { url = new URL(value); } catch { throw new Error("release metadata URL is invalid"); }
   if (
-    url.protocol !== "https:" || url.username || url.password || url.search || url.hash ||
+    url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash ||
     url.hostname !== "github.com" ||
     !/^\/indexnetwork\/index\/releases\/download\/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\/macos-release\.json$/.test(url.pathname)
   ) throw new Error("release metadata URL must be an immutable Index GitHub release asset");

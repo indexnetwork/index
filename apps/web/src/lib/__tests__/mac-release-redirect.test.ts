@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { loadMacReleaseMetadata, validateMacReleaseDeliveryUrl } from "../mac-release";
+import { loadMacReleaseMetadata, validateMacReleaseDeliveryUrl, validateMacReleaseMetadataUrl } from "../mac-release";
 
 const version = "1.0.0";
 const metadataUrl = `https://github.com/indexnetwork/index/releases/download/v${version}/macos-release.json`;
@@ -26,6 +26,10 @@ describe("immutable GitHub release delivery", () => {
       "https://objects.githubusercontent.com/file",
       "https://evil.example/file",
     ]) expect(() => validateMacReleaseDeliveryUrl(value)).toThrow();
+  });
+
+  test("rejects a custom port on the initial immutable GitHub authority", () => {
+    expect(() => validateMacReleaseMetadataUrl(`https://github.com:444/indexnetwork/index/releases/download/v${version}/macos-release.json`)).toThrow("immutable Index GitHub release asset");
   });
 
   test("follows GitHub redirect but verifies final response authority and immutable metadata", async () => {

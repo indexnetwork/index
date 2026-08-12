@@ -57,7 +57,7 @@ describe("external sealed release authority", () => {
 
   test("seal binds canonical root identity and approved parser returns only exact artifact files", () => {
     const dir = fixture(), tree = join(dir, "tree"), authority = join(dir, "authority"), seal = join(authority, "seal.tsv");
-    mkdirSync(join(tree, "final"), { recursive: true, mode: 0o700 }); mkdirSync(authority, { mode: 0o700 });
+    mkdirSync(join(tree, "final"), { recursive: true, mode: 0o700 }); mkdirSync(authority, { mode: 0o700 }); chmodSync(tree, 0o700); chmodSync(join(tree, "final"), 0o700);
     writeFileSync(join(tree, "final", "artifact.dmg"), "artifact"); writeFileSync(join(tree, "evidence.txt"), "evidence");
     expect(run("python3", [inventory, "create", tree, seal]).status).toBe(0);
     const bytes = readFileSync(seal, "utf8"); expect(bytes).toMatch(/^seal-v1\t\/.*\t\d+\t\d+\n/);

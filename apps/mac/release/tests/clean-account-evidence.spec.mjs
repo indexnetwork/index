@@ -2,17 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { verifyCleanAccountEvidence, verifyCleanAccountEvidencePair } from "../verify-clean-account-evidence.ts";
 
 const valid = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   releaseVersion: "1.0.0",
   commit: "a".repeat(40),
   artifactSha256: { app: "b".repeat(64), connector: "c".repeat(64) },
   candidateSealSha256: "d".repeat(64),
+  candidateManifestSha256: "e".repeat(64),
   attestationUrl: "https://github.com/indexnetwork/index/attestations/123",
   macOSVersion: "13.7.1",
   minimumMacOS: "13.0",
   architecture: "arm64",
   tester: "release-tester",
   approver: "security-approver-arm",
+  approvalAuthority: "f".repeat(64),
   approved: true,
   quarantinePreserved: true,
   gatekeeperLaunch: true,
@@ -42,7 +44,7 @@ describe("clean-account production acceptance evidence", () => {
   });
 
   test("requires both independently approved architectures bound to exact candidate bytes", () => {
-    const intel = { ...valid, architecture: "x86_64", tester: "release-tester-intel", approver: "security-approver-intel" };
+    const intel = { ...valid, architecture: "x86_64", tester: "release-tester-intel", approver: "security-approver-intel", approvalAuthority: "0".repeat(64) };
     expect(() => verifyCleanAccountEvidence(intel)).not.toThrow();
     expect(() => verifyCleanAccountEvidence({ ...valid, architecture: "universal" })).toThrow("approved architecture");
     expect(() => verifyCleanAccountEvidence({ ...valid, capabilityFamilies: valid.capabilityFamilies.slice(0, -1) })).toThrow("capability families");

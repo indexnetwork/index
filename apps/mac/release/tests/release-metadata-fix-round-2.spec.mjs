@@ -16,7 +16,7 @@ afterEach(() => roots.splice(0).forEach((path) => rmSync(path, { recursive: true
 function run(argv, env = {}) { return Bun.spawnSync(argv, { cwd: repo, env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" }); }
 function executable(path, text) { writeFileSync(path, text); chmodSync(path, 0o755); }
 function fixture() {
-  const base = mkdtempSync(join(tmpdir(), "metadata-r2-")); roots.push(base); const final = join(base, "final"); const output = join(base, "output"); mkdirSync(final, { mode: 0o700 }); mkdirSync(output, { mode: 0o700 });
+  const base = mkdtempSync(join(tmpdir(), "metadata-r2-")); roots.push(base); const final = join(base, "final"); const output = join(base, "output"); mkdirSync(final, { mode: 0o700 }); mkdirSync(output, { mode: 0o700 }); chmodSync(output, 0o700);
   names.forEach((name, index) => { const artifact = join(final, name); writeFileSync(artifact, index ? "connector" : "app"); const digest = Bun.SHA256.hash(readFileSync(artifact), "hex"); writeFileSync(`${artifact}.reproducibility.txt`, `macOS.actual=13.6.9\nmacOS.expected=13.6.9\nbuild.actual=22G830\nbuild.expected=22G830\nrunner.actual=macos-13:1\nrunner.expected=macos-13:1\nartifact.sha256=${"a".repeat(64)}\nfinalArtifact.sha256=${digest}\n`); });
   expect(run(["bun", generator, final, output, "7", commit]).exitCode).toBe(0); return { base, final, output };
 }
