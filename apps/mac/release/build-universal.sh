@@ -157,23 +157,29 @@ if not lines:
     raise SystemExit('compiled identity section contains no hexadecimal bytes')
 
 width = None
+next_address = None
 words = []
 for line in lines:
     tokens = line.split()
-    if not tokens:
-        raise SystemExit('compiled identity section contains a blank row')
-    row_width = len(tokens[0])
+    if len(tokens) < 2 or not re.fullmatch(r'[0-9A-Fa-f]{16}', tokens[0]):
+        raise SystemExit('compiled identity section contains a malformed address-prefixed row')
+    address = int(tokens[0], 16)
+    data = tokens[1:]
+    row_width = len(data[0])
     expected_fields = {8: 4, 16: 2}.get(row_width)
-    if expected_fields is None or not 1 <= len(tokens) <= expected_fields or any(
+    if expected_fields is None or not 1 <= len(data) <= expected_fields or any(
         len(token) != row_width or not re.fullmatch(r'[0-9A-Fa-f]+', token)
-        for token in tokens
+        for token in data
     ):
         raise SystemExit('compiled identity section contains a malformed data row')
     if width is None:
         width = row_width
     elif width != row_width:
         raise SystemExit('compiled identity section mixes data field widths')
-    words.extend(tokens)
+    if next_address is not None and address != next_address:
+        raise SystemExit('compiled identity section addresses are not contiguous')
+    next_address = address + sum(len(token) // 2 for token in data)
+    words.extend(data)
 
 raw = bytes.fromhex(''.join(words))
 try:

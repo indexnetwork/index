@@ -53,7 +53,7 @@ test.skipIf(!existsSync('/usr/bin/codesign'))('legacy entrypoint refuses an app 
       },
     });
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toContain('embedded provisioning profile is missing');
+    expect(result.stderr.toString()).toContain('embedded.provisionprofile is missing');
     expect(await Bun.file(archive).exists()).toBe(false);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });

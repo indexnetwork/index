@@ -35,7 +35,7 @@ describe('historical quality operator runbook confirmations', () => {
     const evalCliJob = workflow.match(/^ {2}eval-cli-tests:\n([\s\S]*?)(?=^ {2}[a-z][a-z-]*:\n)/m)?.[1];
 
     expect(evalCliJob).toBeDefined();
-    expect(evalCliJob).toMatch(/- uses: actions\/checkout@v4\n\s+with:\n\s+fetch-depth: 0/);
+    expect(evalCliJob).toMatch(/- uses: actions\/checkout@11d5960a326750d5838078e36cf38b85af677262(?: # v4\.4\.0)?\n\s+with:\n\s+fetch-depth: 0/);
   });
 
   it('keeps every exact confirmation and its one operation in the same fail-closed shell block', () => {

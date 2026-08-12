@@ -40,14 +40,19 @@ EOF
 fi
 `);
  exe(join(bin,"lipo"),'#!/bin/bash\necho "arm64 x86_64"\n');
+ exe(join(bin,"xcrun"),`#!/bin/bash
+[[ "$1" == otool ]] || exit 64
+shift
+exec "$FIXTURE_OTOOL" "$@"
+`);
  exe(join(bin,"otool"),`#!/usr/bin/env python3
 import hashlib,json,plistlib,sys
 args=sys.argv[1:]
 if '-l' in args: print('LC_BUILD_VERSION\\n minos 13.0'); raise SystemExit
 binary=args[-1]; plist=binary.split('/Contents/MacOS/')[0]+'/Contents/Info.plist'; v=plistlib.load(open(plist,'rb'))
 keys=['CFBundleIdentifier','CFBundleShortVersionString','CFBundleVersion','IndexReleaseChannel','IndexReleaseVersion','IndexReleaseCommit','IndexAPIURL','IndexWebURL','IndexExpectedTeamID','IndexConnectorProtocolVersion','IndexDevelopmentBuild','IndexOwnerKeychainAccessGroup']
-i={'IndexBuildTarget':'app',**{k:v[k] for k in keys}}; c=json.dumps(i,sort_keys=True,separators=(',',':')); i['IndexBuildID']=hashlib.sha256(c.encode()).hexdigest(); raw=json.dumps(i,sort_keys=True,separators=(',',':')).encode(); raw+=b'\\0'*(-len(raw)%16); encoded=raw.hex(); print('\\n'.join(' '.join(encoded[n+m:n+m+8] for m in range(0,min(32,len(encoded)-n),8)) for n in range(0,len(encoded),32)))
+i={'IndexBuildTarget':'app',**{k:v[k] for k in keys}}; c=json.dumps(i,sort_keys=True,separators=(',',':')); i['IndexBuildID']=hashlib.sha256(c.encode()).hexdigest(); raw=json.dumps(i,sort_keys=True,separators=(',',':')).encode(); raw+=b'\\0'*(-len(raw)%16); encoded=raw.hex(); print('\\n'.join(f'{0x100003f40+n//2:016x} '+' '.join(encoded[n+m:n+m+8] for m in range(0,min(32,len(encoded)-n),8)) for n in range(0,len(encoded),32)))
 `);
  return {r,app,bin};}
-function run(f,fail=""){return Bun.spawnSync(["bash","-c",'source "$SCRIPT"; verify_release_bundle_path "$APP"'],{cwd:repo,env:{...process.env,SCRIPT:script,APP:f.app,PLIST_BUDDY:join(f.bin,"PlistBuddy"),FAIL_CODESIGN:fail,PATH:`${f.bin}:${process.env.PATH}`},stdout:"pipe",stderr:"pipe"})}
+function run(f,fail=""){return Bun.spawnSync(["bash","-c",'source "$SCRIPT"; verify_release_bundle_path "$APP"'],{cwd:repo,env:{...process.env,SCRIPT:script,APP:f.app,PLIST_BUDDY:join(f.bin,"PlistBuddy"),FIXTURE_OTOOL:join(f.bin,"otool"),FAIL_CODESIGN:fail,PATH:`${f.bin}:${process.env.PATH}`},stdout:"pipe",stderr:"pipe"})}
 test("real Task 2/3 wrappers succeed with external-tool fixtures and propagate failure",()=>{const f=fixture();const ok=run(f);expect(ok.stderr.toString()).toBe("");expect(ok.exitCode).toBe(0);const bad=run(f,"1");expect(bad.exitCode).not.toBe(0);expect(bad.stderr.toString()).toContain("signature verification")});
