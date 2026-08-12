@@ -357,6 +357,16 @@
 
   /* Override any leftover hard borders on inner panels, handled per-component */
 
+  /* ---------- Chat send times ----------
+     Held at zero opacity instead of display:none so the time keeps its space
+     in the row: hovering reveals it without the bubble moving. */
+  .mac-chat-time{ opacity:0; transition: opacity .12s ease; }
+  .mac-chat-row:hover .mac-chat-time,
+  .mac-chat-row:focus-within .mac-chat-time{ opacity:1; }
+  @media (prefers-reduced-motion: reduce){
+    .mac-chat-time{ transition:none }
+  }
+
   /* ---------- Agent chat markdown (rendered via vendored marked) ---------- */
   .agent-md > :first-child{ margin-top:0 }
   .agent-md > :last-child{ margin-bottom:0 }

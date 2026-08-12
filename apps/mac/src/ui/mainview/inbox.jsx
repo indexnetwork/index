@@ -1,8 +1,8 @@
-function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention }) {
+function Inbox({ conversations, onOpen, onClose }) {
   const totalUnread = conversations.reduce((a, c) => a + (c.unread || 0), 0);
   return (
     <MacWindow title="messages" onClose={onClose} style={{ minHeight:0 }}>
-      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
+      <div style={{ display:"grid", gridTemplateRows:"auto 1fr", flex:1, minHeight:0 }}>
         {/* header */}
         <div style={{ padding:"12px 16px", borderBottom:"1px solid #000", background:"#fff" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -64,11 +64,6 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
               )}
             </button>
           ))}
-        </div>
-
-        {/* retention note */}
-        <div style={{ borderTop:"1px solid #000", padding:"10px 14px", background:"#fff" }}>
-          <RetentionNote retention={retention} onChange={onChangeRetention}/>
         </div>
       </div>
     </MacWindow>

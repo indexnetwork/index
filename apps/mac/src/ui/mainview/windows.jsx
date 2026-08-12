@@ -155,7 +155,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
   );
 }
 
-function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retention, onChangeRetention }) {
+function ChatWindow({ person, messages, draft, setDraft, onSend, onClose }) {
   const scrollRef = useRef(null);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -195,13 +195,8 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
             {messages.map(m => <ChatBubble key={m.id} m={m}/>)}
           </div>
 
-          {/* input + retention note */}
+          {/* input */}
           <div style={{ borderTop:"1px solid #000", background:"#fff" }}>
-            {retention && (
-              <div style={{ padding:"7px 12px 0" }}>
-                <RetentionNote retention={retention} onChange={onChangeRetention}/>
-              </div>
-            )}
             <div style={{ padding:"7px 12px 8px", display:"flex", gap:10, alignItems:"center" }}>
               <span style={{ fontFamily:"var(--mac-mono)", color:"#000" }}>›</span>
               <input
@@ -254,18 +249,45 @@ function ChatOpener({ person }) {
   );
 }
 
+// The send time rides alongside the bubble and only surfaces while the row is
+// hovered (or focused, for keyboard), so a thread reads as text until you go
+// looking for when something was said. It stays in flow at zero opacity rather
+// than appearing on hover, so nothing shifts under the pointer.
+function ChatTime({ at }) {
+  const text = chatTime(at);
+  if (!text) return null;
+  return (
+    <time className="mac-chat-time" dateTime={at} style={{
+      fontFamily:"var(--mac-mono)", fontSize:9, color:"var(--ink-3)",
+      letterSpacing:0.2, whiteSpace:"nowrap", flex:"0 0 auto",
+    }}>{text}</time>
+  );
+}
+
 function ChatBubble({ m }) {
   if (m.who === "index") {
     return (
-      <div style={{
-        fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
-        textAlign:"center", letterSpacing:0.3, lineHeight:1.5, padding:"0 8px",
-      }}>{m.text}</div>
+      <div className="mac-chat-row" style={{
+        display:"flex", alignItems:"baseline", justifyContent:"center", gap:6, padding:"0 8px",
+      }}>
+        <div style={{
+          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
+          textAlign:"center", letterSpacing:0.3, lineHeight:1.5,
+        }}>{m.text}</div>
+        <ChatTime at={m.at}/>
+      </div>
     );
   }
   const you = m.who === "you";
+  // Baseline, not flex-end: the time then sits on the bubble's first text line
+  // instead of sagging to the bottom of the box, so it reads as part of the
+  // message rather than as something floating beside it.
   return (
-    <div style={{ display:"flex", justifyContent: you ? "flex-end" : "flex-start" }}>
+    <div className="mac-chat-row" style={{
+      display:"flex", alignItems:"baseline", gap:6,
+      justifyContent: you ? "flex-end" : "flex-start",
+    }}>
+      {you && <ChatTime at={m.at}/>}
       <div style={{
         maxWidth:"82%",
         border:"1px solid #000",
@@ -275,6 +297,7 @@ function ChatBubble({ m }) {
         fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
         boxShadow: you ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
       }}>{m.text}</div>
+      {!you && <ChatTime at={m.at}/>}
     </div>
   );
 }

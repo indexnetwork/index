@@ -395,6 +395,27 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
 /* =================== CHAT WINDOW (3rd window) =================== */
 function rid() { return Math.random().toString(36).slice(2); }
 
+// Every chat message carries `at`, the moment it was sent, which the bubble
+// reveals on hover. Live rows get it from the API's createdAt; locally made
+// ones (your optimistic send, the simulated replies) stamp it here.
+function nowISO() { return new Date().toISOString(); }
+
+// Clock time for a bubble: "9:41 pm", lowercased like the rest of the app's
+// chrome. Older-than-today rows lead with the day so a hover is never
+// ambiguous. Returns "" for a message with no timestamp.
+function chatTime(at) {
+  if (!at) return "";
+  const d = new Date(at);
+  if (isNaN(d.getTime())) return "";
+  const clock = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  const today = new Date();
+  const sameDay = d.getFullYear() === today.getFullYear()
+    && d.getMonth() === today.getMonth()
+    && d.getDate() === today.getDate();
+  if (sameDay) return clock;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" }).toLowerCase()}, ${clock}`;
+}
+
 function seedChat(person, priorAnswer) {
   const ov = (person.overlap && person.overlap[0]) || null;
   const msgs = [
@@ -415,7 +436,10 @@ function seedChat(person, priorAnswer) {
         ? `hi, good to meet you. looks like we've both got '${ov}' in common, so this might be easy. what are you hoping to get out of this?`
         : `hi, good to meet you. looks like our signals line up. what are you hoping to get out of this?` });
   }
-  return msgs.map(m => ({ id: rid(), ...m }));
+  // Seeded threads read as a conversation that just happened: the oldest line
+  // a couple of minutes back, the newest now.
+  const start = Date.now() - msgs.length * 90000;
+  return msgs.map((m, i) => ({ id: rid(), at: new Date(start + i * 90000).toISOString(), ...m }));
 }
 
 function chatReplyFor(text) {

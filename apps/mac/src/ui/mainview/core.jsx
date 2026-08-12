@@ -1,9 +1,6 @@
 // Main view, Mac System 6 split-window layout with full flow logic
 // Same simulation logic as the original; only chrome/skin is reworked.
 
-// How long conversations are kept before auto-deleting. Adjustable inline.
-const RETENTION_OPTIONS = ["1 week", "2 weeks", "1 month", "3 months", "never"];
-
 // Width of the window row below which three side-by-side windows stop being
 // readable, the radar steps aside for the third window instead.
 const THREE_COLUMN_MIN = 1020;
@@ -12,29 +9,6 @@ const THREE_COLUMN_MIN = 1020;
 // has not matched anyone yet. Long enough to cover a slow first pass, short
 // enough that an empty radar stops pretending to be busy.
 const DISCOVERY_GIVE_UP_MS = 120000;
-
-// Inline privacy note: chats auto-delete after a window you can change.
-function RetentionNote({ retention, onChange }) {
-  return (
-    <div style={{
-      display:"flex", alignItems:"center", gap:6, flexWrap:"wrap",
-      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.2,
-    }}>
-      <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
-      <span>
-        {retention === "never"
-          ? "conversations are kept until you delete them"
-          : `conversations auto-delete after ${retention}`}
-      </span>
-      <button onClick={(e) => { e.stopPropagation(); onChange && onChange(); }}
-        style={{
-          fontFamily:"var(--mac-mono)", fontSize:10, color:"#000",
-          background:"none", border:"none", padding:0, cursor:"pointer",
-          textDecoration:"underline", flex:"0 0 auto",
-        }}>change ›</button>
-    </div>
-  );
-}
 
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
@@ -481,9 +455,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const [responses, setResponses] = useState({});      // your typed answer to each person's question
   const [summaryId, setSummaryId] = useState(null);    // expired person whose summary is open
   const [profileId, setProfileId] = useState(null);    // person whose profile is open
-  const [retentionIdx, setRetentionIdx] = useState(1); // auto-delete window for chats
-  const retention = RETENTION_OPTIONS[retentionIdx];
-  const cycleRetention = () => setRetentionIdx(i => (i + 1) % RETENTION_OPTIONS.length);
 
   const toChatMsg = (m) => {
     const parts = Array.isArray(m.parts) ? m.parts : [];
@@ -491,7 +462,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       .filter(Boolean).join("\n");
     const who = m.senderId && myId && m.senderId === myId ? "you"
       : m.role === "agent" ? "index" : "them";
-    return { id: m.id || rid(), who, text };
+    // `at` is what the bubble reveals on hover; absent on older rows, and the
+    // bubble simply shows nothing then.
+    return { id: m.id || rid(), who, text, at: m.createdAt || m.created_at || null };
   };
 
   const openChat = (personId) => {
@@ -601,7 +574,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (!text || !chatId) return;
     const id = chatId;
     setChatDraft("");
-    setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"you", text }] }));
+    setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"you", text, at: nowISO() }] }));
 
     if (live && client) {
       const cid = convByPerson.current[id];
@@ -610,7 +583,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
 
     setTimeout(() => {
-      setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"them", text: chatReplyFor(text) }] }));
+      setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"them", text: chatReplyFor(text), at: nowISO() }] }));
     }, 700);
   };
 
@@ -622,7 +595,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (candidates.length === 0) return;
     const pid = candidates[Math.floor(Math.random() * candidates.length)];
     const person = people.find(p => p.id === pid);
-    setChats(prev => ({ ...prev, [pid]: [...(prev[pid] || []), { id: rid(), who:"them", text: incomingPing(person) }] }));
+    setChats(prev => ({ ...prev, [pid]: [...(prev[pid] || []), { id: rid(), who:"them", text: incomingPing(person), at: nowISO() }] }));
     setUnread(prev => ({ ...prev, [pid]: (prev[pid] || 0) + 1 }));
   }, (paused || live || Object.keys(chats).length === 0) ? null : 16000 / simRate);
 
@@ -796,8 +769,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
               setDraft={setChatDraft}
               onSend={sendChat}
               onClose={closeChats}
-              retention={retention}
-              onChangeRetention={cycleRetention}
             />
           ) : summaryPerson ? (
             <SummaryWindow person={summaryPerson} onClose={closeChats}/>
