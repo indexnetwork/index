@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { createIndexApiClient, createNativeAPIRequestBridge } from './client.mjs';
+import * as notificationHelpers from './notifications.mjs';
 
 const appDelegate = readFileSync(new URL('../Sources/AppDelegate.swift', import.meta.url), 'utf8');
 const appConfig = readFileSync(new URL('../Sources/AppConfig.swift', import.meta.url), 'utf8');
@@ -78,6 +79,140 @@ describe('credential-free native API JavaScript boundary', () => {
       { kind: 'http', method: 'GET', path: '/opportunities?status=pending&limit=10' },
       { kind: 'http', method: 'POST', path: '/questions/question%2F1/dismiss', body: {} },
     ]);
+  });
+
+  it('routes notification streams and snapshots through native operations with retry and cancellation', async () => {
+    const posted = [];
+    const toasts = [];
+    const timers = [];
+    const intervals = [];
+    const storage = new Map();
+    let nextId = 0;
+    const originalTimers = {
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      setInterval: globalThis.setInterval,
+      clearInterval: globalThis.clearInterval,
+    };
+    globalThis.setTimeout = (callback, delay) => {
+      const timer = { callback, delay, cleared: false };
+      timers.push(timer);
+      return timer;
+    };
+    globalThis.clearTimeout = (timer) => { if (timer) timer.cleared = true; };
+    globalThis.setInterval = (callback, delay) => {
+      const timer = { callback, delay, cleared: false };
+      intervals.push(timer);
+      return timer;
+    };
+    globalThis.clearInterval = (timer) => { if (timer) timer.cleared = true; };
+
+    let dispose = null;
+    try {
+      const window = {
+        INDEX_NATIVE: { authenticated: true, apiBaseUrl: 'https://api.example/api' },
+        INDEX_DATA: {},
+        crypto: { randomUUID: () => `request-${++nextId}` },
+        addEventListener: () => {},
+        IndexApi: {
+          createIndexApiClient,
+          createNativeAPIRequestBridge,
+          createHermesRuntimeBridge: () => ({
+            request: async () => ({}), receive: () => false, receiveProgress: () => false,
+          }),
+          normalizeApiBaseUrl: (value) => value.replace(/\/+$/, ''),
+          ...notificationHelpers,
+        },
+        webkit: { messageHandlers: {
+          indexAPI: { postMessage: (message) => posted.push(message) },
+          indexNotify: { postMessage: (payload) => toasts.push(payload) },
+        } },
+      };
+      const localStorage = {
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => storage.set(key, value),
+      };
+      new Function('window', 'localStorage', apiSource)(window, localStorage);
+      dispose = window.IndexApp.startDesktopNotifications({ getUserId: () => 'user-1' });
+
+      const initial = posted.filter((message) => message.operation.kind !== 'cancel');
+      expect(initial.map((message) => message.operation)).toEqual([
+        { kind: 'sse', method: 'GET', path: '/notifications/stream' },
+        { kind: 'sse', method: 'GET', path: '/conversations/stream' },
+        { kind: 'http', method: 'GET', path: '/notifications/snapshot' },
+      ]);
+      const notifications = initial[0];
+      const inbox = initial[1];
+      const snapshot = initial[2];
+
+      expect(window.__indexAPIResponse({
+        requestId: snapshot.requestId, ok: true, status: 200, body: { events: [] },
+      })).toBe(true);
+      expect(window.__indexAPIEvent({
+        requestId: notifications.requestId, sequence: 0,
+        event: { type: 'native_headers', status: 200, headers: {} },
+      })).toBe(true);
+      expect(window.__indexAPIEvent({
+        requestId: notifications.requestId, sequence: 1,
+        event: { type: 'question.new', id: 'q1', title: 'Question', body: 'Answer me' },
+      })).toBe(true);
+      expect(window.__indexAPIEvent({
+        requestId: inbox.requestId, sequence: 0,
+        event: { type: 'native_headers', status: 200, headers: {} },
+      })).toBe(true);
+      expect(window.__indexAPIEvent({
+        requestId: inbox.requestId, sequence: 1,
+        event: { type: 'message', conversationId: 'c1', message: { id: 'm1', senderId: 'user-1' } },
+      })).toBe(true);
+      expect(toasts).toEqual([{ title: 'Question', body: 'Answer me', url: 'index://q/q1' }]);
+
+      expect(window.__indexAPIResponse({
+        requestId: notifications.requestId, ok: true, status: 200, body: { complete: true },
+      })).toBe(true);
+      await Promise.resolve();
+      await Promise.resolve();
+      const rotated = posted.find((message) => (
+        message.requestId !== notifications.requestId
+        && message.operation.kind === 'sse'
+        && message.operation.path === '/notifications/stream'
+      ));
+      expect(rotated).toBeDefined();
+      expect(timers.some((timer) => timer.delay === 15_000 && !timer.cleared)).toBe(false);
+
+      expect(window.__indexAPIResponse({
+        requestId: inbox.requestId, ok: false, status: 503, errorCode: 'http_error', body: {},
+      })).toBe(true);
+      await Promise.resolve();
+      await Promise.resolve();
+      const retry = timers.find((timer) => timer.delay === 15_000 && !timer.cleared);
+      expect(retry).toBeDefined();
+      expect(posted.filter((message) => (
+        message.operation.kind === 'sse' && message.operation.path === '/conversations/stream'
+      ))).toHaveLength(1);
+      retry.callback();
+      await Promise.resolve();
+      const retriedInbox = posted.find((message) => (
+        message.requestId !== inbox.requestId
+        && message.operation.kind === 'sse'
+        && message.operation.path === '/conversations/stream'
+      ));
+      expect(retriedInbox).toBeDefined();
+
+      dispose();
+      dispose = null;
+      const cancelled = posted
+        .filter((message) => message.operation.kind === 'cancel')
+        .map((message) => message.operation.targetRequestId);
+      expect(cancelled).toEqual(expect.arrayContaining([rotated.requestId, retriedInbox.requestId]));
+      expect(intervals).toHaveLength(1);
+      expect(intervals[0]).toMatchObject({ delay: 60_000, cleared: true });
+    } finally {
+      if (dispose) dispose();
+      globalThis.setTimeout = originalTimers.setTimeout;
+      globalThis.clearTimeout = originalTimers.clearTimeout;
+      globalThis.setInterval = originalTimers.setInterval;
+      globalThis.clearInterval = originalTimers.clearInterval;
+    }
   });
 
   it('contains no JavaScript-visible owner credential path', () => {
@@ -187,7 +322,7 @@ describe('native owner migration and transport source contracts', () => {
     expect(quarantine).toContain('snapshot.forEach { $0.cancel() }');
     expect(quarantine.indexOf('quarantined = true')).toBeLessThan(quarantine.indexOf('snapshot.forEach'));
     expect(nativeBridge).toContain('guard !quarantined, tasks.count < Self.maximumPendingRequests');
-    const finish = nativeBridge.match(/private func finish\(_ response[\s\S]*?\n    }\n}/)?.[0] || '';
+    const finish = nativeBridge.match(/private func finish\(_ response[\s\S]*?\n {4}}\n}/)?.[0] || '';
     expect(finish.indexOf('terminal(response)')).toBeLessThan(finish.indexOf('drains.forEach'));
     expect(finish).toContain('streamContexts.removeValue');
     expect(mainSwift).toContain('retryPendingOwnerRevocation');

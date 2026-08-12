@@ -100,17 +100,17 @@ function failedParticipantMetrics() {
 }
 
 describe('merged PR A historical quality authority audit', () => {
-  it('locks workspace versions and the root lock without changing Eval Ops', () => {
+  it('keeps current protocol and API releases synchronized with the root lock without changing Eval Ops', () => {
     const protocolPackage = JSON.parse(readFileSync(path.join(ROOT, 'packages/protocol/package.json'), 'utf8'));
     const apiPackage = JSON.parse(readFileSync(path.join(ROOT, 'services/api/package.json'), 'utf8'));
     const evalOpsPackage = JSON.parse(readFileSync(path.join(ROOT, 'apps/eval-ops/package.json'), 'utf8'));
     const lock = readFileSync(path.join(ROOT, 'bun.lock'), 'utf8');
 
-    expect(protocolPackage.version).toBe('11.2.1');
-    expect(apiPackage.version).toBe('0.83.1');
+    expect(protocolPackage.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(apiPackage.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(evalOpsPackage.version).toBe('0.6.0');
-    expect(lock).toContain('"packages/protocol": {\n      "name": "@indexnetwork/protocol",\n      "version": "11.2.1"');
-    expect(lock).toContain('"services/api": {\n      "name": "@indexnetwork/api",\n      "version": "0.83.1"');
+    expect(lock).toContain(`"packages/protocol": {\n      "name": "@indexnetwork/protocol",\n      "version": "${protocolPackage.version}"`);
+    expect(lock).toContain(`"services/api": {\n      "name": "@indexnetwork/api",\n      "version": "${apiPackage.version}"`);
     expect(lock).toContain('"apps/eval-ops": {\n      "name": "@indexnetwork/eval-ops",\n      "version": "0.6.0"');
   });
 

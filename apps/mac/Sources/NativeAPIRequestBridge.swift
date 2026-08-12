@@ -269,6 +269,7 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/notifications/snapshot$"#),
         ("POST", #"^/tools/(?:read_user_contexts|preview_user_context|confirm_user_context)$"#),
         ("POST", #"^/enrichment/enrich$"#),
+        ("GET", #"^/notifications/snapshot$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
         ("POST", #"^/conversations/(?:dm|[^/?]+/messages)$"#),
@@ -714,7 +715,9 @@ final class NativeAPIRequestBridge {
     }
 
     private static func isAllowedSSEBody(method: String, path: String, body: NativeJSONValue?) -> Bool {
-        if method == "GET" && path == "/conversations/stream" { return body == nil }
+        if method == "GET" && ["/notifications/stream", "/conversations/stream"].contains(path) {
+            return body == nil
+        }
         if method == "POST" && path == "/chat/stream" {
             return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId", "persona"]) { item in
                 boundedString(item["message"], maximum: 65_536)

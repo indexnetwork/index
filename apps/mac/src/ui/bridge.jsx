@@ -462,23 +462,25 @@ window.IndexApp = (function () {
 
     // Keep a credential-bearing native SSE stream alive for the pipeline's
     // lifetime. JavaScript supplies only the admitted route and receives only
-    // structured events; credential headers remain inside Swift.
+    // structured events; credential headers remain inside Swift. A dropped or
+    // refused stream reconnects after a pause instead of dying silently.
     function keepStream(path, handler) {
-      let close = null;
+      let controller = null;
       (async () => {
         while (!stopped) {
-          await new Promise((done) => {
-            const controller = new AbortController();
-            close = () => controller.abort();
-            nativeAPIBridge.request(
+          controller = new AbortController();
+          let completed = false;
+          try {
+            await nativeAPIBridge.request(
               { kind:"sse", method:"GET", path },
               { signal:controller.signal, onEvent:handler, timeoutMs:300000 },
-            ).catch(() => { /* aborted or network drop */ }).finally(done);
-          });
-          if (!stopped) await new Promise((r) => setTimeout(r, 15000));
+            );
+            completed = true;
+          } catch (e) { /* aborted or network drop */ }
+          if (!stopped && !completed) await new Promise((r) => setTimeout(r, 15000));
         }
       })();
-      return () => { if (close) close(); };
+      return () => { if (controller) controller.abort(); };
     }
 
     const closeNotifications = keepStream("/notifications/stream", (e) => onRealtime(e, false));
@@ -492,8 +494,8 @@ window.IndexApp = (function () {
         const response = await nativeAPIBridge.request({
           kind:"http", method:"GET", path:"/notifications/snapshot",
         });
-        const payload = response.body;
         if (stopped) return;
+        const payload = response.body;
         const result = N.reconcileNotificationSnapshot(payload, state);
         state.hasSnapshot = result.state.hasSnapshot;
         state.notifiedEntities = result.state.notifiedEntities;

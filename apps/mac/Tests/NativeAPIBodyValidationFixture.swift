@@ -53,6 +53,8 @@ enum NativeAPIBodyValidationFixture {
             try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: method, path: path, body: body), "valid body rejected: \(method) \(path)")
         }
 
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/notifications/snapshot", body: nil), "valid notification snapshot rejected")
+        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "GET", path: "/notifications/stream", body: nil), "valid notification stream rejected")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("negotiator")])), "valid chat stream rejected")
         try require(NativeAPIRequestBridge.validateMCPForFixture(arguments: object(["description": string("Meet founders"), "autoApprove": .bool(true)])), "valid create_intent rejected")
 
