@@ -95,7 +95,7 @@ describe("executable protected-boundary fixtures", () => {
   test("execution log rechecks isolation before Task4 phases and publication", () => {
     const source = readFileSync(scriptPath, "utf8");
     expect(source).toContain("INDEX_RELEASE_ISOLATION_GUARD");
-    expect(source).toMatch(/publish_release\(\)[\s\S]*assert_no_unrelated_same_uid_processes[\s\S]*draft:='false'/);
+    expect(source).toMatch(/publish_release\(\)[\s\S]*assert_no_unrelated_same_uid_processes[\s\S]*{"draft":false}/);
     const task4 = readFileSync(join(root, "apps/mac/IndexApp/notarize.sh"), "utf8");
     expect((task4.match(/run_isolation_guard/g) ?? []).length).toBeGreaterThanOrEqual(5);
   });

@@ -105,7 +105,7 @@ describe("protected production workflow", () => {
 describe("release orchestrator", () => {
   test("orders every protected gate before publication", () => {
     const script = readRequired(orchestratorPath);
-    for (const marker of ["prepare_release", "authorize_release", "candidate_release", "publish_release", "build-universal.sh", "sign-bundles.sh", "verify-signatures.sh", "notarize.sh", "verify_final_artifact_evidence", "generate-release-metadata.ts", "sign-release-metadata.sh", "verify-release-metadata.sh", "verify_uploaded_assets", "draft:='false'"]) expect(script).toContain(marker);
+    for (const marker of ["prepare_release", "authorize_release", "candidate_release", "publish_release", "build-universal.sh", "sign-bundles.sh", "verify-signatures.sh", "notarize.sh", "verify_final_artifact_evidence", "generate-release-metadata.ts", "sign-release-metadata.sh", "verify-release-metadata.sh", "verify_uploaded_assets", '{"draft":false}']) expect(script).toContain(marker);
     expect(script).not.toContain("gh release create");
   });
 
@@ -127,7 +127,7 @@ describe("release orchestrator", () => {
     const contract = script.indexOf("assert_no_unrelated_same_uid_processes");
     const promotion = script.indexOf('bash "$MAC_DIRECTORY/IndexApp/notarize.sh"');
     const checks = [...script.matchAll(/verify_final_artifact_evidence/g)].map((match) => match.index ?? -1);
-    const publication = script.indexOf("draft:='false'");
+    const publication = script.indexOf('{"draft":false}');
     expect(contract).toBeLessThan(promotion);
     expect(script).toContain("INDEX_RELEASE_ISOLATION_GUARD");
     expect(checks.length).toBeGreaterThanOrEqual(3);
