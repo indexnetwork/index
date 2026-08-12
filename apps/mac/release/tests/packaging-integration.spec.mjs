@@ -46,7 +46,7 @@ args=sys.argv[1:]
 if '-l' in args: print('LC_BUILD_VERSION\\n minos 13.0'); raise SystemExit
 binary=args[-1]; plist=binary.split('/Contents/MacOS/')[0]+'/Contents/Info.plist'; v=plistlib.load(open(plist,'rb'))
 keys=['CFBundleIdentifier','CFBundleShortVersionString','CFBundleVersion','IndexReleaseChannel','IndexReleaseVersion','IndexReleaseCommit','IndexAPIURL','IndexWebURL','IndexExpectedTeamID','IndexConnectorProtocolVersion','IndexDevelopmentBuild','IndexOwnerKeychainAccessGroup']
-i={'IndexBuildTarget':'app',**{k:v[k] for k in keys}}; c=json.dumps(i,sort_keys=True,separators=(',',':')); i['IndexBuildID']=hashlib.sha256(c.encode()).hexdigest(); raw=(json.dumps(i,sort_keys=True,separators=(',',':'))+'\\n').encode().hex(); print(raw)
+i={'IndexBuildTarget':'app',**{k:v[k] for k in keys}}; c=json.dumps(i,sort_keys=True,separators=(',',':')); i['IndexBuildID']=hashlib.sha256(c.encode()).hexdigest(); raw=(json.dumps(i,sort_keys=True,separators=(',',':'))+'\\n').encode().hex(); print(' '.join(raw[n:n+8] for n in range(0,len(raw),8)))
 `);
  return {r,app,bin};}
 function run(f,fail=""){return Bun.spawnSync(["bash","-c",'source "$SCRIPT"; verify_release_bundle_path "$APP"'],{cwd:repo,env:{...process.env,SCRIPT:script,APP:f.app,PLIST_BUDDY:join(f.bin,"PlistBuddy"),FAIL_CODESIGN:fail,PATH:`${f.bin}:${process.env.PATH}`},stdout:"pipe",stderr:"pipe"})}

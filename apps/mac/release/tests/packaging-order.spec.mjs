@@ -224,6 +224,7 @@ test("mounted verification uses the mounted bundle path and detaches after verif
   mkdirSync(bin);
   executable(join(bin, "hdiutil"), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$LOG"
+if [[ "$1" == detach ]]; then exit 0; fi
 if [[ "$1" == attach ]]; then
   while [[ "$1" != -mountpoint ]]; do shift; done
   actual_mount="$2"

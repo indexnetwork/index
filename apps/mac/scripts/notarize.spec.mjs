@@ -24,6 +24,7 @@ async function makeSignedApp() {
 <key>IndexDevelopmentBuild</key><false/>
 <key>IndexReleaseVersion</key><string>1.0.0</string>
 <key>IndexExpectedTeamID</key><string>LMQ3XNXLAD</string>
+<key>IndexOwnerKeychainAccessGroup</key><string>LMQ3XNXLAD.network.index.system6.owner-credentials</string>
 </dict></plist>`);
   const signed = Bun.spawnSync(['codesign', '--force', '--deep', '--sign', '-', app]);
   expect(signed.exitCode).toBe(0);

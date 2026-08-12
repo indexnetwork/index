@@ -25,7 +25,10 @@ def inventory_rows():
         if stat.S_ISDIR(details.st_mode):
             rows.append((relative, "d", f"{permissions:04o}", "0", "-"))
         elif stat.S_ISREG(details.st_mode):
-            digest = hashlib.new("sha256", usedforsecurity=False)
+            try:
+                digest = hashlib.new("sha256", usedforsecurity=False)
+            except TypeError:
+                digest = hashlib.new("sha256")
             with path.open("rb") as stream:
                 for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                     digest.update(chunk)
