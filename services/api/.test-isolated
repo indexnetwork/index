@@ -57,6 +57,9 @@ src/services/tests/opportunity-delivery.isolated.ts
 src/services/tests/chat-summary.service.isolated.ts
 src/services/tests/chat.service.isolated.ts
 src/controllers/tests/route-deprecation.controller.isolated.ts
+src/lib/tests/log-sentry.isolated.ts
+src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts
+src/adapters/tests/hermes-runtime-telemetry.database.adapter.isolated.ts
 tests/contacts-disabled.e2e.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts
 src/controllers/tests/chat.reporter.isolated.ts
@@ -71,6 +74,11 @@ tests/negotiation.agents.isolated.ts
 tests/frame-drift.database.adapter.isolated.ts
 tests/negotiation.ask-user.e2e.isolated.ts
 tests/negotiation-polling-consultation.e2e.isolated.ts
+# Dedicated targets for the disposable-PostgreSQL Hermes production assurance job.
+src/lib/drizzle/tests/hermes-migration-preflight.database.isolated.ts
+src/lib/drizzle/tests/hermes-runtime-telemetry.database.isolated.ts
+src/lib/drizzle/tests/hermes-emergency-control.database.isolated.ts
+tests/hermes-runtime-lifecycle.database.isolated.ts
 tests/negotiation-runtime-authority.database.isolated.ts
 src/services/tests/negotiation-polling.memory.isolated.ts
 src/services/tests/negotiation-polling.max-turns.isolated.ts

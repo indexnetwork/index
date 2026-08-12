@@ -31,7 +31,13 @@ bun test --watch                            # Run tests in watch mode
 
 # Code quality
 bun run lint                                # Run ESLint
+bun run typecheck                           # Type-check the API without emitting
 bun run typecheck:cli-specs                 # Type-check the discovery CLI specs (see tsconfig.spec.json)
+
+# Hermes production assurance (provider-free; DB commands require the dedicated guard below)
+bun run test:hermes-production-assurance    # Fresh-process guarded PostgreSQL suites + explicit-threshold preflight
+bun run maintenance:hermes-preflight -- --json --max-lock-ms <approved-ms> --max-total-ms <approved-ms>
+bun run maintenance:hermes-emergency-control -- --audience hermes-agent # Dry-run plan; confirmation is incident-authorized only
 
 # Evals (gated, mutating, cost tokens — see ### Discovery Eval)
 bun run eval:discovery -- --help            # Discovery: contract and exit codes, no credentials needed
@@ -771,6 +777,16 @@ bun run dev:eval-ops                         # Eval ops UI on 127.0.0.1:5174 (se
 bun run build:eval-ops                       # Build the eval ops UI (excluded from root build)
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
+
+### Hermes Backend Production Assurance
+
+`.github/workflows/hermes-backend-production-assurance.yml` is the provider-free release gate. Its official PostgreSQL 16 multi-architecture image is pinned by reviewed Docker Hub digest and uses only the disposable `hermes_assurance` database. In every job, it downloads the exact archived PGDG `postgresql-16-pgvector` 0.8.6-1.pgdg13+1 amd64 package, verifies the independently resolved SHA-256 `9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc`, proves the package's only direct dependencies (`postgresql-16` and `libc6`) are already installed, proves the installed `postgresql-16` provides exactly the compatible virtual JIT ABI `postgresql-16-jit-llvm (= 19)`, verifies the hashed package's exact `Depends` and `Breaks: postgresql-16-jit-llvm (<< 19)` metadata, installs with `dpkg` and no apt resolution, and asserts both package 0.8.6-1.pgdg13+1 and extension 0.8.6 before migrations. It then executes the guarded authority, lifecycle, 100,000-row preflight, aggregate expiry-telemetry, and emergency concurrency/rollback suites in separate fresh Bun processes. `TEST_DATABASE_SAFE=1` and `API_TEST_REQUIRE_DATABASE=1` are scoped to that exact database step; never set the marker until the URL has been proven dedicated and disposable. The workflow token is read-only, every checkout declines persisted credentials, and all release-gate actions are pinned to reviewed full commit SHAs.
+
+The same job runs API/protocol build, API typecheck, CLI-spec typecheck, lint, static isolated-test inventory, telemetry-adapter privacy, identifier-free negotiation-conflict application-log coverage, assurance-log sanitization, a fresh-process mocked production Sentry sink contract, the provider-free Mac agent-runtime JavaScript saga contract on Ubuntu, and the stale/expired `indexCovering: true` smoke. It triggers on the complete `apps/mac/**` trust surface; it does not claim a Swift/macOS build, which remains in the separate Mac workflow. Preflight has no hidden duration defaults: protected dispatches require release-approved `HERMES_PREFLIGHT_MAX_LOCK_MS` and `HERMES_PREFLIGHT_MAX_TOTAL_MS` inputs; PR runs use the explicitly labeled non-production 5,000/30,000 ms fixture thresholds. The fresh 100,000-row fixture strictly parses and consumes those selected values for both timed preflight and relevant migration DDL. Emergency control is dry-run only in CI and must never receive `--confirm` there.
+
+Protected dispatch also requires the release-ops supplied immutable `PREVIOUS_API_IMAGE` digest and the GitHub `production` environment. The PR rollback-base image is explicitly non-production evidence and is not a substitute. CI uploads one aggregate credential-free artifact plus only the established fixed-schema preflight/compatibility reports—never raw logs, database URLs, identities, credential values/hashes, request data, or transcript/private prose. The aggregate's exact gate set is release-contracted and includes stable `telemetry-privacy`, `assurance-output-sanitization`, and `sentry-sink` entries; loose subset evidence is not accepted. The sanitized preflight evidence records validated measured `lockDurationMs` and `totalDurationMs`, and the aggregate binds both values to their approved maxima.
+
+Operators must follow [the rollout assurance checklist](../rollout/hermes-backend-production-assurance.md) and [the emergency rollback runbook](../runbooks/hermes-emergency-rollback.md). Those documents do not authorize migrations, deployment, or production mutation; approvals remain separate. Rollout is server before client. Rollback is forward-fix-first and, if authorized, strictly establish and verify a separately authorized durable admission fence → pause → bulk revoke → verify zero live dedicated authority and zero selected Hermes → restore the approved older immutable binary → re-verify zero while the fence remains held.
 
 ### Deployment Config
 

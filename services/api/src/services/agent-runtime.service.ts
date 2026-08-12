@@ -2,6 +2,7 @@ import type { AgentWithRelations } from '../adapters/agent.database.adapter';
 import { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
 import { HERMES_CANONICAL_ACTIONS } from '../lib/agent/hermes-capabilities';
+import { hermesRuntimeTelemetry, type HermesRuntimeTelemetry } from '../lib/agent/hermes-runtime-telemetry';
 
 export { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 
@@ -85,13 +86,20 @@ export class AgentRuntimeService {
   constructor(
     private readonly store: AgentRuntimeStore = lazyAgentRuntimeStore,
     private readonly now: () => Date = () => new Date(),
+    private readonly telemetry: HermesRuntimeTelemetry = hermesRuntimeTelemetry,
   ) {}
 
   /** Return the server-authoritative runtime selection and heartbeat health. */
   async getRuntime(ownerId: string, installationId: string): Promise<NegotiationRuntimeView> {
     const selected = await this.store.getNegotiationExecutorBinding(ownerId);
     const installation = await this.store.getHermesInstallation(ownerId, installationId);
-    return this.toView(selected, installation);
+    const view = this.toView(selected, installation);
+    if (view.selectedRuntime === 'hermes' && view.health !== 'active') {
+      const reason = view.health === 'stale' ? 'stale' : 'never_seen';
+      this.telemetry.increment('runtime_stale', { reason });
+      this.telemetry.increment('index_fallback', { reason });
+    }
+    return view;
   }
 
   /** Prepare or rotate one setup generation without granting polling authority. */
@@ -106,6 +114,7 @@ export class AgentRuntimeService {
       setupAttemptId,
     });
     const selected = await this.store.getNegotiationExecutorBinding(ownerId);
+    this.telemetry.increment('credential_rotated');
     return {
       binding: this.toView(selected),
       executorId: prepared.agent.id,
@@ -127,9 +136,11 @@ export class AgentRuntimeService {
 
     const installation = await this.store.getHermesInstallation(ownerId, input.installationId);
     if (!installation || installation.id !== input.executorId) {
+      this.telemetry.increment('conflict', { reason: 'runtime_not_found' });
       throw new RuntimeNotFoundError();
     }
     if (installation.runtimeSetupAttemptId !== input.setupAttemptId) {
+      this.telemetry.increment('conflict', { reason: 'runtime_conflict' });
       throw new RuntimeConflictError();
     }
 
@@ -139,23 +150,31 @@ export class AgentRuntimeService {
       exactTargetPermissions: true,
       expectedSetupAttemptId: input.setupAttemptId,
     });
-    if (!selected) throw new RuntimeConflictError();
+    if (!selected) {
+      this.telemetry.increment('conflict', { reason: 'runtime_conflict' });
+      throw new RuntimeConflictError();
+    }
     const globalPermission = selected.permissions.find((permission) =>
       permission.userId === ownerId && permission.scope === 'global');
     const actions = globalPermission?.actions ?? [];
     const negotiationOnly = actions.length === 1 && actions[0] === 'manage:negotiations';
     const fullStandalone = actions.length === HERMES_CANONICAL_ACTIONS.length
       && HERMES_CANONICAL_ACTIONS.every((action, index) => actions[index] === action);
-    if (!negotiationOnly && !fullStandalone) throw new RuntimeConflictError();
+    if (!negotiationOnly && !fullStandalone) {
+      this.telemetry.increment('conflict', { reason: 'runtime_conflict' });
+      throw new RuntimeConflictError();
+    }
     return this.toView(selected);
   }
 
   /** Compare-and-clear a setup only if its generation is still current. */
   async rollbackHermes(ownerId: string, setupAttemptId: string): Promise<boolean> {
-    return this.store.rollbackHermesSetup({
+    const revoked = await this.store.rollbackHermesSetup({
       ownerId,
       expectedSetupAttemptId: setupAttemptId,
     });
+    if (revoked) this.telemetry.increment('credential_revoked');
+    return revoked;
   }
 
   /** Owner-locked compare-and-select-Index. It never revokes connector credentials. */
@@ -169,6 +188,7 @@ export class AgentRuntimeService {
       expectedInstallationId: expected.installationId,
       expectedSetupAttemptId: expected.setupAttemptId,
     });
+    if (outcome === 'selected') this.telemetry.increment('index_fallback', { reason: 'stale' });
     return {
       outcome,
       binding: await this.getRuntime(ownerId, expected.installationId),
@@ -181,7 +201,11 @@ export class AgentRuntimeService {
     // Global absence is positive evidence that this owner has nothing to revoke,
     // so logout is idempotent. An installation owned by someone else remains a
     // non-enumerating 404 and is never treated as absence.
-    if (outcome === 'owner_mismatch') throw new RuntimeNotFoundError();
+    if (outcome === 'owner_mismatch') {
+      this.telemetry.increment('conflict', { reason: 'runtime_not_found' });
+      throw new RuntimeNotFoundError();
+    }
+    if (outcome === 'disconnected') this.telemetry.increment('credential_revoked');
     return this.getRuntime(ownerId, installationId);
   }
 

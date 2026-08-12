@@ -8,6 +8,7 @@ import { log } from '../lib/log';
 import { HERMES_AGENT_AUDIENCE } from '../lib/agent/hermes-authorization';
 import { HERMES_CANONICAL_ACTIONS } from '../lib/agent/hermes-capabilities';
 import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS } from '../lib/agent/hermes-credential';
+import { hermesRuntimeTelemetry, observeHermesAdvisoryLockWait } from '../lib/agent/hermes-runtime-telemetry';
 
 const logger = log.lib.from('agent.database.adapter');
 
@@ -1229,11 +1230,14 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
     ownerId: string,
   ): Promise<void> {
-    await tx.execute(sql`
-      SELECT pg_advisory_xact_lock(
-        hashtextextended(${`agent-runtime:${ownerId}`}, 0)
-      )
-    `);
+    await observeHermesAdvisoryLockWait(
+      hermesRuntimeTelemetry,
+      () => tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`agent-runtime:${ownerId}`}, 0)
+        )
+      `),
+    );
   }
 
   private buildScopeCondition(scope?: AgentScope) {

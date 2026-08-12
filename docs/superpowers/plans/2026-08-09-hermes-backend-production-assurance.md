@@ -279,7 +279,7 @@ PR CI builds the base commit API image and proves denial. The production preflig
 cd services/api
 bun test src/cli/tests/hermes-previous-api-compatibility.spec.ts
 docker build -t index-api-previous-fixture:local \
-  -f src/cli/tests/fixtures/previous-api.Dockerfile src/cli/tests/fixtures
+  -f src/cli/tests/fixtures/previous-api.Dockerfile ../..
 NODE_ENV=test ALLOW_MUTABLE_PREVIOUS_IMAGE=1 \
 PREVIOUS_API_IMAGE=index-api-previous-fixture:local \
 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance \

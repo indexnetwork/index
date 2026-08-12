@@ -43,6 +43,12 @@ mock.module('../../adapters/negotiator-memory.retrieval.adapter', () => ({
 }));
 
 const { NegotiationPollingService } = await import('../negotiation-polling.service');
+const telemetryEvents: Array<{ name: string; attributes: Record<string, string> }> = [];
+const telemetry = {
+  increment: (name: string, attributes: Record<string, string> = {}) => telemetryEvents.push({ name: `hermes.${name}`, attributes }),
+  gauge: () => undefined,
+  observe: () => undefined,
+};
 
 const metadata = {
   type: 'negotiation',
@@ -110,6 +116,7 @@ const service = new NegotiationPollingService(
   singletonAdapter as never,
   responsePersistence as never,
   () => now,
+  telemetry as never,
 );
 
 beforeEach(() => {
@@ -121,6 +128,7 @@ beforeEach(() => {
   markDelivered.mockClear();
   cancelClaimTimeout.mockClear();
   enqueueParkTimeout.mockClear();
+  telemetryEvents.length = 0;
   now = COMMITTED_AT;
 });
 
@@ -301,6 +309,41 @@ describe('NegotiationPollingService closed Hermes atomic response seam', () => {
       taskId, 2, 300_000, 'receipt-park-generation', undefined,
     );
     expect(markDelivered).toHaveBeenCalledWith(taskId, 'receipt');
+    expect(telemetryEvents).toEqual([
+      { name: 'hermes.outbox_replay_attempted', attributes: { reason: 'outbox_pending' } },
+    ]);
+    expect(JSON.stringify(telemetryEvents)).not.toMatch(/task|receipt|owner|agent|run|capability/);
+  });
+
+  it('does not count or attempt delivery for an already-delivered idempotent replay', async () => {
+    getReplay.mockResolvedValue({
+      kind: 'replay',
+      receipt: {
+        version: 1, receiptId: 'receipt', taskId, messageId: 'message', artifactId: null,
+        action: 'counter', finalState: 'waiting_for_agent', turnNumber: 2,
+        completedAt: '2026-01-02T03:05:00.000Z',
+      },
+      queueIntent: {
+        cancelClaimTimeout: true,
+        claimGeneration: '2026-01-02T03:04:05.000Z',
+        rearmParkTimeout: null,
+      },
+      outboxDelivered: true,
+    } as never);
+
+    await expect(service.respondHermes(
+      agentId,
+      ownerId,
+      taskId,
+      { action: 'decline', roleAlignment: 'peers' },
+      principal,
+      authority,
+    )).resolves.toEqual({ success: true });
+
+    expect(telemetryEvents).toEqual([]);
+    expect(cancelClaimTimeout).not.toHaveBeenCalled();
+    expect(enqueueParkTimeout).not.toHaveBeenCalled();
+    expect(markDelivered).not.toHaveBeenCalled();
   });
 
   it('never extends the committed response deadline across a substantial outage or repeated replay', async () => {

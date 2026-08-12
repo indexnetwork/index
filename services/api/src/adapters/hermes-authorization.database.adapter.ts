@@ -4,6 +4,7 @@ import db from '../lib/drizzle/drizzle';
 import { AuthorizationConflictError, AuthorizationExpiredError, AuthorizationInvalidGrantError, AuthorizationReplayError, HERMES_AGENT_AUDIENCE, type ApproveHermesAuthorizationRecord, type CreateHermesAuthorizationRecord, type ExchangeHermesAuthorizationRecord, type GetHermesAuthorizationRecord, type HermesActivationPrincipal, type HermesAuthorizationStore, type HermesCredentialMetadata } from '../lib/agent/hermes-authorization';
 import type { HermesCapability } from '../lib/agent/hermes-capabilities';
 import * as schema from '../schemas/database.schema';
+import { hermesRuntimeTelemetryDatabaseAdapter } from './hermes-runtime-telemetry.database.adapter';
 
 function actions(value: string[]): readonly HermesCapability[] {
   return value as HermesCapability[];
@@ -282,6 +283,10 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
     return row ? metadata(row) : null;
   }
 
+  async countActiveCredentialExpiryHealth(input: { now: Date; nearExpiryCutoff: Date }) {
+    return hermesRuntimeTelemetryDatabaseAdapter.countActiveCredentialExpiryHealth(input);
+  }
+
   /** Compare-and-activate the exact row, generation, and canonical actions. */
   async activatePendingCredential(input: HermesActivationPrincipal) {
     return db.transaction(async (tx) => {
@@ -345,11 +350,7 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
   }
 
   /** Idempotently revoke one exact row without disturbing a newer generation. */
-  async disconnectCredential(input: HermesActivationPrincipal): Promise<{
-    revoked: true;
-    credentialId: string;
-    setupAttemptId: string;
-  }> {
+  async disconnectCredential(input: HermesActivationPrincipal) {
     return db.transaction(async (tx) => {
       const revokedAt = new Date();
       await tx.execute(sql`
@@ -373,7 +374,7 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
         credentialId: credential.id,
         setupAttemptId: credential.setupAttemptId,
       };
-      if (credential.activationState === 'revoked') return receipt;
+      if (credential.activationState === 'revoked') return { receipt, transitioned: false };
       if (credential.activationState !== 'pending' && credential.activationState !== 'active') {
         throw new AuthorizationConflictError();
       }
@@ -435,7 +436,7 @@ export class HermesAuthorizationDatabaseAdapter implements HermesAuthorizationSt
         sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
       )).returning({ id: schema.hermesAgentCredentials.id });
       if (!revoked) throw new AuthorizationConflictError();
-      return receipt;
+      return { receipt, transitioned: true };
     });
   }
 }

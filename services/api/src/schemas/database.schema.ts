@@ -1236,6 +1236,33 @@ export const hermesAgentCredentials = pgTable('hermes_agent_credentials', {
   expiryIdx: index('hermes_agent_credentials_expiry_idx').on(table.expiresAt),
 }));
 
+export const hermesEmergencyReceipts = pgTable('hermes_emergency_receipts', {
+  planId: text('plan_id').primaryKey(),
+  audience: text('audience').notNull(),
+  installations: integer('installations').notNull(),
+  credentials: integer('credentials').notNull(),
+  permissions: integer('permissions').notNull(),
+  owners: integer('owners').notNull(),
+  selectedPaused: integer('selected_paused').notNull(),
+  credentialsRevoked: integer('credentials_revoked').notNull(),
+  permissionsRemoved: integer('permissions_removed').notNull(),
+  installationsDisconnected: integer('installations_disconnected').notNull(),
+  resultReason: text('result_reason').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  planIdCheck: check('hermes_emergency_receipts_plan_id_check', sql`${table.planId} ~ '^hecp_[A-Za-z0-9_-]{43}$'`),
+  audienceCheck: check('hermes_emergency_receipts_audience_check', sql`${table.audience} = 'hermes-agent'`),
+  resultCheck: check('hermes_emergency_receipts_result_check', sql`${table.resultReason} = 'executed'`),
+  countsCheck: check('hermes_emergency_receipts_counts_check', sql`
+    ${table.installations} >= 0 AND ${table.credentials} >= 0
+    AND ${table.permissions} >= 0 AND ${table.owners} >= 0
+    AND ${table.selectedPaused} >= 0 AND ${table.selectedPaused} <= ${table.installations}
+    AND ${table.credentialsRevoked} >= 0 AND ${table.credentialsRevoked} <= ${table.credentials}
+    AND ${table.permissionsRemoved} >= 0 AND ${table.permissionsRemoved} <= ${table.permissions}
+    AND ${table.installationsDisconnected} >= 0 AND ${table.installationsDisconnected} <= ${table.installations}
+  `),
+}));
+
 export const agentTransports = pgTable('agent_transports', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
@@ -1648,6 +1675,8 @@ export type HermesAuthorization = typeof hermesAuthorizations.$inferSelect;
 export type NewHermesAuthorization = typeof hermesAuthorizations.$inferInsert;
 export type HermesAgentCredential = typeof hermesAgentCredentials.$inferSelect;
 export type NewHermesAgentCredential = typeof hermesAgentCredentials.$inferInsert;
+export type HermesEmergencyReceiptRow = typeof hermesEmergencyReceipts.$inferSelect;
+export type NewHermesEmergencyReceiptRow = typeof hermesEmergencyReceipts.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;

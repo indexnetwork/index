@@ -146,7 +146,7 @@ export function validateTestDatabaseUrl(value: string | undefined): string {
   // at a disposable database instead of teaching it to ignore the warning.
   if (REAL_DATA_DATABASE_NAMES.test(databaseName)) {
     throw new Error(
-      `[test-db] Refusing to run tests against a database that carries real data ("${databaseName}"). `
+      `[test-db] Refusing to run tests against a database that carries real data: production-like database name ("${databaseName}"). `
       + 'Database-backed tests truncate and rewrite tables. Point DATABASE_URL in the repository-root '
       + '.env.test at a disposable database — for example the empty "neondb" on a Neon dev branch with '
       + 'migrations applied (cd services/api && bun run db:migrate) — never a *_prod/*_production database.',
@@ -230,6 +230,48 @@ export function shouldRequireTestDatabase(
   }
 
   return true;
+}
+
+export interface TestDatabasePreloadPolicy {
+  checkDatabase: boolean;
+  closeDatabase: boolean;
+  runIsolatedSuite: boolean;
+}
+
+const ISOLATED_IMPORT_HARNESS = 'src/lib/testing/isolated-test-import-harness.spec.ts';
+
+function isExactIsolatedImportHarnessInvocation(argv: readonly string[]): boolean {
+  const testCommandIndex = argv.findIndex((arg) => arg === 'test');
+  if (testCommandIndex === -1) return false;
+  const testArgs = argv.slice(testCommandIndex + 1);
+  if (testArgs.length !== 1) return false;
+  const target = testArgs[0].startsWith('./') ? testArgs[0].slice(2) : testArgs[0];
+  return target === ISOLATED_IMPORT_HARNESS;
+}
+
+/**
+ * Plans preload database lifecycle work independently from test discovery.
+ *
+ * @param argv - Original operating-system process arguments.
+ * @param env - Environment variables controlling readiness and isolated targets.
+ * @param registeredIsolatedTargets - Manifest-validated isolated test targets.
+ * @returns Whether to probe, close, and fan out isolated tests.
+ */
+export function resolveTestDatabasePreloadPolicy(
+  argv: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+  registeredIsolatedTargets: readonly string[],
+): TestDatabasePreloadPolicy {
+  const checkDatabase = shouldRequireTestDatabase(argv, env);
+  const isolatedTarget = env.API_TEST_ISOLATED_TARGET;
+  const targetedIsolatedImport = isolatedTarget !== undefined
+    && registeredIsolatedTargets.includes(isolatedTarget)
+    && isExactIsolatedImportHarnessInvocation(argv);
+  return {
+    checkDatabase,
+    closeDatabase: checkDatabase,
+    runIsolatedSuite: checkDatabase && !targetedIsolatedImport,
+  };
 }
 
 /**

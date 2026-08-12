@@ -862,6 +862,13 @@
       "when": 1786512228229,
       "tag": "0123_add_secure_standalone_authorizations",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1786527543775,
+      "tag": "0124_add_hermes_emergency_receipts",
+      "breakpoints": true
     }
   ]
 }

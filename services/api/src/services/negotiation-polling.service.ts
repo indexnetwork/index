@@ -5,9 +5,9 @@ import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
 import * as dbSchema from '../schemas/database.schema';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
+import { log } from '../lib/log';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
-import { log } from '../lib/log';
 import { allowedHermesActionsFor, buildHermesNegotiationTurn, consultationPromptFor, HERMES_OWNER_DIRECTIVE, isNegotiationTurnCapReached, type HermesNegotiationAction, type HermesNegotiationResponse, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment, type NegotiationAction, type NegotiationConsultationReason, type NegotiationSeat, type NegotiationProtocolVersion, type NegotiatorMemoryEntry } from '@indexnetwork/protocol';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
@@ -19,6 +19,8 @@ import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincip
 import type { AtomicHermesResponseInput, AtomicHermesResponseResult, HermesRunMutationAuthority } from '../adapters/conversation.database.adapter';
 import { remainingDeadlineDelayMs } from '../lib/negotiation/timeout-execution';
 import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
+import { hermesRuntimeTelemetry, type HermesRuntimeTelemetry } from '../lib/agent/hermes-runtime-telemetry';
+import { logNegotiationPickupConflict } from '../lib/agent/negotiation-polling.log';
 
 const logger = log.service.from('NegotiationPollingService');
 
@@ -269,6 +271,7 @@ export class NegotiationPollingService {
     private readonly pickupAdapter: Pick<typeof conversationDatabaseAdapter, 'pickupNegotiationAtomically'> = conversationDatabaseAdapter,
     private readonly responsePersistence: HermesResponsePersistence = conversationDatabaseAdapter,
     private readonly now: () => number = Date.now,
+    private readonly telemetry: HermesRuntimeTelemetry = hermesRuntimeTelemetry,
   ) {}
 
   /**
@@ -289,6 +292,7 @@ export class NegotiationPollingService {
     runId?: string,
   ): Promise<PickupResult | HermesPickupResult | null> {
     if (!await this.authorization.authorizePickup(agentId, userId)) {
+      this.telemetry.increment('auth_denied', { reason: 'invalid_credential' });
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
 
@@ -302,7 +306,9 @@ export class NegotiationPollingService {
       userId,
       principal,
     );
+    this.telemetry.gauge('pending_outbox', pendingOutboxes.length);
     for (const pending of pendingOutboxes) {
+      this.telemetry.increment('outbox_replay_attempted', { reason: 'outbox_pending' });
       await this.deliverHermesResponseOutbox(pending.taskId, pending.result);
     }
 
@@ -313,14 +319,17 @@ export class NegotiationPollingService {
       ...(runId ? { runId } : {}),
     });
     if (pickup.kind === 'unauthorized') {
+      this.telemetry.increment('auth_denied', { reason: 'invalid_credential' });
       throw new UnauthorizedError(`Agent ${agentId} is no longer the selected negotiation executor`);
     }
     if (pickup.kind === 'empty') return null;
     if (pickup.kind === 'run_exhausted') {
+      this.telemetry.increment('conflict', { reason: 'run_exhausted' });
       throw new ConflictError('This Hermes run has already picked up a negotiation task');
     }
     if (pickup.kind === 'conflict') {
-      logger.info('Lost race to claim negotiation task', { agentId, userId });
+      this.telemetry.increment('conflict', { reason: 'runtime_conflict' });
+      logNegotiationPickupConflict();
       return null;
     }
 
@@ -393,6 +402,7 @@ export class NegotiationPollingService {
     runAuthority?: HermesRunMutationAuthority,
   ): Promise<ConsultNegotiationResult> {
     if (!await this.authorization.authorizeRespond(agentId, userId)) {
+      this.telemetry.increment('auth_denied', { reason: 'invalid_credential' });
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
     if (runAuthority && await conversationDatabaseAdapter.isHermesRunMutationReplay(
@@ -586,6 +596,7 @@ export class NegotiationPollingService {
     principal: NegotiationCredentialPrincipal,
   ): Promise<{ success: true }> {
     if (!await this.authorization.authorizeRespond(agentId, userId)) {
+      this.telemetry.increment('auth_denied', { reason: 'invalid_credential' });
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
     // Legacy agent-bound responses retain their existing adapter flow. The
@@ -602,6 +613,7 @@ export class NegotiationPollingService {
     runAuthority: HermesRunMutationAuthority,
   ): Promise<{ success: true }> {
     if (!await this.authorization.authorizeRespond(agentId, userId)) {
+      this.telemetry.increment('auth_denied', { reason: 'invalid_credential' });
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
 
@@ -611,7 +623,10 @@ export class NegotiationPollingService {
       runAuthority,
     );
     if (replay) {
-      await this.deliverHermesResponseOutbox(negotiationId, replay);
+      if (!replay.outboxDelivered) {
+        this.telemetry.increment('outbox_replay_attempted', { reason: 'outbox_pending' });
+        await this.deliverHermesResponseOutbox(negotiationId, replay);
+      }
       return { success: true };
     }
 
@@ -684,10 +699,12 @@ export class NegotiationPollingService {
       identity: hermesResponseIdentity(negotiationId, runAuthority.capability),
     });
     if (result.kind === 'unauthorized') {
+      this.telemetry.increment('auth_denied', { reason: 'invalid_credential' });
       throw new UnauthorizedError(`Agent ${agentId} is no longer the selected negotiation executor`);
     }
     if (result.kind === 'not_found') throw new NotFoundError(`Negotiation ${negotiationId} not found`);
     if (result.kind === 'conflict') {
+      this.telemetry.increment('conflict', { reason: 'runtime_conflict' });
       if (result.claimedByAgentId && result.claimedByAgentId !== agentId) {
         throw new ConflictError(`Negotiation ${negotiationId} is claimed by a different agent`);
       }
@@ -727,6 +744,7 @@ export class NegotiationPollingService {
         result.receipt.receiptId,
       )) throw new Error('Hermes response outbox receipt changed before delivery acknowledgement');
     } catch (error) {
+      this.telemetry.increment('server_error', { reason: 'outbox_delivery' });
       // The database response is already committed. Keep the outbox pending and
       // reject this request; a future independent pickup will retry the same
       // queue IDs before claiming work, including after a process restart.

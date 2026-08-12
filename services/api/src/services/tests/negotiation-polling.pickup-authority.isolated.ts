@@ -71,6 +71,13 @@ mock.module('../../adapters/negotiator-memory.retrieval.adapter', () => ({
 }));
 
 const { NegotiationPollingService, UnauthorizedError } = await import('../negotiation-polling.service');
+const telemetryEvents: Array<{ name: string; attributes: Record<string, string> }> = [];
+const telemetryGauges: Array<{ name: string; value: number }> = [];
+const telemetry = {
+  increment: (name: string, attributes: Record<string, string> = {}) => telemetryEvents.push({ name: `hermes.${name}`, attributes }),
+  gauge: (name: string, value: number) => telemetryGauges.push({ name: `hermes.${name}`, value }),
+  observe: () => undefined,
+};
 const authorization = {
   authorizePickup: async () => true,
   authorizeRespond: async () => true,
@@ -80,6 +87,7 @@ const service = new NegotiationPollingService(
   adapter as never,
   adapter as never,
   () => Date.parse('2026-08-07T00:00:00.000Z'),
+  telemetry as never,
 );
 
 beforeEach(() => {
@@ -94,6 +102,8 @@ beforeEach(() => {
   pendingOutboxes.mockClear();
   pendingOutboxes.mockResolvedValue([] as never[]);
   markOutboxDelivered.mockClear();
+  telemetryEvents.length = 0;
+  telemetryGauges.length = 0;
 });
 
 afterAll(() => mock.restore());
@@ -165,6 +175,14 @@ describe('NegotiationPollingService pickup authority production seam', () => {
     expect(enqueueClaimTimeout).toHaveBeenCalledTimes(0);
     expect(markOutboxDelivered).toHaveBeenCalledWith('prior-task', 'prior-receipt');
     expect(atomicPickup).toHaveBeenCalledTimes(2);
+    expect(telemetryGauges).toEqual([
+      { name: 'hermes.pending_outbox', value: 1 },
+      { name: 'hermes.pending_outbox', value: 0 },
+    ]);
+    expect(telemetryEvents).toEqual([
+      { name: 'hermes.outbox_replay_attempted', attributes: { reason: 'outbox_pending' } },
+    ]);
+    expect(JSON.stringify({ telemetryGauges, telemetryEvents })).not.toMatch(/prior-task|prior-receipt|owner-1|agent-1/);
   });
 
   it('does not select work or return ordinary success when durable outbox delivery fails', async () => {
@@ -191,6 +209,10 @@ describe('NegotiationPollingService pickup authority production seam', () => {
       .rejects.toThrow('queue unavailable');
     expect(markOutboxDelivered).not.toHaveBeenCalled();
     expect(atomicPickup).not.toHaveBeenCalled();
+    expect(telemetryEvents).toEqual([
+      { name: 'hermes.outbox_replay_attempted', attributes: { reason: 'outbox_pending' } },
+      { name: 'hermes.server_error', attributes: { reason: 'outbox_delivery' } },
+    ]);
   });
 
   it('repairs cancel-success/enqueue-failure on the later existing pickup without extending the deadline', async () => {
@@ -251,6 +273,9 @@ describe('NegotiationPollingService pickup authority production seam', () => {
       expect(raced).toBe(true);
       expect(cancelParkTimeout).not.toHaveBeenCalled();
       expect(enqueueClaimTimeout).not.toHaveBeenCalled();
+      expect(telemetryEvents).toEqual([
+        { name: 'hermes.auth_denied', attributes: { reason: 'invalid_credential' } },
+      ]);
     },
   );
 

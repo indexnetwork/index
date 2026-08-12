@@ -4,6 +4,7 @@ import { SessionOnlyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { AuthorizationInvalidRequestError, HermesAuthorizationError, InvalidHermesCredentialError, isHermesLoopbackRedirect } from '../lib/agent/hermes-authorization';
 import { HERMES_CANONICAL_ACTIONS, isExactHermesCapabilitySet } from '../lib/agent/hermes-capabilities';
+import { hermesRuntimeTelemetry, type HermesRuntimeTelemetry } from '../lib/agent/hermes-runtime-telemetry';
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { hermesAuthorizationService, type HermesAuthorizationService } from '../services/hermes-authorization.service';
@@ -83,6 +84,7 @@ export class HermesAuthorizationController {
   constructor(
     private readonly authorization: HermesAuthorizationService = hermesAuthorizationService,
     private readonly reportUnexpected: (error: unknown, operation: string) => void = reportUnexpectedAuthorizationError,
+    private readonly telemetry: HermesRuntimeTelemetry = hermesRuntimeTelemetry,
   ) {}
 
   @Post('')
@@ -168,7 +170,7 @@ export class HermesAuthorizationController {
     try {
       await parseBody(request, activateSchema);
       const credential = request.headers.get('x-api-key');
-      if (!credential) throw new InvalidHermesCredentialError();
+      if (!credential) this.rejectMissingCredential();
       const principal = await this.authorization.authenticatePendingHermesCredential(credential);
       return Response.json(serialize(await this.authorization.activatePendingHermesCredential(principal)));
     } catch (error) {
@@ -182,12 +184,18 @@ export class HermesAuthorizationController {
     try {
       await parseBody(request, disconnectSchema);
       const credential = request.headers.get('x-api-key');
-      if (!credential) throw new InvalidHermesCredentialError();
+      if (!credential) this.rejectMissingCredential();
       const principal = await this.authorization.authenticateRevocableHermesCredential(credential);
       return Response.json(await this.authorization.disconnectHermesCredential(principal));
     } catch (error) {
       return this.handleError(error, 'disconnect');
     }
+  }
+
+  private rejectMissingCredential(): never {
+    this.telemetry.increment('auth_denied', { reason: 'missing_credential' });
+    this.telemetry.increment('credential_rejected', { reason: 'missing_credential' });
+    throw new InvalidHermesCredentialError();
   }
 
   private handleError(error: unknown, operation: string): Response {

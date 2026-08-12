@@ -10,10 +10,13 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- Add Hermes backend production assurance (API 0.83.0): a provider-free PostgreSQL 16 release gate now migrates the dedicated disposable `hermes_assurance` database and runs real authority, lifecycle/fault, 100,000-row migration-preflight, aggregate expiry-telemetry, stale/expired Index-coverage, and emergency concurrency/rollback evidence. Release dispatch requires explicit approved lock/total thresholds and the immutable currently deployed API digest; CI exercises emergency control in dry-run mode only and publishes fixed-schema credential-free evidence.
+- Add operator rollout and emergency rollback runbooks for server-before-client deployment, dashboard/expiry checks, forward-fix-first response, and the strict pause → bulk revoke → zero-authority verification → older-binary order.
 - Secure standalone Hermes and native Index-owner authorization (API 0.82.0): canonical PKCE loopback consent, one-time codes, hash-only `idxh_`/`idxo_` credential persistence, 30-day expiry without refresh, Keychain-confirmed activation, exact revocation receipts, and legacy plaintext-era revocation/fresh-login migration.
 - Dedicated full Hermes audience admission for the six canonical actions, explicit REST/MCP allowlists, and the separate four-handler negotiator boundary. Session-only connected-agent list/pause/revoke controls return nonsecret health, fallback, heartbeat, and expiry views; reconnect requires fresh authorization.
 
 ### Security
+- Add count-only, duration-only migration preflight evidence, privacy-bounded Hermes lifecycle telemetry, immutable previous-image denial, and dry-run-first idempotent emergency control with exact count/plan confirmation. Production reports exclude credentials, credential hashes, database URLs, identity dimensions, private prose, and raw logs.
 - Dedicated audiences default-deny account security, credential/permission/agent administration, billing, and unknown routes. Authorization, activation, runtime reconciliation, disconnect, and negotiation mutation use owner locks, exact row/generation identity, idempotent receipts, and compare-and-set behavior.
 
 ### Removed
