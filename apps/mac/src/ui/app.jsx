@@ -368,14 +368,39 @@ function App() {
     seedField();
   };
   const goNewIntent = () => setScreen("new-intent");
-  const finishNewIntent = async (answers, created) => {
+  const finishNewIntent = async (answers, created, intentId) => {
     setConversation([]);
     setField([]);
     setPeople([]);
     setFreshUser(false);   // they've created a signal, hub is no longer empty
 
-    // When the intent was created live, reload the snapshot and open the main
-    // view on the freshly created signal (newest by createdAt).
+    // Match web confirmation: open the exact persisted signal as soon as
+    // /intents/confirm returns its ID. The shelf refresh is background work,
+    // not a second blocking /auth/me + /intents/list bootstrap.
+    if (created && intentId) {
+      const now = new Date().toISOString();
+      const optimistic = {
+        id: intentId,
+        title: answers.intent || "new signal",
+        edges: answers.edges || "",
+        offLimits: answers["off-limits"] || "",
+        status: "active",
+        source: { id:intentId, createdAt:now, updatedAt:now },
+      };
+      setSnapshot((current) => {
+        const INTENTS = [optimistic, ...((current && current.INTENTS) || []).filter((intent) => intent.id !== intentId)];
+        Object.assign(window.INDEX_DATA, { INTENTS });
+        return current ? { ...current, INTENTS } : { INTENTS };
+      });
+      setProfile(profileFromIntent(optimistic));
+      setScreen("main");
+      seedField();
+      void refreshIntents();
+      return;
+    }
+
+    // Legacy/direct MCP creation can lack a structured ID. Keep the old
+    // recovery lookup for that path only; proposal confirmation never pays it.
     if (created && window.IndexApp && window.IndexApp.isAuthed()) {
       const snap = await window.IndexApp.loadSnapshot().catch(() => null);
       if (snap) {
