@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { SessionOnlyGuard } from '../../guards/auth.guard';
+import { McpCapabilityPolicy, resolveMcpCapabilitySubject } from '../../../../../packages/protocol/src/mcp/mcp.authorization-policy';
+
+import { SessionOnlyGuard, resolveHermesAgentCredential } from '../../guards/auth.guard';
 import { HERMES_CANONICAL_ACTIONS, normalizeHermesCapabilities } from '../../lib/agent/hermes-capabilities';
+import { projectHermesAgentMcpIdentity } from '../../lib/agent/hermes-mcp-identity';
 import { AuthorizationConflictError, AuthorizationExpiredError, AuthorizationInvalidGrantError, AuthorizationReplayError, type HermesActivationPrincipal, type HermesAuthorizationStore } from '../../lib/agent/hermes-authorization';
 import { RouteRegistry } from '../../lib/router/router.decorators';
 import { HermesAuthorizationController } from '../hermes-authorization.controller';
@@ -432,6 +435,91 @@ describe('HermesAuthorizationController provider-free contract', () => {
       activationState: 'active',
     });
     expect(store.permissionActions).toEqual(HERMES_CANONICAL_ACTIONS);
+  });
+
+  it('gives a freshly browser-authorized Hermes agent manage:intents while enrollment stays register-only', async () => {
+    await createAuthorization();
+    const exchange = await exchangeAuthorization();
+    const pending = await exchange.json() as { credential: string };
+    const activation = await controller.activate(request(
+      '/hermes-authorizations/activate',
+      { protocolVersion: 1, keychainConfirmed: true },
+      { 'x-api-key': pending.credential },
+    ));
+    expect(activation.status).toBe(200);
+    expect(store.permissionActions).toEqual(HERMES_CANONICAL_ACTIONS);
+
+    const credential = store.credentials.get(CREDENTIAL_ID);
+    expect(credential?.activationState).toBe('active');
+    if (!credential || credential.activationState !== 'active') {
+      throw new Error('Fresh Hermes credential was not activated');
+    }
+
+    const resolved = await resolveHermesAgentCredential(pending.credential, {
+      findCredentialByHash: async () => ({
+        id: credential.credentialId,
+        ownerId: credential.ownerId,
+        audience: credential.audience,
+        agentId: credential.agentId,
+        installationId: credential.installationId,
+        setupAttemptId: credential.setupAttemptId,
+        actions: credential.actions,
+        activationState: credential.activationState,
+        expiresAt: credential.expiresAt,
+      }),
+      findAgentAuthority: async () => ({
+        id: credential.agentId,
+        ownerId: credential.ownerId,
+        runtimeKind: 'hermes',
+        installationId: credential.installationId,
+        setupAttemptId: credential.setupAttemptId,
+        status: 'active',
+        deletedAt: null,
+        actions: store.permissionActions,
+      }),
+      findUserById: async () => OWNER,
+    });
+
+    const policy = new McpCapabilityPolicy();
+    const hermesAgent = resolveMcpCapabilitySubject({
+      identity: projectHermesAgentMcpIdentity({
+        ownerId: resolved.user.id,
+        agentId: resolved.principal.agentId,
+      }),
+      isOnboarding: false,
+      agent: {
+        id: credential.agentId,
+        ownerId: credential.ownerId,
+        type: 'external',
+        status: 'active',
+        permissions: [{
+          agentId: credential.agentId,
+          userId: credential.ownerId,
+          scope: 'global',
+          scopeId: null,
+          actions: [...resolved.principal.actions],
+        }],
+      },
+    });
+    expect(hermesAgent.profile).toBe('hermes_agent');
+    expect(hermesAgent.permissions).toContain('manage:intents');
+    expect(policy.authorize(hermesAgent, 'create_intent')).toEqual({
+      allowed: true,
+      reason: 'permission_granted',
+      reach: 'network',
+      requiredPermissions: ['manage:intents'],
+    });
+
+    const enrollmentKey = resolveMcpCapabilitySubject({
+      identity: { userId: credential.ownerId, enrollmentCapable: true },
+      isOnboarding: false,
+    });
+    expect(policy.visibleToolNames(enrollmentKey, ['register_agent', 'create_intent']))
+      .toEqual(['register_agent']);
+    expect(policy.authorize(enrollmentKey, 'create_intent')).toMatchObject({
+      allowed: false,
+      reason: 'enrollment_required',
+    });
   });
 
   it('rejects activation without the exact pending dedicated credential', async () => {
