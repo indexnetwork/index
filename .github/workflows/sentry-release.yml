@@ -49,7 +49,7 @@ jobs:
             echo "release=${release}"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         if: steps.config.outputs.enabled == 'true'
         with:
           bun-version: "1.2.20"
