@@ -33,16 +33,22 @@ compile_connector_binary() {
     ../Security/Sources/IndexKeychainStore.swift
   )
   mkdir -p "$(dirname "$output")"
-  local -a identity_flags=()
   if [[ -n "$compiled_identity" ]]; then
     [[ -f "$compiled_identity" ]] || { echo "missing compiled identity record" >&2; return 64; }
-    identity_flags=(-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __indexcfg -Xlinker "$compiled_identity")
+    swiftc -parse-as-library -O -whole-module-optimization \
+      "${target_flags[@]}" \
+      -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __indexcfg -Xlinker "$compiled_identity" \
+      "$@" \
+      -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
+      "${sources[@]}" Sources/main.swift \
+      -o "$output"
+  else
+    swiftc -parse-as-library -O -whole-module-optimization \
+      "${target_flags[@]}" "$@" \
+      -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
+      "${sources[@]}" Sources/main.swift \
+      -o "$output"
   fi
-  swiftc -parse-as-library -O -whole-module-optimization \
-    "${target_flags[@]}" "${identity_flags[@]}" "$@" \
-    -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
-    "${sources[@]}" Sources/main.swift \
-    -o "$output"
 }
 
 compile_connector_protocol_fixture() {

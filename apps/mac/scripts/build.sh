@@ -36,8 +36,6 @@ compile_app_binary() {
             Security/Sources/IndexKeychainStore.swift \
             Sources/OwnerCredentialStore.swift \
             Sources/NativeAPIRequestBridge.swift \
-            Sources/ConnectorLaunchAttestation.swift \
-            Sources/HermesRuntime.swift \
             Sources/*.swift
     else
         swiftc -O -whole-module-optimization \
@@ -47,8 +45,6 @@ compile_app_binary() {
             Security/Sources/IndexKeychainStore.swift \
             Sources/OwnerCredentialStore.swift \
             Sources/NativeAPIRequestBridge.swift \
-            Sources/ConnectorLaunchAttestation.swift \
-            Sources/HermesRuntime.swift \
             Sources/*.swift
     fi
 }

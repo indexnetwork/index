@@ -110,6 +110,8 @@ test('bundle and entitlement contracts keep app and connector credentials distin
   expect(build).toContain('IndexConnector.app/Contents/MacOS/IndexConnector');
   expect(build).toContain('${flags[@]+"${flags[@]}"}');
   expect(build).toContain('${generated_sources[@]+"${generated_sources[@]}"}');
+  expect(build).not.toContain('identity_flags');
+  expect(build).toMatch(/if \[\[ -n "\$compiled_identity" \]\]; then[\s\S]*-Xlinker -sectcreate[\s\S]*else[\s\S]*swiftc/);
   expect(build).toContain('validate_profile_files_distinct');
   expect(build).toContain('validate_decoded_profile_pair');
   expect(build).toContain('verify_designated_requirements');
