@@ -26,7 +26,7 @@ def inventory_rows():
             rows.append((relative, "d", f"{permissions:04o}", "0", "-"))
         elif stat.S_ISREG(details.st_mode):
             try:
-                digest = hashlib.new("sha256", usedforsecurity=False)
+                digest = hashlib.sha256()
             except TypeError:
                 digest = hashlib.new("sha256")
             with path.open("rb") as stream:

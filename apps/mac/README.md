@@ -36,7 +36,7 @@ Generated HTML must be regenerated through `assemble.py`, never hand-edited. The
 
 ## Direct Developer ID distribution
 
-Production distribution is direct Developer ID distribution, not the Mac App Store. It requires macOS 13+, Universal 2 artifacts, Hardened Runtime, Developer ID signing, notarization, stapling, checksums, immutable production HTTPS endpoint inputs, and a clean-account acceptance run. **App Sandbox is not a production requirement** for this direct-distribution model; release validation rejects unexpected sandbox/debug entitlements rather than requiring them.
+Production distribution is direct Developer ID distribution, not the Mac App Store. It requires macOS 13+, Universal 2 artifacts, Hardened Runtime, Developer ID signing, notarization, stapling, checksums, immutable production HTTPS endpoint inputs, and approved arm64 plus x86_64 clean-account evidence bound to the exact private candidate bytes. Candidate/tag execution cannot publish; only a later separately approved publish dispatch may promote the revalidated candidate. **App Sandbox is not a production requirement** for this direct-distribution model; release validation rejects unexpected sandbox/debug entitlements rather than requiring them.
 
 ### Development: Hot-Reload Mode
 

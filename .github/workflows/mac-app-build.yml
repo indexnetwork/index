@@ -97,16 +97,8 @@ jobs:
           bun test \
             apps/mac/scripts/*.spec.mjs \
             apps/mac/*.spec.mjs \
-            apps/mac/release/tests/release-contract.spec.mjs \
-            apps/mac/release/tests/packaging-order.spec.mjs \
-            apps/mac/release/tests/packaging-security.spec.mjs \
-            apps/mac/release/tests/packaging-fix-round-2.spec.mjs \
-            apps/mac/release/tests/packaging-fix-round-3.spec.mjs \
-            apps/mac/release/tests/packaging-integration.spec.mjs \
-            apps/mac/release/tests/release-workflow.spec.mjs \
-            apps/mac/release/tests/release-workflow-fix-round-1.spec.mjs \
-            apps/mac/release/tests/release-workflow-fix-round-2.spec.mjs \
-            apps/mac/release/tests/release-workflow-fix-round-3.spec.mjs
+            apps/mac/release/tests/*.spec.mjs
+          # release-workflow.spec.mjs is included by the release test glob.
           bash -n \
             apps/mac/scripts/build.sh \
             apps/mac/scripts/link-host.sh \
@@ -234,7 +226,7 @@ jobs:
             for arch in arm64 x86_64; do
               otool -arch "$arch" -l "$binary" | grep -A6 LC_BUILD_VERSION
               [[ "$(otool -arch "$arch" -l "$binary" | awk '/LC_BUILD_VERSION/{seen=1; next} seen && $1=="minos" {print $2; exit}')" == "13.0" ]]
-              otool -arch "$arch" -s __TEXT __indexcfg "$binary"
+              xcrun otool -arch "$arch" -X -s __TEXT __indexcfg "$binary"
             done
           done
           plutil -extract IndexReleaseChannel raw -o - apps/mac/dist/unsigned/Index.app/Contents/Info.plist | grep -Fx production

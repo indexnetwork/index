@@ -131,10 +131,14 @@ with open(destination, 'w', encoding='utf-8') as stream:
 PY
 }
 
+run_otool() {
+  if command -v xcrun >/dev/null 2>&1; then xcrun otool "$@"; else otool "$@"; fi
+}
+
 # extract_compiled_identity(binary, arch, destination)
 extract_compiled_identity() {
   local binary="$1" arch="$2" destination="$3" hex
-  hex="$(otool -arch "$arch" -X -s __TEXT __indexcfg "$binary" | awk '{ for (i = 1; i <= NF; i++) if (length($i) == 8 && $i ~ /^[[:xdigit:]]+$/) printf "%s", $i }')"
+  hex="$(run_otool -arch "$arch" -X -s __TEXT __indexcfg "$binary" | awk '{ for (i = 1; i <= NF; i++) if (length($i) == 8 && $i ~ /^[[:xdigit:]]+$/) printf "%s", $i }')"
   [[ -n "$hex" ]] || { release_error "$binary $arch has no compiled identity section"; return 1; }
   python3 - "$hex" "$destination" <<'PY'
 import binascii

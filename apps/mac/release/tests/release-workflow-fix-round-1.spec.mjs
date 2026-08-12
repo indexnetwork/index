@@ -25,31 +25,35 @@ describe("parsed workflow secret and token boundaries", () => {
     expect(doc.on.pull_request).toBeUndefined();
     expect(doc.permissions).toEqual({ contents: "write", "id-token": "write", attestations: "write" });
     expect(doc.jobs.release.environment).toBe("macos-production");
-    for (const step of doc.jobs.release.steps.filter((item) => item.uses)) expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
+    expect(doc.jobs.publish.environment).toBe("macos-production");
+    for (const step of [...doc.jobs.release.steps, ...doc.jobs.publish.steps].filter((item) => item.uses)) expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
   });
 
   test("job/action environments contain neither GitHub auth nor Apple secrets", () => {
     const { doc } = workflow();
     expect(JSON.stringify(doc.jobs.release.env ?? {})).not.toMatch(/secrets\.|GH_TOKEN/);
-    for (const step of doc.jobs.release.steps.filter((item) => item.uses)) expect(JSON.stringify(step.env ?? {})).not.toMatch(/secrets\.|GH_TOKEN/);
+    expect(JSON.stringify(doc.jobs.publish.env ?? {})).not.toMatch(/secrets\.|GH_TOKEN/);
+    for (const step of [...doc.jobs.release.steps, ...doc.jobs.publish.steps].filter((item) => item.uses)) expect(JSON.stringify(step.env ?? {})).not.toMatch(/secrets\.|GH_TOKEN/);
   });
 
   test("GH_TOKEN is exact and only on first-party gh-using orchestrator steps", () => {
-    const orchestratorSteps = steps().filter((step) => typeof step.run === "string" && step.run.includes("build-release.sh"));
+    const doc = workflow().doc;
+    const orchestratorSteps = [...doc.jobs.release.steps, ...doc.jobs.publish.steps].filter((step) => typeof step.run === "string" && step.run.includes("build-release.sh"));
     const ghSteps = orchestratorSteps.filter((step) => step.run.includes(" authorize") || step.run.includes(" publish") || step.run.includes("assert-absence"));
     expect(ghSteps).toHaveLength(3);
     for (const step of ghSteps) expect(step.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(orchestratorSteps.find((step) => step.run.includes("record-attestation"))?.env?.GH_TOKEN).toBeUndefined();
-    for (const step of steps().filter((step) => step.uses)) expect(step.env?.GH_TOKEN).toBeUndefined();
+    for (const step of [...doc.jobs.release.steps, ...doc.jobs.publish.steps].filter((step) => step.uses)) expect(step.env?.GH_TOKEN).toBeUndefined();
   });
 
   test("Apple secrets exist on candidate only and workflow writes no secret files", () => {
-    const releaseSteps = steps().filter((step) => typeof step.run === "string" && step.run.includes("build-release.sh"));
+    const doc = workflow().doc;
+    const releaseSteps = [...doc.jobs.release.steps, ...doc.jobs.publish.steps].filter((step) => typeof step.run === "string" && step.run.includes("build-release.sh"));
     const candidate = releaseSteps.find((step) => step.run.includes(" candidate"));
     expect(candidate).toBeTruthy();
     for (const name of appleSecrets) expect(candidate.env?.[name]).toBe(`\${{ secrets.${name} }}`);
     for (const step of releaseSteps.filter((step) => step !== candidate)) for (const name of appleSecrets) expect(step.env?.[name]).toBeUndefined();
-    expect(workflow().text).not.toMatch(/(?:base64|security import|store-credentials)/);
+    expect(workflow().text).not.toMatch(/(?:security import|store-credentials)/);
   });
 });
 

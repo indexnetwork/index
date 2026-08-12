@@ -43,11 +43,15 @@ describe("external sealed release authority", () => {
     const text = readFileSync(workflowPath, "utf8"), workflow = YAML.parse(text);
     expect(workflow.jobs.release.env).not.toHaveProperty("INDEX_RELEASE_WORK_ROOT");
     expect(workflow.jobs.release.env).not.toHaveProperty("INDEX_RELEASE_SCRIPT_PINS");
-    for (const phase of ["authorize", "candidate", "publish"]) {
+    for (const phase of ["authorize", "candidate"]) {
       const step = workflow.jobs.release.steps.find((value) => typeof value.run === "string" && value.run.includes(`build-release.sh ${phase}`));
       expect(step.run).toMatch(/[0-9a-f]{64}  apps\/mac\/release\/build-release\.sh/);
       expect(step.run).toContain("/usr/bin/git diff-index --quiet");
     }
+    const publish = workflow.jobs.publish.steps.find((value) => typeof value.run === "string" && value.run.includes("build-release.sh publish"));
+    expect(publish.run).toMatch(/[0-9a-f]{64}  apps\/mac\/release\/build-release\.sh/);
+    expect(publish.run).toContain("/usr/bin/shasum -a 256 -c");
+    expect(publish.run).toContain("/usr/bin/git diff-index --quiet");
     expect(text).toContain("${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/candidate");
   });
 

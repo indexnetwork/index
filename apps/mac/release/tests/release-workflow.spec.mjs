@@ -54,7 +54,8 @@ describe("protected production workflow", () => {
     expect(workflow).toContain("INDEX_RELEASE_EXPECTED_RUNNER_IMAGE: ${{ vars.INDEX_RELEASE_EXPECTED_RUNNER_IMAGE }}");
     expect(workflow).toContain("INDEX_RELEASE_EXPECTED_RUNNER_VERSION: ${{ vars.INDEX_RELEASE_EXPECTED_RUNNER_VERSION }}");
     expect(workflow).toContain("cancel-in-progress: false");
-    expect((workflow.match(/actions\/checkout@/g) ?? [])).toHaveLength(1);
+    // Candidate and later evidence-authorized publish each use one fresh exact checkout.
+    expect((workflow.match(/actions\/checkout@/g) ?? [])).toHaveLength(2);
     expect(workflow).not.toContain("services:");
     expect(workflow).not.toContain("container:");
   });
@@ -157,6 +158,7 @@ describe("PR macOS CI boundaries", () => {
     expect(workflow).not.toContain("id-token: write");
     expect(workflow).toContain("development-only");
     expect(workflow).toContain("release-workflow.spec.mjs");
+    expect(workflow).toContain("apps/mac/release/tests/*.spec.mjs");
     const secretStep = stepBlock(workflow, "Protected signed cross-identity Keychain fixture");
     expect(secretStep).toContain("if: github.event_name == 'workflow_dispatch'");
     const actions = [...workflow.matchAll(anyAction)];

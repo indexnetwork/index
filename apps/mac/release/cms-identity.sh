@@ -16,7 +16,7 @@ resolve_cms_identity() {
   listing="$(security find-identity -v -p codesigning 2>/dev/null)" || cms_identity_error "Keychain identity enumeration failed"
   while IFS= read -r line; do
     if [[ "$line" =~ ^[[:space:]]*[0-9]+\)[[:space:]]+([0-9A-Fa-f]{40})[[:space:]]+\"(Developer\ ID\ Application:[^\"]+)\"[[:space:]]*$ ]]; then
-      hash="${BASH_REMATCH[1],,}"
+      hash="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
       if [[ "$hash" == "$INDEX_RELEASE_CMS_IDENTITY_HASH" ]]; then label="${BASH_REMATCH[2]}"; ((match_count += 1)); fi
     fi
   done <<<"$listing"
@@ -27,7 +27,7 @@ resolve_cms_identity() {
   [[ "$certificate_count" == 1 ]] || cms_identity_error "reviewed identity label does not resolve to exactly one certificate"
   subject="$(certificate_subject "$certificate")" || cms_identity_error "certificate subject is unreadable"
   [[ "$subject" == *"CN=${label},"* || "$subject" == *",CN=${label},"* || "$subject" == *",CN=${label}" ]] || cms_identity_error "certificate label does not match resolved identity"
-  team="$(printf '%s\n' "$subject" | tr ',' '\n' | sed -n 's/^OU=//p')"
+  team="$(printf '%s\n' "$subject" | sed 's/^subject=//' | tr ',' '\n' | sed -n 's/^OU=//p')"
   [[ "$team" == LMQ3XNXLAD ]] || cms_identity_error "certificate Team ID does not match production"
   actual_certificate_hash="$(certificate_sha256 "$certificate")"
   [[ "$actual_certificate_hash" == "$INDEX_RELEASE_CMS_CERT_SHA256" ]] || cms_identity_error "certificate SHA-256 does not match reviewed pin"

@@ -1,15 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { verifyCleanAccountEvidence } from "../verify-clean-account-evidence.ts";
+import { verifyCleanAccountEvidence, verifyCleanAccountEvidencePair } from "../verify-clean-account-evidence.ts";
 
 const valid = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   releaseVersion: "1.0.0",
   commit: "a".repeat(40),
-  artifactSha256: "b".repeat(64),
+  artifactSha256: { app: "b".repeat(64), connector: "c".repeat(64) },
+  candidateSealSha256: "d".repeat(64),
+  attestationUrl: "https://github.com/indexnetwork/index/attestations/123",
   macOSVersion: "13.7.1",
+  minimumMacOS: "13.0",
   architecture: "arm64",
   tester: "release-tester",
-  approver: "security-approver",
+  approver: "security-approver-arm",
   approved: true,
   quarantinePreserved: true,
   gatekeeperLaunch: true,
@@ -38,9 +41,14 @@ describe("clean-account production acceptance evidence", () => {
     expect(() => verifyCleanAccountEvidence({ ...valid, extra: true })).toThrow("closed schema");
   });
 
-  test("requires both architectures through separate records and all capabilities", () => {
-    expect(() => verifyCleanAccountEvidence({ ...valid, architecture: "x86_64" })).not.toThrow();
+  test("requires both independently approved architectures bound to exact candidate bytes", () => {
+    const intel = { ...valid, architecture: "x86_64", tester: "release-tester-intel", approver: "security-approver-intel" };
+    expect(() => verifyCleanAccountEvidence(intel)).not.toThrow();
     expect(() => verifyCleanAccountEvidence({ ...valid, architecture: "universal" })).toThrow("approved architecture");
     expect(() => verifyCleanAccountEvidence({ ...valid, capabilityFamilies: valid.capabilityFamilies.slice(0, -1) })).toThrow("capability families");
+    expect(() => verifyCleanAccountEvidencePair([valid, intel])).not.toThrow();
+    expect(() => verifyCleanAccountEvidencePair([valid, { ...intel, commit: "9".repeat(40) }])).toThrow("same release candidate");
+    expect(() => verifyCleanAccountEvidencePair([valid, { ...intel, approver: valid.approver }])).toThrow("independent approvers");
+    expect(() => verifyCleanAccountEvidencePair([valid, { ...intel, approver: valid.tester }])).toThrow("independent approvers");
   });
 });

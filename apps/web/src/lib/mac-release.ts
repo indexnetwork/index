@@ -104,10 +104,23 @@ export function macReleaseCmsUrl(metadataUrl: string): string {
   return url.toString();
 }
 
+/** Final host used by GitHub for immutable release-asset bytes after its 302. */
+export function validateMacReleaseDeliveryUrl(value: string): URL {
+  let url: URL;
+  try { url = new URL(value); } catch { throw new Error("release metadata delivery URL is invalid"); }
+  if (
+    url.protocol !== "https:" || url.username || url.password || url.port ||
+    url.hostname !== "release-assets.githubusercontent.com" || url.pathname === "/"
+  ) throw new Error("release metadata delivery URL is not approved");
+  return url;
+}
+
 export async function loadMacReleaseMetadata(metadataUrl: string, fetcher: typeof fetch = fetch): Promise<MacReleaseMetadata> {
   const url = validateMacReleaseMetadataUrl(metadataUrl);
-  const response = await fetcher(url, { cache: "no-store", credentials: "omit", redirect: "error" });
+  const response = await fetcher(url, { cache: "no-store", credentials: "omit", redirect: "follow" });
   if (!response.ok) throw new Error("release metadata unavailable");
+  if (!response.redirected || !response.url) throw new Error("release metadata immutable redirect is required");
+  validateMacReleaseDeliveryUrl(response.url);
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.toLowerCase().includes("application/json")) throw new Error("release metadata content type is invalid");
   const metadata = parseMacReleaseMetadata(await response.json());

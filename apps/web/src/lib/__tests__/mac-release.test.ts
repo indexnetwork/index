@@ -39,14 +39,17 @@ describe("macOS release publication parser", () => {
     ]) expect(() => validateMacReleaseMetadataUrl(value)).toThrow();
   });
 
-  test("loads without credentials, cache, or redirects and binds URL tag to metadata", async () => {
+  test("loads through the approved immutable GitHub asset redirect and binds URL tag to metadata", async () => {
     const calls: unknown[] = [];
     const fetcher = async (url: URL, init?: RequestInit) => {
       calls.push([url.toString(), init]);
-      return new Response(JSON.stringify(valid), { status: 200, headers: { "content-type": "application/json" } });
+      const response = new Response(JSON.stringify(valid), { status: 200, headers: { "content-type": "application/json" } });
+      Object.defineProperty(response, "url", { value: "https://release-assets.githubusercontent.com/github-production-release-asset/660333699/fixture?immutable=1" });
+      Object.defineProperty(response, "redirected", { value: true });
+      return response;
     };
     await expect(loadMacReleaseMetadata(metadataUrl, fetcher as typeof fetch)).resolves.toMatchObject({ releaseVersion: version });
-    expect(calls).toEqual([[metadataUrl, { cache: "no-store", credentials: "omit", redirect: "error" }]]);
+    expect(calls).toEqual([[metadataUrl, { cache: "no-store", credentials: "omit", redirect: "follow" }]]);
     await expect(loadMacReleaseMetadata(metadataUrl.replace("v1.0.0", "v2.0.0"), fetcher as typeof fetch)).rejects.toThrow("URL/version mismatch");
   });
 });

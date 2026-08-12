@@ -14,7 +14,7 @@ The protected workflow is the only production candidate builder. Pull-request an
 
 Create and push an annotated tag at the exact approved commit, then approve the **Protected macOS production release** environment deployment. Alternatively dispatch the workflow with the exact tag, full commit, and build number after the annotated tag exists remotely.
 
-The workflow builds Universal 2 app/connector bundles, signs with Developer ID and Hardened Runtime, notarizes and staples inner bundles and DMGs, verifies mounted final bytes, emits checksums and CMS-signed release metadata, attests the five public assets, then publishes one immutable GitHub Release. It never consumes signing authority in pull-request CI.
+A tag push or `operation=candidate` dispatch builds Universal 2 app/connector bundles, signs with Developer ID and Hardened Runtime, notarizes and staples inner bundles and DMGs, verifies mounted final bytes, emits checksums and CMS-signed release metadata, attests the five eventual public assets, and uploads a private immutable candidate handoff. **Candidate execution never creates, uploads to, or PATCHes a GitHub Release.** It never consumes signing authority in pull-request CI.
 
 The workflow also emits a **private one-day connector plugin handoff** containing:
 
@@ -34,9 +34,11 @@ Release/security operators must download the private handoff, verify its workflo
 
 Never synthesize the CMS, copy a digest from logs, accept a different signer, or allow the signed metadata to override the locally pinned Team ID, bundle ID, or designated requirement.
 
-## Clean-account acceptance
+## Clean-account acceptance and public promotion
 
-Before broader rollout, preserve quarantine and record evidence on macOS 13+ for Apple Silicon and Intel (or an approved equivalent): Gatekeeper launch, standalone connector with Index app absent, browser authorization, all capability families, negotiation pickup/respond/consultation/fallback, near-expiry reconnect, disconnect/revocation, plaintext migration, no-secret scans, uninstall, and reinstall. Bind evidence to version, commit, artifact SHA-256, hardware/OS, tester, and approver.
+Before any public release, download the private candidate handoff and test those exact DMG bytes with quarantine preserved on macOS 13+ for Apple Silicon and Intel (or an approved equivalent): Gatekeeper launch, standalone connector with Index app absent, browser authorization, all capability families, negotiation pickup/respond/consultation/fallback, near-expiry reconnect, disconnect/revocation, plaintext migration, no-secret scans, uninstall, and reinstall.
+
+Create the two schema-v2 records documented in `macos-clean-account-evidence.md`. Each binds both DMG hashes, the candidate manifest seal, attestation URL, version, commit, floor, tester, and independent approver. Validate the pair provider-free. Then obtain a separate protected-environment approval and dispatch `operation=publish` with the exact candidate run ID, candidate run attempt, and the base64-encoded canonical records. The publish job downloads the exact private handoff, rehashes every byte, validates both records and independence, rechecks CMS/metadata/checksums/tag/ruleset/history/attestation, and only then may create a private draft and issue the sole public `PATCH {"draft":false}`. Never publish from a tag push or candidate dispatch.
 
 ## Download page publication
 
