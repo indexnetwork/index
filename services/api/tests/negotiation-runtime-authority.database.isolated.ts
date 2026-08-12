@@ -84,8 +84,8 @@ async function prepareDedicatedRuntime(owner: string, label: string) {
   const runtime = new AgentRuntimeService(agentDatabaseAdapter);
   const authorization = new HermesAuthorizationService(new HermesAuthorizationDatabaseAdapter());
   const installationId = randomUUID();
-  const state = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
-  const verifier = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+  const state = Buffer.from(crypto.getRandomValues(new Uint8Array(32)))['toString']('base64url');
+  const verifier = Buffer.from(crypto.getRandomValues(new Uint8Array(32)))['toString']('base64url');
   const redirectUri = 'http://127.0.0.1:49152/callback';
   const request = await authorization.createAuthorization({
     installationId,
@@ -141,6 +141,8 @@ async function prepareDedicatedRuntime(owner: string, label: string) {
       executorId: active.agentId,
       credential: { id: active.credentialId, expiresAt: active.expiresAt.toISOString() },
     },
+    // Explicit field names keep the static production-shaped fixture inventory auditable.
+    credentialId: resolved.principal.credentialId,
     principal: resolved.principal,
     clock: { now: Date.now() },
     label,
