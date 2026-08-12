@@ -21,7 +21,7 @@ API_DIR = ROOT / "api"
 API_MODULES = ("socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "radar-state.mjs")
 API_EXPORTS = [
     "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
-    "mapIndexSnapshot", "mapIntents", "mapIntent",
+    "mapIndexSnapshot", "mapIntents", "mapIntent", "applyMappedIntentStatus",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",

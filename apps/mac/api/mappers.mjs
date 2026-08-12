@@ -90,6 +90,27 @@ export function mapIntent(intent, questionCount = 0) {
 }
 
 /**
+ * Patch one mapped signal row's hub status after pause/archive/resume.
+ * Keeps the intents shelf in sync without waiting for a full snapshot reload.
+ * @param {Array<Object>} intents
+ * @param {string} intentId
+ * @param {'active'|'paused'|'archived'} nextStatus
+ * @returns {Array<Object>}
+ */
+export function applyMappedIntentStatus(intents = [], intentId, nextStatus) {
+  if (!Array.isArray(intents) || !intentId) return intents;
+  const status = String(nextStatus || '').toLowerCase();
+  if (status !== 'active' && status !== 'paused' && status !== 'archived') return intents;
+  let found = false;
+  const next = intents.map((intent) => {
+    if (!intent || intent.id !== intentId) return intent;
+    found = true;
+    return { ...intent, status };
+  });
+  return found ? next : intents;
+}
+
+/**
  * Convert the radar view's flat presenter-card list to the current people card shape.
  * @param {Array<Object>} items
  */

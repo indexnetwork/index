@@ -197,6 +197,11 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     env.refreshNetworks();
   }, [env.live, env.refreshNetworks]);
 
+  useEffect(() => {
+    if (!env.live || !env.refreshIntents) return;
+    env.refreshIntents();
+  }, [env.live, env.refreshIntents]);
+
   // A just-onboarded user has no signals yet, the hub opens empty.
   const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
   useEffect(() => {

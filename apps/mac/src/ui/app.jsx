@@ -20,6 +20,8 @@ function useIndexEnv() {
   return React.useContext(IndexDataContext) || {
     data: window.INDEX_DATA, me: null, networks: null, features: {}, live: false,
     refreshNetworks: () => {},
+    refreshIntents: () => {},
+    patchIntentStatus: () => {},
   };
 }
 
@@ -116,6 +118,32 @@ function App() {
       setNetworks(net.networks);
       Object.assign(window.INDEX_DATA, { NETWORKS: net.networks });
     } catch (e) { /* keep prior list */ }
+  }, []);
+
+  // Re-fetch the signal shelf after pause/archive (or whenever the hub remounts)
+  // so row status matches the backend without a full app reload.
+  const refreshIntents = React.useCallback(async () => {
+    if (!nativeAuthed() || !window.IndexApp) return;
+    try {
+      const loaded = await window.IndexApp.loadSnapshot();
+      if (!loaded || !loaded.snapshot) return;
+      const intents = loaded.snapshot.INTENTS || [];
+      setSnapshot((prev) => (prev ? { ...prev, INTENTS: intents } : loaded.snapshot));
+      Object.assign(window.INDEX_DATA, { INTENTS: intents });
+    } catch (e) { /* keep prior list */ }
+  }, []);
+
+  // Optimistic shelf update after pause/archive lands locally, before refresh.
+  const patchIntentStatus = React.useCallback((intentId, nextStatus) => {
+    const apply = window.IndexApi && window.IndexApi.applyMappedIntentStatus;
+    if (!apply || !intentId) return;
+    setSnapshot((prev) => {
+      if (!prev || !Array.isArray(prev.INTENTS)) return prev;
+      const INTENTS = apply(prev.INTENTS, intentId, nextStatus);
+      if (INTENTS === prev.INTENTS) return prev;
+      Object.assign(window.INDEX_DATA, { INTENTS });
+      return { ...prev, INTENTS };
+    });
   }, []);
   const [people, setPeople] = useState([]);
   const [conversation, setConversation] = useState([]);
@@ -327,6 +355,7 @@ function App() {
     intent: intent.title,
     edges: intent.edges,
     offLimits: intent.offLimits,
+    status: intent.status,
   });
   const pickExistingIntent = (intent) => {
     // App-level feeds persist across signals; clear them so the previous
@@ -396,7 +425,7 @@ function App() {
   };
 
   return (
-    <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks }}>
+    <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus }}>
       <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",

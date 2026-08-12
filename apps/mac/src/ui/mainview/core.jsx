@@ -30,7 +30,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // A signal can legitimately match nobody, so discovery is not allowed to spin
   // forever: past this it gives up and the ordinary empty state takes over.
   const [discoveryExpired, setDiscoveryExpired] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(() => profile.status === "paused");
   const [pipelineMode, setPipelineMode] = useState("broad");
   const modeTimerRef = useRef(null);
   const clarifierCursor = useRef(0);
@@ -61,7 +61,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // negotiator drops list_opportunities in intent-pinned chats (the Radar
   // beside this pane owns opportunity listing), while api-key callers without
   // a persona fall back to the orchestrator's unrestricted toolset.
-  const { features } = useIndexEnv();
+  const { features, patchIntentStatus, refreshIntents } = useIndexEnv();
   const chatPersona = features && features.negotiatorChat ? "negotiator" : null;
   // Agent-chat session id per intent, persisted across signal switches. Keyed
   // by persona too: a session created under one persona cannot be continued
@@ -621,12 +621,16 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Pause holds the signal: the agent stops taking on new work, but the
   // opportunities and questions it already surfaced stay put. On a live signal
   // that's a real status change, not just a local hold, revert if it doesn't
-  // land so the button never claims something the backend didn't do.
+  // land so the button never claims something the backend didn't do. Also patch
+  // the shared INTENTS snapshot so the hub shows paused/active without a reload.
   const togglePause = () => {
     const next = !paused;
     setPaused(next);
     if (live && client && intentId) {
       client.intents.updateStatus(intentId, next ? "PAUSED" : "ACTIVE")
+        .then(() => {
+          if (patchIntentStatus) patchIntentStatus(intentId, next ? "paused" : "active");
+        })
         .catch(() => setPaused(!next));
     }
   };
@@ -636,7 +640,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // showing the signal you thought you'd just archived.
   const archiveSignal = () => {
     if (!(live && client && intentId)) { onBack && onBack(); return Promise.resolve(); }
-    return client.intents.archive(intentId).then(() => { onBack && onBack(); });
+    return client.intents.archive(intentId).then(async () => {
+      if (patchIntentStatus) patchIntentStatus(intentId, "archived");
+      if (refreshIntents) await refreshIntents().catch(() => null);
+      onBack && onBack();
+    });
   };
 
   // Three columns need room. Below that the third window takes the radar's

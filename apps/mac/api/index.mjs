@@ -8,6 +8,7 @@ export {
 export { parseDeepLink } from './deeplink.mjs';
 
 export {
+  applyMappedIntentStatus,
   mapClarifier,
   mapClarifiers,
   mapEventSummary,
