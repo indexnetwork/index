@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const apiRoot = path.resolve(import.meta.dir, '../../../..');
 const migration = readFileSync(
-  path.join(apiRoot, 'drizzle/0124_add_eval_matrix_quality_attestation.sql'),
+  path.join(apiRoot, 'drizzle/0125_add_eval_matrix_quality_attestation.sql'),
   'utf8',
 ).trim();
 
