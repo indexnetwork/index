@@ -249,6 +249,9 @@ fi
   expect(verifiedPath).toContain(`${root}/index-dmg-mount.`);
   const requestedMount = commands.match(/^attach .* -mountpoint (\S+) -plist /m)?.[1];
   expect(requestedMount).toBeTruthy();
-  expect(commands.replaceAll("/private/var/", "/var/")).toContain(`detach ${requestedMount.replaceAll("/private/var/", "/var/")}`);
+  const detachCommands = commands.match(/^detach .+$/gm) ?? [];
+  expect(detachCommands).toHaveLength(1);
+  const detachedMount = detachCommands[0].slice("detach ".length);
+  expect(detachedMount.replaceAll("/private/var/", "/var/")).toBe(requestedMount.replaceAll("/private/var/", "/var/"));
   expect(commands).not.toContain("dist/signed");
 });

@@ -121,6 +121,14 @@ describe("macOS Universal 2 production build contract", () => {
       ["0000000100003f40"],
     ],
     [
+      "an interior short row followed by contiguous data",
+      [
+        "0000000100003f40 7b22496e64657842",
+        "0000000100003f48 75696c6454617267 6574223a22617070",
+        "0000000100003f58 227d000000000000",
+      ],
+    ],
+    [
       "a gapped address",
       [
         "0000000100003f40 7b22496e64657842 75696c6454617267",
