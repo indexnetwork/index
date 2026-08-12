@@ -180,16 +180,17 @@ Run exactly once in the same fail-closed block as the confirmation:
 ```bash
 (
   set -euo pipefail
-  trap 'unset IND_638_CONFIRM' EXIT
-  read -r -p 'Type "refresh IND-638 historical quality base": ' IND_638_CONFIRM
-  test "$IND_638_CONFIRM" = 'refresh IND-638 historical quality base'
+  trap 'unset IND_638_CONFIRM TEST_DATABASE_SAFE' EXIT
+  read -r -p 'Type "refresh IND-638 historical quality protected base": ' IND_638_CONFIRM
+  test "$IND_638_CONFIRM" = 'refresh IND-638 historical quality protected base'
   export IND_638_CONFIRM
+  export TEST_DATABASE_SAFE=1
   cd services/api
   bun run eval:discovery-quality-base
 )
 ```
 
-The command first checks current integrity. A classified stale state enters refresh; an unclassified verifier failure never falls through to writes. Refresh publishes documents, round-tripped vectors, and quality metadata in one final transaction. Failure is a stop, not permission to rerun.
+These shell checks are operator defense-in-depth. Production code repeats both checks before constructing the control plane: `IND_638_CONFIRM` must equal the exact phrase above and `TEST_DATABASE_SAFE` must equal `1`. The command first checks current integrity. A classified stale state enters refresh; an unclassified verifier failure never falls through to writes. Refresh publishes documents, round-tripped vectors, and quality metadata in one final transaction. Failure is a stop, not permission to rerun.
 
 ## 5. Verify through the read replica (never the writable endpoint)
 

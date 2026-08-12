@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget, runQualityBaseRefreshTargetAttestation, type AttestedWritableQualityBaseTarget } from '../discovery-quality-refresh-target';
-import { handoffHistoricalQualityBaseRuntime, runHistoricalQualityBaseBootstrap } from '../discovery-quality-base';
+import { handoffHistoricalQualityBaseRuntime, HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION, runHistoricalQualityBaseBootstrap } from '../discovery-quality-base';
 import type { NeonControlPlane } from '../discovery-env-matrix.neon';
 
 const target = {
@@ -175,7 +175,11 @@ describe('historical quality writable refresh target', () => {
     const calls: string[] = [];
     await runHistoricalQualityBaseBootstrap({
       args: [],
-      env: { DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(target) },
+      env: {
+        DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(target),
+        IND_638_CONFIRM: HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION,
+        TEST_DATABASE_SAFE: '1',
+      },
       controlPlane: controlPlane(),
       handoff: async (attested: AttestedWritableQualityBaseTarget, args) => {
         calls.push(`${attested.endpointType}:${args.join(',')}`);

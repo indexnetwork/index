@@ -631,20 +631,41 @@ export async function handoffHistoricalQualityBaseRuntime(input: {
   return handoffHistoricalQualityDatabaseRuntime(input);
 }
 
-/** Parses and attests the writable target before binding any database runtime. */
+export const HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION = 'refresh IND-638 historical quality protected base';
+
+function parseHistoricalQualityBaseArgs(args: readonly string[]): { verifyOnly: boolean } {
+  const unsupported = args.find((arg) => arg !== '--verify');
+  if (unsupported) throw new Error(`Usage: discovery-quality-base [--verify]; unsupported argument ${unsupported}`);
+  return { verifyOnly: args.includes('--verify') };
+}
+
+/** Authorizes a writable protected-base refresh without retaining or reporting supplied values. */
+export function authorizeHistoricalQualityBaseRefresh(env: NodeJS.ProcessEnv): void {
+  if (env.IND_638_CONFIRM !== HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION) {
+    throw new Error(`IND_638_CONFIRM must equal '${HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION}'`);
+  }
+  if (env.TEST_DATABASE_SAFE !== '1') {
+    throw new Error("TEST_DATABASE_SAFE must equal '1'");
+  }
+}
+
+/** Authorizes writable mode, then parses and attests the target before binding any database runtime. */
 export async function runHistoricalQualityBaseBootstrap(input: {
   args: readonly string[];
   env?: NodeJS.ProcessEnv;
   controlPlane?: NeonControlPlane;
+  createControlPlane?: (apiKey: string) => NeonControlPlane;
   handoff?: (target: AttestedWritableQualityBaseTarget, args: readonly string[]) => Promise<string>;
   verifyHandoff?: (target: { endpointId: string; databaseUrl: string }, args: readonly string[]) => Promise<string>;
   verifySpawn?: QualityBaseRuntimeSpawn;
 }): Promise<string> {
+  const { verifyOnly } = parseHistoricalQualityBaseArgs(input.args);
   const env = input.env ?? process.env;
-  const controlPlane = input.controlPlane ?? createNeonControlPlane(env.NEON_API_KEY ?? '');
+  if (!verifyOnly) authorizeHistoricalQualityBaseRefresh(env);
+  const controlPlane = input.controlPlane ?? (input.createControlPlane ?? createNeonControlPlane)(env.NEON_API_KEY ?? '');
   const target = parseQualityBaseRefreshTarget(env.DISCOVERY_QUALITY_BASE_REFRESH_TARGET);
   const attested = await attestWritableQualityBaseTarget({ target, controlPlane });
-  if (input.args.includes('--verify')) {
+  if (verifyOnly) {
     const manifest = parseHistoricalQualityManifest(env.DISCOVERY_TARGETS);
     const qualityTargets = await attestHistoricalQualityTargets({
       manifest,

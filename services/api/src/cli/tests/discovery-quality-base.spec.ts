@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 
 import { HISTORICAL_SHARED_POOL_SEED_PROJECTION } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
 import { fingerprintHistoricalQualityVector, historicalQualityAttestationRoot, HISTORICAL_QUALITY_METADATA_KEY } from '../discovery-quality-attestation';
-import { assertReadOnlySession, productionHistoricalQualityBaseDependencies, refreshHistoricalQualityBase, verifyHistoricalQualityPublishedState, verifyHistoricalQualitySeedState, type HistoricalQualityBaseDependencies, type HistoricalQualityBaseState, type HistoricalQualityEmbedder } from '../discovery-quality-base';
+import { assertReadOnlySession, HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION, productionHistoricalQualityBaseDependencies, refreshHistoricalQualityBase, runHistoricalQualityBaseBootstrap, verifyHistoricalQualityPublishedState, verifyHistoricalQualitySeedState, type HistoricalQualityBaseDependencies, type HistoricalQualityBaseState, type HistoricalQualityEmbedder } from '../discovery-quality-base';
+import type { NeonControlPlane } from '../discovery-env-matrix.neon';
 import { runHistoricalQualityBaseCommand } from '../discovery-quality-base.main';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
@@ -627,6 +628,124 @@ describe('historical quality base state', () => {
     await expect(refreshHistoricalQualityBase(db as unknown as DrizzleDB, projection, fakeEmbedder(), dependencies())).rejects.toThrow('unexpected dependent');
     expect(db.commits).toBe(0);
     expect(db.committed.qualityMetadata).not.toBeNull();
+  });
+});
+
+describe('historical quality base bootstrap authorization ordering', () => {
+  const refreshTarget = {
+    version: 2 as const,
+    projectId: 'project-quality',
+    branchId: 'br-quality-base',
+    endpointId: 'ep-quality-base',
+    databaseName: 'protocol_eval' as const,
+    databaseUrl: 'postgresql://owner:secret@ep-quality-base.neon.tech/protocol_eval',
+  };
+
+  function authorizedEnvironment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+    return {
+      IND_638_CONFIRM: HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION,
+      TEST_DATABASE_SAFE: '1',
+      DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(refreshTarget),
+      ...overrides,
+    };
+  }
+
+  function forbiddenSeams(calls: string[]) {
+    return {
+      createControlPlane: () => {
+        calls.push('control-plane');
+        throw new Error('must not construct control plane');
+      },
+      handoff: async () => {
+        calls.push('handoff');
+        throw new Error('must not hand off');
+      },
+      verifyHandoff: async () => {
+        calls.push('verify-handoff');
+        throw new Error('must not verify hand off');
+      },
+    };
+  }
+
+  for (const [label, overrides, expected] of [
+    ['missing confirmation', { IND_638_CONFIRM: undefined }, HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION],
+    ['wrong confirmation', { IND_638_CONFIRM: 'wrong-secret-confirmation' }, HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION],
+    ['missing database safety gate', { TEST_DATABASE_SAFE: undefined }, 'TEST_DATABASE_SAFE'],
+    ['wrong database safety gate', { TEST_DATABASE_SAFE: 'wrong-secret-safety-value' }, 'TEST_DATABASE_SAFE'],
+  ] as const) {
+    it(`rejects ${label} before control-plane, attestation, handoff, DB, or provider seams`, async () => {
+      const calls: string[] = [];
+      const error = await runHistoricalQualityBaseBootstrap({
+        args: [],
+        env: authorizedEnvironment(overrides),
+        ...forbiddenSeams(calls),
+      }).catch((caught: Error) => caught);
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain(expected);
+      expect(error.message).not.toContain('wrong-secret');
+      expect(calls).toEqual([]);
+    });
+  }
+
+  it('rejects unsupported args before control-plane construction', async () => {
+    const calls: string[] = [];
+    await expect(runHistoricalQualityBaseBootstrap({
+      args: ['--unsupported'],
+      env: authorizedEnvironment(),
+      ...forbiddenSeams(calls),
+    })).rejects.toThrow('unsupported argument --unsupported');
+    expect(calls).toEqual([]);
+  });
+
+  it('--verify requires neither writable confirmation nor TEST_DATABASE_SAFE', async () => {
+    const calls: string[] = [];
+    const replicaUrl = 'postgresql://reader:secret@ep-quality-readonly.neon.tech/protocol_eval';
+    const manifest = {
+      version: 2 as const,
+      projectId: refreshTarget.projectId,
+      baseBranchId: refreshTarget.branchId,
+      baseReadReplica: { endpointId: 'ep-quality-readonly', databaseUrl: replicaUrl },
+      targets: [
+        { sideId: 'a' as const, branchId: 'br-a', endpointId: 'ep-a', databaseUrl: 'postgresql://a:secret@ep-a.neon.tech/protocol_eval' },
+        { sideId: 'b' as const, branchId: 'br-b', endpointId: 'ep-b', databaseUrl: 'postgresql://b:secret@ep-b.neon.tech/protocol_eval' },
+      ],
+    };
+    const controlPlane: NeonControlPlane = {
+      getBranch: async (_projectId, branchId) => {
+        calls.push(`attest-branch:${branchId}`);
+        if (branchId === refreshTarget.branchId) return { id: branchId, name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: false };
+        return { id: branchId, name: branchId === 'br-a' ? 'eval-ab-a' : 'eval-ab-b', parentId: refreshTarget.branchId, expiresAt: null, primary: false };
+      },
+      listEndpoints: async (_projectId, branchId) => {
+        calls.push(`attest-endpoints:${branchId}`);
+        if (branchId === refreshTarget.branchId) return [
+          { id: refreshTarget.endpointId, branchId, host: 'ep-quality-base.neon.tech', type: 'read_write' },
+          { id: manifest.baseReadReplica.endpointId, branchId, host: 'ep-quality-readonly.neon.tech', type: 'read_only' },
+        ];
+        const side = branchId === 'br-a' ? manifest.targets[0] : manifest.targets[1];
+        return [{ id: side.endpointId, branchId, host: `${side.endpointId}.neon.tech`, type: 'read_write' }];
+      },
+    };
+
+    await expect(runHistoricalQualityBaseBootstrap({
+      args: ['--verify'],
+      env: {
+        DISCOVERY_QUALITY_BASE_REFRESH_TARGET: JSON.stringify(refreshTarget),
+        DISCOVERY_TARGETS: JSON.stringify(manifest),
+      },
+      createControlPlane: () => {
+        calls.push('control-plane');
+        return controlPlane;
+      },
+      handoff: async () => { calls.push('forbidden-writable-handoff'); return ''; },
+      verifyHandoff: async (target) => {
+        calls.push(`verify-handoff:${target.databaseUrl}`);
+        return 'verified';
+      },
+    })).resolves.toBe('verified');
+    expect(calls).toContain(`verify-handoff:${replicaUrl}`);
+    expect(calls).not.toContain('forbidden-writable-handoff');
   });
 });
 

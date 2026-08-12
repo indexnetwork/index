@@ -9,6 +9,7 @@ import { HISTORICAL_SHARED_POOL_APPROVAL_RECORD, HISTORICAL_SHARED_POOL_FIXTURE,
 import { admitHistoricalSharedPool, historicalRetrievalDocumentFingerprint, historicalSharedPoolPlanFingerprint, historicalSharedPoolSeedFingerprint } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.js';
 import { HistoricalQualityExecutionRunSchema, HistoricalQualityTransportRowSchema, type HistoricalQualityExecutionRun, type HistoricalQualityTransportRow } from '../../../../../packages/protocol/eval/shared/index.js';
 import { buildEnrichmentDiscoveryTrigger, buildIntentDiscoveryTrigger } from '../../queues/opportunity/discovery-trigger.builders';
+import { HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION } from '../discovery-quality-base';
 
 const ROOT = path.resolve(import.meta.dir, '../../../../../');
 const REVIEWED_REVISION = 'cee496de7f79ac0ab696cf581f6c4da585f88bd8';
@@ -43,7 +44,7 @@ describe('historical quality operator runbook confirmations', () => {
     const confirmations = [
       ['provision IND-638 base read replica', 'eval:discovery-quality-read-replica:provision', 'DISCOVERY_QUALITY_READ_REPLICA_CONFIRM'],
       ['validate IND-638 secret migration', 'v2 legacy child projection verified', 'IND_638_CONFIRM'],
-      ['refresh IND-638 historical quality base', 'eval:discovery-quality-base', 'IND_638_CONFIRM'],
+      [HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION, 'eval:discovery-quality-base', 'IND_638_CONFIRM'],
       ['verify IND-638 historical quality read replica', 'eval:discovery-quality-base:verify', 'IND_638_CONFIRM'],
       ['run IND-638 legacy A/B smoke', '--a DISCOVERY_ALLOWED_TYPES=intent', 'IND_638_CONFIRM'],
       ['run IND-638 intent quality smoke', '--trigger intent --runs 1', 'IND_638_CONFIRM'],
@@ -62,6 +63,9 @@ describe('historical quality operator runbook confirmations', () => {
       expect(block!.indexOf(`export ${gate}`)).toBeLessThan(block!.indexOf(operation));
     }
     expect((runbook.match(/read -r -p 'Type "/g) ?? [])).toHaveLength(confirmations.length);
+    const refreshBlock = shellBlocks.find((candidate) => candidate.includes(`Type "${HISTORICAL_QUALITY_BASE_REFRESH_CONFIRMATION}"`));
+    expect(refreshBlock).toContain('export TEST_DATABASE_SAFE=1');
+    expect(runbook).toContain('Production code repeats both checks before constructing the control plane');
   });
 });
 
@@ -102,11 +106,11 @@ describe('merged PR A historical quality authority audit', () => {
     const evalOpsPackage = JSON.parse(readFileSync(path.join(ROOT, 'apps/eval-ops/package.json'), 'utf8'));
     const lock = readFileSync(path.join(ROOT, 'bun.lock'), 'utf8');
 
-    expect(protocolPackage.version).toBe('11.0.1');
-    expect(apiPackage.version).toBe('0.79.1');
+    expect(protocolPackage.version).toBe('11.0.2');
+    expect(apiPackage.version).toBe('0.80.0');
     expect(evalOpsPackage.version).toBe('0.6.0');
-    expect(lock).toContain('"packages/protocol": {\n      "name": "@indexnetwork/protocol",\n      "version": "11.0.1"');
-    expect(lock).toContain('"services/api": {\n      "name": "@indexnetwork/api",\n      "version": "0.79.1"');
+    expect(lock).toContain('"packages/protocol": {\n      "name": "@indexnetwork/protocol",\n      "version": "11.0.2"');
+    expect(lock).toContain('"services/api": {\n      "name": "@indexnetwork/api",\n      "version": "0.80.0"');
     expect(lock).toContain('"apps/eval-ops": {\n      "name": "@indexnetwork/eval-ops",\n      "version": "0.6.0"');
   });
 
