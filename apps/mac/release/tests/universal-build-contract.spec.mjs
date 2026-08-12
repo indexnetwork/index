@@ -198,14 +198,48 @@ describe("macOS Universal 2 production build contract", () => {
     expect(output).toBeNull();
   });
 
-  test("rejects a short final data row at the row grammar boundary", () => {
+  test.each([
+    [
+      "three 8-hex fields",
+      [
+        "0000000100003f40 7b22496e 64657842 75696c64 64546172",
+        "0000000100003f50 67657422 3a226170 70303022 7d",
+      ],
+      '{"IndexBuilddTarget":"app00"}',
+    ],
+    [
+      "one 16-hex field",
+      [
+        "0000000100003f40 7b22496e64657842 75696c6454617267",
+        "0000000100003f50 6574223a2261227d",
+      ],
+      '{"IndexBuildTarget":"a"}',
+    ],
+  ])("extracts logical section bytes from a final short row with %s", (_name, lines, expected) => {
+    const { result, output } = extractFixture(lines);
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(output).toBe(expected);
+  });
+
+  test.each([
+    ["one bounded trailing NUL", "0000000100003f40 7b227822 3a31307d 00"],
+    ["twelve bounded trailing NULs", "0000000100003f40 7b227822 3a31307d 00000000 00000000\n0000000100003f50 00000000"],
+  ])("accepts canonical JSON followed by %s", (_name, row) => {
+    const { result, output } = extractFixture(row.split("\n"));
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(output).toBe('{"x":10}');
+  });
+
+  test("rejects sixteen excess trailing NUL bytes", () => {
     const { result, output } = extractFixture([
-      "0000000100003f40 7b22496e 64657842 75696c64 54617267",
-      "0000000100003f50 6574223a 22617070 227d0000",
+      "0000000100003f40 7b227822 3a31307d 00000000 00000000",
+      "0000000100003f50 00000000 00000000 00000000 00000000",
     ]);
     expect(result.exitCode).not.toBe(0);
     expect(output).toBeNull();
-    expect(result.stderr.toString()).toContain("malformed data row");
+    expect(result.stderr.toString()).toContain("invalid compiler section padding");
   });
 
   test("extracts and compares embedded compiled identity records before merge", () => {

@@ -159,22 +159,28 @@ if not lines:
 width = None
 next_address = None
 words = []
-for line in lines:
+for line_index, line in enumerate(lines):
     tokens = line.split()
     if len(tokens) < 2 or not re.fullmatch(r'[0-9A-Fa-f]{16}', tokens[0]):
         raise SystemExit('compiled identity section contains a malformed address-prefixed row')
     address = int(tokens[0], 16)
     data = tokens[1:]
-    row_width = len(data[0])
-    expected_fields = {8: 4, 16: 2}.get(row_width)
-    if expected_fields is None or len(data) != expected_fields or any(
-        len(token) != row_width or not re.fullmatch(r'[0-9A-Fa-f]+', token)
-        for token in data
-    ):
-        raise SystemExit('compiled identity section contains a malformed data row')
     if width is None:
-        width = row_width
-    elif width != row_width:
+        width = len(data[0])
+    if width not in (8, 16):
+        raise SystemExit('compiled identity section contains a malformed data row')
+    max_fields = 16 // (width // 2)
+    is_final = line_index == len(lines) - 1
+    if not 1 <= len(data) <= max_fields or (not is_final and len(data) != max_fields):
+        raise SystemExit('compiled identity section contains a malformed data row')
+    for field_index, token in enumerate(data):
+        token_width = len(token)
+        final_token = is_final and field_index == len(data) - 1
+        if not re.fullmatch(r'[0-9A-Fa-f]+', token) or token_width % 2 != 0:
+            raise SystemExit('compiled identity section contains a malformed data row')
+        if token_width != width and not (final_token and 2 <= token_width < width):
+            raise SystemExit('compiled identity section contains a malformed data row')
+    if any(len(token) != width for token in data[:-1]):
         raise SystemExit('compiled identity section mixes data field widths')
     if next_address is not None and address != next_address:
         raise SystemExit('compiled identity section addresses are not contiguous')
@@ -197,8 +203,7 @@ canonical = json.dumps(identity, sort_keys=True, separators=(',', ':')).encode('
 if raw[:len(canonical)] != canonical:
     raise SystemExit('compiled identity section is not canonical JSON')
 padding = raw[len(canonical):]
-expected_padding = (-len(canonical)) % 16
-if padding != b'\0' * expected_padding:
+if len(padding) >= 16 or padding != b'\0' * len(padding):
     raise SystemExit('compiled identity section has invalid compiler section padding')
 with open(destination, 'wb') as stream:
     stream.write(canonical)

@@ -229,7 +229,7 @@ if [[ "$1 $2" == "notarytool submit" ]]; then printf '{"status":"Invalid"}\\n'; 
   expect(commands).not.toContain("mounted");
 });
 
-test("mounted verification uses the mounted bundle path and detaches after verification failure", () => {
+function runMountedVerification({ attachStatus = 0, verifyStatus = 0, detachStatus = 0 } = {}) {
   const root = fixture();
   const bin = join(root, "bin");
   const dmg = join(root, "Index-macOS-1.0.0-universal.dmg");
@@ -238,8 +238,12 @@ test("mounted verification uses the mounted bundle path and detaches after verif
   mkdirSync(bin);
   executable(join(bin, "hdiutil"), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$LOG"
-if [[ "$1" == detach ]]; then exit 0; fi
+if [[ "$1" == detach ]]; then
+  [[ "$DETACH_STATUS" -eq 0 ]] && rm -rf "$2/Index.app"
+  exit "$DETACH_STATUS"
+fi
 if [[ "$1" == attach ]]; then
+  [[ "$ATTACH_STATUS" -eq 0 ]] || exit "$ATTACH_STATUS"
   while [[ "$1" != -mountpoint ]]; do shift; done
   actual_mount="$2"
   mkdir -p "$actual_mount/Index.app/Contents"
@@ -248,22 +252,56 @@ if [[ "$1" == attach ]]; then
 PLIST
 fi
 `);
-  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; verify_release_bundle_path() { printf "verified:%s\\n" "$1" >> "$LOG"; return 71; }; verify_mounted_dmg_main "$DMG"', {
+  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; verify_release_bundle_path() { printf "verified:%s\\n" "$1" >> "$LOG"; return "$VERIFY_STATUS"; }; verify_mounted_dmg_main "$DMG"', {
     SCRIPT: mountedPath,
     DMG: dmg,
     LOG: log,
     TMPDIR: root,
+    ATTACH_STATUS: String(attachStatus),
+    VERIFY_STATUS: String(verifyStatus),
+    DETACH_STATUS: String(detachStatus),
     PATH: `${bin}:${process.env.PATH}`,
   });
-  expect(result.exitCode).not.toBe(0);
-  const commands = readFileSync(log, "utf8");
+  return { result, commands: readFileSync(log, "utf8"), root };
+}
+
+test("mounted verification uses explicit handled-flow cleanup with shell-scoped fallback state", () => {
+  const script = source(mountedPath);
+  expect(script).toContain("verify_status=0");
+  expect(script).toMatch(/if verify_release_bundle_path[\s\S]*else[\s\S]*verify_status=\$\?/);
+  expect(script).toMatch(/trap - EXIT[\s\S]*cleanup \"\$verify_status\"/);
+  expect(script).toContain("cleanup_done=0");
+  expect(script).not.toMatch(/local .*mounted/);
+});
+
+test("mounted verification preserves status 71 and detaches exactly once after verification failure", () => {
+  const { result, commands, root } = runMountedVerification({ verifyStatus: 71 });
+  expect(result.exitCode).toBe(71);
   expect(commands).toContain("attach -readonly -nobrowse -mountpoint");
   const verifiedPath = commands.match(/^verified:(.*\/Index\.app)$/m)?.[1];
   expect(verifiedPath).toBeTruthy();
   expect(verifiedPath).toContain(`${root}/index-dmg-mount.`);
   const requestedMount = commands.match(/^attach .* -mountpoint (\S+) -plist /m)?.[1];
   expect(requestedMount).toBeTruthy();
-  const detachedMount = exactDetachArgument(commands);
-  expect(detachedMount).toBe(requestedMount.replaceAll("/private/var/", "/var/"));
+  expect(exactDetachArgument(commands)).toBe(requestedMount.replaceAll("/private/var/", "/var/"));
   expect(commands).not.toContain("dist/signed");
+});
+
+test("mounted verification does not detach when attach fails", () => {
+  const { result, commands } = runMountedVerification({ attachStatus: 72 });
+  expect(result.exitCode).toBe(72);
+  expect(commands.match(/^detach(?: |$)/gm) ?? []).toHaveLength(0);
+  expect(commands).not.toContain("verified:");
+});
+
+test("mounted verification fails closed and detaches once when cleanup fails", () => {
+  const { result, commands } = runMountedVerification({ detachStatus: 73 });
+  expect(result.exitCode).toBe(1);
+  exactDetachArgument(commands);
+});
+
+test("mounted verification succeeds and detaches exactly once", () => {
+  const { result, commands } = runMountedVerification();
+  expect(result.exitCode).toBe(0);
+  exactDetachArgument(commands);
 });

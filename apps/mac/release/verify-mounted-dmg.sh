@@ -45,16 +45,32 @@ canonical_mounted_bundle() {
 
 verify_mounted_dmg_main() (
   [[ "$(uname -s)" == Darwin ]] || mounted_error "macOS is required"; [[ "$#" -eq 1 ]] || mounted_error "usage"
-  local dmg="$1" plist mount name bundle mounted=0 status=0
+  local dmg="$1" name bundle
   [[ -f "$dmg" && ! -L "$dmg" ]] || mounted_error "DMG is missing or linked"
+  # Subshell-scoped state remains available to the EXIT fallback on macOS Bash 3.
+  plist=""; mount=""; mounted=0; cleanup_done=0; verify_status=0
   name="$(mounted_bundle_name "$dmg")"; plist="$(mktemp)"; mount="$(mktemp -d "${TMPDIR:-/tmp}/index-dmg-mount.XXXXXX")"
-  cleanup() { local cleanup_status=$?; if [[ "$mounted" -eq 1 ]]; then hdiutil detach "$mount" || cleanup_status=1; fi; rm -f "$plist"; rmdir "$mount" >/dev/null 2>&1 || cleanup_status=1; return "$cleanup_status"; }
-  trap cleanup EXIT
+  cleanup() {
+    local original_status="${1:-$?}" cleanup_status=0
+    [[ "$cleanup_done" -eq 0 ]] || return "$original_status"
+    cleanup_done=1
+    if [[ "$mounted" -eq 1 ]]; then mounted=0; hdiutil detach "$mount" || cleanup_status=1; fi
+    rm -f "$plist" || cleanup_status=1
+    rmdir "$mount" >/dev/null 2>&1 || cleanup_status=1
+    [[ "$cleanup_status" -eq 0 ]] || return 1
+    return "$original_status"
+  }
+  trap 'cleanup $?' EXIT
   hdiutil attach -readonly -nobrowse -mountpoint "$mount" -plist "$dmg" >"$plist"
   mounted=1
   parse_exact_mount_point "$mount" <"$plist"; validate_mounted_inventory "$mount" "$name"
   bundle="$(canonical_mounted_bundle "$mount" "$name")"
-  verify_release_bundle_path "$bundle" || status=$?; [[ "$status" -eq 0 ]] || exit "$status"
-  trap - EXIT; cleanup
+  if verify_release_bundle_path "$bundle"; then
+    verify_status=0
+  else
+    verify_status=$?
+  fi
+  trap - EXIT
+  cleanup "$verify_status"
 )
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then verify_mounted_dmg_main "$@"; fi
