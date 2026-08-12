@@ -14,6 +14,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   if [[ -n "${APP_PATH:-}" ]]; then exec bash "$RELEASE_DIRECTORY/notarize-bundle.sh" "$APP_PATH"; fi
 fi
 source "$RELEASE_DIRECTORY/notarize-dmg.sh"
+run_isolation_guard() { [[ -z "${INDEX_RELEASE_ISOLATION_GUARD:-}" ]] || "$INDEX_RELEASE_ISOLATION_GUARD"; }
 
 artifact_sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 verify_final_artifact_hash() {
@@ -74,12 +75,12 @@ release_main() (
   connector_source="$source_transaction/IndexConnector-${INDEX_RELEASE_VERSION}-universal.dmg"
   app_dmg="$transaction/$(basename "$app_source")"
   connector_dmg="$transaction/$(basename "$connector_source")"
-  bash "$RELEASE_DIRECTORY/notarize-bundle.sh" "$SIGNED_DIRECTORY/Index.app"
-  bash "$RELEASE_DIRECTORY/notarize-bundle.sh" "$SIGNED_DIRECTORY/IndexConnector.app"
-  bash "$RELEASE_DIRECTORY/create-dmg.sh" "$SIGNED_DIRECTORY/Index.app" "$app_source"
-  bash "$RELEASE_DIRECTORY/create-dmg.sh" "$SIGNED_DIRECTORY/IndexConnector.app" "$connector_source"
-  notarize_dmg_transform "$app_source" "$app_dmg"
-  notarize_dmg_transform "$connector_source" "$connector_dmg"
+  run_isolation_guard; bash "$RELEASE_DIRECTORY/notarize-bundle.sh" "$SIGNED_DIRECTORY/Index.app"
+  run_isolation_guard; bash "$RELEASE_DIRECTORY/notarize-bundle.sh" "$SIGNED_DIRECTORY/IndexConnector.app"
+  run_isolation_guard; bash "$RELEASE_DIRECTORY/create-dmg.sh" "$SIGNED_DIRECTORY/Index.app" "$app_source"
+  run_isolation_guard; bash "$RELEASE_DIRECTORY/create-dmg.sh" "$SIGNED_DIRECTORY/IndexConnector.app" "$connector_source"
+  run_isolation_guard; notarize_dmg_transform "$app_source" "$app_dmg"
+  run_isolation_guard; notarize_dmg_transform "$connector_source" "$connector_dmg"
   bash "$RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$app_dmg"
   bash "$RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$connector_dmg"
   verify_final_artifact_hash "$app_dmg" "${app_dmg}.reproducibility.txt"

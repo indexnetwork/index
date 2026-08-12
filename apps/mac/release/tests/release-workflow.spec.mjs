@@ -83,6 +83,7 @@ describe("protected production workflow", () => {
       "INDEX_NOTARY_API_KEY_BASE64: ${{ secrets.INDEX_NOTARY_API_KEY_BASE64 }}",
       "INDEX_NOTARY_KEY_ID: ${{ secrets.INDEX_NOTARY_KEY_ID }}",
       "INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}",
+      "INDEX_RELEASE_TAG_RULESET_ID: ${{ vars.INDEX_RELEASE_TAG_RULESET_ID }}",
     ]) expect(workflow).toContain(literal);
     expect(workflow).not.toMatch(/INDEX_RELEASE_EXPECTED_(?:MACOS_VERSION|MACOS_BUILD|RUNNER_IMAGE|RUNNER_VERSION):\s*["']?(?:13|macOS)/);
   });
@@ -162,7 +163,7 @@ describe("release orchestrator", () => {
     expect(script).toContain("set +x");
     expect(script).toContain("assert_release_absent");
     expect(script).toContain("PUBLICATION_MARKER");
-    expect(script).toContain("gh release delete");
+    expect(script).toContain('gh api --method DELETE "/repos/${GITHUB_REPOSITORY}/releases/${CREATED_RELEASE_ID}"');
   });
 });
 

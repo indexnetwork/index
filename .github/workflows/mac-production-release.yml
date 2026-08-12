@@ -53,13 +53,7 @@ jobs:
       INDEX_RELEASE_EXPECTED_RUNNER_VERSION: ${{ vars.INDEX_RELEASE_EXPECTED_RUNNER_VERSION }}
       INDEX_RELEASE_CMS_IDENTITY_HASH: ${{ vars.INDEX_RELEASE_CMS_IDENTITY_HASH }}
       INDEX_RELEASE_CMS_CERT_SHA256: ${{ vars.INDEX_RELEASE_CMS_CERT_SHA256 }}
-      INDEX_DEVELOPER_ID_CERTIFICATE_P12: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_P12 }}
-      INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-      INDEX_APP_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_APP_PROVISIONING_PROFILE_BASE64 }}
-      INDEX_CONNECTOR_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_CONNECTOR_PROVISIONING_PROFILE_BASE64 }}
-      INDEX_NOTARY_API_KEY_BASE64: ${{ secrets.INDEX_NOTARY_API_KEY_BASE64 }}
-      INDEX_NOTARY_KEY_ID: ${{ secrets.INDEX_NOTARY_KEY_ID }}
-      INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
+      INDEX_RELEASE_TAG_RULESET_ID: ${{ vars.INDEX_RELEASE_TAG_RULESET_ID }}
     steps:
       - name: Checkout the exact release commit once without credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -75,7 +69,15 @@ jobs:
 
       - name: Prepare and fully verify immutable release assets
         env:
+          GH_TOKEN: ${{ github.token }}
           RUNNER_ENVIRONMENT: ${{ runner.environment }} # required value: github-hosted
+          INDEX_DEVELOPER_ID_CERTIFICATE_P12: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_P12 }}
+          INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          INDEX_APP_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_APP_PROVISIONING_PROFILE_BASE64 }}
+          INDEX_CONNECTOR_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_CONNECTOR_PROVISIONING_PROFILE_BASE64 }}
+          INDEX_NOTARY_API_KEY_BASE64: ${{ secrets.INDEX_NOTARY_API_KEY_BASE64 }}
+          INDEX_NOTARY_KEY_ID: ${{ secrets.INDEX_NOTARY_KEY_ID }}
+          INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
         run: apps/mac/release/build-release.sh prepare
 
       - name: Attest the exact immutable publication asset set
@@ -99,9 +101,12 @@ jobs:
 
       - name: Publish once, only after all gates and attestation
         env:
+          GH_TOKEN: ${{ github.token }}
           RUNNER_ENVIRONMENT: ${{ runner.environment }} # required value: github-hosted
         run: apps/mac/release/build-release.sh publish
 
       - name: Prove exact release absence after any failed protected step
         if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: apps/mac/release/build-release.sh assert-absence

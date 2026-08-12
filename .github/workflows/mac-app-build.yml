@@ -98,7 +98,8 @@ jobs:
             apps/mac/release/tests/packaging-fix-round-2.spec.mjs \
             apps/mac/release/tests/packaging-fix-round-3.spec.mjs \
             apps/mac/release/tests/packaging-integration.spec.mjs \
-            apps/mac/release/tests/release-workflow.spec.mjs
+            apps/mac/release/tests/release-workflow.spec.mjs \
+            apps/mac/release/tests/release-workflow-fix-round-1.spec.mjs
           bash -n \
             apps/mac/IndexApp/build.sh \
             apps/mac/IndexApp/link-host.sh \
@@ -112,6 +113,8 @@ jobs:
             apps/mac/release/verify-mounted-dmg.sh \
             apps/mac/release/sign-release-metadata.sh \
             apps/mac/release/verify-release-metadata.sh \
+            apps/mac/release/verify-prior-release-metadata.sh \
+            apps/mac/release/build-release-isolation-guard.sh \
             apps/mac/release/build-release.sh
 
       - name: Native owner credential migration and Keychain failure fixture

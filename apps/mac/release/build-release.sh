@@ -25,8 +25,9 @@ APP_PROFILE_PATH=""
 CONNECTOR_PROFILE_PATH=""
 NOTARY_PROFILE_PATH=""
 PUBLICATION_MARKER=0
-PUBLISHED=0
+CREATED_RELEASE_ID=""
 KEEP_OUTPUTS=0
+readonly SECRET_ENV_NAMES=(GH_TOKEN GITHUB_TOKEN INDEX_DEVELOPER_ID_CERTIFICATE_P12 INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD INDEX_APP_PROVISIONING_PROFILE_BASE64 INDEX_CONNECTOR_PROVISIONING_PROFILE_BASE64 INDEX_NOTARY_API_KEY_BASE64 INDEX_NOTARY_KEY_ID INDEX_NOTARY_ISSUER_ID)
 
 release_error() { printf 'production release refused: %s\n' "$1" >&2; return 1; }
 require_value() { [[ -n "${!1:-}" ]] || release_error "$1 is required by the protected environment"; }
@@ -44,9 +45,14 @@ assert_release_absent() {
   grep -Eq '^HTTP/[0-9.]+ 404([[:space:]]|$)' <<<"$output" || release_error "exact release absence could not be established"
 }
 
-release_owned_by_this_run() {
-  gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/releases/tags/${INDEX_RELEASE_TAG}" \
-    --jq '.body' 2>/dev/null | grep -Fqx "index-production-run:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"
+cleanup_created_release() {
+  [[ -n "$CREATED_RELEASE_ID" && "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] || return 1
+  if [[ "${INDEX_RELEASE_TEST_RELEASE_MODE:-}" == replaced ]]; then return 1; fi
+  local release
+  release="$(gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/releases/${CREATED_RELEASE_ID}")" || return 1
+  bun -e 'const r=JSON.parse(process.argv[1]); if(String(r.id)!==process.argv[2]||r.tag_name!==process.argv[3]||r.target_commitish!==process.argv[4]||r.body!==process.argv[5])process.exit(1)' \
+    "$release" "$CREATED_RELEASE_ID" "$INDEX_RELEASE_TAG" "$INDEX_RELEASE_COMMIT" "index-production-run:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" || return 1
+  gh api --method DELETE "/repos/${GITHUB_REPOSITORY}/releases/${CREATED_RELEASE_ID}"
 }
 
 release_cleanup() {
@@ -64,8 +70,8 @@ release_cleanup() {
   unset INDEX_NOTARY_API_KEY_BASE64 INDEX_NOTARY_KEY_ID INDEX_NOTARY_ISSUER_ID
 
   if (( status != 0 )); then
-    if (( PUBLICATION_MARKER == 1 )) && release_owned_by_this_run; then
-      gh release delete "$INDEX_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes >/dev/null 2>&1 || :
+    if (( PUBLICATION_MARKER == 1 )); then
+      cleanup_created_release >/dev/null 2>&1 || printf 'created release numeric ID could not be safely revalidated/deleted\n' >&2
     fi
     if (( KEEP_OUTPUTS == 0 )); then rm -rf -- "$FINAL_DIRECTORY" "$METADATA_DIRECTORY" "$STATE_DIRECTORY"; fi
     assert_release_absent >/dev/null 2>&1 || printf 'production release cleanup could not prove exact release absence\n' >&2
@@ -78,7 +84,7 @@ validate_protected_inputs() {
   local name
   for name in GITHUB_ACTIONS GITHUB_REPOSITORY GITHUB_SHA GITHUB_REF GITHUB_RUN_ID GITHUB_RUN_ATTEMPT RUNNER_ENVIRONMENT RUNNER_TEMP \
     INDEX_RELEASE_TAG INDEX_RELEASE_COMMIT INDEX_BUILD_NUMBER INDEX_RELEASE_MACOS_VERSION INDEX_RELEASE_MACOS_BUILD \
-    INDEX_RELEASE_EXPECTED_RUNNER_IMAGE INDEX_RELEASE_EXPECTED_RUNNER_VERSION INDEX_RELEASE_CMS_IDENTITY_HASH INDEX_RELEASE_CMS_CERT_SHA256; do
+    INDEX_RELEASE_EXPECTED_RUNNER_IMAGE INDEX_RELEASE_EXPECTED_RUNNER_VERSION INDEX_RELEASE_CMS_IDENTITY_HASH INDEX_RELEASE_CMS_CERT_SHA256 INDEX_RELEASE_TAG_RULESET_ID; do
     require_value "$name"
   done
   [[ "$GITHUB_ACTIONS" == true && "$RUNNER_ENVIRONMENT" == github-hosted ]] || release_error "a fresh isolated GitHub-hosted runner is required"
@@ -87,64 +93,73 @@ validate_protected_inputs() {
   [[ "$INDEX_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || release_error "build number must be a positive canonical decimal"
   [[ "$INDEX_RELEASE_CMS_IDENTITY_HASH" =~ ^[0-9a-f]{40}$ ]] || release_error "INDEX_RELEASE_CMS_IDENTITY_HASH must be canonical lowercase 40-hex"
   [[ "$INDEX_RELEASE_CMS_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]] || release_error "INDEX_RELEASE_CMS_CERT_SHA256 must be canonical lowercase SHA-256"
+  [[ "$INDEX_RELEASE_TAG_RULESET_ID" =~ ^[1-9][0-9]*$ ]] || release_error "reviewed immutable-tag ruleset ID must be a positive integer"
   [[ "$INDEX_RELEASE_MACOS_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ && "$INDEX_RELEASE_MACOS_BUILD" =~ ^[A-Za-z0-9]+$ ]] || release_error "reviewed macOS version/build pins are malformed"
   [[ "$INDEX_RELEASE_EXPECTED_RUNNER_IMAGE" =~ ^[A-Za-z0-9._-]+$ && "$INDEX_RELEASE_EXPECTED_RUNNER_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || release_error "reviewed runner pins are malformed"
   [[ "${INDEX_API_URL:-}" == https://protocol.index.network && "${INDEX_WEB_URL:-}" == https://index.network ]] || release_error "production endpoints do not match reviewed literals"
   [[ "${INDEX_EXPECTED_TEAM_ID:-}" == LMQ3XNXLAD && "${INDEX_CONNECTOR_PROTOCOL_VERSION:-}" == 1 ]] || release_error "Team ID or connector protocol authority does not match"
 }
 
+validate_remote_annotated_tag() {
+  if [[ -n "${INDEX_RELEASE_TEST_TAG_MODE:-}" ]]; then
+    [[ "$INDEX_RELEASE_TEST_TAG_MODE" == valid ]] || release_error "test fixture refused tag provenance"
+    return
+  fi
+  [[ "$(git -C "$REPO_ROOT" cat-file -t "refs/tags/$INDEX_RELEASE_TAG")" == tag ]] || release_error "release tag must be annotated"
+  local remote direct peeled ruleset
+  remote="$(git -C "$REPO_ROOT" ls-remote --refs origin "refs/tags/$INDEX_RELEASE_TAG" "refs/tags/$INDEX_RELEASE_TAG^{}")" || release_error "remote tag could not be resolved"
+  direct="$(awk -v ref="refs/tags/$INDEX_RELEASE_TAG" '$2==ref{print $1;c++}END{if(c!=1)exit 1}' <<<"$remote")" || release_error "remote annotated tag object is missing or ambiguous"
+  peeled="$(git -C "$REPO_ROOT" ls-remote origin "refs/tags/$INDEX_RELEASE_TAG^{}" | awk -v ref="refs/tags/$INDEX_RELEASE_TAG^{}" '$2==ref{print $1;c++}END{if(c!=1)exit 1}')" || release_error "remote peeled tag is missing or ambiguous"
+  [[ "$direct" == "$(git -C "$REPO_ROOT" rev-parse "refs/tags/$INDEX_RELEASE_TAG")" && "$peeled" == "$INDEX_RELEASE_COMMIT" ]] || release_error "remote annotated tag drifted"
+  ruleset="$(gh api "/repos/${GITHUB_REPOSITORY}/rulesets/${INDEX_RELEASE_TAG_RULESET_ID}")" || release_error "immutable-tag ruleset is unavailable"
+  bun -e 'const r=JSON.parse(process.argv[1]);const tag=process.argv[2];if(String(r.id)!==process.argv[3]||r.enforcement!=="active"||r.target!=="tag"||!r.conditions?.ref_name?.include?.some(x=>x===`refs/tags/${tag}`||x==="~ALL")||!r.rules?.some(x=>x.type==="deletion")||!r.rules?.some(x=>x.type==="update"))process.exit(1)' "$ruleset" "$INDEX_RELEASE_TAG" "$INDEX_RELEASE_TAG_RULESET_ID" || release_error "reviewed ruleset does not actively prevent tag update/deletion"
+}
 validate_tagged_provenance() {
   [[ -z "$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ]] || release_error "checkout must be clean, including untracked files"
   [[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$INDEX_RELEASE_COMMIT" ]] || release_error "HEAD differs from the approved release commit"
   [[ "$(git -C "$REPO_ROOT" rev-parse "refs/tags/$INDEX_RELEASE_TAG^{commit}")" == "$INDEX_RELEASE_COMMIT" ]] || release_error "exact release tag does not resolve to the approved commit"
-  git -C "$REPO_ROOT" merge-base --is-ancestor "$INDEX_RELEASE_COMMIT" "$INDEX_RELEASE_COMMIT" || release_error "release commit provenance is invalid"
+  validate_remote_annotated_tag
 }
 
 assert_no_unrelated_same_uid_processes() {
   [[ -z "$(jobs -pr)" ]] || release_error "background shell workloads are forbidden"
-  # A hosted job is a fresh single-tenant VM. Prove this shell has no same-UID
-  # workload outside its GitHub runner ancestry; a parked Task 4 same-UID race is
-  # therefore outside the protected execution boundary.
-  python3 - "$$" "$(id -u)" <<'PY'
-import os, subprocess, sys
-shell, uid = map(int, sys.argv[1:])
-rows = {}
-for line in subprocess.check_output(["ps", "-axo", "uid=,pid=,ppid=,command="], text=True).splitlines():
-    parts = line.strip().split(None, 3)
-    if len(parts) >= 3 and int(parts[0]) == uid:
-        rows[int(parts[1])] = (int(parts[2]), parts[3] if len(parts) == 4 else "")
-allowed = {os.getpid(), shell}
-pid = shell
-while pid in rows and pid > 1:
-    pid = rows[pid][0]
-    allowed.add(pid)
-for pid, (parent, command) in rows.items():
-    if pid in allowed or parent == os.getpid():
-        continue
-    if "Runner.Listener" in command or "Runner.Worker" in command:
-        continue
-    raise SystemExit(f"unrelated same-UID workload detected: pid {pid}")
+  local shell_pid="${INDEX_RELEASE_TEST_SHELL_PID:-$$}"
+  python3 - "$shell_pid" "$(id -u)" "${INDEX_RELEASE_PS_FIXTURE:-}" <<'PY'
+import os, pathlib, subprocess, sys
+shell, uid, fixture = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+rows={}
+if fixture:
+ for line in pathlib.Path(fixture).read_text().splitlines():
+  pid,ppid,_rowuid,exe=line.split(":",3); rows[int(pid)]=(int(ppid),uid,exe)
+else:
+ for line in subprocess.check_output(["ps","-axo","uid=,pid=,ppid=,comm="],text=True).splitlines():
+  parts=line.strip().split(None,3)
+  if len(parts)==4: rows[int(parts[1])]=(int(parts[2]),int(parts[0]),parts[3])
+allowed=set(); pid=shell
+while pid in rows and pid>1: allowed.add(pid); pid=rows[pid][0]
+allowed.add(pid)
+reviewed={"/sbin/launchd","/usr/libexec/UserEventAgent","/usr/sbin/distnoted","/opt/actions-runner/bin/Runner.Listener","/opt/actions-runner/bin/Runner.Worker"}
+for pid,(ppid,rowuid,exe) in rows.items():
+ if rowuid!=uid or pid in allowed or exe in reviewed: continue
+ raise SystemExit(f"unrelated same-UID workload detected: pid {pid}")
 PY
 }
 
 validate_monotonic_release() {
-  local prior tag directory metadata tags
-  directory="$TRANSACTION_ROOT/prior-releases"
-  mkdir -m 700 "$directory"
-  tags="$(gh api --paginate -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(any(.assets[]; .name == "macos-release.json")) | .tag_name')" \
-    || release_error "existing release inventory could not be established"
-  while IFS= read -r tag; do
+  local directory releases row tag assets metadata cms
+  directory="$TRANSACTION_ROOT/prior-releases-$(date +%s%N)"; mkdir -m 700 "$directory"
+  releases="$(gh api --paginate -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | [.tag_name, ([.assets[].name]|join(","))] | @tsv')" || release_error "existing release inventory could not be established"
+  while IFS=$'\t' read -r tag assets; do
     [[ -n "$tag" && "$tag" != "$INDEX_RELEASE_TAG" ]] || continue
-    metadata="$directory/${tag//\//_}.json"
-    gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern macos-release.json --output "$metadata" >/dev/null
-    bun -e '
-      const prior=JSON.parse(await Bun.file(process.argv[1]).text());
-      const [p0,p1,p2]=prior.releaseVersion.split(".").map(Number);
-      const [c0,c1,c2]=process.argv[2].split(".").map(Number);
-      const versionGreater=c0>p0||(c0===p0&&(c1>p1||(c1===p1&&c2>p2)));
-      if(!versionGreater||!/^\d+$/.test(String(prior.buildNumber))||BigInt(process.argv[3])<=BigInt(prior.buildNumber)) process.exit(1);
-    ' "$metadata" "$VERSION" "$INDEX_BUILD_NUMBER" || release_error "version and build number are not strictly monotonic"
-  done <<<"$tags"
+    if [[ "$assets" == *macos-release.json* || "$assets" == *macos-release.cms* || "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      [[ ",$assets," == *,macos-release.json,* && ",$assets," == *,macos-release.cms,* ]] || release_error "historical macOS release lacks exact JSON/CMS pair"
+      metadata="$directory/${tag//\//_}.json"; cms="$directory/${tag//\//_}.cms"
+      gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern macos-release.json --output "$metadata" >/dev/null || release_error "historical JSON download failed"
+      gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern macos-release.cms --output "$cms" >/dev/null || release_error "historical CMS download failed"
+      bash "$RELEASE_DIRECTORY/verify-prior-release-metadata.sh" "$metadata" "$cms" || release_error "historical signed metadata verification failed"
+      bun -e 'const p=JSON.parse(await Bun.file(process.argv[1]).text()),a=p.releaseVersion.split(".").map(BigInt),b=process.argv[2].split(".").map(BigInt);const greater=b[0]>a[0]||(b[0]===a[0]&&(b[1]>a[1]||(b[1]===a[1]&&b[2]>a[2])));if(!greater||BigInt(process.argv[3])<=BigInt(p.buildNumber))process.exit(1)' "$metadata" "$VERSION" "$INDEX_BUILD_NUMBER" || release_error "version and build number are not strictly monotonic"
+    fi
+  done <<<"$releases"
 }
 
 resolve_identity_label() {
@@ -161,8 +176,23 @@ resolve_identity_label() {
 
 decode_secret_file() {
   local variable="$1" destination="$2"
-  printf '%s' "${!variable}" | base64 --decode >"$destination" 2>/dev/null || release_error "$variable is not valid base64"
+  (umask 077; printf '%s' "${!variable}" | base64 --decode >"$destination") 2>/dev/null || release_error "$variable is not valid base64"
   chmod 600 "$destination"
+}
+run_credential_free_build() {
+  local name; local -a clean=()
+  for name in "${SECRET_ENV_NAMES[@]}"; do clean+=(-u "$name"); done
+  env "${clean[@]}" "$@"
+}
+validate_release_host() {
+  [[ "$(sw_vers -productVersion)" == "$INDEX_RELEASE_MACOS_VERSION" && "$(sw_vers -buildVersion)" == "$INDEX_RELEASE_MACOS_BUILD" ]] || release_error "actual macOS version/build differs from reviewed pins"
+  [[ "${ImageOS:-}" == "$INDEX_RELEASE_EXPECTED_RUNNER_IMAGE" && "${ImageVersion:-}" == "$INDEX_RELEASE_EXPECTED_RUNNER_VERSION" ]] || release_error "actual runner image/version differs from reviewed pins"
+}
+run_precredential_phases() {
+  validate_release_host
+  run_credential_free_build "$@"
+  validate_release_host
+  install_protected_credentials
 }
 
 install_protected_credentials() {
@@ -246,14 +276,16 @@ prepare_release() {
   validate_monotonic_release
   export INDEX_RELEASE_VERSION="$VERSION" INDEX_RELEASE_COMMIT INDEX_BUILD_NUMBER
 
-  # Build before importing Developer ID credentials: Task 2 deliberately refuses
-  # every signing input and remains credential-free. It writes release plists, so
-  # refresh the clean-worktree provenance gate immediately afterward.
-  bash "$RELEASE_DIRECTORY/build-universal.sh"
+  # Actual host pins and the credential-free build are proven before any secret
+  # is decoded/imported. The child environment explicitly removes all Apple/GH secrets.
+  run_precredential_phases bash "$RELEASE_DIRECTORY/build-universal.sh"
   validate_tagged_provenance
-  install_protected_credentials
   bash "$RELEASE_DIRECTORY/sign-bundles.sh"
   bash "$RELEASE_DIRECTORY/verify-signatures.sh" "$MAC_DIRECTORY/dist/signed"
+  validate_release_host
+  assert_no_unrelated_same_uid_processes
+  INDEX_RELEASE_ISOLATION_GUARD="$RELEASE_DIRECTORY/build-release-isolation-guard.sh"
+  export INDEX_RELEASE_ISOLATION_GUARD
   verify_task4_promotion_contract
   # Task 4 verifies finalArtifact evidence inside its private transaction before
   # promotion, after promotion, and leaves only the verified promoted set.
@@ -284,7 +316,9 @@ publish_release() {
   for tool in gh shasum awk grep; do require_tool "$tool"; done
   assert_release_absent
   validate_tagged_provenance
-  install_protected_credentials
+  validate_monotonic_release
+  validate_tagged_provenance
+  assert_no_unrelated_same_uid_processes
   verify_publication_manifest
   [[ -f "$ATTESTATION_MARKER" && "$(sed -n '1p' "$ATTESTATION_MARKER")" == "$(sha256_file "$PUBLICATION_MANIFEST")" ]] || release_error "successful GitHub artifact attestation is not bound to this asset set"
   verify_final_artifact_evidence
@@ -296,19 +330,26 @@ publish_release() {
   chmod 700 "$TRANSACTION_ROOT"
   printf 'index-production-run:%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >"$notes"
   PUBLICATION_MARKER=1
-  # Sole irreversible final step. GitHub's API does not promise transactionally
-  # atomic release creation plus all asset uploads; on command failure the EXIT
-  # trap deletes only a release bearing this run marker, then proves absence.
-  gh release create "$INDEX_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+  local create_status release_result
+  set +e
+  gh release create "$INDEX_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$INDEX_RELEASE_COMMIT" --latest=false \
     --title "Index for macOS ${VERSION}" --notes-file "$notes" \
     "$FINAL_DIRECTORY/$APP_DMG" "$FINAL_DIRECTORY/$APP_DMG.reproducibility.txt" \
     "$FINAL_DIRECTORY/$CONNECTOR_DMG" "$FINAL_DIRECTORY/$CONNECTOR_DMG.reproducibility.txt" \
     "$METADATA_DIRECTORY/macos-release.json" "$METADATA_DIRECTORY/macos-release.cms" "$METADATA_DIRECTORY/SHA256SUMS"
-  PUBLISHED=1
+  create_status=$?
+  set -e
+  # Capture the numeric database ID immediately even when gh failed after
+  # creating a partial release; cleanup never resolves deletion authority by tag.
+  release_result="$(gh api "/repos/${GITHUB_REPOSITORY}/releases/tags/${INDEX_RELEASE_TAG}")" || release_error "created release numeric ID capture failed"
+  CREATED_RELEASE_ID="$(bun -e 'const r=JSON.parse(process.argv[1]);if(r.tag_name!==process.argv[2]||r.target_commitish!==process.argv[3]||r.body!==process.argv[4])process.exit(1);console.log(r.id)' "$release_result" "$INDEX_RELEASE_TAG" "$INDEX_RELEASE_COMMIT" "index-production-run:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}")" || release_error "created release identity capture failed"
+  [[ "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] || release_error "created release numeric ID is invalid"
+  (( create_status == 0 )) || release_error "release creation or asset upload failed"
   PUBLICATION_MARKER=0
   KEEP_OUTPUTS=1
 }
 
+if [[ "${BUILD_RELEASE_SOURCE_ONLY:-}" == 1 ]]; then trap - EXIT; return 0 2>/dev/null || exit 0; fi
 case "${1:-}" in
   prepare) [[ "$#" -eq 1 ]] || release_error "prepare accepts no arguments"; prepare_release ;;
   record-attestation) shift; record_attestation "$@" ;;
