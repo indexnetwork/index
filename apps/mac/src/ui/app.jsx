@@ -35,6 +35,38 @@ function nativeAuthed() {
 // gets one fetch by id through the existing client methods, and null when even
 // that comes up empty, so the caller can say so instead of opening a blank
 // window.
+// A question or conversation link (minted by the app's own OS toasts) names an
+// intent-scoped destination rather than a person card: resolve which signal
+// owns it so the caller can open that signal — and, for a conversation, the
+// specific chat — through the same machinery the menubar uses.
+async function resolveDeepLinkTarget(route, intents) {
+  if (!nativeAuthed() || !window.IndexApp) return null;
+  const client = window.IndexApp.getClient();
+  if (!client) return null;
+  try {
+    if (route.route === "question") {
+      const res = await client.questions.pending();
+      const q = window.IndexApp.normalizeList(res, "questions").find((row) => row && row.id === route.id);
+      const d = (q && q.detection) || {};
+      // Same intent resolution as the server's notification projection.
+      const intentId = d.triggeredBy
+        || (d.sourceType === "intent" ? d.sourceId : null)
+        || (d.negotiation && d.negotiation.recipientIntentId)
+        || null;
+      const intent = intentId ? (intents || []).find((i) => i.id === intentId) : null;
+      return intent ? { intent } : null;
+    }
+    const res = await client.conversations.list();
+    const conv = window.IndexApp.normalizeList(res, "conversations").find((row) => row && row.id === route.id);
+    const via = conv && Array.isArray(conv.via) ? conv.via[0] : null;
+    if (!via) return null;
+    const intent = (intents || []).find((i) => i.id === via.intentId);
+    return intent ? { intent, personId: via.opportunityId } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function resolveDeepLinkPerson(route, people) {
   const known = route.route === "card"
     ? people.find(p => p.id === route.id)
@@ -206,6 +238,23 @@ function App() {
     const link = pendingLink;
     resolvingRef.current = link;
     (async () => {
+      // Notification activate links land on a signal (and maybe a chat within
+      // it) rather than a floating person card.
+      if (link.route === "question" || link.route === "conversation") {
+        const target = await resolveDeepLinkTarget(link, INTENTS);
+        if (resolvingRef.current !== link) return;
+        resolvingRef.current = null;
+        if (target) {
+          pickExistingIntent(target.intent);
+          if (target.personId) setPendingChat(target.personId);
+        } else {
+          setNotice(link.route === "question"
+            ? "that question isn't waiting anymore."
+            : "couldn't open that conversation.");
+        }
+        setPendingLink(null);
+        return;
+      }
       const person = await resolveDeepLinkPerson(link, peopleRef.current);
       // A newer link arrived mid-flight and owns the slot now; let it finish.
       if (resolvingRef.current !== link) return;
@@ -217,6 +266,15 @@ function App() {
       setPendingLink(null);
     })();
   }, [pendingLink, screen]);
+
+  // Desktop notification pipeline: runs app-wide while signed in. The native
+  // side never toasts while the app is frontmost, so this can stay up across
+  // every screen; the identity gate (own-message suppression) rides on me.id.
+  const meId = me && me.id;
+  useEffect(() => {
+    if (!live || !meId || !window.IndexApp || !window.IndexApp.startDesktopNotifications) return;
+    return window.IndexApp.startDesktopNotifications({ getUserId: () => meId });
+  }, [live, meId]);
 
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {

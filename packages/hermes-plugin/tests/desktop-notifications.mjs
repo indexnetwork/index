@@ -74,23 +74,33 @@ refreshedUserId = await refreshNotificationIdentity(async () => ({
 assert.equal(refreshedUserId, null)
 assert.equal(isOwnMessage(messageFrom('user-2'), refreshedUserId), true)
 
-// Server-projected notification copy is retained; message copy has safe fallbacks.
+// Server-projected notification copy is retained; message copy has safe
+// fallbacks. Every composed event activates the plugin's dashboard page.
 assert.deepEqual(
   composeNotification({ type: 'question.new', id: 'q1', title: 'A question', body: 'Can you clarify?' }),
-  { title: 'A question', body: 'Can you clarify?' },
+  { title: 'A question', body: 'Can you clarify?', url: '/index-network' },
 )
 assert.deepEqual(
   composeNotification(messageFrom('user-2')),
-  { title: 'New message from Casey', body: 'Hello from Index.' },
+  { title: 'New message from Casey', body: 'Hello from Index.', url: '/index-network' },
 )
 // Protocol often persists typeless `{ text }` parts; accept those for OS copy.
 assert.deepEqual(
   composeNotification(messageFrom('user-2', { parts: [{ text: 'Haha' }] })),
-  { title: 'New message from Casey', body: 'Haha' },
+  { title: 'New message from Casey', body: 'Haha', url: '/index-network' },
 )
 assert.deepEqual(
   composeNotification(messageFrom('user-2', { senderName: '', parts: [] })),
-  { title: 'New message from user-2', body: 'Open Index to read the message.' },
+  { title: 'New message from user-2', body: 'Open Index to read the message.', url: '/index-network' },
+)
+// The sender avatar surfaces only when it is already a fetchable URL.
+assert.equal(
+  composeNotification(messageFrom('user-2', { senderAvatar: 'https://pic.example/a.jpg' })).imageUrl,
+  'https://pic.example/a.jpg',
+)
+assert.equal(
+  composeNotification(messageFrom('user-2', { senderAvatar: 'avatars/u2/a.jpg' })).imageUrl,
+  undefined,
 )
 assert.equal(composeNotification({ type: 'question.new', id: 'q1', title: '' }), null)
 assert.equal(composeNotification({ type: 'connected' }), null)

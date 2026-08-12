@@ -4450,6 +4450,11 @@ export async function refreshNotificationIdentity(loadAuthStatus) {
   }
 }
 
+// Every Index event lands on the plugin's dashboard page; the host turns this
+// into the notification's activate target so a click opens Index instead of
+// just focusing the Hermes window.
+const PLUGIN_ACTIVATE_URL = '/index-network'
+
 export function composeNotification(event) {
   if (!event || typeof event.type !== 'string') return null
   if (event.type.indexOf('question.') === 0 || event.type.indexOf('opportunity.') === 0) {
@@ -4457,6 +4462,7 @@ export function composeNotification(event) {
     return {
       title: event.title,
       body: typeof event.body === 'string' ? event.body : '',
+      url: PLUGIN_ACTIVATE_URL,
     }
   }
   if (event.type === 'message' || event.type.indexOf('message.') === 0) {
@@ -4475,9 +4481,15 @@ export function composeNotification(event) {
         }
       }
     }
+    // Shape parity with the Mac shell's compose: expose the sender avatar when
+    // it is already a fetchable URL. (Electron's `icon` wants a filesystem
+    // path, so the Hermes host does not consume this today.)
+    const avatar = typeof message.senderAvatar === 'string' ? message.senderAvatar.trim() : ''
     return {
       title: `New message from ${sender}`,
       body: text || 'Open Index to read the message.',
+      url: PLUGIN_ACTIVATE_URL,
+      ...(/^https?:/i.test(avatar) ? { imageUrl: avatar } : {}),
     }
   }
   return null
@@ -4634,8 +4646,15 @@ function sendOsNotification(ctx, event) {
   if (!ctx.os || typeof ctx.os.notify !== 'function') return
   const copy = composeNotification(event)
   if (!copy) return
+  // `activate` makes a click open the Index page instead of only focusing the
+  // Hermes window; hosts without activate support ignore the extra field.
+  const payload = {
+    title: copy.title,
+    body: copy.body,
+    ...(copy.url ? { activate: copy.url } : {})
+  }
   try {
-    Promise.resolve(ctx.os.notify(copy)).catch(function () { /* notification rendering is fail-open */ })
+    Promise.resolve(ctx.os.notify(payload)).catch(function () { /* notification rendering is fail-open */ })
   } catch (e) { /* synchronous host errors are fail-open too */ }
 }
 

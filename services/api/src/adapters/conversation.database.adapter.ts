@@ -827,7 +827,7 @@ export class ConversationDatabaseAdapter {
         ? data.senderId.slice('agent:'.length)
         : data.senderId;
       const [sender] = await db
-        .select({ name: schema.users.name })
+        .select({ name: schema.users.name, avatar: schema.users.avatar })
         .from(schema.users)
         .where(eq(schema.users.id, senderUserId))
         .limit(1);
@@ -835,6 +835,7 @@ export class ConversationDatabaseAdapter {
         {
           ...message,
           ...(sender?.name?.trim() ? { senderName: sender.name.trim() } : {}),
+          ...(sender?.avatar?.trim() ? { senderAvatar: sender.avatar.trim() } : {}),
         },
         await this.getParticipants(data.conversationId),
       );

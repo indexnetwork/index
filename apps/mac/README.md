@@ -103,6 +103,11 @@ the web view has finished loading (cold launch).
 | `https://index.network/o/<id>` · `index://o/<id>` | that opportunity's card |
 | `https://index.network/u/<id>` · `index://u/<id>` | that person's profile |
 | `https://index.network/c/<code>` · `index://c/<code>` | nothing — retired connect links get a one-line notice |
+| `index://q/<question-id>` | the signal that owns that pending question |
+| `index://chat/<conversation-id>` | that conversation's chat inside its signal |
+
+The `q`/`chat` routes are minted only by the app's own desktop notifications
+(no web page serves them), so they matter mostly as the toast tap target.
 
 Query strings, fragments and trailing slashes are ignored; foreign hosts,
 unknown paths and malformed URLs are ignored silently. Extra hosts (staging)

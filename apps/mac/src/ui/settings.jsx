@@ -392,6 +392,8 @@ const NOTIFY_OPTIONS = [
     blurb:"someone on the other side needs an answer only you can give." },
   { id:"accepted",  title:"an intro is accepted",
     blurb:"someone said yes. the chat opens on both sides." },
+  { id:"messages",  title:"a message arrives",
+    blurb:"someone you're connected with wrote to you while index was in the background." },
   { id:"digest",    title:"daily digest",
     blurb:"one quiet summary each morning instead of live pings." },
 ];
@@ -573,8 +575,13 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     photo: ME.photo || null,
   });
   const [form, setForm] = useState(assembled.current);
-  const [notify, setNotify] = useState(ME.notify || {
-    alignment: true, question: true, accepted: true, digest: false,
+  // In-session edits (ME.notify) win over the durable native store; the
+  // defaults only apply on a truly fresh install. `messages` predates neither:
+  // older saves without it fall back to on, matching notificationEventAllowed.
+  const [notify, setNotify] = useState({
+    alignment: true, question: true, accepted: true, digest: false, messages: true,
+    ...((window.INDEX_NATIVE && window.INDEX_NATIVE.notifyPrefs) || {}),
+    ...(ME.notify || {}),
   });
 
   // Enrichment-backed getting-started. Primary path: trigger the public-research
@@ -732,6 +739,9 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       photo,
       notify,
     });
+    // Notification toggles gate real OS toasts now; keep them across relaunch
+    // (UserDefaults via Swift — file:// localStorage would forget them).
+    if (window.IndexApp && window.IndexApp.setNotifyPrefs) window.IndexApp.setNotifyPrefs(notify);
     if (live && client) {
       // First-run enrichment gate: persist the approved profile through
       // confirm_user_context, which durably records onboarding.profileConfirmedAt

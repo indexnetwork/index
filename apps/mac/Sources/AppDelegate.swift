@@ -2,6 +2,7 @@ import Cocoa
 import WebKit
 import Network
 import Security
+import UserNotifications
 
 // Injected into the page: pressing "chrome" (desktop background, menu bar, or a
 // window's title bar) but not an interactive control asks the native side to
@@ -18,7 +19,7 @@ document.addEventListener('mousedown', function (e) {
 }, true);
 """
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     private var authServer: LoopbackAuthServer?
@@ -82,6 +83,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         config.userContentController.add(self, name: "indexAuth")
         config.userContentController.addUserScript(WKUserScript(
             source: Self.nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+
+        // Desktop notification bridge: the page posts {id,title,body,url?,imageUrl?}
+        // and the native side owns delivery (UNUserNotificationCenter) plus the
+        // tap → deep-link round trip. The delegate is set during launch so a
+        // toast tapped while the app was closed still routes once it boots.
+        config.userContentController.add(self, name: "indexNotify")
+        UNUserNotificationCenter.current().delegate = self
+        if CredentialStore.load() != nil {
+            // Signed-in relaunch: surface the permission prompt now rather than
+            // at the moment the first toast would otherwise silently drop.
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        }
 
         let contentRect = Self.defaultContentFrame(for: NSScreen.main)
         webView = WKWebView(frame: contentRect, configuration: config)
@@ -367,6 +380,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 // UserDefaults is the store that actually survives a relaunch.
                 AgentFaceStore.save(body?["value"] as? [String: Any])
             }
+            else if action == "setNotifyPrefs" {
+                // Same story as the agent face: prefs must survive a relaunch,
+                // and file:// localStorage does not.
+                NotifyPrefsStore.save(body?["value"] as? [String: Any])
+            }
+            return
+        }
+        if message.name == "indexNotify" {
+            if let body = message.body as? [String: Any] { postNotification(body) }
             return
         }
         guard message.name == "windowDrag" else { return }
@@ -431,6 +453,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
+    // MARK: - Desktop notifications
+    //
+    // Delivery is native (UNUserNotificationCenter); everything else — which
+    // events toast, copy, dedupe, preference gating — is decided by the web
+    // layer before it posts here. The payload is {id,title,body,url?,imageUrl?}:
+    // `url` is an index:// deep link replayed through deliverDeepLink on tap,
+    // `imageUrl` an https avatar attached to the toast (fail-open on any error).
+
+    private func postNotification(_ body: [String: Any]) {
+        // Hermes-style background gating: never toast over the app itself.
+        guard !NSApp.isActive else { return }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = (body["title"] as? String) ?? "Index"
+            content.body = (body["body"] as? String) ?? ""
+            if let url = body["url"] as? String, !url.isEmpty {
+                content.userInfo = ["url": url]
+            }
+            let id = (body["id"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? UUID().uuidString
+            let deliver = {
+                center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+            }
+            guard let raw = body["imageUrl"] as? String,
+                  let imageURL = URL(string: raw),
+                  imageURL.scheme == "https" || imageURL.scheme == "http" else {
+                deliver()
+                return
+            }
+            URLSession.shared.downloadTask(with: imageURL) { tmp, response, _ in
+                if let tmp = tmp,
+                   let attachment = Self.notificationAttachment(tmp: tmp, response: response) {
+                    content.attachments = [attachment]
+                }
+                deliver()
+            }.resume()
+        }
+    }
+
+    /// UNNotificationAttachment types the file by extension, and the download
+    /// lands extension-less, so move it under a name matching its MIME type.
+    /// Anything unrecognizable is skipped and the toast goes out without art.
+    private static func notificationAttachment(tmp: URL, response: URLResponse?) -> UNNotificationAttachment? {
+        let ext: String
+        switch response?.mimeType {
+        case "image/png": ext = "png"
+        case "image/gif": ext = "gif"
+        case "image/jpeg", "image/jpg": ext = "jpg"
+        default: return nil
+        }
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("index-notify-\(UUID().uuidString).\(ext)")
+        do {
+            try FileManager.default.moveItem(at: tmp, to: dest)
+            return try UNNotificationAttachment(identifier: "avatar", url: dest)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Tap on the toast body: raise the window and replay the stored deep link
+    /// through the same pipeline as an `index://` open from LaunchServices.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let raw = response.notification.request.content.userInfo["url"] as? String
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let raw = raw, let url = URL(string: raw) {
+                self.deliverDeepLink(url)
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+                self.window?.makeKeyAndOrderFront(nil)
+            }
+        }
+        completionHandler()
+    }
+
     // MARK: - Native auth bridge
 
     /// document-start script exposing the current API base + stored key to the
@@ -451,6 +552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return """
         window.INDEX_NATIVE = \(json);
         window.INDEX_NATIVE.agentFace = \(AgentFaceStore.loadJSON());
+        window.INDEX_NATIVE.notifyPrefs = \(NotifyPrefsStore.loadJSON());
         """
     }
 
