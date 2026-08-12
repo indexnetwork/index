@@ -6,7 +6,6 @@
     "npm:@juicesharp/rpiv-ask-user-question",
     "npm:@juicesharp/rpiv-btw",
     "npm:@juicesharp/rpiv-todo",
-    "npm:@juicesharp/rpiv-web-tools",
-    "git:github.com/yanekyuk/pi-bridge"
+    "npm:@juicesharp/rpiv-web-tools"
   ]
 }

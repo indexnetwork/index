@@ -68,7 +68,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
  * its opportunities ("radar"), in a master-detail view. The selected intent
  * is mirrored into the URL hash so browser Back/Forward navigate between
  * intents. Data loads through the plugin backend, which reuses native Hermes
- * tool handlers so INDEX_API_KEY scoping and protocol visibility rules stay
+ * tool handlers so connector authority and protocol visibility rules stay
  * centralized.
  */
 (function () {
@@ -2513,9 +2513,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
-  // Mac/CLI-parity browser sign-in gate. "Log in with browser" runs the same
-  // /cli-auth handshake (loopback callback) the Index Mac app and CLI use; the
-  // backend mints + persists the key, so we only poll status here.
+  // Connector-owned browser sign-in and revocation-recovery gate. The browser
+  // never receives a credential; recovery retries only the connector's exact
+  // disconnect until server denial and Keychain deletion are both verified.
   function LoginScreen(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -2541,7 +2541,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       fetchPluginJSON(API + "/auth/login/status")
         .then(function (payload) {
           const status = payload && payload.status;
-          if (status === "success") {
+          if (status === "connected") {
             stopPolling();
             setWaiting(false);
             if (props.onAuthed) props.onAuthed();
@@ -2555,6 +2555,26 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           }
         })
         .catch(function () { /* keep polling; transient host hiccup */ });
+    }
+
+    function retryDisconnect() {
+      setLoginError(null);
+      setWaiting(true);
+      fetchPluginJSON(API + "/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).then(function (payload) {
+        setWaiting(false);
+        if (payload && payload.status === "disconnected") {
+          if (props.onRecovered) props.onRecovered();
+          return;
+        }
+        setLoginError("Secure disconnect is still pending. Index access remains quarantined.");
+      }).catch(function () {
+        setWaiting(false);
+        setLoginError("Secure disconnect is still pending. Retry when the network is available.");
+      });
     }
 
     function start() {
@@ -2588,13 +2608,17 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           dangerouslySetInnerHTML: { __html: INDEX_WORDMARK_SVG },
         }),
         React.createElement("p", { className: "index-dashboard__login-copy" },
-          "index finds the right people for you, before you even think to look."),
+          props.recovery
+            ? "Secure disconnect is pending. Local Index activity is paused while the old credential is denied and removed from Keychain."
+            : "index finds the right people for you, before you even think to look."),
         React.createElement(Button, {
           type: "button",
           className: "index-dashboard__login-btn",
           disabled: waiting,
-          onClick: start,
-        }, waiting ? "waiting for browser…" : "log in with browser"),
+          onClick: props.recovery ? retryDisconnect : start,
+        }, waiting
+          ? (props.recovery ? "retrying secure disconnect…" : "waiting for browser…")
+          : (props.recovery ? "retry secure disconnect" : "log in with browser")),
         manualLink
           ? React.createElement("p", { className: "index-dashboard__login-manual" },
             "No browser opened here — ",
@@ -4102,7 +4126,10 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     function checkAuth() {
       fetchPluginJSON(API + "/auth/status")
         .then(function (payload) {
-          if (payload && payload.needsLogin) {
+          if (payload && payload.revocationPending) {
+            setAuth("recovery");
+            setLoading(false);
+          } else if (payload && payload.needsLogin) {
             setAuth("needsLogin");
             setLoading(false);
           } else {
@@ -4110,9 +4137,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           }
         })
         .catch(function () {
-          // Host fetch failed entirely: fall back to trying the dashboard so a
-          // manual INDEX_API_KEY still works even if /auth/status is unreachable.
-          enterDashboard();
+          // Connector status uncertainty never admits the dashboard.
+          setAuth("needsLogin");
+          setLoading(false);
         });
     }
 
@@ -4122,10 +4149,14 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      }).finally(function () {
+      }).then(function (payload) {
         setSummary(null);
         setNeedsOnboarding(false);
-        setAuth("needsLogin");
+        setAuth(payload && payload.status === "disconnected" ? "needsLogin" : "recovery");
+      }).catch(function () {
+        setSummary(null);
+        setNeedsOnboarding(false);
+        setAuth("recovery");
       });
     }
 
@@ -4375,7 +4406,12 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
 
       auth === "needsLogin"
         ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
-        : (auth === "checking"
+        : (auth === "recovery"
+          ? React.createElement(LoginScreen, {
+            recovery: true,
+            onRecovered: function () { setAuth("needsLogin"); },
+          })
+          : (auth === "checking"
           ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
             LOADING_IMAGE()
               ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
@@ -4395,12 +4431,26 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
                   ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
                   : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
               )
-              : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
+              : React.createElement("div", { className: "index-dashboard__body" }, intentsView))))),
     );
   }
 
-  if (DESKTOP_ENV) DESKTOP_ENV.onComponent(IndexNetworkDashboard);
-  else window.__HERMES_PLUGINS__.register("index-network", IndexNetworkDashboard);
+  if (DESKTOP_ENV) {
+    // The separately installed Desktop copy is gated by register(ctx), which
+    // removes it in restricted mode. Preserve its synchronous component seam.
+    DESKTOP_ENV.onComponent(IndexNetworkDashboard);
+  } else {
+    // Web dashboard discovery is independent of Python register(ctx). Confirm
+    // the separately mounted, full-only backend before activating this host
+    // component. Restricted/unknown modes export no routes, so /mode is
+    // unavailable and the web bundle deliberately registers nothing.
+    fetchPluginJSON(API + "/mode")
+      .then(function (payload) {
+        if (!payload || payload.success !== true || payload.mode !== "full") return;
+        window.__HERMES_PLUGINS__.register("index-network", IndexNetworkDashboard);
+      })
+      .catch(function () { /* Restricted mode or unavailable backend: stay inert. */ });
+  }
 })();
 
 ;

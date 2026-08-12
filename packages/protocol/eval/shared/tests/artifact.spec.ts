@@ -270,7 +270,13 @@ describe("historical quality artifact governance", () => {
     expect(HistoricalQualityExecutionRunSchema.safeParse(artifact.execution.runs[0]).success).toBeTrue();
   });
 
-  it("binds both quality completeness indicators to exact generic repetition coverage and requested-slot math", () => {
+  it("binds execution completeness to exact coverage and reserves verdicts for complete full-corpus selections", () => {
+    const completeSubset = structuredClone(makeHistoricalQualityArtifact());
+    completeSubset.selection = { fullCorpus: false, filters: { case: "historical/case-1" } };
+    completeSubset.measurement.qualityVerdictAvailable = false;
+    const completeTriggerSubset = makeHistoricalQualityArtifact({ emittedSlots: 1, requestedSlots: 1 });
+    completeTriggerSubset.measurement.qualityVerdictAvailable = false;
+
     const uneven = makeHistoricalQualityArtifact({ repetitions: 3 });
     reassignHistoricalQualitySlot(uneven, 2, {
       logicalCaseId: "historical/safe-replacement",
@@ -281,22 +287,24 @@ describe("historical quality artifact governance", () => {
     uneven.completeness.complete = false;
 
     const diagnostics = [
-      { name: "complete", artifact: makeHistoricalQualityArtifact(), expected: true },
-      { name: "partial group", artifact: makeHistoricalQualityArtifact({ repetitions: 3, emittedSlots: 29, requestedSlots: 30 }), expected: false },
-      { name: "ten of eleven emitted", artifact: makeHistoricalQualityArtifact({ requestedSlots: 11 }), expected: false },
-      { name: "zero of eleven emitted", artifact: makeHistoricalQualityArtifact({ emittedSlots: 0, requestedSlots: 11 }), expected: false },
-      { name: "count-preserving uneven replacement", artifact: uneven, expected: false },
+      { name: "complete full corpus", artifact: makeHistoricalQualityArtifact(), complete: true, verdict: true },
+      { name: "complete filtered subset", artifact: completeSubset, complete: true, verdict: false },
+      { name: "complete trigger subset", artifact: completeTriggerSubset, complete: true, verdict: false },
+      { name: "partial group", artifact: makeHistoricalQualityArtifact({ repetitions: 3, emittedSlots: 29, requestedSlots: 30 }), complete: false, verdict: false },
+      { name: "ten of eleven emitted", artifact: makeHistoricalQualityArtifact({ requestedSlots: 11 }), complete: false, verdict: false },
+      { name: "zero of eleven emitted", artifact: makeHistoricalQualityArtifact({ emittedSlots: 0, requestedSlots: 11 }), complete: false, verdict: false },
+      { name: "count-preserving uneven replacement", artifact: uneven, complete: false, verdict: false },
     ];
 
-    for (const { name, artifact, expected } of diagnostics) {
+    for (const { name, artifact, complete, verdict } of diagnostics) {
       expect(parseQuality(artifact), `${name}: matching indicators`).toBeTruthy();
 
       const wrongCompleteness = structuredClone(artifact);
-      wrongCompleteness.completeness.complete = !expected;
+      wrongCompleteness.completeness.complete = !complete;
       expect(() => parseQuality(wrongCompleteness), `${name}: completeness.complete`).toThrow(/completeness\.complete/);
 
       const wrongVerdict = structuredClone(artifact);
-      wrongVerdict.measurement.qualityVerdictAvailable = !expected;
+      wrongVerdict.measurement.qualityVerdictAvailable = !verdict;
       expect(() => parseQuality(wrongVerdict), `${name}: measurement.qualityVerdictAvailable`).toThrow(/quality verdict availability/);
     }
   });

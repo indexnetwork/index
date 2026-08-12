@@ -1,8 +1,8 @@
 """Index Network Hermes dashboard plugin backend.
 
-Mounted at /api/plugins/index-network/ by Hermes dashboard. The routes reuse
+Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
-question-answer writes stay scoped to the configured INDEX_API_KEY principal.
+question-answer writes stay scoped to the connector-authenticated principal.
 
 The dashboard is intent-centric: each intent carries its own pending and
 answered questions (server-scoped per intent, the Mac app's queries) and its
@@ -18,13 +18,17 @@ import importlib.util
 import json
 import os
 import re
-import threading
-import urllib.error
-import urllib.request
+import sys
+import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
+
+_DASHBOARD_DIR = Path(__file__).resolve().parent
+_PLUGIN_ROOT = _DASHBOARD_DIR.parent
+_MODE_PATH = _PLUGIN_ROOT / "_mode.py"
+_TOOLS_PATH = _PLUGIN_ROOT / "tools.py"
 
 try:
     from fastapi import APIRouter, Body, WebSocket, WebSocketDisconnect
@@ -41,30 +45,47 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
     class WebSocketDisconnect(Exception):  # type: ignore
         pass
 
+    class _FallbackRoute:
+        def __init__(self, path: str, method: str):
+            self.path = path
+            self.methods = {method}
+
     class APIRouter:  # type: ignore
-        def get(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def __init__(self):
+            self.routes = []
 
-        def post(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def _route(self, method, path):
+            def decorate(fn):
+                self.routes.append(_FallbackRoute(path, method))
+                return fn
+            return decorate
 
-        def put(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def get(self, path, **_kwargs):
+            return self._route("GET", path)
 
-        def patch(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def post(self, path, **_kwargs):
+            return self._route("POST", path)
 
-        def delete(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def put(self, path, **_kwargs):
+            return self._route("PUT", path)
 
-        def websocket(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def patch(self, path, **_kwargs):
+            return self._route("PATCH", path)
 
+        def delete(self, path, **_kwargs):
+            return self._route("DELETE", path)
+
+        def websocket(self, path, **_kwargs):
+            return self._route("WEBSOCKET", path)
+
+        def include_router(self, included):
+            self.routes.extend(included.routes)
+
+
+# All broad decorators attach to an internal router. The exported router stays
+# empty unless the independently discovered dashboard process authorizes full.
+full_router = APIRouter()
 router = APIRouter()
-
-_DASHBOARD_DIR = Path(__file__).resolve().parent
-_PLUGIN_ROOT = _DASHBOARD_DIR.parent
-_TOOLS_PATH = _PLUGIN_ROOT / "tools.py"
 _INTENT_PAGE_SIZE = 100
 _MAX_INTENT_PAGES = 10
 _QUESTION_LIMIT = 10
@@ -104,7 +125,22 @@ _DESKTOP_ASSETS = {
 }
 
 
-@router.get("/assets/{name}")
+def _load_mode_module():
+    spec = importlib.util.spec_from_file_location("index_network_hermes_dashboard_mode", _MODE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load Index Network mode parser")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@full_router.get("/mode")
+def dashboard_mode() -> dict[str, Any]:
+    """Confirm that the independently mounted dashboard runtime is full-only."""
+    return {"success": True, "mode": "full"}
+
+
+@full_router.get("/assets/{name}")
 async def desktop_asset(name: str) -> dict[str, Any]:
     mime = _DESKTOP_ASSETS.get(name)
     if mime is None:
@@ -121,11 +157,23 @@ def _load_module(name: str, path: Path):
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load module {name} from {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
-tools = _load_module("index_network_hermes_dashboard_tools", _TOOLS_PATH)
+def _load_tools_module():
+    package_name = "index_network_hermes_dashboard_runtime"
+    package = sys.modules.get(package_name)
+    if package is None:
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(_PLUGIN_ROOT)]
+        package.__package__ = package_name
+        sys.modules[package_name] = package
+    return _load_module(f"{package_name}.tools", _TOOLS_PATH)
+
+
+tools = _load_tools_module()
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 
 
@@ -243,14 +291,7 @@ def _call_questions_by_intent(
 
 
 def _web_url() -> str:
-    """Resolve the Index web app origin for outbound chat/profile/invite links.
-
-    Prefer explicit `INDEX_WEB_URL` (env or `~/.hermes/.env`), then the same
-    origin used for `/cli-auth` / deep links (`tools._app_base_url`).
-    """
-    raw = tools._hermes_env_get("INDEX_WEB_URL")
-    if raw:
-        return raw.rstrip("/")
+    """Return the credential-free public Index origin for outbound links."""
     return tools._app_base_url()
 
 
@@ -391,34 +432,11 @@ def _avatar_filename(content_type: str) -> str:
 
 
 def _api_multipart(path: str, field: str, filename: str, content: bytes, content_type: str) -> dict[str, Any]:
-    """POST a single-file multipart/form-data body to the Index API with the plugin key."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": False, "error": "INDEX_API_KEY is required."}
-
-    boundary = "----IndexHermesBoundary" + base64.urlsafe_b64encode(os.urandom(12)).decode("ascii").rstrip("=")
-    preamble = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
-        f"Content-Type: {content_type}\r\n\r\n"
-    ).encode("utf-8")
-    body = preamble + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
-
-    headers = {k: v for k, v in tools._headers(api_key).items() if k.lower() != "content-type"}
-    headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
-
-    base_url = tools._api_url().rstrip("/")
-    request_path = path if path.startswith("/") else f"/{path}"
-    request = urllib.request.Request(f"{base_url}{request_path}", data=body, headers=headers, method="POST")
+    """Upload through the connector's bounded start/chunk/finish protocol."""
     try:
-        with urllib.request.urlopen(request, timeout=tools._timeout_seconds()) as response:
-            parsed = tools._parse_api_response(response.read())
-            return parsed if isinstance(parsed, dict) else {"success": True, "data": parsed}
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:2_000]
-        return {"success": False, "error": f"Avatar upload failed with status {exc.code}.", "status": exc.code, "body": body_text}
-    except urllib.error.URLError as exc:
-        return {"success": False, "error": f"Avatar upload request failed: {exc.reason}"}
+        return tools.get_transport().upload(path, field, filename, content, content_type)
+    except tools.TransportError as exc:
+        return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Avatar upload could not be processed: {exc}"}
 
@@ -588,8 +606,7 @@ def _avatar_url(value: Any) -> str:
         return ""
     if raw.startswith("http://") or raw.startswith("https://"):
         return raw
-    base = tools._api_url().rstrip("/")
-    origin = base[:-4] if base.endswith("/api") else base
+    origin = "https://protocol.index.network"
     path = raw.lstrip("/")
     if not path.startswith("api/storage/"):
         path = "api/storage/" + path
@@ -917,7 +934,7 @@ def _bootstrap_payload() -> dict[str, Any]:
     return {
         "success": True,
         "webUrl": _web_url(),
-        "apiUrl": tools._api_url(),
+        "apiUrl": None,
         "currentUserId": current_user_id or None,
         "onboarding": onboarding,
         "intents": intents,
@@ -1109,28 +1126,27 @@ def _build_dashboard(
     }
 
 
-@router.get("/auth/status")
+@full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
-    """Report whether the plugin holds a working Index credential.
-
-    Missing key or an auth failure (401/403) from `GET /auth/me` means the
-    dashboard should show the browser-login gate; any other error keeps the
-    (present) key and lets the dashboard surface its own section errors.
-    """
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": True, "authenticated": False, "needsLogin": True}
-    payload = tools._api_request("GET", "/auth/me")
-    if payload.get("success") is False:
-        if payload.get("status") in (401, 403):
-            return {"success": True, "authenticated": False, "needsLogin": True}
-        return {"success": True, "authenticated": True, "needsLogin": False, "error": payload.get("error")}
-    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    """Report connector health without reading or receiving a credential."""
+    try:
+        status = tools.get_transport().status()
+    except tools.TransportError as exc:
+        payload = exc.as_payload()
+        payload.update({"authenticated": False, "needsLogin": True})
+        return payload
+    connected = status.get("connected") is True and not status.get("reconnectRequired")
     return {
         "success": True,
-        "authenticated": True,
-        "needsLogin": False,
-        "user": {"id": _text(user.get("id")) or None, "email": _text(user.get("email")) or None},
+        "authenticated": connected,
+        "needsLogin": not connected,
+        "accountLabel": status.get("accountLabel"),
+        "installationId": status.get("installationId"),
+        "expiresAt": status.get("expiresAt"),
+        "health": status.get("health"),
+        "reconnectSoon": status.get("reconnectSoon") is True,
+        "reconnectRequired": status.get("reconnectRequired") is True,
+        "revocationPending": status.get("revocationPending") is True,
     }
 
 
@@ -1143,60 +1159,51 @@ def _login_app_base_url() -> str:
     """
     return tools._app_base_url()
 
-
-@router.post("/auth/login/start")
+@full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
-
-    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
-    a headless/remote agent host where opening a browser is not possible.
-    """
+    """Migrate plaintext first, then let the connector open browser consent."""
     try:
-        auth_url = auth_login.start_login(_login_app_base_url())
+        result = auth_login.start_login(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Could not start login: {exc}"}
-    opener = tools._url_opener_command(auth_url)
-    open_error = tools._open_url(opener) if opener else "No URL opener is available on this host."
-    return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
+    return {"success": True, "started": result.get("status") == "pending", **result}
 
 
-@router.get("/auth/login/status")
+@full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the pending login; on success the key is already persisted server-side."""
-    result = auth_login.poll_status()
-    payload: dict[str, Any] = {"success": True, "status": result.get("status")}
-    if result.get("error"):
-        payload["error"] = result.get("error")
-    return payload
+    """Poll the connector-owned browser authorization attempt."""
+    try:
+        result = auth_login.poll_status(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
+    return {"success": result.get("status") != "failed", **result}
 
 
-@router.post("/auth/logout")
+@full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
-    if api_key and key_id:
-        try:
-            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
-        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
-            pass
-    auth_login.clear_api_key()
-    return {"success": True, "needsLogin": True}
+    """Revoke through connector recovery and delete only after confirmation."""
+    try:
+        result = auth_login.disconnect(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
+    return {"success": result.get("status") == "disconnected", "needsLogin": True, **result}
 
 
-@router.get("/bootstrap")
+@full_router.get("/bootstrap")
 def bootstrap() -> dict[str, Any]:
     """Fast home boot: auth metadata + intents list (web DiscoverHome parity)."""
     return _bootstrap_payload()
 
 
-@router.get("/summary")
+@full_router.get("/summary")
 def summary() -> dict[str, Any]:
     """Deprecated alias for `/bootstrap` (kept for older clients)."""
     return _bootstrap_payload()
 
 
-@router.get("/intents/{intent_id}/questions")
+@full_router.get("/intents/{intent_id}/questions")
 def intent_questions(intent_id: str, status: str = "") -> dict[str, Any]:
     """Pending and/or answered questions for one intent (web intent page parity).
 
@@ -1226,7 +1233,7 @@ def intent_questions(intent_id: str, status: str = "") -> dict[str, Any]:
     return {"success": True, "questions": records}
 
 
-@router.get("/intents/{intent_id}/radar")
+@full_router.get("/intents/{intent_id}/radar")
 def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
     """Intent-scoped radar cards via GET /opportunities/radar (web intent page parity)."""
     intent_id = _text(intent_id)
@@ -1250,7 +1257,7 @@ def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
     return {"success": True, "items": items, "meta": meta}
 
 
-@router.get("/networks/home")
+@full_router.get("/networks/home")
 def networks_home() -> dict[str, Any]:
     """Joined networks + public discover list (lazy Networks column)."""
     me = _fetch_me()
@@ -1266,7 +1273,7 @@ def networks_home() -> dict[str, Any]:
     }
 
 
-@router.post("/questions/{question_id}/answer")
+@full_router.post("/questions/{question_id}/answer")
 def answer_question(question_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Submit an answer for a pending Index question owned by this API-key principal."""
     answer, validation_error = _sanitize_answer_payload(body)
@@ -1278,7 +1285,7 @@ def answer_question(question_id: str, body: dict[str, Any] | None = Body(default
     return {"success": True}
 
 
-@router.post("/questions/{question_id}/dismiss")
+@full_router.post("/questions/{question_id}/dismiss")
 def dismiss_question(question_id: str) -> dict[str, Any]:
     """Skip (dismiss) a pending Index question owned by this API-key principal."""
     payload = _call_dismiss_question(question_id)
@@ -1287,7 +1294,7 @@ def dismiss_question(question_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.post("/networks/{network_id}/join")
+@full_router.post("/networks/{network_id}/join")
 def join_network(network_id: str) -> dict[str, Any]:
     """Self-join an open (joinPolicy 'anyone') community via REST `POST /networks/:id/join`."""
     network_id = _text(network_id)
@@ -1299,7 +1306,7 @@ def join_network(network_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.post("/networks/{network_id}/leave")
+@full_router.post("/networks/{network_id}/leave")
 def leave_network(network_id: str) -> dict[str, Any]:
     """Leave a network — REST `POST /networks/:id/leave`."""
     network_id = _text(network_id)
@@ -1311,7 +1318,7 @@ def leave_network(network_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.get("/networks/{network_id}/overview")
+@full_router.get("/networks/{network_id}/overview")
 def network_overview(network_id: str) -> dict[str, Any]:
     """Caller overview for a network — REST `GET /networks/:id/overview`."""
     network_id = _text(network_id)
@@ -1327,7 +1334,7 @@ def network_overview(network_id: str) -> dict[str, Any]:
     }
 
 
-@router.put("/networks/{network_id}")
+@full_router.put("/networks/{network_id}")
 def update_network(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Update network settings — REST `PUT /networks/:id`."""
     network_id = _text(network_id)
@@ -1368,7 +1375,7 @@ def update_network(network_id: str, body: dict[str, Any] | None = Body(default=N
     return out
 
 
-@router.delete("/networks/{network_id}")
+@full_router.delete("/networks/{network_id}")
 def delete_network(network_id: str) -> dict[str, Any]:
     """Delete a network — REST `DELETE /networks/:id`."""
     network_id = _text(network_id)
@@ -1380,7 +1387,7 @@ def delete_network(network_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.get("/networks/{network_id}/members")
+@full_router.get("/networks/{network_id}/members")
 def list_network_members(network_id: str) -> dict[str, Any]:
     """List members — REST `GET /networks/:id/members`."""
     network_id = _text(network_id)
@@ -1396,7 +1403,7 @@ def list_network_members(network_id: str) -> dict[str, Any]:
     }
 
 
-@router.post("/networks/{network_id}/members")
+@full_router.post("/networks/{network_id}/members")
 def add_network_member(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Add a member — REST `POST /networks/:id/members`."""
     network_id = _text(network_id)
@@ -1423,7 +1430,7 @@ def add_network_member(network_id: str, body: dict[str, Any] | None = Body(defau
     }
 
 
-@router.patch("/networks/{network_id}/members/{member_id}")
+@full_router.patch("/networks/{network_id}/members/{member_id}")
 def update_network_member(
     network_id: str, member_id: str, body: dict[str, Any] | None = Body(default=None)
 ) -> dict[str, Any]:
@@ -1450,7 +1457,7 @@ def update_network_member(
     }
 
 
-@router.delete("/networks/{network_id}/members/{member_id}")
+@full_router.delete("/networks/{network_id}/members/{member_id}")
 def remove_network_member(network_id: str, member_id: str) -> dict[str, Any]:
     """Remove a member — REST `DELETE /networks/:id/members/:memberId`."""
     network_id = _text(network_id)
@@ -1466,7 +1473,7 @@ def remove_network_member(network_id: str, member_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.post("/networks/{network_id}/members/invite")
+@full_router.post("/networks/{network_id}/members/invite")
 def invite_network_member(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Invite by email — REST `POST /networks/:id/members/invite`."""
     network_id = _text(network_id)
@@ -1492,7 +1499,7 @@ def invite_network_member(network_id: str, body: dict[str, Any] | None = Body(de
     return out
 
 
-@router.get("/networks/search-users")
+@full_router.get("/networks/search-users")
 def search_network_users(q: str = "", networkId: str = "") -> dict[str, Any]:
     """Search users to add — REST `GET /networks/search-users`."""
     query = _text(q)
@@ -1512,7 +1519,7 @@ def search_network_users(q: str = "", networkId: str = "") -> dict[str, Any]:
     }
 
 
-@router.patch("/networks/{network_id}/permissions")
+@full_router.patch("/networks/{network_id}/permissions")
 def update_network_permissions(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Owner visibility toggle — REST `PATCH /networks/:id/permissions` (web Access tab)."""
     network_id = _text(network_id)
@@ -1544,7 +1551,7 @@ def update_network_permissions(network_id: str, body: dict[str, Any] | None = Bo
     return out
 
 
-@router.patch("/networks/{network_id}/regenerate-invitation")
+@full_router.patch("/networks/{network_id}/regenerate-invitation")
 def regenerate_network_invitation(network_id: str) -> dict[str, Any]:
     """Rotate the owner share link — REST `PATCH /networks/:id/regenerate-invitation`."""
     network_id = _text(network_id)
@@ -1618,7 +1625,7 @@ def _normalize_network_request(request: Any) -> dict[str, Any]:
     return item
 
 
-@router.get("/network-requests")
+@full_router.get("/network-requests")
 def list_network_requests() -> dict[str, Any]:
     """The caller's own early-access network requests, plus the staff `canReview` flag."""
     payload = tools._api_request("GET", "/network-requests")
@@ -1633,7 +1640,7 @@ def list_network_requests() -> dict[str, Any]:
     }
 
 
-@router.post("/network-requests")
+@full_router.post("/network-requests")
 def create_network_request(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Submit a reviewed "create a network" request via REST `POST /network-requests`."""
     request_body, validation_error = _sanitize_network_request_input(body)
@@ -1645,7 +1652,7 @@ def create_network_request(body: dict[str, Any] | None = Body(default=None)) -> 
     return {"success": True, "request": _normalize_network_request(payload.get("request"))}
 
 
-@router.patch("/network-requests/{request_id}")
+@full_router.patch("/network-requests/{request_id}")
 def update_network_request(
     request_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1663,7 +1670,7 @@ def update_network_request(
     return {"success": True, "request": _normalize_network_request(payload.get("request"))}
 
 
-@router.delete("/network-requests/{request_id}")
+@full_router.delete("/network-requests/{request_id}")
 def dismiss_network_request(request_id: str) -> dict[str, Any]:
     """Dismiss (withdraw) the caller's own request via REST `DELETE /network-requests/:id`."""
     request_id = _text(request_id)
@@ -1675,7 +1682,7 @@ def dismiss_network_request(request_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.post("/opportunities/{opportunity_id}/accept")
+@full_router.post("/opportunities/{opportunity_id}/accept")
 def accept_opportunity(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1709,7 +1716,7 @@ def accept_opportunity(
     return {"success": True, "status": "accepted"}
 
 
-@router.post("/opportunities/{opportunity_id}/skip")
+@full_router.post("/opportunities/{opportunity_id}/skip")
 def skip_opportunity(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1725,7 +1732,7 @@ def skip_opportunity(
     return {"success": True, "status": "rejected"}
 
 
-@router.post("/opportunities/{opportunity_id}/start-chat")
+@full_router.post("/opportunities/{opportunity_id}/start-chat")
 def start_chat(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1755,7 +1762,7 @@ def start_chat(
 _INTENT_STATUSES = {"ACTIVE", "PAUSED"}
 
 
-@router.post("/intents/{intent_id}/status")
+@full_router.post("/intents/{intent_id}/status")
 def set_intent_status(
     intent_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1773,7 +1780,7 @@ def set_intent_status(
     return {"success": True, "status": status}
 
 
-@router.get("/profile")
+@full_router.get("/profile")
 def profile() -> dict[str, Any]:
     """Return the current user's profile.
 
@@ -1815,7 +1822,7 @@ def profile() -> dict[str, Any]:
     }
 
 
-@router.get("/profile/{user_id}")
+@full_router.get("/profile/{user_id}")
 def public_profile(user_id: str) -> dict[str, Any]:
     """Return another user's public, read-only profile (web `/u/:id` equivalent).
 
@@ -1851,7 +1858,7 @@ def public_profile(user_id: str) -> dict[str, Any]:
     return {"success": True, "profile": profile_obj, "readOnly": True}
 
 
-@router.patch("/profile")
+@full_router.patch("/profile")
 def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Persist a profile update via the API-key-capable `PATCH /auth/profile/update`.
 
@@ -1873,7 +1880,7 @@ def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str
     return {"success": True, "applied": update}
 
 
-@router.post("/profile/avatar")
+@full_router.post("/profile/avatar")
 def upload_avatar(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Upload an avatar image (data URL) to `POST /storage/avatars`, returning its public URL.
 
@@ -1894,7 +1901,7 @@ def upload_avatar(body: dict[str, Any] | None = Body(default=None)) -> dict[str,
     return {"success": True, "avatarUrl": _avatar_url(avatar_url)}
 
 
-@router.post("/network-images")
+@full_router.post("/network-images")
 def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Upload a network picture (data URL) to `POST /storage/index-images`.
 
@@ -1914,7 +1921,7 @@ def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> di
     return {"success": True, "imageUrl": _avatar_url(image_url)}
 
 
-@router.post("/profile/intro")
+@full_router.post("/profile/intro")
 def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Generate an AI intro via the API-key-capable `POST /enrichment/sync`.
 
@@ -1928,7 +1935,7 @@ def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[st
     return {"success": True, "intro": intro}
 
 
-@router.post("/onboarding/enrich")
+@full_router.post("/onboarding/enrich")
 def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Run Mac-parity sync public research (`POST /enrichment/enrich`) for first-run review."""
     payload = tools._api_request("POST", "/enrichment/enrich")
@@ -1953,7 +1960,7 @@ def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict
     }
 
 
-@router.post("/onboarding/confirm")
+@full_router.post("/onboarding/confirm")
 def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Confirm the first-run profile review (Mac settings `enrich` path).
 
@@ -1995,7 +2002,7 @@ def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict
     return {"success": True, "onboarding": _onboarding_gate(), "applied": update}
 
 
-@router.patch("/intents/{intent_id}/archive")
+@full_router.patch("/intents/{intent_id}/archive")
 def archive_intent(intent_id: str) -> dict[str, Any]:
     """Archive one of the caller's intents via `PATCH /intents/:id/archive`."""
     intent_id = _text(intent_id)
@@ -2014,8 +2021,6 @@ def archive_intent(intent_id: str) -> dict[str, Any]:
 # dashboard-safe counterpart summary; messages are passed through mostly raw so
 # the client normalizes both REST and SSE payloads through one code path.
 # ─────────────────────────────────────────────────────────────────────────────
-
-_SSE_READ_TIMEOUT = 60.0
 
 
 def parse_sse_data_line(line: bytes) -> dict[str, Any] | None:
@@ -2041,52 +2046,6 @@ def parse_sse_data_line(line: bytes) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _sse_request(path: str) -> urllib.request.Request:
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("INDEX_API_KEY is required.")
-    headers = dict(tools._headers(api_key))
-    headers["Accept"] = "text/event-stream"
-    base_url = tools._api_url().rstrip("/")
-    return urllib.request.Request(f"{base_url}{path}", headers=headers, method="GET")
-
-
-def _close_upstream_response(response: Any) -> None:
-    try:
-        response.close()
-    except Exception:  # noqa: BLE001 - cleanup is best-effort.
-        pass
-
-
-class _UpstreamOpenState:
-    """Transfer response cleanup ownership safely across to_thread cancellation."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._abandoned = False
-        self._response: Any | None = None
-
-    def open(self, request: urllib.request.Request) -> Any | None:
-        try:
-            response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
-        except urllib.error.HTTPError as exc:
-            _close_upstream_response(exc)
-            raise
-        with self._lock:
-            if not self._abandoned:
-                self._response = response
-                return response
-        # The awaiting coroutine was cancelled before it could receive the
-        # result. This worker owns the otherwise-unreachable response cleanup.
-        _close_upstream_response(response)
-        return None
-
-    def abandon(self) -> Any | None:
-        with self._lock:
-            self._abandoned = True
-            return self._response
-
-
 async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
     """Return when the Hermes client disconnects, independent of relay writes."""
     try:
@@ -2099,20 +2058,22 @@ async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
 
 
 async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
-    """Relay dictionary-valued events from an authenticated Index SSE stream."""
+    """Relay connector-owned SSE frames to a dashboard WebSocket."""
     await websocket.accept()
-    open_state = _UpstreamOpenState()
+    iterator = tools.get_transport().stream_sse(path)
     relay_task: asyncio.Task[None] | None = None
     disconnect_task: asyncio.Task[None] | None = None
 
+    def next_frame() -> bytes | None:
+        try:
+            return next(iterator)
+        except StopIteration:
+            return None
+
     async def relay_upstream() -> None:
-        request = _sse_request(path)
-        response = await asyncio.to_thread(open_state.open, request)
-        if response is None:
-            return
         while True:
-            line = await asyncio.to_thread(response.readline)
-            if not line:
+            line = await asyncio.to_thread(next_frame)
+            if line is None:
                 return
             event = parse_sse_data_line(line)
             if event is not None:
@@ -2124,15 +2085,14 @@ async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
         done, _pending = await asyncio.wait(
             {relay_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED
         )
-        if disconnect_task in done:
-            return
-        await relay_task
+        if relay_task in done:
+            await relay_task
     except WebSocketDisconnect:
         return
-    except Exception as exc:  # noqa: BLE001 - terminate a failed relay without escaping the route.
+    except Exception as exc:  # noqa: BLE001
         try:
             await websocket.send_json({"type": "error", "error": str(exc)})
-        except Exception:  # noqa: BLE001 - the WebSocket may already be disconnected.
+        except Exception:  # noqa: BLE001
             pass
     finally:
         for task in (relay_task, disconnect_task):
@@ -2142,10 +2102,9 @@ async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
             *(task for task in (relay_task, disconnect_task) if task is not None),
             return_exceptions=True,
         )
-        opened_response = open_state.abandon()
-        if opened_response is not None:
-            await asyncio.to_thread(_close_upstream_response, opened_response)
-
+        close = getattr(iterator, "close", None)
+        if callable(close):
+            await asyncio.to_thread(close)
 
 def _message_text(parts: Any) -> str:
     # Message text lives either in a data part (data.message /
@@ -2221,7 +2180,7 @@ def _normalize_conversation(conversation: dict[str, Any], current_user_id: str) 
     }
 
 
-@router.get("/conversations")
+@full_router.get("/conversations")
 def list_conversations() -> dict[str, Any]:
     """List the caller's conversations (participant-gated) as counterpart summaries."""
     current_user_id = _resolve_user_id()
@@ -2238,7 +2197,7 @@ def list_conversations() -> dict[str, Any]:
     return {"success": True, "conversations": conversations, "currentUserId": current_user_id}
 
 
-@router.post("/conversations/dm")
+@full_router.post("/conversations/dm")
 def create_dm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Get or create a direct-message conversation with a peer user."""
     peer_user_id = _text(body.get("peerUserId")) if isinstance(body, dict) else ""
@@ -2252,7 +2211,7 @@ def create_dm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any
     return {"success": True, "conversation": _normalize_conversation(conversation, current_user_id)}
 
 
-@router.get("/conversations/{conversation_id}/messages")
+@full_router.get("/conversations/{conversation_id}/messages")
 def list_messages(conversation_id: str) -> dict[str, Any]:
     """Return a conversation's messages (raw parts) plus the caller's userId for normalization."""
     conversation_id = _text(conversation_id)
@@ -2266,7 +2225,7 @@ def list_messages(conversation_id: str) -> dict[str, Any]:
     return {"success": True, "messages": messages, "currentUserId": current_user_id}
 
 
-@router.post("/conversations/{conversation_id}/messages")
+@full_router.post("/conversations/{conversation_id}/messages")
 def send_message(conversation_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Send a text message into a conversation."""
     conversation_id = _text(conversation_id)
@@ -2287,35 +2246,15 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
 
 
 def _conversation_stream():
-    """Relay the upstream conversations SSE stream (Redis pub/sub) to the dashboard tab."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
-        return
-    headers = dict(tools._headers(api_key))
-    headers["Accept"] = "text/event-stream"
-    base_url = tools._api_url().rstrip("/")
-    request = urllib.request.Request(f"{base_url}/conversations/stream", headers=headers, method="GET")
+    """Relay connector-owned, bounded SSE polling to the dashboard tab."""
     try:
-        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        yield from tools.get_transport().stream_sse("/conversations/stream")
+    except Exception as exc:  # noqa: BLE001 - surface a sanitized stream frame.
         message = json.dumps({"type": "error", "error": str(exc)})
         yield f"data: {message}\n\n".encode("utf-8")
-        return
-    try:
-        for line in response:
-            if line:
-                yield line
-    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
-        return
-    finally:
-        try:
-            response.close()
-        except Exception:  # noqa: BLE001
-            pass
 
 
-@router.get("/conversations/stream")
+@full_router.get("/conversations/stream")
 def conversations_stream():
     """SSE proxy for realtime conversation events (new messages)."""
     if StreamingResponse is None:
@@ -2327,42 +2266,22 @@ def conversations_stream():
     )
 
 
-@router.websocket("/conversations/socket")
+@full_router.websocket("/conversations/socket")
 async def conversations_socket(websocket: WebSocket) -> None:
     """Authenticated Hermes WebSocket relay for realtime conversation events."""
     await _relay_sse_to_websocket(websocket, "/conversations/stream")
 
 
 def _notification_stream():
-    """Relay the upstream notifications SSE stream (Redis pub/sub) to Hermes clients."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
-        return
-    headers = dict(tools._headers(api_key))
-    headers["Accept"] = "text/event-stream"
-    base_url = tools._api_url().rstrip("/")
-    request = urllib.request.Request(f"{base_url}/notifications/stream", headers=headers, method="GET")
+    """Relay connector-owned notification SSE to Hermes clients."""
     try:
-        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        yield from tools.get_transport().stream_sse("/notifications/stream")
+    except Exception as exc:  # noqa: BLE001
         message = json.dumps({"type": "error", "error": str(exc)})
         yield f"data: {message}\n\n".encode("utf-8")
-        return
-    try:
-        for line in response:
-            if line:
-                yield line
-    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
-        return
-    finally:
-        try:
-            response.close()
-        except Exception:  # noqa: BLE001
-            pass
 
 
-@router.get("/notifications/stream")
+@full_router.get("/notifications/stream")
 def notifications_stream():
     """SSE proxy for realtime notification events (questions, opportunities)."""
     if StreamingResponse is None:
@@ -2374,42 +2293,27 @@ def notifications_stream():
     )
 
 
-@router.websocket("/notifications/socket")
+@full_router.websocket("/notifications/socket")
 async def notifications_socket(websocket: WebSocket) -> None:
     """Authenticated Hermes WebSocket relay for realtime notification events."""
     await _relay_sse_to_websocket(websocket, "/notifications/stream")
 
 
 def _notification_snapshot_request() -> Any:
-    """Perform the blocking snapshot GET while preserving its JSON boundary."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": False, "error": "INDEX_API_KEY is required."}
-    base_url = tools._api_url().rstrip("/")
-    request = urllib.request.Request(
-        f"{base_url}/notifications/snapshot",
-        headers=tools._headers(api_key),
-        method="GET",
-    )
-    response: Any | None = None
-    try:
-        try:
-            response = urllib.request.urlopen(request, timeout=tools._timeout_seconds())
-        except urllib.error.HTTPError as exc:
-            # HTTPError is also the upstream response. Parse its body directly
-            # so the plugin does not replace the API's error payload.
-            response = exc
-        return tools._parse_api_response(response.read())
-    except urllib.error.URLError as exc:
-        return {"success": False, "error": f"Notification snapshot request failed: {exc.reason}"}
-    except Exception as exc:  # noqa: BLE001 - plugin routes return errors rather than raising.
-        return {"success": False, "error": f"Notification snapshot response could not be processed: {exc}"}
-    finally:
-        if response is not None:
-            _close_upstream_response(response)
+    """Fetch persisted notifications through the credential-free transport."""
+    return tools.get_transport().request_rest("GET", "/notifications/snapshot")
 
 
-@router.get("/notifications/snapshot")
+@full_router.get("/notifications/snapshot")
 async def notifications_snapshot() -> Any:
     """Proxy persisted actionable notifications without rewriting upstream JSON."""
     return await asyncio.to_thread(_notification_snapshot_request)
+
+
+try:
+    _dashboard_runtime_mode = _load_mode_module().resolve_plugin_mode()
+except Exception:  # noqa: BLE001 - parser/load failures must not mount broad routes.
+    _dashboard_runtime_mode = "negotiator"
+
+if _dashboard_runtime_mode == "full":
+    router.include_router(full_router)

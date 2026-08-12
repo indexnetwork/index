@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
 import { AB_ALLOWED_EVIDENCE, abConfigDeltas, abSlotCaseId, buildAbSlotScoreInput, invokeAbDiscoveryGraph, parseAbChildArgs, selectAbSideSlots } from '../discovery.main';
 import { buildAbPlan, type AbSide, type AbSlot } from '../discovery.plan';
+import { runDiscoveryBootstrap, type DiscoveryBootstrapDependencies } from '../discovery';
 
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
 
@@ -92,6 +93,58 @@ describe('selectAbSideSlots', () => {
       { matrixCase: testCase('c1'), side: { id: 'a', config: { DISCOVERY_ALLOWED_TYPES: 'intent' } }, repetition: 1 },
     ];
     expect(selectAbSideSlots('a', equivalent).slots).toHaveLength(2);
+  });
+});
+
+describe('discovery bootstrap child compatibility', () => {
+  it('hands historical child argv through opaquely without touching the legacy gate or runtime', async () => {
+    const args = [
+      '--historical-quality-child', '--run-id', `hq-run-${'1'.repeat(32)}`,
+      '--slot-id', `hq-slot-${'2'.repeat(64)}`, '--configuration-id', 'a',
+      '--configuration-fingerprint', 'a'.repeat(64),
+      '--child-environment-fingerprint', 'b'.repeat(64),
+      '--child-resolved-configuration-fingerprint', 'c'.repeat(64), '--child-output', '/tmp/output.json',
+    ];
+    const environment = { SENTINEL: 'child-environment' };
+    const seen: unknown[] = [];
+    const dependencies: DiscoveryBootstrapDependencies = {
+      assertConfirmation: () => { throw new Error('legacy gate must not run'); },
+      parseManifest: () => { throw new Error('legacy manifest must not parse'); },
+      attestTargets: async () => { throw new Error('legacy attestation must not run'); },
+      importRuntime: async () => { throw new Error('legacy runtime must not load'); },
+      importQualityChildRuntime: async () => ({
+        runHistoricalQualityChild: async (receivedArgs, receivedEnvironment) => {
+          seen.push(receivedArgs, receivedEnvironment);
+        },
+      }),
+    };
+
+    await expect(runDiscoveryBootstrap(args, environment, { log: () => {}, error: () => {} }, dependencies))
+      .resolves.toBeUndefined();
+    expect(seen).toEqual([args, environment]);
+  });
+
+  it('preserves the existing legacy child argv path when the quality marker is absent', async () => {
+    const args = ['--side', 'a', '--child-output', '/tmp/legacy.json'];
+    const seen: string[][] = [];
+    const calls: string[] = [];
+    const dependencies: DiscoveryBootstrapDependencies = {
+      assertConfirmation: () => { calls.push('gate'); },
+      parseManifest: () => ({
+        projectId: 'project', baseBranchId: 'base',
+        targets: [
+          { sideId: 'a', branchId: 'a', endpointId: 'ea', databaseUrl: 'postgres://u:p@a.neon.tech/protocol_eval' },
+          { sideId: 'b', branchId: 'b', endpointId: 'eb', databaseUrl: 'postgres://u:p@b.neon.tech/protocol_eval' },
+        ],
+      }),
+      attestTargets: async () => { calls.push('attest'); },
+      importRuntime: async () => ({ main: async (received) => { seen.push([...received]); } }),
+    };
+    const env = {};
+    await runDiscoveryBootstrap(args, env, { log: () => {}, error: () => {} }, dependencies);
+    expect(calls).toEqual(['gate', 'attest']);
+    expect(seen).toEqual([args]);
+    expect(env).toMatchObject({ DATABASE_URL: 'postgres://u:p@a.neon.tech/protocol_eval' });
   });
 });
 

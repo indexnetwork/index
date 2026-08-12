@@ -1,21 +1,24 @@
-import Cocoa
-import WebKit
+import Foundation
 import Network
-import Security
 
-/// Minimal loopback HTTP listener that mirrors the CLI browser-login callback:
-/// it binds an ephemeral port on 127.0.0.1, validates the one-time state, and
-/// captures `api_key` + `key_id` from a single `GET /callback` request.
+/// Single-use loopback callback. It admits only request_id/code/state; no
+/// credential field is parsed, retained, reflected, or returned by the browser.
 final class LoopbackAuthServer {
     private let expectedState: String
-    private let onResult: (Result<(apiKey: String, keyId: String), Error>) -> Void
+    private var expectedRequestId: String?
+    private let onResult: (Result<(requestId: String, code: String, state: String), Error>) -> Void
     private var listener: NWListener?
     private var timeout: DispatchWorkItem?
     private var finished = false
 
-    init(state: String, onResult: @escaping (Result<(apiKey: String, keyId: String), Error>) -> Void) {
+    init(state: String, onResult: @escaping (Result<(requestId: String, code: String, state: String), Error>) -> Void) {
         self.expectedState = state
         self.onResult = onResult
+    }
+
+    func bind(requestId: String) {
+        guard !finished, UUID(uuidString: requestId) != nil else { return }
+        expectedRequestId = requestId.lowercased()
     }
 
     /// Start listening and return the assigned loopback port.
@@ -60,7 +63,7 @@ final class LoopbackAuthServer {
         listener = nil
     }
 
-    private func finish(_ result: Result<(apiKey: String, keyId: String), Error>) {
+    private func finish(_ result: Result<(requestId: String, code: String, state: String), Error>) {
         if finished { return }
         finished = true
         stop()
@@ -84,35 +87,33 @@ final class LoopbackAuthServer {
     }
 
     private func handle(requestText: String, conn: NWConnection) {
-        // First line: "GET /callback?…&api_key=…&key_id=…&state=… HTTP/1.1"
         guard let firstLine = requestText.split(separator: "\r\n").first,
+              firstLine.hasPrefix("GET "),
               let path = firstLine.split(separator: " ").dropFirst().first,
               let comps = URLComponents(string: "http://127.0.0.1\(path)"),
-              comps.path == "/callback"
-        else {
+              comps.path == "/callback", comps.fragment == nil,
+              let expectedRequestId else {
             respond(conn, status: "404 Not Found", title: "Not found", message: "Unexpected request.")
             return
         }
-
         let items = comps.queryItems ?? []
+        let names = items.map(\.name)
+        guard items.count == 3, Set(names) == ["request_id", "code", "state"],
+              names.allSatisfy({ name in names.filter { $0 == name }.count == 1 }) else {
+            respond(conn, status: "400 Bad Request", title: "Authorization failed", message: "Invalid callback.")
+            finish(.failure(AuthError.invalidCallback)); return
+        }
         func q(_ name: String) -> String? { items.first { $0.name == name }?.value }
-
-        guard q("state") == expectedState else {
+        guard q("state") == expectedState,
+              q("request_id")?.lowercased() == expectedRequestId,
+              let code = q("code"), !code.isEmpty, code.count <= 256 else {
             respond(conn, status: "400 Bad Request", title: "Authorization failed",
-                    message: "Invalid login state. Return to index and try again.")
-            finish(.failure(AuthError.badState))
-            return
+                    message: "Invalid login state. Return to Index and try again.")
+            finish(.failure(AuthError.invalidCallback)); return
         }
-
-        if let apiKey = q("api_key"), let keyId = q("key_id"), !apiKey.isEmpty, !keyId.isEmpty {
-            respond(conn, status: "200 OK", title: "Authentication complete",
-                    message: "You may now close this window", ok: true)
-            finish(.success((apiKey: apiKey, keyId: keyId)))
-        } else {
-            respond(conn, status: "400 Bad Request", title: "Authorization failed",
-                    message: "Incomplete credentials received. Please try again.")
-            finish(.failure(AuthError.missingCredential))
-        }
+        respond(conn, status: "200 OK", title: "Authentication complete",
+                message: "You may now close this window", ok: true)
+        finish(.success((requestId: expectedRequestId, code: code, state: expectedState)))
     }
 
     /// The web frontend's index-wordmark.svg, inlined so the page renders the
@@ -169,5 +170,5 @@ final class LoopbackAuthServer {
         conn.send(content: out, completion: .contentProcessed { _ in conn.cancel() })
     }
 
-    enum AuthError: Error { case noPort, timedOut, badState, missingCredential }
+    enum AuthError: Error { case noPort, timedOut, invalidCallback, secureRandomUnavailable }
 }

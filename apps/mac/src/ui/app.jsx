@@ -1,7 +1,7 @@
 // App, orchestrates the Mac System 6 prototype against the live backend.
-// Auth source of truth is the native Keychain credential surfaced as
-// window.INDEX_NATIVE.apiKey (bridged through window.IndexApp). When there is no
-// credential the app shows sign-in; INDEX_DATA is only a signed-out demo
+// Auth source of truth is a credential-free boolean surfaced by the native
+// Keychain owner. Requests cross the structured native bridge. When signed out
+// the app shows sign-in; INDEX_DATA is only a signed-out demo
 // fallback for browser preview where the Swift bridge is absent.
 
 // Live-only: there is no static demo data. window.INDEX_DATA starts empty and is
@@ -279,8 +279,8 @@ function App() {
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {
     if (!window.IndexApp) return;
-    return window.IndexApp.onAuthChanged((key) => {
-      if (key) {
+    return window.IndexApp.onAuthChanged((authenticated) => {
+      if (authenticated) {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
@@ -426,14 +426,39 @@ function App() {
     seedField();
   };
   const goNewIntent = () => setScreen("new-intent");
-  const finishNewIntent = async (answers, created) => {
+  const finishNewIntent = async (answers, created, intentId) => {
     setConversation([]);
     setField([]);
     setPeople([]);
     setFreshUser(false);   // they've created a signal, hub is no longer empty
 
-    // When the intent was created live, reload the snapshot and open the main
-    // view on the freshly created signal (newest by createdAt).
+    // Match web confirmation: open the exact persisted signal as soon as
+    // /intents/confirm returns its ID. The shelf refresh is background work,
+    // not a second blocking /auth/me + /intents/list bootstrap.
+    if (created && intentId) {
+      const now = new Date().toISOString();
+      const optimistic = {
+        id: intentId,
+        title: answers.intent || "new signal",
+        edges: answers.edges || "",
+        offLimits: answers["off-limits"] || "",
+        status: "active",
+        source: { id:intentId, createdAt:now, updatedAt:now },
+      };
+      setSnapshot((current) => {
+        const INTENTS = [optimistic, ...((current && current.INTENTS) || []).filter((intent) => intent.id !== intentId)];
+        Object.assign(window.INDEX_DATA, { INTENTS });
+        return current ? { ...current, INTENTS } : { INTENTS };
+      });
+      setProfile(profileFromIntent(optimistic));
+      setScreen("main");
+      seedField();
+      void refreshIntents();
+      return;
+    }
+
+    // Legacy/direct MCP creation can lack a structured ID. Keep the old
+    // recovery lookup for that path only; proposal confirmation never pays it.
     if (created && window.IndexApp && window.IndexApp.isAuthed()) {
       const snap = await window.IndexApp.loadSnapshot().catch(() => null);
       if (snap) {
@@ -484,7 +509,7 @@ function App() {
 
   return (
     <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus }}>
-      <div style={{
+      <AgentRuntimeProvider>      <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
       }} className="mac-desktop">
@@ -537,6 +562,7 @@ function App() {
           />
         )}
       </div>
+      </AgentRuntimeProvider>
     </IndexDataContext.Provider>
   );
 }

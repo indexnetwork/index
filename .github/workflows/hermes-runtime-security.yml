@@ -1,0 +1,141 @@
+name: Hermes runtime security
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      # Full authority closure: narrow controller/service filters can miss an
+      # adapter, polling, consultation, protocol, generated skill, or test-only
+      # change that alters this boundary.
+      - "apps/mac/**"
+      - "packages/hermes-plugin/**"
+      - "packages/protocol/**"
+      - "services/api/**"
+      - "scripts/build-skills.*"
+      - "scripts/tests/build-skills.spec.ts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/hermes-runtime-security.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: hermes-runtime-security-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  provider-free-security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+          no-cache: true
+
+      - name: Install frozen dependencies
+        run: |
+          bun pm cache rm || true
+          bun install --frozen-lockfile
+
+      - name: Hermes plugin transport, migration, smoke, and dashboard gates
+        env:
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+        run: |
+          python3 packages/hermes-plugin/tests/connector_protocol.py
+          python3 packages/hermes-plugin/tests/migration.py
+          python3 packages/hermes-plugin/tests/smoke.py
+          python3 packages/hermes-plugin/tests/gateway.py
+          node packages/hermes-plugin/tests/dashboard-registration.test.cjs
+          node --check packages/hermes-plugin/dashboard/dist/index.js
+
+      - name: Linux-compatible Mac API, render, and native source contracts
+        run: |
+          bun test \
+            apps/mac/api/agent-runtime.spec.mjs \
+            apps/mac/api/agent-runtime-saga.spec.mjs \
+            apps/mac/api/agent-runtime-ui.spec.mjs \
+            apps/mac/api/markdown.spec.mjs \
+            apps/mac/api/client.spec.mjs \
+            apps/mac/api/native-api-bridge.spec.mjs \
+            apps/mac/api/deeplink.spec.mjs
+          bun test \
+            apps/mac/hermes-runtime.spec.mjs \
+            apps/mac/scripts/deep-link-host.spec.mjs \
+            apps/mac/scripts/link-host.spec.mjs
+          python3 apps/mac/scripts/assemble.py
+
+      - name: Protocol architecture and provider-free Hermes contracts
+        env:
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+        run: |
+          cd packages/protocol
+          bun run architecture:check
+          bun test \
+            src/mcp/tests/mcp.authorization-policy.spec.ts \
+            src/mcp/tests/mcp.server.spec.ts \
+            src/negotiation/tests/negotiation.hermes-contract.spec.ts \
+            src/negotiation/tests/negotiation.turn-cap.spec.ts \
+            src/negotiation/tests/negotiation.tools.spec.ts \
+            src/negotiation/tests/negotiator-timeout.spec.ts
+          cd ../..
+          bun test apps/mac/api/task-5-acceptance.spec.ts
+
+      - name: Runtime controller, audience, and isolated-inventory tests
+        env:
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+        run: |
+          cd services/api
+          bun test \
+            tests/agent-runtime.service.spec.ts \
+            src/controllers/tests/agent-runtime.controller.spec.ts \
+            src/controllers/tests/hermes-authorization.controller.spec.ts \
+            src/controllers/tests/connected-agents.controller.spec.ts \
+            src/services/tests/connected-agents.service.spec.ts \
+            src/guards/tests/hermes-agent-audience.spec.ts \
+            src/guards/tests/hermes-negotiator-audience.spec.ts \
+            src/controllers/tests/index-app-owner-authorization.controller.spec.ts \
+            src/guards/tests/index-app-owner-audience.spec.ts \
+            src/lib/agent/index-app-owner-mcp.spec.ts \
+            src/lib/agent/tests/hermes-negotiation-run.spec.ts \
+            src/lib/negotiation/tests/expected-speaker.spec.ts \
+            src/lib/negotiation/tests/consultation.spec.ts \
+            src/lib/testing/tests/isolated-test-suite.spec.ts \
+            src/services/tests/negotiation-polling.fixture-contract.spec.ts
+
+      - name: Fresh-process pickup, respond, consult, and outbox coverage
+        env:
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          API_TEST_ISOLATED_CHILD: "1"
+        run: |
+          cd services/api
+          harness=./src/lib/testing/isolated-test-import-harness.spec.ts
+          API_TEST_ISOLATED_TARGET=src/controllers/tests/agent.controller.error-sanitization.isolated.ts bun test "$harness"
+          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.pickup-authority.isolated.ts bun test "$harness"
+          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.max-turns.isolated.ts bun test "$harness"
+          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.respond-atomic.isolated.ts bun test "$harness"
+          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.consult.isolated.ts bun test "$harness"
+
+      - name: Hermetic server-observed heartbeat coverage
+        env:
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+        run: |
+          cd services/api
+          bun test src/controllers/tests/agent.controller.heartbeat.spec.ts
+          bun test tests/agent-runtime.service.spec.ts \
+            --test-name-pattern "derives health from lastNegotiationPickupAt"
+
+      - name: Generated skill, desktop, frozen-lock, and subtree parity
+        run: |
+          bun run build:skills
+          node packages/hermes-plugin/desktop/build.mjs
+          git diff --exit-code -- \
+            packages/hermes-plugin/skills \
+            packages/hermes-plugin/desktop/dist \
+            bun.lock
+          bun install --frozen-lockfile
+          bun run check:subtree-parity

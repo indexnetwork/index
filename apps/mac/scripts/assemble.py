@@ -18,9 +18,12 @@ API_DIR = ROOT / "api"
 # ones that use it. Their cross-imports are stripped below: sharing a scope is
 # what replaces them here, while the files keep real imports so `bun test api/`
 # can load any of them on its own.
-API_MODULES = ("socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "notifications.mjs", "radar-state.mjs")
+API_MODULES = (
+    "socials.mjs", "client.mjs", "mappers.mjs", "deeplink.mjs", "notifications.mjs", "radar-state.mjs",
+    "markdown.mjs", "agent-runtime.mjs", "agent-runtime-saga.mjs",
+)
 API_EXPORTS = [
-    "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
+    "createIndexApiClient", "createPinnedIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent", "applyMappedIntentStatus",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
@@ -34,6 +37,12 @@ API_EXPORTS = [
     "SOCIAL_PREFIX", "EDITABLE_PLATFORMS", "parseSocial", "firstSocialValue",
     "socialPlatformOf", "socialHandleOf", "socialHrefOf", "socialApiLabelOf",
     "buildSocialHref", "normalizeSocial", "splitProfileSocials", "buildProfileSocials",
+    "mapAgentRuntimeState", "waitForHermesHealth", "createHermesRuntimeBridge",
+    "HERMES_RUNTIME_TIMEOUTS_MS", "HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS",
+    "runHermesSelectionSaga", "bootstrapHermesRuntime", "reconcileHermesSaga",
+    "selectIndexRuntime", "prepareHermesLogout", "disconnectHermesSaga",
+    "createNativeSagaJournal", "createAgentRuntimeCoordinator", "runViewRuntimeAction",
+    "HERMES_SETUP_JOURNAL_STAGES", "renderAgentMarkdown",
 ]
 
 # `import { x } from './y.mjs';` — dropped, since y.mjs is already in scope.

@@ -228,7 +228,11 @@ describe("Negotiation continuation telemetry", () => {
     expect(outcomes[0].priorTurnCount).toBe(0);
   }, 30_000);
 
-  it("waiting_for_agent outcome includes isContinuation field", async () => {
+  it.each([
+    ["uncapped zero", 0],
+    ["absent scenario default", undefined],
+    ["positive cap", 4],
+  ] as const)("waiting_for_agent parks with %s maxTurns semantics", async (_label, maxTurns) => {
     const db = createMockDatabase();
     const dispatcher = {
       hasExternalAgent: async () => true,
@@ -247,8 +251,8 @@ describe("Negotiation continuation telemetry", () => {
           candidateUser,
           indexContext,
           seedAssessment: seed,
-          opportunityId: "opp-park",
-          maxTurns: 4,
+          opportunityId: `opp-park-${_label}`,
+          ...(maxTurns !== undefined ? { maxTurns } : {}),
         } as Partial<typeof NegotiationGraphState.State>),
     );
 

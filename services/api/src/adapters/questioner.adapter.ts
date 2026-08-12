@@ -20,6 +20,7 @@ import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { QuestionEvents } from '../events/question.event';
 import { computeIntentFingerprint, normalizeIntentText } from '../lib/intent/intent.fingerprint';
 import { derivePendingQuestionCounts, isExpectedHistoricalNegotiationSettlement, isSafeNegotiationQuestionPayload, isValidNegotiationDetectionContract } from '../lib/question/negotiation-question.contract';
+import { consultationExpiryReadiness } from '../lib/negotiation/consultation-expiry';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
 import { claimContinuationExecution, completeContinuationExecution, heartbeatContinuationExecution, parkContinuationExecution, releaseContinuationExecution } from './negotiation-continuation.atomic';
 import type { ContinuationClaimResult, ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
@@ -34,6 +35,13 @@ const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
 const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
 const POOL_QUESTION_PUSH_DAILY_CAP = 2;
 const UPTAKE_AUTHORITY_THRESHOLD_DEFAULT = 70;
+
+class InflightConsultationPausePendingError extends Error {
+  constructor() {
+    super('External consultation pause has not committed');
+    this.name = 'InflightConsultationPausePendingError';
+  }
+}
 
 /** Runtime mirror of protocol's bounded uptake threshold; adapters remain protocol-independent. */
 function currentUptakeAuthorityThreshold(): number {
@@ -109,6 +117,10 @@ export interface AdapterNegotiationContinuationKey {
 }
 
 export interface AdapterNegotiationContinuationCoordinates extends AdapterNegotiationContinuationKey {
+  /** Server-only external consultation generation; absent for in-process graph pauses. */
+  consultationAttemptId?: string;
+  /** Exact external claim that was allowed to commit this attempt. */
+  claimedByAgentId?: string;
   intentFingerprint: string;
   opportunityStatus: string;
   opportunityUpdatedAt: string;
@@ -120,6 +132,7 @@ interface AdapterNegotiationQuestionSettlement {
   version: 1;
   settlementId: string;
   taskId: string;
+  consultationAttemptId?: string;
   recipientUserId: string;
   recipientIntentId: string;
   opportunityId: string;
@@ -449,6 +462,7 @@ function settlementIdForTask(taskId: string): string {
 function parseAskUserBinding(value: unknown): {
   version: 2;
   settlementId: string;
+  consultationAttemptId?: string;
   recipientUserId: string;
   recipientIntentId: string;
   opportunityId: string;
@@ -464,6 +478,7 @@ function parseAskUserBinding(value: unknown): {
   if (
     binding.version !== 2
     || !isNonEmptyString(binding.settlementId)
+    || (binding.consultationAttemptId !== undefined && !isNonEmptyString(binding.consultationAttemptId))
     || !isNonEmptyString(binding.recipientUserId)
     || !isNonEmptyString(binding.recipientIntentId)
     || !isNonEmptyString(binding.opportunityId)
@@ -486,6 +501,7 @@ function parseNegotiationQuestionSettlement(value: unknown): AdapterNegotiationQ
     || !isNonEmptyString(settlement.settlementId)
     || !isNonEmptyString(settlement.taskId)
     || settlement.settlementId !== settlementIdForTask(settlement.taskId)
+    || (settlement.consultationAttemptId !== undefined && !isNonEmptyString(settlement.consultationAttemptId))
     || !isNonEmptyString(settlement.recipientUserId)
     || !isNonEmptyString(settlement.recipientIntentId)
     || !isNonEmptyString(settlement.opportunityId)
@@ -2602,6 +2618,7 @@ export class QuestionerAdapter {
           version: 1,
           settlementId: askUserBinding.settlementId,
           taskId: provenance.taskId!,
+          ...(askUserBinding.consultationAttemptId ? { consultationAttemptId: askUserBinding.consultationAttemptId } : {}),
           recipientUserId: provenance.recipientUserId,
           recipientIntentId: provenance.recipientIntentId,
           opportunityId: provenance.opportunityId,
@@ -2766,6 +2783,7 @@ export class QuestionerAdapter {
           version: 1,
           settlementId: askUserBinding.settlementId,
           taskId: provenance.taskId!,
+          ...(askUserBinding.consultationAttemptId ? { consultationAttemptId: askUserBinding.consultationAttemptId } : {}),
           recipientUserId: provenance.recipientUserId,
           recipientIntentId: provenance.recipientIntentId,
           opportunityId: provenance.opportunityId,
@@ -2848,7 +2866,11 @@ export class QuestionerAdapter {
       await this.lockNegotiationQuestionAdvisory(tx as unknown as DrizzleDB, candidate);
       const cohort = await this.lockNegotiationQuestionCohort(tx as unknown as DrizzleDB, candidate);
       await this.lockNegotiationSettlementRows(tx as unknown as DrizzleDB, candidate);
-      const [task] = await tx.select({ state: tasks.state, metadata: tasks.metadata })
+      const [task] = await tx.select({
+        state: tasks.state,
+        claimedByAgentId: tasks.claimedByAgentId,
+        metadata: tasks.metadata,
+      })
         .from(tasks)
         .where(eq(tasks.id, input.taskId))
         .limit(1);
@@ -2858,6 +2880,15 @@ export class QuestionerAdapter {
       if (existingSettlement) {
         return this.settlementMatchesCoordinates(existingSettlement, input) ? input : null;
       }
+      if (
+        metadata
+        && consultationExpiryReadiness({
+          taskState: task.state,
+          taskClaimedByAgentId: task.claimedByAgentId,
+          taskMetadata: metadata,
+          coordinates: input,
+        }) === 'pending_pause'
+      ) throw new InflightConsultationPausePendingError();
       const binding = parseAskUserBinding(
         (metadata?.turnContext as Record<string, unknown> | undefined)?.askUserBinding,
       );
@@ -2869,6 +2900,7 @@ export class QuestionerAdapter {
         || metadata.networkId !== input.networkId
         || !binding
         || binding.settlementId !== input.settlementId
+        || binding.consultationAttemptId !== input.consultationAttemptId
         || binding.recipientUserId !== input.userId
         || binding.recipientIntentId !== input.recipientIntentId
         || binding.opportunityId !== input.opportunityId
@@ -2902,6 +2934,7 @@ export class QuestionerAdapter {
         version: 1,
         settlementId: input.settlementId,
         taskId: input.taskId,
+        ...(input.consultationAttemptId ? { consultationAttemptId: input.consultationAttemptId } : {}),
         recipientUserId: input.userId,
         recipientIntentId: input.recipientIntentId,
         opportunityId: input.opportunityId,
@@ -2992,6 +3025,7 @@ export class QuestionerAdapter {
   ): boolean {
     return settlement.taskId === input.taskId
       && settlement.settlementId === input.settlementId
+      && settlement.consultationAttemptId === input.consultationAttemptId
       && settlement.opportunityId === input.opportunityId
       && settlement.recipientUserId === input.userId
       && settlement.recipientIntentId === input.recipientIntentId

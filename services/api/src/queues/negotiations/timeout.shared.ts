@@ -1,7 +1,9 @@
-import type { NegotiationGraphDatabase, NegotiationOutcome, NegotiationProtocolVersion, NegotiationTurn, SeedAssessment, UserNegotiationContext } from '@indexnetwork/protocol';
+import { isNegotiationTurnCapReached, type NegotiationContinuationTimeoutIdentity, type NegotiationGraphDatabase, type NegotiationOutcome, type NegotiationProtocolVersion, type NegotiationTurn, type SeedAssessment, type UserNegotiationContext } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import type { ContinuationExecutionFence } from '../../adapters/negotiation-continuation.atomic';
+import { remainingDeadlineDelayMs, type AcquiredNegotiationTimeoutExecution, type NegotiationTimeoutAtomicStep, type NegotiationTimeoutCompletionPlan, type NegotiationTimeoutExecutionStore } from '../../lib/negotiation/timeout-execution';
+import { expectedNegotiationSpeaker } from '../../lib/negotiation/expected-speaker';
 
 type TimeoutLogger = ReturnType<typeof log.job.from>;
 
@@ -17,6 +19,8 @@ export type TimeoutNegotiatorInvoke = (input: {
   seat: NegotiationSeat;
   protocolVersion: NegotiationProtocolVersion;
   isFinalTurn?: boolean;
+  /** Stable key for provider tracing/deduplication across Bull redelivery. */
+  executionId?: string;
 }) => Promise<NegotiationTurn>;
 
 function isTerminalAction(action: string): boolean {
@@ -49,7 +53,7 @@ export interface NegotiationTaskMeta {
   /** Negotiation protocol version; absent on pre-v2 tasks (treated as v1). */
   protocolVersion?: string;
   type?: string;
-  maxTurns?: number;
+  maxTurns?: number | null;
   opportunityId?: string;
   /** ISO timestamp set by the archive backfill on pre-v2 legacy negotiations. */
   archivedAt?: string;
@@ -104,6 +108,197 @@ export function buildNegotiationOutcome(
   };
 }
 
+export type ResumableTimeoutFaultStep = 'cas' | 'invocation' | NegotiationTimeoutAtomicStep | 'outbox';
+
+/**
+ * Resume one durably acquired timeout execution. Invocation output is stored
+ * before dialogue persistence; final message/task/artifact/opportunity/
+ * continuation effects and the completion receipt commit atomically. A retry
+ * therefore starts from pending, invoked, or completed without duplicating a
+ * turn or artifact and without relying on the watchdog to rescue `working`.
+ */
+export async function runResumableTimeoutFallback(params: {
+  database: NegotiationGraphDatabase & NegotiationTimeoutExecutionStore;
+  acquired: AcquiredNegotiationTimeoutExecution;
+  logger: TimeoutLogger;
+  labels: TimeoutFallbackLabels;
+  negotiationId: string;
+  meta: NegotiationTaskMeta;
+  messages: Array<{ parts: unknown[]; senderId?: string }>;
+  seedReasoning: string;
+  maxTurns: number | null | undefined;
+  parkWindowMs: number;
+  fallbackLogExtra?: Record<string, unknown>;
+  invokeNegotiator?: TimeoutNegotiatorInvoke;
+  rearm: (
+    turnNumber: number,
+    parkGeneration: string,
+    delayMs: number,
+    continuation?: NegotiationContinuationTimeoutIdentity,
+  ) => Promise<void>;
+  faultAfterStep?: (step: ResumableTimeoutFaultStep) => void | Promise<void>;
+  now?: () => number;
+}): Promise<void> {
+  const {
+    database, acquired, logger, labels, negotiationId, meta, messages,
+    seedReasoning, maxTurns, parkWindowMs, fallbackLogExtra,
+    invokeNegotiator = defaultInvokeNegotiator, rearm, faultAfterStep,
+    now = Date.now,
+  } = params;
+  let execution = acquired.execution;
+  const continuationExecution = acquired.continuationExecution;
+  await faultAfterStep?.('cas');
+
+  const deliverReceipt = async (): Promise<void> => {
+    const receipt = execution.receipt;
+    if (!receipt || execution.outboxDeliveredAt) return;
+    if (receipt.rearm) {
+      await rearm(
+        receipt.turnNumber,
+        receipt.rearm.parkGeneration,
+        remainingDeadlineDelayMs(receipt.rearm.deadlineAt, now()),
+        receipt.rearm.continuation,
+      );
+    }
+    await faultAfterStep?.('outbox');
+    if (!await database.markNegotiationTimeoutOutboxDelivered(
+      execution.taskId,
+      execution.executionId,
+    )) throw new Error('Timeout execution outbox changed before delivery acknowledgement');
+  };
+
+  if (execution.status === 'completed') {
+    await deliverReceipt();
+    return;
+  }
+
+  const currentTurnCount = execution.turnNumber;
+  const expectedSpeaker = expectedNegotiationSpeaker(meta, messages);
+  if (!expectedSpeaker) throw new Error('Timeout execution has malformed bilateral speaker metadata');
+  const currentSpeaker = expectedSpeaker === meta.sourceUserId ? 'source' : 'candidate';
+  const isSource = currentSpeaker === 'source';
+  const activeUserId = expectedSpeaker;
+  const otherUserId = isSource ? meta.candidateUserId! : meta.sourceUserId!;
+  const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
+  const seat = resolveSeat(activeUserId, meta);
+  const isFinalTurn = protocolVersion === 'v2' && isNegotiationTurnCapReached(currentTurnCount + 1, maxTurns);
+  const history: NegotiationTurn[] = messages.map((message) => {
+    const dataPart = (message.parts as Array<{ kind?: string; data?: unknown }>)
+      ?.find((part) => part.kind === 'data');
+    return dataPart?.data as NegotiationTurn;
+  }).filter(Boolean);
+
+  if (execution.status === 'pending') {
+    logger.info(labels.fallback, {
+      negotiationId,
+      ...fallbackLogExtra,
+      activeUserId,
+      turnNumber: currentTurnCount,
+      executionId: execution.executionId,
+    });
+    const turn = await invokeNegotiator({
+      ownUser: { id: activeUserId, intents: [], profile: {} },
+      otherUser: { id: otherUserId, intents: [], profile: {} },
+      indexContext: { networkId: '', prompt: '' },
+      seedAssessment: { reasoning: seedReasoning, valencyRole: 'peer' },
+      history,
+      isDiscoverer: isSource,
+      seat,
+      protocolVersion,
+      ...(isFinalTurn ? { isFinalTurn: true } : {}),
+      executionId: execution.executionId,
+    });
+    const recorded = await database.recordNegotiationTimeoutInvocation({
+      taskId: execution.taskId,
+      executionId: execution.executionId,
+      turn,
+    });
+    if (!recorded) throw new Error('Timeout execution lost before invocation persistence');
+    execution = recorded.execution;
+    await faultAfterStep?.('invocation');
+  }
+  if (!execution.turn) throw new Error('Invoked timeout execution has no durable turn');
+
+  const newTurnCount = currentTurnCount + 1;
+  const terminal = isTerminalAction(execution.turn.action) || isNegotiationTurnCapReached(newTurnCount, maxTurns);
+  const continuationIdentity = continuationExecution
+    ? {
+        priorTaskId: continuationExecution.taskId,
+        settlementId: continuationExecution.settlementId,
+        successorTaskId: continuationExecution.successorTaskId,
+        token: continuationExecution.token,
+        fence: continuationExecution.fence,
+      }
+    : undefined;
+  let plan: NegotiationTimeoutCompletionPlan;
+  if (terminal) {
+    const nextSpeaker = currentSpeaker === 'source' ? 'candidate' : 'source';
+    const outcome = buildNegotiationOutcome(
+      [...history, execution.turn],
+      newTurnCount,
+      execution.turn.action,
+      meta.sourceUserId!,
+      meta.candidateUserId!,
+      nextSpeaker,
+    );
+    const continuationOutcome = execution.turn.action === 'accept'
+      ? 'accepted'
+      : isRejectLikeAction(execution.turn.action) ? 'rejected' : 'stalled';
+    const opportunityStatus = execution.turn.action === 'accept'
+      ? 'pending'
+      : isRejectLikeAction(execution.turn.action) ? 'rejected' : 'stalled';
+    plan = {
+      executionId: execution.executionId,
+      taskId: execution.taskId,
+      conversationId: acquired.task.conversationId,
+      turn: execution.turn,
+      finalState: 'completed',
+      turnNumber: newTurnCount,
+      outcome: outcome as unknown as Record<string, unknown>,
+      ...(meta.opportunityId ? { opportunity: { id: meta.opportunityId, status: opportunityStatus } } : {}),
+      ...(continuationExecution ? { continuationOutcome } : {}),
+      rearm: null,
+    };
+  } else {
+    // The next generation is deterministic from this exact execution. A replay
+    // can only target the same Bull job and can never extend the deadline.
+    const parkGeneration = `${execution.executionId}:next`;
+    plan = {
+      executionId: execution.executionId,
+      taskId: execution.taskId,
+      conversationId: acquired.task.conversationId,
+      turn: execution.turn,
+      finalState: 'waiting_for_agent',
+      turnNumber: newTurnCount,
+      ...(continuationExecution ? { continuationOutcome: 'waiting_for_agent' as const } : {}),
+      rearm: {
+        parkGeneration,
+        parkWindowMs,
+        ...(continuationIdentity ? { continuation: continuationIdentity } : {}),
+      },
+    };
+  }
+
+  const completed = await database.completeNegotiationTimeoutExecution(
+    plan,
+    continuationExecution,
+    faultAfterStep
+      ? async (step) => faultAfterStep(step)
+      : undefined,
+  );
+  if (!completed) throw new Error('Timeout execution lost before atomic completion');
+  execution = completed.execution;
+  if (execution.status !== 'completed') throw new Error('Timeout execution did not produce a receipt');
+  await deliverReceipt();
+
+  logger.info(terminal ? labels.finalized : 'AI agent countered, armed timeout for next speaker', {
+    negotiationId,
+    action: execution.turn?.action,
+    turnCount: newTurnCount,
+    executionId: execution.executionId,
+  });
+}
+
 /**
  * Run the AI fallback turn for a stalled negotiation and evaluate the result.
  *
@@ -127,11 +322,15 @@ export async function runTimeoutFallback(params: {
   messages: Array<{ parts: unknown[]; senderId?: string }>;
   currentTurnCount: number;
   seedReasoning: string;
-  maxTurns: number;
+  maxTurns: number | null | undefined;
   /** Extra fields merged into the "running AI fallback" log (claim worker adds `agentId`). */
   fallbackLogExtra?: Record<string, unknown>;
   /** Re-arm the next park-window timeout when the AI counters under the cap. */
-  rearm: (newTurnCount: number) => Promise<void>;
+  rearm: (
+    newTurnCount: number,
+    parkGeneration: string,
+    continuation?: NegotiationContinuationTimeoutIdentity,
+  ) => Promise<void>;
   /** Injectable negotiator invocation for hermetic queue tests. */
   invokeNegotiator?: TimeoutNegotiatorInvoke;
   /** Present only after a parked/claimed exact continuation was atomically fenced. */
@@ -144,15 +343,13 @@ export async function runTimeoutFallback(params: {
     continuationExecution,
   } = params;
 
-  // Determine whose turn it is from the last message's sender — not parity,
-  // which misattributes the parked seat across continuation sessions (a
-  // continuation can start with either side speaking first).
-  const lastSenderId = messages.length > 0 ? messages[messages.length - 1].senderId : undefined;
-  const currentSpeaker = lastSenderId
-    ? (lastSenderId === `agent:${meta.sourceUserId}` ? 'candidate' : 'source')
-    : (currentTurnCount % 2 === 0 ? 'source' : 'candidate');
+  // Determine the bilateral speaker from authoritative participant history.
+  // Unrelated/system senders do not move the seat; no history means source.
+  const expectedSpeaker = expectedNegotiationSpeaker(meta, messages);
+  if (!expectedSpeaker) throw new Error('Timeout fallback has malformed bilateral speaker metadata');
+  const currentSpeaker = expectedSpeaker === meta.sourceUserId ? 'source' : 'candidate';
   const isSource = currentSpeaker === 'source';
-  const activeUserId = isSource ? meta.sourceUserId! : meta.candidateUserId!;
+  const activeUserId = expectedSpeaker;
   const otherUserId = isSource ? meta.candidateUserId! : meta.sourceUserId!;
 
   // Seat + version for the parked seat (v2 client-advocate): the system agent
@@ -161,7 +358,7 @@ export async function runTimeoutFallback(params: {
   // schema and the legacy non-final behavior (no isFinalTurn forcing).
   const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
   const seat = resolveSeat(activeUserId, meta);
-  const isFinalTurn = protocolVersion === 'v2' && (currentTurnCount + 1) >= maxTurns;
+  const isFinalTurn = protocolVersion === 'v2' && isNegotiationTurnCapReached(currentTurnCount + 1, maxTurns);
 
   logger.info(labels.fallback, {
     negotiationId,
@@ -206,7 +403,7 @@ export async function runTimeoutFallback(params: {
   const newTurnCount = currentTurnCount + 1;
 
   // Evaluate: terminal action → finalize; counter at max → finalize; counter under max → continue
-  if (isTerminalAction(aiTurn.action) || newTurnCount >= maxTurns) {
+  if (isTerminalAction(aiTurn.action) || isNegotiationTurnCapReached(newTurnCount, maxTurns)) {
     const fullHistory = [...history, aiTurn];
     const nextSpeaker = currentSpeaker === 'source' ? 'candidate' : 'source';
     const outcome = buildNegotiationOutcome(fullHistory, newTurnCount, aiTurn.action, meta.sourceUserId!, meta.candidateUserId!, nextSpeaker);
@@ -255,10 +452,30 @@ export async function runTimeoutFallback(params: {
     return continuationExecution ? { continuationOutcome } : {};
   }
 
-  // AI countered and under max turns — the other party now needs to respond.
-  if (continuationExecution) await database.updateTaskState(taskId, 'waiting_for_agent', undefined, continuationExecution);
-  else await database.updateTaskState(taskId, 'waiting_for_agent');
-  await rearm(newTurnCount);
+  // AI countered and under max turns — persist and enqueue the exact same park
+  // generation so a redelivered job cannot consume a later re-park.
+  const parkGeneration = crypto.randomUUID();
+  if (continuationExecution) {
+    await database.updateTaskState(
+      taskId,
+      'waiting_for_agent',
+      undefined,
+      continuationExecution,
+      parkGeneration,
+    );
+  } else {
+    await database.updateTaskState(taskId, 'waiting_for_agent', undefined, undefined, parkGeneration);
+  }
+  const nextContinuation = continuationExecution
+    ? {
+        priorTaskId: continuationExecution.taskId,
+        settlementId: continuationExecution.settlementId,
+        successorTaskId: continuationExecution.successorTaskId,
+        token: continuationExecution.token,
+        fence: continuationExecution.fence,
+      }
+    : undefined;
+  await rearm(newTurnCount, parkGeneration, nextContinuation);
 
   logger.info('AI agent countered, armed timeout for next speaker', {
     negotiationId,

@@ -31,7 +31,13 @@ bun test --watch                            # Run tests in watch mode
 
 # Code quality
 bun run lint                                # Run ESLint
+bun run typecheck                           # Type-check the API without emitting
 bun run typecheck:cli-specs                 # Type-check the discovery CLI specs (see tsconfig.spec.json)
+
+# Hermes production assurance (provider-free; DB commands require the dedicated guard below)
+bun run test:hermes-production-assurance    # Fresh-process guarded PostgreSQL suites + explicit-threshold preflight
+bun run maintenance:hermes-preflight -- --json --max-lock-ms <approved-ms> --max-total-ms <approved-ms>
+bun run maintenance:hermes-emergency-control -- --audience hermes-agent # Dry-run plan; confirmation is incident-authorized only
 
 # Evals (gated, mutating, cost tokens — see ### Discovery Eval)
 bun run eval:discovery -- --help            # Discovery: contract and exit codes, no credentials needed
@@ -116,10 +122,10 @@ insufficient evidence.
 Lives in `services/api` (not `packages/protocol`) because it drives the real
 discovery graph against real Neon databases.
 
-#### Historical shared-pool quality contract (PR A)
+#### Historical shared-pool quality contract
 
-PR A exposes a provider- and infrastructure-free command contract only. Its
-exact quality-mode syntax is:
+Historical quality is an operator-only guarded runtime over the approved shared
+pool. Its exact quality-mode syntax is:
 
 ```text
 bun run eval:discovery -- --historical-quality --env KEY=VALUE [--case <approved-id>]... [--trigger intent|enrichment]... [--runs <n>] [--report <path>] [--force]
@@ -141,14 +147,29 @@ evidence only: they do not produce a subset verdict, and quality artifacts do
 not read, write, update, or compare against a baseline. Stage-funnel metrics are
 descriptive, not a pass/fail comparison.
 
-In PR A, `--help` prints the contract without provider credentials. A non-help
-quality request parses the selection and prints its exact cost provider-free,
-then exits with the classified refusal that runtime is unavailable; it performs
-no confirmation, protected-base verification, reset, database, Neon, Redis, or
-provider operation. Historical-quality runtime, protected-base handling, and
-all operational commands are explicitly deferred to PR B and are not documented
-here. Eval Ops can render historical-quality reports and execution completeness,
-but it cannot launch quality mode.
+`--help` remains provider-free. A confirmed execution requires strict manifest
+v2, a separately attested writable protected-base refresh target, the approved
+read-only base replica, provider/Redis runtime configuration, and a parent-only
+provider-account fingerprint. Before child preflight or any control-plane call,
+the parent atomically acquires a fail-closed host-local filesystem lease keyed
+by strict manifest-v2 project and side-`a` branch identity; crash-left leases are
+never automatically removed, and operators must not launch from another host.
+Before any reset, the parent jointly attests the roles and verifies published
+base state in a fresh read-only process. It then runs slots serially: restore
+existing side `a`, re-attest and verify, invoke one
+trigger attempt, validate one identifier-only child result, and clean up. Side
+`b` remains untouched. Failed terminal rows continue without retry and suppress
+the whole quality verdict; restore/spawn/malformed/supervisor failures stop
+scheduling. Nothing automatically reruns.
+
+Quality remains absent from the Eval Ops launch registry. Eval Ops can render
+historical-quality reports and execution completeness, while its existing
+`discovery` launch continues to use only the v2 manifest's legacy child
+projection. Protected-base provisioning, atomic secret migration, refresh,
+read-only verify, guarded DB proof, smokes, and pilot are documented in the
+[IND-638 operator runbook](./ind-638-historical-quality-pilot.md). The target
+proof and full guarded DB suite are hard pre-merge gates; skipped or `not run`
+evidence is not merge-ready.
 
 ```bash
 cd services/api
@@ -197,25 +218,34 @@ anything that can compose a database:
 
 ```json
 {
-  "projectId": "...",
-  "baseBranchId": "br-...",
+  "version": 2,
+  "projectId": "<project-id>",
+  "baseBranchId": "<base-branch-id>",
+  "baseReadReplica": {
+    "endpointId": "<read-only-endpoint-id>",
+    "databaseUrl": "<secret-postgresql-protocol_eval-url>"
+  },
   "targets": [
-    { "sideId": "a", "branchId": "br-...", "endpointId": "ep-...", "databaseUrl": "postgres://...neon.tech/protocol_eval" },
-    { "sideId": "b", "branchId": "br-...", "endpointId": "ep-...", "databaseUrl": "postgres://...neon.tech/protocol_eval" }
+    { "sideId": "a", "branchId": "<side-a-branch-id>", "endpointId": "<side-a-read-write-endpoint-id>", "databaseUrl": "<secret-postgresql-protocol_eval-url>" },
+    { "sideId": "b", "branchId": "<side-b-branch-id>", "endpointId": "<side-b-read-write-endpoint-id>", "databaseUrl": "<secret-postgresql-protocol_eval-url>" }
   ]
 }
 ```
 
 The manifest must name **exactly two** sides even for a single-configuration
-run (`parseAbManifest`): both are attested up front, and the run then resets
-and uses only the branches its shape needs (`abRunningTargets`).
+run: both are attested up front, and the run then resets and uses only the
+branches its shape needs (`abRunningTargets`). Legacy A/B continues accepting
+its old unversioned shape, but manifest v2 is also accepted by projecting only
+project/base and the two child targets. Historical quality accepts **only** v2.
 
-Attestation checks each side is the exactly-named designated branch, is not
-primary, is parented on a base branch named `eval-discovery-base`, and has an
-endpoint whose host matches its `databaseUrl`. A failed attestation prints one
-fixed message and never the control plane's own — control-plane responses and
-`DATABASE_URL`s carry credentials — so do not expect the specific mismatch to be
-named.
+Legacy attestation checks each child is exactly named, non-primary, parented on
+`eval-discovery-base`, and host-bound. Historical quality additionally requires
+one distinct `read_only` base replica and two distinct `read_write` children,
+and jointly binds them to the separately declared `read_write` base refresh
+endpoint. Every URL names exactly `/protocol_eval`. A failed attestation prints
+one fixed message and never the control plane's own — control-plane responses
+and database URLs carry credentials — so do not expect the specific mismatch to
+be named.
 
 **The 28 flags it can offer.** `DISCOVERY_ENV_KEYS` in
 `services/api/src/cli/discovery.flags.ts`, **generated** from a scan of the
@@ -771,6 +801,16 @@ bun run dev:eval-ops                         # Eval ops UI on 127.0.0.1:5174 (se
 bun run build:eval-ops                       # Build the eval ops UI (excluded from root build)
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
+
+### Hermes Backend Production Assurance
+
+`.github/workflows/hermes-backend-production-assurance.yml` is the provider-free release gate. Its official PostgreSQL 16 multi-architecture image is pinned by reviewed Docker Hub digest and uses only the disposable `hermes_assurance` database. In every job, it downloads the exact archived PGDG `postgresql-16-pgvector` 0.8.6-1.pgdg13+1 amd64 package, verifies the independently resolved SHA-256 `9aea9c1617bc99991d3730cfbf5878a0e9dc377e0d3d5ca2e41488a2309319bc`, proves the package's only direct dependencies (`postgresql-16` and `libc6`) are already installed, proves the installed `postgresql-16` provides exactly the compatible virtual JIT ABI `postgresql-16-jit-llvm (= 19)`, verifies the hashed package's exact `Depends` and `Breaks: postgresql-16-jit-llvm (<< 19)` metadata, installs with `dpkg` and no apt resolution, and asserts both package 0.8.6-1.pgdg13+1 and extension 0.8.6 before migrations. It then executes the guarded authority, lifecycle, 100,000-row preflight, aggregate expiry-telemetry, and emergency concurrency/rollback suites in separate fresh Bun processes. `TEST_DATABASE_SAFE=1` and `API_TEST_REQUIRE_DATABASE=1` are scoped to that exact database step; never set the marker until the URL has been proven dedicated and disposable. The workflow token is read-only, every checkout declines persisted credentials, and all release-gate actions are pinned to reviewed full commit SHAs.
+
+The same job runs API/protocol build, API typecheck, CLI-spec typecheck, lint, static isolated-test inventory, telemetry-adapter privacy, identifier-free negotiation-conflict application-log coverage, assurance-log sanitization, a fresh-process mocked production Sentry sink contract, the provider-free Mac agent-runtime JavaScript saga contract on Ubuntu, and the stale/expired `indexCovering: true` smoke. It triggers on the complete `apps/mac/**` trust surface; it does not claim a Swift/macOS build, which remains in the separate Mac workflow. Preflight has no hidden duration defaults: protected dispatches require release-approved `HERMES_PREFLIGHT_MAX_LOCK_MS` and `HERMES_PREFLIGHT_MAX_TOTAL_MS` inputs; PR runs use the explicitly labeled non-production 5,000/30,000 ms fixture thresholds. The fresh 100,000-row fixture strictly parses and consumes those selected values for both timed preflight and relevant migration DDL. Emergency control is dry-run only in CI and must never receive `--confirm` there.
+
+Protected dispatch also requires the release-ops supplied immutable `PREVIOUS_API_IMAGE` digest and the GitHub `production` environment. The PR rollback-base image is explicitly non-production evidence and is not a substitute. CI uploads one aggregate credential-free artifact plus only the established fixed-schema preflight/compatibility reports—never raw logs, database URLs, identities, credential values/hashes, request data, or transcript/private prose. The aggregate's exact gate set is release-contracted and includes stable `telemetry-privacy`, `assurance-output-sanitization`, and `sentry-sink` entries; loose subset evidence is not accepted. The sanitized preflight evidence records validated measured `lockDurationMs` and `totalDurationMs`, and the aggregate binds both values to their approved maxima.
+
+Operators must follow [the rollout assurance checklist](../rollout/hermes-backend-production-assurance.md) and [the emergency rollback runbook](../runbooks/hermes-emergency-rollback.md). Those documents do not authorize migrations, deployment, or production mutation; approvals remain separate. Rollout is server before client. Rollback is forward-fix-first and, if authorized, strictly establish and verify a separately authorized durable admission fence → pause → bulk revoke → verify zero live dedicated authority and zero selected Hermes → restore the approved older immutable binary → re-verify zero while the fence remains held.
 
 ### Deployment Config
 

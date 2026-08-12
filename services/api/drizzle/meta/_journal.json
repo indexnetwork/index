@@ -848,6 +848,34 @@
       "when": 1786282685733,
       "tag": "0121_easy_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1786509426264,
+      "tag": "0122_add_hermes_runtime_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1786512228229,
+      "tag": "0123_add_secure_standalone_authorizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1786527543775,
+      "tag": "0124_add_hermes_emergency_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1786542875613,
+      "tag": "0125_add_eval_matrix_quality_attestation",
+      "breakpoints": true
     }
   ]
 }

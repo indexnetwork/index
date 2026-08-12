@@ -503,4 +503,3 @@ function NetworkRow({ net, onOpen, onJoin, joining }) {
     </div>
   );
 }
-

@@ -14,20 +14,17 @@ It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs`
 
 ## Authentication
 
-The native macOS client authenticates with a **90-day CLI API key** minted via the browser `/cli-auth` flow (mirroring `packages/cli/src/login.command.ts`) and stored in the Keychain by the Swift shell. All requests send it as the **`x-api-key`** header:
+The native macOS client uses a dedicated 30-day `idxo_` owner credential created through canonical browser PKCE authorization. The Swift shell stores it only in the owner Keychain access group and supplies it directly to `NativeAPIRequestBridge`; JavaScript receives only credential-free structured operations and nonsecret authentication status. Credentials, authorization codes, PKCE verifiers, and API-key headers are never exposed to the WKWebView, browser callback, local storage, or logs.
 
-- `client.mjs` accepts a `getApiKey` option (read lazily) alongside the existing `getToken`; when it resolves to a value, the client attaches `x-api-key`.
-- Fetch-based SSE in `bridge.jsx` (`streamChat`, `streamInbox`) sets `x-api-key` directly, since `EventSource` cannot set headers.
-- `services/api/src/lib/cors.ts` includes `x-api-key` in `Access-Control-Allow-Headers`.
-
-API-key chat uses the **orchestrator** persona (not the Signal web persona). Session-only routes (`/intents/:id/visit`, `/questions/counts`, agent management writes, account deletion) are unreachable with an API key and are skipped or read-only in the UI.
+Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Session-only routes remain unavailable through this principal. Logout quarantines in-flight work, revokes authority, verifies denial, and deletes Keychain state only after confirmed server-side revocation.
 
 ## Current files
 
-- `client.mjs` — dependency-free fetch wrapper and resource methods for the Index API (`x-api-key` aware).
-- `mappers.mjs` — pure mappers from API responses to the current mac prototype view models.
-- `deeplink.mjs` — pure `parseDeepLink(url)`: the single place where a `https://index.network/o|u|c/<id>` universal link or an `index://` alias becomes a route. The Swift shell only delivers URLs; it makes no routing decision. Contract tested in `deeplink.spec.mjs`.
-- `index.mjs` — barrel exports for future consumers.
+- `client.mjs` — dependency-free resource wrapper supporting browser bearer tokens or the credential-free native structured bridge.
+- `mappers.mjs` — pure mappers from API responses to the current mac view models.
+- `deeplink.mjs` — pure `parseDeepLink(url)`: the single place where a configured Index universal link or an `index://` alias becomes a route. Swift delivers URLs without deciding their destination.
+- `native-api-bridge.mjs` — correlation, cancellation, event, and resource wrappers over native structured operations.
+- `index.mjs` — barrel exports for consumers.
 
 ## Endpoint coverage checked against controllers
 

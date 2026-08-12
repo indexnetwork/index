@@ -66,6 +66,8 @@ export {
   EvalScorecardPayloadV1Schema,
   EvalScorecardPayloadV2Schema,
   EvalExecutionEvidenceSchema,
+  HistoricalQualityTransportRowSchema,
+  HistoricalQualityExecutionRunSchema,
   buildEvalArtifact,
   parseEvalArtifact,
   isEvalArtifactV2,
@@ -88,6 +90,8 @@ export {
   type EvalCompletenessV1,
   type EvalCompletenessV2,
   type GitCommandRunner,
+  type HistoricalQualityTransportRow,
+  type HistoricalQualityExecutionRun,
 } from "./artifact.js";
 export {
   readEvalArtifact,

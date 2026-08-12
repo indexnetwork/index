@@ -17,9 +17,11 @@ import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../../capabilities/questions.enqueue.facade.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "../domain/negotiation.memory.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId, validateInflightAskUserFields } from '../domain/negotiation.question-safety.js';
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from '../domain/negotiation.question-safety.js';
 import { buildIntentSnapshots } from "../domain/negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "../domain/negotiation.task-lock-policy.js";
+import { isNegotiationTurnCapReached } from "../domain/negotiation.turn-cap.js";
+import { expectedNegotiationSpeaker } from "../domain/negotiation.expected-speaker.js";
 import { attributedDialogueIsEmpty, buildSeededAttribution, combineAttributedDialogue, type AttributedPriorDialogue, type TaskAttribution } from '../negotiation.attribution.js';
 
 const logger = protocolLogger("NegotiationGraph");
@@ -229,21 +231,14 @@ export class NegotiationGraphFactory {
 
         const isContinuation = priorTurns.length > 0;
 
-        // Determine currentSpeaker from last prior message. An `ask_user` last
-        // turn does NOT pass the floor: the sender paused to consult its own
-        // client, so on resume the same side speaks again — now armed with the
-        // client's answer (or its recorded absence). Flipping here would hand
-        // the turn to the counterparty, who has nothing to respond to.
-        let currentSpeaker: 'source' | 'candidate' = 'source';
-        if (isContinuation && priorMessages.length > 0) {
-          const lastMessage = priorMessages[priorMessages.length - 1];
-          const lastAction = turnsFromMessages([lastMessage])[0]?.action;
-          if (lastAction === 'ask_user') {
-            currentSpeaker = lastMessage.senderId === agentIdA ? 'source' : 'candidate';
-          } else {
-            currentSpeaker = lastMessage.senderId === agentIdA ? 'candidate' : 'source';
-          }
-        }
+        const expectedSpeaker = expectedNegotiationSpeaker({
+          sourceUserId: state.sourceUser.id,
+          candidateUserId: state.candidateUser.id,
+        }, priorMessages);
+        if (!expectedSpeaker) return { error: 'invalid negotiation participants' };
+        const currentSpeaker: 'source' | 'candidate' = expectedSpeaker === state.sourceUser.id
+          ? 'source'
+          : 'candidate';
 
         // Determine scenario-based maxTurns
         const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
@@ -546,9 +541,8 @@ export class NegotiationGraphFactory {
         const otherUser = isSource ? state.candidateUser : state.sourceUser;
         const ownIntentId = isSource ? state.sourceIntentId : state.candidateIntentId;
 
-        // Determine if this is the system agent's final allowed turn
-        const maxTurns = state.maxTurns ?? 0;
-        const isFinalTurn = maxTurns > 0 && (state.turnCount + 1) >= maxTurns;
+        // Determine if this is the system agent's final allowed turn.
+        const isFinalTurn = isNegotiationTurnCapReached(state.turnCount + 1, state.maxTurns);
 
         // Seat attribution keys on initiatorUserId (rigid v2 stamp), never on
         // parity or source/candidate position — under the conversation-scoped
@@ -624,6 +618,17 @@ export class NegotiationGraphFactory {
           ...(state.privateConsultation?.recipientUserId === ownUser.id
             ? { privateConsultation: state.privateConsultation }
             : {}),
+          ...(state.continuationExecution
+            ? {
+                timeoutContinuation: {
+                  priorTaskId: state.continuationExecution.taskId,
+                  settlementId: state.continuationExecution.settlementId,
+                  successorTaskId: state.continuationExecution.successorTaskId,
+                  token: state.continuationExecution.token,
+                  fence: state.continuationExecution.fence,
+                },
+              }
+            : {}),
         };
 
         const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
@@ -664,7 +669,13 @@ export class NegotiationGraphFactory {
               ? { privateConsultation: state.privateConsultation }
               : {}),
           }, state.continuationExecution);
-          await database.updateTaskState(state.taskId, "waiting_for_agent", undefined, state.continuationExecution);
+          await database.updateTaskState(
+            state.taskId,
+            "waiting_for_agent",
+            undefined,
+            state.continuationExecution,
+            dispatchResult.resumeToken,
+          );
           return { status: 'waiting_for_agent' as const };
         } else {
           // No personal agent or timeout — run system agent
@@ -777,7 +788,7 @@ export class NegotiationGraphFactory {
                 reasoning: 'Client consultation required.',
                 suggestedRoles: turn.assessment.suggestedRoles,
               },
-              askUser: consultationPromptFor(consultationPolicyReason),
+              askUser: { reason: consultationPolicyReason },
             };
             emitConsultationTelemetry('asked', consultationPolicyReason);
           }
@@ -853,27 +864,10 @@ export class NegotiationGraphFactory {
         // like the waiting_for_agent suspend; the answer (or window expiry)
         // resumes via the run-existing continuation path.
         if (turn.action === 'ask_user') {
-          const counterparty = isSource ? state.candidateUser : state.sourceUser;
-          const safeAskUser = validateInflightAskUserFields({
-            disclosureSubject: turn.askUser?.disclosureSubject,
-            draftQuestion: turn.askUser?.draftQuestion,
-            forbiddenIdentifiers: [
-              counterparty.id,
-              counterparty.profile.name ?? '',
-              state.opportunityId,
-              state.taskId,
-              state.indexContext.networkId,
-              isSource ? state.candidateIntentId ?? '' : state.sourceIntentId ?? '',
-            ],
-            forbiddenSourceText: [
-              counterparty.profile.bio ?? '',
-              counterparty.profile.location ?? '',
-              ...counterparty.intents.flatMap((intent) => [intent.title, intent.description]),
-              state.seedAssessment.reasoning,
-              state.indexContext.prompt,
-              state.discoveryQuery ?? '',
-            ],
-          });
+          const consultationReason = turn.askUser?.reason;
+          const safeAskUser = consultationReason
+            ? consultationPromptFor(consultationReason)
+            : null;
           const settlementId = negotiationQuestionSettlementId(state.taskId);
 
           const askUserBinding = await database.captureNegotiationAskUserBinding({
@@ -889,7 +883,7 @@ export class NegotiationGraphFactory {
               indexContext: state.indexContext,
               seedAssessment: state.seedAssessment,
               ...(isSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
-              ...(consultationPolicyReason && { consultationPolicyReason }),
+              ...(consultationReason && { consultationPolicyReason: consultationReason }),
             },
             ...(state.continuationExecution ? { continuationExecution: state.continuationExecution } : {}),
           });
@@ -933,10 +927,8 @@ export class NegotiationGraphFactory {
               context: {
                 negotiationId: state.taskId,
                 counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
-                disclosureSubject: safeAskUser.disclosureSubject,
-                ...(safeAskUser.draftQuestion && { draftQuestion: safeAskUser.draftQuestion }),
                 indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
-                ...(consultationPolicyReason && { consultationPolicyReason }),
+                consultationPolicyReason: consultationReason!,
                 ...(userContext && { userContext }),
               },
             }).catch((error) => {
@@ -1045,7 +1037,7 @@ export class NegotiationGraphFactory {
       // Terminal actions: accept (v1+v2), reject (v1), withdraw/decline (v2)
       if (isTerminalAction(state.lastTurn.action)) return "finalize";
       // question routes same as counter — next turn
-      if ((state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns!) return "finalize";
+      if (isNegotiationTurnCapReached(state.turnCount, state.maxTurns)) return "finalize";
       return "turn";
     };
 
@@ -1126,7 +1118,7 @@ export class NegotiationGraphFactory {
       const blockedByScreenNode = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
       const refusedAtOpeningTurn = state.firstTurnScreenedOut === true;
       const screenedOut = blockedByScreenNode || refusedAtOpeningTurn;
-      const atCap = !screenedOut && (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
+      const atCap = !screenedOut && isNegotiationTurnCapReached(state.turnCount, state.maxTurns) && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
       if (hasOpportunity && history.length >= 2) {

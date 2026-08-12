@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
-import { attestAbTargets, parseAbManifest, resetAbBranch, type AbManifest, type AttestedAbManifest } from '../discovery.neon';
+import { attestAbTargets, attestHistoricalQualityTargets, parseAbManifest, parseHistoricalQualityManifest, parseLegacyAbManifest, resetAbBranch, restoreHistoricalQualitySelectedChild, type AbManifest, type AttestedAbManifest, type AttestedHistoricalQualityManifest, type AttestedWritableQualityBaseTarget, type DiscoveryManifestV2 } from '../discovery.neon';
 import type { NeonControlPlane } from '../discovery-env-matrix.neon';
+import { attestWritableQualityBaseTarget, parseQualityBaseRefreshTarget, type QualityBaseRefreshTargetV2 } from '../discovery-quality-refresh-target';
 
 const manifest: AbManifest = {
   projectId: 'proj-1',
@@ -22,7 +23,7 @@ const controlPlane = (overrides: Record<string, Partial<{ name: string; parentId
     ...overrides[branchId],
   }),
   listEndpoints: async (_projectId, branchId) => [
-    { id: `ep-${branchId.slice(3)}`, branchId, host: `ep-${branchId.slice(3)}.neon.tech` },
+    { id: `ep-${branchId.slice(3)}`, branchId, host: `ep-${branchId.slice(3)}.neon.tech`, type: 'read_write' },
   ],
 });
 
@@ -60,6 +61,91 @@ const manifestJson = (overrides: Record<string, unknown> = {}): string => JSON.s
   ...overrides,
 });
 
+const qualityManifest: DiscoveryManifestV2 = {
+  version: 2,
+  projectId: 'proj-1',
+  baseBranchId: 'br-base',
+  baseReadReplica: {
+    endpointId: 'ep-replica',
+    databaseUrl: 'postgresql://reader:replica-secret@ep-replica.neon.tech/protocol_eval',
+  },
+  targets: manifest.targets,
+};
+
+const qualityManifestJson = (overrides: Record<string, unknown> = {}): string => JSON.stringify({
+  ...qualityManifest,
+  ...overrides,
+});
+
+const refreshTarget = {
+  version: 2,
+  projectId: 'proj-1',
+  branchId: 'br-base',
+  endpointId: 'ep-refresh',
+  databaseName: 'protocol_eval',
+  databaseUrl: 'postgresql://writer:refresh-secret@ep-refresh.neon.tech/protocol_eval',
+} as const;
+
+function qualityControlPlane(input: {
+  baseName?: string;
+  basePrimary?: boolean;
+  branchByRequestedId?: Record<string, string>;
+  parentByBranch?: Record<string, string | null>;
+  endpointByRequestedBranch?: Record<string, { id: string; branchId: string; host: string; type: 'read_only' | 'read_write' }>;
+} = {}): NeonControlPlane {
+  return {
+    getBranch: async (_projectId, requestedBranchId) => {
+      const id = input.branchByRequestedId?.[requestedBranchId] ?? requestedBranchId;
+      return {
+        id,
+        name: requestedBranchId === 'br-base'
+          ? input.baseName ?? 'eval-discovery-base'
+          : requestedBranchId === 'br-a' ? 'eval-ab-a' : 'eval-ab-b',
+        parentId: requestedBranchId === 'br-base' ? null : input.parentByBranch?.[requestedBranchId] ?? 'br-base',
+        expiresAt: null,
+        primary: requestedBranchId === 'br-base' ? input.basePrimary ?? false : false,
+      };
+    },
+    listEndpoints: async (_projectId, requestedBranchId) => {
+      const override = input.endpointByRequestedBranch?.[requestedBranchId];
+      if (override) return [override];
+      if (requestedBranchId === 'br-base') {
+        return [
+          { id: 'ep-replica', branchId: 'br-base', host: 'ep-replica.neon.tech', type: 'read_only' },
+          { id: 'ep-refresh', branchId: 'br-base', host: 'ep-refresh.neon.tech', type: 'read_write' },
+        ];
+      }
+      return [{
+        id: requestedBranchId === 'br-a' ? 'ep-a' : 'ep-b',
+        branchId: requestedBranchId,
+        host: requestedBranchId === 'br-a' ? 'ep-a.neon.tech' : 'ep-b.neon.tech',
+        type: 'read_write',
+      }];
+    },
+  };
+}
+
+async function attestedRefreshTarget(
+  target: QualityBaseRefreshTargetV2 = refreshTarget,
+  controlPlane: NeonControlPlane = qualityControlPlane(),
+): Promise<AttestedWritableQualityBaseTarget> {
+  return attestWritableQualityBaseTarget({
+    target: parseQualityBaseRefreshTarget(JSON.stringify(target)),
+    controlPlane,
+  });
+}
+
+async function attestQuality(
+  manifestValue: DiscoveryManifestV2 = qualityManifest,
+  controlPlane: NeonControlPlane = qualityControlPlane(),
+): Promise<AttestedHistoricalQualityManifest> {
+  return attestHistoricalQualityTargets({
+    manifest: manifestValue,
+    writableRefreshTarget: await attestedRefreshTarget(refreshTarget, controlPlane),
+    controlPlane,
+  });
+}
+
 describe('attestAbTargets', () => {
   it('accepts two A/B branches parented on the attested base', async () => {
     await expect(attestAbTargets({ manifest, controlPlane: controlPlane() })).resolves.toBeDefined();
@@ -83,6 +169,22 @@ describe('attestAbTargets', () => {
   it('refuses a base branch that is not the protected fixture base', async () => {
     await expect(attestAbTargets({ manifest, controlPlane: controlPlane({ 'br-base': { name: 'production' } }) }))
       .rejects.toThrow(/base branch identity is invalid/);
+  });
+
+  it('keeps legacy A/B endpoint-type behavior unchanged and ignores read_only versus read_write', async () => {
+    const legacyControlPlane = controlPlane();
+    await expect(attestAbTargets({
+      manifest,
+      controlPlane: {
+        ...legacyControlPlane,
+        listEndpoints: async (_projectId, branchId) => [{
+          id: `ep-${branchId.slice(3)}`,
+          branchId,
+          host: `ep-${branchId.slice(3)}.neon.tech`,
+          type: 'read_only',
+        }],
+      },
+    })).resolves.toBeDefined();
   });
 
   it('refuses a side whose endpoint host is not the host in its DATABASE_URL', async () => {
@@ -259,6 +361,33 @@ describe('resetAbBranch', () => {
   });
 });
 
+describe('restoreHistoricalQualitySelectedChild', () => {
+  it('uses the branded v2 topology directly and restores side a only', async () => {
+    const calls: string[] = [];
+    await restoreHistoricalQualitySelectedChild({
+      manifest: await attestQuality(),
+      apiKey: 'quality-key',
+      pollIntervalMs: 0,
+      pollTimeoutMs: 1_000,
+      fetchImpl: restoreFetch({ operationIds: ['op-quality'], statuses: ['finished'], calls }),
+    });
+    expect(calls).toEqual([
+      `POST ${RESTORE_URL}`,
+      `GET ${OPERATION_URL('op-quality')}`,
+    ]);
+    expect(calls.join(' ')).not.toContain('/branches/br-b/');
+  });
+
+  it('does not accept a parsed, unattested v2 manifest', async () => {
+    await restoreHistoricalQualitySelectedChild({
+      // @ts-expect-error - only attestHistoricalQualityTargets can produce this brand.
+      manifest: parseHistoricalQualityManifest(qualityManifestJson()),
+      apiKey: 'k',
+      fetchImpl: (async () => { throw new Error('must not restore'); }) as unknown as typeof fetch,
+    }).catch(() => undefined);
+  });
+});
+
 describe('resetAbBranch attestation brand', () => {
   /**
    * The reviewer's attack: a manifest built through the real `parseAbManifest`
@@ -293,6 +422,221 @@ describe('resetAbBranch attestation brand', () => {
       manifest: forged as AttestedAbManifest,
       branchId: 'br-production', apiKey: 'k', fetchImpl: neverCalled,
     })).rejects.toThrow(/not a designated/i);
+  });
+});
+
+describe('strict historical quality manifest parsing and attestation', () => {
+  it('parses only the exact v2 shape and canonicalizes child order', () => {
+    const parsed = parseHistoricalQualityManifest(qualityManifestJson({
+      targets: [qualityManifest.targets[1], qualityManifest.targets[0]],
+    }));
+    expect(parsed).toEqual(qualityManifest);
+  });
+
+  it.each([
+    undefined,
+    '{',
+    manifestJson(),
+    qualityManifestJson({ version: 1 }),
+    qualityManifestJson({ extra: true }),
+    qualityManifestJson({ baseReadReplica: { ...qualityManifest.baseReadReplica, extra: true } }),
+    qualityManifestJson({ targets: [{ ...qualityManifest.targets[0], extra: true }, qualityManifest.targets[1]] }),
+  ])('rejects missing, malformed, legacy, or non-exact quality manifest %p', (raw) => {
+    expect(() => parseHistoricalQualityManifest(raw)).toThrow();
+  });
+
+  it.each([
+    ['base branch reused by child', { targets: [{ ...qualityManifest.targets[0], branchId: 'br-base' }, qualityManifest.targets[1]] }],
+    ['replica endpoint reused by child', { targets: [{ ...qualityManifest.targets[0], endpointId: 'ep-replica' }, qualityManifest.targets[1]] }],
+    ['child endpoint duplicated', { targets: [qualityManifest.targets[0], { ...qualityManifest.targets[1], endpointId: 'ep-a' }] }],
+    ['child branch duplicated', { targets: [qualityManifest.targets[0], { ...qualityManifest.targets[1], branchId: 'br-a' }] }],
+    ['base URL reused by child', { targets: [{ ...qualityManifest.targets[0], databaseUrl: qualityManifest.baseReadReplica.databaseUrl }, qualityManifest.targets[1]] }],
+  ])('rejects crossed or duplicate IDs/URLs: %s', (_label, override) => {
+    expect(() => parseHistoricalQualityManifest(qualityManifestJson(override))).toThrow(/distinct|base|replica|URL/i);
+  });
+
+  it.each([
+    ['project equals base branch', { projectId: 'br-base' }],
+    ['project equals replica endpoint', { projectId: 'ep-replica' }],
+    ['base branch equals replica endpoint', { baseBranchId: 'ep-replica' }],
+    ['child branch equals project', { targets: [{ ...qualityManifest.targets[0], branchId: 'proj-1' }, qualityManifest.targets[1]] }],
+    ['child branch equals sibling endpoint', { targets: [{ ...qualityManifest.targets[0], branchId: 'ep-b' }, qualityManifest.targets[1]] }],
+    ['child endpoint equals base branch', { targets: [{ ...qualityManifest.targets[0], endpointId: 'br-base' }, qualityManifest.targets[1]] }],
+  ])('rejects cross-namespace identifier reuse: %s', (_label, override) => {
+    expect(() => parseHistoricalQualityManifest(qualityManifestJson(override))).toThrow(/pairwise distinct/);
+  });
+
+  it.each([
+    'https://ep-replica.neon.tech/protocol_eval',
+    'postgresql://reader:secret@example.com/protocol_eval',
+    'postgresql://reader:secret@ep-replica.neon.tech/other',
+    'postgresql://reader:secret@ep-replica.neon.tech:6543/protocol_eval',
+    'not a url with hunter2',
+  ])('rejects an unsafe base read-replica URL without echoing it: %s', (databaseUrl) => {
+    let error: Error | undefined;
+    try {
+      parseHistoricalQualityManifest(qualityManifestJson({
+        baseReadReplica: { ...qualityManifest.baseReadReplica, databaseUrl },
+      }));
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(error!.message).not.toContain(databaseUrl);
+    expect(error!.message).not.toContain('hunter2');
+  });
+
+  it.each([
+    'postgresql://ep-replica.neon.tech/protocol_eval',
+    'postgresql://user@ep-replica.neon.tech/protocol_eval',
+    'postgresql://:secret@ep-replica.neon.tech/protocol_eval',
+    'postgresql://user:@ep-replica.neon.tech/protocol_eval',
+    'postgresql://%20:secret@ep-replica.neon.tech/protocol_eval',
+    'postgresql://user:%20@ep-replica.neon.tech/protocol_eval',
+    'postgresql://user:%ZZ-secret@ep-replica.neon.tech/protocol_eval',
+  ])('rejects missing, blank, or malformed strict v2 credentials without echoing them: %s', (databaseUrl) => {
+    let error: Error | undefined;
+    try {
+      parseHistoricalQualityManifest(qualityManifestJson({
+        baseReadReplica: { ...qualityManifest.baseReadReplica, databaseUrl },
+      }));
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(error!.message).toBe('Discovery manifest baseReadReplica databaseUrl must contain database credentials');
+    expect(error!.message).not.toContain(databaseUrl);
+    expect(error!.message).not.toContain('secret');
+  });
+
+  it('accepts percent-encoded non-empty strict v2 credentials', () => {
+    const databaseUrl = 'postgresql://quality%2Dreader:quality%2Dsecret@ep-replica.neon.tech/protocol_eval';
+    expect(parseHistoricalQualityManifest(qualityManifestJson({
+      baseReadReplica: { ...qualityManifest.baseReadReplica, databaseUrl },
+    })).baseReadReplica.databaseUrl).toBe(databaseUrl);
+  });
+
+  it('accepts the strict v2 manifest for quality attestation', async () => {
+    await expect(attestQuality()).resolves.toBeDefined();
+  });
+
+  it.each([
+    ['writable replica', { endpointByRequestedBranch: { 'br-base': { id: 'ep-replica', branchId: 'br-base', host: 'ep-replica.neon.tech', type: 'read_write' as const } } }],
+    ['read-only child', { endpointByRequestedBranch: { 'br-a': { id: 'ep-a', branchId: 'br-a', host: 'ep-a.neon.tech', type: 'read_only' as const } } }],
+    ['replica owned by child', { endpointByRequestedBranch: { 'br-base': { id: 'ep-replica', branchId: 'br-a', host: 'ep-replica.neon.tech', type: 'read_only' as const } } }],
+    ['crossed A/B endpoint', { endpointByRequestedBranch: { 'br-a': { id: 'ep-a', branchId: 'br-b', host: 'ep-a.neon.tech', type: 'read_write' as const } } }],
+    ['crossed host', { endpointByRequestedBranch: { 'br-b': { id: 'ep-b', branchId: 'br-b', host: 'ep-a.neon.tech', type: 'read_write' as const } } }],
+    ['wrong returned branch', { branchByRequestedId: { 'br-a': 'br-b' } }],
+    ['wrong parent', { parentByBranch: { 'br-b': 'br-other' } }],
+    ['primary base', { basePrimary: true }],
+    ['wrong base name', { baseName: 'production' }],
+  ])('rejects the %s role-crossing attack', async (_label, overrides) => {
+    const controlPlane = qualityControlPlane(overrides);
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane,
+    })).rejects.toThrow();
+  });
+
+  it('rejects a child endpoint ID returned on the base as a refresh endpoint role', async () => {
+    const base = qualityControlPlane();
+    const controlPlane: NeonControlPlane = {
+        ...base,
+        listEndpoints: async (projectId, branchId) => branchId === 'br-base'
+          ? [
+            { id: 'ep-replica', branchId, host: 'ep-replica.neon.tech', type: 'read_only' },
+            { id: 'ep-a', branchId, host: 'ep-refresh.neon.tech', type: 'read_write' },
+          ]
+          : base.listEndpoints(projectId, branchId),
+      };
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane,
+    })).rejects.toThrow();
+  });
+
+  it('jointly rejects a separately attested refresh target from another project', async () => {
+    const otherProject = await attestedRefreshTarget({ ...refreshTarget, projectId: 'project-other' });
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: otherProject,
+      controlPlane: qualityControlPlane(),
+    })).rejects.toThrow();
+  });
+
+  it('jointly rejects a separately attested refresh endpoint crossing a child role', async () => {
+    const crossedTarget = { ...refreshTarget, endpointId: 'ep-a', databaseUrl: 'postgresql://writer:x@ep-a.neon.tech/protocol_eval' };
+    const crossedControlPlane: NeonControlPlane = {
+      getBranch: async (_projectId, branchId) => ({ id: branchId, name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: false }),
+      listEndpoints: async () => [{ id: 'ep-a', branchId: 'br-base', host: 'ep-a.neon.tech', type: 'read_write' }],
+    };
+    const crossed = await attestedRefreshTarget(crossedTarget, crossedControlPlane);
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: crossed,
+      controlPlane: qualityControlPlane(),
+    })).rejects.toThrow();
+  });
+
+  it('requires the exact separately attested refresh endpoint to remain read_write on the shared base', async () => {
+    const controlPlane = qualityControlPlane({
+      endpointByRequestedBranch: {
+        'br-base': { id: 'ep-refresh', branchId: 'br-base', host: 'ep-refresh.neon.tech', type: 'read_only' },
+      },
+    });
+    await expect(attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane,
+    })).rejects.toThrow();
+  });
+
+  it('never retains or serializes a credential-bearing control-plane cause', async () => {
+    const secret = 'provider-body-hunter2';
+    const error = await attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane: {
+        getBranch: async () => { throw new Error(secret, { cause: new Error(`nested-${secret}`) }); },
+        listEndpoints: async () => { throw new Error('not reached'); },
+      },
+    }).catch((caught: Error) => caught);
+    expect((error as Error).cause).toBeUndefined();
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(secret);
+  });
+
+  it('never echoes a control-plane or URL secret on attestation failure', async () => {
+    const secret = 'provider-body-hunter2';
+    const error = await attestHistoricalQualityTargets({
+      manifest: qualityManifest,
+      writableRefreshTarget: await attestedRefreshTarget(),
+      controlPlane: {
+        getBranch: async () => { throw new Error(secret); },
+        listEndpoints: async () => { throw new Error('not reached'); },
+      },
+    }).catch((caught: Error) => caught);
+    expect((error as Error).message).not.toContain(secret);
+    expect((error as Error).message).not.toContain('replica-secret');
+  });
+});
+
+describe('legacy A/B manifest compatibility', () => {
+  it('continues accepting unversioned and version-1 legacy manifests without database credentials', () => {
+    const credentialless = {
+      targets: [
+        { ...manifest.targets[0], databaseUrl: 'postgresql://ep-a.neon.tech/protocol_eval' },
+        { ...manifest.targets[1], databaseUrl: 'postgresql://ep-b.neon.tech/protocol_eval' },
+      ] as const,
+    };
+    expect(parseLegacyAbManifest(manifestJson(credentialless)).targets).toEqual(credentialless.targets);
+    expect(parseLegacyAbManifest(manifestJson({ version: 1, ...credentialless })).targets).toEqual(credentialless.targets);
+  });
+
+  it('accepts v2 by projecting exactly the same two child targets', () => {
+    expect(parseLegacyAbManifest(qualityManifestJson())).toEqual(manifest);
+    expect(parseAbManifest(qualityManifestJson())).toEqual(manifest);
   });
 });
 

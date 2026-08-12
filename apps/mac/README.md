@@ -1,62 +1,42 @@
 # Index macOS Client
 
-The native macOS application for Index, a React-based UI wrapped in a Swift WKWebView app with an Amiga Workbench 1.3 aesthetic.
+Index is a macOS 13+ WKWebView client with a native, credential-free request bridge. It is an optional owner-control surface: standalone Hermes connection does **not** require the Index app to be installed or running.
 
-## Architecture
+## Security model
 
-- **Frontend:** React 18 + JSX compiled with Babel, bundled into a single offline-capable HTML file
-- **Native wrapper:** Swift + WKWebView (WebKit) for native window chrome and file handling
-- **Design:** Amiga Workbench 1.3 theme with IBM Plex Sans and JetBrains Mono fonts
-- **Build:** Python script to inline all dependencies (React, Babel, fonts, JSX modules) for fully offline operation
+The signed app owns an `idxo_` credential with audience `index-app-owner`; the standalone Index Connector owns the separate `idxh_` Hermes credential with audience `hermes-agent`. They use separate Keychain services/access groups and neither process can read the other item's credential. Raw credentials, PKCE verifiers, authorization codes, activation proofs, and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
 
-## Prerequisites
+The native `indexAPI` bridge accepts only the exact bundled main document and document generation. JavaScript supplies structured, allowlisted requests; Swift constructs the fixed API/MCP URLs, reads the owner credential natively, validates body/schema/resource bounds, and returns sanitized data only. It permits bounded REST, upload, and SSE operations (32 pending requests, 1 MiB ordinary request/response, 8 MiB decoded images, 64 KiB events, 256 events; 30-second ordinary and five-minute stream deadlines). It never accepts a browser-supplied URL, header, credential, or transport override.
 
-- **macOS 11.0+**
-- **Swift 5.5+** (included with Xcode Command Line Tools)
-- **Python 3.6+**
-- **Node.js 18+** (optional, for design system utilities)
+## Owner sign-in and migration
 
-Install Xcode Command Line Tools if needed:
-```bash
-xcode-select --install
-```
+The app uses PKCE S256 with the canonical callback `http://127.0.0.1:<49152-65535>/callback`. The first-party flow creates a pending `idxo_` credential, verifies its Keychain write/read-back, and activates it with a one-time native proof. It expires after 30 days with no refresh path.
 
-## Directory Structure
+Historical `credential.json` installations are not migrated into Keychain. Startup preserves only nonsecret legacy key-ID recovery evidence, securely deletes and verifies absence of the exact plaintext file, remains signed out, and requires a fresh browser login. During approved replacement, the server revokes the legacy credential before issuing the pending replacement. Offline or uncertain cases remain recovery-only; the Application Support parent is retained because it contains nonsecret runtime journals.
 
-```
-apps/mac/                    # macOS app (Swift + WKWebView)
-├── build.sh, dev.sh, assemble.py   # thin wrappers → scripts/
-├── scripts/               # build, assemble, notarize, dmg, specs
-├── Sources/               # Swift (AppDelegate, AppConfig, auth, Hermes, …)
-├── Resources/             # AppIcon.icns, Assets.car; index.html is generated
-├── src/
-│   ├── index.html         # Root HTML template
-│   ├── styles/amiga.css   # Workbench theme (inlined at build)
-│   ├── ui/                # React screens + shared primitives
-│   ├── fonts/             # Woff2 font files
-│   └── vendor/            # Vendored React/Babel/ReactDOM
-├── api/                   # API client library (Node-testable boundary)
-└── Info.plist             # macOS app metadata
-```
+Logout quarantines bridge work, pauses/scrubs Hermes local activity, revokes the exact owner credential, verifies denial, then deletes the Keychain item. Uncertain network or persistence outcomes retain nonsecret recovery evidence and never claim logout completed.
 
-## Building
+## Hermes runtime
 
-### Standard Build
+The native app may show the same owner controls as the web, but it is not required for direct Hermes use. Connector-backed selection requires verified connector trust/status, exact installation/agent/setup-generation equality, active health, exact six-action grant, and valid expiry. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule, preserves unrelated Hermes state, and never recreates plaintext credentials. Disconnect is ordered connector status/disconnect → exact owner CAS to Index → fenced local cleanup; uncertain state remains recovery-only.
 
-From the `apps/mac` directory:
+## Build and source checks
 
 ```bash
 cd apps/mac
-./build.sh
+python3 assemble.py       # regenerates Resources/index.html
+./scripts/build.sh                # macOS Swift build
+
+cd ..
+bun test api/native-api-bridge.spec.mjs api/agent-runtime.spec.mjs \
+  api/agent-runtime-saga.spec.mjs hermes-runtime.spec.mjs
 ```
 
-This will:
-1. Assemble `src/index.html` and all JSX modules into a single `Resources/index.html`
-2. Inline all React/Babel libraries and fonts (fully offline)
-3. Compile Swift to a native binary
-4. Package into `dist/Index.app`
+Generated HTML must be regenerated through `assemble.py`, never hand-edited. The production source boundary disables Web Inspector; development inspection requires the explicit development build flag.
 
-The app will be in `dist/Index.app`, double-click to launch.
+## Direct Developer ID distribution
+
+Production distribution is direct Developer ID distribution, not the Mac App Store. It requires macOS 13+, Universal 2 artifacts, Hardened Runtime, Developer ID signing, notarization, stapling, checksums, immutable production HTTPS endpoint inputs, and a clean-account acceptance run. **App Sandbox is not a production requirement** for this direct-distribution model; release validation rejects unexpected sandbox/debug entitlements rather than requiring them.
 
 ### Development: Hot-Reload Mode
 
@@ -89,7 +69,7 @@ The app will hot-reload as you edit files, great for UI tweaking.
 **"codesign failed"**
 - Ad-hoc signing is skipped for local builds. The app will still run locally.
 
-## Deep links
+### Deep links
 
 The app opens two URL families, and **all** routing lives in one pure function,
 `parseDeepLink` in `api/deeplink.mjs` (unit tested in `api/deeplink.spec.mjs`,
@@ -113,7 +93,7 @@ Query strings, fragments and trailing slashes are ignored; foreign hosts,
 unknown paths and malformed URLs are ignored silently. Extra hosts (staging)
 are a `hosts` argument, not a code change.
 
-### Known limitation: universal links need a real signature
+#### Known limitation: universal links need a real signature
 
 The `https://` half only works in a **Developer ID-signed, notarized** build.
 `build.sh` generates the `com.apple.developer.associated-domains` entitlement
@@ -139,196 +119,35 @@ open "https://index.network/o/<opportunity-id>"
 
 ### Developer ID dev handoff
 
-This is an operator-only handoff for the `dev.index.network` universal-link
-profile. It must run on **macOS** with an operator-owned Developer ID Application
-identity and local notarytool keychain profile. Any existing API or app URL
-overrides must name the dev environment; do not put endpoint credentials in the
-bundle or substitute production URLs.
+This operator-only handoff runs on macOS with a Developer ID Application identity and local notarytool profile. It never places endpoint credentials in the bundle.
 
-Before building, confirm the dev host serves
-`/.well-known/apple-app-site-association` directly (HTTP 200, JSON, no redirect)
-for the Developer ID team's `network.index.system6` app ID. Its components must
-exclude `/u/*/?*` before the broader `/u/*` entry so only a non-empty deeper
-profile segment (such as `chat`) remains browser-only while `/u/<id>` opens the app.
-The signed artifact must contain exactly `applinks:dev.index.network` in its
-associated-domains entitlement.
+1. Register the explicit App ID `network.index.system6`, enable **Associated Domains enabled**, and create a **Developer ID provisioning profile** that authorizes exactly the owner Keychain group.
+2. Build with all four required inputs. The prefix has a trailing period and must match the profile/Team application-identifier prefix:
 
-Prepare and run the handoff in this order:
-
-1. In Apple Developer Certificates, Identifiers & Profiles, register or select
-   the explicit App ID `network.index.system6`.
-2. Edit that App ID, enable Associated Domains, confirm **Associated Domains enabled**
-   is shown, and save it.
-3. Create a **Distribution → Developer ID** provisioning profile for that App
-   ID, selecting the matching Developer ID Application certificate.
-4. Download the Developer ID provisioning profile to the operator machine. Do
-   not commit it or record its local name or path in PR evidence.
-5. From the repository root, build with all three required inputs:
-
-   ```bash
-   cd apps/mac
-   INDEX_LINK_HOST=dev.index.network \
-   CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
-   PROVISIONING_PROFILE='<path-to-downloaded-profile>' \
-   ./build.sh
-   ```
-
-6. Verify the embedded profile and signed entitlements, then notarize. The
-   notarization script revalidates the signed bundle and profile before
-   submission, waits for notary acceptance, staples and validates the ticket,
-   rechecks the signature, and runs the Gatekeeper assessment. Launch only
-   after every command succeeds:
-
-   ```bash
-   test -f dist/Index.app/Contents/embedded.provisionprofile
-   codesign --verify --deep --strict --verbose=2 dist/Index.app
-   codesign -d --entitlements :- dist/Index.app
-   NOTARYTOOL_PROFILE='<local-keychain-profile>' ./notarize.sh
-   open dist/Index.app
-   ```
-
-7. Treat runtime launch as a separate required check. `codesign`, notary
-   acceptance, stapling, and `spctl` can all pass while AMFI still rejects the
-   restricted Associated Domains entitlement with `No matching profile found`.
-   That failure means the embedded profile does not authorize the launched app;
-   do not treat the earlier checks as a successful handoff.
-
-Supply real dev IDs and local values only at execution time. After the runtime
-launch, exercise this seven-row matrix; stop and report a failed row rather than
-falling back to a production host.
-
-| URL / condition | Expected outcome |
-| --- | --- |
-| `https://dev.index.network/o/<id>` with the notarized app installed | opens that opportunity card in the app |
-| `https://dev.index.network/u/<id>` with the notarized app installed | opens that user's profile in the app |
-| `https://dev.index.network/u/<id>/chat` | stays in the browser; it must not open the app |
-| `index://o/<id>` | opens that opportunity card in the app |
-| `index://c/<code>` | opens the retired-connect one-line notice |
-| Quit the app, then open `index://u/<id>` | cold-launches the app to that user's profile |
-| `https://dev.index.network/u/<id>` in a separate browser profile with no app installed | remains on the dev landing page in the browser |
-
-PR evidence must be **redacted**: record only commands and pass/fail statuses,
-never real IDs, API keys, a certificate subject, or a notary profile name.
-Production HTTPS rows are deferred until the web release; this dev handoff does
-not validate or replace them.
-
-8. Package the distributable disk image from the same verified app:
-
-   ```bash
-   NOTARYTOOL_PROFILE='<local-keychain-profile>' ./dmg.sh
-   xcrun stapler validate dist/Index.dmg
-   ```
-
-   `dmg.sh` revalidates the signed, stapled bundle, lays out a branded window
-   (Workbench-window background generated by `dmg-background.swift`),
-   compresses to UDZO, then notarizes and staples `dist/Index.dmg` itself. The
-   DMG is the handoff artifact; the same redaction rules apply to its evidence.
-
-## Running
-
-### From Build Output
 ```bash
-open dist/Index.app
+cd apps/mac
+INDEX_LINK_HOST=dev.index.network \
+INDEX_APP_IDENTIFIER_PREFIX='TEAM123ABC.' \
+CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
+PROVISIONING_PROFILE='<path-to-downloaded-profile>' \
+./scripts/build.sh
 ```
 
-### Or directly from Finder
-Navigate to `dist/Index.app` and double-click.
+3. Verify `embedded.provisionprofile`, signature/entitlements, then notarize using a local keychain profile:
 
-## Development Workflow
-
-1. **Edit React components** in `src/ui/` (.jsx files)
-2. **Edit styles** in `src/index.html` (the `<style>` block)
-3. **Run hot-reload** with `./dev.sh`
-4. **See changes** as you save files
-
-For structural changes (new components, imports), the hot-reload will automatically pick them up.
-
-## Modifying the App
-
-### Adding a New React Component
-
-1. Create `src/ui/mycomponent.jsx`
-2. Import in your parent component or app.jsx:
-   ```jsx
-   // Imported automatically by Babel at runtime
-   const MyComponent = () => { /* ... */ }
-   export default MyComponent
-   ```
-3. Save, `assemble.py` will inline it on next change (or on next build)
-
-### Changing Fonts
-
-Fonts must be WOFF2 format. Update the list in `assemble.py` and add the file to `src/fonts/`:
-
-```python
-VENDOR = {
-    "url-to-font": "filename.woff2",
-}
+```bash
+NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/notarize.sh
 ```
 
-Then re-run the build to inline the new fonts.
+A runtime error such as `No matching profile found` means the profile does not authorize the launched app; do not treat prior signing/notarization checks as success. Verify that `https://dev.index.network/u/<id>/chat` stays in the browser while an allowed opportunity/profile link opens the signed app.
 
-### Customizing the Amiga Theme
+4. Package the distributable disk image from the same verified app:
 
-Edit the CSS variables in `src/index.html`:
-
-```css
-:root {
-    --amiga-bg: #0055AA;        /* desktop blue */
-    --amiga-fg: #000000;        /* black ink */
-    --amiga-paper: #FFFFFF;     /* window white */
-    --amiga-accent: #FF8A00;    /* title bar orange */
-}
+```bash
+NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/dmg.sh
+xcrun stapler validate dist/Index.dmg
 ```
 
-## Testing
+`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The DMG is the handoff artifact.
 
-The app runs fully offline with no backend dependency. To test networking:
-
-- Edit `api/client.mjs` to point to your API, then rebuild with `./build.sh`
-
-## Environment
-
-- **Offline-first:** All assets are bundled; the app works without network
-- **macOS native window chrome:** Custom WKWebView wrapper for native window management and file dialogs
-- **Dark mode:** Not explicitly supported; uses Amiga palette throughout
-- **Code signing:** Ad-hoc (local only), not suitable for distribution
-
-## Credential storage, known dev-only compromise
-
-The API key minted by `index login` is written as **plain JSON** to
-`~/Library/Application Support/network.index.system6/credential.json`
-(`0600`, in a `0700` directory). It is **not** in the Keychain.
-
-This is deliberate and it is a downgrade. The dev build is signed ad-hoc, so its
-code identity is its exact binary hash; every rebuild looked like a different
-application to the login Keychain's per-binary ACL, which re-prompted for the
-login password on every launch. A file has no ACL, so no prompt. The cost is a
-cleartext key on disk, readable by anything running as that user, and swept up
-by Time Machine or any backup pointed at Application Support.
-
-**Do not ship a build that touches real user credentials until every box is
-ticked.** The authoritative copy of this list lives beside the code, in the
-`CredentialStore` block in `Sources/CredentialStore.swift`:
-
-- [ ] Sign with a Developer ID Application certificate. A real identity gives a
-      stable code requirement, which is the actual fix for the prompt. Ad-hoc
-      signing was the root cause, not the Keychain.
-- [ ] Restore Keychain storage (revert `CredentialStore` to the `SecItem`
-      generic password in git history, keeping `kSecAttrAccessibleAfterFirstUnlock`)
-- [ ] Prefer the data-protection keychain (`kSecUseDataProtectionKeychain` plus a
-      keychain-access-group entitlement) so access is governed by entitlement
-      rather than per-binary ACL
-- [ ] Enable the hardened runtime and App Sandbox; notarize the bundle
-- [ ] Add an upgrade migration: read the file once, write it to the Keychain,
-      then delete the file **and** its directory, otherwise a cleartext key is
-      stranded on every machine that ran a dev build
-- [ ] Confirm the key never reaches `localStorage`, a WKWebView data store, or a
-      log line (today it is injected into the page in memory only)
-- [ ] Give the minted credential a server-side TTL and re-verify that logout
-      still revokes it
-
-## Next Steps
-
-- Check `api/` for the API client boundary
-- Refer to `src/ui/` component files for example patterns
+Record only redacted commands and pass/fail status in PR evidence; never IDs, credentials, certificate subjects, or profile names.

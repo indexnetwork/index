@@ -97,7 +97,7 @@ describe("ask_user pause/resume E2E (IND-401)", () => {
     const dispatcher1 = scriptedDispatcher({
       [sourceId]: [turn("outreach")],
       [candidateId]: [turn("ask_user", {
-        askUser: { disclosureSubject: "availability this quarter", draftQuestion: "Can I share your Q3 availability?" },
+        askUser: { reason: "consequential_disclosure_permission" },
       })],
     });
     const graph1 = new NegotiationGraphFactory(
@@ -204,7 +204,7 @@ describe("ask_user pause/resume E2E (IND-401)", () => {
     };
     const dispatcher = scriptedDispatcher({
       [sourceId]: [turn("outreach")],
-      [candidateId]: [turn("ask_user", { askUser: { disclosureSubject: "budget" } })],
+      [candidateId]: [turn("ask_user", { askUser: { reason: "consequential_disclosure_permission" } })],
     });
     const graph = new NegotiationGraphFactory(
       conversationDatabaseAdapter as unknown as NegotiationGraphDatabase,

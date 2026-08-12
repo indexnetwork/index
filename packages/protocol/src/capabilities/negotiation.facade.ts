@@ -16,8 +16,25 @@ export { NegotiationReflector } from "../negotiation/public/index.js";
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "../negotiation/public/index.js";
 export type { NegotiatorMemoryEntry } from "../negotiation/public/index.js";
 export type { NegotiationGraphLike } from "../negotiation/public/index.js";
+export {
+  HERMES_OWNER_DIRECTIVE,
+  HERMES_SHARED_MESSAGE_TEMPLATES,
+  HermesNegotiationActionSchema,
+  HermesNegotiationResponseSchema,
+  HermesOwnerDirectiveSchema,
+  HermesRoleAlignmentSchema,
+  allowedHermesActionsFor,
+  buildHermesNegotiationTurn,
+} from "../negotiation/public/index.js";
+export type {
+  HermesNegotiationAction,
+  HermesNegotiationResponse,
+  HermesOwnerDirective,
+  HermesRoleAlignment,
+} from "../negotiation/public/index.js";
 export { AMBIENT_PARK_WINDOW_MS } from "../negotiation/public/index.js";
-export { allowedActionsFor, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "../negotiation/public/index.js";
+export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached, expectedNegotiationSpeaker, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "../negotiation/public/index.js";
+export type { NegotiationSpeakerParticipants, NegotiationSpeakerMessage } from "../negotiation/public/index.js";
 export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "../negotiation/public/index.js";
 export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode, NegotiationConsultationReason } from "../negotiation/public/index.js";
 export {

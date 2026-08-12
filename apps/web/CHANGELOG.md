@@ -21,6 +21,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep the existing route-rendering smoke harness aligned with current web context contracts so its 21 covered route components mount under production-shaped empty states.
 - Make the existing QuestionsContext poll an invalidation-only signal for intent workspaces (IND-507): authoritative lifecycle filtering removes stale negotiation IDs from the stable revision and triggers one passive exact-intent pending+answered refetch without visit-time pool mining or a second poller. Exact answered exchanges remain once after continuation/reload; stale responses are ignored and cards replace/dedupe by durable question ID. Unproven anchors and all unanchored answered/pending cards trail deterministically, while the one mounted `IntentNegotiatorChat` and existing mobile FocusScope/inert/focus-restoration and desktop labelled-region layout remain unchanged.
 
 - Restore the initially closed Personal Agent/Questions column on desktop intent workspaces by limiting drawer-only hidden, non-interactive, and translated state styles to mobile viewports (IND-505).
@@ -39,6 +40,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add strict browser authorization and consent surfaces for standalone Hermes and the native Index app, plus session-owner connected-agent pause, revoke, and fresh-reconnect controls. Dedicated credentials remain outside browser storage and callbacks (web 0.51.0).
 - Publish the dependency-free Protocol Atlas at the direct development URL
   `/protocol-atlas/`, with deterministic build-time source validation and a
   server-enforced hostname boundary that keeps production hosts at 404 (web 0.50.0).

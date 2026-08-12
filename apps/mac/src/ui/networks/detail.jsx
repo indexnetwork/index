@@ -903,4 +903,3 @@ function NetworkDetail({ net, initialTab, flash, onBack, onLeave, onUpdated, onD
     </div>
   );
 }
-

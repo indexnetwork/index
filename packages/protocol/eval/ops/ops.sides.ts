@@ -107,10 +107,10 @@ const LINE_TERMINATORS = /[\n\r\u2028\u2029]/;
  * Every other catalogued flag is read by a parser that falls back — that is the
  * whole reason values are checked here before a run is queued, since a fallback
  * turns a reported difference into one that never happened. EVAL_MODEL_OVERRIDES
- * is the exception: `readModelOverrides` throws on invalid JSON, a non-object,
+ * is the exception: the canonical resolver throws on invalid JSON, a non-object,
  * an unknown agent key and a blank model id
- * (src/shared/agent/model.config.ts:54-69, and ENV_FLAG_METADATA's json-model-map
- * docblock says so). The refusal text differs accordingly.
+ * (src/shared/agent/model.resolver.ts, consumed by model.config.ts; the
+ * ENV_FLAG_METADATA json-model-map docblock says so). The refusal text differs accordingly.
  */
 const THROWING_ENV_KEYS: readonly string[] = Object.freeze(["EVAL_MODEL_OVERRIDES"]);
 
@@ -181,9 +181,9 @@ function sideConfigIssues(
       // The consequence sentence is per-key, because the two consequences are
       // opposite and an operator acts on them differently. Most read sites in
       // the discovery graph fall back, so a typo runs the DEFAULT under the
-      // operator's label. EVAL_MODEL_OVERRIDES does not: readModelOverrides
+      // operator's label. EVAL_MODEL_OVERRIDES does not: the canonical resolver
       // THROWS on an unknown agent, a non-object and a blank model id
-      // (src/shared/agent/model.config.ts:59-69), which is why ENV_FLAG_METADATA
+      // (src/shared/agent/model.resolver.ts), which is why ENV_FLAG_METADATA
       // gives it its own `json-model-map` kind. Telling an operator their value
       // would "fall back to the default" when it will in fact kill the run after
       // the branch reset is the same class of false sentence this check exists

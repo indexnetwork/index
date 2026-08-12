@@ -1,4 +1,5 @@
 import type { NegotiationOpportunityLifecycle } from '../../shared/interfaces/database.interface.js';
+import { expectedNegotiationSpeaker } from '../domain/negotiation.expected-speaker.js';
 import { buildLifecycleNarration } from '../domain/negotiation.lifecycle-narration.js';
 import { allowedActionsFor, readProtocolVersion, resolveSeat } from '../domain/negotiation.protocol.js';
 import type { SeedAssessment, UserNegotiationContext } from '../domain/negotiation.state.js';
@@ -116,16 +117,12 @@ export async function readAuthorizedNegotiationDetail(
     ? (outcomeArtifact.parts as Array<{ kind?: string; data?: unknown }>)?.find((part) => part.kind === 'data')?.data
     : null;
   const turnCount = messages.length;
-  const lastSenderId = turnCount > 0 ? messages[turnCount - 1].senderId : null;
-  const currentSpeaker = lastSenderId
-    ? (lastSenderId === `agent:${metadata.sourceUserId}` ? 'candidate' : 'source')
-    : (turnCount % 2 === 0 ? 'source' : 'candidate');
+  const expectedSpeaker = expectedNegotiationSpeaker(metadata, messages);
   const status = task.state === 'working' ? 'active'
     : task.state === 'waiting_for_agent' ? 'waiting_for_agent'
     : task.state === 'completed' ? 'completed'
     : task.state;
-  const isUsersTurn = status !== 'completed' &&
-    ((isSource && currentSpeaker === 'source') || (!isSource && currentSpeaker === 'candidate'));
+  const isUsersTurn = status !== 'completed' && expectedSpeaker === callerUserId;
   const protocolVersion = readProtocolVersion(metadata) ?? 'v1';
   const seat = resolveSeat(callerUserId, metadata);
   const priorTurnCount = metadata.priorTurnCount ?? 0;

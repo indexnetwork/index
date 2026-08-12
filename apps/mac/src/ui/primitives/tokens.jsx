@@ -94,4 +94,3 @@ function Tag({ children, inverted = false, style }) {
     </span>
   );
 }
-

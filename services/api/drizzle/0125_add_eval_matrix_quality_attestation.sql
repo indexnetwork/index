@@ -1,0 +1,1 @@
+ALTER TABLE "eval_matrix_metadata" ADD COLUMN IF NOT EXISTS "quality_attestation" jsonb;

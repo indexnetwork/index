@@ -134,7 +134,8 @@ describe('API-key migration history', () => {
     const journal = JSON.parse(
       readFileSync(path.join(apiRoot, 'drizzle/meta/_journal.json'), 'utf8'),
     ) as { entries: Array<{ idx: number; tag: string; when: number }> };
-    const repair = journal.entries.at(-1);
+    const repairIndex = journal.entries.findIndex((entry) => entry.tag === '0098_complete_apikey_schema');
+    const repair = journal.entries[repairIndex];
     expect(repair).toEqual({
       idx: 98,
       version: '7',
@@ -142,7 +143,8 @@ describe('API-key migration history', () => {
       tag: '0098_complete_apikey_schema',
       breakpoints: true,
     });
-    expect(repair!.when).toBeGreaterThan(journal.entries.at(-2)!.when);
+    expect(repairIndex).toBeGreaterThan(0);
+    expect(repair!.when).toBeGreaterThan(journal.entries[repairIndex - 1]!.when);
     expect(new Set(journal.entries.map((entry) => entry.idx)).size).toBe(journal.entries.length);
     expect(new Set(journal.entries.map((entry) => entry.tag)).size).toBe(journal.entries.length);
   });

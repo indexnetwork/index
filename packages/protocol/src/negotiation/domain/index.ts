@@ -76,6 +76,15 @@ export type {
 
 // ── Protocol rules ────────────────────────────────────────────────────────────
 export {
+  DEFAULT_NEGOTIATION_MAX_TURNS,
+  isNegotiationTurnCapReached,
+} from "./negotiation.turn-cap.js";
+export { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
+export type {
+  NegotiationSpeakerParticipants,
+  NegotiationSpeakerMessage,
+} from "./negotiation.expected-speaker.js";
+export {
   InitiatorTurnSchema,
   CounterpartyTurnSchema,
   FinalInitiatorTurnSchema,
@@ -97,6 +106,24 @@ export {
   resolveSeat,
   seatViolationMessage,
 } from "./negotiation.protocol.js";
+
+// ── Hermes structural response contract ──────────────────────────────────────
+export {
+  HERMES_OWNER_DIRECTIVE,
+  HERMES_SHARED_MESSAGE_TEMPLATES,
+  HermesNegotiationActionSchema,
+  HermesNegotiationResponseSchema,
+  HermesOwnerDirectiveSchema,
+  HermesRoleAlignmentSchema,
+  allowedHermesActionsFor,
+  buildHermesNegotiationTurn,
+} from "./negotiation.hermes-contract.js";
+export type {
+  HermesNegotiationAction,
+  HermesNegotiationResponse,
+  HermesOwnerDirective,
+  HermesRoleAlignment,
+} from "./negotiation.hermes-contract.js";
 
 // ── Deadlock detection ────────────────────────────────────────────────────────
 export {

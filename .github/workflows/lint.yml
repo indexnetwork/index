@@ -69,7 +69,10 @@ jobs:
         run: bun run check:subtree-parity
 
   typecheck:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Keep this required correctness gate on GitHub-hosted capacity. A
+    # Blacksmith allocation can remain queued indefinitely with runner_id=0,
+    # leaving a locally clean TypeScript build unable to report a conclusion.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -101,8 +104,10 @@ jobs:
 
   test:
     # Runs the hermetic pinning/characterization specs that mock all external
-    # systems (Redis/LLM/DB), so they need no services, secrets, or built
-    # protocol dist. Keeps these regression pins gated in CI rather than
+    # systems (Redis/LLM/DB), so they need no services or secrets. The timeout
+    # seams import shared protocol turn/speaker contracts through the package
+    # boundary, so this job builds protocol dist before running them. Keeps
+    # these regression pins gated in CI rather than
     # depending on local-only manual runs.
     #
     # NOTE: pinned to a newer Bun than the lint/typecheck jobs (1.2.20). The
@@ -125,6 +130,9 @@ jobs:
         run: |
           bun pm cache rm || true
           bun install --frozen-lockfile
+
+      - name: Build packages/protocol
+        run: cd packages/protocol && bun run build
 
       - name: Run hermetic pinning tests
         run: |
@@ -154,6 +162,8 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -276,7 +286,9 @@ jobs:
     # apps/eval-ops/railway.toml) but was also absent from CI entirely,
     # so neither typecheck nor the 47 vitest tests written in Tasks 12–17 gated
     # anything — which is how 8 type errors accumulated unnoticed.
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Like typecheck, this required correctness gate must not depend on a
+    # third-party runner allocation that may never be assigned.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

@@ -1,13 +1,21 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import { eq } from 'drizzle-orm/sql';
+import { and, eq } from 'drizzle-orm/sql';
 
-import db from '../lib/drizzle/drizzle';
 import { hashApiKey } from '../lib/apikey/credential';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
-import { apikeys, users } from '../schemas/database.schema';
+import { agents, agentPermissions, apikeys, hermesAgentCredentials, indexAppOwnerCredentials, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { getRequestAuthContext, recordRequestAuthContext } from '../lib/request-auth-context';
+import { HERMES_AGENT_AUDIENCE, hashHermesSecret } from '../lib/agent/hermes-authorization';
+import { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX, hashIndexAppOwnerSecret } from '../lib/agent/index-app-owner-authorization';
+import { HERMES_CANONICAL_ACTIONS, type HermesCapability } from '../lib/agent/hermes-capabilities';
+import { HERMES_AGENT_CREDENTIAL_PREFIX, HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
+import { hermesRuntimeTelemetry, scheduleHermesCredentialExpiryGaugeRefresh, type HermesCredentialExpiryHealthStore, type HermesRuntimeTelemetry, type HermesTelemetryReason } from '../lib/agent/hermes-runtime-telemetry';
+
+export { HERMES_AGENT_CREDENTIAL_PREFIX, HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND } from '../lib/agent/hermes-credential';
+export { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX } from '../lib/agent/index-app-owner-authorization';
+export type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
 const logger = log.server.from('auth.guard');
 
@@ -16,6 +24,99 @@ export interface AuthenticatedUser {
   email: string | null;
   name: string;
 }
+
+export interface ApiKeyAuthenticationCredential {
+  id?: string;
+  referenceId: string | null;
+  userId: string | null;
+  enabled: boolean;
+  expiresAt: Date | null;
+  metadata: string | null;
+}
+
+/** Persistence boundary used by the real API-key authentication algorithm. */
+export interface ApiKeyAuthenticationStore {
+  findCredentialByHash(hash: string): Promise<ApiKeyAuthenticationCredential | null>;
+  findUserById(userId: string): Promise<AuthenticatedUser | null>;
+}
+
+export interface HermesAgentAuthenticationCredential {
+  id: string;
+  ownerId: string;
+  audience: string;
+  agentId: string;
+  installationId: string;
+  setupAttemptId: string;
+  actions: readonly string[];
+  activationState: 'pending' | 'active' | 'revoked';
+  expiresAt: Date;
+}
+
+export interface HermesAgentAuthenticationAuthority {
+  id: string;
+  ownerId: string;
+  runtimeKind: 'hermes' | null;
+  installationId: string | null;
+  setupAttemptId: string | null;
+  status: 'active' | 'inactive';
+  deletedAt: Date | null;
+  actions: readonly string[] | null;
+}
+
+/** Dedicated active-row persistence boundary. It never reads legacy `apikey`. */
+export interface HermesAgentAuthenticationStore extends HermesCredentialExpiryHealthStore {
+  findCredentialByHash(hash: string): Promise<HermesAgentAuthenticationCredential | null>;
+  findAgentAuthority(agentId: string, ownerId: string): Promise<HermesAgentAuthenticationAuthority | null>;
+  findUserById(userId: string): Promise<AuthenticatedUser | null>;
+}
+
+export interface IndexAppOwnerAuthenticationCredential {
+  id: string;
+  ownerId: string;
+  audience: string;
+  installationId: string;
+  generation: string;
+  activationState: 'pending' | 'active' | 'revoked';
+  expiresAt: Date;
+}
+
+export interface IndexAppOwnerInstallationAuthority {
+  credentialId: string;
+  ownerId: string;
+  installationId: string;
+  generation: string;
+}
+
+export interface IndexAppOwnerAuthenticationStore {
+  findCredentialByHash(hash: string): Promise<IndexAppOwnerAuthenticationCredential | null>;
+  findCurrentInstallationAuthority(
+    ownerId: string,
+    installationId: string,
+  ): Promise<IndexAppOwnerInstallationAuthority | null>;
+  findUserById(userId: string): Promise<AuthenticatedUser | null>;
+}
+
+export type IndexAppOwnerPrincipal = {
+  ownerId: string;
+  credentialId: string;
+  audience: typeof INDEX_APP_OWNER_AUDIENCE;
+  installationId: string;
+  generation: string;
+  expiresAt: Date;
+  activationState: 'active';
+};
+
+export type HermesAgentPrincipal = {
+  ownerId: string;
+  credentialId: string;
+  audience: typeof HERMES_AGENT_AUDIENCE;
+  agentId: string;
+  installationId: string;
+  setupAttemptId: string;
+  actions: readonly HermesCapability[];
+  expiresAt: Date;
+  activationState: 'active';
+};
 
 const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', API_URL)
@@ -56,6 +157,14 @@ export class SessionRequiredError extends Error {
   constructor(message = 'This endpoint requires a session token; API keys are not accepted') {
     super(message);
     this.name = 'SessionRequiredError';
+  }
+}
+
+/** Thrown when an agent-bound key reaches an owner-control endpoint. */
+export class OwnerControlRequiredError extends Error {
+  constructor(message = 'This endpoint requires an owner credential; agent-bound API keys are not accepted') {
+    super(message);
+    this.name = 'OwnerControlRequiredError';
   }
 }
 
@@ -106,6 +215,270 @@ function parseApiKeyAgentId(metadata: string | null): string | null {
   return typeof parsed?.agentId === 'string' ? parsed.agentId : null;
 }
 
+function parseApiKeyAudience(metadata: string | null): typeof HERMES_NEGOTIATOR_AUDIENCE | null {
+  const parsed = parseApiKeyMetadata(metadata);
+  return parsed?.audience === HERMES_NEGOTIATOR_AUDIENCE
+    ? HERMES_NEGOTIATOR_AUDIENCE
+    : null;
+}
+
+function parseApiKeySetupAttemptId(metadata: string | null): string | null {
+  const parsed = parseApiKeyMetadata(metadata);
+  return typeof parsed?.setupAttemptId === 'string' ? parsed.setupAttemptId : null;
+}
+
+/**
+ * Dedicated-audience credentials are a closed authentication contract. Inspect
+ * the audience directly before resolving an owner so malformed dedicated rows
+ * cannot collapse into the legacy `audience: null` / unbound-key behavior.
+ */
+function hasValidHermesAuthenticationIdentity(row: ApiKeyAuthenticationCredential): boolean {
+  const parsed = parseApiKeyMetadata(row.metadata);
+  if (parsed?.audience !== HERMES_NEGOTIATOR_AUDIENCE) return true;
+
+  return typeof row.id === 'string'
+    && row.id.trim().length > 0
+    && typeof parsed.agentId === 'string'
+    && parsed.agentId.trim().length > 0
+    && typeof parsed.setupAttemptId === 'string'
+    && parsed.setupAttemptId.trim().length > 0
+    && parsed.kind === HERMES_NEGOTIATOR_CREDENTIAL_KIND
+    && row.expiresAt !== null
+    && typeof parsed.expiresAt === 'string'
+    && parsed.expiresAt === row.expiresAt.toISOString();
+}
+
+/** Stable 403 for an explicitly negotiation-only credential used elsewhere. */
+export class HermesNegotiatorRouteDeniedError extends Error {
+  constructor(message = 'This Hermes negotiator credential is not authorized for this endpoint') {
+    super(message);
+    this.name = 'HermesNegotiatorRouteDeniedError';
+  }
+}
+
+/**
+ * Centrally enforce the REST allowlist for the dedicated Hermes audience.
+ * Legacy agent-bound keys have no explicit audience and retain their historical
+ * route behavior. The URL is matched exactly after removing the optional API
+ * prefix; query strings never influence admission.
+ */
+export function assertApiKeyAudienceRoute(
+  req: Request,
+  principal: Pick<NegotiationCredentialPrincipal, 'agentId' | 'audience'>,
+): void {
+  if (principal.audience !== HERMES_NEGOTIATOR_AUDIENCE) return;
+
+  const method = req.method.toUpperCase();
+  const rawPath = new URL(req.url, 'http://localhost').pathname;
+  const path = rawPath === '/api' ? '/' : rawPath.replace(/^\/api(?=\/)/, '');
+  if (method === 'GET' && path === '/agents/me') return;
+
+  const escapedAgentId = principal.agentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const negotiationRoute = new RegExp(
+    `^/agents/${escapedAgentId}/negotiations/(?:pickup|[^/]+/(?:respond|consult))$`,
+  );
+  if (method === 'POST' && negotiationRoute.test(path)) return;
+
+  throw new HermesNegotiatorRouteDeniedError();
+}
+
+export class HermesAgentRouteDeniedError extends HermesNegotiatorRouteDeniedError {
+  constructor(message = 'This Hermes agent credential is not authorized for this endpoint') {
+    super(message);
+    this.name = 'HermesAgentRouteDeniedError';
+  }
+}
+
+export class IndexAppOwnerRouteDeniedError extends Error {
+  constructor(message = 'This Index app owner credential is not authorized for this endpoint') {
+    super(message);
+    this.name = 'IndexAppOwnerRouteDeniedError';
+  }
+}
+
+const INDEX_APP_OWNER_OPPORTUNITY_STATUS_SUBSET: ReadonlySet<string> = new Set(['accepted', 'rejected']);
+
+/** Dedicated native owner status mutation subset; session/legacy callers retain the global controller contract. */
+export function authorizeIndexAppOwnerOpportunityStatus(request: Request, status: string): boolean {
+  const context = getRequestAuthContext(request);
+  return context?.kind !== 'api_key' || context.audience !== INDEX_APP_OWNER_AUDIENCE
+    || INDEX_APP_OWNER_OPPORTUNITY_STATUS_SUBSET.has(status);
+}
+
+export type IndexAppOwnerRouteDecision =
+  | { allowed: true }
+  | { allowed: false; reason: 'dedicated_owner_route_denied' };
+
+const INDEX_APP_OWNER_STATIC_ROUTES = new Set([
+  'GET /auth/me', 'PATCH /auth/profile/update',
+  'GET /agent-runtime', 'PUT /agent-runtime',
+  'POST /agent-runtime/hermes/prepare', 'POST /agent-runtime/reconcile-index',
+  'POST /agent-runtime/rollback',
+  'GET /networks', 'POST /networks', 'GET /networks/discovery/public',
+  'GET /network-requests', 'POST /network-requests',
+  'GET /agents', 'POST /intents/list',
+  'POST /intents/confirm', 'POST /intents/reject',
+  'POST /intents/intake/start', 'POST /intents/intake/question',
+  'POST /intents/intake/prepare', 'POST /intents/intake/proposal',
+  'POST /intents/intake/revise',
+  'GET /opportunities', 'GET /opportunities/radar', 'GET /opportunities/chat-context',
+  'GET /questions', 'POST /tools/read_user_contexts',
+  'POST /tools/preview_user_context', 'POST /tools/confirm_user_context',
+  'POST /enrichment/enrich', 'GET /conversations', 'GET /conversations/negotiations',
+  'GET /conversations/stream', 'POST /conversations/dm', 'POST /chat/stream',
+  'POST /storage/avatars', 'POST /storage/index-images',
+]);
+
+/** Exact product-only route matrix for the dedicated native owner principal. */
+export function authorizeIndexAppOwner(input: { method: string; path: string }): IndexAppOwnerRouteDecision {
+  const method = input.method.toUpperCase();
+  const path = normalizeAudiencePath(input.path);
+  if (INDEX_APP_OWNER_STATIC_ROUTES.has(`${method} ${path}`)) return { allowed: true };
+  const segment = '[^/]+';
+  const routes: ReadonlyArray<readonly [string, RegExp]> = [
+    ['GET', new RegExp(`^/networks/${segment}/(?:overview|my-intents)$`)],
+    ['POST', new RegExp(`^/networks/${segment}/(?:join|leave)$`)],
+    ['PATCH', new RegExp(`^/network-requests/${segment}$`)],
+    ['DELETE', new RegExp(`^/network-requests/${segment}$`)],
+    ['GET', new RegExp(`^/users/${segment}$`)], ['GET', /^\/users\/batch$/],
+    ['GET', new RegExp(`^/users/${segment}/negotiations$`)],
+    ['GET', new RegExp(`^/intents/${segment}$`)],
+    ['PATCH', new RegExp(`^/intents/${segment}/(?:archive|status)$`)],
+    ['GET', new RegExp(`^/opportunities/${segment}$`)],
+    ['GET', new RegExp(`^/opportunities/${segment}/invite-message$`)],
+    ['PATCH', new RegExp(`^/opportunities/${segment}/status$`)],
+    ['POST', new RegExp(`^/opportunities/${segment}/start-chat$`)],
+    ['POST', new RegExp(`^/questions/${segment}/(?:answer|dismiss)$`)],
+    ['GET', new RegExp(`^/conversations/${segment}/messages$`)],
+    ['POST', new RegExp(`^/conversations/${segment}/messages$`)],
+    ['PATCH', new RegExp(`^/conversations/${segment}/metadata$`)],
+    ['DELETE', new RegExp(`^/conversations/${segment}$`)],
+    ['DELETE', new RegExp(`^/agent-runtime/hermes/${segment}$`)],
+  ];
+  return routes.some(([allowedMethod, pattern]) => method === allowedMethod && pattern.test(path))
+    ? { allowed: true }
+    : { allowed: false, reason: 'dedicated_owner_route_denied' };
+}
+
+export type HermesAgentRouteDecision =
+  | { allowed: true }
+  | { allowed: false; reason: 'dedicated_principal_route_denied' };
+
+const HERMES_AGENT_STATIC_ROUTES: ReadonlySet<string> = new Set([
+  'POST /mcp',
+  'GET /agents/me',
+  'GET /auth/me',
+  'POST /hermes-authorizations/disconnect',
+  'PATCH /auth/profile/update',
+  'POST /intents/list',
+  'GET /opportunities',
+  'GET /questions',
+  'GET /networks',
+  'GET /networks/discovery/public',
+  'GET /network-requests',
+  'POST /network-requests',
+  'POST /tools/read_user_contexts',
+  'POST /tools/confirm_user_context',
+  'POST /storage/avatars',
+  'POST /storage/index-images',
+  'POST /enrichment/sync',
+  'POST /enrichment/enrich',
+  'GET /conversations',
+  'GET /conversations/stream',
+  'POST /conversations/dm',
+]);
+
+function hasExactCanonicalHermesActions(actions: readonly string[]): actions is readonly HermesCapability[] {
+  return actions.length === HERMES_CANONICAL_ACTIONS.length
+    && HERMES_CANONICAL_ACTIONS.every((action, index) => actions[index] === action);
+}
+
+function normalizeAudiencePath(rawPath: string): string {
+  try {
+    const path = new URL(rawPath, 'http://localhost').pathname;
+    return path === '/api' ? '/' : path.replace(/^\/api(?=\/)/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** Exact method/path matrix for the active full standalone principal. */
+export function authorizeHermesAgent(input: {
+  method: string;
+  path: string;
+  agentId?: string;
+  actions: readonly string[];
+}): HermesAgentRouteDecision {
+  if (!hasExactCanonicalHermesActions(input.actions)) {
+    return { allowed: false, reason: 'dedicated_principal_route_denied' };
+  }
+  const method = input.method.toUpperCase();
+  const path = normalizeAudiencePath(input.path);
+  if (HERMES_AGENT_STATIC_ROUTES.has(`${method} ${path}`)) return { allowed: true };
+
+  const segment = '[^/]+';
+  const dynamicRoutes: ReadonlyArray<readonly [string, RegExp]> = [
+    ['PATCH', new RegExp(`^/intents/${segment}/(?:status|archive)$`)],
+    ['PATCH', new RegExp(`^/opportunities/${segment}/status$`)],
+    ['POST', new RegExp(`^/opportunities/${segment}/start-chat$`)],
+    ['POST', new RegExp(`^/questions/${segment}/(?:answer|dismiss)$`)],
+    ['GET', new RegExp(`^/users/${segment}$`)],
+    ['POST', new RegExp(`^/networks/${segment}/join$`)],
+    ['PATCH', new RegExp(`^/network-requests/${segment}$`)],
+    ['DELETE', new RegExp(`^/network-requests/${segment}$`)],
+    ['GET', new RegExp(`^/conversations/${segment}/messages$`)],
+    ['POST', new RegExp(`^/conversations/${segment}/messages$`)],
+  ];
+  if (dynamicRoutes.some(([allowedMethod, pattern]) => method === allowedMethod && pattern.test(path))) {
+    return { allowed: true };
+  }
+
+  if (input.agentId) {
+    const escapedAgentId = input.agentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const negotiationRoute = new RegExp(
+      `^/agents/${escapedAgentId}/negotiations/(?:pickup|${segment}/(?:respond|consult))$`,
+    );
+    if (method === 'POST' && negotiationRoute.test(path)) return { allowed: true };
+  }
+  return { allowed: false, reason: 'dedicated_principal_route_denied' };
+}
+
+/** Assert the full-principal route matrix after exact credential validation. */
+export function assertHermesAgentAudienceRoute(
+  context: Pick<HermesAgentPrincipal, 'audience' | 'agentId' | 'actions'>,
+  request: Request,
+): void {
+  if (context.audience !== HERMES_AGENT_AUDIENCE) return;
+  const decision = authorizeHermesAgent({
+    method: request.method,
+    path: request.url,
+    agentId: context.agentId,
+    actions: context.actions,
+  });
+  if (!decision.allowed) throw new HermesAgentRouteDeniedError();
+}
+
+/** Read the exact authenticated principal required by negotiation mutations. */
+export function requireNegotiationCredentialPrincipal(req: Request): NegotiationCredentialPrincipal {
+  const context = getRequestAuthContext(req);
+  if (
+    context?.kind !== 'api_key'
+    || !context.agentId
+    || !context.credentialId
+    || context.audience === INDEX_APP_OWNER_AUDIENCE
+  ) {
+    throw new OwnerControlRequiredError('Negotiation polling requires an exact agent-bound API key');
+  }
+  return {
+    credentialId: context.credentialId,
+    agentId: context.agentId,
+    audience: context.audience ?? null,
+    setupAttemptId: context.setupAttemptId ?? null,
+    ...(context.installationId ? { installationId: context.installationId } : {}),
+    ...(context.actions ? { actions: context.actions } : {}),
+  };
+}
+
 function isLegacyCliV1Metadata(metadata: string | null): boolean {
   const parsed = parseApiKeyMetadata(metadata);
   return parsed?.client === 'cli'
@@ -133,7 +506,12 @@ export const isSessionAuthenticated = (req: Request): boolean =>
  * binding. Authorization is intentionally NOT re-checked here — callers
  * must run `AuthGuard` first.
  */
+export type AgentPrincipalResolver = (request: Request) => Promise<string | null>;
+
 export const resolveApiKeyAgentId = async (req: Request): Promise<string | null> => {
+  const authenticated = getRequestAuthContext(req);
+  if (authenticated?.kind === 'api_key') return authenticated.agentId;
+
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) return null;
   const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
@@ -144,7 +522,8 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
 
   const hashed = await hashApiKey(apiKey);
 
-  const [row] = await db
+  const database = (await import('../lib/drizzle/drizzle')).default;
+  const [row] = await database
     .select({ metadata: apikeys.metadata })
     .from(apikeys)
     .where(eq(apikeys.key, hashed))
@@ -153,26 +532,216 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
   return parseApiKeyAgentId(row?.metadata ?? null);
 };
 
-async function resolveApiKeyCredential(
+async function hasExactAgentPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver,
+): Promise<boolean> {
+  return await resolvePrincipal(request) === agentId;
+}
+
+/** Exact agent-bound principal check used by negotiation pickup. */
+export async function authorizeNegotiationPickupPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
+): Promise<boolean> {
+  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
+}
+
+/** Exact agent-bound principal check used by negotiation respond. */
+export async function authorizeNegotiationRespondPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
+): Promise<boolean> {
+  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
+}
+
+function nonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function invalidIndexAppOwnerCredential(reason: string, hash: string): Error {
+  logger.warn('Index app owner credential rejected', {
+    reason,
+    keyHashPrefix: hash.slice(0, 8),
+  });
+  return new Error('Invalid API key');
+}
+
+export async function resolveIndexAppOwnerCredential(
+  rawCredential: string,
+  store: IndexAppOwnerAuthenticationStore = databaseIndexAppOwnerAuthenticationStore,
+): Promise<{ user: AuthenticatedUser; principal: IndexAppOwnerPrincipal }> {
+  if (!rawCredential.startsWith(INDEX_APP_OWNER_CREDENTIAL_PREFIX)
+      || rawCredential.length <= INDEX_APP_OWNER_CREDENTIAL_PREFIX.length) throw new Error('Invalid API key');
+  const hash = await hashIndexAppOwnerSecret(rawCredential);
+  const row = await store.findCredentialByHash(hash);
+  if (!row || !nonemptyString(row.id) || !nonemptyString(row.ownerId)
+      || row.audience !== INDEX_APP_OWNER_AUDIENCE
+      || !nonemptyString(row.installationId) || !nonemptyString(row.generation)
+      || row.activationState !== 'active' || !(row.expiresAt instanceof Date)
+      || !Number.isFinite(row.expiresAt.getTime()) || row.expiresAt.getTime() <= Date.now()) {
+    throw invalidIndexAppOwnerCredential('malformed_or_inactive_row', hash);
+  }
+  const authority = await store.findCurrentInstallationAuthority(row.ownerId, row.installationId);
+  if (!authority || authority.credentialId !== row.id || authority.ownerId !== row.ownerId
+      || authority.installationId !== row.installationId || authority.generation !== row.generation) {
+    throw invalidIndexAppOwnerCredential('stale_installation_authority', hash);
+  }
+  const user = await store.findUserById(row.ownerId);
+  if (!user || user.id !== row.ownerId) throw invalidIndexAppOwnerCredential('owner_not_found', hash);
+  return {
+    user,
+    principal: {
+      ownerId: row.ownerId, credentialId: row.id, audience: INDEX_APP_OWNER_AUDIENCE,
+      installationId: row.installationId, generation: row.generation,
+      expiresAt: new Date(row.expiresAt), activationState: 'active',
+    },
+  };
+}
+
+export async function authenticateIndexAppOwnerCredential(
+  req: Request,
+  rawCredential: string,
+  store: IndexAppOwnerAuthenticationStore = databaseIndexAppOwnerAuthenticationStore,
+): Promise<AuthenticatedUser> {
+  const { user, principal } = await resolveIndexAppOwnerCredential(rawCredential, store);
+  const decision = authorizeIndexAppOwner({ method: req.method, path: req.url });
+  if (!decision.allowed) throw new IndexAppOwnerRouteDeniedError();
+  recordRequestAuthContext(req, {
+    kind: 'api_key', agentId: null, audience: INDEX_APP_OWNER_AUDIENCE,
+    credentialId: principal.credentialId, installationId: principal.installationId,
+    setupAttemptId: principal.generation,
+  });
+  return user;
+}
+
+function invalidHermesAgentCredential(
+  reason: HermesTelemetryReason,
+  telemetry: HermesRuntimeTelemetry,
+): Error {
+  logger.warn('Hermes agent credential rejected', { reason });
+  telemetry.increment('auth_denied', { reason });
+  telemetry.increment('credential_rejected', { reason });
+  return new Error('Invalid API key');
+}
+
+function rejectResolvedHermesAgentCredential(
+  reason: HermesTelemetryReason,
+  telemetry: HermesRuntimeTelemetry,
+  store: HermesAgentAuthenticationStore,
+  decidedAt: Date,
+): never {
+  scheduleHermesCredentialExpiryGaugeRefresh(telemetry, store, decidedAt);
+  throw invalidHermesAgentCredential(reason, telemetry);
+}
+
+/** Resolve one exact active dedicated principal without admitting a route. */
+export async function resolveHermesAgentCredential(
+  rawCredential: string,
+  store: HermesAgentAuthenticationStore = databaseHermesAgentAuthenticationStore,
+  telemetry: HermesRuntimeTelemetry = hermesRuntimeTelemetry,
+  now: () => Date = () => new Date(),
+): Promise<{ user: AuthenticatedUser; principal: HermesAgentPrincipal }> {
+  if (
+    !rawCredential.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)
+    || rawCredential.length <= HERMES_AGENT_CREDENTIAL_PREFIX.length
+  ) throw invalidHermesAgentCredential('malformed_credential', telemetry);
+
+  const reject = (reason: HermesTelemetryReason, decidedAt: Date = now()): never =>
+    rejectResolvedHermesAgentCredential(reason, telemetry, store, decidedAt);
+
+  const hash = await hashHermesSecret(rawCredential);
+  const row = await store.findCredentialByHash(hash);
+  if (!row) return reject('invalid_credential');
+  if (
+    !nonemptyString(row.id)
+    || !nonemptyString(row.ownerId)
+    || row.audience !== HERMES_AGENT_AUDIENCE
+    || !nonemptyString(row.agentId)
+    || !nonemptyString(row.installationId)
+    || !nonemptyString(row.setupAttemptId)
+    || !Array.isArray(row.actions)
+    || !hasExactCanonicalHermesActions(row.actions)
+    || !(row.expiresAt instanceof Date)
+    || !Number.isFinite(row.expiresAt.getTime())
+  ) return reject('malformed_credential');
+  if (row.activationState === 'revoked') return reject('revoked');
+  if (row.activationState !== 'active') return reject('malformed_credential');
+
+  const initiallyCheckedAt = now();
+  if (row.expiresAt.getTime() <= initiallyCheckedAt.getTime()) return reject('expired', initiallyCheckedAt);
+
+  const authority = await store.findAgentAuthority(row.agentId, row.ownerId);
+  if (
+    !authority
+    || authority.id !== row.agentId
+    || authority.ownerId !== row.ownerId
+    || authority.runtimeKind !== 'hermes'
+    || authority.installationId !== row.installationId
+    || authority.setupAttemptId !== row.setupAttemptId
+    || authority.status !== 'active'
+    || authority.deletedAt !== null
+    || !Array.isArray(authority.actions)
+    || !hasExactCanonicalHermesActions(authority.actions)
+  ) return reject('stale');
+
+  const user = await store.findUserById(row.ownerId);
+  if (!user || user.id !== row.ownerId) return reject('stale');
+
+  const decidedAt = now();
+  if (row.expiresAt.getTime() <= decidedAt.getTime()) return reject('expired', decidedAt);
+  scheduleHermesCredentialExpiryGaugeRefresh(telemetry, store, decidedAt);
+
+  return {
+    user,
+    principal: {
+      ownerId: row.ownerId,
+      credentialId: row.id,
+      audience: HERMES_AGENT_AUDIENCE,
+      agentId: row.agentId,
+      installationId: row.installationId,
+      setupAttemptId: row.setupAttemptId,
+      actions: [...HERMES_CANONICAL_ACTIONS],
+      expiresAt: new Date(row.expiresAt),
+      activationState: 'active',
+    },
+  };
+}
+
+/** Authenticate and route-admit one active full standalone credential. */
+export async function authenticateHermesAgentCredential(
+  req: Request,
+  rawCredential: string,
+  store: HermesAgentAuthenticationStore = databaseHermesAgentAuthenticationStore,
+): Promise<AuthenticatedUser> {
+  const { user, principal } = await resolveHermesAgentCredential(rawCredential, store);
+  recordRequestAuthContext(req, {
+    kind: 'api_key',
+    agentId: principal.agentId,
+    audience: principal.audience,
+    credentialId: principal.credentialId,
+    setupAttemptId: principal.setupAttemptId,
+    installationId: principal.installationId,
+    actions: principal.actions,
+  });
+  assertHermesAgentAudienceRoute(principal, req);
+  return user;
+}
+
+export async function authenticateApiKey(
   req: Request,
   apiKey: string,
+  store: ApiKeyAuthenticationStore = databaseApiKeyAuthenticationStore,
   options: {
     metadataAllowed?: (metadata: string | null) => boolean;
     forceNullAgentId?: boolean;
   } = {},
 ): Promise<AuthenticatedUser> {
   const hashed = await hashApiKey(apiKey);
-  const [row] = await db
-    .select({
-      referenceId: apikeys.referenceId,
-      userId: apikeys.userId,
-      enabled: apikeys.enabled,
-      expiresAt: apikeys.expiresAt,
-      metadata: apikeys.metadata,
-    })
-    .from(apikeys)
-    .where(eq(apikeys.key, hashed))
-    .limit(1);
+  const row = await store.findCredentialByHash(hashed);
 
   // Log a prefix of the stored SHA-256 hash, never raw credential material.
   const keyHashPrefix = hashed.slice(0, 8);
@@ -190,6 +759,10 @@ async function resolveApiKeyCredential(
     logger.warn('API key rejected', { reason: 'incompatible_bearer_metadata', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
+  if (!hasValidHermesAuthenticationIdentity(row)) {
+    logger.warn('API key rejected', { reason: 'malformed_hermes_identity', keyHashPrefix, ua });
+    throw new Error('Invalid API key');
+  }
 
   let userId: string | null;
   try {
@@ -203,20 +776,24 @@ async function resolveApiKeyCredential(
     throw new Error('Invalid API key');
   }
 
-  const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  const user = await store.findUserById(userId);
 
   if (!user) {
     logger.warn('API key rejected', { reason: 'user_not_found', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
 
-  recordRequestAuthContext(req, {
-    kind: 'api_key',
+  const context = {
+    kind: 'api_key' as const,
     agentId: options.forceNullAgentId ? null : parseApiKeyAgentId(row.metadata),
+    audience: options.forceNullAgentId ? null : parseApiKeyAudience(row.metadata),
+    credentialId: row.id ?? null,
+    setupAttemptId: options.forceNullAgentId ? null : parseApiKeySetupAttemptId(row.metadata),
+  };
+  recordRequestAuthContext(req, context);
+  if (context.agentId) assertApiKeyAudienceRoute(req, {
+    agentId: context.agentId,
+    audience: context.audience,
   });
 
   return {
@@ -224,6 +801,33 @@ async function resolveApiKeyCredential(
     email: user.email ?? null,
     name: user.name,
   };
+}
+
+/** Prefix dispatcher that keeps dedicated hashes out of the frozen legacy lookup. */
+export function authenticateRequestApiKey(
+  req: Request,
+  apiKey: string,
+  stores: {
+    legacy?: ApiKeyAuthenticationStore;
+    hermesAgent?: HermesAgentAuthenticationStore;
+    indexAppOwner?: IndexAppOwnerAuthenticationStore;
+  } = {},
+): Promise<AuthenticatedUser> {
+  if (apiKey.startsWith(INDEX_APP_OWNER_CREDENTIAL_PREFIX)) {
+    return authenticateIndexAppOwnerCredential(
+      req,
+      apiKey,
+      stores.indexAppOwner ?? databaseIndexAppOwnerAuthenticationStore,
+    );
+  }
+  if (apiKey.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)) {
+    return authenticateHermesAgentCredential(
+      req,
+      apiKey,
+      stores.hermesAgent ?? databaseHermesAgentAuthenticationStore,
+    );
+  }
+  return authenticateApiKey(req, apiKey, stores.legacy ?? databaseApiKeyAuthenticationStore);
 }
 
 /**
@@ -241,7 +845,7 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
       return await resolveJwtUser(req);
     } catch (jwtError) {
       try {
-        return await resolveApiKeyCredential(req, authHeader.slice(7), {
+        return await authenticateApiKey(req, authHeader.slice(7), databaseApiKeyAuthenticationStore, {
           metadataAllowed: isLegacyCliV1Metadata,
           forceNullAgentId: true,
         });
@@ -259,5 +863,141 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     throw new Error('Access token or API key required');
   }
 
-  return resolveApiKeyCredential(req, apiKey);
+  return authenticateRequestApiKey(req, apiKey);
+};
+
+const databaseIndexAppOwnerAuthenticationStore: IndexAppOwnerAuthenticationStore = {
+  async findCredentialByHash(hash) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database.select({
+      id: indexAppOwnerCredentials.id,
+      ownerId: indexAppOwnerCredentials.ownerId,
+      audience: indexAppOwnerCredentials.audience,
+      installationId: indexAppOwnerCredentials.installationId,
+      generation: indexAppOwnerCredentials.generation,
+      activationState: indexAppOwnerCredentials.activationState,
+      expiresAt: indexAppOwnerCredentials.expiresAt,
+    }).from(indexAppOwnerCredentials)
+      .where(eq(indexAppOwnerCredentials.secretHash, hash)).limit(1);
+    return row ?? null;
+  },
+  async findCurrentInstallationAuthority(ownerId, installationId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database.select({
+      credentialId: indexAppOwnerCredentials.id,
+      ownerId: indexAppOwnerCredentials.ownerId,
+      installationId: indexAppOwnerCredentials.installationId,
+      generation: indexAppOwnerCredentials.generation,
+    }).from(indexAppOwnerCredentials).where(and(
+      eq(indexAppOwnerCredentials.ownerId, ownerId),
+      eq(indexAppOwnerCredentials.installationId, installationId),
+      eq(indexAppOwnerCredentials.audience, INDEX_APP_OWNER_AUDIENCE),
+      eq(indexAppOwnerCredentials.activationState, 'active'),
+    )).limit(1);
+    return row ?? null;
+  },
+  async findUserById(userId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [user] = await database.select({ id: users.id, email: users.email, name: users.name })
+      .from(users).where(eq(users.id, userId)).limit(1);
+    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
+  },
+};
+
+const databaseHermesAgentAuthenticationStore: HermesAgentAuthenticationStore = {
+  async findCredentialByHash(hash) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database.select({
+      id: hermesAgentCredentials.id,
+      ownerId: hermesAgentCredentials.ownerId,
+      audience: hermesAgentCredentials.audience,
+      agentId: hermesAgentCredentials.agentId,
+      installationId: hermesAgentCredentials.installationId,
+      setupAttemptId: hermesAgentCredentials.setupAttemptId,
+      actions: hermesAgentCredentials.actions,
+      activationState: hermesAgentCredentials.activationState,
+      expiresAt: hermesAgentCredentials.expiresAt,
+    }).from(hermesAgentCredentials)
+      .where(eq(hermesAgentCredentials.secretHash, hash))
+      .limit(1);
+    return row ?? null;
+  },
+  async countActiveCredentialExpiryHealth(input) {
+    const { hermesRuntimeTelemetryDatabaseAdapter } = await import('../adapters/hermes-runtime-telemetry.database.adapter');
+    return hermesRuntimeTelemetryDatabaseAdapter.countActiveCredentialExpiryHealth(input);
+  },
+  async findAgentAuthority(agentId, ownerId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database.select({
+      id: agents.id,
+      ownerId: agents.ownerId,
+      runtimeKind: agents.runtimeKind,
+      installationId: agents.installationId,
+      setupAttemptId: agents.runtimeSetupAttemptId,
+      status: agents.status,
+      deletedAt: agents.deletedAt,
+      actions: agentPermissions.actions,
+    }).from(agents)
+      .leftJoin(agentPermissions, and(
+        eq(agentPermissions.agentId, agents.id),
+        eq(agentPermissions.userId, ownerId),
+        eq(agentPermissions.scope, 'global'),
+      ))
+      .where(and(eq(agents.id, agentId), eq(agents.ownerId, ownerId)))
+      .limit(1);
+    return row ?? null;
+  },
+  async findUserById(userId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [user] = await database
+      .select({ id: users.id, email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
+  },
+};
+
+const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
+  async findCredentialByHash(hash) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database
+      .select({
+        id: apikeys.id,
+        referenceId: apikeys.referenceId,
+        userId: apikeys.userId,
+        enabled: apikeys.enabled,
+        expiresAt: apikeys.expiresAt,
+        metadata: apikeys.metadata,
+      })
+      .from(apikeys)
+      .where(eq(apikeys.key, hash))
+      .limit(1);
+    return row ?? null;
+  },
+  async findUserById(userId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [user] = await database
+      .select({ id: users.id, email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
+  },
+};
+
+/**
+ * Authenticate an owner-control request while rejecting every agent-bound key.
+ * Sessions and unbound owner keys remain accepted.
+ */
+export const OwnerControlGuard = async (
+  req: Request,
+  authenticate: (request: Request) => Promise<AuthenticatedUser> = AuthGuard,
+): Promise<AuthenticatedUser> => {
+  const user = await authenticate(req);
+  const context = getRequestAuthContext(req);
+  if (context?.kind === 'api_key' && context.agentId !== null) {
+    throw new OwnerControlRequiredError();
+  }
+  return user;
 };

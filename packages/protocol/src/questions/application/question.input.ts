@@ -88,22 +88,18 @@ export type NegotiationContext = PostStallNegotiationContext | UptakeNegotiation
 /**
  * Negotiation-inflight context — a negotiator mid-negotiation wants to ask its
  * OWN client a question before continuing (the `ask_user` action, P3.2). The
- * negotiator states the disclosure subject and optionally drafts the question;
- * the QuestionerAgent refines it into polished disclosure-gating questions.
+ * negotiator supplies only a closed category; the QuestionerAgent receives
+ * server-owned fixed copy and never agent-authored instruction text.
  * Distinct from {@link NegotiationContext}, which covers post-stall questions.
  */
 export interface NegotiationInflightContext {
   negotiationId: string;
   /** Anonymized counterparty description (attributes, never identity). */
   counterpartyHint: string;
-  /** What the negotiator wants permission to share or needs to know (e.g. "budget range", "availability in Q3"). */
-  disclosureSubject: string;
-  /** Draft question authored by the negotiator. The agent refines it. */
-  draftQuestion?: string;
   /** Community / index context the negotiation runs in. */
   indexContext: string;
-  /** Server-only IND-508 reason; never copied into generated or persisted payloads. */
-  consultationPolicyReason?: NegotiationConsultationReason;
+  /** Closed server-owned category selecting fixed Questioner copy. */
+  consultationPolicyReason: NegotiationConsultationReason;
   /** The user's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
 }
@@ -294,15 +290,10 @@ export function isValidQuestionerInputContract(input: QuestionerInput): boolean 
       && typeof input.negotiation.taskId === 'string'
       && input.negotiation.taskId.length > 0
       && context.negotiationId === input.negotiation.taskId
-      && typeof context.disclosureSubject === 'string'
-      && isSafeNegotiationQuestionText(context.disclosureSubject)
-      && (context.consultationPolicyReason === undefined
-        || context.consultationPolicyReason === 'unresolved_owner_constraint'
+      && (context.consultationPolicyReason === 'unresolved_owner_constraint'
         || context.consultationPolicyReason === 'consequential_disclosure_permission'
         || context.consultationPolicyReason === 'repeated_non_convergence'
-        || context.consultationPolicyReason === 'insufficient_commitment_authority')
-      && (context.draftQuestion === undefined
-        || (typeof context.draftQuestion === 'string' && isSafeNegotiationQuestionText(context.draftQuestion)));
+        || context.consultationPolicyReason === 'insufficient_commitment_authority');
   }
   if (input.purpose === 'uptake') {
     return input.negotiation.taskId === undefined

@@ -18,13 +18,14 @@
  * imports nothing that can compose a database: an operator has to be able to
  * read what the command requires *before* they have any of it.
  */
-import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } from './discovery.neon';
+import { AB_BRANCH_NAMES, attestAbTargets, parseLegacyAbManifest, type AbManifest } from './discovery.neon';
 import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery.gate';
 import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
-import { hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, runHistoricalQualityPrARefusal } from './discovery-quality.contract';
+import { formatHistoricalQualityCost, hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, type HistoricalQualityRequest } from './discovery-quality.contract';
 
 import type { AbSideId } from './discovery.plan';
+import type { HistoricalQualityChildEnvironment } from './discovery-quality.environment';
 
 /**
  * Attests both targets, reporting a refusal an operator can act on without
@@ -78,13 +79,24 @@ export interface DiscoveryBootstrapDependencies {
   parseManifest(raw: string | undefined): AbManifest;
   attestTargets(manifest: AbManifest, role: AbInvocationRole): Promise<void>;
   importRuntime(): Promise<DiscoveryRuntime>;
+  importQualityRuntime?(): Promise<{
+    runHistoricalQualityRuntime(request: HistoricalQualityRequest): Promise<unknown>;
+  }>;
+  importQualityChildRuntime?(environment: Readonly<Record<string, string | undefined>>): Promise<{
+    runHistoricalQualityChild(args: readonly string[], environment: HistoricalQualityChildEnvironment): Promise<void>;
+  }>;
 }
 
 const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
   assertConfirmation: assertAbConfirmation,
-  parseManifest: parseAbManifest,
+  parseManifest: parseLegacyAbManifest,
   attestTargets: attestOrRefuse,
   importRuntime: async () => await import('./discovery.main'),
+  importQualityRuntime: async () => await import('./discovery-quality.runtime'),
+  importQualityChildRuntime: async (environment) => {
+    const loader = await import('./discovery-quality.child-loader');
+    return loader.loadAvailableHistoricalQualityChildRuntime(environment);
+  },
 };
 
 /**
@@ -97,15 +109,26 @@ export async function runDiscoveryBootstrap(
   io: Pick<Console, 'log' | 'error'>,
   dependencies: DiscoveryBootstrapDependencies = productionBootstrapDependencies,
 ): Promise<0 | 2 | undefined> {
-  // The dedicated quality shape is parsed, costed, and refused before the
-  // legacy confirmation gate, manifest, attestation, or dynamic runtime import.
-  // PR A deliberately performs no provider or infrastructure operation.
+  // Child recognition must precede every legacy gate, manifest parser, and
+  // runtime import. The shared loader has no fallback, so a missing Task 6
+  // implementation refuses here rather than after a parent restore.
+  if (args.includes('--historical-quality-child')) {
+    const runtime = await (dependencies.importQualityChildRuntime
+      ?? productionBootstrapDependencies.importQualityChildRuntime!)(env);
+    await runtime.runHistoricalQualityChild(args, env as HistoricalQualityChildEnvironment);
+    return undefined;
+  }
+  // Help remains above every parent gate, environment read, runtime import, and live operation.
   if (isHistoricalQualityRequest(args)) {
     if (hasHistoricalQualityHelp(args)) {
       io.log(historicalQualityUsage());
       return 0;
     }
-    return runHistoricalQualityPrARefusal(parseHistoricalQualityArgs(args), io);
+    const request = parseHistoricalQualityArgs(args);
+    io.log(formatHistoricalQualityCost(request));
+    const runtime = await (dependencies.importQualityRuntime ?? productionBootstrapDependencies.importQualityRuntime!)();
+    await runtime.runHistoricalQualityRuntime(request);
+    return undefined;
   }
   // Before the gate, and before any environment variable is read: the full
   // legacy contract, printed to anyone who asks for it.

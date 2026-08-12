@@ -9,6 +9,17 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- Add guarded historical-quality runtime reconciliation (API 0.83.1), including the compatible quality-attestation migration after the dev-owned Hermes migration history.
+- Add Hermes backend production assurance (API 0.83.0): a provider-free PostgreSQL 16 release gate now migrates the dedicated disposable `hermes_assurance` database and runs real authority, lifecycle/fault, 100,000-row migration-preflight, aggregate expiry-telemetry, stale/expired Index-coverage, and emergency concurrency/rollback evidence. Release dispatch requires explicit approved lock/total thresholds and the immutable currently deployed API digest; CI exercises emergency control in dry-run mode only and publishes fixed-schema credential-free evidence.
+- Add operator rollout and emergency rollback runbooks for server-before-client deployment, dashboard/expiry checks, forward-fix-first response, and the strict pause → bulk revoke → zero-authority verification → older-binary order.
+- Secure standalone Hermes and native Index-owner authorization (API 0.82.0): canonical PKCE loopback consent, one-time codes, hash-only `idxh_`/`idxo_` credential persistence, 30-day expiry without refresh, Keychain-confirmed activation, exact revocation receipts, and legacy plaintext-era revocation/fresh-login migration.
+- Dedicated full Hermes audience admission for the six canonical actions, explicit REST/MCP allowlists, and the separate four-handler negotiator boundary. Session-only connected-agent list/pause/revoke controls return nonsecret health, fallback, heartbeat, and expiry views; reconnect requires fresh authorization.
+
+### Security
+- Add count-only, duration-only migration preflight evidence, privacy-bounded Hermes lifecycle telemetry, immutable previous-image denial, and dry-run-first idempotent emergency control with exact count/plan confirmation. Production reports exclude credentials, credential hashes, database URLs, identity dimensions, private prose, and raw logs.
+- Dedicated audiences default-deny account security, credential/permission/agent administration, billing, and unknown routes. Authorization, activation, runtime reconciliation, disconnect, and negotiation mutation use owner locks, exact row/generation identity, idempotent receipts, and compare-and-set behavior.
+
 ### Removed
 - Repoint MCP contract-test agent ports from the removed internal protocol compatibility interface to the canonical participant-agents port.
 - Remove the onboarding privacy-consent layer (protocol 10.0.0, API 0.77.0).
@@ -36,6 +47,8 @@ section before promoting to `main`).
   than per network.
 
 ### Added
+- Add the Personal Agent Hermes runtime binding (API 0.81.0): owner-control routes prepare, select, roll back, inspect, and disconnect one generation-fenced local Hermes installation without changing the owner's server-owned Personal Agent identity, memory, policy, consultations, or history. The macOS selector can now durably choose Index or Hermes; a selected Hermes executor receives only negotiation authority plus privacy-minimal structural/closed directives (never raw owner context, memory, or private prose), reports health through a negotiation-specific pickup heartbeat, and falls back to Index through the existing bounded park/claim path when stale or stopped.
+- Let an exact selected external negotiator consult its owner through the existing `input_required` Questioner lifecycle. The server independently checks the exact owner, principal, claim, attempt, material binding, deadline, and one-consultation policy, accepts exactly the closed `{reason}` request, derives all disclosure and question copy from server-owned templates, and resumes only the settlement-bound successor after answer, dismissal, or expiry.
 - Register `OPPORTUNITY_OWNER_APPROVAL_SECRET` as an optional env var so the documented owner-approval secret is schema-validated.
 - Wire the MCP authorization-observability seam at the host boundary (IND-581;
   protocol 7.8.0, API 0.64.0). The composition root now injects a concrete
@@ -100,6 +113,9 @@ section before promoting to `main`).
 - Add per-viewer conversation read cursors, server-side unread counts, and `POST /conversations/:id/read` (IND-475; migration `0098`).
 - Record viewer-safe match provenance on start-chat DMs and expose intent-scoped `via` summaries for chat signal provenance (IND-475).
 - Expose a read-side `warming` state for fresh owned intents until a succeeded discovery run is recorded (IND-473). The state uses the 24-hour creation window and discovery-run JSON intent linkage without schema or pipeline changes.
+
+### Security
+- Hermes setup is generation-fenced and fail-closed: agent-bound credentials cannot call owner-control routes, stale generations cannot activate or roll back newer setup, only the exact selected principal can pick up/respond/consult, and disconnect revokes installation credentials before local cleanup. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, Developer ID hardened-runtime signing and notarization are complete, and the credential TTL/revocation checklist is verified.**
 
 ### Fixed
 - Route creation-time and post-discovery intent refinements through one material-fingerprint-deduplicated service, and stop suppressing ordinary intent-page Personal Agent questions merely because discovery already produced an actionable opportunity. Pool and Questioner-generated intent questions now receive symmetric surfacing opportunities while retaining ownership, active-lifecycle, stale-answer, privacy-copy, and one-question-per-material-version gates.
