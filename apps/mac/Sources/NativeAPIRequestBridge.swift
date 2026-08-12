@@ -266,6 +266,7 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
         ("GET", #"^/questions(?:\?.*)?$"#),
         ("POST", #"^/questions/[^/?]+/(?:answer|dismiss)$"#),
+        ("GET", #"^/notifications/snapshot$"#),
         ("POST", #"^/tools/(?:read_user_contexts|preview_user_context|confirm_user_context)$"#),
         ("POST", #"^/enrichment/enrich$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
@@ -280,7 +281,9 @@ final class NativeAPIRequestBridge {
         "data:image/png;base64": ("image/png", "png"),
         "data:image/webp;base64": ("image/webp", "webp"),
     ]
-    static let allowedSSERoutes: Set<String> = ["GET /conversations/stream", "POST /chat/stream"]
+    static let allowedSSERoutes: Set<String> = [
+        "GET /notifications/stream", "GET /conversations/stream", "POST /chat/stream",
+    ]
     static let allowedMCPTools: Set<String> = ["create_intent"]
 
     private let apiBaseURL: URL

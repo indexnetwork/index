@@ -10,7 +10,7 @@ const workflow = await Bun.file(new URL('../../../.github/workflows/mac-app-buil
 
 async function makeSignedApp() {
   const fixtureRoot = `${Bun.env.TMPDIR ?? '/tmp'}/index-notary-${crypto.randomUUID()}`;
-  const app = `${fixtureRoot}/index.app`;
+  const app = `${fixtureRoot}/Index.app`;
   await mkdir(`${app}/Contents/MacOS`, { recursive: true });
   await writeFile(`${app}/Contents/MacOS/index`, '#!/bin/sh\nexit 0\n');
   await chmod(`${app}/Contents/MacOS/index`, 0o755);
