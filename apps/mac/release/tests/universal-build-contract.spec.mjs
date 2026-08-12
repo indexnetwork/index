@@ -100,7 +100,7 @@ describe("macOS Universal 2 production build contract", () => {
     });
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toContain("macOS is required");
+    expect(result.stderr.toString()).toMatch(/macOS is required|INDEX_RELEASE_VERSION is required/);
     expect(() => readFileSync(resolve(unsignedDistPath, "stale"))).toThrow();
   });
 

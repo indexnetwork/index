@@ -31,7 +31,7 @@ compile_app_binary() {
         identity_flags=(-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __indexcfg -Xlinker "$compiled_identity")
     fi
     swiftc -O -whole-module-optimization \
-        "${target_flags[@]}" "${identity_flags[@]}" "$@" \
+        "${target_flags[@]}" ${identity_flags[@]+"${identity_flags[@]}"} "$@" \
         -framework Cocoa -framework WebKit -framework Network -framework Security \
         -o "$output" \
         Security/Sources/IndexKeychainStore.swift \
