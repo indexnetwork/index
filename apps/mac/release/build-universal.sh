@@ -146,48 +146,57 @@ run_otool() {
 extract_compiled_identity() {
   local binary="$1" arch="$2" destination="$3" dump
   dump="$(run_otool -arch "$arch" -X -s __TEXT __indexcfg "$binary")"
-  python3 - "$dump" "$destination" <<'PY'
+  python3 - "$arch" "$dump" "$destination" <<'PY'
 import json
 import re
 import sys
 
-dump, destination = sys.argv[1:]
+arch, dump, destination = sys.argv[1:]
+if arch not in ('arm64', 'x86_64'):
+    raise SystemExit('compiled identity section architecture is unsupported')
 lines = dump.splitlines()
 if not lines:
     raise SystemExit('compiled identity section contains no hexadecimal bytes')
 
-width = None
 next_address = None
-words = []
+raw = bytearray()
 for line_index, line in enumerate(lines):
     tokens = line.split()
     if len(tokens) < 2 or not re.fullmatch(r'[0-9A-Fa-f]{16}', tokens[0]):
         raise SystemExit('compiled identity section contains a malformed address-prefixed row')
     address = int(tokens[0], 16)
     data = tokens[1:]
-    if width is None:
-        width = len(data[0])
-    if width not in (8, 16):
-        raise SystemExit('compiled identity section contains a malformed data row')
-    max_fields = 16 // (width // 2)
     is_final = line_index == len(lines) - 1
-    if not 1 <= len(data) <= max_fields or (not is_final and len(data) != max_fields):
-        raise SystemExit('compiled identity section contains a malformed data row')
-    for field_index, token in enumerate(data):
-        token_width = len(token)
-        final_token = is_final and field_index == len(data) - 1
-        if not re.fullmatch(r'[0-9A-Fa-f]+', token) or token_width % 2 != 0:
+    row = bytearray()
+
+    if arch == 'x86_64':
+        if not 1 <= len(data) <= 16 or (not is_final and len(data) != 16):
             raise SystemExit('compiled identity section contains a malformed data row')
-        if token_width != width and not (final_token and 2 <= token_width < width):
+        if any(not re.fullmatch(r'[0-9A-Fa-f]{2}', token) for token in data):
             raise SystemExit('compiled identity section contains a malformed data row')
-    if any(len(token) != width for token in data[:-1]):
-        raise SystemExit('compiled identity section mixes data field widths')
+        row.extend(int(token, 16) for token in data)
+    else:
+        word_count = 0
+        while word_count < len(data) and re.fullmatch(r'[0-9A-Fa-f]{8}', data[word_count]):
+            word_count += 1
+        residual = data[word_count:]
+        if any(not re.fullmatch(r'[0-9A-Fa-f]{2}', token) for token in residual):
+            raise SystemExit('compiled identity section contains a malformed data row')
+        if not is_final:
+            if word_count != 4 or residual:
+                raise SystemExit('compiled identity section contains a malformed data row')
+        elif word_count > 4 or len(residual) > 3 or not 1 <= word_count * 4 + len(residual) <= 16:
+            raise SystemExit('compiled identity section contains a malformed data row')
+        for token in data[:word_count]:
+            row.extend(bytes.fromhex(token)[::-1])
+        row.extend(int(token, 16) for token in residual)
+
     if next_address is not None and address != next_address:
         raise SystemExit('compiled identity section addresses are not contiguous')
-    next_address = address + sum(len(token) // 2 for token in data)
-    words.extend(data)
+    next_address = address + len(row)
+    raw.extend(row)
 
-raw = bytes.fromhex(''.join(words))
+raw = bytes(raw)
 try:
     text = raw.decode('utf-8')
 except UnicodeDecodeError as error:

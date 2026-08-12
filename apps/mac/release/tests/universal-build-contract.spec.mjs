@@ -59,7 +59,7 @@ describe("macOS Universal 2 production build contract", () => {
     expect(buildSource).not.toContain('compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64" "$app_identity"');
   });
 
-  function extractFixture(lines) {
+  function extractFixture(lines, arch = "arm64") {
     const fixtureRoot = mkdtempSync(resolve(tmpdir(), "universal-otool-"));
     const otoolFixture = resolve(fixtureRoot, "otool.txt");
     const destination = resolve(fixtureRoot, "identity.json");
@@ -68,9 +68,10 @@ describe("macOS Universal 2 production build contract", () => {
       [
         "bash",
         "-c",
-        'source "$1"; run_otool() { cat "$OTOOL_FIXTURE"; }; extract_compiled_identity ignored arm64 "$2"',
+        'source "$1"; run_otool() { cat "$OTOOL_FIXTURE"; }; extract_compiled_identity ignored "$2" "$3"',
         "fixture",
         universalBuildPath,
+        arch,
         destination,
       ],
       {
@@ -85,161 +86,113 @@ describe("macOS Universal 2 production build contract", () => {
     return { result, output };
   }
 
-  test.each([
-    [
-      "8-hex-digit fields",
-      [
-        "0000000100003f40 7b22496e 64657842 75696c64 54617267",
-        "0000000100003f50 6574223a 22617070 227d0000 00000000",
-      ],
-    ],
-    [
-      "16-hex-digit fields",
-      [
-        "0000000100003f40 7b22496e64657842 75696c6454617267",
-        "0000000100003f50 6574223a22617070 227d000000000000",
-      ],
-    ],
-  ])("extracts strict otool -X section rows with %s", (_name, lines) => {
-    const { result, output } = extractFixture(lines);
+  function otoolRows(raw, arch, startAddress = 0x100003f40n) {
+    const rows = [];
+    for (let offset = 0; offset < raw.length; offset += 16) {
+      const chunk = raw.subarray(offset, Math.min(offset + 16, raw.length));
+      const fields = [];
+      if (arch === "x86_64") {
+        for (const byte of chunk) fields.push(byte.toString(16).padStart(2, "0"));
+      } else {
+        let index = 0;
+        for (; index + 4 <= chunk.length; index += 4) {
+          fields.push(Buffer.from(chunk.subarray(index, index + 4)).reverse().toString("hex"));
+        }
+        for (; index < chunk.length; index += 1) {
+          fields.push(chunk[index].toString(16).padStart(2, "0"));
+        }
+      }
+      rows.push(`${(startAddress + BigInt(offset)).toString(16).padStart(16, "0")} ${fields.join(" ")}`);
+    }
+    return rows;
+  }
+
+  const canonicalIdentity = '{"IndexBuildTarget":"app"}';
+
+  test("decodes source-faithful arm64 words and x86_64 bytes to the same canonical identity", () => {
+    const raw = Buffer.concat([Buffer.from(canonicalIdentity), Buffer.alloc(6)]);
+    const armRows = otoolRows(raw, "arm64");
+    const x86Rows = otoolRows(raw, "x86_64");
+    expect(armRows[0]).toContain("6e49227b 42786564 646c6975 67726154");
+    expect(x86Rows[0]).toContain("7b 22 49 6e 64 65 78 42 75 69 6c 64 54 61 72 67");
+    for (const [arch, rows] of [["arm64", armRows], ["x86_64", x86Rows]]) {
+      const { result, output } = extractFixture(rows, arch);
+      expect(result.stderr.toString()).toBe("");
+      expect(result.exitCode).toBe(0);
+      expect(output).toBe(canonicalIdentity);
+    }
+  });
+
+  test.each([1, 2, 3])("accepts an arm64 final row with %i direct residual byte(s)", (residual) => {
+    const raw = Buffer.concat([Buffer.from('{"x":1}'), Buffer.alloc(9 + residual)]);
+    const { result, output } = extractFixture(otoolRows(raw, "arm64"), "arm64");
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(output).toBe('{"IndexBuildTarget":"app"}');
+    expect(output).toBe('{"x":1}');
+  });
+
+  test("accepts a short x86_64 final byte row", () => {
+    const { result, output } = extractFixture(otoolRows(Buffer.from(canonicalIdentity), "x86_64"), "x86_64");
+    expect(result.stderr.toString()).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(output).toBe(canonicalIdentity);
   });
 
   test.each([
-    [
-      "a hex-looking section header",
-      [
-        "feedface",
-        "7b22496e 64657842 75696c64 64546172",
-        "67657422 3a226170 70227d00 00000000",
-      ],
-    ],
-    [
-      "an address-only row",
-      ["0000000100003f40"],
-    ],
-    [
-      "an interior short row followed by contiguous data",
-      [
-        "0000000100003f40 7b22496e64657842",
-        "0000000100003f48 75696c6454617267 6574223a22617070",
-        "0000000100003f58 227d000000000000",
-      ],
-    ],
-    [
-      "a gapped address",
-      [
-        "0000000100003f40 7b22496e64657842 75696c6454617267",
-        "0000000100003f60 6574223a22617070 227d000000000000",
-      ],
-    ],
-    [
-      "a duplicate address",
-      [
-        "0000000100003f40 7b22496e64657842 75696c6454617267",
-        "0000000100003f40 6574223a22617070 227d000000000000",
-      ],
-    ],
-    [
-      "a backward address",
-      [
-        "0000000100003f50 7b22496e64657842 75696c6454617267",
-        "0000000100003f40 6574223a22617070 227d000000000000",
-      ],
-    ],
-    [
-      "mixed data widths",
-      [
-        "0000000100003f40 7b22496e 64657842 75696c64 54617267",
-        "0000000100003f50 6574223a22617070 227d000000000000",
-      ],
-    ],
-    [
-      "trailing JSON whitespace",
-      [
-        "0000000100003f40 7b22496e 64657842 75696c64 64546172",
-        "0000000100003f50 67657422 3a226170 70227d20 00000000",
-      ],
-    ],
-    [
-      "interior NUL contamination",
-      [
-        "0000000100003f40 7b22496e 64657842 75696c64 64005461",
-        "0000000100003f50 72676574 223a2261 7070227d 00000000",
-      ],
-    ],
-    [
-      "nonzero trailing contamination",
-      [
-        "0000000100003f40 7b22496e 64657842 75696c64 64546172",
-        "0000000100003f50 67657422 3a226170 70227d01 00000000",
-      ],
-    ],
-    [
-      "an unsupported field width",
-      ["0000000100003f40 7b22496e6465 784275696c64"],
-    ],
-    [
-      "a malformed token",
-      [
-        "0000000100003f40 7b22496e 64657842 75696c64 64546172",
-        "0000000100003f50 67657422 3a226170 70227d0g 00000000",
-      ],
-    ],
-    [
-      "too many data fields",
-      ["0000000100003f40 7b22496e 64657842 75696c64 54617267 deadbeef"],
-    ],
-  ])("rejects otool output containing %s", (_name, lines) => {
-    const { result, output } = extractFixture(lines);
+    ["arm64 byte tokens", "arm64", ["0000000100003f40 7b 22 49 6e"]],
+    ["x86_64 word tokens", "x86_64", ["0000000100003f40 6e49227b 42786564 646c6975 67726154"]],
+    ["arm64 residual before a word", "arm64", ["0000000100003f40 7b 42786564"]],
+    ["more than three arm64 residual bytes", "arm64", ["0000000100003f40 7b 22 49 6e"]],
+    ["a short arm64 interior row", "arm64", ["0000000100003f40 6e49227b", "0000000100003f44 42786564 646c6975 67726154 3a227465"]],
+    ["a short x86_64 interior row", "x86_64", ["0000000100003f40 7b 22", "0000000100003f42 49 6e"]],
+    ["a section header", "arm64", ["Contents of (__TEXT,__indexcfg) section", "0000000100003f40 6e49227b"]],
+    ["an address-only row", "arm64", ["0000000100003f40"]],
+    ["an arbitrary 16-hex data token on arm64", "arm64", ["0000000100003f40 7b22496e64657842"]],
+    ["an arbitrary 16-hex data token on x86_64", "x86_64", ["0000000100003f40 7b22496e64657842"]],
+    ["mixed arm64 token forms", "arm64", ["0000000100003f40 6e49227b 42 646c6975"]],
+    ["mixed x86_64 token forms", "x86_64", ["0000000100003f40 7b 22 496e"]],
+  ])("rejects source-impossible %s", (_name, arch, lines) => {
+    const { result, output } = extractFixture(lines, arch);
     expect(result.exitCode).not.toBe(0);
     expect(output).toBeNull();
   });
 
   test.each([
-    [
-      "three 8-hex fields",
-      [
-        "0000000100003f40 7b22496e 64657842 75696c64 64546172",
-        "0000000100003f50 67657422 3a226170 70303022 7d",
-      ],
-      '{"IndexBuilddTarget":"app00"}',
-    ],
-    [
-      "one 16-hex field",
-      [
-        "0000000100003f40 7b22496e64657842 75696c6454617267",
-        "0000000100003f50 6574223a2261227d",
-      ],
-      '{"IndexBuildTarget":"a"}',
-    ],
-  ])("extracts logical section bytes from a final short row with %s", (_name, lines, expected) => {
-    const { result, output } = extractFixture(lines);
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-    expect(output).toBe(expected);
+    ["gapped", 0x100003f51n],
+    ["duplicate", 0x100003f40n],
+    ["backward", 0x100003f30n],
+  ])("rejects %s x86_64 row addresses", (_name, secondAddress) => {
+    const raw = Buffer.concat([Buffer.from(canonicalIdentity), Buffer.alloc(6)]);
+    const rows = otoolRows(raw, "x86_64");
+    rows[1] = rows[1].replace(/^[0-9a-f]{16}/, secondAddress.toString(16).padStart(16, "0"));
+    const { result, output } = extractFixture(rows, "x86_64");
+    expect(result.exitCode).not.toBe(0);
+    expect(output).toBeNull();
+    expect(result.stderr.toString()).toContain("addresses are not contiguous");
   });
 
   test.each([
-    ["one bounded trailing NUL", "0000000100003f40 7b227822 3a31307d 00"],
-    ["twelve bounded trailing NULs", "0000000100003f40 7b227822 3a31307d 00000000 00000000\n0000000100003f50 00000000"],
-  ])("accepts canonical JSON followed by %s", (_name, row) => {
-    const { result, output } = extractFixture(row.split("\n"));
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-    expect(output).toBe('{"x":10}');
+    ["non-canonical JSON whitespace", Buffer.from('{"x": 1}')],
+    ["trailing JSON whitespace", Buffer.from('{"x":1} ')],
+    ["an interior NUL", Buffer.from([0x7b, 0x22, 0x78, 0x22, 0x3a, 0x00, 0x31, 0x7d])],
+    ["nonzero trailing contamination", Buffer.concat([Buffer.from('{"x":1}'), Buffer.from([1])])],
+    ["sixteen excess trailing NUL bytes", Buffer.concat([Buffer.from('{"x":1}'), Buffer.alloc(16)])],
+  ])("rejects %s after architecture-specific decoding", (_name, raw) => {
+    for (const arch of ["arm64", "x86_64"]) {
+      const { result, output } = extractFixture(otoolRows(raw, arch), arch);
+      expect(result.exitCode).not.toBe(0);
+      expect(output).toBeNull();
+    }
   });
 
-  test("rejects sixteen excess trailing NUL bytes", () => {
-    const { result, output } = extractFixture([
-      "0000000100003f40 7b227822 3a31307d 00000000 00000000",
-      "0000000100003f50 00000000 00000000 00000000 00000000",
-    ]);
-    expect(result.exitCode).not.toBe(0);
-    expect(output).toBeNull();
-    expect(result.stderr.toString()).toContain("invalid compiler section padding");
+  test.each([0, 1, 15])("accepts canonical JSON with %i bounded trailing NUL byte(s)", (padding) => {
+    for (const arch of ["arm64", "x86_64"]) {
+      const raw = Buffer.concat([Buffer.from('{"x":1}'), Buffer.alloc(padding)]);
+      const { result, output } = extractFixture(otoolRows(raw, arch), arch);
+      expect(result.stderr.toString()).toBe("");
+      expect(result.exitCode).toBe(0);
+      expect(output).toBe('{"x":1}');
+    }
   });
 
   test("extracts and compares embedded compiled identity records before merge", () => {

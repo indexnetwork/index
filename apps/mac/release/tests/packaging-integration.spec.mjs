@@ -49,9 +49,15 @@ exec "$FIXTURE_OTOOL" "$@"
 import hashlib,json,plistlib,sys
 args=sys.argv[1:]
 if '-l' in args: print('LC_BUILD_VERSION\\n minos 13.0'); raise SystemExit
+arch=args[args.index('-arch')+1]
 binary=args[-1]; plist=binary.split('/Contents/MacOS/')[0]+'/Contents/Info.plist'; v=plistlib.load(open(plist,'rb'))
 keys=['CFBundleIdentifier','CFBundleShortVersionString','CFBundleVersion','IndexReleaseChannel','IndexReleaseVersion','IndexReleaseCommit','IndexAPIURL','IndexWebURL','IndexExpectedTeamID','IndexConnectorProtocolVersion','IndexDevelopmentBuild','IndexOwnerKeychainAccessGroup']
-i={'IndexBuildTarget':'app',**{k:v[k] for k in keys}}; c=json.dumps(i,sort_keys=True,separators=(',',':')); i['IndexBuildID']=hashlib.sha256(c.encode()).hexdigest(); raw=json.dumps(i,sort_keys=True,separators=(',',':')).encode(); raw+=b'\\0'*(-len(raw)%16); encoded=raw.hex(); print('\\n'.join(f'{0x100003f40+n//2:016x} '+' '.join(encoded[n+m:n+m+8] for m in range(0,min(32,len(encoded)-n),8)) for n in range(0,len(encoded),32)))
+i={'IndexBuildTarget':'app',**{k:v[k] for k in keys}}; c=json.dumps(i,sort_keys=True,separators=(',',':')); i['IndexBuildID']=hashlib.sha256(c.encode()).hexdigest(); raw=json.dumps(i,sort_keys=True,separators=(',',':')).encode(); raw+=b'\\0'*(-len(raw)%16)
+for offset in range(0,len(raw),16):
+ chunk=raw[offset:offset+16]
+ if arch == 'x86_64': fields=[f'{byte:02x}' for byte in chunk]
+ else: fields=[chunk[n:n+4][::-1].hex() for n in range(0,len(chunk),4)]
+ print(f'{0x100003f40+offset:016x} '+' '.join(fields))
 `);
  return {r,app,bin};}
 function run(f,fail=""){return Bun.spawnSync(["bash","-c",'source "$SCRIPT"; verify_release_bundle_path "$APP"'],{cwd:repo,env:{...process.env,SCRIPT:script,APP:f.app,PLIST_BUDDY:join(f.bin,"PlistBuddy"),FIXTURE_OTOOL:join(f.bin,"otool"),FAIL_CODESIGN:fail,PATH:`${f.bin}:${process.env.PATH}`},stdout:"pipe",stderr:"pipe"})}
