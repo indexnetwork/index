@@ -1,0 +1,107 @@
+name: Protected macOS production release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact annotated production tag (v1.0.0)
+        required: true
+        type: string
+      commit:
+        description: Exact full lowercase tagged commit SHA
+        required: true
+        type: string
+      build-number:
+        description: Strictly increasing positive build number
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: macos-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    environment: macos-production
+    # A dedicated fresh GitHub-hosted VM is required. No service/container or
+    # second job shares this UID/filesystem, and the orchestrator rejects any
+    # unrelated same-UID process before protected work.
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      INDEX_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      INDEX_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.commit || github.sha }}
+      INDEX_BUILD_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs['build-number'] || vars.INDEX_RELEASE_BUILD_NUMBER }}
+      INDEX_RELEASE_VERSION: "1.0.0"
+      INDEX_API_URL: https://protocol.index.network
+      INDEX_WEB_URL: https://index.network
+      INDEX_EXPECTED_TEAM_ID: LMQ3XNXLAD
+      INDEX_CONNECTOR_PROTOCOL_VERSION: "1"
+      INDEX_RELEASE_MACOS_VERSION: ${{ vars.INDEX_RELEASE_EXPECTED_MACOS_VERSION }}
+      INDEX_RELEASE_MACOS_BUILD: ${{ vars.INDEX_RELEASE_EXPECTED_MACOS_BUILD }}
+      INDEX_RELEASE_EXPECTED_MACOS_VERSION: ${{ vars.INDEX_RELEASE_EXPECTED_MACOS_VERSION }}
+      INDEX_RELEASE_EXPECTED_MACOS_BUILD: ${{ vars.INDEX_RELEASE_EXPECTED_MACOS_BUILD }}
+      INDEX_RELEASE_EXPECTED_RUNNER_IMAGE: ${{ vars.INDEX_RELEASE_EXPECTED_RUNNER_IMAGE }}
+      INDEX_RELEASE_EXPECTED_RUNNER_VERSION: ${{ vars.INDEX_RELEASE_EXPECTED_RUNNER_VERSION }}
+      INDEX_RELEASE_CMS_IDENTITY_HASH: ${{ vars.INDEX_RELEASE_CMS_IDENTITY_HASH }}
+      INDEX_RELEASE_CMS_CERT_SHA256: ${{ vars.INDEX_RELEASE_CMS_CERT_SHA256 }}
+      INDEX_DEVELOPER_ID_CERTIFICATE_P12: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_P12 }}
+      INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      INDEX_APP_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_APP_PROVISIONING_PROFILE_BASE64 }}
+      INDEX_CONNECTOR_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_CONNECTOR_PROVISIONING_PROFILE_BASE64 }}
+      INDEX_NOTARY_API_KEY_BASE64: ${{ secrets.INDEX_NOTARY_API_KEY_BASE64 }}
+      INDEX_NOTARY_KEY_ID: ${{ secrets.INDEX_NOTARY_KEY_ID }}
+      INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
+    steps:
+      - name: Checkout the exact release commit once without credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned Bun runtime
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.2.20"
+
+      - name: Prepare and fully verify immutable release assets
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }} # required value: github-hosted
+        run: apps/mac/release/build-release.sh prepare
+
+      - name: Attest the exact immutable publication asset set
+        id: attest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: |
+            apps/mac/dist/final/Index-macOS-1.0.0-universal.dmg
+            apps/mac/dist/final/Index-macOS-1.0.0-universal.dmg.reproducibility.txt
+            apps/mac/dist/final/IndexConnector-1.0.0-universal.dmg
+            apps/mac/dist/final/IndexConnector-1.0.0-universal.dmg.reproducibility.txt
+            apps/mac/dist/release/macos-release.json
+            apps/mac/dist/release/macos-release.cms
+            apps/mac/dist/release/SHA256SUMS
+
+      - name: Bind successful attestation to the verified asset manifest
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }} # required value: github-hosted
+          INDEX_ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: apps/mac/release/build-release.sh record-attestation "$INDEX_ATTESTATION_URL"
+
+      - name: Publish once, only after all gates and attestation
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }} # required value: github-hosted
+        run: apps/mac/release/build-release.sh publish
+
+      - name: Prove exact release absence after any failed protected step
+        if: failure()
+        run: apps/mac/release/build-release.sh assert-absence

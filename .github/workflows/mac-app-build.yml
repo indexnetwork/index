@@ -10,6 +10,9 @@
 # minutes, which bill at a higher rate than Linux, proportionate to the risk.
 name: Build macOS app
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: [dev, main]
@@ -26,9 +29,11 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.2.20"
 
@@ -65,6 +70,7 @@ jobs:
           test -x dist/IndexConnector.app/Contents/MacOS/IndexConnector
 
       - name: Protected signed cross-identity Keychain fixture
+        if: github.event_name == 'workflow_dispatch'
         working-directory: apps/mac/IndexConnector
         env:
           INDEX_KEYCHAIN_SIGNING_FIXTURE: ${{ secrets.INDEX_KEYCHAIN_SIGNING_FIXTURE }}
@@ -91,7 +97,8 @@ jobs:
             apps/mac/release/tests/packaging-security.spec.mjs \
             apps/mac/release/tests/packaging-fix-round-2.spec.mjs \
             apps/mac/release/tests/packaging-fix-round-3.spec.mjs \
-            apps/mac/release/tests/packaging-integration.spec.mjs
+            apps/mac/release/tests/packaging-integration.spec.mjs \
+            apps/mac/release/tests/release-workflow.spec.mjs
           bash -n \
             apps/mac/IndexApp/build.sh \
             apps/mac/IndexApp/link-host.sh \
@@ -102,7 +109,10 @@ jobs:
             apps/mac/release/notarize-bundle.sh \
             apps/mac/release/create-dmg.sh \
             apps/mac/release/notarize-dmg.sh \
-            apps/mac/release/verify-mounted-dmg.sh
+            apps/mac/release/verify-mounted-dmg.sh \
+            apps/mac/release/sign-release-metadata.sh \
+            apps/mac/release/verify-release-metadata.sh \
+            apps/mac/release/build-release.sh
 
       - name: Native owner credential migration and Keychain failure fixture
         working-directory: apps/mac/IndexApp
@@ -160,12 +170,15 @@ jobs:
 
   # This PR-safe job deliberately has no environment protection and no secret
   # references. It proves the real cross-architecture build using ad-hoc signing.
+  # Every output is development-only and is never a production release candidate.
   universal:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.2.20"
 
@@ -178,7 +191,7 @@ jobs:
             apps/mac/release/release-config.sh \
             apps/mac/release/build-universal.sh
 
-      - name: Build unsigned Universal 2 production bundles
+      - name: Build unsigned Universal 2 production bundles (development-only evidence)
         env:
           INDEX_RELEASE_VERSION: "1.0.0"
           INDEX_BUILD_NUMBER: ${{ github.event.pull_request.number || github.run_number }}
