@@ -188,3 +188,23 @@ Full Task 1-5 regression passes `137 pass`, `1 skip`, `0 fail`, `754 expect() ca
 ### Residual and attestation
 
 The schema evaluator intentionally supports only the committed closed vocabulary and fails on unimplemented draft keywords/forms. Real protected macOS CMS/Keychain behavior remains Task 6 evidence. No identity, Apple service, protected operation, publication, deployment, or push was used.
+
+## Review fix round 4/5
+
+Addressed the three open Important schema-evaluator semantic findings with strict TDD.
+
+### Changes
+
+- Schema-document traversal now records the exact JSON pointers of actual schema nodes only: root, property and `$defs` values, indexed `prefixItems`/`allOf` entries, and schema-valued `items`/`additionalProperties`. Local `$ref` targets must be in this marked set, so object/array containers such as `#/properties`, `#/$defs`, and `#/properties/artifacts/prefixItems` fail closed while committed `#/$defs/artifact` resolves. Active evaluator schema nodes are tracked and recursive `$ref`/`allOf` evaluation cycles are explicitly refused.
+- Every admitted type-specific constraint now requires its supported explicit type: `pattern` requires `string`; `minimum` requires `integer`; `minItems`, `maxItems`, `prefixItems`, and `items` require `array`; and `properties`, `required`, and `additionalProperties` require `object`. The two committed `allOf` object refinements now state `type: object`; the metadata vocabulary and emitted metadata bytes remain unchanged.
+- Added recursive JSON-semantic equality for `const`, `enum`, and enum uniqueness. Finite numbers use mathematical JSON equality, so `0` and `-0` compare equal; arrays remain ordered; objects compare own keys and values recursively; strings, booleans, and null remain exact. Canonical JSON output still normalizes signed zero to `0` and byte verification remains strict.
+
+### Strict TDD evidence
+
+RED command captured at `/tmp/task-5-fix-round-4-red.log`: `0 pass`, `4 fail`. It proved container refs, inapplicable constraints, signed-zero enum duplicates, and signed-zero const equality were mishandled. GREEN focused metadata suites pass `23 pass`, `0 fail`, `198 expect() calls`. Added direct coverage for three non-schema container refs, committed ref success, self-cycle refusal, eight type-applicability failures, `enum: [0,-0]`, `const: 0` against parsed `-0`, and unchanged canonical output normalization.
+
+Full Task 1-5 regression passes `141 pass`, `1 skip`, `0 fail`, `775 expect() calls` across 18 files. Focused TypeScript, ESLint, shell/Python syntax, and `git diff --check` pass.
+
+### Residual and attestation
+
+Cycle refusal is deliberately conservative for this closed evaluator; the committed acyclic schema remains supported. Real protected macOS CMS/Keychain behavior remains Task 6 evidence. No identity, Apple service, protected operation, publication, deployment, push, or protected output was used.

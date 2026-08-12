@@ -41,6 +41,7 @@
           "allOf": [
             { "$ref": "#/$defs/artifact" },
             {
+              "type": "object",
               "properties": {
                 "kind": { "const": "app-dmg" },
                 "name": { "const": "Index-macOS-1.0.0-universal.dmg" },
@@ -53,6 +54,7 @@
           "allOf": [
             { "$ref": "#/$defs/artifact" },
             {
+              "type": "object",
               "properties": {
                 "kind": { "const": "connector-dmg" },
                 "name": { "const": "IndexConnector-1.0.0-universal.dmg" },

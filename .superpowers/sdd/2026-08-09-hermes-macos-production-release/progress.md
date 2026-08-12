@@ -15,4 +15,5 @@ Task 4: parked — concurrent same-UID output-symlink insertion can race private
 Task 4: parked — same-UID replacement can race identity-checked quarantine deletion — ruling: same trusted-runner boundary; no untrusted concurrent same-UID workloads are permitted in protected release execution, and a same-UID adversary already has equivalent arbitrary mutation authority.
 Task 4: parked — SIGKILL/helper-termination after successful atomic rename can leave a candidate visible — ruling: no users/publication can observe the private protected-runner filesystem and SIGKILL cannot be made cleanup-safe in shell; publication remains a later explicit verified step and Task 6 must begin/end with absence/final-hash gates.
 Task 4: complete (commits cbac9ad7d..8e676b6b1, 3 parked after breaker; all in-scope isolated-runner release gates implemented)
-Task 5: fix round 3/5 (1 Important addressed, review pending; exact supported schema keyword shapes and malformed-form table coverage; no identity used)
+Task 5: fix round 3/5 (1 Important addressed; exact supported schema keyword shapes and malformed-form table coverage; no identity used)
+Task 5: fix round 4/5 (3 Important addressed, review pending; schema-node refs/cycle refusal, explicit type applicability, JSON numeric equality; no identity used)

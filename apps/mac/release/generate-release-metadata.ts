@@ -90,55 +90,76 @@ function buildMetadata(finalDirectory: string, buildNumber: string, commit: stri
   };
 }
 function schemaObject(value: unknown, label: string): Schema { if (!value || typeof value !== "object" || Array.isArray(value)) refuse(`${label} must be an object schema; boolean schemas are unsupported`); return value as Schema; }
-function uniqueJsonValues(values: unknown[]): boolean { return values.every((value, index) => values.findIndex((candidate) => Bun.deepEquals(candidate, value, true)) === index); }
-function resolveSchemaReference(root: Schema, reference: string): Schema {
-  if (!reference.startsWith("#/") || reference.slice(2).split("/").some((token) => /~(?![01])/.test(token))) refuse("schema uses an unsupported local reference");
-  let value: unknown = root;
-  for (const encoded of reference.slice(2).split("/")) {
-    const token = encoded.replaceAll("~1", "/").replaceAll("~0", "~");
-    const object = schemaObject(value, "schema reference");
-    if (!Object.hasOwn(object, token)) refuse("schema reference does not resolve");
-    value = object[token];
-  }
-  return schemaObject(value, "schema reference target");
+function jsonEqual(left: unknown, right: unknown): boolean {
+  if (typeof left === "number" || typeof right === "number") return typeof left === "number" && typeof right === "number" && Number.isFinite(left) && Number.isFinite(right) && left === right;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return left === right;
+  if (Array.isArray(left) || Array.isArray(right)) return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => jsonEqual(value, right[index]));
+  const leftObject = left as Record<string, unknown>; const rightObject = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftObject); const rightKeys = Object.keys(rightObject);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => Object.hasOwn(rightObject, key) && jsonEqual(leftObject[key], rightObject[key]));
 }
-function validateSchemaDocument(rawSchema: Schema): void {
-  const visitChild = (value: unknown, location: string): void => visit(schemaObject(value, location), location);
-  const visit = (schema: Schema, location: string): void => {
+function uniqueJsonValues(values: unknown[]): boolean { return values.every((value, index) => values.findIndex((candidate) => jsonEqual(candidate, value)) === index); }
+function decodeSchemaReference(reference: string): string[] {
+  if (reference === "#") return [];
+  if (!reference.startsWith("#/") || reference.slice(2).split("/").some((token) => /~(?![01])/.test(token))) refuse("schema uses an unsupported local reference");
+  return reference.slice(2).split("/").map((token) => token.replaceAll("~1", "/").replaceAll("~0", "~"));
+}
+function resolveSchemaReference(reference: string, schemaPointers: ReadonlyMap<string, Schema>): Schema {
+  const tokens = decodeSchemaReference(reference); const pointer = tokens.length === 0 ? "#" : `#/${tokens.map((token) => token.replaceAll("~", "~0").replaceAll("/", "~1")).join("/")}`;
+  const target = schemaPointers.get(pointer);
+  if (!target) refuse("schema reference target is not a schema node");
+  return target;
+}
+function validateSchemaDocument(rawSchema: Schema): Map<string, Schema> {
+  const schemaPointers = new Map<string, Schema>();
+  const visitChild = (value: unknown, location: string, pointer: string): void => visit(schemaObject(value, location), location, pointer);
+  const visit = (schema: Schema, location: string, pointer: string): void => {
+    schemaPointers.set(pointer, schema);
     for (const key of Object.keys(schema)) if (!SCHEMA_KEYS.has(key)) refuse(`${location} uses unsupported schema keyword ${key}`);
     if ("$schema" in schema && typeof schema.$schema !== "string") refuse(`${location} has malformed $schema`);
     if ("$id" in schema && typeof schema.$id !== "string") refuse(`${location} has malformed $id`);
     if ("title" in schema && typeof schema.title !== "string") refuse(`${location} has malformed title`);
-    if ("$ref" in schema) { if (typeof schema.$ref !== "string") refuse(`${location} has malformed $ref`); resolveSchemaReference(rawSchema, schema.$ref); }
+    if ("$ref" in schema && typeof schema.$ref !== "string") refuse(`${location} has malformed $ref`);
     if ("type" in schema) {
       if (Array.isArray(schema.type)) refuse(`${location} uses unsupported type array form`);
       if (typeof schema.type !== "string" || !["object", "array", "string", "integer"].includes(schema.type)) refuse(`${location} has unsupported type`);
     }
+    const type = schema.type;
+    if ("pattern" in schema && type !== "string") refuse(`${location} uses pattern without string type`);
+    if ("minimum" in schema && type !== "integer") refuse(`${location} uses minimum without integer type`);
+    if (["minItems", "maxItems", "prefixItems", "items"].some((key) => key in schema) && type !== "array") refuse(`${location} uses array constraints without array type`);
+    if (["properties", "required", "additionalProperties"].some((key) => key in schema) && type !== "object") refuse(`${location} uses object constraints without object type`);
     if (schema.additionalProperties === true) refuse(`${location} uses unsupported true additionalProperties schema`);
-    if ("additionalProperties" in schema && schema.additionalProperties !== false) visitChild(schema.additionalProperties, `${location}.additionalProperties`);
+    if ("additionalProperties" in schema && schema.additionalProperties !== false) visitChild(schema.additionalProperties, `${location}.additionalProperties`, `${pointer}/additionalProperties`);
     if ("required" in schema) {
       if (!Array.isArray(schema.required) || schema.required.some((value) => typeof value !== "string") || new Set(schema.required).size !== schema.required.length) refuse(`${location} has malformed or duplicate required entries`);
     }
-    if ("properties" in schema) for (const [key, value] of Object.entries(schemaObject(schema.properties, `${location}.properties`))) visitChild(value, `${location}.properties.${key}`);
-    if ("$defs" in schema) for (const [key, value] of Object.entries(schemaObject(schema.$defs, `${location}.$defs`))) visitChild(value, `${location}.$defs.${key}`);
+    if ("properties" in schema) for (const [key, value] of Object.entries(schemaObject(schema.properties, `${location}.properties`))) visitChild(value, `${location}.properties.${key}`, `${pointer}/properties/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`);
+    if ("$defs" in schema) for (const [key, value] of Object.entries(schemaObject(schema.$defs, `${location}.$defs`))) visitChild(value, `${location}.$defs.${key}`, `${pointer}/$defs/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`);
     if ("enum" in schema && (!Array.isArray(schema.enum) || schema.enum.length === 0 || !uniqueJsonValues(schema.enum))) refuse(`${location} has malformed, empty, or duplicate enum`);
     if ("pattern" in schema) { if (typeof schema.pattern !== "string") refuse(`${location} has malformed pattern`); try { new RegExp(schema.pattern); } catch { refuse(`${location} has invalid pattern`); } }
     for (const key of ["minItems", "maxItems"]) if (key in schema && (typeof schema[key] !== "number" || !Number.isInteger(schema[key]) || schema[key] < 0)) refuse(`${location} has malformed ${key}`);
     if (typeof schema.minItems === "number" && typeof schema.maxItems === "number" && schema.minItems > schema.maxItems) refuse(`${location} has minItems greater than maxItems`);
     if ("minimum" in schema && (typeof schema.minimum !== "number" || !Number.isFinite(schema.minimum))) refuse(`${location} has malformed minimum`);
-    if ("prefixItems" in schema) { if (!Array.isArray(schema.prefixItems)) refuse(`${location} has malformed prefixItems`); schema.prefixItems.forEach((value, index) => visitChild(value, `${location}.prefixItems[${index}]`)); }
+    if ("prefixItems" in schema) { if (!Array.isArray(schema.prefixItems)) refuse(`${location} has malformed prefixItems`); schema.prefixItems.forEach((value, index) => visitChild(value, `${location}.prefixItems[${index}]`, `${pointer}/prefixItems/${index}`)); }
     if (schema.items === true) refuse(`${location} uses unsupported true items schema`);
-    if ("items" in schema && schema.items !== false) visitChild(schema.items, `${location}.items`);
-    if ("allOf" in schema) { if (!Array.isArray(schema.allOf) || schema.allOf.length === 0) refuse(`${location} has malformed or empty allOf`); schema.allOf.forEach((value, index) => visitChild(value, `${location}.allOf[${index}]`)); }
+    if ("items" in schema && schema.items !== false) visitChild(schema.items, `${location}.items`, `${pointer}/items`);
+    if ("allOf" in schema) { if (!Array.isArray(schema.allOf) || schema.allOf.length === 0) refuse(`${location} has malformed or empty allOf`); schema.allOf.forEach((value, index) => visitChild(value, `${location}.allOf[${index}]`, `${pointer}/allOf/${index}`)); }
   };
-  visit(rawSchema, "schema");
+  visit(rawSchema, "schema", "#");
+  for (const schema of schemaPointers.values()) if (typeof schema.$ref === "string") resolveSchemaReference(schema.$ref, schemaPointers);
+  return schemaPointers;
 }
 function validateAgainstSchema(value: unknown, rawSchema: Schema): void {
+  const schemaPointers = validateSchemaDocument(rawSchema); const activeSchemas = new Set<Schema>();
   const evaluate = (candidate: unknown, schemaValue: Schema, location: string): void => {
-    if (typeof schemaValue.$ref === "string") evaluate(candidate, resolveSchemaReference(rawSchema, schemaValue.$ref), location);
+    if (activeSchemas.has(schemaValue)) refuse("schema evaluation cycle is unsupported");
+    activeSchemas.add(schemaValue);
+    try {
+    if (typeof schemaValue.$ref === "string") evaluate(candidate, resolveSchemaReference(schemaValue.$ref, schemaPointers), location);
     if (Array.isArray(schemaValue.allOf)) schemaValue.allOf.forEach((entry) => evaluate(candidate, schemaObject(entry, "allOf entry"), location));
-    if ("const" in schemaValue && !Bun.deepEquals(candidate, schemaValue.const, true)) refuse(`${location} violates schema const`);
-    if (Array.isArray(schemaValue.enum) && !schemaValue.enum.some((entry) => Bun.deepEquals(candidate, entry, true))) refuse(`${location} violates schema enum`);
+    if ("const" in schemaValue && !jsonEqual(candidate, schemaValue.const)) refuse(`${location} violates schema const`);
+    if (Array.isArray(schemaValue.enum) && !schemaValue.enum.some((entry) => jsonEqual(candidate, entry))) refuse(`${location} violates schema enum`);
     const type = schemaValue.type;
     if (type === "object") {
       const object = schemaObject(candidate, location); const properties = schemaObject(schemaValue.properties ?? {}, "schema properties");
@@ -165,10 +186,7 @@ function validateAgainstSchema(value: unknown, rawSchema: Schema): void {
       if (typeof candidate !== "number" || !Number.isInteger(candidate)) refuse(`${location} must be an integer`);
       if (typeof schemaValue.minimum === "number" && candidate < schemaValue.minimum) refuse(`${location} violates schema minimum`);
     } else if (type !== undefined) refuse("schema uses an unsupported type");
-    if (!(type === "object") && schemaValue.properties !== undefined) {
-      const object = schemaObject(candidate, location); const properties = schemaObject(schemaValue.properties, "schema properties");
-      for (const [key, child] of Object.entries(properties)) if (key in object) evaluate(object[key], schemaObject(child, `schema property ${key}`), `${location}.${key}`);
-    }
+    } finally { activeSchemas.delete(schemaValue); }
   };
   evaluate(value, rawSchema, "metadata");
 }
