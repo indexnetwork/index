@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 
 const root = new URL('.', import.meta.url).pathname;
 const build = await Bun.file(new URL('./build.sh', import.meta.url)).text();
@@ -33,7 +34,7 @@ test('requested signing is hardened and cannot fall back to ad-hoc', () => {
   expect(build).not.toMatch(/if \[ -n "\$\{IDENTITY\}" \]; then[\s\S]*--sign -/);
 });
 
-test('refuses notarization when the signed app has no embedded profile', async () => {
+test.skipIf(!existsSync('/usr/bin/codesign'))('legacy entrypoint refuses an app without an embedded profile before submission', async () => {
   const fixture = await makeSignedApp();
   try {
     const archive = `${fixture.root}/should-not-exist.zip`;
@@ -54,17 +55,17 @@ test('refuses notarization when the signed app has no embedded profile', async (
   }
 });
 
-test('macOS CI runs all IndexApp shell tests', () => {
-  expect(workflow).toContain('bun test *.spec.mjs');
+test('macOS CI runs IndexApp shell tests', () => {
+  expect(workflow).toContain('apps/mac/IndexApp/*.spec.mjs');
 });
 
-test('notarization waits, staples, validates and assesses', () => {
+test('legacy notarization delegates to the exact production release pipeline', () => {
   expect(notarize).toContain('NOTARYTOOL_PROFILE');
-  expect(notarize).toContain('xcrun notarytool submit');
-  expect(notarize).toContain('--wait');
-  expect(notarize).toContain('xcrun stapler staple');
-  expect(notarize).toContain('xcrun stapler validate');
-  expect(notarize).toContain('spctl --assess --type execute');
+  expect(notarize).toContain('notarize-bundle.sh');
+  expect(notarize).toContain('create-dmg.sh');
+  expect(notarize).toContain('notarize-dmg.sh');
+  expect(notarize).toContain('verify-mounted-dmg.sh');
+  expect(notarize).not.toContain('codesign --verify --deep');
 });
 
 test('documents the Developer ID dev handoff', () => {

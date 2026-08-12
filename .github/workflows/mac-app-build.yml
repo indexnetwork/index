@@ -84,14 +84,21 @@ jobs:
 
       - name: macOS shell and handoff tests
         run: |
-          bun test apps/mac/IndexApp/*.spec.mjs apps/mac/release/tests/release-contract.spec.mjs
+          bun test \
+            apps/mac/IndexApp/*.spec.mjs \
+            apps/mac/release/tests/release-contract.spec.mjs \
+            apps/mac/release/tests/packaging-order.spec.mjs
           bash -n \
             apps/mac/IndexApp/build.sh \
             apps/mac/IndexApp/link-host.sh \
             apps/mac/IndexApp/provisioning-profile.sh \
             apps/mac/IndexApp/notarize.sh \
             apps/mac/IndexConnector/build.sh \
-            apps/mac/release/release-config.sh
+            apps/mac/release/release-config.sh \
+            apps/mac/release/notarize-bundle.sh \
+            apps/mac/release/create-dmg.sh \
+            apps/mac/release/notarize-dmg.sh \
+            apps/mac/release/verify-mounted-dmg.sh
 
       - name: Native owner credential migration and Keychain failure fixture
         working-directory: apps/mac/IndexApp
