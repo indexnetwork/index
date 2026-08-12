@@ -66,6 +66,8 @@ describe("macOS Universal 2 production build contract", () => {
     expect(buildSource).toContain("extract_compiled_identity()");
     expect(buildSource).toContain("otool -arch");
     expect(buildSource).toContain("-s __TEXT __indexcfg");
+    expect(buildSource).toContain("NF >= 2");
+    expect(buildSource).not.toContain("tail -n +3");
     expect(buildSource).toContain("compare_compiled_identities");
     expect(buildSource).not.toContain("write_slice_configuration");
     for (const key of [

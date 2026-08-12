@@ -134,7 +134,7 @@ PY
 # extract_compiled_identity(binary, arch, destination)
 extract_compiled_identity() {
   local binary="$1" arch="$2" destination="$3" hex
-  hex="$(otool -arch "$arch" -s __TEXT __indexcfg "$binary" | tail -n +3 | awk '{$1=""; printf "%s", $0}' | tr -d '[:space:]')"
+  hex="$(otool -arch "$arch" -s __TEXT __indexcfg "$binary" | awk 'NF >= 2 && $1 ~ /^[[:xdigit:]]+$/ { for (i = 2; i <= NF; i++) if ($i ~ /^[[:xdigit:]]+$/) printf "%s", $i }')"
   [[ -n "$hex" ]] || { release_error "$binary $arch has no compiled identity section"; return 1; }
   python3 - "$hex" "$destination" <<'PY'
 import binascii

@@ -25,9 +25,11 @@ def inventory_rows():
         if stat.S_ISDIR(details.st_mode):
             rows.append((relative, "d", f"{permissions:04o}", "0", "-"))
         elif stat.S_ISREG(details.st_mode):
+            digest = hashlib.sha256()
             with path.open("rb") as stream:
-                digest = hashlib.file_digest(stream, "sha256").hexdigest()
-            rows.append((relative, "f", f"{permissions:04o}", str(details.st_size), digest))
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            rows.append((relative, "f", f"{permissions:04o}", str(details.st_size), digest.hexdigest()))
         else:
             raise SystemExit("sealed inventory rejects symlinks/devices")
     header = ("seal-v1", str(root), str(root_details.st_dev), str(root_details.st_ino))

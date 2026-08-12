@@ -43,6 +43,7 @@ test.skipIf(!existsSync('/usr/bin/codesign'))('legacy entrypoint refuses an app 
       env: {
         ...Bun.env,
         APP_PATH: fixture.app,
+        INDEX_RELEASE_VERSION: '1.0.0',
         NOTARYTOOL_PROFILE: 'unused-test-profile',
       },
     });
