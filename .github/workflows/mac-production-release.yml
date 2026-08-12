@@ -82,11 +82,11 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          626331edfd84e07d120d0078aa16a675138a0248c25e1ff1196117f2f20f3a47  apps/mac/release/build-release.sh
           f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
-          c05da3b3eb694ea53065b626e89e321fb1aa788ca58a338614ce55800b6d613b  apps/mac/release/verify-tag-ruleset.mjs
-          859f5447ad656262d6d0ec142b176e74cb231063dc614533be9547dcb4c52cb0  apps/mac/release/process-isolation.py
-          f50ebcaa2e39b9caca887564abc79267eaf32e6cca3b4eac4baf8c6a812bf01a  apps/mac/release/verify-prior-release-metadata.sh
+          94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
+          c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
+          fb04addf3b1f2b4ecd820cad6fd141e346f23f86efb9e5ed7bc2c71192db4a31  apps/mac/release/verify-prior-release-metadata.sh
           PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
           apps/mac/release/build-release.sh authorize
@@ -104,11 +104,11 @@ jobs:
           INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          626331edfd84e07d120d0078aa16a675138a0248c25e1ff1196117f2f20f3a47  apps/mac/release/build-release.sh
           f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
-          c05da3b3eb694ea53065b626e89e321fb1aa788ca58a338614ce55800b6d613b  apps/mac/release/verify-tag-ruleset.mjs
-          859f5447ad656262d6d0ec142b176e74cb231063dc614533be9547dcb4c52cb0  apps/mac/release/process-isolation.py
-          f50ebcaa2e39b9caca887564abc79267eaf32e6cca3b4eac4baf8c6a812bf01a  apps/mac/release/verify-prior-release-metadata.sh
+          94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
+          c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
+          fb04addf3b1f2b4ecd820cad6fd141e346f23f86efb9e5ed7bc2c71192db4a31  apps/mac/release/verify-prior-release-metadata.sh
           PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
           apps/mac/release/build-release.sh candidate
@@ -138,11 +138,11 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          626331edfd84e07d120d0078aa16a675138a0248c25e1ff1196117f2f20f3a47  apps/mac/release/build-release.sh
           f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
-          c05da3b3eb694ea53065b626e89e321fb1aa788ca58a338614ce55800b6d613b  apps/mac/release/verify-tag-ruleset.mjs
-          859f5447ad656262d6d0ec142b176e74cb231063dc614533be9547dcb4c52cb0  apps/mac/release/process-isolation.py
-          f50ebcaa2e39b9caca887564abc79267eaf32e6cca3b4eac4baf8c6a812bf01a  apps/mac/release/verify-prior-release-metadata.sh
+          94e9a4997328e557a325a105580cbeafc10f751fb6b152b8cea2d21fcbc986b6  apps/mac/release/verify-tag-ruleset.mjs
+          c5736c503ab9d7db093fa4e7673b7e35f876f5519979cddeffc1a3a29a471f7f  apps/mac/release/process-isolation.py
+          fb04addf3b1f2b4ecd820cad6fd141e346f23f86efb9e5ed7bc2c71192db4a31  apps/mac/release/verify-prior-release-metadata.sh
           PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
           apps/mac/release/build-release.sh publish
@@ -154,7 +154,7 @@ jobs:
           INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           cat <<'PINS' | /usr/bin/shasum -a 256 -c -
-          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          626331edfd84e07d120d0078aa16a675138a0248c25e1ff1196117f2f20f3a47  apps/mac/release/build-release.sh
           PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
           apps/mac/release/build-release.sh assert-absence

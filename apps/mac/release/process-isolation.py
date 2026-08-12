@@ -15,9 +15,10 @@ parser.add_argument("--worker-sha256", required=True)
 args = parser.parse_args()
 
 class Row:
-    def __init__(self, pid, ppid, uid, identity, path, digest, rechecked):
+    def __init__(self, pid, ppid, uid, identity, path, digest, rechecked_ppid, rechecked_uid, rechecked_identity):
         self.pid, self.ppid, self.uid = pid, ppid, uid
-        self.identity, self.path, self.digest, self.rechecked = identity, path, digest, rechecked
+        self.identity, self.path, self.digest = identity, path, digest
+        self.rechecked_ppid, self.rechecked_uid, self.rechecked_identity = rechecked_ppid, rechecked_uid, rechecked_identity
 
 def file_digest(path):
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -41,11 +42,14 @@ def load_snapshot(path):
         fields = line.split("\t")
         if len(fields) == 4:
             pid, ppid, uid = map(int, fields[:3]); path_value = fields[3]
-            fields = [str(pid), str(ppid), str(uid), f"{pid}:fixture", path_value, "-", f"{pid}:fixture"]
-        if len(fields) != 7: raise SystemExit("malformed process snapshot")
-        pid, ppid, uid = map(int, fields[:3])
+            fields = [str(pid), str(ppid), str(uid), f"{pid}:fixture", path_value, "-", str(ppid), str(uid), f"{pid}:fixture"]
+        elif len(fields) == 7:
+            pid, ppid, uid = map(int, fields[:3])
+            fields = [*fields[:6], str(ppid), str(uid), fields[6]]
+        if len(fields) != 9: raise SystemExit("malformed process snapshot")
+        pid, ppid, uid, rechecked_ppid, rechecked_uid = map(int, [*fields[:3], *fields[6:8]])
         if pid in rows: raise SystemExit("duplicate process snapshot PID")
-        rows[pid] = Row(pid, ppid, uid, *fields[3:])
+        rows[pid] = Row(pid, ppid, uid, *fields[3:6], rechecked_ppid, rechecked_uid, fields[8])
     return rows
 
 def live_identity(libproc, pid):
@@ -104,10 +108,10 @@ def live_rows(root_pid, scanner_pid):
                 raise SystemExit(f"executable vanished for persistent PID {pid}")
         rechecked = live_identity(libproc, pid)
         if rechecked is None:
-            if classified: rows[pid] = Row(pid, ppid, uid, identity, "<vanished>", "-", "-")
+            if classified: rows[pid] = Row(pid, ppid, uid, identity, "<vanished>", "-", ppid, uid, "-")
             continue
-        if rechecked[2] != identity: raise SystemExit(f"PID identity changed during scan: {pid}")
-        rows[pid] = Row(pid, ppid, uid, identity, path, digest, rechecked[2])
+        if rechecked != (ppid, uid, identity): raise SystemExit(f"PID identity changed during scan: {pid}")
+        rows[pid] = Row(pid, ppid, uid, identity, path, digest, *rechecked)
     return rows
 
 allow_bytes = pathlib.Path(args.allowlist).read_bytes()
@@ -133,7 +137,8 @@ workers = [pid for pid in ancestry if rows[pid].path == args.worker_path and row
 if len(listeners) != 1 or len(workers) != 1 or rows[workers[0]].ppid != listeners[0]:
     raise SystemExit("reviewed runner ancestry unavailable")
 for pid, row in rows.items():
-    if row.identity != row.rechecked and not (pid == args.scanner_pid and row.rechecked == "-"):
+    identity_unchanged = (row.ppid, row.uid, row.identity) == (row.rechecked_ppid, row.rechecked_uid, row.rechecked_identity)
+    if not identity_unchanged and not (pid == args.scanner_pid and row.rechecked_identity == "-" and row.ppid == row.rechecked_ppid and row.uid == row.rechecked_uid):
         raise SystemExit(f"PID identity changed during scan: {pid}")
     if row.uid != args.uid or pid in ancestry or descendant(pid, args.root_pid): continue
     if row.path in allowed: continue

@@ -3,7 +3,7 @@ const [raw, tag, id] = process.argv.slice(2);
 let ruleset;
 try { ruleset = JSON.parse(raw); } catch { process.exit(1); }
 
-function glob(pattern, value) {
+function compileGlob(pattern) {
   if (typeof pattern !== "string" || pattern.length === 0 || /[{}\\]/.test(pattern) || /[!+@](?=\()|\*\(/.test(pattern)) throw new Error("unsupported glob");
   let expression = "^";
   for (let index = 0; index < pattern.length; index += 1) {
@@ -22,14 +22,23 @@ function glob(pattern, value) {
       expression += `[${body}]`; index = end;
     } else expression += character.replace(/[.+^$()|]/g, "\\$&");
   }
-  return new RegExp(`${expression}$`).test(value);
+  const expressionObject = new RegExp(`${expression}$`);
+  return (value) => expressionObject.test(value);
+}
+
+function compilePattern(pattern) {
+  if (pattern === "~ALL") return () => true;
+  return compileGlob(pattern);
 }
 
 try {
   const ref = `refs/tags/${tag}`, conditions = ruleset.conditions?.ref_name;
+  if (!Array.isArray(conditions?.include) || !Array.isArray(conditions?.exclude)) process.exit(1);
+  const includes = conditions.include.map(compilePattern);
+  const exclusions = conditions.exclude.map(compilePattern);
   if (String(ruleset.id) !== id || ruleset.enforcement !== "active" || ruleset.target !== "tag" ||
-      (ruleset.bypass_actors?.length ?? 0) !== 0 || !Array.isArray(conditions?.include) || !Array.isArray(conditions?.exclude) ||
-      !conditions.include.some((pattern) => pattern === "~ALL" || glob(pattern, ref)) ||
-      conditions.exclude.some((pattern) => pattern === "~ALL" || glob(pattern, ref)) ||
+      (ruleset.bypass_actors?.length ?? 0) !== 0 ||
+      !includes.some((matches) => matches(ref)) ||
+      exclusions.some((matches) => matches(ref)) ||
       !ruleset.rules?.some((rule) => rule.type === "update") || !ruleset.rules?.some((rule) => rule.type === "deletion")) process.exit(1);
 } catch { process.exit(1); }

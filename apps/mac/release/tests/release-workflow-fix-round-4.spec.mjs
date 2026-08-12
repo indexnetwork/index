@@ -107,9 +107,9 @@ describe("complete GitHub and historical authority", () => {
     const appName = `Index-macOS-${version}-universal.dmg`, connectorName = `IndexConnector-${version}-universal.dmg`; writeFileSync(join(files, appName), app); writeFileSync(join(files, connectorName), connector);
     const value = metadata(version, commit, repo, tag, app, connector), json = join(dir, "macos-release.json"), sums = join(dir, "SHA256SUMS"), cms = join(dir, "macos-release.cms"); writeFileSync(json, canonical(value)); writeFileSync(sums, `${value.artifacts[0].sha256}  ${appName}\n${value.artifacts[1].sha256}  ${connectorName}\n`);
     const cert = certFixture(dir); expect(run("openssl", ["cms", "-sign", "-binary", "-nodetach", "-nosmimecap", "-in", json, "-signer", cert.cert, "-inkey", cert.key, "-outform", "DER", "-out", cms]).status).toBe(0);
-    const args = [prior, json, cms, files, sums, tag, repo], env = { INDEX_RELEASE_CMS_CERT_SHA256: cert.sha };
+    const args = [prior, json, cms, files, sums, tag, repo, commit], env = { INDEX_RELEASE_CMS_CERT_SHA256: cert.sha };
     expect(run("bash", args, env).status).toBe(0);
-    expect(run("bash", [...args.slice(0, -2), "v0.9.1", repo], env).status).not.toBe(0);
+    expect(run("bash", [...args.slice(0, -3), "v0.9.1", repo, commit], env).status).not.toBe(0);
     const extra = { ...value, extra: true }; writeFileSync(json, canonical(extra)); expect(run("bash", args, env).status).not.toBe(0);
   });
 
