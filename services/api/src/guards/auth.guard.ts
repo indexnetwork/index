@@ -309,7 +309,10 @@ export type IndexAppOwnerRouteDecision =
   | { allowed: true }
   | { allowed: false; reason: 'dedicated_owner_route_denied' };
 
-const INDEX_APP_OWNER_STATIC_ROUTES = new Set([
+/** Path segment matcher shared by every audience route matrix. */
+const AUDIENCE_SEGMENT = '[^/]+';
+
+export const INDEX_APP_OWNER_STATIC_ROUTES: ReadonlySet<string> = new Set([
   'GET /auth/me', 'PATCH /auth/profile/update',
   'GET /agent-runtime', 'PUT /agent-runtime',
   'POST /agent-runtime/hermes/prepare', 'POST /agent-runtime/reconcile-index',
@@ -330,33 +333,33 @@ const INDEX_APP_OWNER_STATIC_ROUTES = new Set([
   'POST /storage/avatars', 'POST /storage/index-images',
 ]);
 
+export const INDEX_APP_OWNER_DYNAMIC_ROUTES: ReadonlyArray<readonly [string, RegExp]> = [
+  ['GET', new RegExp(`^/networks/${AUDIENCE_SEGMENT}/(?:overview|my-intents)$`)],
+  ['POST', new RegExp(`^/networks/${AUDIENCE_SEGMENT}/(?:join|leave)$`)],
+  ['PATCH', new RegExp(`^/network-requests/${AUDIENCE_SEGMENT}$`)],
+  ['DELETE', new RegExp(`^/network-requests/${AUDIENCE_SEGMENT}$`)],
+  ['GET', new RegExp(`^/users/${AUDIENCE_SEGMENT}$`)], ['GET', /^\/users\/batch$/],
+  ['GET', new RegExp(`^/users/${AUDIENCE_SEGMENT}/negotiations$`)],
+  ['GET', new RegExp(`^/intents/${AUDIENCE_SEGMENT}$`)],
+  ['PATCH', new RegExp(`^/intents/${AUDIENCE_SEGMENT}/(?:archive|status)$`)],
+  ['GET', new RegExp(`^/opportunities/${AUDIENCE_SEGMENT}$`)],
+  ['GET', new RegExp(`^/opportunities/${AUDIENCE_SEGMENT}/invite-message$`)],
+  ['PATCH', new RegExp(`^/opportunities/${AUDIENCE_SEGMENT}/status$`)],
+  ['POST', new RegExp(`^/opportunities/${AUDIENCE_SEGMENT}/start-chat$`)],
+  ['POST', new RegExp(`^/questions/${AUDIENCE_SEGMENT}/(?:answer|dismiss)$`)],
+  ['GET', new RegExp(`^/conversations/${AUDIENCE_SEGMENT}/messages$`)],
+  ['POST', new RegExp(`^/conversations/${AUDIENCE_SEGMENT}/messages$`)],
+  ['PATCH', new RegExp(`^/conversations/${AUDIENCE_SEGMENT}/metadata$`)],
+  ['DELETE', new RegExp(`^/conversations/${AUDIENCE_SEGMENT}$`)],
+  ['DELETE', new RegExp(`^/agent-runtime/hermes/${AUDIENCE_SEGMENT}$`)],
+];
+
 /** Exact product-only route matrix for the dedicated native owner principal. */
 export function authorizeIndexAppOwner(input: { method: string; path: string }): IndexAppOwnerRouteDecision {
   const method = input.method.toUpperCase();
   const path = normalizeAudiencePath(input.path);
   if (INDEX_APP_OWNER_STATIC_ROUTES.has(`${method} ${path}`)) return { allowed: true };
-  const segment = '[^/]+';
-  const routes: ReadonlyArray<readonly [string, RegExp]> = [
-    ['GET', new RegExp(`^/networks/${segment}/(?:overview|my-intents)$`)],
-    ['POST', new RegExp(`^/networks/${segment}/(?:join|leave)$`)],
-    ['PATCH', new RegExp(`^/network-requests/${segment}$`)],
-    ['DELETE', new RegExp(`^/network-requests/${segment}$`)],
-    ['GET', new RegExp(`^/users/${segment}$`)], ['GET', /^\/users\/batch$/],
-    ['GET', new RegExp(`^/users/${segment}/negotiations$`)],
-    ['GET', new RegExp(`^/intents/${segment}$`)],
-    ['PATCH', new RegExp(`^/intents/${segment}/(?:archive|status)$`)],
-    ['GET', new RegExp(`^/opportunities/${segment}$`)],
-    ['GET', new RegExp(`^/opportunities/${segment}/invite-message$`)],
-    ['PATCH', new RegExp(`^/opportunities/${segment}/status$`)],
-    ['POST', new RegExp(`^/opportunities/${segment}/start-chat$`)],
-    ['POST', new RegExp(`^/questions/${segment}/(?:answer|dismiss)$`)],
-    ['GET', new RegExp(`^/conversations/${segment}/messages$`)],
-    ['POST', new RegExp(`^/conversations/${segment}/messages$`)],
-    ['PATCH', new RegExp(`^/conversations/${segment}/metadata$`)],
-    ['DELETE', new RegExp(`^/conversations/${segment}$`)],
-    ['DELETE', new RegExp(`^/agent-runtime/hermes/${segment}$`)],
-  ];
-  return routes.some(([allowedMethod, pattern]) => method === allowedMethod && pattern.test(path))
+  return INDEX_APP_OWNER_DYNAMIC_ROUTES.some(([allowedMethod, pattern]) => method === allowedMethod && pattern.test(path))
     ? { allowed: true }
     : { allowed: false, reason: 'dedicated_owner_route_denied' };
 }
@@ -365,7 +368,7 @@ export type HermesAgentRouteDecision =
   | { allowed: true }
   | { allowed: false; reason: 'dedicated_principal_route_denied' };
 
-const HERMES_AGENT_STATIC_ROUTES: ReadonlySet<string> = new Set([
+export const HERMES_AGENT_STATIC_ROUTES: ReadonlySet<string> = new Set([
   'POST /mcp',
   'GET /agents/me',
   'GET /auth/me',
@@ -388,6 +391,26 @@ const HERMES_AGENT_STATIC_ROUTES: ReadonlySet<string> = new Set([
   'GET /conversations/stream',
   'POST /conversations/dm',
 ]);
+
+export const HERMES_AGENT_DYNAMIC_ROUTES: ReadonlyArray<readonly [string, RegExp]> = [
+  ['PATCH', new RegExp(`^/intents/${AUDIENCE_SEGMENT}/(?:status|archive)$`)],
+  ['PATCH', new RegExp(`^/opportunities/${AUDIENCE_SEGMENT}/status$`)],
+  ['POST', new RegExp(`^/opportunities/${AUDIENCE_SEGMENT}/start-chat$`)],
+  ['POST', new RegExp(`^/questions/${AUDIENCE_SEGMENT}/(?:answer|dismiss)$`)],
+  ['GET', new RegExp(`^/users/${AUDIENCE_SEGMENT}$`)],
+  ['POST', new RegExp(`^/networks/${AUDIENCE_SEGMENT}/join$`)],
+  ['PATCH', new RegExp(`^/network-requests/${AUDIENCE_SEGMENT}$`)],
+  ['DELETE', new RegExp(`^/network-requests/${AUDIENCE_SEGMENT}$`)],
+  ['GET', new RegExp(`^/conversations/${AUDIENCE_SEGMENT}/messages$`)],
+  ['POST', new RegExp(`^/conversations/${AUDIENCE_SEGMENT}/messages$`)],
+];
+
+/** Agent-scoped negotiation pickup/respond/consult, built per authenticated agent. */
+export function hermesNegotiationRoute(escapedAgentId: string): RegExp {
+  return new RegExp(
+    `^/agents/${escapedAgentId}/negotiations/(?:pickup|${AUDIENCE_SEGMENT}/(?:respond|consult))$`,
+  );
+}
 
 function hasExactCanonicalHermesActions(actions: readonly string[]): actions is readonly HermesCapability[] {
   return actions.length === HERMES_CANONICAL_ACTIONS.length
@@ -417,29 +440,13 @@ export function authorizeHermesAgent(input: {
   const path = normalizeAudiencePath(input.path);
   if (HERMES_AGENT_STATIC_ROUTES.has(`${method} ${path}`)) return { allowed: true };
 
-  const segment = '[^/]+';
-  const dynamicRoutes: ReadonlyArray<readonly [string, RegExp]> = [
-    ['PATCH', new RegExp(`^/intents/${segment}/(?:status|archive)$`)],
-    ['PATCH', new RegExp(`^/opportunities/${segment}/status$`)],
-    ['POST', new RegExp(`^/opportunities/${segment}/start-chat$`)],
-    ['POST', new RegExp(`^/questions/${segment}/(?:answer|dismiss)$`)],
-    ['GET', new RegExp(`^/users/${segment}$`)],
-    ['POST', new RegExp(`^/networks/${segment}/join$`)],
-    ['PATCH', new RegExp(`^/network-requests/${segment}$`)],
-    ['DELETE', new RegExp(`^/network-requests/${segment}$`)],
-    ['GET', new RegExp(`^/conversations/${segment}/messages$`)],
-    ['POST', new RegExp(`^/conversations/${segment}/messages$`)],
-  ];
-  if (dynamicRoutes.some(([allowedMethod, pattern]) => method === allowedMethod && pattern.test(path))) {
+  if (HERMES_AGENT_DYNAMIC_ROUTES.some(([allowedMethod, pattern]) => method === allowedMethod && pattern.test(path))) {
     return { allowed: true };
   }
 
   if (input.agentId) {
     const escapedAgentId = input.agentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const negotiationRoute = new RegExp(
-      `^/agents/${escapedAgentId}/negotiations/(?:pickup|${segment}/(?:respond|consult))$`,
-    );
-    if (method === 'POST' && negotiationRoute.test(path)) return { allowed: true };
+    if (method === 'POST' && hermesNegotiationRoute(escapedAgentId).test(path)) return { allowed: true };
   }
   return { allowed: false, reason: 'dedicated_principal_route_denied' };
 }
