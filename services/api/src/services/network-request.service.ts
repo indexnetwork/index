@@ -94,7 +94,6 @@ export class NetworkRequestService {
     const permissions: schema.NetworkPermissionsState = {
       joinPolicy,
       invitationLink: { code: crypto.randomUUID() },
-      allowGuestVibeCheck: false,
     };
 
     const [row] = await db
@@ -184,7 +183,6 @@ export class NetworkRequestService {
       const permissions: schema.NetworkPermissionsState = {
         ...((row.permissions as schema.NetworkPermissionsState | null) ?? {
           invitationLink: null,
-          allowGuestVibeCheck: false,
         }),
         joinPolicy,
         invitationLink:

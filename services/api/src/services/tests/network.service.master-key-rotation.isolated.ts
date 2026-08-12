@@ -50,7 +50,7 @@ describe('networkService.rotateMasterKey', () => {
         title: 'Rotate Test Master Key',
         isPersonal: false,
         masterKeyHash: initialHash,
-        permissions: { joinPolicy: 'invite_only', invitationLink: null, allowGuestVibeCheck: false },
+        permissions: { joinPolicy: 'invite_only', invitationLink: null },
       })
       .returning({ id: schema.networks.id });
     networkId = n.id;

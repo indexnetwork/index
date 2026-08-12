@@ -5,7 +5,7 @@ import { renderAgentMarkdown } from './markdown.mjs';
 
 const window = new Window({ url: 'file:///Applications/index.app/Contents/Resources/index.html' });
 window.SyntaxError = SyntaxError;
-const markedSource = await Bun.file(new URL('../IndexApp/src/vendor/marked.umd.js', import.meta.url)).text();
+const markedSource = await Bun.file(new URL('../src/vendor/marked.umd.js', import.meta.url)).text();
 const marked = new Function('globalThis', `${markedSource}\nreturn globalThis.marked;`)(window);
 
 function render(markdown) {

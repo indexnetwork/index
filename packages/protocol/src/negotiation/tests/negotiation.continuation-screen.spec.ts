@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { NegotiationScreener, type NegotiationScreenerInput, type ScreenDecision } from "../negotiation.screen.js";
-import type { NegotiationTurn } from "../negotiation.state.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
+import { NegotiationScreener, type NegotiationScreenerInput, type ScreenDecision } from "../application/negotiation.screen.js";
+import type { NegotiationTurn } from "../domain/negotiation.state.js";
 
 /**
  * IND-563 — the outreach screen runs on continuations, with two guarantees not

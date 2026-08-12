@@ -74,7 +74,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
               </div>
               <h2 className="text-lg font-bold text-black mb-2">Your request is in</h2>
               <p className="text-sm text-gray-600">
-                We&apos;re reviewing <span className="font-medium text-black">{submitted.title}</span> and will get back to you shortly.
+                <span className="font-medium text-black">{submitted.title}</span> is in review. You&apos;ll hear back shortly.
               </p>
               <p className="text-sm text-gray-500 mt-3">
                 Since networks are still early, we may reach out with a few questions about what you&apos;re building.

@@ -5,7 +5,7 @@ import type { PendingQuestionSummary } from "../../shared/schemas/pending-questi
  * Unit test for the pending-question merge logic extracted into a helper.
  * The actual tool handler delegates to this helper.
  */
-import { mergePendingQuestions, type MergePendingQuestionsInput } from "../opportunity.pending-questions.js";
+import { mergePendingQuestions, type MergePendingQuestionsInput } from "../application/opportunity.pending-questions.js";
 
 describe("mergePendingQuestions", () => {
   const baseSummary: PendingQuestionSummary = {

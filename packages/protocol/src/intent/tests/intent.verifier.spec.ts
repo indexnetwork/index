@@ -45,7 +45,7 @@ mock.module("../../shared/agent/model.config", () => ({
   }),
 }));
 
-const { SemanticVerifier } = await import("../intent.verifier.js");
+const { SemanticVerifier } = await import("../../signals/application/intent.verifier.js");
 
 afterAll(() => mock.restore());
 

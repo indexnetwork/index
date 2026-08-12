@@ -3,8 +3,8 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it } from "bun:test";
 
-import { loadNegotiationContext, type NegotiationContextDatabase } from "../negotiation-context.loader.js";
-import type { NegotiationOutcome } from "../../negotiation/negotiation.state.js";
+import { loadNegotiationContext, type NegotiationContextDatabase } from "../application/negotiation-context.loader.js";
+import type { NegotiationOutcome } from "../../negotiation/domain/negotiation.state.js";
 
 const OPPORTUNITY_ID = "opp-123";
 

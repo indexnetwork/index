@@ -95,7 +95,7 @@ test('bundle and entitlement contracts keep app and connector credentials distin
   expect(connectorEntitlementWriter).not.toContain('${app_group}');
   expect(connectorEntitlementWriter).not.toContain('associated-domains');
   expect(build).not.toContain('write_app_entitlements()');
-  expect(build).toContain('../IndexApp/link-host.sh --write-entitlements');
+  expect(build).toContain('../scripts/link-host.sh --write-entitlements');
   expect(build).toContain('validate_generated_app_entitlements');
   expect(build).toContain('INDEX_APP_IDENTIFIER_PREFIX');
   expect(build).toContain('INDEX_TEST_APP_KEYCHAIN_GROUP');
@@ -141,8 +141,8 @@ test('profile pair contract rejects canonical reuse and wrong group authorizatio
 });
 
 test('production app profile, signed entitlements, and operator docs carry the owner-group contract', () => {
-  const profileHelper = read('../IndexApp/provisioning-profile.sh');
-  const appBuild = read('../IndexApp/build.sh');
+  const profileHelper = read('../scripts/provisioning-profile.sh');
+  const appBuild = read('../scripts/build.sh');
   const readme = read('../README.md');
 
   expect(profileHelper).toContain('keychain-access-groups');

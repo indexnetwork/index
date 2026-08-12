@@ -1,7 +1,7 @@
 /** Unit tests for the centralized questioner env accessors (hierarchy + parsing). */
 import { afterEach, describe, expect, it } from "bun:test";
 
-import { isQuestionerEnabled, isDiscoveryQuestionsEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs, DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT, CHAT_QUESTION_WAIT_TIMEOUT_MS_DEFAULT, UPTAKE_AUTHORITY_THRESHOLD_DEFAULT } from "../questioner.env.js";
+import { isQuestionerEnabled, isDiscoveryQuestionsEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, discoveryQuestionsInputMode, discoveryQuestionsTimeoutMs, chatQuestionWaitTimeoutMs, DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT, CHAT_QUESTION_WAIT_TIMEOUT_MS_DEFAULT, UPTAKE_AUTHORITY_THRESHOLD_DEFAULT } from "../../questions/application/question.env.js";
 
 const VARS = [
   "QUESTIONER_ENABLED",

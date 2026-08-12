@@ -39,7 +39,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Add strict browser authorization and consent surfaces for standalone Hermes and the native Index app, plus session-owner connected-agent pause, revoke, and fresh-reconnect controls. Dedicated credentials remain outside browser storage and callbacks.
+- Add strict browser authorization and consent surfaces for standalone Hermes and the native Index app, plus session-owner connected-agent pause, revoke, and fresh-reconnect controls. Dedicated credentials remain outside browser storage and callbacks (web 0.51.0).
+- Publish the dependency-free Protocol Atlas at the direct development URL
+  `/protocol-atlas/`, with deterministic build-time source validation and a
+  server-enforced hostname boundary that keeps production hosts at 404 (web 0.50.0).
 - Replace flag-on web onboarding with a restricted two-phase handoff (IND-450): profile review and confirmation first, followed by the same extracted live guided-signal renderer used by `/i/new`. Automatic enrichment no longer depends on an onboarding public-lookup consent step. Exact intent confirmation is idempotent and retry-safe, onboarding completion is awaited before deferred invitation acceptance/membership refresh/navigation, refresh recovery resumes the exact created signal, and successful handoff opens `/i/:intentId`; flag-off retains the legacy page.
 - Add the reporter cleanup-action proposal card for strict `agent_action_proposal` fences, canonical owner-and-conversation-scoped hydration before rendering or confirmation, exact narrow-signal replacement copy, hydrated reporter-session read-only safety, idempotent replay results, and inert malformed, partial, or failed-hydration retry handling (IND-493).
 - Add the flag-gated read-only Reporter Agent surface on `/agent` (IND-476): opening briefings use the shared reporter kickoff marker, status counts use fetched signals and pending questions, and suggested asks route through the reporter persona.

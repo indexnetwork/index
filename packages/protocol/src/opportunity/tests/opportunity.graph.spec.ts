@@ -9,13 +9,13 @@ config({ path: '.env.test', override: true });
 
 import { afterAll, afterEach, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
-import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
+import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../application/opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { SourceProfileData } from '../opportunity.state.js';
-import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';
-import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
+import type { SourceProfileData } from '../domain/opportunity.state.js';
+import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../application/opportunity.evaluator.js';
+import type { EvaluatedOpportunityWithActors } from '../application/opportunity.evaluator.js';
 import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
 import { computeHydeSourceTextHash } from '../../shared/hyde/hyde.documents.js';
@@ -101,11 +101,17 @@ const defaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
   },
 ];
 
+type EvaluatorOptions = Parameters<NonNullable<OpportunityEvaluatorLike['invokeEntityBundle']>>[1];
+
 function createMockEvaluator(
-  result: EvaluatedOpportunityWithActors[] = defaultMockEvaluatorResult
+  result: EvaluatedOpportunityWithActors[] = defaultMockEvaluatorResult,
+  calls?: EvaluatorOptions[],
 ): OpportunityEvaluatorLike {
   return {
-    invokeEntityBundle: async () => result,
+    invokeEntityBundle: async (_input, options) => {
+      calls?.push(options);
+      return result;
+    },
   };
 }
 
@@ -135,6 +141,8 @@ function createMockGraph(deps?: {
   getProfile?: Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
   evaluatorResult?: EvaluatedOpportunityWithActors[];
   evaluator?: OpportunityEvaluatorLike;
+  /** null opts into environment resolution; omitted preserves the legacy test threshold of 70. */
+  thresholdOverrides?: OpportunityGraphThresholdOverrides | null;
 }) {
   const mockDb: OpportunityGraphDatabase = {
     ...createOpportunityGraphDatabaseFixture(),
@@ -211,11 +219,26 @@ function createMockGraph(deps?: {
       }),
   };
 
-  const evaluator = deps?.evaluator ?? createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
+  const evaluatorCalls: EvaluatorOptions[] = [];
+  const evaluator = deps?.evaluator ?? createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult, evaluatorCalls);
   const queueNotification = async () => undefined;
-  const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHydeGenerator, evaluator, queueNotification);
+  const thresholdOverrides = deps?.thresholdOverrides === null
+    ? undefined
+    : deps?.thresholdOverrides ?? { evaluatorMinScore: 70 };
+  const factory = new OpportunityGraphFactory(
+    mockDb,
+    mockEmbedder,
+    mockHydeGenerator,
+    evaluator,
+    queueNotification,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    thresholdOverrides,
+  );
   const compiledGraph = factory.createGraph();
-  return { compiledGraph, mockDb, mockEmbedder, mockHydeGenerator, evaluator };
+  return { compiledGraph, mockDb, mockEmbedder, mockHydeGenerator, evaluator, evaluatorCalls };
 }
 
 function createMockGraphWithFnOverrides(deps?: {
@@ -225,6 +248,7 @@ function createMockGraphWithFnOverrides(deps?: {
   getUserIndexIds?: () => Promise<Id<'networks'>[]>;
   getNetworkMemberships?: () => Promise<Array<{ networkId: string; networkTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; isPersonal: boolean; joinedAt: Date }>>;
   getActiveNetworkMembershipPairsFn?: OpportunityGraphDatabase['getActiveNetworkMembershipPairs'];
+  thresholdOverrides?: OpportunityGraphThresholdOverrides;
 }) {
   const mockDb: OpportunityGraphDatabase = {
     ...createOpportunityGraphDatabaseFixture(),
@@ -303,7 +327,18 @@ function createMockGraphWithFnOverrides(deps?: {
 
   const evaluator = createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
   const queueNotification = async () => undefined;
-  const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHyde, evaluator, queueNotification);
+  const factory = new OpportunityGraphFactory(
+    mockDb,
+    mockEmbedder,
+    mockHyde,
+    evaluator,
+    queueNotification,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    deps?.thresholdOverrides ?? { evaluatorMinScore: 70 },
+  );
   const compiledGraph = factory.createGraph();
   return { compiledGraph, mockDb };
 }
@@ -477,6 +512,182 @@ describe('Opportunity Graph', () => {
     });
   });
 
+  describe('configurable discovery thresholds', () => {
+    test('constructor overrides govern retrieval, evaluation filtering, and trace data', async () => {
+      const thresholds = {
+        retrievalMinSimilarity: 0.42,
+        evaluatorMinScore: 63,
+      };
+      const { compiledGraph, mockEmbedder, evaluatorCalls } = createMockGraph({
+        thresholdOverrides: thresholds,
+        evaluatorResult: [{ ...defaultMockEvaluatorResult[0], score: 62 }],
+      });
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+
+      const result = await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      });
+
+      expect(searchSpy.mock.calls[0]?.[1]?.minScore).toBe(0.42);
+      expect(evaluatorCalls[0]?.minScore).toBe(63);
+      expect(result.opportunities).toEqual([]);
+      expect(result.trace).toContainEqual(expect.objectContaining({
+        node: 'threshold_filter',
+        detail: expect.stringContaining('above 0.42'),
+        data: expect.objectContaining({
+          minScore: 0.42,
+          retrievalMinSimilarity: 0.42,
+          evaluatorMinScore: 63,
+        }),
+      }));
+    });
+
+    test('the retrieval override reaches legacy premise, context-to-intent, and context-to-context searches', async () => {
+      const previousAllowedTypes = process.env.DISCOVERY_ALLOWED_TYPES;
+      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
+      const previousContextToIntent = process.env.DISCOVERY_CONTEXT_TO_INTENT;
+      const sourceUserId = 'a0000000-0000-4000-8000-000000000001' as Id<'users'>;
+
+      try {
+        process.env.DISCOVERY_ALLOWED_TYPES = 'intent,profile';
+        process.env.DISCOVERY_PROFILE_SOURCE = 'premise';
+        const premiseGraph = createMockGraph({
+          thresholdOverrides: { retrievalMinSimilarity: 0.42, evaluatorMinScore: 70 },
+        });
+        premiseGraph.mockDb.searchPremisesBySimilarityBatch = undefined;
+        premiseGraph.mockDb.getPremisesForUserInNetworks = async (userId) => [{
+          id: 'premise-1',
+          userId,
+          assertion: { text: 'Builds protocols', tier: 'assertive' as const },
+          provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() },
+          analysis: null,
+          validity: { volatile: false },
+          embedding: dummyEmbedding,
+          status: 'ACTIVE' as const,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          retractedAt: null,
+        }];
+        const premiseSearch = mock(async () => []);
+        premiseGraph.mockDb.searchPremisesBySimilarity = premiseSearch;
+        spyOn(premiseGraph.mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+
+        await premiseGraph.compiledGraph.invoke({
+          userId: sourceUserId,
+          searchQuery: 'co-founder',
+          options: {},
+        });
+
+        expect(premiseSearch.mock.calls[0]?.[0]?.minScore).toBe(0.42);
+
+        process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+        process.env.DISCOVERY_CONTEXT_TO_INTENT = '1';
+        const contextGraph = createMockGraph({
+          thresholdOverrides: { retrievalMinSimilarity: 0.42, evaluatorMinScore: 70 },
+        });
+        contextGraph.mockDb.getUserContexts = async () => [{
+          id: 'ctx-1',
+          networkId: 'idx-1',
+          text: 'Building DeFi infrastructure',
+          embedding: dummyEmbedding,
+          premiseHash: 'hash-1',
+          generatedAt: new Date(),
+        }];
+        contextGraph.mockDb.getHydeDocumentsForSource = async () => [];
+        const contextIntentSearch = mock(async () => []);
+        const contextSimilaritySearch = mock(async () => []);
+        contextGraph.mockDb.searchIntentsByContextEmbedding = contextIntentSearch;
+        contextGraph.mockDb.searchUserContextsBySimilarity = contextSimilaritySearch;
+        spyOn(contextGraph.mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+
+        await contextGraph.compiledGraph.invoke({
+          userId: sourceUserId,
+          options: {},
+        });
+
+        expect(contextIntentSearch.mock.calls[0]?.[0]?.minScore).toBe(0.42);
+        expect(contextSimilaritySearch.mock.calls[0]?.[0]?.minScore).toBe(0.42);
+      } finally {
+        if (previousAllowedTypes === undefined) delete process.env.DISCOVERY_ALLOWED_TYPES;
+        else process.env.DISCOVERY_ALLOWED_TYPES = previousAllowedTypes;
+        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
+        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
+        if (previousContextToIntent === undefined) delete process.env.DISCOVERY_CONTEXT_TO_INTENT;
+        else process.env.DISCOVERY_CONTEXT_TO_INTENT = previousContextToIntent;
+      }
+    });
+
+    test('environment thresholds apply unless constructor overrides are provided', async () => {
+      const previousRetrieval = process.env.DISCOVERY_MIN_SIMILARITY;
+      const previousEvaluator = process.env.DISCOVERY_EVALUATOR_MIN_SCORE;
+
+      try {
+        process.env.DISCOVERY_MIN_SIMILARITY = '0.41';
+        process.env.DISCOVERY_EVALUATOR_MIN_SCORE = '61';
+
+        const fromEnvironment = createMockGraph({ thresholdOverrides: null });
+        const environmentSearch = spyOn(fromEnvironment.mockEmbedder, 'searchWithHydeEmbeddings');
+        await fromEnvironment.compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: {},
+        });
+        expect(environmentSearch.mock.calls[0]?.[1]?.minScore).toBe(0.41);
+        expect(fromEnvironment.evaluatorCalls[0]?.minScore).toBe(61);
+
+        const fromConstructor = createMockGraph({
+          thresholdOverrides: { retrievalMinSimilarity: 0.52, evaluatorMinScore: 72 },
+        });
+        const constructorSearch = spyOn(fromConstructor.mockEmbedder, 'searchWithHydeEmbeddings');
+        await fromConstructor.compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: {},
+        });
+        expect(constructorSearch.mock.calls[0]?.[1]?.minScore).toBe(0.52);
+        expect(fromConstructor.evaluatorCalls[0]?.minScore).toBe(72);
+      } finally {
+        if (previousRetrieval === undefined) delete process.env.DISCOVERY_MIN_SIMILARITY;
+        else process.env.DISCOVERY_MIN_SIMILARITY = previousRetrieval;
+        if (previousEvaluator === undefined) delete process.env.DISCOVERY_EVALUATOR_MIN_SCORE;
+        else process.env.DISCOVERY_EVALUATOR_MIN_SCORE = previousEvaluator;
+      }
+    });
+
+    test('invalid constructor overrides fail when the graph is created', () => {
+      const invalidOverrides: OpportunityGraphThresholdOverrides[] = [
+        { retrievalMinSimilarity: Number.NaN },
+        { retrievalMinSimilarity: -0.01 },
+        { retrievalMinSimilarity: 1.01 },
+        { evaluatorMinScore: Number.NaN },
+        { evaluatorMinScore: -1 },
+        { evaluatorMinScore: 101 },
+      ];
+
+      for (const thresholdOverrides of invalidOverrides) {
+        expect(() => createMockGraph({ thresholdOverrides })).toThrow();
+      }
+    });
+
+    test('direct-target evaluation keeps score 50 despite an evaluator override', async () => {
+      const { compiledGraph, evaluatorCalls } = createMockGraph({
+        thresholdOverrides: { evaluatorMinScore: 80 },
+        evaluatorResult: [{ ...defaultMockEvaluatorResult[0], score: 70 }],
+      });
+
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        targetUserId: 'b0000000-0000-4000-8000-000000000002' as Id<'users'>,
+        searchQuery: 'Connect with this person',
+        options: {},
+      });
+
+      expect(evaluatorCalls[0]?.minScore).toBe(50);
+    });
+  });
+
   describe('Discovery node', () => {
     test('performs vector search with network scope and excludeUserId', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph();
@@ -509,7 +720,9 @@ describe('Opportunity Graph', () => {
       process.env.DISCOVERY_SOURCE_PREMISE_LIMIT = '40';
 
       try {
-        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+          thresholdOverrides: { retrievalMinSimilarity: 0.42, evaluatorMinScore: 70 },
+        });
         spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
         const legacySearchSpy = spyOn(mockDb, 'searchPremisesBySimilarity');
 
@@ -551,6 +764,7 @@ describe('Opportunity Graph', () => {
         expect(batchCalls).toHaveLength(1);
         expect(batchCalls[0].sources.map(s => s.premiseId)).toEqual(['premise-1', 'premise-2']);
         expect(batchCalls[0].limitPerSource).toBe(20);
+        expect(batchCalls[0].minScore).toBe(0.42);
         expect(legacySearchSpy).not.toHaveBeenCalled();
         expect(result.candidates.some(c => c.discoverySource === 'premise-similarity')).toBe(true);
       } finally {
@@ -835,6 +1049,38 @@ describe('Opportunity Graph', () => {
       expect(candidate?.evidence[0]?.kind).toBe('context_similarity');
     });
 
+    it('DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence', async () => {
+      process.env.DISCOVERY_ALLOWED_TYPES = 'intent,profile';
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      process.env.DISCOVERY_CONTEXT_TO_INTENT = '1';
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      mockDb.getUserContexts = async () => [
+        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
+      ];
+      mockDb.getHydeDocumentsForSource = mock(async () => []) as typeof mockDb.getHydeDocumentsForSource;
+      const contextIntentSearchSpy = mock(async () => [
+        { intentId: 'intent-bob', userId: gatingBob, networkId: 'idx-1', similarity: 0.86, payload: 'Looking for protocol collaborators', summary: null },
+      ]);
+      mockDb.searchIntentsByContextEmbedding = contextIntentSearchSpy as typeof mockDb.searchIntentsByContextEmbedding;
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        searchQuery: 'protocol collaborator',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(contextIntentSearchSpy).toHaveBeenCalled();
+      expect(contextIntentSearchSpy.mock.calls[0]?.[0]).toMatchObject({
+        networkIds: ['idx-1'],
+        excludeUserId: gatingAlice,
+      });
+      const candidate = result.candidates.find((item) => item.candidateIntentId === 'intent-bob');
+      expect(candidate).toBeDefined();
+      expect(candidate?.discoverySource).toBe('context-to-intent');
+      expect(candidate?.evidence.some((item) => item.kind === 'context_to_intent')).toBe(true);
+    });
+
     it('premise mode (default): context→context does not run', async () => {
       const { compiledGraph, mockDb } = createMockGraph();
       mockDb.getUserContexts = async () => [
@@ -879,7 +1125,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       // Should have deduped to 1 candidate (b0000000-0000-4000-8000-000000000002), not 2
@@ -924,6 +1170,61 @@ describe('Opportunity Graph', () => {
     }, 30_000);
   });
 
+  describe('Evaluation node: rejection cooldown', () => {
+    test('applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates', async () => {
+      const previousCooldown = process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
+      const previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+      process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = '1';
+      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'false';
+      const evaluatorInputs: EvaluatorInput[] = [];
+      const evaluator: OpportunityEvaluatorLike = {
+        invokeEntityBundle: async (input) => {
+          evaluatorInputs.push(input);
+          return [];
+        },
+      };
+
+      try {
+        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({ evaluator });
+        const cooldownCalls: Array<{ userId: string; candidateIds: string[]; cooldownMs: number }> = [];
+        mockDb.getRecentlyRejectedOpportunityCounterparties = async (userId, candidateIds, cooldownMs) => {
+          cooldownCalls.push({ userId, candidateIds: [...candidateIds], cooldownMs });
+          return ['b0000000-0000-4000-8000-000000000002'];
+        };
+        spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+          { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+          { type: 'intent' as const, id: 'intent-carol', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.8, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+        ]);
+
+        await compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: {},
+        } as OpportunityGraphInvokeInput);
+
+        expect(cooldownCalls).toEqual([{
+          userId: 'a0000000-0000-4000-8000-000000000001',
+          candidateIds: [
+            'b0000000-0000-4000-8000-000000000002',
+            'c0000000-0000-4000-8000-000000000003',
+          ],
+          cooldownMs: 24 * 60 * 60 * 1000,
+        }]);
+        expect(evaluatorInputs).toHaveLength(1);
+        expect(evaluatorInputs[0].entities.slice(1).map(({ userId }) => userId)).toEqual([
+          'c0000000-0000-4000-8000-000000000003',
+          'b0000000-0000-4000-8000-000000000002',
+        ]);
+        expect(evaluatorInputs[0].entities.slice(1).map(({ ragScore }) => ragScore)).toEqual([80, 45]);
+      } finally {
+        if (previousCooldown === undefined) delete process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
+        else process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = previousCooldown;
+        if (previousParallelEvaluation === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+        else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEvaluation;
+      }
+    });
+  });
+
   describe('Evaluation node: early termination', () => {
     test('when search is query-driven and remaining candidates have no query-sourced entries, remainingCandidates is empty', async () => {
       // 5 query candidates come through HyDE search → tagged 'query'
@@ -939,6 +1240,7 @@ describe('Opportunity Graph', () => {
 
       const { compiledGraph, mockEmbedder } = createMockGraph({
         evaluatorResult: [],
+        thresholdOverrides: { evaluatorMinScore: 50 },
       });
 
       // HyDE search returns query candidates (tagged 'query' in discovery node)
@@ -947,7 +1249,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'painters',
-        options: { minScore: 50 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       // All query candidates consumed in one batch → remainingCandidates is empty
@@ -967,6 +1269,7 @@ describe('Opportunity Graph', () => {
 
       const { compiledGraph, mockEmbedder } = createMockGraph({
         evaluatorResult: [],
+        thresholdOverrides: { evaluatorMinScore: 50 },
       });
 
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(allQueryCandidates);
@@ -974,7 +1277,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'painters',
-        options: { minScore: 50 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       // 5 query-sourced candidates remain — pagination should be preserved
@@ -1004,7 +1307,7 @@ describe('Opportunity Graph', () => {
         await compiledGraph.invoke({
           userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
           searchQuery: 'co-founder',
-          options: { minScore: 70 },
+          options: {},
         } as OpportunityGraphInvokeInput);
       });
 
@@ -1033,7 +1336,7 @@ describe('Opportunity Graph', () => {
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).not.toHaveBeenCalled();
@@ -1050,7 +1353,7 @@ describe('Opportunity Graph', () => {
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(getActiveNetworkMembershipPairs).toHaveBeenCalled();
@@ -1078,7 +1381,7 @@ describe('Opportunity Graph', () => {
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(evaluatorSpy).toHaveBeenCalledTimes(1);
@@ -1101,7 +1404,7 @@ describe('Opportunity Graph', () => {
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         triggerIntentId: 'intent-1' as Id<'intents'>,
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(assignmentRead).toBeGreaterThanOrEqual(2);
@@ -1117,7 +1420,7 @@ describe('Opportunity Graph', () => {
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(unguardedCreate).not.toHaveBeenCalled();
@@ -1133,7 +1436,7 @@ describe('Opportunity Graph', () => {
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(createIfEligible).toHaveBeenCalledTimes(1);
@@ -1157,7 +1460,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(1);
@@ -1183,7 +1486,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
@@ -1232,7 +1535,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'protocol collaborator',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
@@ -1310,7 +1613,7 @@ describe('Opportunity Graph', () => {
         await compiledGraph.invoke({
           userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
           searchQuery: 'protocol collaborator',
-          options: { minScore: 70 },
+          options: {},
         } as OpportunityGraphInvokeInput);
 
         const contextSearch = searchSpy.mock.calls
@@ -1363,7 +1666,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(2);
@@ -1416,7 +1719,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'investors in crypto',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(2);
@@ -1477,7 +1780,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'blockchain and AI',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(2);
@@ -1516,7 +1819,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { limit: 1, minScore: 70 },
+        options: { limit: 1 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(1);
@@ -1542,7 +1845,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { initialStatus: 'latent', minScore: 70 },
+        options: { initialStatus: 'latent' },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(1);
@@ -1567,7 +1870,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
@@ -1605,7 +1908,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       const persisted = createSpy.mock.calls[0]?.[0];
@@ -1648,7 +1951,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { initialStatus: 'latent', minScore: 70 },
+        options: { initialStatus: 'latent' },
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).toHaveBeenCalled();
@@ -1689,7 +1992,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { initialStatus: 'latent', minScore: 70 },
+        options: { initialStatus: 'latent' },
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).toHaveBeenCalled();
@@ -1729,7 +2032,7 @@ describe('Opportunity Graph', () => {
       await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { initialStatus: 'latent', minScore: 70 },
+        options: { initialStatus: 'latent' },
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).toHaveBeenCalled();
@@ -1770,7 +2073,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(createSpy).not.toHaveBeenCalled();
@@ -1811,7 +2114,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(createSpy).not.toHaveBeenCalled();
@@ -1869,7 +2172,7 @@ describe('Opportunity Graph', () => {
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
         indexScope: ['idx-a'] as Id<'networks'>[],
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(eligibleUpdate).not.toHaveBeenCalled();
@@ -1904,7 +2207,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(createSpy).not.toHaveBeenCalled();
@@ -1925,7 +2228,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(createSpy).toHaveBeenCalled();
@@ -1960,7 +2263,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { initialStatus: 'latent', minScore: 70 },
+        options: { initialStatus: 'latent' },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       // Should NOT create a new opportunity — latent dedup kicks in
@@ -1999,7 +2302,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },  // initialStatus defaults to 'pending'
+        options: {},  // initialStatus defaults to 'pending'
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       // Should upgrade, not create
@@ -2022,7 +2325,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 70 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(findByActorsSpy).toHaveBeenCalledWith(
@@ -2090,7 +2393,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { initialStatus: 'latent', limit: 5, minScore: 70 },
+        options: { initialStatus: 'latent', limit: 5 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities).toBeDefined();
@@ -2125,6 +2428,7 @@ describe('Opportunity Graph', () => {
     test('when evaluator returns empty (below minScore), opportunities remain empty', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
         evaluatorResult: [],
+        thresholdOverrides: { evaluatorMinScore: 80 },
       });
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
@@ -2140,7 +2444,7 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { minScore: 80 },
+        options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
@@ -2155,7 +2459,8 @@ describe('Opportunity Graph', () => {
     ];
 
     test('with valid entities and hint returns one opportunity with manual detection and introducer actor', async () => {
-      const { compiledGraph, mockDb } = createMockGraph({
+      const { compiledGraph, mockDb, evaluatorCalls } = createMockGraph({
+        thresholdOverrides: { evaluatorMinScore: 80 },
         evaluatorResult: [
           {
             reasoning: 'Alice and Bob should collaborate.',
@@ -2178,6 +2483,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeUndefined();
+      expect(evaluatorCalls[0]?.minScore).toBe(0);
       expect(result.opportunities.length).toBe(1);
       expect(result.opportunities[0].detection.source).toBe('manual');
       expect(result.opportunities[0].detection.createdBy).toBe('a0000000-0000-4000-8000-000000000001');

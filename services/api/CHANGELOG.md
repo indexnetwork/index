@@ -10,13 +10,14 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
-- Secure standalone Hermes and native Index-owner authorization (API 0.79.0): canonical PKCE loopback consent, one-time codes, hash-only `idxh_`/`idxo_` credential persistence, 30-day expiry without refresh, Keychain-confirmed activation, exact revocation receipts, and legacy plaintext-era revocation/fresh-login migration.
+- Secure standalone Hermes and native Index-owner authorization (API 0.82.0): canonical PKCE loopback consent, one-time codes, hash-only `idxh_`/`idxo_` credential persistence, 30-day expiry without refresh, Keychain-confirmed activation, exact revocation receipts, and legacy plaintext-era revocation/fresh-login migration.
 - Dedicated full Hermes audience admission for the six canonical actions, explicit REST/MCP allowlists, and the separate four-handler negotiator boundary. Session-only connected-agent list/pause/revoke controls return nonsecret health, fallback, heartbeat, and expiry views; reconnect requires fresh authorization.
 
 ### Security
 - Dedicated audiences default-deny account security, credential/permission/agent administration, billing, and unknown routes. Authorization, activation, runtime reconciliation, disconnect, and negotiation mutation use owner locks, exact row/generation identity, idempotent receipts, and compare-and-set behavior.
 
 ### Removed
+- Repoint MCP contract-test agent ports from the removed internal protocol compatibility interface to the canonical participant-agents port.
 - Remove the onboarding privacy-consent layer (protocol 10.0.0, API 0.77.0).
   The `record_onboarding_privacy_consent` MCP/persona tool, the
   `publicProfileLookup` and `edgeosImport` consent decisions, and the
@@ -42,7 +43,7 @@ section before promoting to `main`).
   than per network.
 
 ### Added
-- Add the Personal Agent Hermes runtime binding (API 0.78.0): owner-control routes prepare, select, roll back, inspect, and disconnect one generation-fenced local Hermes installation without changing the owner's server-owned Personal Agent identity, memory, policy, consultations, or history. The macOS selector can now durably choose Index or Hermes; a selected Hermes executor receives only negotiation authority plus privacy-minimal structural/closed directives (never raw owner context, memory, or private prose), reports health through a negotiation-specific pickup heartbeat, and falls back to Index through the existing bounded park/claim path when stale or stopped.
+- Add the Personal Agent Hermes runtime binding (API 0.81.0): owner-control routes prepare, select, roll back, inspect, and disconnect one generation-fenced local Hermes installation without changing the owner's server-owned Personal Agent identity, memory, policy, consultations, or history. The macOS selector can now durably choose Index or Hermes; a selected Hermes executor receives only negotiation authority plus privacy-minimal structural/closed directives (never raw owner context, memory, or private prose), reports health through a negotiation-specific pickup heartbeat, and falls back to Index through the existing bounded park/claim path when stale or stopped.
 - Let an exact selected external negotiator consult its owner through the existing `input_required` Questioner lifecycle. The server independently checks the exact owner, principal, claim, attempt, material binding, deadline, and one-consultation policy, accepts exactly the closed `{reason}` request, derives all disclosure and question copy from server-owned templates, and resumes only the settlement-bound successor after answer, dismissal, or expiry.
 - Register `OPPORTUNITY_OWNER_APPROVAL_SECRET` as an optional env var so the documented owner-approval secret is schema-validated.
 - Wire the MCP authorization-observability seam at the host boundary (IND-581;

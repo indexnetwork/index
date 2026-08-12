@@ -4,8 +4,8 @@ process.env.OPENROUTER_API_KEY ||= 'test-key-unused';
 import { mock, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { createOpportunityTools } from '../opportunity.tools.js';
-import type { PresenterDatabase } from '../opportunity.presenter.js';
+import { createOpportunityTools } from '../application/opportunity.tools.js';
+import type { PresenterDatabase } from '../application/opportunity.presenter.js';
 
 // ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 

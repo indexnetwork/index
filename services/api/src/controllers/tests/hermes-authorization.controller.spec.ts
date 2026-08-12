@@ -255,7 +255,7 @@ describe('Hermes canonical capabilities', () => {
 
   it('keeps the dedicated schema constrained and free of raw secret columns', () => {
     const apiRoot = path.resolve(import.meta.dir, '../../..');
-    const migration = readFileSync(path.join(apiRoot, 'drizzle/0120_add_hermes_authorizations.sql'), 'utf8');
+    const migration = readFileSync(path.join(apiRoot, 'drizzle/0123_add_secure_standalone_authorizations.sql'), 'utf8');
     expect(migration).toContain('CREATE TABLE "hermes_authorizations"');
     expect(migration).toContain('CREATE TABLE "hermes_agent_credentials"');
     expect(migration).toContain('"code_challenge_method" = \'S256\'');

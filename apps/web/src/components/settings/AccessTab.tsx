@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff, EyeOff } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff } from 'lucide-react';
 
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,6 @@ export default function AccessTab({
   const usersService = createUsersService(api);
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
-  const [isHiddenFromDirectory, setIsHiddenFromDirectory] = useState(network.hidden ?? false);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -57,6 +56,8 @@ export default function AccessTab({
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [invitationLink, setInvitationLink] = useState<{ code: string } | null>(null);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [isRegeneratingLink, setIsRegeneratingLink] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [resendTarget, setResendTarget] = useState<Member | null>(null);
@@ -75,13 +76,12 @@ export default function AccessTab({
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local state from prop changes */
   useEffect(() => {
     setAnyoneCanJoin(network.permissions?.joinPolicy === 'anyone');
-    setIsHiddenFromDirectory(network.hidden ?? false);
-    if (network.permissions?.invitationLink?.code && network.permissions.joinPolicy === 'invite_only') {
+    if (network.permissions?.invitationLink?.code) {
       setInvitationLink({ code: network.permissions.invitationLink.code });
     } else {
       setInvitationLink(null);
     }
-  }, [network.id, network.permissions, network.hidden]);
+  }, [network.id, network.permissions]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadMembers = useCallback(async () => {
@@ -154,22 +154,9 @@ export default function AccessTab({
     }
   };
 
-  const handleUpdateHidden = async (hidden: boolean) => {
-    try {
-      await networkService.updateNetwork(networkId, { hidden });
-      const updatedNetwork = await networkService.getNetwork(networkId);
-      onUpdated(updatedNetwork);
-    } catch (err) {
-      logger.error('Error updating directory visibility', { error: err });
-      error('Failed to update directory visibility');
-    }
-  };
-
   const handleCopyLink = async () => {
-    if (!anyoneCanJoin && !invitationLink?.code) return;
-    const url = anyoneCanJoin
-      ? `${window.location.origin}/index/${networkId}`
-      : `${window.location.origin}/l/${invitationLink!.code}`;
+    if (!invitationLink?.code) return;
+    const url = `${window.location.origin}/l/${invitationLink.code}`;
     try {
       await navigator.clipboard.writeText(url);
       setIsCopied(true);
@@ -177,6 +164,24 @@ export default function AccessTab({
       setTimeout(() => setIsCopied(false), 2000);
     } catch {
       error('Failed to copy link');
+    }
+  };
+
+  const handleRegenerateLink = async () => {
+    setIsRegeneratingLink(true);
+    try {
+      const updatedNetwork = await networkService.regenerateInvitationLink(networkId);
+      onUpdated(updatedNetwork);
+      if (updatedNetwork.permissions?.invitationLink?.code) {
+        setInvitationLink({ code: updatedNetwork.permissions.invitationLink.code });
+      }
+      setShowRegenerateConfirm(false);
+      success('Invitation link regenerated');
+    } catch (err) {
+      logger.error('Error regenerating invitation link', { error: err });
+      error('Failed to regenerate invitation link');
+    } finally {
+      setIsRegeneratingLink(false);
     }
   };
 
@@ -366,37 +371,36 @@ export default function AccessTab({
           </div>
         )}
 
-        {/* Hidden from directory — personal networks reject non-prompt updates */}
-        {!network.isPersonal && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Directory Listing</p>
-            <button
-              type="button"
-              onClick={() => { setIsHiddenFromDirectory(!isHiddenFromDirectory); handleUpdateHidden(!isHiddenFromDirectory); }}
-              className={`w-full flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${isHiddenFromDirectory ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-            >
-              <EyeOff className={`h-4 w-4 flex-shrink-0 ${isHiddenFromDirectory ? 'text-black' : 'text-gray-400'}`} />
-              <div>
-                <p className="text-sm font-medium text-black">Hidden from directory</p>
-                <p className="text-xs text-gray-400">{isHiddenFromDirectory ? 'This network is not shown in public listings' : 'This network appears in public listings'}</p>
-              </div>
-            </button>
-          </div>
-        )}
-
-        {/* Share link — not applicable for master-key networks */}
+        {/* Invitation link — not applicable for master-key networks */}
         {!network.isPersonal && !network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}
+              Invitation link
             </p>
             <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
               <code className="flex-1 text-xs text-gray-500 truncate">
-                {anyoneCanJoin
-                  ? `${typeof window !== 'undefined' ? window.location.origin : ''}/index/${networkId}`
-                  : invitationLink ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}` : 'Loading...'}
+                {invitationLink
+                  ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}`
+                  : 'Loading...'}
               </code>
-              <button onClick={handleCopyLink} className={`flex-shrink-0 p-1 rounded-sm transition-colors ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}>
+              <Tooltip content="Regenerate link">
+                <button
+                  type="button"
+                  aria-label="Regenerate invitation link"
+                  onClick={() => setShowRegenerateConfirm(true)}
+                  disabled={!invitationLink || isRegeneratingLink}
+                  className="flex-shrink-0 p-1 rounded-sm text-gray-400 hover:text-black transition-colors disabled:opacity-50"
+                >
+                  <RotateCw className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              <button
+                type="button"
+                aria-label="Copy invitation link"
+                onClick={handleCopyLink}
+                disabled={!invitationLink}
+                className={`flex-shrink-0 p-1 rounded-sm transition-colors disabled:opacity-50 ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}
+              >
                 {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               </button>
             </div>
@@ -608,6 +612,29 @@ export default function AccessTab({
         </div>
 
       </div>
+
+      {/* Regenerate invitation link dialog */}
+      <AlertDialog.Root open={showRegenerateConfirm} onOpenChange={(open) => { if (!open && !isRegeneratingLink) setShowRegenerateConfirm(false); }}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
+              Regenerate invitation link?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
+              The current link will stop working immediately. Anyone with the old link will no longer be able to join.
+            </AlertDialog.Description>
+            <div className="flex justify-end gap-2">
+              <AlertDialog.Cancel asChild>
+                <Button variant="outline" disabled={isRegeneratingLink}>Cancel</Button>
+              </AlertDialog.Cancel>
+              <Button onClick={handleRegenerateLink} disabled={isRegeneratingLink}>
+                {isRegeneratingLink ? 'Regenerating...' : 'Regenerate'}
+              </Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
 
       {/* Resend invite dialog */}
       <AlertDialog.Root open={resendTarget !== null} onOpenChange={(open) => { if (!open) setResendTarget(null); }}>

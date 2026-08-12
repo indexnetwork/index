@@ -197,6 +197,7 @@ Opportunity and profile links are plain `https://index.network/...` URLs that op
         "components": [
           { "/": "/c/*" },
           { "/": "/o/*" },
+          { "/": "/l/*" },
           { "/": "/u/*/?*", "exclude": true },
           { "/": "/u/*" }
         ]
@@ -218,13 +219,14 @@ such as `/u/<id>/chat` remain browser-only.
 |---|---|
 | `/o/:id` | Static landing page: "Open in the Index app", a macOS download CTA (UA sniff, presentation only) or an "open this link on your Mac" note elsewhere, plus a copyable link. No auth and no API call. |
 | `/c/:code` | Same landing page (retired connect links). |
+| `/l/:code` | Network share landing: previews the network by its share code (no auth). Works for both public (`joinPolicy: anyone`) and private (`invite_only`) networks. Inline web sign-in, then `POST /networks/invitation/:code/accept`, then redirect to `/download`. Owners copy the link from network settings; manual regeneration via `PATCH /networks/:id/regenerate-invitation` invalidates old codes. |
 | `/u/:id` | The existing public profile page, unchanged. |
 
 The macOS CTA on that landing page links to `/download`, the app's install page. `/download` reads its artifact URL from `VITE_MAC_APP_DOWNLOAD_URL`: while that is unset it states that the app is not yet publicly available and offers no download button, and once a Developer ID-signed, notarized build is published it renders a real download with no code change. The CTA therefore never dead-ends, in either state.
 
 **Legacy short links.** `GET /c/:code` on this protocol server is a tombstone for links already delivered in chats. `main.ts` rewrites the unprefixed path onto `ConnectLinkController`, which performs no database lookup and no opportunity side effects: a code matching `^[A-Za-z0-9]{10}$` gets a `302` to `${WEB_APP_URL}/c/<code>` (default `https://index.network`) with the request's query string preserved — already-delivered links carry `?link_preview=false`, and dropping it would resurrect preview cards in chat clients — and anything else gets a `404` HTML page. The resolution stack behind it — `/c/:code/go`, connect-link minting, connect tokens, surface routing — is deleted.
 
-**Client-side links.** The macOS app parses the same three path shapes from `index://o|u|c/<value>` as well, as an in-app alias; `o` opens the opportunity card, `u` a profile, and `c` only a "no longer supported" notice. Opportunity cards returned to MCP callers carry `appUrl` = `${WEB_APP_URL}/o/<opportunityId>` (default `https://index.network`), minted by the protocol next to `profileUrl` and rendered into the card prose, so every MCP client gets the link. The Hermes plugin attaches the same link to any other opportunity-shaped payload it forwards from an MCP call (origin overridable with `INDEX_APP_BASE_URL`) and never overwrites one the protocol already set. `appUrl` is navigation only: it opens a card, it stores nothing, and this protocol API mints no acceptance URL. Acceptance stays an authenticated call (`POST /api/opportunities/:id/start-chat`, `PATCH /api/opportunities/:id/status`, or the `update_opportunity` MCP tool) — no link carries authority to accept.
+**Client-side links.** The macOS app parses `index://o|u|c/<value>` (plus `index://u/<value>` as a profile alias). `o` opens the opportunity card, `u` a profile, and `c` only a "no longer supported" notice. Network join is web-native on `https://index.network/l/<code>` — the macOS and Hermes apps copy that URL from network settings but do not handle in-app deep-link join for network links. Opportunity cards returned to MCP callers carry `appUrl` = `${WEB_APP_URL}/o/<opportunityId>` (default `https://index.network`), minted by the protocol next to `profileUrl` and rendered into the card prose, so every MCP client gets the link. The Hermes plugin attaches the same link to any other opportunity-shaped payload it forwards from an MCP call (origin overridable with `INDEX_APP_BASE_URL`) and never overwrites one the protocol already set. `appUrl` is navigation only: it opens a card, it stores nothing, and this protocol API mints no acceptance URL. Acceptance stays an authenticated call (`POST /api/opportunities/:id/start-chat`, `PATCH /api/opportunities/:id/status`, or the `update_opportunity` MCP tool) — no link carries authority to accept.
 
 ### MCP runtime limits and error envelopes
 
@@ -1773,7 +1775,7 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 **Controller prefix**: `/networks`
 
-**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hidden`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hidden: true` excludes the network from the public directory; `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
+**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
 
 ### GET /api/networks
 
@@ -1800,8 +1802,7 @@ Create a new index.
   "title": "string (required)",
   "prompt": "string (optional)",
   "imageUrl": "string | null (optional)",
-  "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)"
+  "joinPolicy": "anyone | invite_only (optional)"
 }
 ```
 
@@ -1965,9 +1966,7 @@ Update an index (title, prompt, image, join policy). Owner only.
   "title": "string (optional)",
   "prompt": "string | null (optional)",
   "imageUrl": "string | null (optional)",
-  "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)",
-  "hidden": "boolean (optional — exclude from the public directory)"
+  "joinPolicy": "anyone | invite_only (optional)"
 }
 ```
 
@@ -2123,7 +2122,7 @@ Remove a member from an index. Owner only. Cannot remove yourself.
 
 ### PATCH /api/networks/:id/permissions
 
-Update index permissions (join policy, guest vibe check). Owner only.
+Update index permissions (join policy). Owner only.
 
 **Auth**: AuthGuard
 
@@ -2133,8 +2132,7 @@ Update index permissions (join policy, guest vibe check). Owner only.
 **Request body**:
 ```json
 {
-  "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)"
+  "joinPolicy": "anyone | invite_only (optional)"
 }
 ```
 

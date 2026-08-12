@@ -12,8 +12,6 @@
  * - createIntegrationTools: application layer — lives in integrations/application.
  *
  * IND-549: canonical domain layer for the integrations capability.
- * Legacy path (shared/interfaces/integration.interface.ts) is a thin
- * compatibility shim.
  */
 export type {
   IntegrationSession,

@@ -285,7 +285,7 @@ function createMockDatabase(
       id: "",
       title: "",
       prompt: null,
-      permissions: { joinPolicy: "invite_only" as const, invitationLink: null, allowGuestVibeCheck: false },
+      permissions: { joinPolicy: "invite_only" as const, invitationLink: null },
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
@@ -295,7 +295,7 @@ function createMockDatabase(
     softDeleteNetwork: noop,
     deleteProfile: noop,
     getNetworkMemberCount: async () => 0,
-    createNetwork: async () => ({ id: "", title: "", prompt: null, permissions: { joinPolicy: "invite_only" as const, invitationLink: null, allowGuestVibeCheck: false } }),
+    createNetwork: async () => ({ id: "", title: "", prompt: null, permissions: { joinPolicy: "invite_only" as const, invitationLink: null } }),
     addMemberToNetwork: async () => ({ success: true }),
     getMembersFromUserIndexes: async () => [],
     getOpportunity: noopNull,
@@ -1501,7 +1501,7 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     // by temporarily adding getOpportunitiesForUser and using createChatTools' underlying factory.
     // Instead, we import createOpportunityTools and wire a minimal defineTool.
     const { tool: lcTool } = await import("@langchain/core/tools");
-    const { createOpportunityTools } = await import("../../../opportunity/opportunity.tools.js");
+    const { createOpportunityTools } = await import("../../../opportunity/application/opportunity.tools.js");
     const { z } = await import("zod");
 
     const resolvedContext = {

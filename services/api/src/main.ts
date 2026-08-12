@@ -22,6 +22,7 @@ import { SubscribeController } from './controllers/subscribe.controller';
 import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
+import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
 import { AgentRuntimeController } from './controllers/agent-runtime.controller';
 import { HermesAuthorizationController } from './controllers/hermes-authorization.controller';
@@ -29,6 +30,8 @@ import { IndexAppOwnerAuthorizationController } from './controllers/index-app-ow
 import { ConnectedAgentsController } from './controllers/connected-agents.controller';
 import { AgentActionController } from './controllers/agent-action.controller';
 import { ConversationService } from './services/conversation.service';
+import { NotificationService } from './services/notification.service';
+import { NotificationDeliveryService, loadNotificationIntentLabel } from './services/notification-delivery.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
 import { WebhooksController } from './controllers/webhooks.controller';
@@ -92,6 +95,8 @@ import { createPremiseFromAnswerFactory } from './events/handlers/question.answe
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
 import { QuestionerAdapter } from './adapters/questioner.adapter';
+import { questionerAdapter } from './adapters/questioner.adapter.instance';
+import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
 import { userContextQueue } from './queues/usercontext.queue';
@@ -108,6 +113,7 @@ import { userService } from './services/user.service';
 import { AgentActionService } from './services/agent-action.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { agentActionProposalDatabaseAdapter } from './adapters/agent-action-proposal.database.adapter';
+import { publishNotificationStreamEvent } from './lib/notification-stream-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
 // emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
@@ -170,10 +176,19 @@ negotiationRunExistingQueue.setRuntimeDeps({
   agentDispatcher: backgroundAgentDispatcher,
 });
 
+const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
+const notificationDeliveryService = new NotificationDeliveryService({
+  questioner: questionerAdapter,
+  opportunities: notificationOpportunityAdapter,
+  getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
+  getIntentLabel: loadNotificationIntentLabel,
+  publish: publishNotificationStreamEvent,
+});
+
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-OpportunityEvents.onPending = async ({ opportunity }) => {
-  await uptakeQuestionService.handlePending(opportunity.id);
-};
+OpportunityEvents.onPending = ({ opportunity }) => uptakeQuestionService.handlePending(opportunity.id);
+OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
+QuestionEvents.onCreated = (payload) => { void notificationDeliveryService.publishQuestionCreated(payload); };
 
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
@@ -633,6 +648,10 @@ controllerInstances.set(StorageController, new StorageController(new StorageServ
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
+controllerInstances.set(
+  NotificationController,
+  new NotificationController(new NotificationService(), notificationDeliveryService),
+);
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
 controllerInstances.set(HermesAuthorizationController, new HermesAuthorizationController());

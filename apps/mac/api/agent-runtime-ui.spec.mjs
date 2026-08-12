@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-const apiBridge = readFileSync(new URL('../IndexApp/src/index-amiga/api.jsx', import.meta.url), 'utf8');
+const apiBridge = readFileSync(new URL('../src/ui/bridge.jsx', import.meta.url), 'utf8');
 const securityWorkflow = readFileSync(
   new URL('../../../.github/workflows/hermes-runtime-security.yml', import.meta.url), 'utf8',
 );
-const agents = readFileSync(new URL('../IndexApp/src/index-amiga/agents.jsx', import.meta.url), 'utf8');
-const assembly = readFileSync(new URL('../IndexApp/assemble.py', import.meta.url), 'utf8');
+const agents = readFileSync(new URL('../src/ui/agents.jsx', import.meta.url), 'utf8');
+const assembly = readFileSync(new URL('../scripts/assemble.py', import.meta.url), 'utf8');
 
 test('security workflow watches the full Mac/plugin/protocol/API authority closure and lockfile', () => {
   for (const path of [
@@ -42,8 +42,8 @@ test('native logout revocation is gated behind the serialized runtime safety bar
   expect(apiBridge).toMatch(/\.then\(\(\) => logoutSafetyHandler\(\)\)[\s\S]*?\.then\(\(result\) => post\("completeLogout", \{ ownerId:result\.ownerId \}\)\)/);
   expect(apiBridge).not.toContain('post("logout")');
   expect(agents).toContain('coordinator.prepareLogout()');
-  const native = readFileSync(new URL('../IndexApp/Sources/HermesRuntime.swift', import.meta.url), 'utf8');
-  const shell = readFileSync(new URL('../IndexApp/Sources/main.swift', import.meta.url), 'utf8');
+  const native = readFileSync(new URL('../Sources/HermesRuntime.swift', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../Sources/AppDelegate.swift', import.meta.url), 'utf8');
   expect(native).toContain('func logoutEvidence(ownerId: String)');
   expect(native).toContain('evidence.stage == "server-complete"');
   expect(native).toContain('try verifyLogoutPostconditions');
@@ -122,9 +122,8 @@ test('authenticated relaunch recovery is owned by the always-mounted epoch coord
   expect(agentsView).not.toContain('nativeRuntime("inspect")');
   expect(agentsView).not.toContain('reconcileHermesSaga({');
   expect(apiBridge).toContain('onAuthChanged');
-  const app = readFileSync(new URL('../IndexApp/src/index-amiga/app.jsx', import.meta.url), 'utf8');
-  expect(app).toContain('<AgentRuntimeProvider>');
-});
+  const app = readFileSync(new URL('../src/ui/app.jsx', import.meta.url), 'utf8');
+  expect(app).toContain('<AgentRuntimeProvider>');});
 
 test('runtime status renders an accessible polite atomic live region', () => {
   const start = agents.indexOf('function RuntimeStatus');

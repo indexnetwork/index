@@ -39,7 +39,7 @@ export interface EnvFlagMeta {
    * surfaces as a crash after the branches have been reset and the run has
    * started spending, not as a refusal at launch.
    */
-  kind: "enum" | "boolean" | "csv-enum" | "integer" | "number" | "string" | "json-model-map";
+  kind: "enum" | "boolean" | "csv-enum" | "integer" | "number" | "decimal-range" | "string" | "json-model-map";
   /** Allowed values (or allowed tokens, for csv-enum) — mirrors the read site. */
   values?: readonly string[];
   /** Smallest value the read site honours; below it the flag silently falls back. */
@@ -111,6 +111,9 @@ export const ALLOWED_CONFIG_MODEL_IDS = [
  */
 const DECIMAL_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 
+/** Strict non-negative decimal grammar used by the centralized discovery thresholds. */
+const DISCOVERY_THRESHOLD_DECIMAL = /^[+]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
 /**
  * The problem with `value` for this flag, or null when the live service will
  * honour it as written.
@@ -165,6 +168,15 @@ export function envFlagValueIssue(meta: EnvFlagMeta, value: string, bounds?: Mod
       if (!DECIMAL_NUMBER.test(value.trim())) return "must be a positive number in decimal notation";
       const parsed = Number.parseFloat(value.trim());
       if (!Number.isFinite(parsed) || parsed <= 0) return "must be a positive number";
+      if (meta.min !== undefined && parsed < meta.min) return `must be at least ${meta.min}`;
+      if (meta.max !== undefined && parsed > meta.max) return `must be at most ${meta.max}`;
+      return null;
+    }
+    case "decimal-range": {
+      const trimmed = value.trim();
+      if (!DISCOVERY_THRESHOLD_DECIMAL.test(trimmed)) return "must be a non-negative decimal without exponent notation";
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed)) return "must be a finite decimal";
       if (meta.min !== undefined && parsed < meta.min) return `must be at least ${meta.min}`;
       if (meta.max !== undefined && parsed > meta.max) return `must be at most ${meta.max}`;
       return null;
@@ -250,7 +262,7 @@ export function modelMapBounds(): ModelMapBounds {
 
 /**
  * Every environment key any harness offers, plus the PROFILE_ENV_ALLOWLIST
- * flags a saved config may carry — 34 entries covering the 27 distinct keys in
+ * flags a saved config may carry — 36 entries covering the 29 distinct keys in
  * HARNESS_ENV_KEYS and the allowlisted flags no harness reaches (IND-630).
  *
  * "Offered implies documented" is enforced, not aspirational: metadata.spec.ts
@@ -278,6 +290,26 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     kind: "csv-enum",
     values: ["intent", "profile"],
     defaultDescription: "both intent and profile",
+  },
+  {
+    key: "DISCOVERY_MIN_SIMILARITY",
+    label: "Discovery minimum similarity",
+    description:
+      "Inclusive minimum similarity for discovery retrieval across intent, premise, and user-context paths. Accepts a non-negative decimal from 0 through 1, with no exponent notation (src/opportunity/discovery.env.ts).",
+    kind: "decimal-range",
+    min: 0,
+    max: 1,
+    defaultDescription: "0.30",
+  },
+  {
+    key: "DISCOVERY_EVALUATOR_MIN_SCORE",
+    label: "Discovery evaluator minimum score",
+    description:
+      "Inclusive minimum evaluator score required for a retrieved candidate to remain in discovery results. Accepts a non-negative decimal from 0 through 100, with no exponent notation (src/opportunity/discovery.env.ts).",
+    kind: "decimal-range",
+    min: 0,
+    max: 100,
+    defaultDescription: "50",
   },
   {
     key: "DISCOVERY_PROFILE_SOURCE",
