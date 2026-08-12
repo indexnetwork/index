@@ -154,7 +154,7 @@ jobs:
       - name: Derive and export approved rollback base
         id: rollback_base
         env:
-          EXPECTED_ROLLBACK_BASE_SHA: b3637387ab39a5259ebc4f1e7efb9fff2be3accc
+          EXPECTED_ROLLBACK_BASE_SHA: 4e735f8ccdaec1eb5b306df957f7f151ac1f0db7
         run: |
           set -euo pipefail
           remote_url="$(git remote get-url origin)"
