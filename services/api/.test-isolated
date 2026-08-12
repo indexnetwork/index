@@ -13,6 +13,7 @@ src/adapters/tests/rejection-cooldown.adapter.isolated.ts
 src/adapters/tests/scraper.adapter.isolated.ts
 src/adapters/tests/storage.adapter.isolated.ts
 src/controllers/tests/network.controller.isolated.ts
+src/controllers/tests/notification.controller.isolated.ts
 src/controllers/tests/opportunity.controller.isolated.ts
 src/queues/tests/enrichment.queue.jobs.isolated.ts
 src/queues/tests/expiration.queue.isolated.ts
@@ -26,6 +27,9 @@ src/queues/tests/premise.queue.isolated.ts
 src/queues/tests/run-existing.queue.isolated.ts
 src/queues/tests/usercontext.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
+src/services/tests/notification-delivery.service.isolated.ts
+src/services/tests/notification-projection.isolated.ts
+src/services/tests/notification.service.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
 src/services/tests/opportunity.service.rediscovery.isolated.ts
 src/services/tests/opportunity.service.maintenance.isolated.ts
@@ -71,6 +75,7 @@ src/services/tests/negotiator-memory.service.isolated.ts
 src/services/tests/opportunity.service.enrichedReplacement.isolated.ts
 src/services/tests/contact.service.flag.isolated.ts
 src/events/handlers/tests/question.answer.pool.isolated.ts
+src/events/tests/opportunity.event.lifecycle.isolated.ts
 src/controllers/tests/enrichment.controller.isolated.ts
 src/adapters/tests/cache.adapter.isolated.ts
 src/queues/tests/questioner.queue.isolated.ts

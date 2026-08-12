@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import base64
 import importlib.util
 import io
@@ -12,6 +13,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -94,6 +96,66 @@ class FakeResponse:
         return json.dumps(self.payload).encode()
 
 
+class FakeStreamingResponse:
+    def __init__(self, lines, *, read_error=None):
+        self.lines = list(lines)
+        self.read_error = read_error
+        self.closed = False
+        self.close_event = threading.Event()
+        self.read_thread_ids = []
+        self.close_thread_id = None
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.read_error is not None:
+            raise self.read_error
+        return self.lines.pop(0) if self.lines else b""
+
+    def close(self):
+        self.close_thread_id = threading.get_ident()
+        self.closed = True
+        self.close_event.set()
+
+
+class FakeIdleStreamingResponse(FakeStreamingResponse):
+    def __init__(self):
+        super().__init__([b": keep-alive\n"])
+        self.idle_read_started = threading.Event()
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.lines:
+            return self.lines.pop(0)
+        self.idle_read_started.set()
+        self.close_event.wait()
+        return b""
+
+
+class FakeWebSocket:
+    def __init__(self, disconnect_error=None, disconnect_event=None):
+        self.accepted = False
+        self.sent = []
+        self.disconnect_error = disconnect_error
+        self.disconnect_event = disconnect_event
+        self.receive_calls = 0
+
+    async def accept(self):
+        self.accepted = True
+
+    async def receive(self):
+        self.receive_calls += 1
+        if self.disconnect_event is None:
+            await asyncio.Future()
+        else:
+            await asyncio.to_thread(self.disconnect_event.wait)
+        return {"type": "websocket.disconnect"}
+
+    async def send_json(self, payload):
+        if self.disconnect_error is not None:
+            raise self.disconnect_error
+        self.sent.append(payload)
+
+
 def http_error(status, payload, *, url="https://api.example.test/api/error"):
     """A urllib HTTPError whose body carries a JSON `{error, advisory}` (matches REST 4xx)."""
     body = json.dumps(payload).encode()
@@ -117,6 +179,7 @@ def install_fake_urlopen(responses, captured):
         captured.append(
             {
                 "timeout": timeout,
+                "thread_id": threading.get_ident(),
                 "url": request.full_url,
                 "method": request.get_method(),
                 "headers": dict(request.header_items()),
@@ -306,10 +369,30 @@ def main() -> None:
     assert "index-dashboard__setting-up" in desktop_js
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
     assert "startDesktopNotifications" in desktop_js
-    assert "/notifications/stream" in desktop_js
-    assert "authedPluginStreamFetch" in desktop_js
-    assert "getConnection" in desktop_js
+    assert "ctx.socket" in desktop_js
+    assert "/notifications/socket" in desktop_js
+    assert "/conversations/socket" in desktop_js
+    assert "/notifications/snapshot" in desktop_js
+    assert "60000" in desktop_js
+    assert "notifiedEntitiesV2" in desktop_js
     assert "checkOpportunities" not in desktop_js
+    # Native notifications use only authenticated SDK doors. Keep this assertion
+    # on the source fragment because the shared dashboard bundle has its own
+    # browser transport implementation in the same generated module.
+    desktop_tail = (ROOT / "desktop" / "tail.js").read_text()
+    assert "ctx.socket" in desktop_tail
+    assert "ctx.rest" in desktop_tail
+    assert "window.fetch" not in desktop_tail
+    assert "getConnection" not in desktop_tail
+    assert "X-Hermes-Session-Token" not in desktop_tail
+    assert "authedPluginStreamFetch" not in desktop_tail
+    assert "connectPluginStream" not in desktop_tail
+    assert "retries > 10" not in desktop_tail
+    dispose_start = desktop_tail.index("return function dispose()")
+    stopped_index = desktop_tail.index("state.stopped = true", dispose_start)
+    timer_index = desktop_tail.index("window.clearInterval(snapshotTimer)", dispose_start)
+    socket_index = desktop_tail.index("disposeDesktopSocket(notificationSocket)", dispose_start)
+    assert dispose_start < stopped_index < timer_index < socket_index
     # Hermes Desktop ships the same browser-login gate via the built bundle.
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js
@@ -772,6 +855,141 @@ def main() -> None:
         ) == {"success": False, "error": "message is required for counter and question actions."}
 
         dashboard_api = load_dashboard_api()
+        assert hasattr(dashboard_api, "_watch_websocket_disconnect")
+
+        # Hermes Desktop uses authenticated plugin WebSockets. The Python plugin
+        # keeps Index SSE upstream, parsing only complete dictionary-valued
+        # `data:` JSON frames and running every blocking urllib operation away
+        # from the event-loop thread.
+        assert dashboard_api.parse_sse_data_line(b'data: {"type":"question.new","questionId":"q-1"}\n') == {
+            "type": "question.new",
+            "questionId": "q-1",
+        }
+        for ignored_line in (
+            b': keep-alive\n',
+            b'event: notification\n',
+            b'data: not-json\n',
+            b'data: ["not", "an", "object"]\n',
+            b'data: {"partial": true}',
+            b'data: {"invalid": }\n',
+        ):
+            assert dashboard_api.parse_sse_data_line(ignored_line) is None, ignored_line
+
+        event_loop_thread_id = threading.get_ident()
+        stream_response = FakeStreamingResponse(
+            [
+                b': keep-alive\n',
+                b'data: not-json\n',
+                b'data: {"type":"question.new","questionId":"q-1"}\n',
+                b'data: {"partial": true}',
+            ]
+        )
+        opened = []
+
+        def fake_stream_urlopen(request, timeout):
+            opened.append((request, timeout, threading.get_ident()))
+            return stream_response
+
+        urllib.request.urlopen = fake_stream_urlopen
+        websocket = FakeWebSocket()
+        asyncio.run(dashboard_api.notifications_socket(websocket))
+        assert websocket.accepted is True
+        assert websocket.sent == [{"type": "question.new", "questionId": "q-1"}]
+        assert opened[0][0].full_url == "https://api.example.test/api/notifications/stream"
+        assert opened[0][0].get_header("Accept") == "text/event-stream"
+        assert opened[0][0].get_header("X-api-key") == "test-key"
+        assert opened[0][2] != event_loop_thread_id
+        assert stream_response.read_thread_ids
+        assert all(thread_id != event_loop_thread_id for thread_id in stream_response.read_thread_ids)
+        assert stream_response.closed is True
+        assert stream_response.close_thread_id != event_loop_thread_id
+
+        # Client disconnect is observed concurrently even when the upstream is
+        # idle after an SSE comment, so cleanup does not depend on send_json.
+        idle_response = FakeIdleStreamingResponse()
+        urllib.request.urlopen = lambda _request, timeout: idle_response
+        idle_socket = FakeWebSocket(disconnect_event=idle_response.idle_read_started)
+        asyncio.run(dashboard_api.notifications_socket(idle_socket))
+        assert idle_socket.accepted is True
+        assert idle_socket.receive_calls == 1
+        assert idle_socket.sent == []
+        assert idle_response.closed is True
+        assert idle_response.close_thread_id != event_loop_thread_id
+        assert all(thread_id != event_loop_thread_id for thread_id in idle_response.read_thread_ids)
+
+        # Cancellation while urlopen is still running must transfer cleanup
+        # ownership to the worker: if it eventually returns a response, that
+        # response is closed even though the coroutine never received it.
+        delayed_response = FakeStreamingResponse([])
+        open_started = threading.Event()
+        release_open = threading.Event()
+
+        def delayed_urlopen(_request, timeout):
+            open_started.set()
+            assert release_open.wait(5), "test did not release delayed urlopen"
+            return delayed_response
+
+        urllib.request.urlopen = delayed_urlopen
+
+        async def cancel_during_open():
+            task = asyncio.create_task(dashboard_api.notifications_socket(FakeWebSocket()))
+            assert await asyncio.to_thread(open_started.wait, 5), "urlopen did not start"
+            task.cancel()
+            try:
+                await task
+                raise AssertionError("cancelled relay should raise CancelledError")
+            except asyncio.CancelledError:
+                pass
+            assert delayed_response.closed is False
+            release_open.set()
+            assert await asyncio.to_thread(delayed_response.close_event.wait, 5), "eventual response leaked"
+
+        asyncio.run(cancel_during_open())
+        assert delayed_response.closed is True
+        assert delayed_response.close_thread_id != event_loop_thread_id
+
+        # A WebSocket disconnect terminates the conversation relay and still
+        # closes the correctly addressed upstream response in a worker thread.
+        disconnect_response = FakeStreamingResponse([b'data: {"type":"message.new"}\n'])
+        conversation_requests = []
+
+        def fake_conversation_urlopen(request, timeout):
+            conversation_requests.append(request)
+            return disconnect_response
+
+        urllib.request.urlopen = fake_conversation_urlopen
+        disconnecting_socket = FakeWebSocket(dashboard_api.WebSocketDisconnect())
+        asyncio.run(dashboard_api.conversations_socket(disconnecting_socket))
+        assert disconnecting_socket.accepted is True
+        assert conversation_requests[0].full_url == "https://api.example.test/api/conversations/stream"
+        assert disconnect_response.closed is True
+        assert disconnect_response.close_thread_id != event_loop_thread_id
+
+        failed_response = FakeStreamingResponse([], read_error=OSError("upstream failed"))
+        urllib.request.urlopen = lambda _request, timeout: failed_response
+        failed_socket = FakeWebSocket()
+        asyncio.run(dashboard_api.notifications_socket(failed_socket))
+        assert failed_socket.sent == [{"type": "error", "error": "upstream failed"}]
+        assert failed_response.closed is True
+        assert failed_response.close_thread_id != event_loop_thread_id
+
+        # The persisted catch-up proxy is a transparent authenticated GET: an
+        # HTTP error's JSON body is returned unchanged instead of being wrapped.
+        upstream_error = {
+            "error": "Notification snapshots are unavailable.",
+            "code": "snapshot_unavailable",
+            "retryable": True,
+        }
+        snapshot_http_error = http_error(503, upstream_error)
+        captured = []
+        install_fake_urlopen([snapshot_http_error], captured)
+        assert asyncio.run(dashboard_api.notifications_snapshot()) == upstream_error
+        assert captured[-1]["method"] == "GET"
+        assert captured[-1]["url"] == "https://api.example.test/api/notifications/snapshot"
+        assert captured[-1]["headers"]["X-api-key"] == "test-key"
+        assert captured[-1]["thread_id"] != event_loop_thread_id
+        assert snapshot_http_error.fp.closed is True
+
         captured = []
         install_fake_urlopen(
             [

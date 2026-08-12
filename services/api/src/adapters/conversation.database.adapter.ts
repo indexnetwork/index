@@ -1,6 +1,6 @@
 import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
-import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
+import { emitOpportunityLifecycleBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { log } from '../lib/log';
@@ -3634,7 +3634,7 @@ export class ConversationDatabaseAdapter {
         .returning({ id: opportunities.id, status: opportunities.status });
       return updated ?? null;
     });
-    if (row) emitOpportunityPendingBestEffort(row);
+    if (row) emitOpportunityLifecycleBestEffort(row);
     return row;
   }
 
