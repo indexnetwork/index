@@ -5,13 +5,24 @@ import Security
 import CryptoKit
 
 // ---------------------------------------------------------------------------
-// Configuration. API_URL / APP_URL are read from UserDefaults (e.g. `defaults
-// write network.index.system6 API_URL https://…`) or Info.plist, so production
-// URLs are switchable without recompiling. Defaults target a local dev backend.
+// Configuration. Release endpoints and identity are embedded in Info.plist by
+// release-config.sh. Production never consults UserDefaults or the process
+// environment for endpoint authority. Committed local bundles are explicitly
+// marked development and carry localhost values in their plist templates.
 // ---------------------------------------------------------------------------
 enum AppConfig {
-    static var apiURL: String { value(for: "API_URL", default: "http://localhost:3001") }
-    static var appURL: String { value(for: "APP_URL", default: "http://localhost:3000") }
+    static let isDevelopmentBuild = requiredBool("IndexDevelopmentBuild")
+    static let releaseChannel = requiredReleaseChannel()
+    static let releaseVersion = requiredString("IndexReleaseVersion")
+    static let releaseCommit = requiredString("IndexReleaseCommit")
+    static let expectedTeamID = requiredString("IndexExpectedTeamID")
+    static let connectorProtocolVersion = requiredString("IndexConnectorProtocolVersion")
+    static let apiURL = configuredEndpoint(
+        "IndexAPIURL", production: "https://protocol.index.network"
+    )
+    static let appURL = configuredEndpoint(
+        "IndexWebURL", production: "https://index.network"
+    )
 
     static var deepLinkHosts: [String] {
         let host = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
@@ -30,10 +41,36 @@ enum AppConfig {
         return value?.isEmpty == false ? value : nil
     }
 
-    private static func value(for key: String, default fallback: String) -> String {
-        if let v = UserDefaults.standard.string(forKey: key), !v.isEmpty { return v }
-        if let v = Bundle.main.object(forInfoDictionaryKey: key) as? String, !v.isEmpty { return v }
-        return fallback
+    private static func requiredString(_ key: String) -> String {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            fatalError("Missing embedded release configuration: \(key)")
+        }
+        return value
+    }
+
+    private static func requiredBool(_ key: String) -> Bool {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? Bool else {
+            fatalError("Missing embedded release configuration: \(key)")
+        }
+        return value
+    }
+
+    private static func requiredReleaseChannel() -> String {
+        let value = requiredString("IndexReleaseChannel")
+        let expected = isDevelopmentBuild ? "development" : "production"
+        guard value == expected else {
+            fatalError("Invalid embedded release configuration: IndexReleaseChannel")
+        }
+        return value
+    }
+
+    private static func configuredEndpoint(_ key: String, production: String) -> String {
+        let value = requiredString(key)
+        if !isDevelopmentBuild && value != production {
+            fatalError("Invalid embedded production configuration: \(key)")
+        }
+        return value
     }
 
     static func trimTrailingSlash(_ s: String) -> String {
@@ -425,15 +462,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureOwnerCredentialStore()
+        let developmentBuild = AppConfig.isDevelopmentBuild
+        if developmentBuild {
+            NSLog("Index development build: release configuration is non-production")
+        }
         let config = WKWebViewConfiguration()
         // Allow blob: URLs created from a file:// document to be fetched back 
         // the bundle loader reads its own blob assets, which a file origin
         // otherwise treats as cross-origin.
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
         config.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
-#if INDEX_DEVELOPMENT_BUILD
-        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
-#endif
+        if developmentBuild {
+            config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        }
         if #available(macOS 11.0, *) {
             config.defaultWebpagePreferences.allowsContentJavaScript = true
         }
@@ -472,11 +513,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             layer.borderWidth = 2
             layer.borderColor = NSColor.black.cgColor
         }
-#if INDEX_DEVELOPMENT_BUILD
-        if #available(macOS 13.3, *) {
-            webView.isInspectable = true
+        if developmentBuild {
+            if #available(macOS 13.3, *) {
+                webView.isInspectable = true
+            }
         }
-#endif
 
         window = NSWindow(
             contentRect: contentRect,
@@ -484,7 +525,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             backing: .buffered,
             defer: false
         )
-        window.title = "Index, Workbench 1.3"
+        window.title = developmentBuild
+            ? "Index, Workbench 1.3 — Development"
+            : "Index, Workbench 1.3"
         // Float the traffic lights directly over the content, no title bar
         // strip. The web content fills the full window height.
         window.titleVisibility = .hidden

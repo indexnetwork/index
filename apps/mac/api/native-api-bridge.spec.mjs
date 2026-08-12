@@ -220,7 +220,9 @@ describe('native owner migration and transport source contracts', () => {
     expect(build).toContain('Sources/NativeAPIRequestBridge.swift');
     expect(build).toContain('apple-macosx13.0');
     expect(plist).toMatch(/<key>LSMinimumSystemVersion<\/key>\s*<string>13\.0<\/string>/);
-    expect(mainSwift).toContain('#if INDEX_DEVELOPMENT_BUILD');
+    expect(mainSwift).toContain('requiredBool("IndexDevelopmentBuild")');
+    expect(mainSwift).toContain('let developmentBuild = AppConfig.isDevelopmentBuild');
+    expect(mainSwift).toContain('if developmentBuild {');
     expect(mainSwift).toContain('developerExtrasEnabled');
     expect(mainSwift).toContain('isInspectable');
   });

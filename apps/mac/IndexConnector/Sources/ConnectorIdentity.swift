@@ -1,14 +1,56 @@
 import Foundation
 
+private enum ConnectorEmbeddedReleaseConfiguration {
+    static let releaseChannel = requiredProductionValue("IndexReleaseChannel", expected: "production")
+    static let releaseVersion = requiredString("IndexReleaseVersion")
+    static let releaseCommit = requiredString("IndexReleaseCommit")
+    static let expectedTeamID = requiredProductionValue(
+        "IndexExpectedTeamID", expected: "LMQ3XNXLAD"
+    )
+    static let connectorProtocolVersion = requiredProductionValue(
+        "IndexConnectorProtocolVersion", expected: "1"
+    )
+    static let apiURL = requiredProductionURL(
+        "IndexAPIURL", expected: "https://protocol.index.network"
+    )
+    static let webURL = requiredProductionURL(
+        "IndexWebURL", expected: "https://index.network"
+    )
+
+    private static func requiredString(_ key: String) -> String {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            fatalError("Missing embedded release configuration: \(key)")
+        }
+        return value
+    }
+
+    private static func requiredProductionValue(_ key: String, expected: String) -> String {
+        let value = requiredString(key)
+        guard value == expected else {
+            fatalError("Invalid embedded production configuration: \(key)")
+        }
+        return value
+    }
+
+    private static func requiredProductionURL(_ key: String, expected: String) -> URL {
+        let value = requiredProductionValue(key, expected: expected)
+        guard let url = URL(string: value) else {
+            fatalError("Invalid embedded production configuration: \(key)")
+        }
+        return url
+    }
+}
+
 struct ConnectorEndpoints: Equatable {
     let web: URL
     let api: URL
     let mcp: URL
 
     static let production = ConnectorEndpoints(
-        trustedWeb: URL(string: "https://index.network")!,
-        trustedAPI: URL(string: "https://protocol.index.network/api")!,
-        trustedMCP: URL(string: "https://protocol.index.network/mcp")!
+        trustedWeb: ConnectorEmbeddedReleaseConfiguration.webURL,
+        trustedAPI: ConnectorEmbeddedReleaseConfiguration.apiURL.appending(path: "api"),
+        trustedMCP: ConnectorEmbeddedReleaseConfiguration.apiURL.appending(path: "mcp")
     )
 
     #if INDEX_CONNECTOR_NONPRODUCTION
@@ -59,4 +101,12 @@ enum ConnectorBuildIdentity {
     static let buildMode = "production"
     static let apiEnvironment = "production"
     #endif
+
+    static func markDevelopmentBuild() {
+        if buildMode == "development" {
+            FileHandle.standardError.write(
+                Data("Index Connector development build: non-production endpoints\n".utf8)
+            )
+        }
+    }
 }

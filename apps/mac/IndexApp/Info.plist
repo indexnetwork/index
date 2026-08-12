@@ -11,7 +11,7 @@
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.0.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
@@ -46,5 +46,21 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>IndexReleaseChannel</key>
+    <string>development</string>
+    <key>IndexReleaseVersion</key>
+    <string>1.0.0</string>
+    <key>IndexReleaseCommit</key>
+    <string>development</string>
+    <key>IndexAPIURL</key>
+    <string>http://localhost:3001</string>
+    <key>IndexWebURL</key>
+    <string>http://localhost:3000</string>
+    <key>IndexExpectedTeamID</key>
+    <string>LMQ3XNXLAD</string>
+    <key>IndexConnectorProtocolVersion</key>
+    <string>1</string>
+    <key>IndexDevelopmentBuild</key>
+    <true/>
 </dict>
 </plist>

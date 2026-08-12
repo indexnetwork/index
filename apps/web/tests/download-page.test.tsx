@@ -1,66 +1,75 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { Window } from "happy-dom";
+import Download, { MAC_APP_MIN_OS, type MacReleaseDownload } from "@/app/download/page";
 
-/**
- * `/download` is the destination of the deep-link landing CTA, so its two
- * states are load-bearing: with no published artifact it must explain itself
- * rather than link at nothing, and once `VITE_MAC_APP_DOWNLOAD_URL` is set it
- * must become a real download with no code change.
- *
- * The module reads the env var at import time, so each case re-imports it
- * after stubbing.
- */
-async function renderDownload() {
-  vi.resetModules();
-  const mod = await import("@/app/download/page");
-  const Download = mod.default;
-  render(<Download />);
-  return mod;
-}
+let installedWindow: Window | null = null;
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.resetModules();
+beforeAll(() => {
+  if (typeof document !== "undefined") return;
+  installedWindow = new Window();
+  installedWindow.SyntaxError = SyntaxError;
+  for (const key of Reflect.ownKeys(installedWindow)) {
+    if (key in globalThis) continue;
+    const descriptor = Object.getOwnPropertyDescriptor(installedWindow, key);
+    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+  }
+  Object.assign(globalThis, {
+    window: installedWindow,
+    document: installedWindow.document,
+    navigator: installedWindow.navigator,
+    HTMLElement: installedWindow.HTMLElement,
+    Node: installedWindow.Node,
+  });
 });
 
+afterEach(() => cleanup());
+
+afterAll(() => installedWindow?.close());
+
+const release: MacReleaseDownload = {
+  version: "1.0.0",
+  appUrl:
+    "https://github.com/indexnetwork/index/releases/download/v1.0.0/Index-macOS-1.0.0-universal.dmg",
+  appSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  connectorUrl:
+    "https://github.com/indexnetwork/index/releases/download/v1.0.0/IndexConnector-1.0.0-universal.dmg",
+  connectorSha256:
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  metadataUrl:
+    "https://github.com/indexnetwork/index/releases/download/v1.0.0/macos-release.cms",
+};
+
 describe("/download", () => {
-  test("explains the state instead of linking at nothing when no artifact is published", async () => {
-    vi.stubEnv("VITE_MAC_APP_DOWNLOAD_URL", "");
+  test("fails closed when the foundational release contract is incomplete", () => {
+    const view = render(<Download release={{ ...release, metadataUrl: "" }} />);
 
-    const mod = await renderDownload();
-
-    expect(mod.MAC_APP_DOWNLOAD_URL).toBe("");
-    expect(
-      screen.getByText(/Not yet publicly available/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /download for macos/i }),
-    ).not.toBeInTheDocument();
+    expect(view.getByText(/Download unavailable/)).toBeTruthy();
+    expect(view.queryByRole("link", { name: /download index app/i })).toBeNull();
+    expect(view.queryByRole("link", { name: /download index connector/i })).toBeNull();
   });
 
-  test("renders a real download button once the artifact URL is configured", async () => {
-    const artifact = "https://downloads.index.network/Index-1.0.0.dmg";
-    vi.stubEnv("VITE_MAC_APP_DOWNLOAD_URL", artifact);
+  test("shows versioned app and connector artifacts, checksums, and signed metadata", () => {
+    const view = render(<Download release={release} />);
 
-    const mod = await renderDownload();
-
-    expect(mod.MAC_APP_DOWNLOAD_URL).toBe(artifact);
-    const cta = screen.getByRole("link", { name: /download for macos/i });
-    expect(cta).toHaveAttribute("href", artifact);
-    expect(screen.getByText(mod.MAC_APP_MIN_OS)).toBeInTheDocument();
-    expect(
-      screen.queryByText(/Not yet publicly available/),
-    ).not.toBeInTheDocument();
+    expect(MAC_APP_MIN_OS).toBe("macOS 13 or later");
+    expect(view.getByText("Version 1.0.0")).toBeTruthy();
+    expect(view.getByText(MAC_APP_MIN_OS)).toBeTruthy();
+    expect(view.getByRole("link", { name: /download index app/i }).getAttribute("href"))
+      .toBe(release.appUrl);
+    expect(view.getByRole("link", { name: /download index connector/i }).getAttribute("href"))
+      .toBe(release.connectorUrl);
+    expect(view.getByText(release.appSha256)).toBeTruthy();
+    expect(view.getByText(release.connectorSha256)).toBeTruthy();
+    expect(view.getByRole("link", { name: /signed release metadata/i }).getAttribute("href"))
+      .toBe(release.metadataUrl);
+    expect(view.queryByText(/private testing/i)).toBeNull();
   });
 
-  test("always offers a way back, in both states", async () => {
-    vi.stubEnv("VITE_MAC_APP_DOWNLOAD_URL", "");
+  test("always offers a way back", () => {
+    const view = render(<Download release={release} />);
 
-    await renderDownload();
-
-    expect(screen.getByRole("link", { name: /back to index/i })).toHaveAttribute(
-      "href",
-      "/",
-    );
+    expect(view.getByRole("link", { name: /back to index/i }).getAttribute("href"))
+      .toBe("/");
   });
 });

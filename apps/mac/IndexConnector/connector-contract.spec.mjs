@@ -176,9 +176,10 @@ test('production connector endpoints and build mode cannot be supplied by caller
   const identity = read('./Sources/ConnectorIdentity.swift');
   const runtime = read('./Sources/ConnectorRuntime.swift');
   const build = read('./build.sh');
-  expect(identity).toContain('https://index.network');
-  expect(identity).toContain('https://protocol.index.network/api');
-  expect(identity).toContain('https://protocol.index.network/mcp');
+  expect(identity).toContain('"IndexWebURL", expected: "https://index.network"');
+  expect(identity).toContain('"IndexAPIURL", expected: "https://protocol.index.network"');
+  expect(identity).toContain('ConnectorEmbeddedReleaseConfiguration.apiURL.appending(path: "api")');
+  expect(identity).toContain('ConnectorEmbeddedReleaseConfiguration.apiURL.appending(path: "mcp")');
   expect(identity).toContain('#if INDEX_CONNECTOR_NONPRODUCTION');
   expect(build).toContain('-DINDEX_CONNECTOR_NONPRODUCTION');
   expect(runtime).not.toMatch(/apiURL|mcpURL|webURL/);

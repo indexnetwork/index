@@ -3,6 +3,7 @@ import Foundation
 @main
 struct IndexConnectorMain {
     static func main() {
+        ConnectorBuildIdentity.markDevelopmentBuild()
         let runtime: ConnectorRuntime?
         do {
             let installationStore = try ConnectorInstallationStore()
