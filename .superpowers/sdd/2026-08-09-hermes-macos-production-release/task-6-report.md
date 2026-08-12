@@ -292,4 +292,4 @@ Real hosted-macOS `libproc` ABI/path behavior and reviewed Runner Listener/Worke
 
 No workflow dispatch, GitHub API network call, secret access, Apple service, signing/notarization, upload, attestation, release/draft mutation, publication, deployment, merge, or push occurred in round 5. Only local provider-free fixtures with temporary files, a generated local fixture certificate, and route-aware command stubs ran.
 
-Task 6: fix round 5/5 (4 addressed/0 open; commits 913f3cc4b..<new>)
+Task 6: fix round 5/5 (4 addressed/0 open; commits 913f3cc4b..fe5d95c98)
