@@ -17,3 +17,8 @@ Task 4: parked — SIGKILL/helper-termination after successful atomic rename can
 Task 4: complete (commits cbac9ad7d..8e676b6b1, 3 parked after breaker; all in-scope isolated-runner release gates implemented)
 Task 5: fix round 3/5 (1 Important addressed; exact supported schema keyword shapes and malformed-form table coverage; no identity used)
 Task 5: fix round 4/5 (3 Important addressed, review pending; schema-node refs/cycle refusal, explicit type applicability, JSON numeric equality; no identity used)
+Task 5: fix round 1/5 (1 Critical + 5 Important addressed, 4 Important open/new; commits 75e44a073..5ef5ea72e)
+Task 5: fix round 2/5 (3 Important addressed, 1 Important open; commits 5ef5ea72e..f5d0845d9)
+Task 5: fix round 3/5 (numeric/shape defect fixed, 3 semantic Important open; commits f5d0845d9..b8aa51ef8)
+Task 5: fix round 4/5 (3 Important addressed, 0 open; commits b8aa51ef8..79ce2ad71)
+Task 5: complete (commits 8e676b6b1..79ce2ad71, review clean)
