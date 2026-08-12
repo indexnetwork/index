@@ -25,21 +25,32 @@ compile_app_binary() {
         *) echo "unsupported production architecture: $arch" >&2; return 64 ;;
     esac
     mkdir -p "$(dirname "$output")"
-    local -a identity_flags=()
     if [ -n "$compiled_identity" ]; then
         [ -f "$compiled_identity" ] || { echo "missing compiled identity record" >&2; return 64; }
-        identity_flags=(-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __indexcfg -Xlinker "$compiled_identity")
+        swiftc -O -whole-module-optimization \
+            "${target_flags[@]}" \
+            -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __indexcfg -Xlinker "$compiled_identity" \
+            "$@" \
+            -framework Cocoa -framework WebKit -framework Network -framework Security \
+            -o "$output" \
+            Security/Sources/IndexKeychainStore.swift \
+            Sources/OwnerCredentialStore.swift \
+            Sources/NativeAPIRequestBridge.swift \
+            Sources/ConnectorLaunchAttestation.swift \
+            Sources/HermesRuntime.swift \
+            Sources/*.swift
+    else
+        swiftc -O -whole-module-optimization \
+            "${target_flags[@]}" "$@" \
+            -framework Cocoa -framework WebKit -framework Network -framework Security \
+            -o "$output" \
+            Security/Sources/IndexKeychainStore.swift \
+            Sources/OwnerCredentialStore.swift \
+            Sources/NativeAPIRequestBridge.swift \
+            Sources/ConnectorLaunchAttestation.swift \
+            Sources/HermesRuntime.swift \
+            Sources/*.swift
     fi
-    swiftc -O -whole-module-optimization \
-        "${target_flags[@]}" ${identity_flags[@]+"${identity_flags[@]}"} "$@" \
-        -framework Cocoa -framework WebKit -framework Network -framework Security \
-        -o "$output" \
-        Security/Sources/IndexKeychainStore.swift \
-        Sources/OwnerCredentialStore.swift \
-        Sources/NativeAPIRequestBridge.swift \
-        Sources/ConnectorLaunchAttestation.swift \
-        Sources/HermesRuntime.swift \
-        Sources/*.swift
 }
 
 if [ "${1:-}" = "--release-slice" ]; then

@@ -1516,7 +1516,9 @@ test('includes the runtime source in the Swift build', () => {
   expect(build).toContain('Sources/*.swift');
 });
 
-test('uses a Bash-3-safe optional Swift define expansion', () => {
+test('uses Bash-3-safe host and release slice argument handling', () => {
   expect(build).toContain('${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"}');
   expect(build).not.toContain('${SWIFT_DEFINES[@]:-}');
+  expect(build).not.toContain('identity_flags');
+  expect(build).toMatch(/if \[ -n "\$compiled_identity" \]; then[\s\S]*-Xlinker -sectcreate[\s\S]*else[\s\S]*swiftc/);
 });

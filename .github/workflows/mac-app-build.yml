@@ -200,6 +200,10 @@ jobs:
             apps/mac/release/release-config.sh \
             apps/mac/release/build-universal.sh
 
+      - name: Assemble web layer for Universal 2 bundle
+        working-directory: apps/mac
+        run: python3 scripts/assemble.py
+
       - name: Build unsigned Universal 2 production bundles (development-only evidence)
         env:
           INDEX_RELEASE_VERSION: "1.0.0"
