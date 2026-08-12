@@ -33,11 +33,7 @@ export function verifyCandidateAttestationResult(result: unknown, directory: str
   const resultId = attestation?.id;
   const bundleUrl = text(attestation?.bundle_url);
   if (resultId !== undefined && String(resultId) !== attestationId) refuse("verified bundle is not the recorded attestation id");
-  if (resultId === undefined) {
-    let parsed: URL; try { parsed = new URL(bundleUrl); } catch { refuse("verified bundle has no documented attestation id"); }
-    const expectedPath = `/indexnetwork/index/attestations/${attestationId}`;
-    if (parsed.protocol !== "https:" || parsed.host !== "github.com" || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== expectedPath) refuse("verified bundle is not the recorded canonical attestation URL");
-  }
+  if (resultId === undefined && bundleUrl !== `https://github.com/indexnetwork/index/attestations/${attestationId}`) refuse("verified bundle is not the recorded canonical attestation URL");
   if (!statement || !exactSubjects(statement.subject, directory)) refuse("attestation subjects do not equal all candidate files");
   if (!extensions) refuse("verified certificate extensions are missing");
   const repoUri = extension(extensions, "SourceRepositoryURI", "sourceRepositoryURI"), sourceDigest = extension(extensions, "SourceRepositoryDigest", "sourceRepositoryDigest");

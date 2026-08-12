@@ -108,6 +108,11 @@ test("exact attestation route requires one recorded id and complete run-bound ca
   expect(result(valid).status).toBe(0);
   expect(result(valid, "https://github.com/indexnetwork/index/attestations/999").status).not.toBe(0);
   expect(result({ ...valid, attestation: { id: 999 } }).status).not.toBe(0);
+  const exactFallback = (bundle_url) => ({ ...valid, attestation: { bundle_url } });
+  expect(result(exactFallback("https://github.com/indexnetwork/index/attestations/123")).status).toBe(0);
+  expect(result(exactFallback("https://github.com:443/indexnetwork/index/attestations/123")).status).not.toBe(0);
+  expect(result(exactFallback("https://GitHub.com/indexnetwork/index/attestations/123")).status).not.toBe(0);
+  expect(result(exactFallback("https://github.com/indexnetwork/index/attestations/./123")).status).not.toBe(0);
   expect(result({ ...valid, verificationResult: { ...valid.verificationResult, statement: { subject: subjects.slice(1) } } }).status).not.toBe(0);
   const pathPrefixed = structuredClone(valid); pathPrefixed.verificationResult.statement.subject[0].name = `nested/${names[0]}`;
   expect(result(pathPrefixed).status).not.toBe(0);
