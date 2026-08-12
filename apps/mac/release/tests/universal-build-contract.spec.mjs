@@ -138,23 +138,41 @@ describe("macOS Universal 2 production build contract", () => {
     expect(output).toBe(canonicalIdentity);
   });
 
+  const canonicalPaddedIdentity = Buffer.concat([
+    Buffer.from(canonicalIdentity),
+    Buffer.alloc(6),
+  ]);
+
+  function mutateRow(rows, rowIndex, mutateFields) {
+    const mutated = [...rows];
+    const [address, ...fields] = mutated[rowIndex].split(" ");
+    mutated[rowIndex] = [address, ...mutateFields(fields)].join(" ");
+    return mutated;
+  }
+
+  const malformedDataRow = "compiled identity section contains a malformed data row\n";
+  const malformedAddressRow = "compiled identity section contains a malformed address-prefixed row\n";
+
   test.each([
-    ["arm64 byte tokens", "arm64", ["0000000100003f40 7b 22 49 6e"]],
-    ["x86_64 word tokens", "x86_64", ["0000000100003f40 6e49227b 42786564 646c6975 67726154"]],
-    ["arm64 residual before a word", "arm64", ["0000000100003f40 7b 42786564"]],
-    ["more than three arm64 residual bytes", "arm64", ["0000000100003f40 7b 22 49 6e"]],
-    ["a short arm64 interior row", "arm64", ["0000000100003f40 6e49227b", "0000000100003f44 42786564 646c6975 67726154 3a227465"]],
-    ["a short x86_64 interior row", "x86_64", ["0000000100003f40 7b 22", "0000000100003f42 49 6e"]],
-    ["a section header", "arm64", ["Contents of (__TEXT,__indexcfg) section", "0000000100003f40 6e49227b"]],
-    ["an address-only row", "arm64", ["0000000100003f40"]],
-    ["an arbitrary 16-hex data token on arm64", "arm64", ["0000000100003f40 7b22496e64657842"]],
-    ["an arbitrary 16-hex data token on x86_64", "x86_64", ["0000000100003f40 7b22496e64657842"]],
-    ["mixed arm64 token forms", "arm64", ["0000000100003f40 6e49227b 42 646c6975"]],
-    ["mixed x86_64 token forms", "x86_64", ["0000000100003f40 7b 22 496e"]],
-  ])("rejects source-impossible %s", (_name, arch, lines) => {
-    const { result, output } = extractFixture(lines, arch);
+    ["arm64 byte tokens", "arm64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "arm64"), 0, (fields) => ["7b", "22", "49", "6e", ...fields.slice(1)]), malformedDataRow],
+    ["x86_64 word tokens", "x86_64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "x86_64"), 0, (fields) => [fields.slice(0, 4).join(""), ...fields.slice(4)]), malformedDataRow],
+    ["arm64 residual before a word", "arm64", () => mutateRow(otoolRows(Buffer.from(canonicalIdentity), "arm64"), 1, (fields) => [fields[0], fields.at(-1), fields[1], ...fields.slice(2, -1)]), malformedDataRow],
+    ["more than three arm64 residual bytes", "arm64", () => mutateRow(otoolRows(Buffer.from(canonicalIdentity), "arm64"), 1, (fields) => [fields[0], ...Buffer.from(fields[1], "hex").reverse().map((byte) => byte.toString(16).padStart(2, "0")), ...fields.slice(2)]), malformedDataRow],
+    ["a short arm64 interior row", "arm64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "arm64"), 0, (fields) => fields.slice(0, -1)), malformedDataRow],
+    ["a short x86_64 interior row", "x86_64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "x86_64"), 0, (fields) => fields.slice(0, -1)), malformedDataRow],
+    ["an arm64 token with the wrong class", "arm64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "arm64"), 0, (fields) => ["zzzzzzzz", ...fields.slice(1)]), malformedDataRow],
+    ["an x86_64 token with the wrong class", "x86_64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "x86_64"), 0, (fields) => ["zz", ...fields.slice(1)]), malformedDataRow],
+    ["a section header", "arm64", () => ["Contents of (__TEXT,__indexcfg) section", ...otoolRows(canonicalPaddedIdentity, "arm64").slice(1)], malformedAddressRow],
+    ["an address-only row", "arm64", () => [otoolRows(canonicalPaddedIdentity, "arm64")[0].split(" ")[0], ...otoolRows(canonicalPaddedIdentity, "arm64").slice(1)], malformedAddressRow],
+    ["an arbitrary 16-hex data token on arm64", "arm64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "arm64"), 0, (fields) => [fields.slice(0, 2).join(""), ...fields.slice(2)]), malformedDataRow],
+    ["an arbitrary 16-hex data token on x86_64", "x86_64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "x86_64"), 0, (fields) => [fields.slice(0, 8).join(""), ...fields.slice(8)]), malformedDataRow],
+    ["mixed arm64 token forms", "arm64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "arm64"), 0, (fields) => [fields[0], "42", ...fields.slice(2)]), malformedDataRow],
+    ["mixed x86_64 token forms", "x86_64", () => mutateRow(otoolRows(canonicalPaddedIdentity, "x86_64"), 0, (fields) => [...fields.slice(0, 2), fields.slice(2, 4).join(""), ...fields.slice(4)]), malformedDataRow],
+  ])("rejects source-impossible %s at the row grammar layer", (_name, arch, makeLines, expectedError) => {
+    const { result, output } = extractFixture(makeLines(), arch);
     expect(result.exitCode).not.toBe(0);
     expect(output).toBeNull();
+    expect(result.stderr.toString()).toBe(expectedError);
   });
 
   test.each([

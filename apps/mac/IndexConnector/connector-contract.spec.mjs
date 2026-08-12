@@ -153,8 +153,9 @@ test('production app profile, signed entitlements, and operator docs carry the o
   // predicate itself: silently re-tightening it breaks Developer ID signing,
   // and widening it further would admit a foreign team's groups. The runtime
   // behaviour is covered in scripts/provisioning-profile.spec.mjs.
-  expect(profileHelper).toContain("groups not in ([expected_owner_group], [f'{expected_team}.*'])");
-  expect(profileHelper).toContain('does not authorize the owner Keychain group');
+  expect(profileHelper).toContain("allowed_groups = ([expected_group], [f'{expected_team}.*'])");
+  expect(profileHelper).toContain('if groups not in allowed_groups:');
+  expect(profileHelper).toContain('does not authorize exactly the owner Keychain group or the portal-issued Team wildcard');
   // The signed entitlement stays exact even when the profile carries the wildcard.
   expect(profileHelper).toContain('does not match the signed owner Keychain entitlement');
   expect(appBuild).toContain('validate_embedded_profile "${APP}" "$LINK_HOST"');
