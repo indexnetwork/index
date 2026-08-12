@@ -376,3 +376,33 @@ Real GitHub release response/`target_commitish` semantics and historical provide
 
 Task 6 ledger: owner-authorized exception round 7/7 opened for validation ordering and first-release availability.
 Task 6 ledger: round 7 implementation GREEN; requested defect addressed; review gate pending; Task 6 not complete.
+
+## Owner-authorized exceptional review fix round 8
+
+The owner explicitly authorized this surgical additional round for the source-normalization defect. Task 6 remains reviewer-owned and is not marked complete.
+
+### Changes
+
+- The Bun structured parser now validates the original `tag_name` as exact canonical semver whenever any macOS evidence exists, before base64 shell transport can normalize trailing newline bytes.
+- Non-string and empty tags remain structurally refused; leading/trailing newline and other noncanonical macOS-evidence tags are now refused before target validation or draft/prerelease filtering. Existing target-authority ordering and CMS/repository/artifact/monotonic gates are unchanged.
+- Added real-production-function regression coverage for one and two trailing newlines plus a leading newline on a canonical-looking draft tag. Updated all four privileged workflow pins.
+
+### Strict TDD evidence
+
+RED before production changes: `bun test apps/mac/release/tests/release-workflow-fix-round-6.spec.mjs` returned `4 pass`, `1 fail`, `19 expect() calls`; `tag_name: "v0.9.0\n"` was accepted after Bash command substitution stripped its trailing newline.
+
+Focused GREEN: the same suite returned `5 pass`, `0 fail`, `21 expect() calls`.
+
+Full provider-free Tasks 1–6 and static validation evidence is recorded with the round-8 commit below.
+
+### Residual protected evidence and attestation
+
+Real GitHub release response semantics and historical provider assets remain protected-candidate evidence. No workflow dispatch, network/provider call, secret access, Apple operation, upload, attestation, release mutation, publication, merge, or push occurred.
+
+Focused Task 6 GREEN: `55 pass`, `0 fail`, `402 expect() calls` across 7 files.
+
+Full provider-free Tasks 1–6 regression: `196 pass`, `1 existing platform skip`, `0 fail`, `1177 expect() calls` across 25 files. The skip is the preexisting non-macOS real-profile fixture.
+
+Release shell syntax, release Python syntax, both workflow YAML parses, exact SHA-256 consistency across all four privileged workflow pins, assignment-shaped privacy scans of validation logs, and `git diff --check` passed. Generated Python caches were removed.
+
+Task 6 ledger: owner-authorized exception round 8/8 implementation GREEN; requested source-normalization defect addressed; review gate pending; Task 6 not complete.

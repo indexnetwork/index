@@ -62,6 +62,14 @@ describe("lossless historical release discovery", () => {
     expect(validate(f, { tag_name: "", draft: false, prerelease: false, assets }).status).not.toBe(0);
   });
 
+  test("real monotonic inventory refuses shell-normalizable macOS tag authority", () => {
+    const f = fixture(), base = { target_commitish: f.commit, draft: true, prerelease: false, assets: f.assets.map((name) => ({ name })) };
+    for (const tag_name of [`${f.tag}\n`, `${f.tag}\n\n`, `\n${f.tag}`]) {
+      const refused = validate(f, { ...base, tag_name });
+      expect(refused.status, `accepted ${JSON.stringify(tag_name)}\n${refused.stdout}\n${refused.stderr}`).not.toBe(0);
+    }
+  });
+
   test("real monotonic inventory refuses missing and empty public target authority", () => {
     const f = fixture(), base = { tag_name: f.tag, draft: false, prerelease: false, assets: f.assets.map((name) => ({ name })) };
     expect(validate(f, base).status).not.toBe(0);

@@ -65,6 +65,7 @@ const r=JSON.parse(await Bun.stdin.text());
 if(!r||typeof r!=="object"||Array.isArray(r)||typeof r.tag_name!=="string"||typeof r.draft!=="boolean"||typeof r.prerelease!=="boolean"||!Array.isArray(r.assets)||r.assets.some(a=>!a||typeof a!=="object"||typeof a.name!=="string"))process.exit(1);
 const names=r.assets.map(a=>a.name), count=p=>names.filter(p).length, enc=s=>Buffer.from(s).toString("base64");
 const macEvidence=names.some(n=>n==="macos-release.json"||n==="macos-release.cms"||n==="SHA256SUMS"||/^Index-macOS-.*-universal\.dmg$/.test(n)||/^IndexConnector-.*-universal\.dmg$/.test(n));
+if(macEvidence&&!/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?![\s\S])/.test(r.tag_name))process.exit(1);
 if(macEvidence&&!(typeof r.target_commitish==="string"&&/^[0-9a-f]{40}$/.test(r.target_commitish)))process.exit(1);
 console.log([enc(r.tag_name),enc(typeof r.target_commitish==="string"?r.target_commitish:""),r.draft,r.prerelease,count(n=>n==="macos-release.json"),count(n=>n==="macos-release.cms"),count(n=>/^Index-macOS-.*-universal\.dmg$/.test(n)),count(n=>/^IndexConnector-.*-universal\.dmg$/.test(n)),count(n=>n==="SHA256SUMS")].join("|"));
 ')"||release_error "historical release record is malformed"
