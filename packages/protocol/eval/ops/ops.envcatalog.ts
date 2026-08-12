@@ -19,7 +19,7 @@
  *
  * Why derived rather than maintained: the site once offered nine flags for
  * discovery because a scan was run against a hand-written sixteen-key list.
- * The graph READS twenty-eight; two of those are credentials, so twenty-six are
+ * The graph READS thirty; two of those are credentials, so twenty-eight are
  * OFFERED. (The scorecard harnesses read ten each and offer eight, by the same
  * two exclusions.) The list was the limit, not the code — so the list is gone
  * and the code answers.
@@ -72,6 +72,8 @@ export const HARNESS_ENV_KEYS: Readonly<Record<OpsHarness, readonly string[]>> =
     "CHAT_REASONING_EFFORT",
     "DISCOVERY_ALLOWED_TYPES",
     "DISCOVERY_CONTEXT_TO_INTENT",
+    "DISCOVERY_EVALUATOR_MIN_SCORE",
+    "DISCOVERY_MIN_SIMILARITY",
     "DISCOVERY_PROFILE_SOURCE",
     "DISCOVERY_REJECTION_COOLDOWN_DAYS",
     "DISCOVERY_SOURCE_PREMISE_LIMIT",

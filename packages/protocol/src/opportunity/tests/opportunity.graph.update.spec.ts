@@ -2,12 +2,12 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { OpportunityGraphFactory } from '../opportunity.graph.js';
+import { OpportunityGraphFactory } from '../application/opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
-import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
+import type { OpportunityEvaluatorLike } from '../application/opportunity.graph.js';
 
 const mockEvaluator: OpportunityEvaluatorLike = {
   invokeEntityBundle: async () => [],

@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import { createQuestionerTools } from "../questioner.tools.js";
+import { createQuestionerTools } from "../../questions/application/question.tools.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { PendingQuestionSummary } from "../../shared/schemas/pending-question.schema.js";
 

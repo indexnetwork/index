@@ -52,7 +52,6 @@ export const NetworkGraphState = Annotation.Root({
     prompt?: string | null;
     imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
-    allowGuestVibeCheck?: boolean;
   } | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,

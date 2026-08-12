@@ -75,5 +75,15 @@ export type {
 // ── Application: foreground adapter tools ─────────────────────────────────────
 export { createQuestionerTools, createAskUserQuestionTools } from "../application/index.js";
 
-// ── Ports: tool host types ────────────────────────────────────────────────────
-export type { QuestionerToolDeps, AskUserQuestionToolDeps } from "../ports/index.js";
+// ── Ports ─────────────────────────────────────────────────────────────────────
+export type {
+  AskUserQuestionToolDeps,
+  ChatQuestionAnswerOutcome,
+  ChatQuestionsHost,
+  PersistableQuestion,
+  PersistedQuestion,
+  QuestionFilters,
+  QuestionGeneratorReader,
+  QuestionerDatabase,
+  QuestionerToolDeps,
+} from "../ports/index.js";

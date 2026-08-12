@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD, MIN_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import type { NegotiationTurn } from "../negotiation.state.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD, MIN_DEADLOCK_THRESHOLD } from "../domain/negotiation.deadlock.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
+import type { NegotiationTurn } from "../domain/negotiation.state.js";
 
 /**
  * IND-428 — deadlock detection + persuasion→bargaining mode shift (unit).

@@ -34,6 +34,7 @@ const SUITES = [
   "discovery-env-matrix",
   "discovery-retrieval",
   "hyde",
+  "intake",
   "matching",
   "opportunity",
   "ops",

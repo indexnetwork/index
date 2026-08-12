@@ -561,7 +561,7 @@ describe('Agent runtime transactional persistence adapter contract', () => {
 
 describe('runtime binding persistence and polling authorization contracts', () => {
   it('migration deterministically repairs duplicate selections before the unique index', async () => {
-    const migration = await Bun.file(new URL('../drizzle/0119_add_hermes_runtime_binding.sql', import.meta.url)).text();
+    const migration = await Bun.file(new URL('../drizzle/0122_add_hermes_runtime_binding.sql', import.meta.url)).text();
     const repair = migration.indexOf('row_number() OVER');
     const selectedIndex = migration.indexOf('uniq_agents_selected_negotiation_executor');
     expect(repair).toBeGreaterThanOrEqual(0);

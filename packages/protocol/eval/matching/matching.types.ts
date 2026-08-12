@@ -1,4 +1,4 @@
-import type { EvaluatorInput } from "../../src/opportunity/opportunity.evaluator.js";
+import type { EvaluatorInput } from "../../src/opportunity/application/opportunity.evaluator.js";
 import type { CaseResultLike, ScoredRunProvenance, RuleResult as SharedRuleResult, ScorecardLike } from "../shared/index.js";
 
 /** Each rule maps to a distinct evaluator behaviour the corpus exercises. */

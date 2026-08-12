@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 // The catalogue is imported, never re-typed: a hand-kept copy is exactly the
 // drift this module exists to prevent, and the reason the harness once offered
-// nine flags when the graph read twenty-six. Imported by path because
+// nine flags when the graph read twenty-eight. Imported by path because
 // @indexnetwork/protocol only exports its built `dist` entry point, and both
 // ops.allowlist.ts and ops.envcatalog.ts are deliberately dependency-free so any
 // consumer can read them. Production code here cannot do this — services/api
@@ -186,7 +186,33 @@ describe('the engine and the site refuse the same values', () => {
     expect(envValueIssueForKey('DISCOVERY_SOURCE_PREMISE_LIMIT', value)).toBeNull();
   });
 
-  it.each(['7', '0.5', '1e3', '.5'])('still accepts %s for a number flag, in both validators', (value) => {
+  it.each([
+    ['DISCOVERY_MIN_SIMILARITY', '0'],
+    ['DISCOVERY_MIN_SIMILARITY', '+.30'],
+    ['DISCOVERY_MIN_SIMILARITY', '1.0'],
+    ['DISCOVERY_EVALUATOR_MIN_SCORE', '0'],
+    ['DISCOVERY_EVALUATOR_MIN_SCORE', '+50.5'],
+    ['DISCOVERY_EVALUATOR_MIN_SCORE', '100.'],
+  ])('accepts the strict decimal boundary value %s=%s in both validators', (key, value) => {
+    expect(() => assertAbEnvConfig({ [key]: value })).not.toThrow();
+    expect(envValueIssueForKey(key, value)).toBeNull();
+  });
+
+  it.each([
+    ['DISCOVERY_MIN_SIMILARITY', '-0'],
+    ['DISCOVERY_MIN_SIMILARITY', '1e0'],
+    ['DISCOVERY_MIN_SIMILARITY', '1.01'],
+    ['DISCOVERY_MIN_SIMILARITY', '1.2.3'],
+    ['DISCOVERY_EVALUATOR_MIN_SCORE', '-1'],
+    ['DISCOVERY_EVALUATOR_MIN_SCORE', '5e1'],
+    ['DISCOVERY_EVALUATOR_MIN_SCORE', '100.01'],
+    ['DISCOVERY_EVALUATOR_MIN_SCORE', '0x32'],
+  ])('refuses malformed or out-of-range threshold %s=%s in both validators', (key, value) => {
+    expect(() => assertAbEnvConfig({ [key]: value })).toThrow(new RegExp(key));
+    expect(envValueIssueForKey(key, value)).not.toBeNull();
+  });
+
+  it.each(['7', '0.5', '1e3', '.5'])('still accepts %s for a positive-number flag, in both validators', (value) => {
     expect(() => assertAbEnvConfig({ DISCOVERY_REJECTION_COOLDOWN_DAYS: value })).not.toThrow();
     expect(envValueIssueForKey('DISCOVERY_REJECTION_COOLDOWN_DAYS', value)).toBeNull();
   });

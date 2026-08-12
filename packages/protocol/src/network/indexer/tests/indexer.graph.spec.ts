@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import type { IntentIndexerOutput } from "../../../intent/intent.indexer.js";
+import type { IntentIndexerOutput } from "../../../signals/application/intent.indexer.js";
 
-import { IntentNetworkGraphFactory } from "../indexer.graph.js";
+import { IntentNetworkGraphFactory } from "../../../communities/application/index.js";
 
 function createDb(overrides: Record<string, unknown> = {}) {
   const assignments: Array<{ intentId: string; networkId: string; score?: number; metadata?: unknown }> = [];

@@ -8,17 +8,10 @@
  * that must go through the participant-agents public surface.
  *
  * IND-548: canonical home for agent registration, permission-aware behaviour,
- * and dispatch contracts previously spread across agent/,
- * shared/interfaces/agent.interface.ts, and
- * shared/interfaces/agent-dispatcher.interface.ts.
+ * and dispatch contracts.
  *
- * Legacy paths:
- * - agent/* — thin compatibility shims pointing to participant-agents/application
- * - shared/interfaces/agent.interface.ts — re-exports from participant-agents/domain
- *   and participant-agents/ports
+ * Compatibility path:
  * - shared/interfaces/agent-dispatcher.interface.ts — re-exports from
  *   participant-agents/ports
- * - capabilities/participant-agents.tools.port.ts — re-exports AgentToolDeps
- *   from participant-agents/ports
  */
 export * from "./public/index.js";

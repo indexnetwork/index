@@ -12,11 +12,13 @@ own opportunities ("radar"). Opportunities not tied to an intent land in a
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import importlib.util
 import json
 import os
 import re
+import threading
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -30,13 +32,19 @@ _MODE_PATH = _PLUGIN_ROOT / "_mode.py"
 _TOOLS_PATH = _PLUGIN_ROOT / "tools.py"
 
 try:
-    from fastapi import APIRouter, Body
+    from fastapi import APIRouter, Body, WebSocket, WebSocketDisconnect
     from fastapi.responses import StreamingResponse
 except Exception:  # Allows local smoke tests without dashboard dependencies.
     StreamingResponse = None  # type: ignore
 
     def Body(default=None, **_kwargs):  # type: ignore
         return default
+
+    class WebSocket:  # type: ignore
+        pass
+
+    class WebSocketDisconnect(Exception):  # type: ignore
+        pass
 
     class _FallbackRoute:
         def __init__(self, path: str, method: str):
@@ -51,7 +59,6 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
             def decorate(fn):
                 self.routes.append(_FallbackRoute(path, method))
                 return fn
-
             return decorate
 
         def get(self, path, **_kwargs):
@@ -60,11 +67,17 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
         def post(self, path, **_kwargs):
             return self._route("POST", path)
 
+        def put(self, path, **_kwargs):
+            return self._route("PUT", path)
+
         def patch(self, path, **_kwargs):
             return self._route("PATCH", path)
 
         def delete(self, path, **_kwargs):
             return self._route("DELETE", path)
+
+        def websocket(self, path, **_kwargs):
+            return self._route("WEBSOCKET", path)
 
         def include_router(self, included):
             self.routes.extend(included.routes)
@@ -97,6 +110,9 @@ _STATUS_BUCKET = {
 # Raw statuses surfaced in the flat Negotiations view (decoupled from the
 # split pending/negotiating display buckets above).
 _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
+
+# Lifecycle statuses the web intent radar requests (rejected hidden client-side).
+_RADAR_STATUSES = "latent,pending,negotiating,stalled,accepted,expired"
 
 # Static images the DESKTOP plugin fetches as base64 (its REST bridge cannot
 # address the dashboard's static file mount by URL). Allow-list only.
@@ -264,9 +280,15 @@ def _call_questions_by_intent(
 
 
 def _web_url() -> str:
-    """Resolve the Index web app origin for outbound chat/profile links."""
-    raw = os.environ.get("INDEX_WEB_URL", "").strip()
-    return (raw or "https://index.network").rstrip("/")
+    """Resolve the Index web app origin for outbound chat/profile/invite links.
+
+    Prefer explicit `INDEX_WEB_URL` (env or `~/.hermes/.env`), then the same
+    origin used for `/cli-auth` / deep links (`tools._app_base_url`).
+    """
+    raw = tools._hermes_env_get("INDEX_WEB_URL")
+    if raw:
+        return raw.rstrip("/")
+    return tools._app_base_url()
 
 
 def _update_opportunity(
@@ -611,6 +633,17 @@ def _avatar_url(value: Any) -> str:
     return f"{origin}/{path}"
 
 
+def _normalize_member(member: dict[str, Any]) -> dict[str, Any]:
+    """Absolutize member avatar keys so the Access-tab list can render them."""
+    out = dict(member)
+    avatar = _avatar_url(member.get("avatar"))
+    if avatar:
+        out["avatar"] = avatar
+    else:
+        out.pop("avatar", None)
+    return out
+
+
 def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> str:
     """Resolve the displayed counterpart, preferring non-introducer actors."""
     if not current_user_id:
@@ -754,11 +787,17 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         detail = _truncate(network.get("prompt") or network.get("description"))
         owner = network.get("user") if isinstance(network.get("user"), dict) else {}
         is_personal = network.get("isPersonal") is True
-        is_owner = bool(current_user_id) and _text(owner.get("id")) == current_user_id
+        # Prefer viewer membership role from GET /networks; owner-id compare
+        # fails when a network has multiple owners.
+        api_role = _text(network.get("role"))
+        if api_role in ("owner", "member"):
+            is_owner = api_role == "owner"
+        else:
+            is_owner = bool(current_user_id) and _text(owner.get("id")) == current_user_id
         item: dict[str, Any] = {"title": title}
         if network_id:
             item["id"] = network_id
-        image_url = _text(network.get("imageUrl"))
+        image_url = _avatar_url(network.get("imageUrl"))
         if image_url:
             item["imageUrl"] = image_url
         member_count = _member_count(network)
@@ -766,6 +805,19 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
             item["memberCount"] = member_count
         item["isPersonal"] = is_personal
         item["role"] = "owner" if is_owner else "member"
+        if network.get("hasMasterKey") is True:
+            item["hasMasterKey"] = True
+        # Access-tab share links need joinPolicy + invitation code (web AccessTab).
+        perms = network.get("permissions") if isinstance(network.get("permissions"), dict) else {}
+        join_policy = _text(perms.get("joinPolicy") or network.get("joinPolicy"))
+        if join_policy in ("anyone", "invite_only"):
+            item["joinPolicy"] = join_policy
+        invite = perms.get("invitationLink") if isinstance(perms, dict) else None
+        if not isinstance(invite, dict):
+            invite = network.get("invitationLink") if isinstance(network.get("invitationLink"), dict) else None
+        invite_code = _text(invite.get("code")) if isinstance(invite, dict) else ""
+        if invite_code:
+            item["invitationLink"] = {"code": invite_code}
         net_type = _text(network.get("type"))
         if net_type:
             item["type"] = net_type
@@ -810,6 +862,104 @@ def _normalize_public_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _empty_status_counts() -> dict[str, int]:
     return {"pending": 0, "negotiating": 0, "accepted": 0, "expired": 0}
+
+
+def _normalize_intent_list_row(intent: dict[str, Any]) -> dict[str, Any]:
+    """Shape one REST intents/list row for the dashboard home view (web DiscoverHome parity)."""
+    intent_id = _text(intent.get("id"))
+    title = (
+        _text(intent.get("description"))
+        or _text(intent.get("payload"))
+        or _text(intent.get("summary"))
+        or "Untitled intent"
+    )
+    lifecycle = _text(intent.get("status"), "ACTIVE").upper()
+    return {
+        "id": intent_id,
+        "title": title,
+        "lifecycleStatus": lifecycle,
+        "status": "paused" if lifecycle == "PAUSED" else "live",
+        "pendingCount": _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount")),
+    }
+
+
+def _radar_item(card: dict[str, Any], intent_id: str | None = None) -> dict[str, Any]:
+    """Map a presenter radar card to the Hermes opportunity card shape."""
+    item: dict[str, Any] = {
+        "opportunityId": _text(card.get("opportunityId")),
+        "name": _text(card.get("name"), "New match"),
+        "subtitle": "Suggested connection",
+        "mainText": _truncate(card.get("mainText") or card.get("headline")),
+    }
+    avatar = _avatar_url(card.get("avatar"))
+    if avatar:
+        item["avatar"] = avatar
+    status = _text(card.get("status"))
+    if status:
+        item["status"] = status
+    user_id = _text(card.get("userId"))
+    if user_id:
+        item["counterpartUserId"] = user_id
+    if intent_id:
+        item["intentScopeId"] = intent_id
+    if card.get("presentationPending") is True:
+        item["presentationPending"] = True
+    return item
+
+
+def _fetch_scoped_questions(intent_id: str, status: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Fetch one intent's questions via the web/Mac scoped query."""
+    payload = tools._api_request(
+        "GET", f"/questions?status={status}&scopeType=intent&scopeId={quote(intent_id, safe='')}"
+    )
+    error = _section_error(payload)
+    if error:
+        return [], error
+    records: list[dict[str, Any]] = []
+    for question in _list(payload.get("questions")):
+        if not isinstance(question, dict):
+            continue
+        flat = _flatten_rest_question(question)
+        item = _question_item(flat) if flat is not None else None
+        if item is None:
+            continue
+        if flat.get("answerText") is not None:
+            item["answerText"] = _text(flat.get("answerText"))
+        if flat.get("answeredAt"):
+            item["answeredAt"] = _text(flat.get("answeredAt"))
+        records.append(item)
+    if status == "answered":
+        records.sort(key=lambda record: record.get("answeredAt", ""))
+    return records, None
+
+
+def _bootstrap_payload() -> dict[str, Any]:
+    """Fast home boot: auth metadata + intents list only (web DiscoverHome parity)."""
+    me = _fetch_me()
+    current_user_id = _text(me.get("id"))
+    onboarding = _onboarding_gate(me)
+    intents_payload = _call_read_intents()
+    intents_data = _data(intents_payload)
+    raw_intents = _list(intents_data.get("intents") if isinstance(intents_data, dict) else None)
+    intents = [
+        _normalize_intent_list_row(intent)
+        for intent in raw_intents
+        if isinstance(intent, dict) and _text(intent.get("id"))
+    ]
+    intents.sort(key=lambda item: item["lifecycleStatus"] == "PAUSED")
+    errors: dict[str, str] = {}
+    intents_error = _section_error(intents_payload)
+    if intents_error:
+        errors["intents"] = intents_error
+    return {
+        "success": True,
+        "webUrl": _web_url(),
+        "apiUrl": tools._api_url(),
+        "currentUserId": current_user_id or None,
+        "onboarding": onboarding,
+        "intents": intents,
+        "errors": errors,
+    }
 
 
 def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | None]:
@@ -1024,25 +1174,11 @@ def auth_status() -> dict[str, Any]:
 def _login_app_base_url() -> str:
     """Web origin that serves `/cli-auth`, paired with the active API environment.
 
-    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
-    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
-    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
-    pointed at dev/staging signs in against the matching web app instead of prod.
-    Without this pairing a dev-configured plugin would mint a prod key that then
-    401s against the dev API.
+    Delegates to `tools._app_base_url` so login, invites, and opportunity
+    `appUrl`s all share one pairing rule (`INDEX_APP_BASE_URL`, else derive
+    from `INDEX_API_URL` / `~/.hermes/.env`, else production).
     """
-    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
-        return tools._app_base_url()
-    try:
-        parts = urlsplit(tools._api_url())
-    except ValueError:
-        return tools.INDEX_APP_BASE_URL
-    if parts.scheme in ("http", "https") and parts.netloc:
-        host = parts.netloc
-        if host.startswith("protocol."):
-            host = host[len("protocol."):]
-        return f"{parts.scheme}://{host}"
-    return tools.INDEX_APP_BASE_URL
+    return tools._app_base_url()
 
 
 @full_router.post("/auth/login/start")
@@ -1085,55 +1221,85 @@ def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
     return {"success": True, "needsLogin": True}
 
 
+@full_router.get("/bootstrap")
+def bootstrap() -> dict[str, Any]:
+    """Fast home boot: auth metadata + intents list (web DiscoverHome parity)."""
+    return _bootstrap_payload()
+
+
 @full_router.get("/summary")
 def summary() -> dict[str, Any]:
-    """Return a intent-centric, user-scoped dashboard summary."""
+    """Deprecated alias for `/bootstrap` (kept for older clients)."""
+    return _bootstrap_payload()
+
+
+@full_router.get("/intents/{intent_id}/questions")
+def intent_questions(intent_id: str, status: str = "") -> dict[str, Any]:
+    """Pending and/or answered questions for one intent (web intent page parity).
+
+    Without ``status``, returns both lists in one response (parallel upstream fetches).
+    With ``status=pending|answered``, returns a single ``questions`` list (legacy).
+    """
+    intent_id = _text(intent_id)
+    if not intent_id:
+        return {"success": False, "error": "An intent id is required."}
+    normalized = _text(status).lower()
+    if not normalized:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            pending_future = pool.submit(_fetch_scoped_questions, intent_id, "pending")
+            answered_future = pool.submit(_fetch_scoped_questions, intent_id, "answered")
+            pending_records, pending_error = pending_future.result()
+            answered_records, answered_error = answered_future.result()
+        if pending_error:
+            return {"success": False, "error": pending_error}
+        if answered_error:
+            return {"success": False, "error": answered_error}
+        return {"success": True, "pending": pending_records, "answered": answered_records}
+    if normalized not in ("pending", "answered"):
+        return {"success": False, "error": "status must be pending or answered."}
+    records, error = _fetch_scoped_questions(intent_id, normalized)
+    if error:
+        return {"success": False, "error": error}
+    return {"success": True, "questions": records}
+
+
+@full_router.get("/intents/{intent_id}/radar")
+def intent_radar(intent_id: str, presentation: str = "") -> dict[str, Any]:
+    """Intent-scoped radar cards via GET /opportunities/radar (web intent page parity)."""
+    intent_id = _text(intent_id)
+    if not intent_id:
+        return {"success": False, "error": "An intent id is required."}
+    query = (
+        f"/opportunities/radar?scopeType=intent&scopeId={quote(intent_id, safe='')}"
+        f"&statuses={_RADAR_STATUSES}"
+    )
+    if _text(presentation) == "skeleton":
+        query += "&presentation=skeleton"
+    payload = tools._api_request("GET", query)
+    if payload.get("success") is False:
+        return payload
+    items = [
+        _radar_item(card, intent_id)
+        for card in _list(payload.get("items"))
+        if isinstance(card, dict) and _text(card.get("opportunityId"))
+    ]
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    return {"success": True, "items": items, "meta": meta}
+
+
+@full_router.get("/networks/home")
+def networks_home() -> dict[str, Any]:
+    """Joined networks + public discover list (lazy Networks column)."""
     me = _fetch_me()
     current_user_id = _text(me.get("id"))
-    onboarding = _onboarding_gate(me)
-    intents_payload = _call_read_intents()
-    intents_data = _data(intents_payload)
-    intent_ids = [
-        _text(intent.get("id"))
-        for intent in _list(intents_data.get("intents") if isinstance(intents_data, dict) else None)
-        if isinstance(intent, dict) and _text(intent.get("id"))
-    ]
-    pending_by_intent, questions_error = _call_questions_by_intent("pending", intent_ids)
-    answered_by_intent, _answered_error = _call_questions_by_intent("answered", intent_ids)
-    networks_payload = tools._api_request("GET", "/networks")
-    discover_payload = tools._api_request("GET", "/networks/discovery/public")
-
-    opps_live, opps_error = _fetch_opportunities()
-    # The default list hides resolved statuses, so fetch expired explicitly to
-    # keep the radar's Missed chip count and its listed items consistent.
-    opps_expired, _ = _fetch_opportunities("?status=expired")
-
-    network_titles = _network_title_map(networks_payload)
-    dashboard = _build_dashboard(
-        intents_payload, opps_live, opps_expired, pending_by_intent, answered_by_intent, network_titles, current_user_id or None
-    )
-
-    negotiations = dashboard["negotiations"]
-    if opps_error:
-        negotiations["error"] = opps_error
-
-    errors = {
-        "intents": _section_error(intents_payload),
-        "questions": questions_error,
-        "opportunities": opps_error,
-        "networks": _section_error(networks_payload),
-    }
-
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        networks_future = pool.submit(tools._api_request, "GET", "/networks")
+        discover_future = pool.submit(tools._api_request, "GET", "/networks/discovery/public")
+        networks_payload = networks_future.result()
+        discover_payload = discover_future.result()
     return {
         "success": True,
-        "webUrl": _web_url(),
-        "onboarding": onboarding,
-        "intents": dashboard["intents"],
-        "general": dashboard["general"],
-        "negotiations": negotiations,
         "networks": _normalize_networks(networks_payload, discover_payload, current_user_id or None),
-        "totals": dashboard["totals"],
-        "errors": {key: value for key, value in errors.items() if value},
     }
 
 
@@ -1168,6 +1334,276 @@ def join_network(network_id: str) -> dict[str, Any]:
     if payload.get("success") is False:
         return payload
     return {"success": True}
+
+
+@full_router.post("/networks/{network_id}/leave")
+def leave_network(network_id: str) -> dict[str, Any]:
+    """Leave a network — REST `POST /networks/:id/leave`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("POST", f"/networks/{quote(network_id, safe='')}/leave")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+@full_router.get("/networks/{network_id}/overview")
+def network_overview(network_id: str) -> dict[str, Any]:
+    """Caller overview for a network — REST `GET /networks/:id/overview`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("GET", f"/networks/{quote(network_id, safe='')}/overview")
+    if payload.get("success") is False:
+        return payload
+    intents = payload.get("intents") if isinstance(payload, dict) else None
+    return {
+        "success": True,
+        "intents": [row for row in _list(intents) if isinstance(row, dict)],
+    }
+
+
+@full_router.put("/networks/{network_id}")
+def update_network(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Update network settings — REST `PUT /networks/:id`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    forward: dict[str, Any] = {}
+    if "title" in payload_in:
+        title = _text(payload_in.get("title"))
+        if not title:
+            return {"success": False, "error": "Title cannot be empty."}
+        forward["title"] = title[:200]
+    if "prompt" in payload_in:
+        prompt = payload_in.get("prompt")
+        forward["prompt"] = None if prompt is None else _text(prompt)[:2000] or None
+    if "imageUrl" in payload_in:
+        image_url = payload_in.get("imageUrl")
+        forward["imageUrl"] = None if image_url is None else _text(image_url) or None
+    if not forward:
+        return {"success": False, "error": "No updatable fields provided."}
+    payload = tools._api_request("PUT", f"/networks/{quote(network_id, safe='')}", forward)
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload.get("network"), dict) else payload
+    if not isinstance(network, dict):
+        return {"success": True, "id": network_id}
+    out: dict[str, Any] = {
+        "success": True,
+        "id": _text(network.get("id") or network_id),
+        "title": _text(network.get("title"), "Untitled network"),
+        "detail": _truncate(network.get("prompt") or network.get("description")) or "",
+    }
+    image_url = _text(network.get("imageUrl"))
+    if image_url:
+        out["imageUrl"] = _avatar_url(image_url) or image_url
+    elif "imageUrl" in forward and forward.get("imageUrl") is None:
+        out["imageUrl"] = None
+    return out
+
+
+@full_router.delete("/networks/{network_id}")
+def delete_network(network_id: str) -> dict[str, Any]:
+    """Delete a network — REST `DELETE /networks/:id`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("DELETE", f"/networks/{quote(network_id, safe='')}")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+@full_router.get("/networks/{network_id}/members")
+def list_network_members(network_id: str) -> dict[str, Any]:
+    """List members — REST `GET /networks/:id/members`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("GET", f"/networks/{quote(network_id, safe='')}/members")
+    if payload.get("success") is False:
+        return payload
+    members = payload.get("members") if isinstance(payload, dict) else None
+    return {
+        "success": True,
+        "members": [_normalize_member(row) for row in _list(members) if isinstance(row, dict)],
+    }
+
+
+@full_router.post("/networks/{network_id}/members")
+def add_network_member(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Add a member — REST `POST /networks/:id/members`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    user_id = _text(payload_in.get("userId"))
+    if not user_id:
+        return {"success": False, "error": "A userId is required."}
+    permissions = payload_in.get("permissions")
+    if not isinstance(permissions, list) or not permissions:
+        permissions = ["member"]
+    payload = tools._api_request(
+        "POST",
+        f"/networks/{quote(network_id, safe='')}/members",
+        {"userId": user_id, "permissions": permissions},
+    )
+    if payload.get("success") is False:
+        return payload
+    member = payload.get("member") if isinstance(payload, dict) else None
+    return {
+        "success": True,
+        "member": _normalize_member(member) if isinstance(member, dict) else None,
+    }
+
+
+@full_router.patch("/networks/{network_id}/members/{member_id}")
+def update_network_member(
+    network_id: str, member_id: str, body: dict[str, Any] | None = Body(default=None)
+) -> dict[str, Any]:
+    """Update member role — REST `PATCH /networks/:id/members/:memberId`."""
+    network_id = _text(network_id)
+    member_id = _text(member_id)
+    if not network_id or not member_id:
+        return {"success": False, "error": "Network id and member id are required."}
+    payload_in = body if isinstance(body, dict) else {}
+    permissions = payload_in.get("permissions")
+    if not isinstance(permissions, list) or not permissions:
+        return {"success": False, "error": "permissions must be a non-empty list."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/networks/{quote(network_id, safe='')}/members/{quote(member_id, safe='')}",
+        {"permissions": permissions},
+    )
+    if payload.get("success") is False:
+        return payload
+    member = payload.get("member") if isinstance(payload, dict) else None
+    return {
+        "success": True,
+        "member": _normalize_member(member) if isinstance(member, dict) else None,
+    }
+
+
+@full_router.delete("/networks/{network_id}/members/{member_id}")
+def remove_network_member(network_id: str, member_id: str) -> dict[str, Any]:
+    """Remove a member — REST `DELETE /networks/:id/members/:memberId`."""
+    network_id = _text(network_id)
+    member_id = _text(member_id)
+    if not network_id or not member_id:
+        return {"success": False, "error": "Network id and member id are required."}
+    payload = tools._api_request(
+        "DELETE",
+        f"/networks/{quote(network_id, safe='')}/members/{quote(member_id, safe='')}",
+    )
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+@full_router.post("/networks/{network_id}/members/invite")
+def invite_network_member(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Invite by email — REST `POST /networks/:id/members/invite`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    email = _text(payload_in.get("email"))
+    if not email or "@" not in email:
+        return {"success": False, "error": "A valid email is required."}
+    forward: dict[str, Any] = {"email": email}
+    name = _text(payload_in.get("name"))
+    if name:
+        forward["name"] = name[:200]
+    payload = tools._api_request(
+        "POST",
+        f"/networks/{quote(network_id, safe='')}/members/invite",
+        forward,
+    )
+    if payload.get("success") is False:
+        return payload
+    out = dict(payload) if isinstance(payload, dict) else {}
+    out.setdefault("success", True)
+    return out
+
+
+@full_router.get("/networks/search-users")
+def search_network_users(q: str = "", networkId: str = "") -> dict[str, Any]:
+    """Search users to add — REST `GET /networks/search-users`."""
+    query = _text(q)
+    if not query:
+        return {"success": True, "users": []}
+    path = f"/networks/search-users?q={quote(query)}"
+    network_id = _text(networkId)
+    if network_id:
+        path += f"&networkId={quote(network_id, safe='')}"
+    payload = tools._api_request("GET", path)
+    if payload.get("success") is False:
+        return payload
+    users = payload.get("users") if isinstance(payload, dict) else None
+    return {
+        "success": True,
+        "users": [_normalize_member(row) for row in _list(users) if isinstance(row, dict)],
+    }
+
+
+@full_router.patch("/networks/{network_id}/permissions")
+def update_network_permissions(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Owner visibility toggle — REST `PATCH /networks/:id/permissions` (web Access tab)."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    join_policy = _text(payload_in.get("joinPolicy"))
+    if join_policy not in ("anyone", "invite_only"):
+        return {"success": False, "error": "joinPolicy must be 'anyone' or 'invite_only'."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/networks/{quote(network_id, safe='')}/permissions",
+        {"joinPolicy": join_policy},
+    )
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload.get("network"), dict) else payload
+    if not isinstance(network, dict):
+        return {"success": True}
+    perms = network.get("permissions") if isinstance(network.get("permissions"), dict) else {}
+    out: dict[str, Any] = {"success": True, "id": _text(network.get("id") or network_id)}
+    jp = _text(perms.get("joinPolicy") or join_policy)
+    if jp in ("anyone", "invite_only"):
+        out["joinPolicy"] = jp
+    invite = perms.get("invitationLink") if isinstance(perms, dict) else None
+    code = _text(invite.get("code")) if isinstance(invite, dict) else ""
+    if code:
+        out["invitationLink"] = {"code": code}
+    return out
+
+
+@full_router.patch("/networks/{network_id}/regenerate-invitation")
+def regenerate_network_invitation(network_id: str) -> dict[str, Any]:
+    """Rotate the owner share link — REST `PATCH /networks/:id/regenerate-invitation`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/networks/{quote(network_id, safe='')}/regenerate-invitation",
+        {},
+    )
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload.get("network"), dict) else payload
+    if not isinstance(network, dict):
+        return {"success": True}
+    perms = network.get("permissions") if isinstance(network.get("permissions"), dict) else {}
+    out: dict[str, Any] = {"success": True, "id": _text(network.get("id") or network_id)}
+    invite = perms.get("invitationLink") if isinstance(perms, dict) else None
+    code = _text(invite.get("code")) if isinstance(invite, dict) else ""
+    if code:
+        out["invitationLink"] = {"code": code}
+    return out
 
 
 def _sanitize_network_request_input(body: Any) -> tuple[dict[str, Any] | None, str | None]:
@@ -1619,6 +2055,135 @@ def archive_intent(intent_id: str) -> dict[str, Any]:
 _SSE_READ_TIMEOUT = 60.0
 
 
+def parse_sse_data_line(line: bytes) -> dict[str, Any] | None:
+    """Parse one complete dictionary-valued SSE ``data:`` line.
+
+    Comments, other SSE fields, partial EOF data, malformed UTF-8/JSON, and
+    non-object JSON values are deliberately ignored.
+    """
+    if not isinstance(line, bytes) or not line.endswith(b"\n"):
+        return None
+    content = line[:-1]
+    if content.endswith(b"\r"):
+        content = content[:-1]
+    if not content.startswith(b"data:"):
+        return None
+    payload = content[len(b"data:"):]
+    if payload.startswith(b" "):
+        payload = payload[1:]
+    try:
+        parsed = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _sse_request(path: str) -> urllib.request.Request:
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("INDEX_API_KEY is required.")
+    headers = dict(tools._headers(api_key))
+    headers["Accept"] = "text/event-stream"
+    base_url = tools._api_url().rstrip("/")
+    return urllib.request.Request(f"{base_url}{path}", headers=headers, method="GET")
+
+
+def _close_upstream_response(response: Any) -> None:
+    try:
+        response.close()
+    except Exception:  # noqa: BLE001 - cleanup is best-effort.
+        pass
+
+
+class _UpstreamOpenState:
+    """Transfer response cleanup ownership safely across to_thread cancellation."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._abandoned = False
+        self._response: Any | None = None
+
+    def open(self, request: urllib.request.Request) -> Any | None:
+        try:
+            response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
+        except urllib.error.HTTPError as exc:
+            _close_upstream_response(exc)
+            raise
+        with self._lock:
+            if not self._abandoned:
+                self._response = response
+                return response
+        # The awaiting coroutine was cancelled before it could receive the
+        # result. This worker owns the otherwise-unreachable response cleanup.
+        _close_upstream_response(response)
+        return None
+
+    def abandon(self) -> Any | None:
+        with self._lock:
+            self._abandoned = True
+            return self._response
+
+
+async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
+    """Return when the Hermes client disconnects, independent of relay writes."""
+    try:
+        while True:
+            message = await websocket.receive()
+            if not isinstance(message, dict) or message.get("type") == "websocket.disconnect":
+                return
+    except WebSocketDisconnect:
+        return
+
+
+async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
+    """Relay dictionary-valued events from an authenticated Index SSE stream."""
+    await websocket.accept()
+    open_state = _UpstreamOpenState()
+    relay_task: asyncio.Task[None] | None = None
+    disconnect_task: asyncio.Task[None] | None = None
+
+    async def relay_upstream() -> None:
+        request = _sse_request(path)
+        response = await asyncio.to_thread(open_state.open, request)
+        if response is None:
+            return
+        while True:
+            line = await asyncio.to_thread(response.readline)
+            if not line:
+                return
+            event = parse_sse_data_line(line)
+            if event is not None:
+                await websocket.send_json(event)
+
+    try:
+        relay_task = asyncio.create_task(relay_upstream())
+        disconnect_task = asyncio.create_task(_watch_websocket_disconnect(websocket))
+        done, _pending = await asyncio.wait(
+            {relay_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        if disconnect_task in done:
+            return
+        await relay_task
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:  # noqa: BLE001 - terminate a failed relay without escaping the route.
+        try:
+            await websocket.send_json({"type": "error", "error": str(exc)})
+        except Exception:  # noqa: BLE001 - the WebSocket may already be disconnected.
+            pass
+    finally:
+        for task in (relay_task, disconnect_task):
+            if task is not None and not task.done():
+                task.cancel()
+        await asyncio.gather(
+            *(task for task in (relay_task, disconnect_task) if task is not None),
+            return_exceptions=True,
+        )
+        opened_response = open_state.abandon()
+        if opened_response is not None:
+            await asyncio.to_thread(_close_upstream_response, opened_response)
+
+
 def _message_text(parts: Any) -> str:
     # Message text lives either in a data part (data.message /
     # data.assessment.reasoning) or in a plain text part. Parts use `kind`
@@ -1797,6 +2362,94 @@ def conversations_stream():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+
+@full_router.websocket("/conversations/socket")
+async def conversations_socket(websocket: WebSocket) -> None:
+    """Authenticated Hermes WebSocket relay for realtime conversation events."""
+    await _relay_sse_to_websocket(websocket, "/conversations/stream")
+
+
+def _notification_stream():
+    """Relay the upstream notifications SSE stream (Redis pub/sub) to Hermes clients."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
+        return
+    headers = dict(tools._headers(api_key))
+    headers["Accept"] = "text/event-stream"
+    base_url = tools._api_url().rstrip("/")
+    request = urllib.request.Request(f"{base_url}/notifications/stream", headers=headers, method="GET")
+    try:
+        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        message = json.dumps({"type": "error", "error": str(exc)})
+        yield f"data: {message}\n\n".encode("utf-8")
+        return
+    try:
+        for line in response:
+            if line:
+                yield line
+    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
+        return
+    finally:
+        try:
+            response.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+@full_router.get("/notifications/stream")
+def notifications_stream():
+    """SSE proxy for realtime notification events (questions, opportunities)."""
+    if StreamingResponse is None:
+        return {"success": False, "error": "Streaming is not available in this environment."}
+    return StreamingResponse(
+        _notification_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@full_router.websocket("/notifications/socket")
+async def notifications_socket(websocket: WebSocket) -> None:
+    """Authenticated Hermes WebSocket relay for realtime notification events."""
+    await _relay_sse_to_websocket(websocket, "/notifications/stream")
+
+
+def _notification_snapshot_request() -> Any:
+    """Perform the blocking snapshot GET while preserving its JSON boundary."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        return {"success": False, "error": "INDEX_API_KEY is required."}
+    base_url = tools._api_url().rstrip("/")
+    request = urllib.request.Request(
+        f"{base_url}/notifications/snapshot",
+        headers=tools._headers(api_key),
+        method="GET",
+    )
+    response: Any | None = None
+    try:
+        try:
+            response = urllib.request.urlopen(request, timeout=tools._timeout_seconds())
+        except urllib.error.HTTPError as exc:
+            # HTTPError is also the upstream response. Parse its body directly
+            # so the plugin does not replace the API's error payload.
+            response = exc
+        return tools._parse_api_response(response.read())
+    except urllib.error.URLError as exc:
+        return {"success": False, "error": f"Notification snapshot request failed: {exc.reason}"}
+    except Exception as exc:  # noqa: BLE001 - plugin routes return errors rather than raising.
+        return {"success": False, "error": f"Notification snapshot response could not be processed: {exc}"}
+    finally:
+        if response is not None:
+            _close_upstream_response(response)
+
+
+@full_router.get("/notifications/snapshot")
+async def notifications_snapshot() -> Any:
+    """Proxy persisted actionable notifications without rewriting upstream JSON."""
+    return await asyncio.to_thread(_notification_snapshot_request)
 
 
 try:

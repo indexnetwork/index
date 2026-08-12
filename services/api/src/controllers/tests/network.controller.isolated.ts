@@ -206,31 +206,6 @@ describe("NetworkController Integration", () => {
       expect(res.status).toBe(200);
       expect(data.network!.permissions.contextInjection?.discovery).toBe(false);
     });
-
-    test("should persist hidden when updating with { hidden: true }", async () => {
-      const put = async (hidden: boolean) => controller.update(
-        new Request("http://localhost/networks/" + createdIndexId, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hidden }),
-        }),
-        mockUser(),
-        { id: createdIndexId },
-      );
-      const getHidden = async () => {
-        const res = await controller.get(new Request("http://localhost/networks/" + createdIndexId), mockUser(), { id: createdIndexId });
-        const data = (await res.json()) as { network?: { hidden: boolean } };
-        return data.network!.hidden;
-      };
-
-      const res = await put(true);
-      expect(res.status).toBe(200);
-      expect(await getHidden()).toBe(true);
-
-      const restore = await put(false);
-      expect(restore.status).toBe(200);
-      expect(await getHidden()).toBe(false);
-    }, 30_000);
   });
 
   describe("GET /:id/members", () => {
@@ -404,7 +379,7 @@ describe("NetworkController Integration", () => {
           permissions: {
             joinPolicy: 'anyone',
             invitationLink: { code: 'preserve-me' },
-            allowGuestVibeCheck: true,
+            contextInjection: { discovery: true },
           },
         })
         .where(eq(schema.networks.id, enableNetworkId));
@@ -420,7 +395,7 @@ describe("NetworkController Integration", () => {
         .from(schema.networks)
         .where(eq(schema.networks.id, enableNetworkId));
       expect(net.permissions.joinPolicy).toBe('invite_only');
-      expect(net.permissions.allowGuestVibeCheck).toBe(true);
+      expect(net.permissions.contextInjection).toEqual({ discovery: true });
       expect(net.permissions.invitationLink).toEqual({ code: 'preserve-me' });
     });
 

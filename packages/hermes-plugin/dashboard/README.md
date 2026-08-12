@@ -25,9 +25,15 @@ A **Messages** panel is reached from a messages button in the dashboard header (
 
 The stream is consumed with **`SDK.authedFetch` + a streaming body reader** (parsing `text/event-stream` frames manually), not a raw `EventSource`. This is the key difference from the web app: a browser `EventSource` cannot set the Hermes dashboard session header (`X-Hermes-Session-Token`, injected in loopback mode) and the host does not accept a `?token=` query param on plugin routes, so `EventSource` would fail to authenticate on the default desktop. `authedFetch` applies the same session auth as `SDK.fetchJSON` (header in loopback, cookies in gated mode), while the plugin backend still relays the upstream Redis stream with its own `x-api-key`.
 
+### Native Desktop notification delivery
+
+The generated native plugin uses only authenticated Hermes Plugin SDK transports. `ctx.socket('/notifications/socket')` and `ctx.socket('/conversations/socket')` connect to plugin WebSockets that relay the upstream Index SSE streams; native code does not read session tokens or call raw `window.fetch`. In parallel, `ctx.rest('/notifications/snapshot')` runs immediately and every 60 seconds as persisted fallback for pending questions and actionable latent/pending opportunities. The first successful snapshot establishes a silent baseline; subsequent unseen entities share canonical dedupe keys with realtime events, so a question or opportunity is notified at most once across both paths. Snapshot reconciliation still runs if socket setup is unavailable.
+
+Index notification stream and snapshot endpoints reject network-scoped API keys before subscribing to Redis or reading snapshot state. User-wide notification events do not yet have authoritative per-network provenance, so scoped agents cannot safely consume them. Direct messages are deliberately realtime-only and never reconstructed from the snapshot; own-user and `agent:<userId>` messages are suppressed, and message alerts fail closed until the current identity is known.
+
 Opportunity cards in an intent radar are clickable: selecting one opens the visible counterpart's **read-only** profile (the web `/u/:id` equivalent) in the same panel.
 
-The selected intent is mirrored into the URL hash (`#intent=<id>`) so browser Back/Forward navigate between intents; everything loads from a single `/summary` call, so switching intents is client-side.
+The selected intent is mirrored into the URL hash (`#intent=<id>`) so browser Back/Forward navigate between intents. Boot loads only auth metadata and the intents list via `GET /bootstrap`; selecting an intent triggers lazy fetches for that intent's questions and radar.
 
 The backend route reuses `../tools.py` rather than creating a second Index client. That keeps `INDEX_API_KEY`, `INDEX_MCP_URL`, timeout handling, Telegram forwarding, MCP response decoding, and network-scoped agent visibility in one place.
 
@@ -47,11 +53,22 @@ It does **not**:
 
 ## Runtime behavior
 
-Hermes discovers this dashboard manifest and mounts its backend independently of the Python plugin's `register(ctx)`. Runtime authorization is therefore independent too. `plugin_api.py` attaches every route to an internal full router, reads `INDEX_PLUGIN_MODE` through the package's shared raw parser, and exports those routes only for absent, empty, or exact `full`. For `negotiator`, an unknown non-empty value, whitespace-only, or a padded value, its exported router is empty: `/summary`, all write routes, assets, and even the mode probe are unavailable. The static manifest can still be discovered because the host manifest format has no conditional environment field, but discovery alone activates neither an API nor a component.
+Hermes discovers this dashboard manifest and mounts its backend independently of the Python plugin's `register(ctx)`. Runtime authorization is therefore independent too. `plugin_api.py` attaches every route to an internal full router, reads `INDEX_PLUGIN_MODE` through the package's shared raw parser, and exports those routes only for absent, empty, or exact `full`. For `negotiator`, an unknown non-empty value, whitespace-only, or a padded value, its exported router is empty: boot/detail APIs, write routes, realtime relays, assets, and even the mode probe are unavailable. The static manifest can still be discovered because the host manifest format has no conditional environment field, but discovery alone activates neither an API nor a component.
 
-The web bundle first requests the full-only `/api/plugins/index-network/mode` endpoint. It registers the `index-network` component only after receiving exactly `{ "success": true, "mode": "full" }`; a missing/rejected/non-full response leaves the bundle inert. This preserves existing tab and API behavior for full, absent, and empty modes while preventing dashboard runtime activation in every restricted mode.
+The web bundle first requests the full-only `/api/plugins/index-network/mode` endpoint. It registers the `index-network` component only after receiving exactly `{ "success": true, "mode": "full" }`; a missing/rejected/non-full response leaves the bundle inert. After that gate, calls use `SDK.fetchJSON`, so Hermes dashboard session authentication is handled by the host.
 
-After that gate, the tab fetches `/api/plugins/index-network/summary` through `SDK.fetchJSON`, so Hermes dashboard session authentication is handled by the host. The summary endpoint reads intents via the REST `POST /intents/list` endpoint (which carries each signal's `ACTIVE`/`PAUSED` status), opportunities via the REST `GET /opportunities` endpoint (whose raw rows carry the intent linkage MCP opportunity cards omit — `actors[].intent` / `detection.triggeredBy`), pending and answered questions via `GET /questions?status=…&scopeType=intent&scopeId=…` fetched per intent in parallel — the Mac app's exact queries, letting the server resolve each intent's question linkage (triggeredBy, opportunities, negotiations) — networks via REST `GET /networks` + `GET /networks/discovery/public`, and the current user id via REST `GET /auth/me` — the same endpoints the Mac app uses. Questions arrive already scoped to their intent; opportunities are grouped client-side by their raw intent linkage, with unlinked ones landing in the General bucket. The endpoint returns dashboard-safe `intents`, `general`, `negotiations`, `networks`, and `totals` (the `general` bucket stays in the payload but is no longer rendered — the intent list matches the Mac app). Question answers are submitted to `/api/plugins/index-network/questions/:id/answer`; the plugin backend validates the small answer payload and forwards it to Index's `/api/questions/:id/answer` endpoint with the configured `INDEX_API_KEY`. Negotiation conversation threads are not rendered — only the per-signal radar status counts.
+**Boot (`GET /bootstrap`, or the deprecated `/summary` alias):** `GET /auth/me` plus `POST /intents/list` (page 1, limit 100). Intent rows carry `pendingCount` from `pendingQuestionCount + waitingOpportunityCount` only — no embedded questions, opportunities, or status counts.
+
+**Intent drill-down (on selection):** parallel lazy fetches per intent:
+
+- `GET /intents/{id}/questions?status=pending|answered` → proxies to scoped `GET /questions`
+- `GET /intents/{id}/radar` → proxies to `GET /opportunities/radar?scopeType=intent&scopeId=…&statuses=latent,pending,negotiating,stalled,accepted,expired`; accepts `presentation=skeleton` for a fast first paint, then a full pass replaces it
+
+**Networks (lazy):** when the Networks column mounts, `GET /networks/home` fetches `GET /networks` and `GET /networks/discovery/public` in parallel.
+
+Auto-refresh re-fetches bootstrap intents and, when an intent is selected, that intent's detail fetches only — not a global fan-out across all intents. Full mode also exposes the authenticated conversation and actionable-notification SSE/WebSocket relays added by the desktop integration.
+
+Question answers are submitted to `/api/plugins/index-network/questions/:id/answer`; the plugin backend validates the small answer payload and forwards it to Index's `/api/questions/:id/answer` endpoint with the configured `INDEX_API_KEY`. Negotiation conversation threads are not rendered — only the per-signal radar status counts (derived client-side from loaded radar items).
 
 ## Verify
 

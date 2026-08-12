@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { scoreRun, scoreCase } from "../matching.scorer.js";
 import type { MatchingCase } from "../matching.types.js";
-import type { EvaluatedOpportunityWithActors } from "../../../src/opportunity/opportunity.evaluator.js";
+import type { EvaluatedOpportunityWithActors } from "../../../src/opportunity/application/opportunity.evaluator.js";
 
 const passJudge = async () => true;
 const failJudge = async () => false;

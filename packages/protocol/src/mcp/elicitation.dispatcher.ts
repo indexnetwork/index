@@ -1,4 +1,4 @@
-import type { Question } from "../shared/schemas/question.schema.js";
+import type { Question } from "../questions/domain/question.schema.js";
 import type { ChatMessageWriter } from "../shared/interfaces/chat-message-writer.interface.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { buildElicitationCreate, flattenChoice } from "./elicitation.builder.js";

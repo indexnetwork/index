@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect, it } from 'bun:test';
-import { deriveRolesFromCorpus, canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors } from '../opportunity.utils.js';
+import { deriveRolesFromCorpus, canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors } from '../domain/opportunity.utils.js';
 
 describe('opportunity.utils', () => {
   describe('deriveRolesFromCorpus', () => {
@@ -451,7 +451,7 @@ describe('opportunity.utils', () => {
 
 // ─── Introducer-related utility tests ────────────────────────────────────────
 
-import { selectByComposition, classifyOpportunity } from '../opportunity.utils.js';
+import { selectByComposition, classifyOpportunity } from '../domain/opportunity.utils.js';
 
 type TestOpp = {
   id: string;

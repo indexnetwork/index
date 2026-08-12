@@ -33,7 +33,7 @@ const answerHandlerSource = readFileSync(
 );
 const mainSource = readFileSync(new URL('../../main.ts', import.meta.url), 'utf8');
 const protocolIntentGraphSource = readFileSync(
-  new URL('../../../../../packages/protocol/src/intent/intent.graph.ts', import.meta.url),
+  new URL('../../../../../packages/protocol/src/signals/application/intent.graph.ts', import.meta.url),
   'utf8',
 );
 

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Index Protocol Atlas</title>
+  <link rel="stylesheet" href="./atlas.css">
+</head>
+<body>
+  <a class="skip-link" href="#atlas-main">Skip to atlas content</a>
+  <header class="atlas-header">
+    <a class="atlas-brand" href="#">PROTOCOL::ATLAS</a>
+    <div id="atlas-layer-toggle" role="group" aria-label="Atlas layer"></div>
+    <button id="atlas-search" type="button" aria-haspopup="dialog">Search</button>
+  </header>
+  <div class="atlas-layout">
+    <nav id="atlas-nav" aria-label="Atlas chapters"></nav>
+    <main id="atlas-main" tabindex="-1">
+      <div id="atlas-notice" role="status" aria-live="polite"></div>
+      <section id="atlas-diagram" aria-labelledby="atlas-title"></section>
+    </main>
+    <aside id="atlas-inspector" aria-label="Concept inspector"></aside>
+  </div>
+  <section id="atlas-filters" aria-label="Diagram filters"></section>
+  <p id="atlas-status" class="visually-hidden" role="status" aria-live="polite"></p>
+  <noscript>This atlas's diagrams require JavaScript. Read <a href="../../packages/protocol/README.md">the protocol model</a> or <a href="../../packages/protocol/IMPLEMENTATION.md">the implementation guide</a>.</noscript>
+  <script src="./atlas-content.js"></script>
+  <script src="./protocol.generated.js"></script>
+  <script src="./atlas-core.js"></script>
+  <script src="./atlas.js"></script>
+</body>
+</html>

@@ -11,7 +11,7 @@ import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityEvaluator, OpportunityGraphFactory, PremiseGraphFactory, UserContextGenerator, type HydeGraphDatabase, type OpportunityGraphDatabase, type PremiseGraphDatabase } from '@indexnetwork/protocol';
+import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityEvaluator, OpportunityGraphFactory, PremiseGraphFactory, UserContextGenerator, discoveryEvaluatorMinScore, type HydeGraphDatabase, type OpportunityGraphDatabase, type PremiseGraphDatabase } from '@indexnetwork/protocol';
 
 import { baseSeedPayload, type BaseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 import { expectedBaseMetadata, verifyBaseFixtureIntegrity, verifyProtectedBase } from './discovery-env-matrix-base.main';
@@ -531,7 +531,7 @@ export interface MatrixGraphRuntimeInput {
 
 /** Provider-free seam around the exact graph invocation used by every matrix slot. */
 export async function invokeMatrixDiscoveryGraph<T>(
-  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: { minScore: number } }, config?: { signal?: AbortSignal }): Promise<T> },
+  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: Record<string, never> }, config?: { signal?: AbortSignal }): Promise<T> },
   runtime: MatrixGraphRuntimeInput,
   row: { id: string; allowedTypes: string; profileSource: string },
   signal?: AbortSignal,
@@ -540,7 +540,7 @@ export async function invokeMatrixDiscoveryGraph<T>(
     userId: runtime.sourceUserId,
     networkId: runtime.networkId,
     triggerIntentId: runtime.triggerIntentId,
-    options: { minScore: 50 },
+    options: {},
   }, signal ? { signal } : undefined));
 }
 
@@ -702,7 +702,23 @@ export function collectEvaluatorTraces(
   });
 }
 
-export async function createChildDependencies() {
+export interface DiscoveryChildThresholdOverrides {
+  evaluatorMinScore: number;
+}
+
+/** Historical matrix/smoke callers stay fixed at the audited evaluator policy. */
+export function defaultDiscoveryChildThresholdOverrides(): DiscoveryChildThresholdOverrides {
+  return { evaluatorMinScore: 50 };
+}
+
+/** Constructor-only overrides resolved after an A/B side environment is applied. */
+export function discoveryChildThresholdOverrides(): DiscoveryChildThresholdOverrides {
+  return { evaluatorMinScore: discoveryEvaluatorMinScore() };
+}
+
+export async function createChildDependencies(
+  thresholdOverrides: DiscoveryChildThresholdOverrides = defaultDiscoveryChildThresholdOverrides(),
+) {
   const [adapterModule, embedderModule, cacheModule] = await Promise.all([
     import('../adapters/database.adapter'),
     import('../adapters/embedder.adapter'),
@@ -714,7 +730,18 @@ export async function createChildDependencies() {
   const premiseGraph = new PremiseGraphFactory(graphDb, embedder).createGraph();
   const contextGenerator = new UserContextGenerator(embedder);
   const hydeGraph = new HydeGraphFactory(graphDb, embedder, new cacheModule.RedisCacheAdapter(), new LensInferrer(), new HydeGenerator()).createGraph();
-  const opportunityGraph = new OpportunityGraphFactory(graphDb, embedder, hydeGraph, new OpportunityEvaluator()).createGraph();
+  const opportunityGraph = new OpportunityGraphFactory(
+    graphDb,
+    embedder,
+    hydeGraph,
+    new OpportunityEvaluator(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    thresholdOverrides,
+  ).createGraph();
   return { database, premiseGraph, contextGenerator, opportunityGraph };
 }
 

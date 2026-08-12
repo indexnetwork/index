@@ -10,18 +10,12 @@ mock.module('../src/lib/email/transport.helper', () => ({
   executeSendEmail: sendSpy,
 }));
 
-const enrichBulkSpy = mock<(items: Array<{ userId: string; networkId?: string; reason?: string }>) => Promise<unknown[]>>(async () => []);
-const enrichSingleSpy = mock<(data: { userId: string; networkId?: string; reason?: string }) => Promise<unknown>>(async () => ({}));
-
 afterAll(() => {
   mock.restore();
 });
 
 const { ExperimentService } = await import('../src/services/experiment.service');
-const experimentService = new ExperimentService({
-  addEnrichUserJobBulk: enrichBulkSpy,
-  addEnrichUserJob: enrichSingleSpy,
-});
+const experimentService = new ExperimentService();
 
 function databaseTest(
   name: string,
@@ -259,46 +253,22 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.flow).toBe(1);
   });
 
-  databaseTest('importMembers enqueues profile enrichment for imported users', async () => {
-    enrichBulkSpy.mockClear();
-    const email = `csv-enrich-${Date.now()}@test.dev`;
-    await experimentService.importMembers(networkId, [
-      { email, name: 'Enrich Test', bio: 'Engineer', socials: [] },
-    ]);
-
-    const [user] = await db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.email, email));
-    cleanupUserIds.push(user.id);
-
-    expect(enrichBulkSpy).toHaveBeenCalledTimes(1);
-    const call = enrichBulkSpy.mock.calls[0][0];
-    expect(call).toEqual([{ userId: user.id, networkId, reason: 'experiment_import' }]);
-  });
-
-  databaseTest('importMembers deduplicates enrichment jobs for repeated emails', async () => {
-    enrichBulkSpy.mockClear();
+  databaseTest('importMembers deduplicates repeated emails into a single user', async () => {
     const email = `csv-dedup-${Date.now()}@test.dev`;
     await experimentService.importMembers(networkId, [
       { email, name: 'Dedup A', socials: [] },
       { email, name: 'Dedup B', socials: [] },
     ]);
 
-    const [user] = await db
+    const rows = await db
       .select({ id: schema.users.id })
       .from(schema.users)
       .where(eq(schema.users.email, email));
-    cleanupUserIds.push(user.id);
-
-    expect(enrichBulkSpy).toHaveBeenCalledTimes(1);
-    const call = enrichBulkSpy.mock.calls[0][0];
-    expect(call).toHaveLength(1);
-    expect(call[0]).toEqual({ userId: user.id, networkId, reason: 'experiment_import' });
+    expect(rows).toHaveLength(1);
+    cleanupUserIds.push(rows[0].id);
   });
 
   databaseTest('signup leaves onboarding incomplete for new users', async () => {
-    enrichSingleSpy.mockClear();
     const email = `signup-onboard-${Date.now()}@test.dev`;
     const result = await experimentService.signup(networkId, {
       email,
@@ -339,8 +309,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(user.onboarding!.flow).toBe(3);
   });
 
-  databaseTest('signup persists rich profile fields, stages provenance, and enqueues enrichment', async () => {
-    enrichSingleSpy.mockClear();
+  databaseTest('signup persists rich profile fields and stages provenance', async () => {
     const email = `signup-enrich-${Date.now()}@test.dev`;
     const result = await experimentService.signup(networkId, {
       email,
@@ -366,9 +335,5 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       location: 'Oakland',
       socials: [{ label: 'github', value: 'signup-enrich' }],
     });
-
-    expect(enrichSingleSpy).toHaveBeenCalledTimes(1);
-    const call = enrichSingleSpy.mock.calls[0][0];
-    expect(call).toEqual({ userId: result.user.id, networkId, reason: 'experiment_signup' });
   });
 });

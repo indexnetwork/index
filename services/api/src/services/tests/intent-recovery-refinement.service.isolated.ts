@@ -5,6 +5,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import type { QuestionGenerationResult, QuestionerInput } from '@indexnetwork/protocol';
 
 import type { AdapterPersistableQuestion, RecoveryOpportunitySnapshot, RecoveryPreparation } from '../../adapters/questioner.adapter';
+import { QuestionEvents } from '../../events/question.event';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { IntentRecoveryRefinementService } from '../intent-recovery-refinement.service';
 
@@ -294,5 +295,34 @@ describe('IntentRecoveryRefinementService', () => {
     const drifted = makeService({ persistResult: null });
     expect(await drifted.service.recover({ source: 'from_intent', recipientUserId: userId, intentId })).toBeNull();
     expect(drifted.onCreated).not.toHaveBeenCalled();
+  });
+
+  it('uses the current QuestionEvents.onCreated callback when recovery succeeds', async () => {
+    const originalOnCreated = QuestionEvents.onCreated;
+    const preConstruction = mock(() => {});
+    const replacement = mock(() => {});
+    QuestionEvents.onCreated = preConstruction;
+
+    const service = new IntentRecoveryRefinementService({
+      adapter: {
+        prepareRecoveryRefinement: async () => preparation(),
+        persistFreshRecoveryQuestion: async () => 'question-current-callback',
+      },
+      getNegotiationTasksForOpportunity: async () => [],
+      getArtifactsForTask: async () => [],
+      getGlobalUserContext: async () => '',
+      generate: async () => generated(),
+    });
+    QuestionEvents.onCreated = replacement;
+
+    try {
+      expect(await service.recover({
+        source: 'from_intent', recipientUserId: userId, intentId,
+      })).toBe('question-current-callback');
+      expect(replacement).toHaveBeenCalledTimes(1);
+      expect(preConstruction).not.toHaveBeenCalled();
+    } finally {
+      QuestionEvents.onCreated = originalOnCreated;
+    }
   });
 });

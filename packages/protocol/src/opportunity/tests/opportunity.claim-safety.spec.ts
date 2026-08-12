@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { hasUnsupportedOpportunityClaim, stripUnsupportedOpportunityClaims } from "../opportunity.claim-safety.js";
+import { hasUnsupportedOpportunityClaim, stripUnsupportedOpportunityClaims } from "../domain/opportunity.claim-safety.js";
 
 describe("opportunity claim safety", () => {
   const dangerous = [

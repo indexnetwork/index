@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { z } from "zod";
 
-import { createIntentTools, setIntentClarifierForTesting } from "../intent.tools.js";
-import { DEFAULT_SPECIFICITY_WARNING } from "../intent.specificity.js";
+import { createIntentTools, setIntentClarifierForTesting } from "../../signals/application/intent.tools.js";
+import { DEFAULT_SPECIFICITY_WARNING } from "../../signals/domain/signal.specificity.js";
 
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 

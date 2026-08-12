@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import base64
 import importlib.util
 import io
@@ -12,6 +13,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -101,6 +103,66 @@ class FakeResponse:
         return json.dumps(self.payload).encode()
 
 
+class FakeStreamingResponse:
+    def __init__(self, lines, *, read_error=None):
+        self.lines = list(lines)
+        self.read_error = read_error
+        self.closed = False
+        self.close_event = threading.Event()
+        self.read_thread_ids = []
+        self.close_thread_id = None
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.read_error is not None:
+            raise self.read_error
+        return self.lines.pop(0) if self.lines else b""
+
+    def close(self):
+        self.close_thread_id = threading.get_ident()
+        self.closed = True
+        self.close_event.set()
+
+
+class FakeIdleStreamingResponse(FakeStreamingResponse):
+    def __init__(self):
+        super().__init__([b": keep-alive\n"])
+        self.idle_read_started = threading.Event()
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.lines:
+            return self.lines.pop(0)
+        self.idle_read_started.set()
+        self.close_event.wait()
+        return b""
+
+
+class FakeWebSocket:
+    def __init__(self, disconnect_error=None, disconnect_event=None):
+        self.accepted = False
+        self.sent = []
+        self.disconnect_error = disconnect_error
+        self.disconnect_event = disconnect_event
+        self.receive_calls = 0
+
+    async def accept(self):
+        self.accepted = True
+
+    async def receive(self):
+        self.receive_calls += 1
+        if self.disconnect_event is None:
+            await asyncio.Future()
+        else:
+            await asyncio.to_thread(self.disconnect_event.wait)
+        return {"type": "websocket.disconnect"}
+
+    async def send_json(self, payload):
+        if self.disconnect_error is not None:
+            raise self.disconnect_error
+        self.sent.append(payload)
+
+
 def http_error(status, payload, *, url="https://api.example.test/api/error"):
     """A urllib HTTPError whose body carries a JSON `{error, advisory}` (matches REST 4xx)."""
     body = json.dumps(payload).encode()
@@ -124,6 +186,7 @@ def install_fake_urlopen(responses, captured):
         captured.append(
             {
                 "timeout": timeout,
+                "thread_id": threading.get_ident(),
                 "url": request.full_url,
                 "method": request.get_method(),
                 "headers": dict(request.header_items()),
@@ -374,6 +437,39 @@ def main() -> None:
     # Background pollers must be gated on the signed-in state so pre-login 401s
     # cannot race the login transition (else the user must reload the page).
     assert 'auth !== "authed"' in dashboard_js
+    assert "InviteJoinModal" not in dashboard_js
+    assert "index-network-invite" not in dashboard_js
+    assert "index-network-public-join" not in dashboard_js
+    # Owner network detail: overview / settings / access (web parity, no integrations).
+    assert "NetworkDetailModal" in dashboard_js
+    assert "networkShareUrl" in dashboard_js
+    assert "/regenerate-invitation" in dashboard_js
+    assert "resolveShareBase" in dashboard_js
+    assert "Invitation link" in dashboard_js
+    assert "/permissions" in dashboard_js
+    assert "regenerate_network_invitation" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/bootstrap" in dashboard_js
+    assert "/networks/home" in dashboard_js
+    assert "/intents/" in dashboard_js
+    assert "loadIntentDetail" in dashboard_js
+    assert "questionsLoading" in dashboard_js
+    assert "radarLoading" in dashboard_js
+    assert "questionsPath" in dashboard_js
+    assert "payload.pending" in dashboard_js
+    plugin_api_src = (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/bootstrap" in plugin_api_src
+    assert "intent_radar" in plugin_api_src
+    assert "networks_home" in plugin_api_src
+    assert "/notifications/stream" in plugin_api_src
+    assert "_notification_stream" in plugin_api_src
+    assert "/networks/search-users" in dashboard_js
+    assert "/members/invite" in dashboard_js
+    assert "Your Signals" in dashboard_js
+    assert "Danger Zone" in dashboard_js
+    assert "index-dashboard__net-invite" in dashboard_js
+    assert "index-dashboard__net-visibility" in dashboard_js
+    assert "index-dashboard__net-members" in dashboard_js
+    assert "index-dashboard__net-settings-panel" in dashboard_js
 
     # Hermes Desktop ships the same Getting started gate via the built bundle.
     desktop_js_path = ROOT / "desktop" / "dist" / "plugin.js"
@@ -388,10 +484,40 @@ def main() -> None:
     assert "SettingUpScreen" in desktop_js
     assert "index-dashboard__setting-up" in desktop_js
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
+    assert "startDesktopNotifications" in desktop_js
+    assert "ctx.socket" in desktop_js
+    assert "/notifications/socket" in desktop_js
+    assert "/conversations/socket" in desktop_js
+    assert "/notifications/snapshot" in desktop_js
+    assert "60000" in desktop_js
+    assert "notifiedEntitiesV2" in desktop_js
+    assert "checkOpportunities" not in desktop_js
+    # Native notifications use only authenticated SDK doors. Keep this assertion
+    # on the source fragment because the shared dashboard bundle has its own
+    # browser transport implementation in the same generated module.
+    desktop_tail = (ROOT / "desktop" / "tail.js").read_text()
+    assert "ctx.socket" in desktop_tail
+    assert "ctx.rest" in desktop_tail
+    assert "window.fetch" not in desktop_tail
+    assert "getConnection" not in desktop_tail
+    assert "X-Hermes-Session-Token" not in desktop_tail
+    assert "authedPluginStreamFetch" not in desktop_tail
+    assert "connectPluginStream" not in desktop_tail
+    assert "retries > 10" not in desktop_tail
+    dispose_start = desktop_tail.index("return function dispose()")
+    stopped_index = desktop_tail.index("state.stopped = true", dispose_start)
+    timer_index = desktop_tail.index("window.clearInterval(snapshotTimer)", dispose_start)
+    socket_index = desktop_tail.index("disposeDesktopSocket(notificationSocket)", dispose_start)
+    assert dispose_start < stopped_index < timer_index < socket_index
     # Hermes Desktop ships the same browser-login gate via the built bundle.
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js
     assert "index-dashboard__login" in desktop_js
+    assert "InviteJoinModal" not in desktop_js
+    assert "handleIndexDeepLink" not in desktop_js
+    assert "onDeepLink" not in desktop_js
+    assert "NetworkDetailModal" in desktop_js
+    assert "/regenerate-invitation" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js
@@ -510,6 +636,15 @@ def main() -> None:
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
+    old_app_base = os.environ.pop("INDEX_APP_BASE_URL", None)
+    old_web_url = os.environ.pop("INDEX_WEB_URL", None)
+    # Isolate tools._hermes_env_get from the developer ~/.hermes/.env so
+    # INDEX_API_URL fallbacks do not leak a personal dev host into assertions.
+    old_hermes_env_path = os.environ.get("HERMES_ENV_PATH")
+    isolated_env = tempfile.NamedTemporaryFile("w", delete=False, suffix=".env", encoding="utf-8")
+    isolated_env.write("")
+    isolated_env.close()
+    os.environ["HERMES_ENV_PATH"] = isolated_env.name
     old_urlopen = urllib.request.urlopen
     try:
         missing_key = json.loads(plugin.tools.index_read_intents({}))
@@ -953,10 +1088,145 @@ def main() -> None:
         }
 
         dashboard_api = load_dashboard_api()
+        assert hasattr(dashboard_api, "_watch_websocket_disconnect")
+
+        # Hermes Desktop uses authenticated plugin WebSockets. The Python plugin
+        # keeps Index SSE upstream, parsing only complete dictionary-valued
+        # `data:` JSON frames and running every blocking urllib operation away
+        # from the event-loop thread.
+        assert dashboard_api.parse_sse_data_line(b'data: {"type":"question.new","questionId":"q-1"}\n') == {
+            "type": "question.new",
+            "questionId": "q-1",
+        }
+        for ignored_line in (
+            b': keep-alive\n',
+            b'event: notification\n',
+            b'data: not-json\n',
+            b'data: ["not", "an", "object"]\n',
+            b'data: {"partial": true}',
+            b'data: {"invalid": }\n',
+        ):
+            assert dashboard_api.parse_sse_data_line(ignored_line) is None, ignored_line
+
+        event_loop_thread_id = threading.get_ident()
+        stream_response = FakeStreamingResponse(
+            [
+                b': keep-alive\n',
+                b'data: not-json\n',
+                b'data: {"type":"question.new","questionId":"q-1"}\n',
+                b'data: {"partial": true}',
+            ]
+        )
+        opened = []
+
+        def fake_stream_urlopen(request, timeout):
+            opened.append((request, timeout, threading.get_ident()))
+            return stream_response
+
+        urllib.request.urlopen = fake_stream_urlopen
+        websocket = FakeWebSocket()
+        asyncio.run(dashboard_api.notifications_socket(websocket))
+        assert websocket.accepted is True
+        assert websocket.sent == [{"type": "question.new", "questionId": "q-1"}]
+        assert opened[0][0].full_url == "https://api.example.test/api/notifications/stream"
+        assert opened[0][0].get_header("Accept") == "text/event-stream"
+        assert opened[0][0].get_header("X-api-key") == "test-key"
+        assert opened[0][2] != event_loop_thread_id
+        assert stream_response.read_thread_ids
+        assert all(thread_id != event_loop_thread_id for thread_id in stream_response.read_thread_ids)
+        assert stream_response.closed is True
+        assert stream_response.close_thread_id != event_loop_thread_id
+
+        # Client disconnect is observed concurrently even when the upstream is
+        # idle after an SSE comment, so cleanup does not depend on send_json.
+        idle_response = FakeIdleStreamingResponse()
+        urllib.request.urlopen = lambda _request, timeout: idle_response
+        idle_socket = FakeWebSocket(disconnect_event=idle_response.idle_read_started)
+        asyncio.run(dashboard_api.notifications_socket(idle_socket))
+        assert idle_socket.accepted is True
+        assert idle_socket.receive_calls == 1
+        assert idle_socket.sent == []
+        assert idle_response.closed is True
+        assert idle_response.close_thread_id != event_loop_thread_id
+        assert all(thread_id != event_loop_thread_id for thread_id in idle_response.read_thread_ids)
+
+        # Cancellation while urlopen is still running must transfer cleanup
+        # ownership to the worker: if it eventually returns a response, that
+        # response is closed even though the coroutine never received it.
+        delayed_response = FakeStreamingResponse([])
+        open_started = threading.Event()
+        release_open = threading.Event()
+
+        def delayed_urlopen(_request, timeout):
+            open_started.set()
+            assert release_open.wait(5), "test did not release delayed urlopen"
+            return delayed_response
+
+        urllib.request.urlopen = delayed_urlopen
+
+        async def cancel_during_open():
+            task = asyncio.create_task(dashboard_api.notifications_socket(FakeWebSocket()))
+            assert await asyncio.to_thread(open_started.wait, 5), "urlopen did not start"
+            task.cancel()
+            try:
+                await task
+                raise AssertionError("cancelled relay should raise CancelledError")
+            except asyncio.CancelledError:
+                pass
+            assert delayed_response.closed is False
+            release_open.set()
+            assert await asyncio.to_thread(delayed_response.close_event.wait, 5), "eventual response leaked"
+
+        asyncio.run(cancel_during_open())
+        assert delayed_response.closed is True
+        assert delayed_response.close_thread_id != event_loop_thread_id
+
+        # A WebSocket disconnect terminates the conversation relay and still
+        # closes the correctly addressed upstream response in a worker thread.
+        disconnect_response = FakeStreamingResponse([b'data: {"type":"message.new"}\n'])
+        conversation_requests = []
+
+        def fake_conversation_urlopen(request, timeout):
+            conversation_requests.append(request)
+            return disconnect_response
+
+        urllib.request.urlopen = fake_conversation_urlopen
+        disconnecting_socket = FakeWebSocket(dashboard_api.WebSocketDisconnect())
+        asyncio.run(dashboard_api.conversations_socket(disconnecting_socket))
+        assert disconnecting_socket.accepted is True
+        assert conversation_requests[0].full_url == "https://api.example.test/api/conversations/stream"
+        assert disconnect_response.closed is True
+        assert disconnect_response.close_thread_id != event_loop_thread_id
+
+        failed_response = FakeStreamingResponse([], read_error=OSError("upstream failed"))
+        urllib.request.urlopen = lambda _request, timeout: failed_response
+        failed_socket = FakeWebSocket()
+        asyncio.run(dashboard_api.notifications_socket(failed_socket))
+        assert failed_socket.sent == [{"type": "error", "error": "upstream failed"}]
+        assert failed_response.closed is True
+        assert failed_response.close_thread_id != event_loop_thread_id
+
+        # The persisted catch-up proxy is a transparent authenticated GET: an
+        # HTTP error's JSON body is returned unchanged instead of being wrapped.
+        upstream_error = {
+            "error": "Notification snapshots are unavailable.",
+            "code": "snapshot_unavailable",
+            "retryable": True,
+        }
+        snapshot_http_error = http_error(503, upstream_error)
+        captured = []
+        install_fake_urlopen([snapshot_http_error], captured)
+        assert asyncio.run(dashboard_api.notifications_snapshot()) == upstream_error
+        assert captured[-1]["method"] == "GET"
+        assert captured[-1]["url"] == "https://api.example.test/api/notifications/snapshot"
+        assert captured[-1]["headers"]["X-api-key"] == "test-key"
+        assert captured[-1]["thread_id"] != event_loop_thread_id
+        assert snapshot_http_error.fp.closed is True
+
         captured = []
         install_fake_urlopen(
             [
-                # summary → GET /auth/me (identity + onboarding gate).
+                # bootstrap → GET /auth/me (identity + onboarding gate).
                 FakeResponse({
                     "user": {
                         "id": "user-1",
@@ -979,8 +1249,48 @@ def main() -> None:
                         "pagination": {"current": 1, "total": 1, "count": 1, "totalCount": 1},
                     }
                 ),
-                # _call_questions_by_intent("pending") → server-scoped per intent
-                # (identical query to the Mac app; nested detection/payload).
+            ],
+            captured,
+        )
+        boot = dashboard_api.bootstrap()
+        assert boot["success"] is True
+        assert boot["onboarding"] == {
+            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
+            "needsProfileConfirm": False,
+        }
+        intents = boot["intents"]
+        assert len(intents) == 1
+        intent = intents[0]
+        assert intent["id"] == "intent-1"
+        assert intent["title"] == "Looking for mentors in applied robotics."
+        assert intent["status"] == "live"
+        assert intent["lifecycleStatus"] == "ACTIVE"
+        assert intent["pendingCount"] == 2
+        assert "questions" not in intent
+        assert "opportunities" not in intent
+        calls = [(entry["method"], entry["url"]) for entry in captured]
+        assert calls == [
+            ("GET", "https://api.example.test/api/auth/me"),
+            ("POST", "https://api.example.test/api/intents/list"),
+        ]
+        assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
+
+        # summary is a deprecated alias for bootstrap.
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"user": {"id": "user-1", "onboarding": {"profileConfirmedAt": "2026-01-01T00:00:00.000Z"}}}),
+                FakeResponse({"intents": [{"id": "intent-1", "payload": "x", "status": "ACTIVE"}], "pagination": {"current": 1, "total": 1}}),
+            ],
+            captured,
+        )
+        summary_alias = dashboard_api.summary()
+        assert summary_alias["success"] is True
+        assert len(summary_alias["intents"]) == 1
+
+        captured = []
+        install_fake_urlopen(
+            [
                 FakeResponse(
                     {
                         "questions": [
@@ -998,8 +1308,18 @@ def main() -> None:
                         ]
                     }
                 ),
-                # _call_questions_by_intent("answered") → server-scoped settled records
-                # per intent (identical scope to the Mac app), surviving reloads.
+            ],
+            captured,
+        )
+        pending = dashboard_api.intent_questions("intent-1", status="pending")
+        assert pending["success"] is True
+        assert pending["questions"][0]["id"] == "question-1"
+        assert pending["questions"][0]["options"][0]["label"] == "Hiring"
+        assert captured[-1]["url"] == "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"
+
+        captured = []
+        install_fake_urlopen(
+            [
                 FakeResponse(
                     {
                         "questions": [
@@ -1022,7 +1342,131 @@ def main() -> None:
                         ]
                     }
                 ),
-                # GET /networks (joined) and GET /networks/discovery/public (discover).
+            ],
+            captured,
+        )
+        answered = dashboard_api.intent_questions("intent-1", status="answered")
+        assert answered["success"] is True
+        assert answered["questions"][0]["id"] == "question-answered"
+        assert answered["questions"][0]["answerText"] == "Hiring"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "questions": [
+                            {
+                                "id": "question-1",
+                                "status": "pending",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
+                                    "title": "Robotics focus",
+                                    "prompt": "Which robotics area should Index prioritize?",
+                                    "options": [{"label": "Hiring", "description": "Find mentors for recruiting."}],
+                                    "multiSelect": False,
+                                },
+                            },
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "questions": [
+                            {
+                                "id": "question-answered",
+                                "status": "answered",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
+                                    "title": "Focus",
+                                    "prompt": "Which robotics area did you pick?",
+                                    "options": [],
+                                    "multiSelect": False,
+                                },
+                                "answer": {
+                                    "selectedOptions": ["Hiring"],
+                                    "freeText": "",
+                                    "answeredAt": "2026-06-01T00:00:00.000Z",
+                                },
+                            }
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        both = dashboard_api.intent_questions("intent-1")
+        assert both["success"] is True
+        assert both["pending"][0]["id"] == "question-1"
+        assert both["answered"][0]["id"] == "question-answered"
+        assert len(captured) == 2
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "items": [
+                            {
+                                "opportunityId": "opp-1",
+                                "userId": "other",
+                                "name": "Ada",
+                                "avatar": "avatars/other/pic.png",
+                                "status": "pending",
+                                "mainText": "Can advise on robotics hiring.",
+                            },
+                            {
+                                "opportunityId": "opp-expired",
+                                "userId": "expired-other",
+                                "name": "Expired Match",
+                                "status": "expired",
+                                "mainText": "Missed window.",
+                            },
+                        ],
+                        "meta": {"totalOpportunities": 2},
+                    }
+                ),
+            ],
+            captured,
+        )
+        radar = dashboard_api.intent_radar("intent-1")
+        assert radar["success"] is True
+        assert radar["items"][0]["opportunityId"] == "opp-1"
+        assert radar["items"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
+        assert radar["items"][0]["name"] == "Ada"
+        assert radar["items"][0]["counterpartUserId"] == "other"
+        assert radar["items"][0]["intentScopeId"] == "intent-1"
+        assert "statuses=latent,pending,negotiating,stalled,accepted,expired" in captured[-1]["url"]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "items": [
+                            {
+                                "opportunityId": "opp-1",
+                                "userId": "other",
+                                "name": "Ada",
+                                "status": "pending",
+                                "mainText": "",
+                                "presentationPending": True,
+                            }
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        skeleton = dashboard_api.intent_radar("intent-1", presentation="skeleton")
+        assert skeleton["success"] is True
+        assert skeleton["items"][0]["presentationPending"] is True
+        assert "presentation=skeleton" in captured[-1]["url"]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"user": {"id": "user-1"}}),
                 FakeResponse(
                     {
                         "networks": [
@@ -1032,7 +1476,13 @@ def main() -> None:
                                 "prompt": "People building robotics companies.",
                                 "isPersonal": False,
                                 "type": "community",
-                                "user": {"id": "owner-x", "name": "Owner"},
+                                "hasMasterKey": False,
+                                "role": "owner",
+                                "permissions": {
+                                    "joinPolicy": "invite_only",
+                                    "invitationLink": {"code": "invite-abc"},
+                                },
+                                "user": {"id": "other-owner", "name": "Owner"},
                                 "_count": {"members": 3},
                             }
                         ],
@@ -1040,163 +1490,20 @@ def main() -> None:
                     }
                 ),
                 FakeResponse({"networks": [{"id": "network-2", "title": "Not joined", "memberCount": 5}]}),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-1",
-                                "status": "pending",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Ada",
-                                "counterpartAvatar": "avatars/other/pic.png",
-                                "interpretation": {"category": "mentor", "reasoning": "Can advise on robotics hiring."},
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "other", "networkId": "network-1", "intent": "other-intent", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-general",
-                                "status": "pending",
-                                "detection": {},
-                                "counterpartName": "Grace",
-                                "interpretation": {"category": "intro", "reasoning": "Worth a direct follow-up."},
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "role": "agent"},
-                                    {"userId": "intro", "networkId": "network-1", "role": "introducer"},
-                                    {"userId": "other-general", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-waiting-on-other",
-                                "status": "pending",
-                                "detection": {},
-                                "counterpartName": "Already Sent",
-                                "interpretation": {"category": "intro", "reasoning": "Waiting for the other side."},
-                                "actors": [
-                                    {
-                                        "userId": "user-1",
-                                        "networkId": "network-1",
-                                        "role": "agent",
-                                        "actedAt": "2026-05-12T10:00:00.000Z",
-                                    },
-                                    {"userId": "other-waiting", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-rejected",
-                                "status": "rejected",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Rejected Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                        ]
-                    }
-                ),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-expired",
-                                "status": "expired",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Expired Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "expired-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            }
-                        ]
-                    }
-                ),
             ],
             captured,
         )
-        summary = dashboard_api.summary()
-        assert summary["success"] is True
-        assert summary["onboarding"] == {
-            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
-            "needsProfileConfirm": False,
-        }
-        intents = summary["intents"]
-        assert len(intents) == 1
-        intent = intents[0]
-        assert intent["id"] == "intent-1"
-        assert intent["title"] == "Looking for mentors in applied robotics."
-        # Mac-app signalStatus parity: an active intent with no accepted or
-        # negotiating opportunities reads "live".
-        assert intent["status"] == "live"
-        assert intent["lifecycleStatus"] == "ACTIVE"
-        assert intent["questionCount"] == 1
-        assert intent["opportunityCount"] == 1
-        # Consolidated badge count from the server list fields.
-        assert intent["pendingCount"] == 2
-        assert intent["totalOpportunityCount"] == 2
-        assert intent["statusCounts"]["pending"] == 1
-        # Rejected is hidden entirely (mac-app parity): no bucket, no count.
-        assert "rejected" not in intent["statusCounts"]
-        assert intent["statusCounts"]["expired"] == 1
-        assert intent["networks"] == ["Robotics Guild"]
-        assert intent["questions"][0]["id"] == "question-1"
-        assert intent["questions"][0]["options"][0]["label"] == "Hiring"
-        # Settled records ride along per intent, pending counts unaffected.
-        assert intent["answeredQuestions"][0]["id"] == "question-answered"
-        assert intent["answeredQuestions"][0]["answerText"] == "Hiring"
-        assert intent["opportunities"][0]["opportunityId"] == "opp-1"
-        assert intent["opportunities"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
-        assert intent["opportunities"][0]["name"] == "Ada"
-        assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
-        assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
-        assert "networks" not in intent["opportunities"][0]
-        assert intent["opportunities"][0]["counterpartUserId"] == "other"
-        assert intent["opportunities"][0]["intentScopeId"] == "intent-1"
-        # Questions are server-scoped per intent, so the general questions
-        # bucket is always empty (only unlinked opportunities remain general).
-        assert summary["general"]["count"] == 1
-        assert summary["general"]["questionCount"] == 0
-        assert summary["general"]["opportunityCount"] == 1
-        assert summary["general"]["questions"] == []
-        assert summary["general"]["opportunities"][0]["opportunityId"] == "opp-general"
-        assert summary["general"]["opportunities"][0]["counterpartUserId"] == "other-general"
-        all_opp_ids = [
-            opp["opportunityId"]
-            for group in summary["intents"] + [summary["general"]]
-            for opp in group.get("opportunities", [])
-        ]
-        assert "opp-waiting-on-other" not in all_opp_ids
-        assert "opp-rejected" not in all_opp_ids
-        assert summary["general"]["statusCounts"]["pending"] == 1
-        assert summary["negotiations"]["count"] == 2
-        assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
-        assert summary["negotiations"]["items"][0]["subtitle"] == "Looking for mentors in applied robotics."
-        assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
-        assert summary["networks"]["count"] == 1
-        assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
-        assert summary["totals"] == {
-            "intents": 1,
-            "questions": 1,
-            "opportunities": 2,
-            "totalOpportunities": 3,
-            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "expired": 1},
-        }
-        # The summary is now fully REST (Mac-app parity): no MCP tool calls remain.
-        calls = [(entry["method"], entry["url"]) for entry in captured]
-        assert calls[:8] == [
-            ("GET", "https://api.example.test/api/auth/me"),
-            ("POST", "https://api.example.test/api/intents/list"),
-            ("GET", "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"),
-            ("GET", "https://api.example.test/api/questions?status=answered&scopeType=intent&scopeId=intent-1"),
-            ("GET", "https://api.example.test/api/networks"),
-            ("GET", "https://api.example.test/api/networks/discovery/public"),
-            ("GET", "https://api.example.test/api/opportunities"),
-            ("GET", "https://api.example.test/api/opportunities?status=expired"),
-        ]
-        assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
-        # No per-counterpart /users/:id fetches: cards no longer carry socials.
-        assert calls[8:] == []
+        networks_home = dashboard_api.networks_home()
+        assert networks_home["success"] is True
+        assert networks_home["networks"]["count"] == 1
+        assert networks_home["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert networks_home["networks"]["items"][0]["role"] == "owner"
+        assert networks_home["networks"]["items"][0]["joinPolicy"] == "invite_only"
+        assert networks_home["networks"]["items"][0]["invitationLink"] == {"code": "invite-abc"}
+        home_calls = [(entry["method"], entry["url"]) for entry in captured]
+        assert home_calls[0] == ("GET", "https://api.example.test/api/auth/me")
+        assert ("GET", "https://api.example.test/api/networks") in home_calls
+        assert ("GET", "https://api.example.test/api/networks/discovery/public") in home_calls
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True})], captured)
@@ -1288,7 +1595,8 @@ def main() -> None:
         assert start_chat_result["success"] is True
         assert start_chat_result["conversationId"] == "conv-9"
         assert start_chat_result["counterpartUserId"] == "other"
-        assert start_chat_result["chatUrl"] == "https://index.network/chat/conv-9"
+        # chatUrl follows the active API env (api.example.test here), not prod.
+        assert start_chat_result["chatUrl"] == "https://api.example.test/chat/conv-9"
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/opportunities/opp-1/start-chat"
         assert captured[-1]["body"] == {"scopeType": "intent", "scopeId": "intent-1"}
@@ -1775,22 +2083,47 @@ def main() -> None:
             assert "FOO=1" in cleared and "BAR=2" in cleared
             assert "INDEX_API_KEY" not in os.environ
 
-            # Login origin pairs with the active API env: an explicit
+            # Login/invite origin pairs with the active API env: an explicit
             # INDEX_APP_BASE_URL wins, otherwise it derives from INDEX_API_URL by
             # dropping the leading `protocol.` label (so dev never mints a prod key).
+            # Also reads INDEX_API_URL from the Hermes .env when not in os.environ.
             saved_api_url = os.environ.get("INDEX_API_URL")
+            saved_web_url = os.environ.get("INDEX_WEB_URL")
             os.environ.pop("INDEX_APP_BASE_URL", None)
+            os.environ.pop("INDEX_WEB_URL", None)
             try:
                 os.environ["INDEX_API_URL"] = "https://protocol.dev.index.network/api"
                 assert dashboard_api._login_app_base_url() == "https://dev.index.network"
+                assert dashboard_api._web_url() == "https://dev.index.network"
+                assert plugin.tools._app_base_url() == "https://dev.index.network"
                 os.environ["INDEX_API_URL"] = "https://protocol.index.network/api"
                 assert dashboard_api._login_app_base_url() == "https://index.network"
+                assert dashboard_api._web_url() == "https://index.network"
                 os.environ["INDEX_APP_BASE_URL"] = "https://staging.index.network"
                 assert dashboard_api._login_app_base_url() == "https://staging.index.network"
+                assert dashboard_api._web_url() == "https://staging.index.network"
+                os.environ["INDEX_WEB_URL"] = "https://custom.example"
+                assert dashboard_api._web_url() == "https://custom.example"
+                # .env fallback when process env lacks INDEX_API_URL
+                os.environ.pop("INDEX_API_URL", None)
+                os.environ.pop("INDEX_APP_BASE_URL", None)
+                os.environ.pop("INDEX_WEB_URL", None)
+                env_path = pathlib.Path(env_file)
+                env_path.write_text(
+                    "FOO=1\nINDEX_API_URL=https://protocol.dev.index.network/api\nBAR=2\n",
+                    encoding="utf-8",
+                )
+                assert plugin.tools._api_url() == "https://protocol.dev.index.network/api"
+                assert dashboard_api._web_url() == "https://dev.index.network"
             finally:
                 os.environ.pop("INDEX_APP_BASE_URL", None)
+                os.environ.pop("INDEX_WEB_URL", None)
                 if saved_api_url is not None:
                     os.environ["INDEX_API_URL"] = saved_api_url
+                else:
+                    os.environ.pop("INDEX_API_URL", None)
+                if saved_web_url is not None:
+                    os.environ["INDEX_WEB_URL"] = saved_web_url
 
             # Loopback handshake drives poll_status to success (real sockets).
             urllib.request.urlopen = old_urlopen
@@ -1877,6 +2210,21 @@ def main() -> None:
             os.environ["INDEX_PLUGIN_MODE"] = old_plugin_mode
         else:
             os.environ.pop("INDEX_PLUGIN_MODE", None)
+        if old_app_base is not None:
+            os.environ["INDEX_APP_BASE_URL"] = old_app_base
+        else:
+            os.environ.pop("INDEX_APP_BASE_URL", None)
+        if old_web_url is not None:
+            os.environ["INDEX_WEB_URL"] = old_web_url
+        else:
+            os.environ.pop("INDEX_WEB_URL", None)
+        os.environ.pop("HERMES_ENV_PATH", None)
+        if old_hermes_env_path is not None:
+            os.environ["HERMES_ENV_PATH"] = old_hermes_env_path
+        try:
+            os.unlink(isolated_env.name)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

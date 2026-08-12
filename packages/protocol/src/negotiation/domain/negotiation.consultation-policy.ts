@@ -92,11 +92,11 @@ export function consultationPromptFor(reason: NegotiationConsultationReason): {
 } {
   switch (reason) {
     case "consequential_disclosure_permission":
-      return { disclosureSubject: "your permission", draftQuestion: "May we share the information needed to explore this collaboration?" };
+      return { disclosureSubject: "your permission", draftQuestion: "May I share the information needed to explore this collaboration?" };
     case "repeated_non_convergence":
-      return { disclosureSubject: "your priorities", draftQuestion: "Which trade-off matters most as we decide how to proceed?" };
+      return { disclosureSubject: "your priorities", draftQuestion: "Which trade-off matters most as I decide how to proceed?" };
     case "insufficient_commitment_authority":
-      return { disclosureSubject: "your decision authority", draftQuestion: "What commitments may we make on your behalf?" };
+      return { disclosureSubject: "your decision authority", draftQuestion: "What commitments may I make on your behalf?" };
     case "unresolved_owner_constraint":
       return { disclosureSubject: "your preferences", draftQuestion: "What outcome would you prefer?" };
   }

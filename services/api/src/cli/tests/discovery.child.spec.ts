@@ -225,7 +225,7 @@ describe('invokeAbDiscoveryGraph', () => {
       controller.signal,
     );
 
-    expect(calls).toEqual([{ userId: 'user-1', networkId: 'network-1', triggerIntentId: 'intent-1', options: { minScore: 50 } }]);
+    expect(calls).toEqual([{ userId: 'user-1', networkId: 'network-1', triggerIntentId: 'intent-1', options: {} }]);
     expect(signals).toEqual([controller.signal]);
     expect(observed).toEqual([{ DISCOVERY_ALLOWED_TYPES: 'intent,profile', DISCOVERY_SOURCE_PREMISE_LIMIT: '5' }]);
     expect(process.env.DISCOVERY_ALLOWED_TYPES).toBe('intent');

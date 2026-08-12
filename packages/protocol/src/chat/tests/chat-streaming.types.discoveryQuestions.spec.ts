@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { createChatSummarizerStartEvent, createChatSummarizerEndEvent, createQuestionGeneratorStartEvent, createQuestionGeneratorEndEvent, createDecisionQuestionsEvent, createDebugMetaEvent, type DebugMetaDiscoveryQuestions, type DebugMetaLlm } from "../chat-streaming.types.js";
-import type { Question, QuestionStrategy } from "../../shared/schemas/question.schema.js";
+import type { Question, QuestionStrategy } from "../../questions/domain/question.schema.js";
 
 const question: Question = {
   title: "Stage",

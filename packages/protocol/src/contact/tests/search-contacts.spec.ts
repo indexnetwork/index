@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { createContactTools } from "../contact.tools.js";
+import { createContactTools } from "../../contacts/application/index.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 function makeContext(userId = "user-123"): ResolvedToolContext {

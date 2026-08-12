@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { IndexNegotiator } from "../negotiation.agent.js";
-import type { NegotiationAgentInput } from "../negotiation.agent.js";
+import { IndexNegotiator } from "../application/negotiation.agent.js";
+import type { NegotiationAgentInput } from "../application/negotiation.agent.js";
 
 /**
  * IND-397 — system-agent invalid output: retry once, then conservative fallback.

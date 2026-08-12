@@ -101,8 +101,18 @@ describe('mac Index API client endpoint contract', () => {
   it('uses controller-backed auth/network/intent endpoints', async () => {
     await expectCall('auth.me', (client) => client.auth.me(), { path: '/auth/me' });
     await expectCall('networks.list', (client) => client.networks.list(), { path: '/networks' });
+    await expectCall('networks.discoverPublic', (client) => client.networks.discoverPublic(1, 50), { path: '/networks/discovery/public?page=1&limit=50' });
     await expectCall('networks.overview', (client) => client.networks.overview('net/1'), { path: '/networks/net%2F1/overview' });
     await expectCall('networks.myIntents', (client) => client.networks.myIntents('net/1'), { path: '/networks/net%2F1/my-intents' });
+    await expectCall('networks.update', (client) => client.networks.update('net/1', { title: 'n' }), { path: '/networks/net%2F1', method: 'PUT', body: { title: 'n' } });
+    await expectCall('networks.delete', (client) => client.networks.delete('net/1'), { path: '/networks/net%2F1', method: 'DELETE' });
+    await expectCall('networks.getMembers', (client) => client.networks.getMembers('net/1'), { path: '/networks/net%2F1/members' });
+    await expectCall('networks.addMember', (client) => client.networks.addMember('net/1', 'u1', ['member']), { path: '/networks/net%2F1/members', method: 'POST', body: { userId: 'u1', permissions: ['member'] } });
+    await expectCall('networks.removeMember', (client) => client.networks.removeMember('net/1', 'u1'), { path: '/networks/net%2F1/members/u1', method: 'DELETE' });
+    await expectCall('networks.updateMemberPermissions', (client) => client.networks.updateMemberPermissions('net/1', 'u1', ['owner']), { path: '/networks/net%2F1/members/u1', method: 'PATCH', body: { permissions: ['owner'] } });
+    await expectCall('networks.inviteMember', (client) => client.networks.inviteMember('net/1', { email: 'a@b.co' }), { path: '/networks/net%2F1/members/invite', method: 'POST', body: { email: 'a@b.co' } });
+    await expectCall('networks.searchUsers', (client) => client.networks.searchUsers('ada', 'net/1'), { path: '/networks/search-users?q=ada&networkId=net%2F1' });
+    await expectCall('networks.regenerateInvitationLink', (client) => client.networks.regenerateInvitationLink('net/1'), { path: '/networks/net%2F1/regenerate-invitation', method: 'PATCH', body: {} });
     await expectCall('intents.list', (client) => client.intents.list({ page: 1 }), { path: '/intents/list', method: 'POST', body: { page: 1 } });
     await expectCall('intents.get', (client) => client.intents.get('intent/1'), { path: '/intents/intent%2F1' });
     await expectCall('intents.archive', (client) => client.intents.archive('intent/1'), { path: '/intents/intent%2F1/archive', method: 'PATCH' });

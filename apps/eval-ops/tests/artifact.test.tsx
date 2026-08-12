@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { render, screen, cleanup, act } from '@testing-library/react';
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router';
 
 import { ArtifactView } from '../src/routes/ArtifactView';
 import { encodeArtifactId } from '../src/api/client';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 const BASELINE_PATH = 'matching/baselines/matching.baseline.json';
 const BASELINE_ID = encodeArtifactId(BASELINE_PATH);
@@ -114,6 +115,50 @@ describe('ArtifactView', () => {
 
     expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull();
     expect(screen.queryByText(/^exit /)).toBeNull();
+  });
+
+  it('clears the prior artifact while a changed route is delayed, then shows the new rejection', async () => {
+    let resolveChanged!: (response: Response) => void;
+    const changedResponse = new Promise<Response>((resolve) => {
+      resolveChanged = resolve;
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/api/artifacts/changed')) return changedResponse;
+      return new Response(JSON.stringify(BASELINE));
+    }));
+    const router = createMemoryRouter(
+      [{ path: '/a/:artifactId', element: <ArtifactView /> }],
+      { initialEntries: [`/a/${BASELINE_ID}`] },
+    );
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByText('98.9%')).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate('/a/changed');
+    });
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.queryByText('98.9%')).toBeNull();
+    expect(screen.queryByText('corpus-fingerprint-aaa')).toBeNull();
+
+    await act(async () => {
+      resolveChanged(new Response(JSON.stringify({ error: 'changed artifact failed' }), { status: 500 }));
+    });
+    expect(await screen.findByText('changed artifact failed')).toBeInTheDocument();
+    expect(screen.queryByText('98.9%')).toBeNull();
+  });
+
+  it.each([
+    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '30/30'],
+    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '29/30'],
+  ])('routes a %s quality measurement to the dedicated report', async (_kind, artifact, completeness) => {
+    stubArtifact(artifact);
+    const { container } = renderArtifact('quality-artifact');
+
+    expect(await screen.findByText(completeness)).toBeInTheDocument();
+    expect(screen.queryByText(/aggregate pass rate/i)).toBeNull();
+    expect(screen.queryByRole('link', { name: /compare/i })).toBeNull();
+    expect(container.textContent).not.toContain('%');
+    expect(container.textContent).not.toMatch(/baseline delta|regression|winner/i);
   });
 });
 

@@ -44,6 +44,94 @@ function ensureAssets() {
   return assetsPromise
 }
 
+// Native OS alerts use only the authenticated Hermes SDK doors. Question and
+// opportunity sockets share canonical persisted dedupe with the 60-second
+// snapshot fallback; messages remain realtime-only and fail closed until the
+// current user's identity is known.
+function socketEventPayload(value) {
+  const data = value && Object.prototype.hasOwnProperty.call(value, 'data') ? value.data : value
+  if (typeof data !== 'string') return data
+  try { return JSON.parse(data) } catch (e) { return null }
+}
+
+function disposeDesktopSocket(socket) {
+  try {
+    if (typeof socket === 'function') socket()
+    else if (socket && typeof socket.dispose === 'function') socket.dispose()
+    else if (socket && typeof socket.close === 'function') socket.close()
+  } catch (e) { /* best-effort plugin disposal */ }
+}
+
+function persistNotifiedEntities(ctx, state) {
+  ctx.storage.set(NOTIFIED_ENTITIES_KEY, state.notifiedEntities)
+}
+
+function sendOsNotification(ctx, event) {
+  if (!ctx.os || typeof ctx.os.notify !== 'function') return
+  const copy = composeNotification(event)
+  if (!copy) return
+  try {
+    Promise.resolve(ctx.os.notify(copy)).catch(function () { /* notification rendering is fail-open */ })
+  } catch (e) { /* synchronous host errors are fail-open too */ }
+}
+
+function notifyRealtimeEvent(ctx, state, rawEvent, suppressOwnMessage) {
+  if (state.stopped) return
+  const event = socketEventPayload(rawEvent)
+  if (!event || event.type === 'connected') return
+  if (suppressOwnMessage && isOwnMessage(event, state.currentUserId)) return
+  if (!composeNotification(event)) return
+  const remembered = rememberNotificationEntity(state.notifiedEntities, notificationEntityKey(event))
+  if (!remembered.isNew) return
+  state.notifiedEntities = remembered.notifiedEntities
+  persistNotifiedEntities(ctx, state)
+  sendOsNotification(ctx, event)
+}
+
+function reconcileDesktopSnapshot(ctx, state) {
+  reconcileDesktopNotificationState(ctx, state, function (event) {
+    sendOsNotification(ctx, event)
+  }).catch(function () { /* the next 60-second reconciliation retries */ })
+}
+
+function startDesktopNotifications(ctx) {
+  const stored = ctx.storage.get(NOTIFIED_ENTITIES_KEY, [])
+  const state = {
+    currentUserId: null,
+    hasSnapshot: false,
+    notifiedEntities: Array.isArray(stored) ? stored.slice(-MAX_NOTIFIED_ENTITIES) : [],
+    reconciling: false,
+    stopped: false,
+  }
+  let notificationSocket = null
+  let conversationSocket = null
+
+  if (typeof ctx.socket === 'function') {
+    try {
+      notificationSocket = ctx.socket('/notifications/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event, false)
+      })
+    } catch (e) { /* snapshot reconciliation remains available */ }
+    try {
+      conversationSocket = ctx.socket('/conversations/socket', function (event) {
+        notifyRealtimeEvent(ctx, state, event, true)
+      })
+    } catch (e) { /* messages intentionally have no catch-up path */ }
+  }
+
+  reconcileDesktopSnapshot(ctx, state)
+  const snapshotTimer = window.setInterval(function () {
+    reconcileDesktopSnapshot(ctx, state)
+  }, 60000)
+
+  return function dispose() {
+    state.stopped = true
+    window.clearInterval(snapshotTimer)
+    disposeDesktopSocket(notificationSocket)
+    disposeDesktopSocket(conversationSocket)
+  }
+}
+
 function DesktopPage() {
   const tick = React.useState(0)
   React.useEffect(function () {
@@ -62,7 +150,6 @@ export default {
   id: 'index-network',
   name: 'Index Network',
   register: function (ctx) {
-    console.info('[index-network] desktop plugin registered (dashboard component: ' + (DashboardComponent ? 'ok' : 'MISSING') + ')')
     restCall = function (path, opts) { return ctx.rest(path, opts) }
 
     const style = document.createElement('style')
@@ -70,6 +157,9 @@ export default {
     style.textContent = PLUGIN_CSS
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
+
+    const stopNotifications = startDesktopNotifications(ctx)
+    ctx.onDispose(stopNotifications)
 
     ctx.registerMany([
       {

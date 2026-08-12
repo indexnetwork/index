@@ -12,7 +12,7 @@ function isGmailOAuthHref(href: string | undefined): href is string {
 }
 
 /**
- * Shared hook for the Gmail OAuth popup flow used in both onboarding and in-chat.
+ * Shared hook for the Gmail OAuth popup flow used in chat.
  *
  * Returns `OAuthLink` — a drop-in `a` renderer for ReactMarkdown that detects
  * Gmail OAuth URLs and renders the styled Connect/Connected button entirely

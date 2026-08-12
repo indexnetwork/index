@@ -180,6 +180,8 @@ In full mode, the plugin ships an **Index Network** dashboard tab under `dashboa
 
 Negotiator mode has no dashboard API or registered tab component. Hermes may statically discover `dashboard/manifest.json` in every installed package; the current manifest format has no environment-conditioned discovery field. That discovery is not runtime authorization. In negotiator, unknown non-empty, whitespace-only, or padded modes, the exported backend router is empty and `dist/index.js` registers no tab component because the full-only `/api/plugins/index-network/mode` endpoint is unavailable. Thus no dashboard API or tab component activates even if the host has already seen the static manifest. Full, absent, and empty modes retain the existing routes and tab behavior.
 
+Native Desktop notifications use the Hermes Plugin SDK exclusively: `ctx.socket` connects to authenticated plugin WebSocket relays for Index notification and conversation SSE, while `ctx.rest` reconciles persisted pending questions and actionable opportunities every 60 seconds. The first successful snapshot is a silent baseline and later unseen entities are deduplicated against realtime delivery. Index rejects network-scoped API keys at both notification stream and snapshot boundaries because those events do not yet carry authoritative network provenance. Direct-message alerts are realtime-only (not reconstructed by snapshots), and are suppressed for the current user's own messages or while identity is unresolved.
+
 See [`dashboard/README.md`](./dashboard/README.md) for the full scope and runtime behavior.
 
 ## Autonomous negotiation

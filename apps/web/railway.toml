@@ -1,6 +1,14 @@
 # Railway web app service configuration.
 [build]
-watchPatterns = ["/apps/web/**", "/bun.lock", "/package.json"]
+watchPatterns = [
+  "/apps/web/**",
+  "/docs/protocol-atlas/**",
+  "/scripts/build-protocol-atlas.ts",
+  "/scripts/tests/build-protocol-atlas.spec.ts",
+  "/packages/protocol/**",
+  "/bun.lock",
+  "/package.json",
+]
 buildCommand = "bun run build:web"
 
 [deploy]

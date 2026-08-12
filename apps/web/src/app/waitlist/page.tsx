@@ -15,10 +15,10 @@ function WaitlistPage() {
           <Nav />
           <div className="hero-split">
             <div className="well">
-              <h1 className="display">Join the waitlist</h1>
+              <h1 className="display">Request access</h1>
               <p className="body-italic">
-                Leave your email — we&rsquo;ll let you know when
-                we&rsquo;re live and keep you posted on updates.
+                Index is opening in cycles. Get early access, find your networks,
+                or start your own.
               </p>
               <div style={{ marginTop: 32, maxWidth: 440 }}>
                 <WaitlistForm idPrefix="waitlist-page" />

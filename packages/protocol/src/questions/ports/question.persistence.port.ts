@@ -5,8 +5,7 @@
  * QuestionerAgent. Implementations live in the backend and are injected into
  * ProtocolDeps.
  *
- * IND-547: canonical home — previously shared/interfaces/questioner.interface.ts.
- * Legacy path is a thin compatibility shim pointing here.
+ * IND-547: canonical question persistence port.
  */
 import type { Question, QuestionMode, QuestionPurpose, QuestionStrategy, QuestionDetection, QuestionActor, QuestionAnswer, UnderspecificationType } from "../domain/question.schema.js";
 

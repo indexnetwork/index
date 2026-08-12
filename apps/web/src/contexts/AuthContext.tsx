@@ -10,6 +10,19 @@ import { log } from '@/lib/logger';
 const logger = log.context.from('AuthContext');
 
 /**
+ * The loading splash is dark on every route.
+ *
+ * It used to be #FDFDFD, matching the signed-in app. That made every dark
+ * screen flash white before painting. Note the reverse is now true for the
+ * light app screens, which flash dark before painting; this is deliberate, the
+ * splash reads as one screen across the site rather than changing per route.
+ *
+ * #0d1a13 is the download page's background. The landing sits slightly lighter
+ * at #14241f, so there is a small step there.
+ */
+const SPLASH_BACKGROUND = '#0d1a13';
+
+/**
  * Server-driven feature flags returned alongside the user on GET /auth/me
  * (sibling of `user`, not part of it). `negotiatorChat` gates the pinned
  * Personal Agent entry; `signalAgent` gates the main-web Signal cutover;
@@ -152,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const isHomePage = pathname === '/';
     const publicPrefixes = [
-      '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
+      '/simulation', '/l', '/blog', '/pages', '/about',
       '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/o/', '/waitlist', '/download',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
@@ -177,12 +190,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Force redirect to /onboarding only from the authenticated home page.
-    if (authenticated && user && !user.onboarding?.completedAt && isHomePage) {
-      navigate('/onboarding', { replace: true });
-      return;
-    }
-
     setIsLoading(false);
   }, [authenticated, ready, navigate, pathname, user, userLoading, userFetchAttempted, openLoginModal]);
 
@@ -203,8 +210,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {isLoading ? (
-        <div className="min-h-screen flex items-center justify-center bg-[#FDFDFD]">
-          <video autoPlay loop muted playsInline className="w-40 h-40">
+        <div
+          className="min-h-screen flex items-center justify-center"
+          style={{ backgroundColor: SPLASH_BACKGROUND }}
+        >
+          {/* The clip is a blue drawing on a solid white card, which would sit
+              as a white box on the dark ground. invert turns that card black and
+              the strokes light (they are mid-blue #2b62a8, so they invert to a
+              warm #d49d57), then screen drops the black and leaves the drawing. */}
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="w-40 h-40"
+            style={{ filter: 'invert(1)', mixBlendMode: 'screen' }}
+          >
             <source src="/loading-tree.m4v" type="video/mp4" />
           </video>
         </div>
