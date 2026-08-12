@@ -8,6 +8,10 @@ import { indexAppOwnerAuthorizationService, type IndexAppOwnerAuthorizationReque
 
 type Status = 'loading' | 'login' | 'consent' | 'approving' | 'redirecting' | 'error';
 
+function invalidMessage(): string {
+  return 'This Index app sign-in request is invalid or has expired. Return to the Index app and start a fresh sign-in.';
+}
+
 function IndexAppAuthorizePage() {
   const [request] = useState<IndexAppOwnerAuthorizationQuery | null>(() =>
     window.location.hash === '' ? parseIndexAppOwnerAuthorizationQuery(window.location.search) : null,
@@ -15,6 +19,7 @@ function IndexAppAuthorizePage() {
   const [metadata, setMetadata] = useState<IndexAppOwnerAuthorizationRequestView | null>(null);
   const [account, setAccount] = useState('');
   const [status, setStatus] = useState<Status>(request ? 'loading' : 'error');
+  const [message, setMessage] = useState(request ? '' : invalidMessage());
   const started = useRef(false);
 
   useEffect(() => {
@@ -31,13 +36,17 @@ function IndexAppAuthorizePage() {
         setAccount(session.data.user?.email ?? session.data.user?.name ?? 'Your Index account');
         setMetadata(response);
         setStatus('consent');
-      } catch { setStatus('error'); }
+      } catch {
+        setMessage(invalidMessage());
+        setStatus('error');
+      }
     })();
   }, [request]);
 
   async function approve() {
     if (!request || !metadata || status !== 'consent') return;
     setStatus('approving');
+    setMessage('');
     try {
       const result = await indexAppOwnerAuthorizationService.approve(
         request.requestId, request.state, request.redirectUri,
@@ -52,7 +61,10 @@ function IndexAppAuthorizePage() {
         code: result.code,
         state: result.state,
       });
-    } catch { setStatus('error'); }
+    } catch {
+      setMessage('Index for macOS could not be signed in. Return to the Index app and start a fresh sign-in.');
+      setStatus('error');
+    }
   }
 
   return (
@@ -92,7 +104,7 @@ function IndexAppAuthorizePage() {
         {status === 'error' ? (
           <div className="text-center">
             <h1 className="text-xl font-semibold">Sign-in unavailable</h1>
-            <p className="mt-2 text-sm text-gray-500">Return to the Index app and start a fresh sign-in.</p>
+            <p className="mt-2 text-sm text-gray-500">{message}</p>
           </div>
         ) : null}
       </div>

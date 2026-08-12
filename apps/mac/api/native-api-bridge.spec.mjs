@@ -204,7 +204,9 @@ describe('native owner migration and transport source contracts', () => {
     expect(login.indexOf('secureRandomState()')).toBeLessThan(login.indexOf('LoopbackAuthServer(state:'));
     expect(login.indexOf('secure_random_unavailable')).toBeLessThan(login.indexOf('performOwnerRequest'));
     expect(mainSwift).not.toMatch(/UUID\(\)\.uuidString \+ UUID\(\)\.uuidString/);
+    expect(mainSwift).toContain('AppConfig.trimTrailingSlash(AppConfig.appURL) + "/index-app-authorize"');
     expect(mainSwift).toContain('/index-app-owner-authorizations/exchange');
+    expect(mainSwift).not.toContain('/hermes-authorize');
     expect(mainSwift).toContain('try store.putAndVerify(record)');
     expect(mainSwift).toContain('/index-app-owner-authorizations/activate');
     expect(mainSwift).toContain('/index-app-owner-authorizations/rollback');

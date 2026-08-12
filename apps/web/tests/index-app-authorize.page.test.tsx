@@ -52,11 +52,21 @@ describe('Index app owner consent', () => {
     expect(window.location.href).not.toMatch(/credential|api_key|verifier|idxo_/i);
   });
 
-  test('rejects malformed callback before session or API access', async () => {
+  test('rejects malformed callback before session or API access with a stable invalid-or-expired reason', async () => {
     window.location.href = 'http://localhost/index-app-authorize?request_id=x&state=abcdefghijklmnopqrstuvwxyzABCDEFGH&redirect_uri=http%3A%2F%2Flocalhost%3A49152%2Fcallback';
     render(<IndexAppAuthorizePage />);
     expect(await screen.findByText('Sign-in unavailable')).toBeTruthy();
+    expect(screen.getByText(/sign-in request is invalid or has expired/i)).toBeTruthy();
     expect(mocks.getSession).not.toHaveBeenCalled();
     expect(mocks.getRequest).not.toHaveBeenCalled();
+  });
+
+  test('reports a stale server request as invalid or expired after session validation', async () => {
+    mocks.getRequest.mockRejectedValueOnce(new Error('authorization_expired'));
+    render(<IndexAppAuthorizePage />);
+    expect(await screen.findByText(/sign-in request is invalid or has expired/i)).toBeTruthy();
+    expect(mocks.getSession).toHaveBeenCalledTimes(1);
+    expect(mocks.getRequest).toHaveBeenCalledWith(requestId, state, redirectUri);
+    expect(mocks.approve).not.toHaveBeenCalled();
   });
 });

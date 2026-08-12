@@ -227,6 +227,15 @@ test('status exposes only the nonsecret authority tuple required for exact runti
   expect(statusBlock).not.toContain('rawCredential');
 });
 
+test('browser authorization is isolated to the Hermes route and API family', () => {
+  const browserAuthorization = read('./Sources/BrowserAuthorization.swift');
+  const httpClient = read('./Sources/ConnectorHTTPClient.swift');
+  expect(browserAuthorization).toContain('endpoints.web.appending(path: "hermes-authorize")');
+  expect(httpClient).toContain('path: "/hermes-authorizations"');
+  expect(browserAuthorization).not.toContain('index-app-authorize');
+  expect(httpClient).not.toContain('index-app-owner-authorizations');
+});
+
 test('authorize.start response is encoded without browser or setup details', () => {
   const runtime = read('./Sources/ConnectorRuntime.swift');
   const fixture = read('./Tests/ConnectorProtocolFixture.swift');
