@@ -83,6 +83,11 @@ assert.deepEqual(
   composeNotification(messageFrom('user-2')),
   { title: 'New message from Casey', body: 'Hello from Index.' },
 )
+// Protocol often persists typeless `{ text }` parts; accept those for OS copy.
+assert.deepEqual(
+  composeNotification(messageFrom('user-2', { parts: [{ text: 'Haha' }] })),
+  { title: 'New message from Casey', body: 'Haha' },
+)
 assert.deepEqual(
   composeNotification(messageFrom('user-2', { senderName: '', parts: [] })),
   { title: 'New message from user-2', body: 'Open Index to read the message.' },

@@ -4463,7 +4463,9 @@ export function composeNotification(event) {
     if (Array.isArray(message.parts)) {
       for (let index = 0; index < message.parts.length; index += 1) {
         const part = message.parts[index]
-        if (part && part.type === 'text' && typeof part.text === 'string' && part.text) {
+        if (!part || typeof part.text !== 'string' || !part.text) continue
+        // Prefer typed text parts; fall back to typeless `{ text }` (common on the wire).
+        if (part.type === 'text' || part.type == null || part.type === '') {
           text = part.text
           break
         }
