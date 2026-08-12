@@ -10,7 +10,7 @@ const fixtureDockerfilePath = resolve(import.meta.dir, 'fixtures/previous-api.Do
 const baseDockerfilePath = resolve(import.meta.dir, 'fixtures/previous-api-base.Dockerfile');
 const fixtureServerPath = resolve(import.meta.dir, 'fixtures/previous-api-server.ts');
 const taskReportPath = resolve(apiRoot, '../../.superpowers/sdd/2026-08-09-hermes-backend-production-assurance/task-4-report.md');
-const approvedRollbackBaseSha = '751f5a7ed143150488543db9a1b4ee1f1b833bfc';
+const approvedRollbackBaseSha = 'b3637387ab39a5259ebc4f1e7efb9fff2be3accc';
 const productionDigest = `registry.example/index-api@sha256:${'a'.repeat(64)}`;
 const localImageId = `sha256:${'b'.repeat(64)}`;
 const disposableDatabaseUrl = 'postgres://postgres:postgres@127.0.0.1:5432/hermes_assurance';
@@ -599,16 +599,21 @@ describe('previous API compatibility shell gate', () => {
 });
 
 describe('workflow compatibility modes', () => {
-  test('builds the immutable approved rollback-base API without deriving it from mutable branch topology', async () => {
+  test('builds the validated immutable rollback-base API and keeps it distinct from protected evidence', async () => {
     const workflow = await readFile(workflowPath, 'utf8');
 
     expect(workflow).toContain('previous-api-pr-base-evidence:');
     expect(workflow).toContain('Non-production PR rollback-base API evidence');
     expect(workflow).toContain('Validate and export approved rollback base');
     expect(workflow).toContain(`EXPECTED_ROLLBACK_BASE_SHA: ${approvedRollbackBaseSha}`);
+    expect(workflow).toContain('remote_url="$(git remote get-url origin)"');
+    expect(workflow).toContain('[[ "$remote_url" =~ ^https://github\\.com/[^/]+/[^/]+(\\.git)?$ ]]');
+    expect(workflow).toContain('+refs/heads/main:refs/remotes/origin/main');
+    expect(workflow).toContain('+refs/heads/feat/hermes-secure-standalone-connect:refs/remotes/origin/feat/hermes-secure-standalone-connect');
     expect(workflow).not.toContain('git merge-base origin/main origin/feat/hermes-secure-standalone-connect');
-    expect(workflow).toContain('git fetch --no-tags origin "$rollback_base_sha"');
     expect(workflow).toContain('test "$(git cat-file -t "$rollback_base_sha")" = commit');
+    expect(workflow).toContain('git merge-base --is-ancestor "$rollback_base_sha" origin/main');
+    expect(workflow).toContain('git merge-base --is-ancestor "$rollback_base_sha" origin/feat/hermes-secure-standalone-connect');
     expect(workflow).toContain('git merge-base --is-ancestor "$rollback_base_sha" "$GITHUB_SHA"');
     expect(workflow).toContain('git archive "$rollback_base_sha"');
     expect(workflow).toContain('previous-api-base.Dockerfile');
@@ -645,9 +650,6 @@ describe('workflow compatibility modes', () => {
 
   test('always uploads a fixed-schema diagnostic separately from success evidence', async () => {
     const workflow = await readFile(workflowPath, 'utf8');
-    expect(workflow).toContain('Create rollback-base diagnostic placeholder');
-    expect(workflow).toContain('"stage":"rollback-base-preflight"');
-    expect(workflow).toContain('"result":"not-run"');
     expect(workflow.match(/HERMES_PREVIOUS_API_DIAGNOSTIC: previous-api-compatibility-diagnostic\.json/g)).toHaveLength(2);
     expect(workflow.match(/name: Upload previous API compatibility diagnostic/g)).toHaveLength(2);
     expect(workflow.match(/if: always\(\)/g)).toHaveLength(2);

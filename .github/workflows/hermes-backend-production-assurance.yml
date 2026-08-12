@@ -151,22 +151,21 @@ jobs:
           TEST_DATABASE_SAFE: "1"
         run: bun run --cwd services/api db:migrate:test
 
-      - name: Create rollback-base diagnostic placeholder
-        run: |
-          printf '%s\n' '{"schemaVersion":1,"stage":"rollback-base-preflight","result":"not-run"}' \
-            > services/api/previous-api-compatibility-diagnostic.json
-
       - name: Validate and export approved rollback base
         id: rollback_base
         env:
-          EXPECTED_ROLLBACK_BASE_SHA: 751f5a7ed143150488543db9a1b4ee1f1b833bfc
+          EXPECTED_ROLLBACK_BASE_SHA: b3637387ab39a5259ebc4f1e7efb9fff2be3accc
         run: |
           set -euo pipefail
           remote_url="$(git remote get-url origin)"
           [[ "$remote_url" =~ ^https://github\.com/[^/]+/[^/]+(\.git)?$ ]]
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/feat/hermes-secure-standalone-connect:refs/remotes/origin/feat/hermes-secure-standalone-connect
           rollback_base_sha="$EXPECTED_ROLLBACK_BASE_SHA"
-          git fetch --no-tags origin "$rollback_base_sha"
           test "$(git cat-file -t "$rollback_base_sha")" = commit
+          git merge-base --is-ancestor "$rollback_base_sha" origin/main
+          git merge-base --is-ancestor "$rollback_base_sha" origin/feat/hermes-secure-standalone-connect
           git merge-base --is-ancestor "$rollback_base_sha" "$GITHUB_SHA"
           base_dir="$RUNNER_TEMP/hermes-rollback-base"
           rm -rf "$base_dir"
