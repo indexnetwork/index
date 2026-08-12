@@ -71,25 +71,21 @@ if role == 'app':
     canonical_group = f'{expected_team}.{bundle_id}.owner-credentials'
     if expected_group != canonical_group:
         fail('owner Keychain group does not match the signing Team and bundle')
-    expected_entitlements = {
-        'com.apple.application-identifier': expected_application_id,
-        'com.apple.developer.team-identifier': expected_team,
-        'com.apple.developer.associated-domains': [f'applinks:{host}'],
-        'keychain-access-groups': [expected_group],
-    }
-    group_error = 'does not authorize exactly the owner Keychain group'
+    # Apple issues Developer ID profiles with the team wildcard group. The
+    # signed app entitlement, validated separately, remains pinned exactly to
+    # the owner group, while the profile contract remains otherwise exact.
+    allowed_groups = ([expected_group], [f'{expected_team}.*'])
+    group_error = 'does not authorize exactly the owner Keychain group or the portal-issued Team wildcard'
+    expected_domains = [f'applinks:{host}']
 elif role == 'connector':
     if host:
         fail('connector validation does not accept an Associated Domains host')
     canonical_group = f'{expected_team}.{bundle_id}.credentials'
     if expected_group != canonical_group:
         fail('connector Keychain group does not match the signing Team and bundle')
-    expected_entitlements = {
-        'com.apple.application-identifier': expected_application_id,
-        'com.apple.developer.team-identifier': expected_team,
-        'keychain-access-groups': [expected_group],
-    }
+    allowed_groups = ([expected_group],)
     group_error = 'does not authorize exactly the connector Keychain group'
+    expected_domains = None
 else:
     fail('has an unknown release bundle role')
 
@@ -97,10 +93,18 @@ if entitlements.get('com.apple.developer.team-identifier') != expected_team:
     fail('team entitlement does not match the signing certificate')
 if entitlements.get('com.apple.application-identifier') != expected_application_id:
     fail('application identifier does not match the bundle')
-if entitlements.get('keychain-access-groups') != [expected_group]:
+groups = entitlements.get('keychain-access-groups')
+if groups not in allowed_groups:
     fail(group_error)
-if role == 'app' and entitlements.get('com.apple.developer.associated-domains') != [f'applinks:{host}']:
+if role == 'app' and entitlements.get('com.apple.developer.associated-domains') != expected_domains:
     fail('does not authorize exactly the selected host')
+expected_entitlements = {
+    'com.apple.application-identifier': expected_application_id,
+    'com.apple.developer.team-identifier': expected_team,
+    'keychain-access-groups': groups,
+}
+if expected_domains is not None:
+    expected_entitlements['com.apple.developer.associated-domains'] = expected_domains
 if entitlements != expected_entitlements:
     fail(f'contains entitlements outside the exact {role} profile contract')
 PY

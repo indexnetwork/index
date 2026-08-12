@@ -243,8 +243,21 @@ describe('Developer ID provisioning profile validation', () => {
     await expectRejected(path, 'does not authorize exactly the owner Keychain group');
   });
 
-  test('rejects wildcard and mismatched Keychain groups', async () => {
-    for (const group of ['TEAM123.*', 'TEAM123.network.index.connector.credentials']) {
+  test('accepts the portal-issued team wildcard Keychain group', async () => {
+    const path = await writeProfile({ Entitlements: {
+      'com.apple.application-identifier': 'TEAM123.network.index.system6',
+      'com.apple.developer.team-identifier': 'TEAM123',
+      'com.apple.developer.associated-domains': ['applinks:dev.index.network'],
+      'keychain-access-groups': ['TEAM123.*'],
+    }});
+    expect(validate(path).exitCode).toBe(0);
+  });
+
+  test('rejects mismatched and foreign-team Keychain groups', async () => {
+    for (const group of [
+      'TEAM123.network.index.connector.credentials',
+      'WRONGTEAM.*',
+    ]) {
       const path = await writeProfile({ Entitlements: {
         'com.apple.application-identifier': 'TEAM123.network.index.system6',
         'com.apple.developer.team-identifier': 'TEAM123',

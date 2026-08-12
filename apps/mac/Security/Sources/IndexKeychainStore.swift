@@ -104,6 +104,10 @@ struct IndexKeychainStore {
         ]
         if let accessGroup = descriptor.accessGroup {
             attributes[kSecAttrAccessGroup as String] = accessGroup
+            // Access groups only exist in the data protection keychain on
+            // macOS; without this flag the group attribute is not honored and
+            // items written can never be read back through this descriptor.
+            attributes[kSecUseDataProtectionKeychain as String] = true
         }
         return attributes
     }
