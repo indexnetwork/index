@@ -165,10 +165,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Keep setup-bun's executable cache enabled. `no-cache` forces every job
+      # through a GitHub release download, so a transient socket reset fails this
+      # required check before its tests start. The package cache is still cleared
+      # explicitly below to preserve the clean-install contract.
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
-          no-cache: true
 
       - name: Install dependencies
         run: |
@@ -192,10 +195,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Avoid a forced release download for this required check. setup-bun's
+      # executable cache is separate from the dependency cache cleared below.
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
-          no-cache: true
 
       - name: Install dependencies
         run: |
