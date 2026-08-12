@@ -14,6 +14,7 @@ section before promoting to `main`).
 - Record production evidence for the separately gated `opportunity_discovery_runs` Release 2 cleanup; no destructive migration is included.
 
 ### Fixed
+- Require TLS for legacy discovery children only after exact Neon target attestation and handoff equality, without changing strict query-free manifests or generic Drizzle behavior (API 0.84.2).
 - Refuse legacy discovery runs before target attestation or reset when provider/Redis runtime prerequisites are missing or ambiguous, and report child failures by sanitized code-owned execution stage.
 
 ### Added

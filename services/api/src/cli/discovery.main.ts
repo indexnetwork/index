@@ -1225,6 +1225,18 @@ const productionAbChildMainDependencies: AbChildMainDependencies = {
   runChild: runAbChild,
 };
 
+/** Verifies the bootstrap's one permitted internal URL transformation. */
+function matchesLegacyChildTlsBinding(attestedUrl: string, internalUrl: URL): boolean {
+  const externalUrl = new URL(attestedUrl);
+  if (externalUrl.searchParams.has('sslmode')) {
+    return externalUrl.toString() === internalUrl.toString();
+  }
+  if (internalUrl.searchParams.get('sslmode') !== 'require') return false;
+  const projectedExternalUrl = new URL(internalUrl);
+  projectedExternalUrl.searchParams.delete('sslmode');
+  return projectedExternalUrl.toString() === externalUrl.toString();
+}
+
 /** Child-only entry after bootstrap attestation; all checks here are preflight. */
 export async function runAbChildInvocation(
   args: readonly string[],
@@ -1235,7 +1247,7 @@ export async function runAbChildInvocation(
   const environment = assertAbSideEnvironment(processEnvironment, sideId);
   const manifest = parseAbManifest(processEnvironment.DISCOVERY_TARGETS);
   const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
-  if (!target || new URL(target.databaseUrl).toString() !== environment.databaseUrl.toString()) {
+  if (!target || !matchesLegacyChildTlsBinding(target.databaseUrl, environment.databaseUrl)) {
     throw new AbGateError(`Refusing to mutate: side ${sideId} is not composed against the database its manifest entry declares`);
   }
   const selection = parseAbRunArgs(args);

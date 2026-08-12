@@ -115,7 +115,7 @@ describe('production child stage wiring', () => {
     '--env', 'DISCOVERY_ALLOWED_TYPES=intent', '--runs', '1',
   ];
   const childEnvironment = confirmedEnvironment({
-    DATABASE_URL: manifest.targets[0].databaseUrl,
+    DATABASE_URL: `${manifest.targets[0].databaseUrl}?sslmode=require`,
     DISCOVERY_SIDE_BRANCH: 'eval-ab-a',
     DISCOVERY_TARGETS: JSON.stringify(manifest),
   });
