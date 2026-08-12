@@ -1,4 +1,4 @@
-import type { NegotiationCredentialPrincipal } from './hermes-credential';
+import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from './hermes-credential';
 import { getRequestAuthContext } from '../request-auth-context';
 import { readHermesRunHeaders } from './hermes-negotiation-run';
 
@@ -42,6 +42,7 @@ export async function pickupNegotiationAtControllerBoundary<Result>(input: {
     context?.kind !== 'api_key'
     || context.agentId !== input.agentId
     || !context.credentialId
+    || context.audience === 'index-app-owner'
   ) {
     return { kind: 'forbidden' };
   }
@@ -51,9 +52,11 @@ export async function pickupNegotiationAtControllerBoundary<Result>(input: {
     agentId: context.agentId,
     audience: context.audience ?? null,
     setupAttemptId: context.setupAttemptId ?? null,
+    ...(context.installationId ? { installationId: context.installationId } : {}),
+    ...(context.actions ? { actions: context.actions } : {}),
   };
   const runHeaders = readHermesRunHeaders(input.request);
-  if (principal.audience === 'hermes-negotiator' && !runHeaders) {
+  if (isDedicatedHermesNegotiationAudience(principal.audience) && !runHeaders) {
     return { kind: 'forbidden' };
   }
   const result = await input.negotiations.pickup(

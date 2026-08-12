@@ -150,4 +150,3 @@ function ChoiceCard({ title, sub, selected, onClick }) {
     </button>
   );
 }
-

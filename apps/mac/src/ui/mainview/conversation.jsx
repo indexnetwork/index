@@ -583,4 +583,3 @@ function opportunityBucket(p) {
     default:         return "negotiating";
   }
 }
-

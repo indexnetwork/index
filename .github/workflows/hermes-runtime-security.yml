@@ -37,11 +37,13 @@ jobs:
           bun pm cache rm || true
           bun install --frozen-lockfile
 
-      - name: Hermes plugin smoke and dashboard gate
+      - name: Hermes plugin transport, migration, smoke, and dashboard gates
         env:
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
         run: |
+          python3 packages/hermes-plugin/tests/connector_protocol.py
+          python3 packages/hermes-plugin/tests/migration.py
           python3 packages/hermes-plugin/tests/smoke.py
           python3 packages/hermes-plugin/tests/gateway.py
           node packages/hermes-plugin/tests/dashboard-registration.test.cjs
@@ -55,6 +57,7 @@ jobs:
             apps/mac/api/agent-runtime-ui.spec.mjs \
             apps/mac/api/markdown.spec.mjs \
             apps/mac/api/client.spec.mjs \
+            apps/mac/api/native-api-bridge.spec.mjs \
             apps/mac/api/deeplink.spec.mjs
           bun test \
             apps/mac/hermes-runtime.spec.mjs \
@@ -70,6 +73,8 @@ jobs:
           cd packages/protocol
           bun run architecture:check
           bun test \
+            src/mcp/tests/mcp.authorization-policy.spec.ts \
+            src/mcp/tests/mcp.server.spec.ts \
             src/negotiation/tests/negotiation.hermes-contract.spec.ts \
             src/negotiation/tests/negotiation.turn-cap.spec.ts \
             src/negotiation/tests/negotiation.tools.spec.ts \
@@ -86,7 +91,14 @@ jobs:
           bun test \
             tests/agent-runtime.service.spec.ts \
             src/controllers/tests/agent-runtime.controller.spec.ts \
+            src/controllers/tests/hermes-authorization.controller.spec.ts \
+            src/controllers/tests/connected-agents.controller.spec.ts \
+            src/services/tests/connected-agents.service.spec.ts \
+            src/guards/tests/hermes-agent-audience.spec.ts \
             src/guards/tests/hermes-negotiator-audience.spec.ts \
+            src/controllers/tests/index-app-owner-authorization.controller.spec.ts \
+            src/guards/tests/index-app-owner-audience.spec.ts \
+            src/lib/agent/index-app-owner-mcp.spec.ts \
             src/lib/agent/tests/hermes-negotiation-run.spec.ts \
             src/lib/negotiation/tests/expected-speaker.spec.ts \
             src/lib/negotiation/tests/consultation.spec.ts \

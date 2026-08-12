@@ -28,6 +28,12 @@ pin a supported release, use `latest`.
 
 ## [Unreleased]
 
+### Added
+- Full standalone Hermes capability policy (11.2.0): the `hermes-agent` principal has an explicit six-action MCP/REST policy while the existing `hermes-negotiator` principal remains restricted to its four scheduled negotiation handlers. Both policies default deny and preserve one-shot, generation-fenced negotiation authority.
+
+### Security
+- The Hermes policy never exposes owner credentials, account-security, credential/permission/agent administration, billing, or unclassified tools; connector and owner-native callers receive only nonsecret response projections.
+
 ### Removed
 - Remove six unsupported shared interface/schema forwarding shims after migrating repository consumers to capability-owned domain and port modules; stable package-root exports remain unchanged.
 - Remove six unsupported tool-port forwarding shims and the deprecated unused discovery-question mapper; stable package-root exports remain unchanged.
@@ -80,7 +86,7 @@ pin a supported release, use `latest`.
   are unchanged.
 
 ### Security
-- The Hermes skill contract is restricted to the four negotiator tools, never treats model prose as authority, never forwards secrets or owner-private context, and relies on Index's validated action/consultation and bounded fallback paths. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, hardened runtime and App Sandbox are restored, the app is signed/notarized, and the credential TTL/revocation checklist is verified.**
+- The Hermes skill contract is restricted to the four negotiator tools, never treats model prose as authority, never forwards secrets or owner-private context, and relies on Index's validated action/consultation and bounded fallback paths. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, Developer ID hardened-runtime signing and notarization are complete, and the credential TTL/revocation checklist is verified.**
 
 ### Fixed
 - Add an independent complete-payload golden digest and stronger audit/report leak

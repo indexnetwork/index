@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
-import type { NegotiationCredentialPrincipal } from './hermes-credential';
+import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from './hermes-credential';
 
 export const HERMES_RUN_ID_HEADER = 'x-index-hermes-run-id';
 export const HERMES_RUN_CAPABILITY_HEADER = 'x-index-hermes-run-capability';
@@ -58,7 +58,7 @@ export function issueHermesRunCapability(input: {
   ttlMs?: number;
 }): { capability: string; binding: HermesRunCapabilityBinding } {
   if (
-    input.principal.audience !== 'hermes-negotiator'
+    !isDedicatedHermesNegotiationAudience(input.principal.audience)
     || !nonempty(input.principal.setupAttemptId)
     || !nonempty(input.runId)
   ) throw new Error('Hermes run capability requires an exact dedicated credential and run ID');
@@ -107,7 +107,7 @@ export function hermesRunBindingMatchesIdentity(
   input: Omit<HermesRunCapabilityInput, 'capability' | 'now'>,
 ): boolean {
   const setupAttemptId = input.principal.setupAttemptId;
-  return input.principal.audience === 'hermes-negotiator'
+  return isDedicatedHermesNegotiationAudience(input.principal.audience)
     && Boolean(setupAttemptId)
     && binding.taskId === input.taskId
     && binding.credentialId === input.principal.credentialId

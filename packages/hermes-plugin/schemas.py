@@ -48,14 +48,6 @@ INDEX_READ_INTENTS = {
 }
 
 FORWARDED_MCP_TOOLS = (
-    "register_agent",
-    "list_agents",
-    "update_agent",
-    "delete_agent",
-    "grant_agent_permission",
-    "revoke_agent_permission",
-    "list_conversations",
-    "get_conversation",
     "read_user_contexts",
     "preview_user_context",
     "confirm_user_context",
@@ -63,13 +55,10 @@ FORWARDED_MCP_TOOLS = (
     "update_user_context",
     "get_enrichment_run",
     "cancel_enrichment_run",
-    "complete_onboarding",
     "create_intent",
     "update_intent",
-    "delete_intent",
     "create_intent_index",
     "read_intent_indexes",
-    "delete_intent_index",
     "search_intents",
     "list_negotiations",
     "get_negotiation",
@@ -78,9 +67,7 @@ FORWARDED_MCP_TOOLS = (
     "read_network_memberships",
     "update_network",
     "create_network",
-    "delete_network",
     "create_network_membership",
-    "delete_network_membership",
     "list_opportunities",
     "update_opportunity",
     "confirm_opportunity_delivery",
@@ -116,8 +103,8 @@ INDEX_AGENT_ME = {
     "name": "index_agent_me",
     "description": (
         "Return the authenticated Index Network personal agent bound to the "
-        "configured INDEX_API_KEY. Use this before autonomous negotiation when "
-        "you need the agent id or want to verify the key is agent-bound."
+        "secure connector connection. Use this before autonomous negotiation when "
+        "you need the agent id or want to verify the connection is agent-bound."
     ),
     "parameters": {
         "type": "object",

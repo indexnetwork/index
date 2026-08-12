@@ -1,7 +1,7 @@
 // App, orchestrates the Mac System 6 prototype against the live backend.
-// Auth source of truth is the native Keychain credential surfaced as
-// window.INDEX_NATIVE.apiKey (bridged through window.IndexApp). When there is no
-// credential the app shows sign-in; INDEX_DATA is only a signed-out demo
+// Auth source of truth is a credential-free boolean surfaced by the native
+// Keychain owner. Requests cross the structured native bridge. When signed out
+// the app shows sign-in; INDEX_DATA is only a signed-out demo
 // fallback for browser preview where the Swift bridge is absent.
 
 // Live-only: there is no static demo data. window.INDEX_DATA starts empty and is
@@ -221,8 +221,8 @@ function App() {
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {
     if (!window.IndexApp) return;
-    return window.IndexApp.onAuthChanged((key) => {
-      if (key) {
+    return window.IndexApp.onAuthChanged((authenticated) => {
+      if (authenticated) {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
@@ -426,8 +426,7 @@ function App() {
 
   return (
     <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus }}>
-      <AgentRuntimeProvider ownerCredential={window.IndexApp && window.IndexApp.apiKey()}>
-      <div style={{
+      <AgentRuntimeProvider>      <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
       }} className="mac-desktop">

@@ -3,7 +3,7 @@ title: "Architecture Overview"
 type: design
 tags: [architecture, layering, agents, data-flow, protocol, langgraph]
 created: 2026-03-26
-updated: 2026-04-11
+updated: 2026-08-09
 ---
 
 # Architecture Overview
@@ -659,62 +659,91 @@ New opportunities (status: latent)
 
 ---
 
-## Personal Agent Runtime Binding
+## Secure standalone Hermes and Personal Agent runtime binding
 
 Index presents one owner-scoped Personal Agent. Its name, avatar, memory, policy,
-and negotiation history are not properties of an executor. The server stores a
-separate negotiation-runtime binding that chooses either the built-in Index
-executor or one preferred external executor. A Mac-provisioned Hermes record is
-therefore a security principal and execution binding, not a second persona.
-Legacy selected external records remain representable as `external`; the Mac
-selector does not relabel them as Index or Hermes and instead requires attention.
+and negotiation history never belong to an executor. The server stores a separate
+runtime binding that selects Index or a Hermes installation; Hermes is a security
+principal/execution binding, not a second persona. The Index macOS app is an
+optional owner-control client, not a dependency for standalone Hermes.
 
-The backend is authoritative for selection, exact `manage:negotiations`
-authority, server-observed pickup heartbeat, deadlines, claims, consultations,
-memory, and fallback. Owner-control runtime routes accept only a Better Auth
-session or the Mac's unbound owner key. The Hermes poller uses its separate
-agent-bound generation credential only for identity, pickup, response, and the
-structured consultation route; it cannot select itself or mint authority.
+### Identities and trust boundaries
 
-The macOS client coordinates setup as a generation-fenced saga:
+Two dedicated credentials replace plaintext configuration and generic API-key
+reuse:
 
-1. native inspection supplies a stable, non-secret `installationId`;
-2. each prepare uses a fresh `setupAttemptId` and returns one transient executor
-   credential;
-3. the native bridge configures plugin/env/schedule while the schedule is
-   disabled;
-4. the owner route activates that exact server generation;
-5. native enables the owned schedule and gateway;
-6. JavaScript applies one hard 90-second wall-clock deadline to reads and
-   sleeps, waits for the server to classify the matching executor heartbeat as
-   active, then confirms that generation healthy.
+- `idxh_` / `hermes-agent` belongs to the standalone connector, has exact owner,
+  agent, installation, setup-generation, ordered six-action metadata, and is
+  stored only in the connector Keychain identity;
+- `idxo_` / `index-app-owner` belongs to the Index app, has exact owner,
+  installation, and generation metadata, and is stored only in the app Keychain
+  identity.
 
-Only `configureDisabled` receives the bootstrap credential. It is not placed in
-React state, web storage, logs, or native callback results. Swift emits a
-credential-free dequeue acknowledgement from its serial queue; JavaScript starts
-the per-command execution timeout only then and bounds queue wait separately.
-Configure, enable, and confirm results are accepted only at their expected native stage with a
-complete local state matching the requested installation, executor, and setup
-generation; stale-generation success no-ops fail selection. Every post-prepare
-failure compares and rolls back the exact server generation first. A lost
-rollback response permits cleanup only when a binding read made with the journal's
-pinned owner proves that exact generation absent; uncertainty preserves recovery
-evidence. The authenticated runtime provider is always mounted at the app root.
-Both JS and native journals bind the stable non-secret authenticated app-user
-`ownerId`. A different owner may inspect and generation-pause local scheduling,
-but never uses their credential to read/rollback the old owner's installation or
-clear its journal. On relaunch the native journal
-inspection pauses an enabled owned schedule before JavaScript reconciles every
-partial stage, so recovery does not depend on opening the Personal Agent screen
-and a stale relaunch cannot undo a newer active generation. Malformed or
-operation/stage-mismatched journals are preserved and fail closed.
+The items have different services/access groups. Neither native executable can
+read the other item's credential, and neither credential enters JavaScript,
+Application Support journals, configuration files, logs, arguments, or browser
+callbacks. Both expire after 30 days with no refresh. The connector reports a
+seven-day reconnect warning using nonsecret status only.
 
-Selecting Index clears external negotiation authority and disables the matching
-local schedule while retaining Hermes wiring and its credential for quick
-reselection. Disconnect is distinct: it selects Index and revokes the exact
-installation server-side first, then removes the owned cron job, Index env keys,
-plugin/dashboard wiring, and local generation. In either operation the Personal
-Agent identity and history remain unchanged.
+The signed Index Connector is the Hermes production transport. The plugin trusts
+only two fixed Applications locations after no-symlink/ownership/mode checks and
+CMS, Team ID, bundle/designated-requirement, SHA-256, protocol-v1, build-mode,
+and endpoint-environment verification. Its JSON-lines protocol has exactly seven
+operations (`hello`, `status`, `authorize.start`, `authorize.poll`, `rest`, `mcp`,
+`disconnect`). It owns PKCE S256, a canonical high-port `127.0.0.1/callback`,
+Keychain lifecycle, immutable production endpoints, bounded allowlisted REST/MCP
+forwarding, 8 MiB uploads, bounded SSE queues, and recursive response redaction.
+A source-only environment transport requires both a compile/package-excluded
+marker and explicit development flag; production has no caller-supplied endpoint,
+credential, arbitrary header, or executable path.
+
+### Authorization and authority
+
+The browser gives a session owner a state- and redirect-bound consent view for
+the exact six durable actions: identity, premises, intents, networks,
+opportunities, and negotiations. Approval is owner-locked: it selects Index
+fallback, revokes earlier installation generations, then issues a one-time code.
+Exchange atomically validates code, state, callback, PKCE challenge, expiry,
+replay receipt, and current generation; only hashes persist. Native Keychain
+read-back is required before activation. The `hermes-agent` full principal is
+explicitly allowlisted for normal product REST/MCP capability families but cannot
+reach owner security, billing, credential/permission/agent administration, or
+unknown routes.
+
+This full principal is distinct from the scheduled `hermes-negotiator` boundary.
+Full mode has all six action families. Negotiator mode has exactly four Hermes
+handlers—identity, pickup, respond, consult—and only its precise route matrix.
+Pickup/respond/consult revalidate selection, owner, agent, installation,
+generation, credential row/expiry, expected speaker, and hidden one-shot run
+capability under the owner transaction; one mutation has an idempotent receipt.
+The server falls back to Index immediately on expiry, stale heartbeat, pause,
+revocation, or authority mismatch.
+
+### Recovery, migration, and optional owner client
+
+A historical Hermes configuration is never silently adopted. Migration takes the
+canonical cron lock, identifies all immutable-marker-attributable jobs, pauses
+and verifies them, scrubs the six owned historical values, re-reads the fence
+immediately before connector authorization, and keeps every failure recovery-only.
+The nonsecret journal has installation/generation/phase data only. Fallback and
+cron mutations use exact identity/generation compare-and-set fencing so a stale
+relaunch, callback, or cleanup cannot alter a newer installation.
+
+The Index app's native bridge is credential-free and constructs allowlisted
+requests with the app-only owner credential. Its historical plaintext migration
+retains only a legacy key ID, deletes/verifies the old file, forces a new browser
+login, and revokes the legacy server authority before activating the replacement.
+Pause deselects Hermes while retaining its credential; revoke/disconnect selects
+Index, revokes the exact generation, verifies denial, then performs fenced local
+cleanup. Uncertain server/Keychain cleanup retains nonsecret recovery evidence;
+connector recovery permits status and idempotent revocation only, never normal
+operations. Website and optional-app owner views expose only installation,
+actions, health, heartbeat, expiry, fallback, pause, revoke, and reconnect state.
+
+Direct macOS distribution targets macOS 13+, Developer ID signing, Hardened
+Runtime, notarization, stapling, Universal 2 artifacts, immutable production HTTPS
+inputs, and clean-account validation. It is not a Mac App Store product: App
+Sandbox is not a production requirement for this distribution model.
 
 ---
 

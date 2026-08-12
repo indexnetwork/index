@@ -38,6 +38,43 @@ private struct FixtureLayout {
     let jobsURL: URL
 }
 
+private final class FixtureConnectorStatus: HermesConnectorStatusProviding {
+    func status() throws -> HermesConnectorStatus {
+        HermesConnectorStatus(
+            connected: true,
+            health: "active",
+            revocationPending: false,
+            installationId: "installation-old",
+            agentId: "executor-new",
+            setupAttemptId: "attempt-new",
+            actions: [
+                "manage:identity", "manage:premises", "manage:intents",
+                "manage:networks", "manage:opportunities", "manage:negotiations",
+            ],
+            expiresAt: ISO8601DateFormatter().string(
+                from: Date().addingTimeInterval(29 * 24 * 60 * 60)
+            )
+        )
+    }
+
+    func disconnect(
+        installationId: String,
+        agentId: String,
+        setupAttemptId: String
+    ) throws -> HermesConnectorStatus {
+        HermesConnectorStatus(
+            connected: false,
+            health: "disconnected",
+            revocationPending: false,
+            installationId: installationId,
+            agentId: nil,
+            setupAttemptId: nil,
+            actions: [],
+            expiresAt: nil
+        )
+    }
+}
+
 private final class FixtureRunner: HermesCommandRunning {
     private let jobsURL: URL
 
@@ -150,7 +187,6 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: nil,
             executorId: nil,
             setupAttemptId: nil,
-            credential: nil,
             operationJournal: nil
         )
     }
@@ -163,7 +199,6 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: "installation-old",
             executorId: "executor-new",
             setupAttemptId: "attempt-new",
-            credential: "fixture-secret-not-persisted-in-installation",
             operationJournal: nil
         )
     }
@@ -212,7 +247,11 @@ struct HermesPersistenceCompatibilityFixture {
         let rebound = manager.handle(rebindRequest)
         trace("completed rebind: \(rebound.errorCode ?? "ok")")
         try require(rebound.ok, "exact pre-owner rebind failed: \(rebound.errorCode ?? "none")")
-        try require(rebound.stage == "scheduleDisabled", "rebind did not finish disabled")
+        try require(
+            rebound.stage == "connectorActivationConfirmed",
+            "rebind did not confirm connector activation"
+        )
+        try require(rebound.state?.scheduleEnabled == false, "rebind did not finish disabled")
 
         // Reload through a fresh production store to prove the saved tuple is
         // durable rather than merely retained by the manager instance.
@@ -232,7 +271,6 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: "installation-old",
             executorId: "executor-other",
             setupAttemptId: "attempt-other",
-            credential: "foreign-secret",
             operationJournal: nil
         ))
         try require(!foreignRebind.ok && foreignRebind.errorCode == "owner_mismatch", "owner fence accepted a foreign rebind")
@@ -255,7 +293,8 @@ struct HermesPersistenceCompatibilityFixture {
             runner: FixtureRunner(jobsURL: layout.jobsURL),
             binaryProvider: { layout.binary.path },
             applicationSupportURL: layout.applicationSupport,
-            hermesHomeURL: layout.hermesHome
+            hermesHomeURL: layout.hermesHome,
+            connectorStatusProvider: FixtureConnectorStatus()
         )
     }
 

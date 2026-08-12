@@ -5,22 +5,26 @@ const SETUP_JOURNAL_STAGES = new Set([
   'environmentWritten',
   'pluginInstalled',
   'scheduleDisabled',
+  'connectorActivationConfirmed',
   'enabling',
   'awaitingHeartbeat',
 ]);
 const DISCONNECT_JOURNAL_STAGES = new Set([
   'disconnecting',
+  'connectorDisconnected',
   'disconnectCleanupComplete',
 ]);
 
 const SAGA_JOURNAL_STAGES = Object.freeze({
   'select-hermes': new Set([
     'prepare-pending', 'prepared', 'configured', 'activated', 'native-recovery',
+    'connector-confirmed', 'connector-configured', 'connector-selected',
   ]),
   'select-index': new Set(['server-pending', 'server-complete']),
   disconnect: new Set(['server-pending', 'server-complete']),
 });
 const SAGA_JOURNAL_KEY = 'index.agent-runtime.saga.v1';
+const CONNECTOR_RECOVERY_STATE = 'revocation_pending';
 
 function aborted(error) {
   return error?.name === 'AbortError' || error?.code === 'ABORT_ERR';
@@ -91,16 +95,139 @@ function requireGenerationCleanupResult(result, command, setupAttemptId) {
   return successful;
 }
 
-function requireActivatedBinding(binding, { installationId, executorId }) {
+const HERMES_CANONICAL_ACTIONS = Object.freeze([
+  'manage:identity', 'manage:premises', 'manage:intents',
+  'manage:networks', 'manage:opportunities', 'manage:negotiations',
+]);
+const HERMES_CREDENTIAL_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
+
+function requireConnectorAuthority(result, now = Date.now()) {
+  const successful = requireSuccessfulNativeResult(result, 'connectorStatus');
+  const status = successful.connectorStatus;
+  const expiresAt = Date.parse(status?.expiresAt);
+  const exactActions = Array.isArray(status?.actions)
+    && status.actions.length === HERMES_CANONICAL_ACTIONS.length
+    && HERMES_CANONICAL_ACTIONS.every((action, index) => status.actions[index] === action);
+  if (successful.stage !== 'connector_status'
+    || status?.connected !== true
+    || status?.health !== 'active'
+    || status?.revocationPending !== false
+    || !nonemptyString(status?.installationId)
+    || !nonemptyString(status?.agentId)
+    || !nonemptyString(status?.setupAttemptId)
+    || !exactActions
+    || !Number.isFinite(expiresAt)
+    || expiresAt <= now
+    || expiresAt > now + HERMES_CREDENTIAL_TTL_MS) {
+    const error = new Error('Connector authority is not an exact active 30-day Hermes generation');
+    error.code = 'connector_authority_mismatch';
+    error.stage = 'connectorStatus';
+    error.retryable = true;
+    throw error;
+  }
+  return status;
+}
+
+function requireConnectorLogoutStatus(result) {
+  const successful = requireSuccessfulNativeResult(result, 'connectorStatus');
+  const status = successful.connectorStatus;
+  if (successful.stage !== 'connector_status'
+    || !nonemptyString(status?.installationId)
+    || typeof status?.connected !== 'boolean'
+    || typeof status?.revocationPending !== 'boolean') {
+    throw generationMismatch('connectorStatus', successful);
+  }
+  const exactAuthority = nonemptyString(status.agentId) && nonemptyString(status.setupAttemptId);
+  if (status.connected === true && status.revocationPending === false
+    && status.health === 'active' && exactAuthority) {
+    return { state: 'active', status };
+  }
+  if (status.connected === false && status.revocationPending === true
+    && status.health === 'recovery_only' && exactAuthority) {
+    return { state: 'revocation_pending', status };
+  }
+  if (status.connected === false && status.revocationPending === false
+    && status.health === 'disconnected'
+    && status.agentId == null && status.setupAttemptId == null) {
+    return { state: 'disconnected', status };
+  }
+  const error = new Error('Connector logout authority is unavailable or ambiguous');
+  error.code = 'connector_status_ambiguous';
+  error.stage = 'connectorStatus';
+  error.retryable = true;
+  throw error;
+}
+
+function requireInstallationBinding(binding, authority) {
+  const installation = binding?.installation;
+  if (installation?.status === 'active'
+    && installation.installationId === authority.installationId
+    && installation.executorId === authority.agentId
+    && installation.setupAttemptId === authority.setupAttemptId) return binding;
+  const error = new Error('Server installation did not match connector authority');
+  error.code = 'connector_server_authority_mismatch';
+  error.stage = 'reconcile';
+  throw error;
+}
+
+function requireActivatedBinding(binding, authority) {
   if (
     binding?.selectedRuntime === 'hermes'
-    && binding.executor?.id === executorId
-    && binding.executor?.installationId === installationId
+    && binding.executor?.id === authority.agentId
+    && binding.executor?.installationId === authority.installationId
+    && binding.executor?.setupAttemptId === authority.setupAttemptId
   ) return binding;
   const error = new Error('Activated Hermes binding did not match the requested executor');
   error.code = 'activation_binding_mismatch';
   error.stage = 'activate';
   throw error;
+}
+
+function requireConnectorDisconnectResult(result, authority) {
+  const successful = requireSuccessfulNativeResult(result, 'connectorDisconnect');
+  const status = successful.connectorStatus;
+  if (successful.stage === 'connector_disconnected'
+    && status?.connected === false
+    && status?.revocationPending === false
+    && status?.health === 'disconnected'
+    && status?.installationId === authority.installationId
+    && status?.agentId == null
+    && status?.setupAttemptId == null) return status;
+  if (successful.stage === 'connector_revocation_pending'
+    && status?.connected === false
+    && status?.revocationPending === true
+    && status?.health === 'recovery_only'
+    && status?.installationId === authority.installationId
+    && status?.agentId === authority.agentId
+    && status?.setupAttemptId === authority.setupAttemptId) {
+    const error = new Error('Connector revocation remains pending');
+    error.code = 'connector_revocation_pending';
+    error.stage = 'connectorDisconnect';
+    error.retryable = true;
+    error.recoveryState = CONNECTOR_RECOVERY_STATE;
+    throw error;
+  }
+  throw generationMismatch('connectorDisconnect', successful);
+}
+
+function requireCompareSelectIndex(result, authority) {
+  if ((result?.outcome === 'selected' || result?.outcome === 'already_index')
+    && result.binding?.selectedRuntime === 'index'
+    && result.binding?.executor == null) return result.binding;
+  const error = new Error('Server authority changed before exact Index recovery');
+  error.code = 'server_authority_preserved';
+  error.stage = 'reconcile-index';
+  error.retryable = true;
+  error.authority = authority;
+  throw error;
+}
+
+async function compareSelectExactIndex(api, authority, options = {}) {
+  return requireCompareSelectIndex(await api.compareAndSelectIndex({
+    agentId: authority.agentId,
+    installationId: authority.installationId,
+    setupAttemptId: authority.setupAttemptId,
+  }, options), authority);
 }
 
 function nonemptyString(value) {
@@ -360,74 +487,70 @@ async function compensatePreparedGeneration({
   }
 }
 
-/** Generation-fenced prepare/configure/activate/enable/health saga. */
+/** Connector-confirmed configure/select/enable/health saga. The caller's random
+ * setup ID is intentionally ignored: only the active Keychain-backed connector
+ * generation can become server authority. */
 export async function runHermesSelectionSaga({
   api,
   nativeRuntime,
   operationStore,
   ownerId,
-  installationId,
-  setupAttemptId,
   waitForHealth,
   signal,
 }) {
-  let journal = operationJournal('select-hermes', 'prepare-pending', {
-    ownerId, installationId, setupAttemptId, executorId: null,
-  });
-  await operationStore?.save(journal); // crash boundary before server prepare
-
+  let journal = null;
   try {
     throwIfAborted(signal);
-    const prepareResult = await api.prepareHermesRuntime(
-      installationId, setupAttemptId, { signal },
+    const authority = requireConnectorAuthority(
+      await nativeRuntime('connectorStatus', {}, { signal }),
     );
-    if (prepareResult?.setupAttemptId !== setupAttemptId) {
-      const mismatch = new Error('Prepared Hermes generation did not match the request');
-      mismatch.code = 'prepare_generation_mismatch';
-      mismatch.stage = 'prepare';
-      throw mismatch;
-    }
+    const { installationId, agentId: executorId, setupAttemptId } = authority;
+    requireInstallationBinding(
+      await api.getRuntimeBinding(installationId, { signal }), authority,
+    );
 
-    const executorId = prepareResult.executorId;
-    const transientCredential = prepareResult.credential?.key;
-    if (!executorId || !transientCredential) {
-      const invalid = new Error('Hermes prepare response was incomplete');
-      invalid.code = 'prepare_response_invalid';
-      invalid.stage = 'prepare';
-      throw invalid;
-    }
-    journal = operationJournal('select-hermes', 'prepared', {
+    journal = operationJournal('select-hermes', 'connector-confirmed', {
       ownerId, installationId, setupAttemptId, executorId,
     });
     await operationStore?.save(journal);
     throwIfAborted(signal);
 
-    // This is the sole credential-bearing native call. The credential is never
-    // returned by this saga or passed to health, state, storage, or callbacks.
-    requireSelectionNativeResult(await nativeRuntime('configureDisabled', {
-      ownerId,
-      installationId,
-      executorId,
-      setupAttemptId,
-      credential: transientCredential,
-    }, { signal }), {
-      command: 'configureDisabled', expectedStage: 'scheduleDisabled',
-      ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: false,
+    const configured = requireSelectionNativeResult(
+      await nativeRuntime('configureDisabled', {
+        ownerId, installationId, executorId, setupAttemptId,
+      }, { signal }),
+      {
+        command: 'configureDisabled', expectedStage: 'connectorActivationConfirmed',
+        ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: false,
+      },
+    );
+    const confirmedAuthority = requireConnectorAuthority({
+      ...configured, stage: 'connector_status',
     });
+    if (confirmedAuthority.installationId !== installationId
+      || confirmedAuthority.agentId !== executorId
+      || confirmedAuthority.setupAttemptId !== setupAttemptId) {
+      throw Object.assign(new Error('Connector authority changed during local setup'), {
+        code: 'connector_generation_changed', stage: 'configureDisabled',
+      });
+    }
 
-    journal = operationJournal('select-hermes', 'configured', {
+    journal = operationJournal('select-hermes', 'connector-configured', {
       ownerId, installationId, setupAttemptId, executorId,
     });
     await operationStore?.save(journal);
     throwIfAborted(signal);
+    requireInstallationBinding(
+      await api.getRuntimeBinding(installationId, { signal }), authority,
+    );
     requireActivatedBinding(await api.setRuntimeBinding({
-      runtime: 'hermes',
-      installationId,
-      executorId,
-      setupAttemptId,
-    }, { signal }), { installationId, executorId });
+      runtime: 'hermes', installationId, executorId, setupAttemptId,
+    }, { signal }), authority);
+    requireActivatedBinding(
+      await api.getRuntimeBinding(installationId, { signal }), authority,
+    );
 
-    journal = operationJournal('select-hermes', 'activated', {
+    journal = operationJournal('select-hermes', 'connector-selected', {
       ownerId, installationId, setupAttemptId, executorId,
     });
     await operationStore?.save(journal);
@@ -441,7 +564,7 @@ export async function runHermesSelectionSaga({
     );
     const binding = requireActivatedBinding(
       await waitForHealth({ installationId, executorId, setupAttemptId, signal }),
-      { installationId, executorId },
+      authority,
     );
     throwIfAborted(signal);
     const confirmed = requireSelectionNativeResult(
@@ -451,18 +574,27 @@ export async function runHermesSelectionSaga({
         ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: true,
       },
     );
-
-    await operationStore?.clear(journal); // exact native completion is durable
-    return { binding, localState: confirmed.state };
+    await operationStore?.clear(journal);
+    return { binding, localState: confirmed.state, installationId };
   } catch (caught) {
     const error = caught instanceof Error
       ? caught
       : Object.assign(new Error('Hermes selection failed'), { code: 'selection_failed' });
-    // Even when prepare's response was lost, the pre-mutation JS journal makes
-    // an idempotent rollback/read/cleanup possible with the pinned owner client.
-    await compensatePreparedGeneration({
-      api, nativeRuntime, operationStore, journal, originalError: error,
-    });
+    if (journal) {
+      try {
+        await compareSelectExactIndex(api, {
+          agentId: journal.executorId,
+          installationId: journal.installationId,
+          setupAttemptId: journal.setupAttemptId,
+        });
+        await disableGenerationSafely({
+          nativeRuntime, ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
+        });
+        await operationStore?.clear(journal);
+      } catch (compensationError) {
+        error.compensationError = compensationError;
+      }
+    }
     throw error;
   }
 }
@@ -516,20 +648,97 @@ export async function selectIndexRuntime({
   }
 }
 
-async function performDisconnect({ api, nativeRuntime, operationStore, journal, signal }) {
+async function performDisconnect({
+  api, nativeRuntime, operationStore, journal, signal, retainLogoutEvidence = false,
+  localSetupAttemptId = journal.setupAttemptId,
+}) {
   throwIfAborted(signal);
-  const binding = await api.disconnectHermesRuntime(journal.installationId, { signal });
-  const serverComplete = { ...journal, stage: 'server-complete' };
-  await operationStore?.save(serverComplete);
-  if (!journal.setupAttemptId) {
-    await operationStore?.clear(serverComplete);
-    return { binding, localState: null };
+  let recovery = journal;
+  if (!nonemptyString(localSetupAttemptId)) {
+    const observed = requireConnectorLogoutStatus(
+      await nativeRuntime('connectorStatus', {}, { signal }),
+    );
+    if (observed.state === 'disconnected' && (!journal.setupAttemptId || !journal.executorId)) {
+      const paused = requireSuccessfulNativeResult(await nativeRuntime('prepareLogout', {
+        ownerId: journal.ownerId, setupAttemptId: null,
+      }, { signal }), 'prepareLogout');
+      if (paused.stage !== 'logout_prepared'
+        || paused.state?.scheduleEnabled !== false
+        || paused.state?.negotiatorMode !== false) {
+        throw generationMismatch('prepareLogout', paused);
+      }
+      const binding = await api.getRuntimeBinding(observed.status.installationId, { signal });
+      if (binding?.selectedRuntime !== 'index' || binding?.executor != null) {
+        throw generationMismatch('disconnect', paused);
+      }
+      const serverComplete = {
+        ...journal, installationId: observed.status.installationId, stage: 'server-complete',
+      };
+      await operationStore?.save(serverComplete);
+      if (!retainLogoutEvidence) await operationStore?.clear(serverComplete);
+      return { binding, localState: paused.state || null };
+    }
+    if (observed.state !== 'disconnected') {
+      recovery = operationJournal('disconnect', 'server-pending', {
+        ownerId: journal.ownerId,
+        installationId: observed.status.installationId,
+        setupAttemptId: observed.status.setupAttemptId,
+        executorId: observed.status.agentId,
+      });
+      await operationStore?.save(recovery);
+    }
   }
+
+  throwIfAborted(signal);
+  const paused = requireSuccessfulNativeResult(await nativeRuntime('prepareLogout', {
+    ownerId: recovery.ownerId,
+    setupAttemptId: nonemptyString(localSetupAttemptId) ? localSetupAttemptId : null,
+  }, { signal }), 'prepareLogout');
+  if (paused.stage !== 'logout_prepared'
+    || paused.state?.scheduleEnabled !== false
+    || paused.state?.negotiatorMode !== false) {
+    throw generationMismatch('prepareLogout', paused);
+  }
+  if (!recovery.setupAttemptId || !recovery.executorId) {
+    const error = new Error('Connector authority is required before logout can complete');
+    error.code = 'connector_authority_missing';
+    error.stage = 'connectorStatus';
+    error.retryable = true;
+    throw error;
+  }
+
+  const authority = {
+    installationId: recovery.installationId,
+    agentId: recovery.executorId,
+    setupAttemptId: recovery.setupAttemptId,
+  };
+  throwIfAborted(signal);
+  requireConnectorDisconnectResult(await nativeRuntime('connectorDisconnect', {
+    installationId: authority.installationId,
+    executorId: authority.agentId,
+    setupAttemptId: authority.setupAttemptId,
+  }, { signal }), authority);
+
+  // The connector owns server revocation, denial probing, and Keychain deletion.
+  // Only its terminal proof permits this owner-locked exact-generation CAS.
+  throwIfAborted(signal);
+  const binding = await compareSelectExactIndex(api, authority, { signal });
+  const serverComplete = { ...recovery, stage: 'server-complete' };
+  await operationStore?.save(serverComplete);
+
+  // Missing local generation state has already passed native pause/scrub
+  // postconditions. Never invent a generation merely to clear it.
+  if (!nonemptyString(localSetupAttemptId)) {
+    if (!retainLogoutEvidence) await operationStore?.clear(serverComplete);
+    return { binding, localState: paused.state || null };
+  }
+
+  // Local evidence clears only after connector and server authority proofs.
   throwIfAborted(signal);
   const disconnected = requireGenerationCleanupResult(await nativeRuntime('disconnect', {
-    ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
-  }, { signal }), 'disconnect', journal.setupAttemptId);
-  await operationStore?.clear(serverComplete);
+    ownerId: recovery.ownerId, setupAttemptId: recovery.setupAttemptId,
+  }, { signal }), 'disconnect', recovery.setupAttemptId);
+  if (!retainLogoutEvidence) await operationStore?.clear(serverComplete);
   return { binding, localState: disconnected.state || null };
 }
 
@@ -563,59 +772,39 @@ export async function prepareHermesLogout({
 
   const hasExactGeneration = nonemptyString(localState?.setupAttemptId)
     && nonemptyString(localState?.executorId);
+  const hasExactPendingRecovery = !hasExactGeneration
+    && existing?.operation === 'disconnect'
+    && existing?.stage === 'server-pending'
+    && nonemptyString(existing.setupAttemptId)
+    && nonemptyString(existing.executorId);
   const journal = operationJournal('disconnect', 'server-pending', {
     ownerId,
-    installationId,
-    setupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
-    executorId: hasExactGeneration ? localState.executorId : null,
+    installationId: hasExactPendingRecovery ? existing.installationId : installationId,
+    setupAttemptId: hasExactGeneration
+      ? localState.setupAttemptId : hasExactPendingRecovery ? existing.setupAttemptId : null,
+    executorId: hasExactGeneration
+      ? localState.executorId : hasExactPendingRecovery ? existing.executorId : null,
   });
   await operationStore?.save(journal);
 
-  let binding = null;
-  let serverError = null;
   try {
-    binding = await api.disconnectHermesRuntime(installationId);
-    await operationStore?.save({ ...journal, stage: 'server-complete' });
-  } catch (error) {
-    serverError = error;
-  }
-
-  const prepared = requireSuccessfulNativeResult(await nativeRuntime('prepareLogout', {
-    ownerId,
-    setupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
-  }), 'prepareLogout');
-  const scrubbedState = prepared.state || null;
-  const exactPrepared = prepared.stage === 'logout_prepared'
-    && scrubbedState?.installationId === installationId
-    && scrubbedState?.scheduleEnabled === false
-    && scrubbedState?.negotiatorMode === false;
-  if (!exactPrepared) throw generationMismatch('prepareLogout', prepared);
-
-  // Keep both pending and server-complete evidence until native owner-key
-  // revocation independently reproves the local postcondition. Native clears
-  // only server-complete; uncertainty survives logout for same-owner recovery.
-  // Local pause/scrub has already completed, but the owner credential must stay
-  // usable so this same owner can authoritatively retry the server disconnect.
-  if (serverError) {
-    const uncertainty = serverError instanceof Error
-      ? serverError
-      : new Error('Hermes server disconnect remains uncertain');
-    uncertainty.code = uncertainty.code || 'server_disconnect_uncertain';
-    uncertainty.stage = 'logout';
+    const result = await performDisconnect({
+      api, nativeRuntime, operationStore, journal, retainLogoutEvidence: true,
+      localSetupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
+    });
+    return { ownerId, ...result, serverUncertain: false };
+  } catch (caught) {
+    const uncertainty = caught instanceof Error
+      ? caught : new Error('Hermes connector disconnect remains uncertain');
+    uncertainty.stage = uncertainty.stage || 'logout';
     uncertainty.retryable = true;
-    uncertainty.state = scrubbedState;
     uncertainty.serverUncertain = true;
+    uncertainty.recoveryState = CONNECTOR_RECOVERY_STATE;
     throw uncertainty;
   }
-  return {
-    ownerId,
-    binding,
-    localState: scrubbedState,
-    serverUncertain: false,
-  };
 }
 
-/** Revoke/select Index on the server before exact local key/plugin/schedule cleanup. */
+/** Pause locally, revoke through the verified connector, then exact-CAS Index and clean locally. */
 export async function disconnectHermesSaga({
   api,
   nativeRuntime,
@@ -631,7 +820,10 @@ export async function disconnectHermesSaga({
   });
   await operationStore?.save(journal); // durable before server-first mutation
   try {
-    return await performDisconnect({ api, nativeRuntime, operationStore, journal, signal });
+    return await performDisconnect({
+      api, nativeRuntime, operationStore, journal, signal,
+      localSetupAttemptId: setupAttemptId || null,
+    });
   } catch (error) {
     if (aborted(error)) {
       return performDisconnect({ api, nativeRuntime, operationStore, journal });
@@ -640,12 +832,27 @@ export async function disconnectHermesSaga({
   }
 }
 
-async function resumeSagaOperation({ api, nativeRuntime, operationStore, journal }) {
+async function resumeSagaOperation({ api, nativeRuntime, operationStore, journal, localState = null }) {
+  if (journal.operation === 'select-hermes' && journal.stage.startsWith('connector-')) {
+    const binding = await compareSelectExactIndex(api, {
+      agentId: journal.executorId,
+      installationId: journal.installationId,
+      setupAttemptId: journal.setupAttemptId,
+    });
+    const localState = await disableGenerationSafely({
+      nativeRuntime, ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
+    });
+    await operationStore?.clear(journal);
+    return { binding, localState };
+  }
   if (journal.operation === 'select-index') {
     return performSelectIndex({ api, nativeRuntime, operationStore, journal });
   }
   if (journal.operation === 'disconnect') {
-    return performDisconnect({ api, nativeRuntime, operationStore, journal });
+    return performDisconnect({
+      api, nativeRuntime, operationStore, journal,
+      localSetupAttemptId: localState?.setupAttemptId || null,
+    });
   }
   return cleanupPreparedGeneration({ api, nativeRuntime, operationStore, journal });
 }
@@ -675,7 +882,7 @@ export async function reconcileHermesSaga({
 
   if (pendingOperation) {
     return resumeSagaOperation({
-      api, nativeRuntime, operationStore, journal: pendingOperation,
+      api, nativeRuntime, operationStore, journal: pendingOperation, localState,
     });
   }
 
@@ -692,6 +899,14 @@ export async function reconcileHermesSaga({
     error.code = 'journal_generation_missing';
     error.stage = 'inspect';
     throw error;
+  }
+
+  if (SETUP_JOURNAL_STAGES.has(journal.stage) && localState?.connectorActivationConfirmed === true) {
+    const recovery = operationJournal('select-hermes', 'connector-configured', {
+      ownerId, installationId, setupAttemptId, executorId: journal.executorId || null,
+    });
+    await operationStore?.save(recovery);
+    return resumeSagaOperation({ api, nativeRuntime, operationStore, journal: recovery });
   }
 
   if (SETUP_JOURNAL_STAGES.has(journal.stage)) {
@@ -877,13 +1092,8 @@ export function createAgentRuntimeCoordinator({
     abortCurrent();
     owner = nextOwner
       && nonemptyString(nextOwner.ownerId)
-      && nonemptyString(nextOwner.ownerCredential)
       && nextOwner.api
-      ? {
-          ownerId: nextOwner.ownerId,
-          ownerCredential: nextOwner.ownerCredential,
-          api: nextOwner.api,
-        }
+      ? { ownerId: nextOwner.ownerId, api: nextOwner.api }
       : null;
     state = { binding: null, localState: null, operation: null, installationId: null };
     if (!disposed) onState({ ...state, authEpoch, operationRevision });

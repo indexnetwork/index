@@ -189,7 +189,7 @@ const AgentRuntimeContext = React.createContext(null);
 
 // Mounted by App for the full document lifetime. Authenticated relaunch
 // recovery therefore runs without requiring navigation to the Agents screen.
-function AgentRuntimeProvider({ ownerCredential, children }) {
+function AgentRuntimeProvider({ children }) {
   const [runtimeState, setRuntimeState] = useState({
     binding:null, localState:null, operation:null, installationId:null,
   });
@@ -212,11 +212,10 @@ function AgentRuntimeProvider({ ownerCredential, children }) {
 
   useEffect(() => {
     let current = true;
-    // Pin the exact credential supplied to this render, then ask the server for
-    // that credential's authenticated app-user principal. ownerId is stable and
-    // non-secret; it is never derived from or hashed from the credential.
-    const api = ownerCredential && window.IndexApp
-      ? window.IndexApp.getOwnerClient(ownerCredential)
+    // Native transport owns the exact Keychain credential. JavaScript receives
+    // only the authenticated app-user principal and structured API wrappers.
+    const api = window.IndexApp && window.IndexApp.isAuthed()
+      ? window.IndexApp.getClient()
       : null;
     if (!api) {
       coordinator.changeOwner(null).catch(() => {});
@@ -225,21 +224,18 @@ function AgentRuntimeProvider({ ownerCredential, children }) {
     api.auth.me().then(response => {
       const user = response && (response.user || response);
       if (!current || !user || !user.id) return null;
-      return coordinator.changeOwner({
-        ownerId:user.id,
-        ownerCredential, api,
-      });
+      return coordinator.changeOwner({ ownerId:user.id, api });
     }).catch(() => {});
     return () => {
       current = false;
       coordinator.changeOwner(null).catch(() => {});
     };
-  }, [coordinator, ownerCredential]);
+  }, [coordinator]);
 
   useEffect(() => {
-    if (!ownerCredential || !window.IndexApp?.setLogoutSafetyHandler) return () => {};
+    if (!window.IndexApp?.isAuthed() || !window.IndexApp?.setLogoutSafetyHandler) return () => {};
     return window.IndexApp.setLogoutSafetyHandler(() => coordinator.prepareLogout());
-  }, [coordinator, ownerCredential]);
+  }, [coordinator]);
 
   useEffect(() => {
     const timer = setInterval(() => { coordinator.refresh(); }, 15_000);

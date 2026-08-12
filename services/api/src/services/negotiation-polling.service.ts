@@ -15,7 +15,7 @@ import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, askUserAnswerWindowMs, confi
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, type ExternalConsultationPersistedTurn } from '../lib/negotiation/consultation';
-import type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
+import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import type { AtomicHermesResponseInput, AtomicHermesResponseResult, HermesRunMutationAuthority } from '../adapters/conversation.database.adapter';
 import { remainingDeadlineDelayMs } from '../lib/negotiation/timeout-execution';
 import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
@@ -375,7 +375,7 @@ export class NegotiationPollingService {
     });
 
     const result = await this.buildPickupResult(claimed, userId, pickup.parkStartTime);
-    return principal.audience === 'hermes-negotiator'
+    return isDedicatedHermesNegotiationAudience(principal.audience)
       ? this.projectHermesPickup(result, pickup.runCapability)
       : result;
   }

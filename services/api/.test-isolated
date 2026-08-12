@@ -46,6 +46,8 @@ src/adapters/tests/auth.adapter.isolated.ts
 src/adapters/tests/database.adapter.isolated.ts
 src/adapters/tests/chat-summary.database.adapter.isolated.ts
 src/adapters/tests/agent-activity.database.adapter.isolated.ts
+src/adapters/tests/hermes-authorization.database.isolated.ts
+src/adapters/tests/index-app-owner-authorization.database.isolated.ts
 src/adapters/tests/intent-opportunity-counts.database.isolated.ts
 src/controllers/tests/chat.controller.isolated.ts
 src/controllers/tests/chat.metadata.controller.isolated.ts

@@ -12,6 +12,7 @@ import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedEr
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { parseFiniteLimit, pickupNegotiationAtControllerBoundary, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
 import { readHermesRunHeaders } from '../lib/agent/hermes-negotiation-run';
+import { isDedicatedHermesNegotiationAudience } from '../lib/agent/hermes-credential';
 
 const agentTestMessageService = new AgentTestMessageService();
 
@@ -515,7 +516,7 @@ export class AgentController {
 
     try {
       const principal = requireNegotiationCredentialPrincipal(req);
-      if (principal.audience === 'hermes-negotiator') {
+      if (isDedicatedHermesNegotiationAudience(principal.audience)) {
         const runHeaders = readHermesRunHeaders(req);
         if (!runHeaders?.capability) {
           throw new UnauthorizedError('Hermes negotiation mutation requires its run-bound capability');
@@ -571,10 +572,9 @@ export class AgentController {
     if (body instanceof Response) return body;
     try {
       const principal = requireNegotiationCredentialPrincipal(req);
-      const runHeaders = principal.audience === 'hermes-negotiator'
-        ? readHermesRunHeaders(req)
-        : null;
-      if (principal.audience === 'hermes-negotiator' && !runHeaders?.capability) {
+      const dedicatedHermes = isDedicatedHermesNegotiationAudience(principal.audience);
+      const runHeaders = dedicatedHermes ? readHermesRunHeaders(req) : null;
+      if (dedicatedHermes && !runHeaders?.capability) {
         throw new UnauthorizedError('Hermes negotiation mutation requires its run-bound capability');
       }
       return Response.json(await this.negotiations.consult(

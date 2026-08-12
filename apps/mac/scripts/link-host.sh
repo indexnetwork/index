@@ -15,11 +15,23 @@ resolve_link_host() {
 }
 
 write_associated_domains_entitlements() {
-  local host="$1" destination="$2"
+  local host="$1" destination="$2" owner_group="${3:-}"
+  if [[ -n "$owner_group" && ! "$owner_group" =~ ^[A-Za-z0-9]+\.network\.index\.system6\.owner-credentials$ ]]; then
+    printf 'app Keychain group must be an identifier prefix plus network.index.system6.owner-credentials\n' >&2
+    return 64
+  fi
   cat >"$destination" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
+EOF
+  if [[ -n "$owner_group" ]]; then
+    cat >>"$destination" <<EOF
+  <key>keychain-access-groups</key>
+  <array><string>${owner_group}</string></array>
+EOF
+  fi
+  cat >>"$destination" <<EOF
   <key>com.apple.developer.associated-domains</key>
   <array><string>applinks:${host}</string></array>
 </dict></plist>
@@ -34,7 +46,7 @@ case "${1:-}" in
       resolve_link_host "$2"
     fi
     ;;
-  --write-entitlements) host="$(resolve_link_host "${2-}")"; write_associated_domains_entitlements "$host" "${3:?destination required}" ;;
+  --write-entitlements) host="$(resolve_link_host "${2-}")"; write_associated_domains_entitlements "$host" "${3:?destination required}" "${4-}" ;;
   '') : ;;
   *) printf 'unknown command: %s\n' "$1" >&2; exit 64 ;;
 esac

@@ -2,7 +2,7 @@
 
 Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
-question-answer writes stay scoped to the configured INDEX_API_KEY principal.
+question-answer writes stay scoped to the connector-authenticated principal.
 
 The dashboard is intent-centric: each intent carries its own pending and
 answered questions (server-scoped per intent, the Mac app's queries) and its
@@ -18,13 +18,12 @@ import importlib.util
 import json
 import os
 import re
-import threading
-import urllib.error
-import urllib.request
+import sys
+import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
 _PLUGIN_ROOT = _DASHBOARD_DIR.parent
@@ -158,11 +157,23 @@ def _load_module(name: str, path: Path):
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load module {name} from {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
-tools = _load_module("index_network_hermes_dashboard_tools", _TOOLS_PATH)
+def _load_tools_module():
+    package_name = "index_network_hermes_dashboard_runtime"
+    package = sys.modules.get(package_name)
+    if package is None:
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(_PLUGIN_ROOT)]
+        package.__package__ = package_name
+        sys.modules[package_name] = package
+    return _load_module(f"{package_name}.tools", _TOOLS_PATH)
+
+
+tools = _load_tools_module()
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 
 
@@ -280,14 +291,7 @@ def _call_questions_by_intent(
 
 
 def _web_url() -> str:
-    """Resolve the Index web app origin for outbound chat/profile/invite links.
-
-    Prefer explicit `INDEX_WEB_URL` (env or `~/.hermes/.env`), then the same
-    origin used for `/cli-auth` / deep links (`tools._app_base_url`).
-    """
-    raw = tools._hermes_env_get("INDEX_WEB_URL")
-    if raw:
-        return raw.rstrip("/")
+    """Return the credential-free public Index origin for outbound links."""
     return tools._app_base_url()
 
 
@@ -428,34 +432,11 @@ def _avatar_filename(content_type: str) -> str:
 
 
 def _api_multipart(path: str, field: str, filename: str, content: bytes, content_type: str) -> dict[str, Any]:
-    """POST a single-file multipart/form-data body to the Index API with the plugin key."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": False, "error": "INDEX_API_KEY is required."}
-
-    boundary = "----IndexHermesBoundary" + base64.urlsafe_b64encode(os.urandom(12)).decode("ascii").rstrip("=")
-    preamble = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
-        f"Content-Type: {content_type}\r\n\r\n"
-    ).encode("utf-8")
-    body = preamble + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
-
-    headers = {k: v for k, v in tools._headers(api_key).items() if k.lower() != "content-type"}
-    headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
-
-    base_url = tools._api_url().rstrip("/")
-    request_path = path if path.startswith("/") else f"/{path}"
-    request = urllib.request.Request(f"{base_url}{request_path}", data=body, headers=headers, method="POST")
+    """Upload through the connector's bounded start/chunk/finish protocol."""
     try:
-        with urllib.request.urlopen(request, timeout=tools._timeout_seconds()) as response:
-            parsed = tools._parse_api_response(response.read())
-            return parsed if isinstance(parsed, dict) else {"success": True, "data": parsed}
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:2_000]
-        return {"success": False, "error": f"Avatar upload failed with status {exc.code}.", "status": exc.code, "body": body_text}
-    except urllib.error.URLError as exc:
-        return {"success": False, "error": f"Avatar upload request failed: {exc.reason}"}
+        return tools.get_transport().upload(path, field, filename, content, content_type)
+    except tools.TransportError as exc:
+        return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Avatar upload could not be processed: {exc}"}
 
@@ -625,8 +606,7 @@ def _avatar_url(value: Any) -> str:
         return ""
     if raw.startswith("http://") or raw.startswith("https://"):
         return raw
-    base = tools._api_url().rstrip("/")
-    origin = base[:-4] if base.endswith("/api") else base
+    origin = "https://protocol.index.network"
     path = raw.lstrip("/")
     if not path.startswith("api/storage/"):
         path = "api/storage/" + path
@@ -954,7 +934,7 @@ def _bootstrap_payload() -> dict[str, Any]:
     return {
         "success": True,
         "webUrl": _web_url(),
-        "apiUrl": tools._api_url(),
+        "apiUrl": None,
         "currentUserId": current_user_id or None,
         "onboarding": onboarding,
         "intents": intents,
@@ -1148,26 +1128,25 @@ def _build_dashboard(
 
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
-    """Report whether the plugin holds a working Index credential.
-
-    Missing key or an auth failure (401/403) from `GET /auth/me` means the
-    dashboard should show the browser-login gate; any other error keeps the
-    (present) key and lets the dashboard surface its own section errors.
-    """
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": True, "authenticated": False, "needsLogin": True}
-    payload = tools._api_request("GET", "/auth/me")
-    if payload.get("success") is False:
-        if payload.get("status") in (401, 403):
-            return {"success": True, "authenticated": False, "needsLogin": True}
-        return {"success": True, "authenticated": True, "needsLogin": False, "error": payload.get("error")}
-    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    """Report connector health without reading or receiving a credential."""
+    try:
+        status = tools.get_transport().status()
+    except tools.TransportError as exc:
+        payload = exc.as_payload()
+        payload.update({"authenticated": False, "needsLogin": True})
+        return payload
+    connected = status.get("connected") is True and not status.get("reconnectRequired")
     return {
         "success": True,
-        "authenticated": True,
-        "needsLogin": False,
-        "user": {"id": _text(user.get("id")) or None, "email": _text(user.get("email")) or None},
+        "authenticated": connected,
+        "needsLogin": not connected,
+        "accountLabel": status.get("accountLabel"),
+        "installationId": status.get("installationId"),
+        "expiresAt": status.get("expiresAt"),
+        "health": status.get("health"),
+        "reconnectSoon": status.get("reconnectSoon") is True,
+        "reconnectRequired": status.get("reconnectRequired") is True,
+        "revocationPending": status.get("revocationPending") is True,
     }
 
 
@@ -1180,45 +1159,36 @@ def _login_app_base_url() -> str:
     """
     return tools._app_base_url()
 
-
 @full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
-
-    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
-    a headless/remote agent host where opening a browser is not possible.
-    """
+    """Migrate plaintext first, then let the connector open browser consent."""
     try:
-        auth_url = auth_login.start_login(_login_app_base_url())
+        result = auth_login.start_login(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Could not start login: {exc}"}
-    opener = tools._url_opener_command(auth_url)
-    open_error = tools._open_url(opener) if opener else "No URL opener is available on this host."
-    return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
+    return {"success": True, "started": result.get("status") == "pending", **result}
 
 
 @full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the pending login; on success the key is already persisted server-side."""
-    result = auth_login.poll_status()
-    payload: dict[str, Any] = {"success": True, "status": result.get("status")}
-    if result.get("error"):
-        payload["error"] = result.get("error")
-    return payload
+    """Poll the connector-owned browser authorization attempt."""
+    try:
+        result = auth_login.poll_status(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
+    return {"success": result.get("status") != "failed", **result}
 
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
-    if api_key and key_id:
-        try:
-            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
-        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
-            pass
-    auth_login.clear_api_key()
-    return {"success": True, "needsLogin": True}
+    """Revoke through connector recovery and delete only after confirmation."""
+    try:
+        result = auth_login.disconnect(tools.get_transport())
+    except tools.TransportError as exc:
+        return exc.as_payload()
+    return {"success": result.get("status") == "disconnected", "needsLogin": True, **result}
 
 
 @full_router.get("/bootstrap")
@@ -2052,8 +2022,6 @@ def archive_intent(intent_id: str) -> dict[str, Any]:
 # the client normalizes both REST and SSE payloads through one code path.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SSE_READ_TIMEOUT = 60.0
-
 
 def parse_sse_data_line(line: bytes) -> dict[str, Any] | None:
     """Parse one complete dictionary-valued SSE ``data:`` line.
@@ -2078,52 +2046,6 @@ def parse_sse_data_line(line: bytes) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _sse_request(path: str) -> urllib.request.Request:
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("INDEX_API_KEY is required.")
-    headers = dict(tools._headers(api_key))
-    headers["Accept"] = "text/event-stream"
-    base_url = tools._api_url().rstrip("/")
-    return urllib.request.Request(f"{base_url}{path}", headers=headers, method="GET")
-
-
-def _close_upstream_response(response: Any) -> None:
-    try:
-        response.close()
-    except Exception:  # noqa: BLE001 - cleanup is best-effort.
-        pass
-
-
-class _UpstreamOpenState:
-    """Transfer response cleanup ownership safely across to_thread cancellation."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._abandoned = False
-        self._response: Any | None = None
-
-    def open(self, request: urllib.request.Request) -> Any | None:
-        try:
-            response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
-        except urllib.error.HTTPError as exc:
-            _close_upstream_response(exc)
-            raise
-        with self._lock:
-            if not self._abandoned:
-                self._response = response
-                return response
-        # The awaiting coroutine was cancelled before it could receive the
-        # result. This worker owns the otherwise-unreachable response cleanup.
-        _close_upstream_response(response)
-        return None
-
-    def abandon(self) -> Any | None:
-        with self._lock:
-            self._abandoned = True
-            return self._response
-
-
 async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
     """Return when the Hermes client disconnects, independent of relay writes."""
     try:
@@ -2136,20 +2058,22 @@ async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
 
 
 async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
-    """Relay dictionary-valued events from an authenticated Index SSE stream."""
+    """Relay connector-owned SSE frames to a dashboard WebSocket."""
     await websocket.accept()
-    open_state = _UpstreamOpenState()
+    iterator = tools.get_transport().stream_sse(path)
     relay_task: asyncio.Task[None] | None = None
     disconnect_task: asyncio.Task[None] | None = None
 
+    def next_frame() -> bytes | None:
+        try:
+            return next(iterator)
+        except StopIteration:
+            return None
+
     async def relay_upstream() -> None:
-        request = _sse_request(path)
-        response = await asyncio.to_thread(open_state.open, request)
-        if response is None:
-            return
         while True:
-            line = await asyncio.to_thread(response.readline)
-            if not line:
+            line = await asyncio.to_thread(next_frame)
+            if line is None:
                 return
             event = parse_sse_data_line(line)
             if event is not None:
@@ -2161,15 +2085,14 @@ async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
         done, _pending = await asyncio.wait(
             {relay_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED
         )
-        if disconnect_task in done:
-            return
-        await relay_task
+        if relay_task in done:
+            await relay_task
     except WebSocketDisconnect:
         return
-    except Exception as exc:  # noqa: BLE001 - terminate a failed relay without escaping the route.
+    except Exception as exc:  # noqa: BLE001
         try:
             await websocket.send_json({"type": "error", "error": str(exc)})
-        except Exception:  # noqa: BLE001 - the WebSocket may already be disconnected.
+        except Exception:  # noqa: BLE001
             pass
     finally:
         for task in (relay_task, disconnect_task):
@@ -2179,10 +2102,9 @@ async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
             *(task for task in (relay_task, disconnect_task) if task is not None),
             return_exceptions=True,
         )
-        opened_response = open_state.abandon()
-        if opened_response is not None:
-            await asyncio.to_thread(_close_upstream_response, opened_response)
-
+        close = getattr(iterator, "close", None)
+        if callable(close):
+            await asyncio.to_thread(close)
 
 def _message_text(parts: Any) -> str:
     # Message text lives either in a data part (data.message /
@@ -2324,32 +2246,12 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
 
 
 def _conversation_stream():
-    """Relay the upstream conversations SSE stream (Redis pub/sub) to the dashboard tab."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
-        return
-    headers = dict(tools._headers(api_key))
-    headers["Accept"] = "text/event-stream"
-    base_url = tools._api_url().rstrip("/")
-    request = urllib.request.Request(f"{base_url}/conversations/stream", headers=headers, method="GET")
+    """Relay connector-owned, bounded SSE polling to the dashboard tab."""
     try:
-        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        yield from tools.get_transport().stream_sse("/conversations/stream")
+    except Exception as exc:  # noqa: BLE001 - surface a sanitized stream frame.
         message = json.dumps({"type": "error", "error": str(exc)})
         yield f"data: {message}\n\n".encode("utf-8")
-        return
-    try:
-        for line in response:
-            if line:
-                yield line
-    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
-        return
-    finally:
-        try:
-            response.close()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 @full_router.get("/conversations/stream")
@@ -2371,32 +2273,12 @@ async def conversations_socket(websocket: WebSocket) -> None:
 
 
 def _notification_stream():
-    """Relay the upstream notifications SSE stream (Redis pub/sub) to Hermes clients."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        yield b'data: {"type":"error","error":"INDEX_API_KEY is required."}\n\n'
-        return
-    headers = dict(tools._headers(api_key))
-    headers["Accept"] = "text/event-stream"
-    base_url = tools._api_url().rstrip("/")
-    request = urllib.request.Request(f"{base_url}/notifications/stream", headers=headers, method="GET")
+    """Relay connector-owned notification SSE to Hermes clients."""
     try:
-        response = urllib.request.urlopen(request, timeout=_SSE_READ_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 - surface a stream error frame instead of raising.
+        yield from tools.get_transport().stream_sse("/notifications/stream")
+    except Exception as exc:  # noqa: BLE001
         message = json.dumps({"type": "error", "error": str(exc)})
         yield f"data: {message}\n\n".encode("utf-8")
-        return
-    try:
-        for line in response:
-            if line:
-                yield line
-    except Exception:  # noqa: BLE001 - client disconnects / read timeouts end the relay.
-        return
-    finally:
-        try:
-            response.close()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 @full_router.get("/notifications/stream")
@@ -2418,32 +2300,8 @@ async def notifications_socket(websocket: WebSocket) -> None:
 
 
 def _notification_snapshot_request() -> Any:
-    """Perform the blocking snapshot GET while preserving its JSON boundary."""
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return {"success": False, "error": "INDEX_API_KEY is required."}
-    base_url = tools._api_url().rstrip("/")
-    request = urllib.request.Request(
-        f"{base_url}/notifications/snapshot",
-        headers=tools._headers(api_key),
-        method="GET",
-    )
-    response: Any | None = None
-    try:
-        try:
-            response = urllib.request.urlopen(request, timeout=tools._timeout_seconds())
-        except urllib.error.HTTPError as exc:
-            # HTTPError is also the upstream response. Parse its body directly
-            # so the plugin does not replace the API's error payload.
-            response = exc
-        return tools._parse_api_response(response.read())
-    except urllib.error.URLError as exc:
-        return {"success": False, "error": f"Notification snapshot request failed: {exc.reason}"}
-    except Exception as exc:  # noqa: BLE001 - plugin routes return errors rather than raising.
-        return {"success": False, "error": f"Notification snapshot response could not be processed: {exc}"}
-    finally:
-        if response is not None:
-            _close_upstream_response(response)
+    """Fetch persisted notifications through the credential-free transport."""
+    return tools.get_transport().request_rest("GET", "/notifications/snapshot")
 
 
 @full_router.get("/notifications/snapshot")

@@ -9,6 +9,13 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- Secure standalone Hermes and native Index-owner authorization (API 0.82.0): canonical PKCE loopback consent, one-time codes, hash-only `idxh_`/`idxo_` credential persistence, 30-day expiry without refresh, Keychain-confirmed activation, exact revocation receipts, and legacy plaintext-era revocation/fresh-login migration.
+- Dedicated full Hermes audience admission for the six canonical actions, explicit REST/MCP allowlists, and the separate four-handler negotiator boundary. Session-only connected-agent list/pause/revoke controls return nonsecret health, fallback, heartbeat, and expiry views; reconnect requires fresh authorization.
+
+### Security
+- Dedicated audiences default-deny account security, credential/permission/agent administration, billing, and unknown routes. Authorization, activation, runtime reconciliation, disconnect, and negotiation mutation use owner locks, exact row/generation identity, idempotent receipts, and compare-and-set behavior.
+
 ### Removed
 - Repoint MCP contract-test agent ports from the removed internal protocol compatibility interface to the canonical participant-agents port.
 - Remove the onboarding privacy-consent layer (protocol 10.0.0, API 0.77.0).
@@ -104,7 +111,7 @@ section before promoting to `main`).
 - Expose a read-side `warming` state for fresh owned intents until a succeeded discovery run is recorded (IND-473). The state uses the 24-hour creation window and discovery-run JSON intent linkage without schema or pipeline changes.
 
 ### Security
-- Hermes setup is generation-fenced and fail-closed: agent-bound credentials cannot call owner-control routes, stale generations cannot activate or roll back newer setup, only the exact selected principal can pick up/respond/consult, and disconnect revokes installation credentials before local cleanup. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, hardened runtime and App Sandbox are restored, the app is signed/notarized, and the credential TTL/revocation checklist is verified.**
+- Hermes setup is generation-fenced and fail-closed: agent-bound credentials cannot call owner-control routes, stale generations cannot activate or roll back newer setup, only the exact selected principal can pick up/respond/consult, and disconnect revokes installation credentials before local cleanup. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, Developer ID hardened-runtime signing and notarization are complete, and the credential TTL/revocation checklist is verified.**
 
 ### Fixed
 - Route creation-time and post-discovery intent refinements through one material-fingerprint-deduplicated service, and stop suppressing ordinary intent-page Personal Agent questions merely because discovery already produced an actionable opportunity. Pool and Questioner-generated intent questions now receive symmetric surfacing opportunities while retaining ownership, active-lifecycle, stale-answer, privacy-copy, and one-question-per-material-version gates.

@@ -25,6 +25,9 @@ import { ConversationController } from './controllers/conversation.controller';
 import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
 import { AgentRuntimeController } from './controllers/agent-runtime.controller';
+import { HermesAuthorizationController } from './controllers/hermes-authorization.controller';
+import { IndexAppOwnerAuthorizationController } from './controllers/index-app-owner-authorization.controller';
+import { ConnectedAgentsController } from './controllers/connected-agents.controller';
 import { AgentActionController } from './controllers/agent-action.controller';
 import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
@@ -38,7 +41,7 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
-import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
+import { HermesNegotiatorRouteDeniedError, IndexAppOwnerRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -651,6 +654,9 @@ controllerInstances.set(
 );
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
+controllerInstances.set(HermesAuthorizationController, new HermesAuthorizationController());
+controllerInstances.set(IndexAppOwnerAuthorizationController, new IndexAppOwnerAuthorizationController());
+controllerInstances.set(ConnectedAgentsController, new ConnectedAgentsController());
 controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);
@@ -884,7 +890,7 @@ const server = Bun.serve({
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError) {
+            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError || error instanceof IndexAppOwnerRouteDeniedError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }

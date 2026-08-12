@@ -40,6 +40,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add strict browser authorization and consent surfaces for standalone Hermes and the native Index app, plus session-owner connected-agent pause, revoke, and fresh-reconnect controls. Dedicated credentials remain outside browser storage and callbacks (web 0.51.0).
 - Publish the dependency-free Protocol Atlas at the direct development URL
   `/protocol-atlas/`, with deterministic build-time source validation and a
   server-enforced hostname boundary that keeps production hosts at 404 (web 0.50.0).

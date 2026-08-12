@@ -1,0 +1,7 @@
+__pycache__/
+dashboard/__pycache__/
+tests/__pycache__/
+*.pyc
+dashboard/*.pyc
+tests/*.pyc
+.index-plugin-development

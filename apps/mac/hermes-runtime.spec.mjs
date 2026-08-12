@@ -4,6 +4,12 @@ const runtimeFile = new URL('./Sources/HermesRuntime.swift', import.meta.url);
 const runtime = await Bun.file(runtimeFile).exists()
   ? await Bun.file(runtimeFile).text()
   : '';
+const launchAttestation = await Bun.file(
+  new URL('./Sources/ConnectorLaunchAttestation.swift', import.meta.url),
+).text();
+const launchFixture = await Bun.file(
+  new URL('./Tests/ConnectorLaunchAttestationFixture.swift', import.meta.url),
+).text();
 const main = await Bun.file(new URL('./Sources/AppDelegate.swift', import.meta.url)).text();
 const build = await Bun.file(new URL('./scripts/build.sh', import.meta.url)).text();
 const nativeCompatibilityFile = new URL('./Tests/HermesPersistenceCompatibility.swift', import.meta.url);
@@ -414,12 +420,149 @@ test('keeps a Linux source contract for the macOS-native historical persistence 
   expect(nativeCompatibility).toContain('URL(fileURLWithPath: runnerTemp');
   expect(nativeCompatibility).toContain('manager.handle(inspectRequest)');
   expect(nativeCompatibility).toContain('manager.handle(rebindRequest)');
+  expect(nativeCompatibility).toContain('rebound.stage == "connectorActivationConfirmed"');
+  expect(nativeCompatibility).toContain('rebound.state?.scheduleEnabled == false');
+  expect(nativeCompatibility).not.toContain('rebound.stage == "scheduleDisabled"');
   for (const rejection of ['malformed', 'newer', 'tampered']) {
     expect(nativeCompatibility).toContain(`assertRejected("${rejection}"`);
   }
   expect(macWorkflow).toContain('HermesPersistenceCompatibility.swift');
   expect(macWorkflow).toContain('swiftc -parse-as-library');
   expect(macWorkflow).toContain('hermes-persistence-compatibility');
+});
+
+test('uses a verified credential-free connector status boundary for runtime authority', () => {
+  expect(runtime).not.toContain('let credential: String?');
+  expect(runtime).not.toContain('"INDEX_API_KEY"');
+  expect(runtime).toContain('case connectorStatus');
+  expect(runtime).toContain('struct HermesConnectorStatus: Codable');
+  expect(runtime).toContain('connectorActivationConfirmed');
+  for (const token of [
+    '/Applications/Index Connector.app',
+    'Applications/Index Connector.app',
+    'connector-release.cms', '/usr/bin/security',
+    'LMQ3XNXLAD', 'expectedDesignatedRequirement', 'SHA256',
+    'SecStaticCodeCreateWithPath', 'SecRequirementCreateWithString',
+    'SecStaticCodeCheckValidity', 'SecCodeCopySigningInformation',
+    'protocolVersion', 'buildMode', 'apiEnvironment',
+    'maximumConnectorResponseBytes', 'allowedChildEnvironmentKeys',
+    'forbiddenCanonicalKeys', 'connectorDisconnect',
+    'stagingRoot', 'copyItem', 'hardenAndRejectSymlinks',
+    'sourceAfter.identity == sourceBefore.identity',
+    'openRegularFileDescriptor', 'O_RDONLY | O_NOFOLLOW',
+    'posix_spawn', 'expectedFileIdentity',
+  ]) expect(runtime).toContain(token);
+  expect(runtime).toContain('CharacterSet.alphanumerics.contains');
+  expect(runtime).toContain('status.st_mode & mode_t(S_IFMT) != mode_t(S_IFLNK)');
+  expect(runtime).toContain('metadata["teamId"] as? String == Self.expectedTeamID');
+  expect(runtime).toContain('metadata["designatedRequirement"] as? String == Self.expectedDesignatedRequirement');
+  expect(build).toContain('production connector trust pins missing or mismatched');
+  expect(runtime).not.toContain('credentialId');
+  expect(runtime).not.toContain('CommandLine.arguments');
+  for (const token of [
+    'POSIX_SPAWN_START_SUSPENDED',
+    'HermesConnectorCodeAttestor.attestSuspendedChild',
+    'SecCodeCopyGuestWithAttributes',
+    'kSecCodeInfoUnique',
+    'operations.signal(child, SIGCONT)',
+  ]) expect(runtime + launchAttestation).toContain(token);
+
+  for (const forbidden of [
+    'posix_spawn_file_actions_addinherit_np',
+    'O_EXEC | O_NOFOLLOW',
+    'let descriptorPath = "/dev/fd/',
+  ]) expect(runtime).not.toContain(forbidden);
+  expect(build).toContain('Tests/ConnectorLaunchAttestationFixture.swift');
+  expect(nativeCompatibility).not.toContain('/dev/fd/');
+  expect(nativeCompatibility).not.toContain('posix_spawn');
+  const connectorBoundary = runtime.slice(
+    runtime.indexOf('final class HermesVerifiedConnectorStatusProvider'),
+    runtime.indexOf('final class HermesRuntimeManager'),
+  );
+  expect(connectorBoundary).not.toContain('process.executableURL = executable');
+});
+
+test('production launch delegates ordered child ownership and fault coverage to the shared lifecycle', () => {
+  const productionLaunch = runtime.match(
+    /private func launch\([\s\S]*?\n    private func runCommand/,
+  )?.[0] ?? '';
+  const sharedLifecycle = launchAttestation.slice(
+    launchAttestation.indexOf('enum HermesSuspendedChildLifecycle'),
+  );
+
+  expect(productionLaunch).toContain('HermesSuspendedChildLifecycle.run(');
+  expect(productionLaunch).toContain('startIO: {');
+  expect(productionLaunch).not.toContain('Darwin.kill(child, SIGCONT)');
+  expect(productionLaunch).not.toContain('Darwin.waitpid');
+  expect(productionLaunch.indexOf('try handle.write(contentsOf: input)'))
+    .toBeGreaterThan(productionLaunch.indexOf('startIO: {'));
+
+  const attestation = sharedLifecycle.indexOf('try attest(child)');
+  const resume = sharedLifecycle.indexOf('operations.signal(child, SIGCONT)');
+  const stdin = sharedLifecycle.indexOf('try startIO()');
+  expect(attestation).toBeGreaterThanOrEqual(0);
+  expect(resume).toBeGreaterThan(attestation);
+  expect(stdin).toBeGreaterThan(resume);
+
+  for (const faultCase of [
+    'injectedAttestationFailureWritesNoStdin',
+    'injectedResumeFailureCleansUp',
+    'injectedTimeoutEscalates',
+    'injectedCleanupErrorsStayBounded',
+  ]) expect(launchFixture).toContain(faultCase);
+  expect(launchFixture).toContain('HermesSuspendedChildLifecycle.run(');
+  expect(launchFixture).not.toContain('private static func waitForChild');
+  expect(launchFixture).not.toContain('private static func killAndReap');
+});
+
+test('connector staging rejects ancestor links, source replacement, and staged mutation', () => {
+  const admit = ({ ancestorKinds, sourceBefore, sourceAfter, stagedBefore, stagedAfter }) => {
+    if (ancestorKinds.some((kind) => kind === 'symlink')) throw new Error('connector_unverified');
+    if (sourceBefore !== sourceAfter || stagedBefore !== stagedAfter) throw new Error('connector_unverified');
+    return true;
+  };
+  expect(() => admit({
+    ancestorKinds: ['directory', 'symlink', 'directory'],
+    sourceBefore: 'a', sourceAfter: 'a', stagedBefore: 'a', stagedAfter: 'a',
+  })).toThrow('connector_unverified');
+  expect(() => admit({
+    ancestorKinds: ['directory'],
+    sourceBefore: 'source-a', sourceAfter: 'source-b', stagedBefore: 'a', stagedAfter: 'a',
+  })).toThrow('connector_unverified');
+  expect(() => admit({
+    ancestorKinds: ['directory'],
+    sourceBefore: 'a', sourceAfter: 'a', stagedBefore: 'stage-a', stagedAfter: 'stage-b',
+  })).toThrow('connector_unverified');
+  expect(runtime).toContain('HermesFilesystem.openDirectory(bundle, createMissing: false)');
+  expect(runtime).toContain('sourceAfter.data == sourceBefore.data');
+  expect(runtime).toContain('descriptorSnapshot.identity == stagedExecutable.identity');
+  expect(runtime).toContain('immediatelyBeforeExecution.identity == stagedExecutable.identity');
+  expect(runtime).toContain('afterExecution.identity == stagedExecutable.identity');
+});
+
+test('connector response secret keys are canonicalized recursively across separator variants', () => {
+  const forbidden = new Set([
+    'credential', 'rawcredential', 'credentialid', 'apikey', 'token', 'secret',
+    'password', 'auth', 'authorization', 'authorizationcode', 'verifier', 'challenge',
+  ]);
+  const rejects = (value) => Array.isArray(value)
+    ? value.some(rejects)
+    : value && typeof value === 'object'
+      ? Object.entries(value).some(([key, child]) => (
+        [...forbidden].some((term) => {
+          const canonical = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+          return canonical.includes(term);
+        }) || rejects(child)
+      ))
+      : false;
+  for (const key of [
+    'raw-credential', 'raw_credential', 'credential.id', 'API---KEY', 'auth_token',
+    'pass-word', 'veri_fier', 'chal.lenge', 'se-cret', 'user.token.value',
+  ]) expect(rejects({ safe: [{ nested: { [key]: 'redacted-fixture' } }] })).toBe(true);
+  expect(rejects({ accountLabel: null, installationId: 'safe' })).toBe(false);
+  expect(runtime).toContain('Set(payload.keys) == Self.statusKeys');
+  expect(runtime).toContain('payload["accountLabel"] is NSNull');
+  expect(runtime).toContain('actions.count <= Self.canonicalActions.count');
 });
 
 test('defines the request-correlated runtime bridge contract', () => {
@@ -505,7 +648,7 @@ test('persists stable installation identity and a generation-fenced setup journa
   expect(runtime).toContain('var currentOwnerId: String?');
   for (const stage of [
     'preparing', 'environmentWritten', 'pluginInstalled', 'scheduleDisabled',
-    'enabling', 'awaitingHeartbeat', 'disconnecting', 'disconnectCleanupComplete',
+    'enabling', 'awaitingHeartbeat', 'disconnecting', 'connectorDisconnected', 'disconnectCleanupComplete',
   ]) {
     expect(runtime).toContain(`case ${stage}`);
   }
@@ -569,21 +712,18 @@ test('preserves existing Hermes env unless a readable UTF-8 file or ENOENT is es
   }
 });
 
-test('writes only the owned Index env keys with negotiator mode and secure file permissions', () => {
-  for (const key of [
-    'INDEX_API_KEY', 'INDEX_API_URL', 'INDEX_MCP_URL', 'INDEX_AGENT_ID',
-    'INDEX_INSTALLATION_ID', 'INDEX_PLUGIN_MODE',
-  ]) {
-    expect(runtime).toContain(`"${key}"`);
-  }
-  expect(runtime).toContain('("INDEX_PLUGIN_MODE", "negotiator")');
+test('scrubs all legacy env keys and gates nonsecret development values twice', () => {
+  expect(runtime).not.toContain('"INDEX_API_KEY"');
+  expect(runtime).not.toContain('static let ownedKeys');
+  expect(runtime).toContain('static let legacyOwnedKeys');
+  expect(runtime).toContain('INDEX_PLUGIN_DEVELOPMENT_TRANSPORT');
+  expect(runtime).toContain('.index-plugin-development');
+  expect(runtime).toContain('source-checkout-only');
+  expect(runtime).toContain('try environment.removeOwnedValues()');
+  expect(runtime).toContain('verifyEnvironmentPolicy(developmentTransport:');
   expect(runtime).toContain('mode_t(0o600)');
-  expect(runtime).toContain('O_CREAT | O_EXCL | O_NOFOLLOW');
-  expect(runtime).toContain('forbiddenEnvValueCharacters');
   expect(runtime).not.toContain('/bin/sh');
   expect(runtime).not.toContain('/bin/zsh');
-  expect(runtime).toContain('process.executableURL = URL(fileURLWithPath: executable)');
-  expect(runtime).toContain('process.arguments = arguments');
 });
 
 test('persists the strict non-secret saga journal in Application Support across bridge instances', () => {
@@ -898,12 +1038,22 @@ test('gateway failure performs checked exact-job rollback and retains recovery j
   expect(journal.stage).toBe('enabling');
 });
 
+test('connector-backed local cleanup requires durable connector and exact server proofs', () => {
+  const block = runtime.match(/private func disconnect\(_ request:[\s\S]*?private func finishTerminalDisconnect/)?.[0] ?? '';
+  expect(block).toContain('journal?.stage == .connectorDisconnected');
+  expect(block).toContain('operation?.stage == "server-complete"');
+  expect(block).toContain('operation?.installationId == installation.currentConnectorInstallationId');
+  expect(block.indexOf('operation?.stage == "server-complete"')).toBeLessThan(
+    block.indexOf('plugins", "remove"'),
+  );
+});
+
 test('native logout preparation and completion independently require no key and no attributable enabled cron', () => {
   expect(runtime).toMatch(/case [^\n]*\bprepareLogout\b/);
   expect(runtime).toContain('private func prepareLogout');
   expect(runtime).toContain('try environment.removeOwnedValues()');
   expect(runtime).toContain('verifyLogoutPostconditions');
-  expect(runtime).toContain('env["INDEX_API_KEY"] == nil');
+  expect(runtime).toContain('intersection(HermesEnvironmentFile.legacyOwnedKeys).isEmpty');
   expect(runtime).toContain('verifyNoEnabledAttributableCron');
   const evidence = runtime.match(/func logoutEvidence[\s\S]*?func finishLogoutEvidence/)?.[0] ?? '';
   expect(evidence).toContain('evidence.operation == "disconnect"');
@@ -1364,4 +1514,9 @@ test('disconnect terminal journal recovers deletion failure on retry and relaunc
 
 test('includes the runtime source in the Swift build', () => {
   expect(build).toContain('Sources/*.swift');
+});
+
+test('uses a Bash-3-safe optional Swift define expansion', () => {
+  expect(build).toContain('swiftc -Onone ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"} \\');
+  expect(build).not.toContain('swiftc -Onone "${SWIFT_DEFINES[@]}" \\');
 });

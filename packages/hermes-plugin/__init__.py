@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from . import schemas, tools
+from . import schemas, tools, transport
 from ._mode import resolve_plugin_mode
 
 _INDEX_HINT = (

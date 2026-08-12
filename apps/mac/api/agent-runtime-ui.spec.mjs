@@ -25,13 +25,12 @@ test('security workflow watches the full Mac/plugin/protocol/API authority closu
   ]) expect(securityWorkflow).toContain(test);
 });
 
-test('the app facade composes the production correlated bridge and pinned owner client', () => {
+test('the app facade composes correlated Hermes and credential-free native API bridges', () => {
   expect(apiBridge).toContain('window.IndexApi.createHermesRuntimeBridge');
   expect(apiBridge).toContain('hermesRuntimeBridge.receive(result)');
-  expect(apiBridge).toContain('function getOwnerClient(ownerCredential)');
-  expect(apiBridge).toContain('createPinnedIndexApiClient({');
-  expect(apiBridge).toContain('}, ownerCredential)');
-  expect(apiBridge).toContain('createPinnedIndexApiClient');
+  expect(apiBridge).toContain('window.IndexApi.createNativeAPIRequestBridge');
+  expect(apiBridge).toContain('nativeRequest: nativeAPIBridge.request');
+  expect(apiBridge).not.toContain('createPinnedIndexApiClient');
   expect(apiBridge).not.toContain('__indexHermesSetup');
   expect(apiBridge).not.toContain('setupHermes');
   expect(apiBridge).not.toContain('teardownHermes');
@@ -48,8 +47,10 @@ test('native logout revocation is gated behind the serialized runtime safety bar
   expect(native).toContain('func logoutEvidence(ownerId: String)');
   expect(native).toContain('evidence.stage == "server-complete"');
   expect(native).toContain('try verifyLogoutPostconditions');
-  expect(native).toContain('env["INDEX_API_KEY"] == nil');
-  expect(shell.indexOf('hermesRuntime.logoutEvidence')).toBeLessThan(shell.indexOf('revokeCredential(cred)'));
+  expect(native).toContain('present.intersection(legacy).isEmpty');
+  expect(shell.indexOf('hermesRuntime.logoutEvidence')).toBeLessThan(shell.indexOf('revokeAndDelete(record: record'));
+  expect(shell).toContain('/index-app-owner-authorizations/revoke');
+  expect(shell.indexOf('verifyCredentialDenied')).toBeLessThan(shell.indexOf('store.deleteAndVerify()'));
 });
 
 test('the selector is Index versus Hermes and renders mapper-owned states/actions', () => {
@@ -58,9 +59,9 @@ test('the selector is Index versus Hermes and renders mapper-owned states/action
   expect(agents).toContain('createNativeSagaJournal');
   expect(agents).toContain('setLogoutSafetyHandler');
   expect(agents).toContain('coordinator.prepareLogout()');
-  expect(agents).toContain('getOwnerClient(ownerCredential)');
+  expect(agents).toContain('window.IndexApp.getClient()');
   expect(agents).toContain('ownerId:user.id');
-  expect(agents).toContain('ownerCredential');
+  expect(agents).not.toContain('ownerCredential');
   expect(agents).toContain('runViewRuntimeAction');
   expect(agents).toContain('crypto.randomUUID()');
   expect(agents).toContain('{ id:"index", label:"Index · system default" }');
@@ -116,14 +117,13 @@ test('authenticated relaunch recovery is owned by the always-mounted epoch coord
   expect(agents).toContain('function AgentRuntimeProvider');
   expect(agents).toContain('coordinator.changeOwner({');
   expect(agents).toContain('ownerId:user.id');
-  expect(agents).toContain('ownerCredential, api');
+  expect(agents).toContain('ownerId:user.id, api');
   const agentsView = agents.slice(agents.indexOf('function Agents('));
   expect(agentsView).not.toContain('nativeRuntime("inspect")');
   expect(agentsView).not.toContain('reconcileHermesSaga({');
   expect(apiBridge).toContain('onAuthChanged');
   const app = readFileSync(new URL('../src/ui/app.jsx', import.meta.url), 'utf8');
-  expect(app).toContain('<AgentRuntimeProvider ownerCredential={window.IndexApp && window.IndexApp.apiKey()}>');
-});
+  expect(app).toContain('<AgentRuntimeProvider>');});
 
 test('runtime status renders an accessible polite atomic live region', () => {
   const start = agents.indexOf('function RuntimeStatus');

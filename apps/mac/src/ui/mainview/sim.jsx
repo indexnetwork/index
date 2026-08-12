@@ -323,4 +323,3 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
     </div>
   );
 }
-

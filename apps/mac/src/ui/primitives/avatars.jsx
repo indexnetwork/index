@@ -463,4 +463,3 @@ function AgentAvatar({ size = 22, collective = false, seed, title, style }) {
     </div>
   );
 }
-

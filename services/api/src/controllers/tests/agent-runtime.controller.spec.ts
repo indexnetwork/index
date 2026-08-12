@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { AgentRuntimeController } from '../agent-runtime.controller';
-import { authenticateApiKey, OwnerControlGuard, OwnerControlRequiredError } from '../../guards/auth.guard';
+import { authenticateApiKey, authenticateRequestApiKey, INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX, OwnerControlGuard, OwnerControlRequiredError, type IndexAppOwnerAuthenticationStore } from '../../guards/auth.guard';
 import { RuntimeConflictError, RuntimeNotFoundError, RuntimeValidationError } from '../../lib/agent/runtime-errors';
 import { recordRequestAuthContext } from '../../lib/request-auth-context';
 import { AgentRuntimeService } from '../../services/agent-runtime.service';
@@ -29,6 +29,7 @@ const prepareHermes = mock(async () => ({
 }));
 const setRuntime = mock(async () => binding);
 const rollbackHermes = mock(async () => true);
+const compareAndSelectIndex = mock(async () => ({ outcome: 'selected' as const, binding }));
 const disconnectHermes = mock(async () => binding);
 const reportUnexpectedError = mock((_error: unknown, _operation: string) => undefined);
 
@@ -38,6 +39,7 @@ function controller() {
     prepareHermes,
     setRuntime,
     rollbackHermes,
+    compareAndSelectIndex,
     disconnectHermes,
   } as never, reportUnexpectedError);
 }
@@ -51,6 +53,38 @@ function jsonRequest(path: string, method: string, body: unknown): Request {
 }
 
 describe('OwnerControlGuard', () => {
+  it('admits the exact idxo reconcile route through authentication, owner guard, and controller', async () => {
+    const key = `${INDEX_APP_OWNER_CREDENTIAL_PREFIX}reconcile-secret`;
+    const ownerStore: IndexAppOwnerAuthenticationStore = {
+      async findCredentialByHash() {
+        return {
+          id: 'owner-credential-1', ownerId: OWNER.id, audience: INDEX_APP_OWNER_AUDIENCE,
+          installationId: INSTALLATION_ID, generation: SETUP_ATTEMPT_ID,
+          activationState: 'active', expiresAt: new Date(Date.now() + 60_000),
+        };
+      },
+      async findCurrentInstallationAuthority() {
+        return {
+          credentialId: 'owner-credential-1', ownerId: OWNER.id,
+          installationId: INSTALLATION_ID, generation: SETUP_ATTEMPT_ID,
+        };
+      },
+      async findUserById() { return OWNER; },
+    };
+    const body = {
+      agentId: EXECUTOR_ID, installationId: INSTALLATION_ID, setupAttemptId: SETUP_ATTEMPT_ID,
+    };
+    const req = jsonRequest('/api/agent-runtime/reconcile-index', 'POST', body);
+    req.headers.set('x-api-key', key);
+    const authenticated = await OwnerControlGuard(
+      req,
+      (request) => authenticateRequestApiKey(request, key, { indexAppOwner: ownerStore }),
+    );
+    const response = await controller().compareSelectIndex(req, authenticated);
+    expect(response.status).toBe(200);
+    expect(compareAndSelectIndex).toHaveBeenCalledWith(OWNER.id, body);
+  });
+
   it('accepts a JWT-authenticated session', async () => {
     const req = new Request('http://localhost/api/agent-runtime');
     const result = await OwnerControlGuard(req, async (request) => {
@@ -125,6 +159,7 @@ describe('AgentRuntimeController', () => {
     prepareHermes.mockClear();
     setRuntime.mockClear();
     rollbackHermes.mockClear();
+    compareAndSelectIndex.mockClear();
     disconnectHermes.mockClear();
     reportUnexpectedError.mockClear();
     getRuntime.mockResolvedValue(binding);
@@ -136,6 +171,7 @@ describe('AgentRuntimeController', () => {
     });
     setRuntime.mockResolvedValue(binding);
     rollbackHermes.mockResolvedValue(true);
+    compareAndSelectIndex.mockResolvedValue({ outcome: 'selected', binding });
     disconnectHermes.mockResolvedValue(binding);
   });
 
@@ -198,6 +234,47 @@ describe('AgentRuntimeController', () => {
       error: 'runtime_invalid',
       detail: 'The runtime request is invalid',
     });
+  });
+
+  it('compare-selects Index only for the exact selected Hermes tuple', async () => {
+    const body = {
+      agentId: EXECUTOR_ID, installationId: INSTALLATION_ID, setupAttemptId: SETUP_ATTEMPT_ID,
+    };
+    const response = await controller().compareSelectIndex(
+      jsonRequest('/api/agent-runtime/reconcile-index', 'POST', body), OWNER,
+    );
+    expect(response.status).toBe(200);
+    expect(compareAndSelectIndex).toHaveBeenCalledWith(OWNER.id, body);
+
+    const persistence = new AgentRuntimeTransactionHarness();
+    persistence.seedUser(OWNER);
+    persistence.seedFullHermesExecutor({
+      id: EXECUTOR_ID, ownerId: OWNER.id, installationId: INSTALLATION_ID,
+      setupAttemptId: SETUP_ATTEMPT_ID, handleNegotiations: true,
+    });
+    const runtime = new AgentRuntimeService(persistence);
+    const stale = await runtime.compareAndSelectIndex(OWNER.id, {
+      agentId: EXECUTOR_ID,
+      installationId: INSTALLATION_ID,
+      setupAttemptId: '44444444-4444-4444-8444-444444444444',
+    });
+    expect(stale.outcome).toBe('preserved');
+    expect(stale.binding).toMatchObject({ selectedRuntime: 'hermes', executor: {
+      id: EXECUTOR_ID, installationId: INSTALLATION_ID, setupAttemptId: SETUP_ATTEMPT_ID,
+    } });
+    const exact = await runtime.compareAndSelectIndex(OWNER.id, body);
+    expect(exact).toMatchObject({ outcome: 'selected', binding: { selectedRuntime: 'index' } });
+  });
+
+  it('rejects extra or malformed compare-select fields', async () => {
+    const response = await controller().compareSelectIndex(
+      jsonRequest('/api/agent-runtime/reconcile-index', 'POST', {
+        agentId: EXECUTOR_ID, installationId: INSTALLATION_ID,
+        setupAttemptId: SETUP_ATTEMPT_ID, newer: true,
+      }), OWNER,
+    );
+    expect(response.status).toBe(400);
+    expect(compareAndSelectIndex).not.toHaveBeenCalled();
   });
 
   it('rolls back only the requested setup generation', async () => {

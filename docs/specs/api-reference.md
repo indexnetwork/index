@@ -3,7 +3,7 @@ title: "Protocol API Reference"
 type: spec
 tags: [api, controllers, endpoints, rest, protocol, authentication, sse]
 created: 2026-03-26
-updated: 2026-08-02
+updated: 2026-08-09
 ---
 
 # Protocol API Reference
@@ -33,6 +33,7 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 - [Tools](#tools)
 - [User](#user)
 - [Queue Monitoring (Dev Only)](#queue-monitoring-dev-only)
+- [Secure standalone Hermes and Index-owner authorization](#secure-standalone-hermes-and-index-owner-authorization)
 
 ---
 
@@ -3758,14 +3759,72 @@ Serves the Bull Board UI for monitoring BullMQ job queues. Monitors the followin
 Accessible at `http://localhost:3001/dev/queues/` when the protocol server is running in development mode.
 
 
+## Secure standalone Hermes and Index-owner authorization
+
+These routes are version-1 contracts for native clients. They never return a credential, PKCE verifier, activation proof, stored hash, owner ID, or secret to browser JavaScript. Every body is strict: unknown fields are rejected as `{ "error": "invalid_request" }` (400). All credentials are sent only by the native process in `x-api-key`; the browser sees at most request ID, state, and one-time code.
+
+### Audiences and credential lifecycle
+
+- `idxh_` is a dedicated **`hermes-agent`** credential in `hermes_agent_credentials`, not a legacy API key. It has an owner, agent, installation UUID, setup-attempt UUID, exact ordered six actions, 30-day expiry, and `pending|active|revoked` state.
+- `idxo_` is a dedicated **`index-app-owner`** credential in `index_app_owner_credentials`, with owner, installation UUID, generation, 30-day expiry, and `pending|active|revoked` state.
+- The two audiences use separate Keychain identities. They are never browser/session credentials and no response shape documents their raw values outside the native exchange response.
+- `hermes-agent` is default-denied. Its full normal-product principal requires the exact ordered actions `manage:identity`, `manage:premises`, `manage:intents`, `manage:networks`, `manage:opportunities`, and `manage:negotiations`; missing, reordered, duplicate, retired, or extra actions deny authentication/admission. It may use the explicit full MCP policy and exact allowed REST paths, including `GET /agents/me`, product routes, and matching-agent negotiation pickup/respond/consult. It cannot access account security, credentials, permissions, billing, agent administration, or unknown paths.
+- `hermes-negotiator` is separate from `hermes-agent`: it has only `GET /agents/me` plus exact pickup/respond/consult routes and is represented in Hermes by four handlers (`index_agent_me`, `index_pickup_negotiation`, `index_respond_negotiation`, `index_consult_owner`). Its hidden run ID/capability are never browser or model arguments.
+- Active credentials expire after 30 days, have no refresh, and require a new browser authorization. Seven-day warning/status behavior belongs to the connector; expired or stale negotiation authority falls back to Index.
+
+### Hermes browser authorization
+
+`POST /api/hermes-authorizations` is public (rate-limited) and accepts exactly:
+
+```json
+{
+  "protocolVersion": 1,
+  "installationId": "uuid",
+  "redirectUri": "http://127.0.0.1:49152/callback",
+  "codeChallenge": "43-char-base64url-S256-hash",
+  "codeChallengeMethod": "S256",
+  "state": "32-to-128-char-base64url",
+  "actions": ["manage:identity", "manage:premises", "manage:intents", "manage:networks", "manage:opportunities", "manage:negotiations"]
+}
+```
+
+The callback must be byte-canonical `http://127.0.0.1:<49152-65535>/callback` with no query, fragment, alias, userinfo, or alternate path. The response is `201 { requestId, state, expiresAt }`; the request expires in 10 minutes.
+
+`GET /api/hermes-authorizations/:requestId?state=…&redirect_uri=…` is `SessionOnlyGuard` and requires exactly those two query keys once. It performs strict state/redirect query admission and returns only `{ requestId, installationId, installationName, actions, expiresAt }` for the matching pending request. `POST /api/hermes-authorizations/:requestId/approve` is also session-only and accepts strict `{ state, redirectUri }`, revalidating that state/redirect binding under the owner lock. It selects Index fallback, revokes prior installation authority, creates a setup generation, and returns `{ requestId, code, state }`. The five-minute code is single-use; it is a grant, not a credential. The connector rechecks the state against the loopback callback before it sends an exchange request.
+
+`POST /api/hermes-authorizations/exchange` is public/rate-limited and accepts strict `{ protocolVersion:1, requestId, code, verifier, redirectUri }`. It atomically verifies the one-time code, PKCE S256 verifier, request/redirect binding, expiry/consumption, current setup generation, and replay receipt. State is deliberately not an exchange field. Its native-only response is `{ credential, audience, agentId, installationId, setupAttemptId, credentialId, actions, expiresAt, activationState }`, where `activationState` is `pending`; only hashes persist. Invalid grants/expiry are 400 (`invalid_grant`/`expired_grant`), replay is 409 (`grant_replayed`), and setup conflict is 409 (`authorization_conflict`).
+
+`POST /api/hermes-authorizations/activate` accepts strict `{ "protocolVersion": 1, "keychainConfirmed": true }` plus the exact pending `idxh_` header. It rechecks owner, agent, installation, row identity, setup generation, expiry, audience, and action order under the owner lock before installing the exact permission and returning the same nonsecret metadata with `activationState:"active"`. It is idempotent only for that exact active generation. `POST /api/hermes-authorizations/disconnect` accepts strict `{ "protocolVersion": 1 }` plus its exact `idxh_` header. It is an idempotent self-revocation, including expired/already-revoked rows, and returns `{ revoked:true, credentialId, setupAttemptId }`; it cannot revoke a successor generation. Missing/wrong dedicated headers return 401 `invalid_credential`.
+
+### Connected Hermes owner controls
+
+These routes require a Better Auth browser session (`SessionOnlyGuard`); API keys, including `idxh_` and `idxo_`, are rejected.
+
+- `GET /api/connected-agents/hermes` returns `{ connections }`. Each nonsecret connection is `{ installationId, installationName, agentId, actions, activationState, selected, lastHeartbeatAt|null, expiresAt, health, indexCovering }`, where health is exactly `pending|active|stale|never_seen|expired|revoked`.
+- `POST /api/connected-agents/hermes/:installationId/pause` requires an empty body. It deselects Hermes immediately but preserves the active credential/permission and returns the refreshed connection view.
+- `DELETE /api/connected-agents/hermes/:installationId` idempotently selects Index, removes target authority, deletes legacy installation keys, revokes dedicated credentials, and returns `{ revoked:true }`.
+
+Unknown or cross-owner installation IDs are opaque 404 `{ "error":"connected_agent_not_found" }`; malformed IDs/bodies are 400. Reconnect never extends a credential: it starts a fresh authorization.
+
+### Index macOS owner authorization
+
+`POST /api/index-app-owner-authorizations` is the native app's public PKCE request endpoint. It accepts strict `{ protocolVersion:1, installationId, redirectUri, state, codeChallenge, codeChallengeMethod:"S256", legacyKeyId:null|string }`; the callback and PKCE constraints are the same canonical Hermes constraints. It returns `201 { requestId, state, expiresAt }` and expires in 10 minutes.
+
+`GET /api/index-app-owner-authorizations/:requestId?state=…&redirect_uri=…` and `POST /:requestId/approve` are session-only. Metadata is exactly `{ requestId, installationId, legacyRevocationRequired, expiresAt }`; approval returns `{ requestId, code, state }`. Exchange accepts strict `{ protocolVersion:1, requestId, code, state, verifier, redirectUri }`, atomically validates/consumes the request and any same-owner legacy key ID, revokes that legacy authority before a pending replacement, and returns the native-only pending tuple `{ credential, activationProof, ownerId, credentialId, installationId, generation, expiresAt, activationState }`.
+
+`POST /api/index-app-owner-authorizations/activate` and `/rollback` require strict `{ protocolVersion:1, activationProof }` and the pending `idxo_` header. Activation consumes the one-time proof; rollback revokes the exact pending generation and returns `{ revoked:true, credentialId }`. `POST /revoke` accepts strict `{ protocolVersion:1 }` with a revocable `idxo_` header and returns the same idempotent receipt. Owner authorization errors are stable: 400 `invalid_request`, 403 `invalid_grant|invalid_credential`, 409 `replayed|authorization_conflict`, and 410 `expired`.
+
+The production app writes/verifies the owner credential only in its app Keychain item. Historical plaintext installation recovery retains only a nonsecret legacy key ID, deletes/verifies the historical file before login, and requires the server-side legacy revocation/fresh approval sequence.
+
 ## Agent negotiation runtime owner control
 
-All five routes require an owner-control credential (session or unbound owner API key). Agent-bound credentials, including the dedicated Hermes negotiator audience, are rejected.
+Runtime routes require `OwnerControlGuard`: a Better Auth session or active `idxo_` owner credential. Agent-bound credentials are rejected. The server owns the selection, fallback, and generation authority.
 
-- `GET /api/agent-runtime?installationId=<uuid>` — read the selected runtime, exact installation state, heartbeat health, and Index fallback state.
-- `POST /api/agent-runtime/hermes/prepare` — prepare/rotate an installation generation and return one finite-lived `hermes-negotiator` / `agent-runtime` credential. Preparation grants no negotiation authority.
-- `PUT /api/agent-runtime` — select Index (`{ "runtime": "index" }`) or activate the exact prepared Hermes installation/executor/setup generation.
-- `POST /api/agent-runtime/rollback` — compare-and-clear only the named setup generation.
-- `DELETE /api/agent-runtime/hermes/:installationId` — select Index, revoke the installation credentials, and mark that installation inactive.
+- `GET /api/agent-runtime?installationId=<uuid>` returns the owner-scoped runtime state for that installation.
+- `POST /api/agent-runtime/hermes/prepare` accepts `{ installationId, setupAttemptId }` and creates a disabled generation; preparation grants no active runtime authority.
+- `PUT /api/agent-runtime` accepts either `{ "runtime":"index" }` or `{ "runtime":"hermes", "installationId", "executorId", "setupAttemptId" }` and validates the exact generation.
+- `POST /api/agent-runtime/reconcile-index` accepts `{ agentId, installationId, setupAttemptId }`; it compare-and-selects Index only if that exact binding remains current, otherwise returns `preserved` and cannot deselect a successor.
+- `POST /api/agent-runtime/rollback` accepts `{ setupAttemptId }` and compare-clears only that generation.
+- `DELETE /api/agent-runtime/hermes/:installationId` selects Index, revokes installation authority, and marks it inactive. It has no defined request body; callers must omit one (the current server does not separately reject a supplied DELETE body).
 
-Hermes credentials are centrally default-denied on REST and MCP. Their only REST capabilities are `GET /api/agents/me` and exact matching-agent negotiation pickup/respond/consult routes. Pickup, response, and consultation revalidate the current selected executor, global `manage:negotiations` grant, credential row, audience, and setup generation under the same owner runtime advisory-lock transaction as task mutation. Legacy agent-bound keys without an explicit Hermes audience retain compatibility.
+Body-bearing runtime routes use exact schemas. Runtime domain errors retain `{ error, detail }`; stale/mismatched compare-and-set operations preserve the authoritative newer binding. Pickup/respond/consult re-read selected executor, global `manage:negotiations` authority, credential row/audience/expiry, installation, generation, expected speaker, and one-shot capability under the same owner advisory-lock transaction as the task mutation. Exact retries return their durable receipt; generation/credential/run replay across a task is denied.

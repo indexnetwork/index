@@ -26,7 +26,9 @@
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
-    <string>11.0</string>
+    <string>13.0</string>
+    <key>IndexOwnerKeychainAccessGroup</key>
+    <string></string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSPrincipalClass</key>

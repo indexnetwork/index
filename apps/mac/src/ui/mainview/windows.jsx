@@ -343,4 +343,3 @@ function StatusBadge({ status, inv }) {
     }}>{t}</span>
   );
 }
-

@@ -1,6 +1,7 @@
 import type { AgentWithRelations } from '../adapters/agent.database.adapter';
 import { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
+import { HERMES_CANONICAL_ACTIONS } from '../lib/agent/hermes-capabilities';
 
 export { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 
@@ -9,6 +10,7 @@ export type NegotiationRuntimeView = {
   executor: null | {
     id: string;
     installationId: string | null;
+    setupAttemptId: string | null;
     status: 'active' | 'inactive';
     lastNegotiationPickupAt: string | null;
   };
@@ -32,6 +34,7 @@ export type PrepareHermesRuntimeResult = {
 };
 
 export type DisconnectHermesInstallationResult = 'disconnected' | 'absent' | 'owner_mismatch';
+export type CompareSelectIndexResult = 'selected' | 'already_index' | 'preserved';
 
 export type RuntimeSelectionInput =
   | { runtime: 'index' }
@@ -59,6 +62,12 @@ export interface AgentRuntimeStore {
     ownerId: string;
     expectedSetupAttemptId: string;
   }): Promise<boolean>;
+  compareAndSelectIndex(input: {
+    ownerId: string;
+    expectedAgentId: string;
+    expectedInstallationId: string;
+    expectedSetupAttemptId: string;
+  }): Promise<CompareSelectIndexResult>;
   getNegotiationExecutorBinding(ownerId: string): Promise<AgentWithRelations | null>;
   getHermesInstallation(ownerId: string, installationId: string): Promise<AgentWithRelations | null>;
   disconnectHermesInstallation(input: {
@@ -131,6 +140,13 @@ export class AgentRuntimeService {
       expectedSetupAttemptId: input.setupAttemptId,
     });
     if (!selected) throw new RuntimeConflictError();
+    const globalPermission = selected.permissions.find((permission) =>
+      permission.userId === ownerId && permission.scope === 'global');
+    const actions = globalPermission?.actions ?? [];
+    const negotiationOnly = actions.length === 1 && actions[0] === 'manage:negotiations';
+    const fullStandalone = actions.length === HERMES_CANONICAL_ACTIONS.length
+      && HERMES_CANONICAL_ACTIONS.every((action, index) => actions[index] === action);
+    if (!negotiationOnly && !fullStandalone) throw new RuntimeConflictError();
     return this.toView(selected);
   }
 
@@ -142,7 +158,24 @@ export class AgentRuntimeService {
     });
   }
 
-  /** Select Index, revoke the installation credentials, and mark it inactive. */
+  /** Owner-locked compare-and-select-Index. It never revokes connector credentials. */
+  async compareAndSelectIndex(
+    ownerId: string,
+    expected: { agentId: string; installationId: string; setupAttemptId: string },
+  ): Promise<{ outcome: CompareSelectIndexResult; binding: NegotiationRuntimeView }> {
+    const outcome = await this.store.compareAndSelectIndex({
+      ownerId,
+      expectedAgentId: expected.agentId,
+      expectedInstallationId: expected.installationId,
+      expectedSetupAttemptId: expected.setupAttemptId,
+    });
+    return {
+      outcome,
+      binding: await this.getRuntime(ownerId, expected.installationId),
+    };
+  }
+
+  /** Legacy owner removal. Connector-backed clients do not call this path. */
   async disconnectHermes(ownerId: string, installationId: string): Promise<NegotiationRuntimeView> {
     const outcome = await this.store.disconnectHermesInstallation({ ownerId, installationId });
     // Global absence is positive evidence that this owner has nothing to revoke,
@@ -174,6 +207,7 @@ export class AgentRuntimeService {
         ? {
             id: selected.id,
             installationId: selected.installationId,
+            setupAttemptId: selected.runtimeSetupAttemptId,
             status: selected.status,
             lastNegotiationPickupAt: lastPickup?.toISOString() ?? null,
           }
@@ -205,6 +239,10 @@ const lazyAgentRuntimeStore: AgentRuntimeStore = {
   async rollbackHermesSetup(input) {
     const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');
     return agentDatabaseAdapter.rollbackHermesSetup(input);
+  },
+  async compareAndSelectIndex(input) {
+    const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');
+    return agentDatabaseAdapter.compareAndSelectIndex(input);
   },
   async getNegotiationExecutorBinding(ownerId) {
     const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');

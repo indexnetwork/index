@@ -45,6 +45,45 @@ export function defineMcpToolPermissionMap(
   return new Map(Object.entries(parsed));
 }
 
+/**
+ * Exact full-standalone Hermes MCP surface. Every admitted tool maps to one
+ * canonical action; absence is denial, including human-only, deletion,
+ * permission-management, agent-administration, and retired aliases.
+ */
+export const HERMES_AGENT_MCP_TOOL_PERMISSIONS = defineMcpToolPermissionMap({
+  read_user_contexts: { action: 'manage:identity', reach: 'principal' },
+  preview_user_context: { action: 'manage:identity', reach: 'principal' },
+  confirm_user_context: { action: 'manage:identity', reach: 'principal' },
+  create_user_context: { action: 'manage:identity', reach: 'principal' },
+  update_user_context: { action: 'manage:identity', reach: 'principal' },
+  get_enrichment_run: { action: 'manage:identity', reach: 'principal' },
+  cancel_enrichment_run: { action: 'manage:identity', reach: 'principal' },
+  read_intents: { action: 'manage:intents', reach: 'network' },
+  search_intents: { action: 'manage:intents', reach: 'network' },
+  create_intent: { action: 'manage:intents', reach: 'network' },
+  update_intent: { action: 'manage:intents', reach: 'network' },
+  read_intent_indexes: { action: 'manage:intents', reach: 'network' },
+  create_intent_index: { action: 'manage:intents', reach: 'network' },
+  list_negotiations: { action: 'manage:negotiations', reach: 'network' },
+  get_negotiation: { action: 'manage:negotiations', reach: 'network' },
+  respond_to_negotiation: { action: 'manage:negotiations', reach: 'network' },
+  read_networks: { action: 'manage:networks', reach: 'network' },
+  read_network_memberships: { action: 'manage:networks', reach: 'network' },
+  create_network: { action: 'manage:networks', reach: 'network' },
+  update_network: { action: 'manage:networks', reach: 'network' },
+  create_network_membership: { action: 'manage:networks', reach: 'network' },
+  list_opportunities: { action: 'manage:opportunities', reach: 'network' },
+  update_opportunity: { action: 'manage:opportunities', reach: 'network' },
+  confirm_opportunity_delivery: { action: 'manage:opportunities', reach: 'network' },
+  read_premises: { action: 'manage:premises', reach: 'principal' },
+  create_premise: { action: 'manage:premises', reach: 'principal' },
+  update_premise: { action: 'manage:premises', reach: 'principal' },
+  retract_premise: { action: 'manage:premises', reach: 'principal' },
+  read_pending_questions: { action: 'manage:identity', reach: 'principal' },
+  read_activity_summary: { action: 'manage:identity', reach: 'principal' },
+  read_docs: { action: 'manage:identity', reach: 'principal' },
+});
+
 export const McpToolAccessRuleSchema = z.object({
   access: z.enum([
     'permission',
@@ -266,6 +305,7 @@ export const McpPrincipalProfileSchema = z.enum([
   'unregistered_key',
   'registered_global_agent',
   'registered_network_agent',
+  'hermes_agent',
   'delivery_agent',
   'invalid_agent',
 ]);
@@ -410,11 +450,13 @@ export function resolveMcpCapabilitySubject(
   }
 
   const agent = parsedAgent.data;
-  const profile: McpPrincipalProfile = identity.isDeliveryAgent === true
-    ? 'delivery_agent'
-    : identity.networkScopeId
-      ? 'registered_network_agent'
-      : 'registered_global_agent';
+  const profile: McpPrincipalProfile = identity.isHermesAgent === true
+    ? 'hermes_agent'
+    : identity.isDeliveryAgent === true
+      ? 'delivery_agent'
+      : identity.networkScopeId
+        ? 'registered_network_agent'
+        : 'registered_global_agent';
 
   return McpCapabilitySubjectSchema.parse({
     profile,
@@ -583,6 +625,23 @@ export class McpCapabilityPolicy {
     }
     if (subject.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
       return { allowed: false, reason: 'onboarding_required', reach: rule.reach };
+    }
+    if (subject.profile === 'hermes_agent') {
+      const requirement = HERMES_AGENT_MCP_TOOL_PERMISSIONS.get(toolName);
+      if (!requirement) return { allowed: false, reason: 'tool_unclassified' };
+      return subject.permissions.includes(requirement.action)
+        ? {
+            allowed: true,
+            reason: 'permission_granted',
+            reach: requirement.reach,
+            requiredPermissions: [requirement.action],
+          }
+        : {
+            allowed: false,
+            reason: 'permission_missing',
+            reach: requirement.reach,
+            requiredPermissions: [requirement.action],
+          };
     }
     if (rule.access === 'delivery_only') {
       return subject.profile === 'delivery_agent'

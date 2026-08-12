@@ -17,22 +17,19 @@ import shutil
 import subprocess
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from collections import OrderedDict
-from pathlib import Path
 from typing import Any
 
-_DEFAULT_INDEX_MCP_URL = "https://protocol.index.network/mcp"
-_DEFAULT_INDEX_API_URL = "https://protocol.index.network/api"
+from .connector_transport import TransportError
+from .transport import get_transport, set_transport_for_tests
+
 # Universal-link host for Index deep links. The macOS app claims /c/*, /o/* and
 # /u/* through its apple-app-site-association file, so the same https URL opens
 # the app when it is installed and the web landing page when it is not. The
 # plugin never detects app installation: it runs on the agent's host, which is
 # usually not the user's Mac, so the OS decides at click time.
 INDEX_APP_BASE_URL = "https://index.network"
-_MAX_ERROR_BODY_CHARS = 2_000
 _MAX_APP_URL_WALK_DEPTH = 16
 _OPEN_URL_TIMEOUT_SECONDS = 15
 _NEGOTIATION_ACTIONS = {"accept", "decline", "request_time", "continue"}
@@ -46,8 +43,6 @@ _CONSULTATION_REASONS = {
     "unresolved_owner_constraint",
 }
 _CONSULTATION_REASONS_MESSAGE = ", ".join(sorted(_CONSULTATION_REASONS))
-_HERMES_RUN_ID_HEADER = "x-index-hermes-run-id"
-_HERMES_RUN_CAPABILITY_HEADER = "x-index-hermes-run-capability"
 _NEGOTIATION_RUN_LOCK = threading.RLock()
 _NEGOTIATION_RUN_MAX_STATES = 256
 _NEGOTIATION_RUN_STATE_TTL_SECONDS = 6 * 60 * 60
@@ -72,14 +67,6 @@ class _NegotiationRunState:
 _NEGOTIATION_RUN_STATES: OrderedDict[str, _NegotiationRunState] = OrderedDict()
 _FORWARDED_MCP_TOOLS = frozenset(
     {
-        "register_agent",
-        "list_agents",
-        "update_agent",
-        "delete_agent",
-        "grant_agent_permission",
-        "revoke_agent_permission",
-        "list_conversations",
-        "get_conversation",
         "read_user_contexts",
         "preview_user_context",
         "confirm_user_context",
@@ -87,13 +74,10 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "update_user_context",
         "get_enrichment_run",
         "cancel_enrichment_run",
-        "complete_onboarding",
         "create_intent",
         "update_intent",
-        "delete_intent",
         "create_intent_index",
         "read_intent_indexes",
-        "delete_intent_index",
         "search_intents",
         "list_negotiations",
         "get_negotiation",
@@ -102,9 +86,7 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "read_network_memberships",
         "update_network",
         "create_network",
-        "delete_network",
         "create_network_membership",
-        "delete_network_membership",
         "list_opportunities",
         "update_opportunity",
         "confirm_opportunity_delivery",
@@ -205,16 +187,17 @@ def _negotiation_run_state(kwargs: dict[str, Any]) -> tuple[_NegotiationRunState
         return state, None
 
 
-def _negotiation_run_headers(
+def _negotiation_run_authority(
     state: _NegotiationRunState,
     *,
     include_capability: bool = False,
 ) -> dict[str, str]:
+    """Project hidden run state into the connector's closed structured shape."""
     with _NEGOTIATION_RUN_LOCK:
-        headers = {_HERMES_RUN_ID_HEADER: state.run_id}
+        authority = {"runId": state.run_id}
         if include_capability and state.capability:
-            headers[_HERMES_RUN_CAPABILITY_HEADER] = state.capability
-        return headers
+            authority["capability"] = state.capability
+        return authority
 
 
 def _reset_negotiation_run_for_tests() -> None:
@@ -298,90 +281,25 @@ def _positive_int(value: Any, name: str, *, maximum: int | None = None) -> tuple
     return parsed, None
 
 
-def _timeout_seconds() -> float:
-    raw = os.environ.get("INDEX_MCP_TIMEOUT_SECONDS", "30").strip()
-    try:
-        parsed = float(raw)
-    except ValueError:
-        return 30.0
-    return parsed if parsed > 0 else 30.0
-
-
-def _hermes_env_get(name: str) -> str:
-    """Read `name` from the process env, else from the Hermes `.env` file.
-
-    Dashboard / desktop plugin workers sometimes see `INDEX_API_KEY` in
-    `os.environ` but not `INDEX_API_URL` (profile secret scopes, partial
-    dotenv loads). Falling back to `~/.hermes/.env` keeps invite/login URLs
-    paired with the API the key actually hits.
-    """
-    raw = os.environ.get(name, "").strip()
-    if raw:
-        return raw
-    override = os.environ.get("HERMES_ENV_PATH", "").strip()
-    env_path = Path(override) if override else Path.home() / ".hermes" / ".env"
-    try:
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return ""
-    prefix = f"{name}="
-    export_prefix = f"export {name}="
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith(export_prefix):
-            value = stripped[len(export_prefix) :]
-        elif stripped.startswith(prefix):
-            value = stripped[len(prefix) :]
-        else:
-            continue
-        return value.strip().strip("'").strip('"')
-    return ""
-
-
-def _mcp_url() -> str:
-    return _hermes_env_get("INDEX_MCP_URL") or _DEFAULT_INDEX_MCP_URL
-
-
-def _api_url() -> str:
-    return _hermes_env_get("INDEX_API_URL") or _DEFAULT_INDEX_API_URL
-
-
-def _web_origin_from_api_url(api_url: str) -> str | None:
-    """Pair a web origin with an API base (`protocol.dev…` → `https://dev…`)."""
-    try:
-        parts = urllib.parse.urlsplit(api_url)
-    except ValueError:
-        return None
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        return None
-    host = parts.hostname
-    if host in ("localhost", "127.0.0.1"):
-        return f"{parts.scheme}://{host}:3000"
-    if host.startswith("protocol."):
-        host = host[len("protocol.") :]
-    return f"{parts.scheme}://{host}"
-
-
 def _app_base_url() -> str:
-    """Return the Index web origin for deep links, invites, and `/cli-auth`.
+    """Return the universal-link origin used for Index deep links.
 
-    Prefer a well-formed `https://…` `INDEX_APP_BASE_URL`, else derive from
-    `INDEX_API_URL` (including a `~/.hermes/.env` fallback), else production.
+    Only a well-formed `https://<host>` origin is honored. A malformed or
+    schemeless override (for example `index.network`) falls back to the constant:
+    a base that parses to an empty scheme/netloc would make every relative path
+    compare equal to it in `index_open_app` and turn that tool into a generic
+    local-file opener.
     """
-    raw = _hermes_env_get("INDEX_APP_BASE_URL").rstrip("/")
-    if raw:
-        try:
-            parts = urllib.parse.urlsplit(raw)
-        except ValueError:
-            parts = None
-        if parts and parts.scheme == "https" and parts.netloc:
-            return raw
-    derived = _web_origin_from_api_url(_api_url())
-    if derived:
-        return derived.rstrip("/")
-    return INDEX_APP_BASE_URL
+    raw = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
+    if not raw:
+        return INDEX_APP_BASE_URL
+    try:
+        parts = urllib.parse.urlsplit(raw)
+    except ValueError:
+        return INDEX_APP_BASE_URL
+    if parts.scheme != "https" or not parts.netloc:
+        return INDEX_APP_BASE_URL
+    return raw
 
 
 def _attach_app_urls(value: Any, base_url: str, depth: int = 0) -> None:
@@ -414,18 +332,6 @@ def _with_app_urls(payload: Any) -> Any:
         return payload
 
 
-def _headers(api_key: str) -> dict[str, str]:
-    headers = {
-        "Accept": "application/json, text/event-stream",
-        "Content-Type": "application/json",
-        "x-api-key": api_key,
-    }
-    telegram_handle = os.environ.get("INDEX_TELEGRAM_USERNAME", "").strip()
-    if telegram_handle:
-        headers["x-index-telegram-username"] = telegram_handle
-    return headers
-
-
 def _parse_json(data: str) -> Any:
     return json.loads(data)
 
@@ -456,20 +362,6 @@ def _parse_sse(data: str) -> Any:
     if last_payload is None:
         raise ValueError("SSE response did not include a JSON data payload")
     return last_payload
-
-
-def _parse_mcp_response(body: bytes, content_type: str) -> Any:
-    text = body.decode("utf-8", errors="replace")
-    if "text/event-stream" in content_type.lower():
-        return _parse_sse(text)
-    return _parse_json(text)
-
-
-def _parse_api_response(body: bytes) -> Any:
-    text = body.decode("utf-8", errors="replace").strip()
-    if not text:
-        return {"success": True, "no_content": True}
-    return _parse_json(text)
 
 
 def _decode_tool_result(message: dict[str, Any]) -> dict[str, Any]:
@@ -511,46 +403,13 @@ def _decode_tool_result(message: dict[str, Any]) -> dict[str, Any]:
 
 
 def _call_index_mcp(tool_name: str, arguments: dict[str, Any]) -> str:
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return _error(
-            "INDEX_API_KEY is required. Install the plugin with Hermes or set INDEX_API_KEY in the Hermes environment."
-        )
-
-    request_body = json.dumps(
-        {
-            "jsonrpc": "2.0",
-            "id": int(time.time() * 1000),
-            "method": "tools/call",
-            "params": {"name": tool_name, "arguments": arguments},
-        }
-    ).encode("utf-8")
-
-    request = urllib.request.Request(
-        _mcp_url(),
-        data=request_body,
-        headers=_headers(api_key),
-        method="POST",
-    )
-
     try:
-        with urllib.request.urlopen(request, timeout=_timeout_seconds()) as response:
-            body = response.read()
-            parsed = _parse_mcp_response(body, response.headers.get("Content-Type", ""))
-            if not isinstance(parsed, dict):
-                return _json(_with_app_urls({"success": True, "data": parsed}))
-            return _json(_with_app_urls(_decode_tool_result(parsed)))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")[:_MAX_ERROR_BODY_CHARS]
-        return _error(
-            f"Index MCP HTTP request failed with status {exc.code}.",
-            status=exc.code,
-            body=body,
-        )
-    except urllib.error.URLError as exc:
-        return _error(f"Index MCP request failed: {exc.reason}")
+        result = get_transport().call_mcp(tool_name, arguments)
+        return _json(_with_app_urls(_decode_tool_result({"result": result})))
+    except TransportError as exc:
+        return _json(exc.as_payload())
     except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
-        return _error(f"Index MCP response could not be processed: {exc}")
+        return _error(f"Index transport response could not be processed: {exc}")
 
 
 def _api_request(
@@ -559,83 +418,62 @@ def _api_request(
     body: dict[str, Any] | None = None,
     *,
     no_content_payload: dict[str, Any] | None = None,
-    extra_headers: dict[str, str] | None = None,
+    hermes_run: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    api_key = os.environ.get("INDEX_API_KEY", "").strip()
-    if not api_key:
-        return _error_payload(
-            "INDEX_API_KEY is required. Install the plugin with Hermes or set INDEX_API_KEY in the Hermes environment."
-        )
-
-    base_url = _api_url().rstrip("/")
-    request_path = path if path.startswith("/") else f"/{path}"
-    request_body = None if body is None else json.dumps(body).encode("utf-8")
-    request_headers = _headers(api_key)
-    if extra_headers:
-        request_headers.update(extra_headers)
-    request = urllib.request.Request(
-        f"{base_url}{request_path}",
-        data=request_body,
-        headers=request_headers,
-        method=method.upper(),
-    )
-
     try:
-        with urllib.request.urlopen(request, timeout=_timeout_seconds()) as response:
-            status = getattr(response, "status", getattr(response, "code", None))
-            if status == 204:
-                return no_content_payload or {"success": True, "no_content": True}
-            parsed = _parse_api_response(response.read())
-            if isinstance(parsed, dict):
-                return parsed
-            return {"success": True, "data": parsed}
-    except urllib.error.HTTPError as exc:
-        body_text = exc.read().decode("utf-8", errors="replace")[:_MAX_ERROR_BODY_CHARS]
-        error_payload: dict[str, Any] = {
-            "success": False,
-            "error": f"Index API HTTP request failed with status {exc.code}.",
-            "status": exc.code,
-        }
-        if body_text:
-            error_payload["body"] = body_text
-            try:
-                parsed_body = _parse_json(body_text)
-            except json.JSONDecodeError:
-                parsed_body = None
-            if isinstance(parsed_body, dict):
-                error_payload["details"] = parsed_body
-        return error_payload
-    except urllib.error.URLError as exc:
-        return _error_payload(f"Index API request failed: {exc.reason}")
+        result = get_transport().request_rest(
+            method, path, body, hermes_run=hermes_run
+        )
+        if result.get("no_content") is True and no_content_payload is not None:
+            return no_content_payload
+        return result
+    except TransportError as exc:
+        return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
-        return _error_payload(f"Index API response could not be processed: {exc}")
+        return _error_payload(f"Index transport response could not be processed: {exc}")
+
+
+_AMBIGUOUS_REPLAY_CODES = {
+    "connector_unavailable",
+    "connector_invalid_response",
+    "upstream_ambiguous_response",
+    "network_error",
+    "timeout",
+}
+
+
+def _dispatch_negotiation_request(
+    path: str,
+    body: dict[str, Any] | None,
+    authority: dict[str, str],
+    *,
+    no_content_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Dispatch once, with at most one byte-identical ambiguous replay."""
+    result = _api_request(
+        "POST", path, body, hermes_run=authority,
+        no_content_payload=no_content_payload,
+    )
+    ambiguous = (
+        result.get("success") is False
+        and "status" not in result
+        and result.get("code") in _AMBIGUOUS_REPLAY_CODES
+    )
+    if ambiguous:
+        return _api_request(
+            "POST", path, body, hermes_run=authority,
+            no_content_payload=no_content_payload,
+        )
+    return result
 
 
 def _dispatch_negotiation_mutation(
     path: str,
     body: dict[str, Any],
-    headers: dict[str, str],
+    authority: dict[str, str],
 ) -> dict[str, Any]:
-    """Bounded exact replay for ambiguous transport failure inside one tool call.
-
-    The model cannot select this retry or alter its operation/body. HTTP results
-    are final; only a transport/response-processing failure with no server status
-    gets one identical idempotency replay under the same hidden run authority.
-    """
-    result = _api_request("POST", path, body, extra_headers=headers)
-    error = result.get("error")
-    ambiguous_transport = (
-        result.get("success") is False
-        and "status" not in result
-        and isinstance(error, str)
-        and (
-            error.startswith("Index API request failed:")
-            or error.startswith("Index API response could not be processed:")
-        )
-    )
-    if ambiguous_transport:
-        return _api_request("POST", path, body, extra_headers=headers)
-    return result
+    """Bounded exact mutation replay under the same hidden run authority."""
+    return _dispatch_negotiation_request(path, body, authority)
 
 
 def _agent_id_from_payload(payload: dict[str, Any]) -> str | None:
@@ -828,11 +666,11 @@ def index_pickup_negotiation(args: dict, **kwargs) -> str:
         state.pickup_inflight = True
         _touch_negotiation_run_state(state)
     try:
-        payload = _api_request(
-            "POST",
+        payload = _dispatch_negotiation_request(
             f"/agents/{agent_id}/negotiations/pickup",
+            None,
+            _negotiation_run_authority(state),
             no_content_payload={"success": True, "pending": False},
-            extra_headers=_negotiation_run_headers(state),
         )
     finally:
         with _NEGOTIATION_RUN_LOCK:
@@ -898,7 +736,7 @@ def index_respond_negotiation(args: dict, **kwargs) -> str:
     result = _dispatch_negotiation_mutation(
         f"/agents/{agent_id}/negotiations/{negotiation_id}/respond",
         request_body,
-        _negotiation_run_headers(state, include_capability=True),
+        _negotiation_run_authority(state, include_capability=True),
     )
     _finish_negotiation_mutation(state, key, result)
     return _json(result)
@@ -938,7 +776,7 @@ def index_consult_owner(args: dict, **kwargs) -> str:
     result = _dispatch_negotiation_mutation(
         f"/agents/{agent_id}/negotiations/{negotiation_id}/consult",
         request_body,
-        _negotiation_run_headers(state, include_capability=True),
+        _negotiation_run_authority(state, include_capability=True),
     )
     _finish_negotiation_mutation(state, key, result)
     return _json(result)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  createIndexApiClient, createPinnedIndexApiClient, IndexApiError, normalizeApiBaseUrl, toQueryString,
+  createIndexApiClient, normalizeApiBaseUrl, toQueryString,
 } from './client.mjs';
 
 const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
@@ -46,17 +46,26 @@ describe('mac Index API client endpoint contract', () => {
     expect(toQueryString({ status: 'pending', empty: '', nil: null, missing: undefined, limit: 20 })).toBe('?status=pending&limit=20');
   });
 
-  it('pins one owner credential instead of rereading a mutable native source', async () => {
-    const { calls, fetchImpl } = createRecordingFetch();
-    let nativeCredential = 'owner-A';
-    const client = createPinnedIndexApiClient({
-      apiBaseUrl: 'https://protocol.example/api', fetchImpl,
-    }, nativeCredential);
-    nativeCredential = 'owner-B';
-    expect(nativeCredential).toBe('owner-B');
+  it('routes owner operations through credential-free native structured requests', async () => {
+    const operations = [];
+    const client = createIndexApiClient({
+      nativeRequest: async (operation) => {
+        operations.push(operation);
+        return { status: 200, body: { ok: true }, headers: {} };
+      },
+    });
     await client.getRuntimeBinding('installation-1');
+    await client.compareAndSelectIndex({
+      agentId: 'agent-1', installationId: 'installation-1', setupAttemptId: 'setup-1',
+    });
     await client.rollbackHermesRuntime('setup-1');
-    expect(calls.map((call) => call.init.headers['x-api-key'])).toEqual(['owner-A', 'owner-A']);
+    expect(operations).toEqual([
+      { kind: 'http', method: 'GET', path: '/agent-runtime?installationId=installation-1' },
+      { kind: 'http', method: 'POST', path: '/agent-runtime/reconcile-index', body: {
+        agentId: 'agent-1', installationId: 'installation-1', setupAttemptId: 'setup-1',
+      } },
+      { kind: 'http', method: 'POST', path: '/agent-runtime/rollback', body: { setupAttemptId: 'setup-1' } },
+    ]);
   });
 
   it('uses generation-fenced owner-control runtime endpoints', async () => {
@@ -75,27 +84,15 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('setRuntimeBinding hermes', (client) => client.setRuntimeBinding({ runtime: 'hermes', installationId, executorId, setupAttemptId }), {
       path: '/agent-runtime', method: 'PUT', body: { runtime: 'hermes', installationId, executorId, setupAttemptId },
     });
+    await expectCall('compareAndSelectIndex', (client) => client.compareAndSelectIndex({
+      agentId: executorId, installationId, setupAttemptId,
+    }), {
+      path: '/agent-runtime/reconcile-index', method: 'POST',
+      body: { agentId: executorId, installationId, setupAttemptId },
+    });
     await expectCall('rollbackHermesRuntime', (client) => client.rollbackHermesRuntime(setupAttemptId), {
       path: '/agent-runtime/rollback', method: 'POST', body: { setupAttemptId },
     });
-    await expectCall('disconnectHermesRuntime', (client) => client.disconnectHermesRuntime(installationId), {
-      path: `/agent-runtime/hermes/${installationId}`, method: 'DELETE',
-    });
-  });
-
-  it('preserves disconnect 404 as authorization/not-found rather than guessing absence', async () => {
-    const client = createPinnedIndexApiClient({
-      apiBaseUrl: 'https://protocol.example/api',
-      fetchImpl: async () => new Response(JSON.stringify({ error: 'runtime_not_found' }), {
-        status: 404,
-        headers: { 'content-type': 'application/json' },
-      }),
-    }, 'owner-key');
-
-    await expect(client.disconnectHermesRuntime('installation-other-owner'))
-      .rejects.toBeInstanceOf(IndexApiError);
-    await expect(client.disconnectHermesRuntime('installation-other-owner'))
-      .rejects.toMatchObject({ status: 404, response: { error: 'runtime_not_found' } });
   });
 
   it('uses controller-backed auth/network/intent endpoints', async () => {
@@ -139,6 +136,22 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('opportunities.updateStatusForIntent', (client) => client.opportunities.updateStatusForIntent('opp/1', 'accepted', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/status', method: 'PATCH', body: { status: 'accepted', scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
     await expectCall('opportunities.startChat', (client) => client.opportunities.startChat('opp/1'), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: {} });
     await expectCall('opportunities.startChatForIntent', (client) => client.opportunities.startChatForIntent('opp/1', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: { scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
+  });
+
+  it('exposes only the three exact REST owner tool wrappers', async () => {
+    const operations = [];
+    const client = createIndexApiClient({ nativeRequest: async (operation) => {
+      operations.push(operation); return { status: 200, body: {}, headers: {} };
+    } });
+    await client.tools.readUserContexts();
+    await client.tools.previewUserContext({ bioOrDescription: 'builder' });
+    await client.tools.confirmUserContext({ identity: {}, narrative: {}, attributes: {} });
+    expect(Object.keys(client.tools)).toEqual(['readUserContexts', 'previewUserContext', 'confirmUserContext']);
+    expect(operations).toEqual([
+      { kind: 'http', method: 'POST', path: '/tools/read_user_contexts', body: { query: {} } },
+      { kind: 'http', method: 'POST', path: '/tools/preview_user_context', body: { query: { bioOrDescription: 'builder' } } },
+      { kind: 'http', method: 'POST', path: '/tools/confirm_user_context', body: { query: { draft: { identity: {}, narrative: {}, attributes: {} } } } },
+    ]);
   });
 
   it('uses controller-backed question and conversation endpoints', async () => {

@@ -35,6 +35,8 @@ export const McpResolvedIdentitySchema = z.object({
   isSessionAuth: z.boolean().optional(),
   enrollmentCapable: z.boolean().optional(),
   isDeliveryAgent: z.boolean().optional(),
+  /** Host-authenticated marker for the dedicated full standalone Hermes audience. */
+  isHermesAgent: z.boolean().optional(),
   networkScopeId: z.string().min(1).nullable().optional(),
 }).strict().superRefine((identity, ctx) => {
   if (identity.isSessionAuth === true && identity.agentId) {
@@ -49,6 +51,13 @@ export const McpResolvedIdentitySchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['isDeliveryAgent'],
       message: 'Delivery-agent designation requires an agent ID.',
+    });
+  }
+  if (identity.isHermesAgent === true && !identity.agentId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['isHermesAgent'],
+      message: 'Hermes-agent designation requires an agent ID.',
     });
   }
 });

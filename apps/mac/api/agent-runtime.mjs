@@ -1,5 +1,7 @@
 export const HERMES_RUNTIME_TIMEOUTS_MS = Object.freeze({
   inspect: 130_000,
+  connectorStatus: 45_000,
+  connectorDisconnect: 90_000,
   configureDisabled: 330_000,
   enable: 210_000,
   confirmHealthy: 15_000,
@@ -27,6 +29,7 @@ const JOURNAL_COMMANDS = new Set(['saveOperation', 'clearOperation']);
 const OPERATION_JOURNAL_STAGES = Object.freeze({
   'select-hermes': new Set([
     'prepare-pending', 'prepared', 'configured', 'activated', 'native-recovery',
+    'connector-confirmed', 'connector-configured', 'connector-selected',
   ]),
   'select-index': new Set(['server-pending', 'server-complete']),
   disconnect: new Set(['server-pending', 'server-complete']),
@@ -62,12 +65,36 @@ function validOperationJournal(value) {
   return bothNull || bothPresent;
 }
 
+const FORBIDDEN_RUNTIME_KEYS = new Set([
+  'credential', 'rawcredential', 'credentialid', 'apikey', 'token', 'secret',
+  'password', 'auth', 'authorization', 'authorizationcode', 'verifier', 'challenge',
+]);
+
+function containsForbiddenRuntimeField(value) {
+  if (Array.isArray(value)) return value.some(containsForbiddenRuntimeField);
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, child]) => {
+    const canonical = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const forbidden = [...FORBIDDEN_RUNTIME_KEYS].some((term) => canonical.includes(term));
+    return forbidden || containsForbiddenRuntimeField(child);
+  });
+}
+
 function validateRuntimePayload(command, payload) {
   if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
     return 'Hermes runtime payload must be an object';
   }
-  if (command === 'loadOperation') {
-    return hasExactKeys(payload, []) ? null : 'Hermes operation load payload must be empty';
+  if (containsForbiddenRuntimeField(payload)) {
+    return 'Hermes runtime payload must not contain credential material';
+  }
+  if (command === 'loadOperation' || command === 'connectorStatus') {
+    return hasExactKeys(payload, []) ? null : `Hermes ${command} payload must be empty`;
+  }
+  if (command === 'connectorDisconnect') {
+    return hasExactKeys(payload, ['installationId', 'executorId', 'setupAttemptId'])
+      && ['installationId', 'executorId', 'setupAttemptId'].every((key) => validJournalIdentifier(payload[key]))
+      ? null
+      : 'Hermes connector disconnect requires only the exact authority tuple';
   }
   if (JOURNAL_COMMANDS.has(command)) {
     return hasExactKeys(payload, ['operationJournal'])
@@ -161,9 +188,6 @@ export function createHermesRuntimeBridge({
     if (!executionTimeoutMs) return Promise.reject(new Error('unsupported Hermes runtime command'));
     const payloadError = validateRuntimePayload(command, payload);
     if (payloadError) return Promise.reject(new Error(payloadError));
-    if (Object.prototype.hasOwnProperty.call(payload, 'credential') && command !== 'configureDisabled') {
-      return Promise.reject(new Error('credential is allowed only for Hermes configuration'));
-    }
     if (signal?.aborted) return Promise.reject(bridgeAbortError());
 
     const requestId = createRequestId();
@@ -321,6 +345,7 @@ export function mapAgentRuntimeState({ binding, localState, operation }) {
       && executor.status === 'active'
       && localState.executorId === executor.id
       && localState.setupAttemptId
+      && executor.setupAttemptId === localState.setupAttemptId
       && localState.pluginInstalled === true
       && localState.negotiatorMode === true
       && localState.schedulePresent === true
@@ -455,6 +480,7 @@ export async function waitForHermesHealth({
   api,
   installationId,
   executorId,
+  setupAttemptId,
   timeoutMs = 90_000,
   pollIntervalMs = 2_000,
   now = () => Date.now(),
@@ -473,6 +499,7 @@ export async function waitForHermesHealth({
         && binding.health === 'active'
         && binding.executor?.id === executorId
         && binding.executor?.installationId === installationId
+        && binding.executor?.setupAttemptId === setupAttemptId
       ) {
         return binding;
       }
