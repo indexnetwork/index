@@ -10,6 +10,7 @@
 !.vscode/index.code-workspace
 .cursor/
 .rules
+.claude/settings.local.json
 
 # ===================
 # Dependencies
