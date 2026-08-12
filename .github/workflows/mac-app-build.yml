@@ -94,6 +94,11 @@ jobs:
 
       - name: macOS shell and handoff tests
         run: |
+          # GitHub's /var -> /private/var alias makes strict physical-path
+          # release fixtures reject the default TMPDIR before testing their
+          # intended contract. Canonicalize it without weakening source checks.
+          TMPDIR="$(python3 -c 'import os, tempfile; print(os.path.realpath(tempfile.gettempdir()))')"
+          export TMPDIR
           bun test \
             apps/mac/scripts/*.spec.mjs \
             apps/mac/*.spec.mjs \

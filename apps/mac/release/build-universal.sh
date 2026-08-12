@@ -30,9 +30,17 @@ require_clean_release_inputs() {
   [[ "$#" -eq 0 ]] || release_error "this build accepts immutable environment inputs only"
 }
 
+CURRENT_STAGE="startup"
+
+stage() {
+  CURRENT_STAGE="$1"
+  printf 'Universal 2 stage: %s\n' "$CURRENT_STAGE"
+}
+
 cleanup_build() {
   local status=$?
   if [[ "$status" -ne 0 ]]; then
+    printf 'Universal 2 release build failed during stage: %s (exit %s)\n' "$CURRENT_STAGE" "$status" >&2
     rm -rf "$DIST_DIRECTORY"
   fi
   rm -rf "$WORK_DIRECTORY"
@@ -137,15 +145,20 @@ run_otool() {
 
 # extract_compiled_identity(binary, arch, destination)
 extract_compiled_identity() {
-  local binary="$1" arch="$2" destination="$3" hex
-  hex="$(run_otool -arch "$arch" -X -s __TEXT __indexcfg "$binary" | awk '{ for (i = 1; i <= NF; i++) if (length($i) == 8 && $i ~ /^[[:xdigit:]]+$/) printf "%s", $i }')"
-  [[ -n "$hex" ]] || { release_error "$binary $arch has no compiled identity section"; return 1; }
-  python3 - "$hex" "$destination" <<'PY'
-import binascii
+  local binary="$1" arch="$2" destination="$3" dump
+  dump="$(run_otool -arch "$arch" -X -s __TEXT __indexcfg "$binary")"
+  python3 - "$dump" "$destination" <<'PY'
 import json
+import re
 import sys
 
-raw = binascii.unhexlify(sys.argv[1]).rstrip(b'\0')
+words = []
+for token in sys.argv[1].split():
+    if re.fullmatch(r'[0-9A-Fa-f]+', token) and len(token) % 2 == 0:
+        words.append(token)
+if not words:
+    raise SystemExit('compiled identity section contains no hexadecimal bytes')
+raw = bytes.fromhex(''.join(words)).rstrip(b'\0')
 identity = json.loads(raw.decode('utf-8'))
 with open(sys.argv[2], 'w', encoding='utf-8') as stream:
     json.dump(identity, stream, sort_keys=True, separators=(',', ':'))
@@ -200,6 +213,7 @@ main() {
   # Remove stale/incomplete artifacts before platform, tool, or input checks.
   rm -rf "$DIST_DIRECTORY" "$WORK_DIRECTORY"
 
+  stage "validate inputs and toolchain"
   require_clean_release_inputs "$@"
   require_tool swiftc
   require_tool lipo
@@ -215,6 +229,7 @@ main() {
     || release_error "INDEX_RELEASE_COMMIT must equal the one checked-out commit"
 
   mkdir -p "$DIST_DIRECTORY" "$WORK_DIRECTORY"
+  stage "prepare production bundles and identities"
   prepare_bundles
 
   local app_identity="$WORK_DIRECTORY/Index.app.identity.json"
@@ -222,11 +237,16 @@ main() {
   write_compiled_identity app "$APP_BUNDLE/Contents/Info.plist" "$app_identity"
   write_compiled_identity connector "$CONNECTOR_BUNDLE/Contents/Info.plist" "$connector_identity"
 
+  stage "compile Index arm64 slice"
   compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64"
+  stage "compile Index x86_64 slice"
   compile_slice app x86_64 "$WORK_DIRECTORY/Index.x86_64"
+  stage "compile IndexConnector arm64 slice"
   compile_slice connector arm64 "$WORK_DIRECTORY/IndexConnector.arm64"
+  stage "compile IndexConnector x86_64 slice"
   compile_slice connector x86_64 "$WORK_DIRECTORY/IndexConnector.x86_64"
 
+  stage "extract and compare compiled identities"
   compare_compiled_identities \
     "$WORK_DIRECTORY/Index.arm64" "$WORK_DIRECTORY/Index.x86_64" \
     "$app_identity" Index
@@ -234,6 +254,7 @@ main() {
     "$WORK_DIRECTORY/IndexConnector.arm64" "$WORK_DIRECTORY/IndexConnector.x86_64" \
     "$connector_identity" IndexConnector
 
+  stage "merge and verify Universal 2 binaries"
   merge_universal "$WORK_DIRECTORY/Index.arm64" "$WORK_DIRECTORY/Index.x86_64" "$APP_BINARY"
   merge_universal \
     "$WORK_DIRECTORY/IndexConnector.arm64" \
@@ -245,6 +266,7 @@ main() {
 
   # Development label means distribution posture only: configuration remains
   # production and no development compile flag or endpoint override is used.
+  stage "ad-hoc sign and verify bundles"
   codesign --force --deep --sign - "$APP_BUNDLE"
   codesign --force --deep --sign - "$CONNECTOR_BUNDLE"
   codesign --verify --strict "$APP_BUNDLE"

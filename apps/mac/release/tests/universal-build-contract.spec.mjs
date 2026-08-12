@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  mkdtempSync,
   mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
@@ -57,6 +59,44 @@ describe("macOS Universal 2 production build contract", () => {
     expect(buildSource).not.toContain('compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64" "$app_identity"');
   });
 
+  test("extracts arbitrary-width otool hex fields into the compiled identity", () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), "universal-otool-"));
+    const otoolFixture = resolve(fixtureRoot, "otool.txt");
+    const destination = resolve(fixtureRoot, "identity.json");
+    writeFileSync(
+      otoolFixture,
+      [
+        "Contents of (__TEXT,__indexcfg) section",
+        "7b22496e64657842 75696c6454617267",
+        "6574223a22617070 227d000000000000",
+        "",
+      ].join("\n"),
+    );
+
+    const result = Bun.spawnSync(
+      [
+        "bash",
+        "-c",
+        'source "$1"; run_otool() { cat "$OTOOL_FIXTURE"; }; extract_compiled_identity ignored arm64 "$2"',
+        "fixture",
+        universalBuildPath,
+        destination,
+      ],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, OTOOL_FIXTURE: otoolFixture },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(destination, "utf8"))).toEqual({
+      IndexBuildTarget: "app",
+    });
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  });
+
   test("extracts and compares embedded compiled identity records before merge", () => {
     const buildSource = source(universalBuildPath);
     expect(buildSource).toContain("compile_slice()");
@@ -66,7 +106,9 @@ describe("macOS Universal 2 production build contract", () => {
     expect(buildSource).toContain("extract_compiled_identity()");
     expect(buildSource).toContain("otool -arch");
     expect(buildSource).toContain("-X -s __TEXT __indexcfg");
-    expect(buildSource).toContain('length($i) == 8 && $i ~ /^[[:xdigit:]]+$/');
+    expect(buildSource).toContain("bytes.fromhex");
+    expect(buildSource).toContain("fullmatch");
+    expect(buildSource).not.toContain("length($i) == 8");
     expect(buildSource).not.toContain("tail -n +3");
     expect(buildSource).toContain("compare_compiled_identities");
     expect(buildSource).not.toContain("write_slice_configuration");
@@ -115,6 +157,13 @@ describe("macOS Universal 2 production build contract", () => {
     expect(buildSource).not.toMatch(/trap - EXIT[\s\S]*rm -rf "\$DIST_DIRECTORY"/);
   });
 
+  test("reports the exact credential-free stage when a Universal build fails", () => {
+    const buildSource = source(universalBuildPath);
+    expect(buildSource).toContain("Universal 2 stage:");
+    expect(buildSource).toContain("Universal 2 release build failed during stage:");
+    expect(buildSource).not.toContain("set -x");
+  });
+
   test("keeps release building ad-hoc and credential-free", () => {
     const buildSource = source(universalBuildPath);
     expect(buildSource).toContain("codesign --force --deep --sign -");
@@ -138,6 +187,8 @@ describe("macOS Universal 2 production build contract", () => {
     expect(universalJob).not.toMatch(/^    environment:/m);
     expect(universalJob).not.toContain("--signed-access-fixture");
     expect(fixtureJob).toContain("Protected signed cross-identity Keychain fixture");
+    expect(fixtureJob).toContain('TMPDIR="$(python3 -c');
+    expect(fixtureJob).toContain("os.path.realpath");
     expect(fixtureJob).toContain("secrets.INDEX_KEYCHAIN_SIGNING_FIXTURE");
     expect(fixtureJob).not.toContain("Build unsigned Universal 2 production bundles");
   });
