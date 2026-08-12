@@ -54,6 +54,13 @@ This will:
 
 The app will hot-reload as you edit files, great for UI tweaking.
 
+`dev.sh` defaults `INDEX_DEVELOPMENT_BUILD=1`: the build enables the web
+inspector and, because an ad-hoc build carries no provisioning-profile-authorized
+Keychain access group, stores the owner credential in the login keychain so
+sign-in works locally. Production (signed) builds are unaffected and still fail
+closed without the authorized owner group. Override with
+`INDEX_DEVELOPMENT_BUILD=0 ./dev.sh`.
+
 **To manually reload** during development, press **Cmd+R** (standard browser reload) in the app, or close and relaunch.
 
 ### Troubleshooting Build
