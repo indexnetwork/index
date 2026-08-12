@@ -52,6 +52,19 @@ pin a supported release, use `latest`.
 
 ## [Unreleased]
 
+### Changed
+
+- Keep canonical `get_enrichment_run` and `cancel_enrichment_run` in the fast
+  runtime timeout class after retiring their profile-run aliases.
+
+### Removed
+
+- Remove the seven deprecated REST/chat `*_user_profile` and `*_profile_run`
+  tool aliases. Canonical `*_user_context` and `*_enrichment_run` tools remain;
+  the aliases were already absent from MCP, and current first-party clients use
+  the canonical names. This is a breaking direct Tool API change and is recorded
+  as protocol 12.0.0.
+
 ### Added
 - Full standalone Hermes capability policy (11.2.0): the `hermes-agent` principal has an explicit six-action MCP/REST policy while the existing `hermes-negotiator` principal remains restricted to its four scheduled negotiation handlers. Both policies default deny and preserve one-shot, generation-fenced negotiation authority.
 

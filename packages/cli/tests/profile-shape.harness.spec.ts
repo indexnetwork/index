@@ -5,9 +5,9 @@ import { describe, it, expect } from "bun:test";
  *
  * Runs the EXACT merged extractProfile logic (from opportunity.command.ts) and
  * the agentvillage negotiation-summary name parser over REAL live payloads
- * captured from dev (flat, WS11+) and prod/index-main (nested, pre-WS11) on
- * 2026-06-19. Proves both fixes resolve a usable profile/name across both
- * shapes — the backward+forward compatibility the merged code claims.
+ * captured from dev (flat, WS11+) and historical production (nested, pre-WS11)
+ * on 2026-06-19. Proves the payload parser remains compatible with persisted
+ * legacy response shapes even though the retired tool alias is gone.
  */
 
 // ── Real live payloads (captured via MCP) ────────────────────────────────────
@@ -24,7 +24,7 @@ const DEV_FLAT_SINGLE = {
   },
 };
 
-// prod read_user_profiles({}) — nested single-user (pre-WS11)
+// historical production response — nested single-user (pre-WS11)
 const PROD_NESTED_SINGLE = {
   success: true,
   data: {

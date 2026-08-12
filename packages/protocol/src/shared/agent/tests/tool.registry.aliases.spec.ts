@@ -4,17 +4,11 @@ import { createToolRegistry } from "../tool.registry.js";
 import type { ToolDeps } from "../tool.helpers.js";
 
 /**
- * Surface-aware tool registry (IND-596/597/598).
+ * Surface-aware tool registry (IND-596/597/598, IND-373).
  *
- * `createToolRegistry` exposes two profiles:
- *  - the default `'rest'` profile (direct HTTP Tool API + chat) retains the full
- *    tool set: contact/Gmail-import tools, `scrape_url`, and the deprecated
- *    profile/profile-run compatibility aliases;
- *  - the restricted `'mcp'` profile omits exactly those surfaces while keeping
- *    the canonical identity/context + enrichment-run tools.
- *
- * These tests lock in that split so the removed names can never re-appear on the
- * MCP surface, while the REST/chat surface keeps working unchanged.
+ * Contact/Gmail-import tools and `scrape_url` remain REST/chat-only. The retired
+ * profile/profile-run compatibility aliases are absent from every surface;
+ * canonical identity/context and enrichment-run names remain available.
  */
 
 // create*Tools only DEFINE tools at registration time (handlers are not invoked),
@@ -40,19 +34,14 @@ const ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["cancel_profile_run", "cancel_enrichment_run"],
 ];
 
-// Every name removed from the MCP surface.
-const MCP_REMOVED_TOOLS: readonly string[] = [
-  // Contact + Gmail import (IND-596)
+const REST_ONLY_TOOLS: readonly string[] = [
   "import_contacts",
   "list_contacts",
   "add_contact",
   "remove_contact",
   "search_contacts",
   "import_gmail_contacts",
-  // Scrape (IND-597)
   "scrape_url",
-  // Deprecated profile/profile-run aliases (IND-598)
-  ...ALIASES.map(([oldName]) => oldName),
 ];
 
 // Canonical identity/context + enrichment-run replacements that MUST remain on
@@ -71,15 +60,22 @@ describe("tool registry surface profiles", () => {
   const restRegistry = createToolRegistry(makeDeps(true));
   const mcpRegistry = createToolRegistry(makeDeps(true), { surface: "mcp" });
 
-  test("default (REST) profile retains contact/Gmail tools, scrape_url, and aliases", () => {
-    for (const name of MCP_REMOVED_TOOLS) {
+  test("default (REST) profile retains contact/Gmail tools and scrape_url", () => {
+    for (const name of REST_ONLY_TOOLS) {
       expect(restRegistry.get(name), `REST profile must retain ${name}`).toBeDefined();
     }
   });
 
-  test("MCP profile omits every contact/Gmail tool, scrape_url, and deprecated alias", () => {
-    for (const name of MCP_REMOVED_TOOLS) {
+  test("MCP profile omits every REST-only tool", () => {
+    for (const name of REST_ONLY_TOOLS) {
       expect(mcpRegistry.get(name), `MCP profile must omit ${name}`).toBeUndefined();
+    }
+  });
+
+  test("retired profile aliases are absent from every surface", () => {
+    for (const [oldName] of ALIASES) {
+      expect(restRegistry.get(oldName), `REST profile must omit ${oldName}`).toBeUndefined();
+      expect(mcpRegistry.get(oldName), `MCP profile must omit ${oldName}`).toBeUndefined();
     }
   });
 
@@ -107,15 +103,4 @@ describe("tool registry surface profiles", () => {
     expect(mcpRegistry.get("report_agent_activity")).toBeUndefined();
   });
 
-  test("REST aliases delegate to the exact same handler + schema as the canonical tool", () => {
-    for (const [oldName, canonicalName] of ALIASES) {
-      const canonical = restRegistry.get(canonicalName)!;
-      const alias = restRegistry.get(oldName)!;
-      expect(alias.handler).toBe(canonical.handler);
-      expect(alias.schema).toBe(canonical.schema);
-      expect(alias.name).toBe(oldName);
-      expect(alias.description.startsWith("[DEPRECATED")).toBe(true);
-      expect(alias.description).toContain(canonicalName);
-    }
-  });
 });
