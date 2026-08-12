@@ -245,7 +245,7 @@ export default function NetworksPage() {
                             </div>
                           </>
                         ) : (
-                          <p className="text-sm text-gray-500">We&apos;re reviewing your request and may reach out with questions.</p>
+                          <p className="text-sm text-gray-500">Your request is in review. You may get a few questions about it.</p>
                         )}
                       </div>
                     ))}
@@ -259,7 +259,11 @@ export default function NetworksPage() {
                 ) : allNetworks.length > 0 ? (
                   <div className="divide-y divide-gray-100">
                     {allNetworks.map((network) => {
-                      const isOwner = user?.id === network.user?.id;
+                      // Prefer viewer membership `role` from GET /networks; the
+                      // network.user.id compare is wrong for multi-owner nets.
+                      const viewerRole = (network as { role?: 'owner' | 'member' }).role;
+                      const isOwner = viewerRole === 'owner'
+                        || (viewerRole !== 'member' && user?.id === network.user?.id);
                       return (
                         <button
                           key={network.id}

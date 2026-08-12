@@ -22,7 +22,7 @@ interface FlagListboxProps {
  * the popup renders in the platform's own font with an OS-blue highlight against
  * a dark monospace page, and an `<option>` can carry no second line, so the
  * description had to live outside the control and only appeared once a flag had
- * already been chosen. With twenty-six flags on the discovery harness, choosing
+ * already been chosen. With twenty-eight flags on the discovery harness, choosing
  * blind and reading afterwards is the wrong order.
  *
  * ACCESSIBILITY. A native select brings keyboard operation for free and this
@@ -88,8 +88,8 @@ export function FlagListbox({ flags, takenKeys, value, label, onChange }: FlagLi
     setOpen(true);
   }, [selectedIndex]);
 
-  // Click-away. Registered only while open, so a page carrying twenty-six of
-  // these does not keep twenty-six live document listeners.
+  // Click-away. Registered only while open, so a page carrying twenty-eight of
+  // these does not keep twenty-eight live document listeners.
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -161,7 +161,7 @@ export function FlagListbox({ flags, takenKeys, value, label, onChange }: FlagLi
    *
    * `aria-activedescendant` moves a virtual cursor, and the browser does NOT
    * scroll for it the way it does for real focus. The popup is capped at 20
-   * lines and discovery offers twenty-six flags, so without this, arrowing past
+   * lines and discovery offers twenty-eight flags, so without this, arrowing past
    * the twentieth option moved the active row somewhere below the fold and the
    * control appeared frozen.
    *

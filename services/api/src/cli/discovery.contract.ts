@@ -59,6 +59,13 @@ export const AB_EXIT_COMPARISON = 0;
  */
 export const AB_EXIT_PREFLIGHT_REFUSED = 2;
 /**
+ * 2 — the dedicated historical-quality request is safely refused in PR A
+ * before confirmation, manifest parsing, attestation, provider access, or any
+ * runtime import. This names the PR A execution refusal without changing the
+ * legacy pre-flight meaning of the same process exit code.
+ */
+export const HISTORICAL_QUALITY_EXIT_PR_A_REFUSAL = 2;
+/**
  * 3 — the run finished and the artifact was written, but at least one side did
  * not score every slot it was planned, so there is **no verdict**. Matches
  * `EVAL_EXIT_INSUFFICIENT_EVIDENCE` in the shared eval CLI; restated rather

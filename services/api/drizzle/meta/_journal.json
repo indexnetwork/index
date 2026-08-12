@@ -836,31 +836,38 @@
       "breakpoints": true
     },
     {
-      "idx": 119,
-      "version": "7",
-      "when": 1786104719205,
-      "tag": "0119_add_hermes_runtime_binding",
-      "breakpoints": true
-    },
-    {
       "idx": 120,
       "version": "7",
-      "when": 1786350427344,
-      "tag": "0120_add_hermes_authorizations",
+      "when": 1786282570397,
+      "tag": "0120_medical_fixer",
       "breakpoints": true
     },
     {
       "idx": 121,
       "version": "7",
-      "when": 1786366934585,
-      "tag": "0121_add_index_app_owner_authorizations",
+      "when": 1786282685733,
+      "tag": "0121_easy_master_chief",
       "breakpoints": true
     },
     {
       "idx": 122,
       "version": "7",
-      "when": 1786469851097,
-      "tag": "0122_add_hermes_emergency_receipts",
+      "when": 1786509426264,
+      "tag": "0122_add_hermes_runtime_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1786512228229,
+      "tag": "0123_add_secure_standalone_authorizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1786527543775,
+      "tag": "0124_add_hermes_emergency_receipts",
       "breakpoints": true
     }
   ]

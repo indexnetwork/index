@@ -9,7 +9,7 @@
  * No LLM calls, no DB — all dependencies are mocked inline.
  */
 import { describe, it, expect } from 'bun:test';
-import type { ProfileContext } from '../../questioner/questioner.types.js';
+import type { ProfileContext } from '../../questions/application/question.input.js';
 
 describe('ProfileContext with existingPremises', () => {
   it('accepts a full ProfileContext including existingPremises', () => {

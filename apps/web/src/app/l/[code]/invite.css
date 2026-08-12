@@ -1,0 +1,384 @@
+/* Invite / sign-in page (`/l/:code`).
+
+   Same shell and tokens as the download page: full-viewport column, square
+   corners, no shadows. IBM Plex Mono is already imported in app/globals.css.
+
+   The auth card's contents come from the shared AuthForm, so the .av-* rules
+   near the bottom restyle that component for this page only. They are scoped
+   under .invite so AuthModal.css keeps owning it everywhere else. */
+
+.invite {
+  --bg: #0d1a13;
+  --card: #122019;
+  --card-border: #2b4234;
+  --hairline: #22362a;
+  --hairline-soft: #1b2c22;
+  --muted: #9db3a4;
+  --faint: #5d7466;
+  --accent: #e8873d;
+  --accent-hover: #f09a55;
+  --live: #3ddc6a;
+
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: #fff;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- header ---------- */
+
+.invite-header {
+  display: flex;
+  align-items: center;
+  padding: 30px 48px;
+}
+
+.invite-logo {
+  display: inline-flex;
+  line-height: 0;
+}
+
+.invite-logo img {
+  display: block;
+  width: 200px;
+  height: auto;
+}
+
+/* ---------- hero ---------- */
+
+.invite-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px 70px;
+}
+
+.invite-kicker {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.invite-title {
+  margin: 18px 0 10px;
+  font-size: 44px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  color: #fff;
+}
+
+.invite-meta {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.invite-meta__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+  flex: 0 0 auto;
+}
+
+/* ---------- states ---------- */
+
+.invite-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.invite-status--join {
+  margin-top: 24px;
+}
+
+.invite-error {
+  margin: 16px 0 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  color: #f0a08a;
+}
+
+.invite-retry {
+  margin-top: 16px;
+  padding: 13px 34px;
+  border: none;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.invite-retry:hover {
+  background: var(--accent-hover);
+}
+
+/* ---------- auth card ---------- */
+
+.invite-card {
+  width: 420px;
+  max-width: 100%;
+  margin-top: 44px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+}
+
+.invite-card__bar {
+  margin: 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.invite-card__body {
+  padding: 28px 28px 26px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- AuthForm, restyled for this page ---------- */
+
+.invite .av-oauth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  color: #111;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.invite .av-oauth:hover:not(:disabled) {
+  background: #e9efe9;
+}
+
+.invite .av-oauth:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.invite .av-oauth svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+/* The rules either side of "or" are drawn with pseudo-elements so the divider
+   needs no extra markup in the shared component. */
+.invite .av-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 0;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.invite .av-divider::before,
+.invite .av-divider::after {
+  content: "";
+  flex: 1;
+  /* AuthModal.css draws these as a dashed border-top. Same specificity, so it
+     is not overridden by the background below, only added to; the border has to
+     be cleared or the rule renders dashed and solid at once. */
+  border: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.invite .av-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.invite .av-label {
+  margin-bottom: 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.invite .av-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 0;
+  background: var(--bg);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.invite .av-input::placeholder {
+  color: var(--faint);
+}
+
+.invite .av-input:focus {
+  border-color: var(--accent);
+}
+
+.invite .av-submit {
+  margin-top: 16px;
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 0;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.invite .av-submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.invite .av-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The password view's secondary action, which must not read as the primary. */
+.invite .av-submit.ghost {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: #fff;
+}
+
+.invite .av-submit.ghost:hover:not(:disabled) {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.invite .av-alt {
+  margin: 20px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.invite .av-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.invite .av-link:hover {
+  color: var(--accent);
+}
+
+.invite .av-error {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #f0a08a;
+}
+
+.invite .av-note {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Password view: heading row + back control. */
+.invite .av-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.invite .av-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.invite .av-back {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.invite .av-back:hover {
+  color: var(--accent);
+}
+
+.invite .av-lede {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 720px) {
+  .invite-header {
+    padding-left: 24px;
+    padding-right: 24px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .invite-logo img {
+    width: 160px;
+  }
+
+  .invite-title {
+    font-size: 32px;
+  }
+}

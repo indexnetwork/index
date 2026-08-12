@@ -1,9 +1,9 @@
 /**
- * Standalone Index API client for the macOS/iOS prototypes.
+ * Standalone Index API client for the macOS prototype.
  *
- * This module is intentionally not imported by IndexApp or IndexApp-iOS yet. It
- * gives the mac subtree a dedicated place to evolve API consumption without
- * coupling live transport to the current fake-data prototype screens.
+ * Assembled into the mac app as `window.IndexApi`. Gives the mac subtree a
+ * dedicated place to evolve API consumption without coupling live transport
+ * to browser-preview fake-data screens.
  */
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
@@ -310,9 +310,54 @@ export function createIndexApiClient(options = {}) {
 
     networks: {
       list: (options = {}) => request('/networks', options),
+      discoverPublic: (page = 1, limit = 50, options = {}) => request(
+        `/networks/discovery/public${toQueryString({ page, limit })}`,
+        options,
+      ),
       overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
       myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
       create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
+      update: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'PUT', body },
+      ),
+      delete: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      // Owner Access-tab visibility toggle (public / invite-only).
+      updatePermissions: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/permissions`,
+        { ...options, method: 'PATCH', body },
+      ),
+      regenerateInvitationLink: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/regenerate-invitation`,
+        { ...options, method: 'PATCH', body: {} },
+      ),
+      getMembers: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        options,
+      ),
+      addMember: (networkId, userId, permissions = ['member'], options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        { ...options, method: 'POST', body: { userId, permissions } },
+      ),
+      removeMember: (networkId, userId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      updateMemberPermissions: (networkId, userId, permissions, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'PATCH', body: { permissions } },
+      ),
+      inviteMember: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/invite`,
+        { ...options, method: 'POST', body },
+      ),
+      searchUsers: (query, networkId, options = {}) => request(
+        `/networks/search-users${toQueryString({ q: query, networkId })}`,
+        options,
+      ),
       join: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/join`, { ...options, method: 'POST', body: {} }),
       leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
     },

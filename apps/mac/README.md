@@ -23,13 +23,13 @@ The native app may show the same owner controls as the web, but it is not requir
 ## Build and source checks
 
 ```bash
-cd apps/mac/IndexApp
+cd apps/mac
 python3 assemble.py       # regenerates Resources/index.html
-./build.sh                # macOS Swift build
+./scripts/build.sh                # macOS Swift build
 
 cd ..
 bun test api/native-api-bridge.spec.mjs api/agent-runtime.spec.mjs \
-  api/agent-runtime-saga.spec.mjs IndexApp/hermes-runtime.spec.mjs
+  api/agent-runtime-saga.spec.mjs hermes-runtime.spec.mjs
 ```
 
 Generated HTML must be regenerated through `assemble.py`, never hand-edited. The production source boundary disables Web Inspector; development inspection requires the explicit development build flag.
@@ -46,20 +46,29 @@ This operator-only handoff runs on macOS with a Developer ID Application identit
 2. Build with all four required inputs. The prefix has a trailing period and must match the profile/Team application-identifier prefix:
 
 ```bash
-cd apps/mac/IndexApp
+cd apps/mac
 INDEX_LINK_HOST=dev.index.network \
 INDEX_APP_IDENTIFIER_PREFIX='TEAM123ABC.' \
 CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
 PROVISIONING_PROFILE='<path-to-downloaded-profile>' \
-./build.sh
+./scripts/build.sh
 ```
 
 3. Verify `embedded.provisionprofile`, signature/entitlements, then notarize using a local keychain profile:
 
 ```bash
-NOTARYTOOL_PROFILE='<local-keychain-profile>' ./notarize.sh
+NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/notarize.sh
 ```
 
 A runtime error such as `No matching profile found` means the profile does not authorize the launched app; do not treat prior signing/notarization checks as success. Verify that `https://dev.index.network/u/<id>/chat` stays in the browser while an allowed opportunity/profile link opens the signed app.
+
+4. Package the distributable disk image from the same verified app:
+
+```bash
+NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/dmg.sh
+xcrun stapler validate dist/Index.dmg
+```
+
+`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The DMG is the handoff artifact.
 
 Record only redacted commands and pass/fail status in PR evidence; never IDs, credentials, certificate subjects, or profile names.

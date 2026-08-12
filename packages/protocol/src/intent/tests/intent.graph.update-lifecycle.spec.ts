@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { IntentGraphFactory } from "../intent.graph.js";
+import { IntentGraphFactory } from "../../signals/application/intent.graph.js";
 
 import type { IntentGraphDatabase } from "../../shared/interfaces/database.interface.js";
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
 
 function mkStubs() {
   const messages: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }> = [];
@@ -53,7 +53,7 @@ describe("negotiation graph — task intent snapshots", () => {
       profile: {},
     };
 
-    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const { IndexNegotiator } = await import("../application/negotiation.agent.js");
     const originalInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function () {
       return {
@@ -211,7 +211,7 @@ describe("negotiation graph — task intent snapshots", () => {
       return { id: "opp-latent", status };
     };
 
-    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const { IndexNegotiator } = await import("../application/negotiation.agent.js");
     const originalInvoke = IndexNegotiator.prototype.invoke;
     let turn = 0;
     IndexNegotiator.prototype.invoke = async function () {
@@ -252,7 +252,7 @@ describe("negotiation graph — task intent snapshots", () => {
 describe("negotiation graph — negotiation_turn emission", () => {
   it("emits negotiation_turn with correct payload after each turn", async () => {
     // Stub IndexNegotiator.invoke so the test is fully hermetic — no LLM calls.
-    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const { IndexNegotiator } = await import("../application/negotiation.agent.js");
     const origInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function () {
       return {
@@ -312,7 +312,7 @@ describe("negotiation graph — negotiation_outcome emission", () => {
     ];
     let call = 0;
     const { database, dispatcher } = mkStubs();
-    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const { IndexNegotiator } = await import("../application/negotiation.agent.js");
     const orig = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function () { return scripted[Math.min(call++, scripted.length - 1)] as never; };
 
@@ -349,7 +349,7 @@ describe("negotiation graph — negotiation_outcome emission", () => {
 
   it("emits outcome='turn_cap' when maxTurns is reached without accept/reject", async () => {
     const { database, dispatcher } = mkStubs();
-    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const { IndexNegotiator } = await import("../application/negotiation.agent.js");
     const orig = IndexNegotiator.prototype.invoke;
     // First turn must be "propose" (graph forces it), subsequent turns counter — so we hit turn_cap at maxTurns.
     let call = 0;
@@ -413,7 +413,7 @@ describe("negotiation graph — questioner enqueue on stall", () => {
   it("enqueues a negotiation question when the negotiation hits turn_cap", async () => {
     const { database, dispatcher } = mkStubs();
     withUserContext(database);
-    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const { IndexNegotiator } = await import("../application/negotiation.agent.js");
     const orig = IndexNegotiator.prototype.invoke;
     let call = 0;
     IndexNegotiator.prototype.invoke = async function () {
@@ -477,7 +477,7 @@ describe("negotiation graph — questioner enqueue on stall", () => {
     let call = 0;
     const { database, dispatcher } = mkStubs();
     withUserContext(database);
-    const { IndexNegotiator } = await import("../negotiation.agent.js");
+    const { IndexNegotiator } = await import("../application/negotiation.agent.js");
     const orig = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function () { return scripted[Math.min(call++, scripted.length - 1)] as never; };
     const enqueued: Array<Record<string, unknown>> = [];
@@ -512,7 +512,7 @@ describe("negotiateCandidates — session wrapper events", () => {
       }),
     };
     const events: Array<Record<string, unknown>> = [];
-    const { negotiateCandidates } = await import("../negotiation.graph.js");
+    const { negotiateCandidates } = await import("../application/negotiation.graph.js");
     const { requestContext } = await import("../../shared/observability/request-context.js");
     await requestContext.run(
       { traceEmitter: (e: Record<string, unknown>) => events.push(e) },
@@ -559,7 +559,7 @@ describe("negotiateCandidates — session wrapper events", () => {
       }),
     };
     const events: Array<Record<string, unknown>> = [];
-    const { negotiateCandidates } = await import("../negotiation.graph.js");
+    const { negotiateCandidates } = await import("../application/negotiation.graph.js");
     const { requestContext } = await import("../../shared/observability/request-context.js");
     await requestContext.run(
       { traceEmitter: (e: Record<string, unknown>) => events.push(e) },

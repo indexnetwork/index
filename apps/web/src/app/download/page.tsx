@@ -1,131 +1,134 @@
+import "./download.css";
+
 /**
- * Foundational release publication contract. Task 7 replaces these build-time
- * fields with strict signed-metadata parsing; until then all fields must be
- * present or this page fails closed without artifact links.
+ * Single source of truth for the macOS app artifact.
+ *
+ * Set `VITE_MAC_APP_DOWNLOAD_URL` at build time once a Developer ID-signed,
+ * notarized build is published (IND-616); until then the Mac card stays visible
+ * with a disabled action rather than linking at nothing.
  */
-export const MAC_RELEASE_VERSION: string =
-  import.meta.env.VITE_MAC_RELEASE_VERSION || "";
 export const MAC_APP_DOWNLOAD_URL: string =
   import.meta.env.VITE_MAC_APP_DOWNLOAD_URL || "";
-export const MAC_APP_SHA256: string = import.meta.env.VITE_MAC_APP_SHA256 || "";
-export const MAC_CONNECTOR_DOWNLOAD_URL: string =
-  import.meta.env.VITE_MAC_CONNECTOR_DOWNLOAD_URL || "";
-export const MAC_CONNECTOR_SHA256: string =
-  import.meta.env.VITE_MAC_CONNECTOR_SHA256 || "";
-export const MAC_RELEASE_METADATA_URL: string =
-  import.meta.env.VITE_MAC_RELEASE_METADATA_URL || "";
 
-export const MAC_APP_MIN_OS = "macOS 13 or later";
+/**
+ * Artifact size, shown under the install button beside the filename. There is
+ * no way to know it from the URL without fetching the file, so it is supplied
+ * at build time next to the URL above, and simply omitted when absent.
+ */
+export const MAC_APP_DOWNLOAD_SIZE: string =
+  import.meta.env.VITE_MAC_APP_DOWNLOAD_SIZE || "";
 
-export type MacReleaseDownload = {
-  version: string;
-  appUrl: string;
-  appSha256: string;
-  connectorUrl: string;
-  connectorSha256: string;
-  metadataUrl: string;
-};
+/**
+ * Hermes Desktop / plugin install destination. Defaults to the public Hermes
+ * agent site; override with `VITE_HERMES_INSTALL_URL` for staging or docs links.
+ */
+export const HERMES_INSTALL_URL: string =
+  import.meta.env.VITE_HERMES_INSTALL_URL || "https://hermes-agent.nousresearch.com/";
 
-export const MAC_RELEASE_DOWNLOAD: MacReleaseDownload = {
-  version: MAC_RELEASE_VERSION,
-  appUrl: MAC_APP_DOWNLOAD_URL,
-  appSha256: MAC_APP_SHA256,
-  connectorUrl: MAC_CONNECTOR_DOWNLOAD_URL,
-  connectorSha256: MAC_CONNECTOR_SHA256,
-  metadataUrl: MAC_RELEASE_METADATA_URL,
-};
+/** Shown on the Index for Mac card. */
+export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
 
-function releaseAvailable(release: MacReleaseDownload) {
-  return Object.values(release).every((value) => value.length > 0);
+/** `index-0.1.0.dmg · 84 mb`, from whichever halves are actually known. */
+function macArtifactLine(): string {
+  const filename = MAC_APP_DOWNLOAD_URL.split("?")[0].split("/").pop() || "";
+  return [filename, MAC_APP_DOWNLOAD_SIZE].filter(Boolean).join(" · ");
 }
 
-function Artifact({
-  name,
-  href,
-  sha256,
-}: {
-  name: string;
-  href: string;
-  sha256: string;
-}) {
+/**
+ * `/download` — post-invite install page. Full-viewport column: header,
+ * centered hero and cards. No app chrome.
+ */
+export default function Download() {
+  const indexAvailable = MAC_APP_DOWNLOAD_URL.length > 0;
+  const artifactLine = indexAvailable ? macArtifactLine() : "";
+
   return (
-    <div className="rounded border border-gray-200 bg-white/60 px-5 py-4 text-left">
-      <a
-        href={href}
-        className="font-semibold text-[#041729] hover:text-[#0a2d4a] transition-colors"
-      >
-        Download {name}
-      </a>
-      <p className="mt-2 text-xs text-gray-500">SHA-256</p>
-      <code className="block mt-1 text-xs text-gray-700 break-all">{sha256}</code>
+    <div className="download-page">
+      <header className="download-page__header">
+        <a className="download-page__logo" href="/" aria-label="Index Network">
+          <img src="/logos/logo-white-full.svg" alt="Index Network" />
+        </a>
+      </header>
+
+      <main className="download-page__main">
+        <p className="download-page__kicker">You&apos;re in</p>
+        <h1 className="download-page__title">get the apps</h1>
+        <p className="download-page__lede">
+          Install Index on macOS or add the Hermes plugin to stay connected to
+          your networks.
+        </p>
+
+        <div className="download-page__cards">
+          <section className="download-card">
+            <div className="download-card__body">
+              <span className="download-card__icon">
+                <IndexMark />
+              </span>
+              {/* The card's own name, so it carries the heading the removed
+                  header bar used to. */}
+              <h2 className="download-card__name">Index for Mac</h2>
+              <p className="download-card__meta">{MAC_APP_REQUIREMENTS}</p>
+
+              {/* Until a notarized build is published there is nothing to link
+                  at, so the primary action holds its place disabled rather than
+                  claiming a download that would 404. */}
+              {indexAvailable ? (
+                <a
+                  className="download-btn download-btn--primary"
+                  href={MAC_APP_DOWNLOAD_URL}
+                  aria-label="Download Index for Mac"
+                >
+                  INSTALL →
+                </a>
+              ) : (
+                <span className="download-btn download-btn--disabled" aria-disabled="true">
+                  COMING SOON
+                </span>
+              )}
+
+              {artifactLine ? (
+                <p className="download-card__note">{artifactLine}</p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="download-card">
+            <div className="download-card__body">
+              <span className="download-card__icon download-card__icon--outlined">
+                <img src="/logos/nous.webp" alt="" aria-hidden="true" />
+              </span>
+              <h2 className="download-card__name">Hermes plugin</h2>
+              <p className="download-card__meta">one-line plugin install</p>
+
+              {/* Both buttons read "INSTALL"; the labels say which is which for
+                  anyone who cannot see the card they sit in. */}
+              <a
+                className="download-btn download-btn--ghost"
+                href={HERMES_INSTALL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Install Hermes plugin"
+              >
+                INSTALL
+              </a>
+            </div>
+          </section>
+        </div>
+      </main>
     </div>
   );
 }
 
-/** `/download` — the macOS app and standalone connector install page. */
-export default function Download({
-  release = MAC_RELEASE_DOWNLOAD,
-}: {
-  release?: MacReleaseDownload;
-}) {
+/** The Index mark, inverted for the card: white tile, background-coloured glyph. */
+function IndexMark() {
   return (
-    <div className="relative min-h-screen flex items-center justify-center">
-      <div
-        className="fixed inset-0 pointer-events-none -z-10"
-        style={{ background: "url(/noise.jpg)", opacity: 0.12 }}
+    <svg viewBox="0 0 64 64" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" fill="#fff" />
+      <path
+        d="M36.5778 18.7058V45.2984H27.7592V18.7058H36.5778L27.8611 10H19V36.5502L36.4716 54H45.3327V27.4498L36.5778 18.7058Z"
+        fill="#0d1a13"
       />
-
-      <div className="text-center max-w-xl px-6 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
-          Index for macOS
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Opportunity links open directly in the Index app. The standalone
-          connector lets Hermes connect without installing the app.
-        </p>
-
-        {releaseAvailable(release) ? (
-          <>
-            <p className="font-medium text-gray-800">Version {release.version}</p>
-            <p className="text-sm text-gray-500 mb-6">{MAC_APP_MIN_OS}</p>
-            <div className="grid gap-4 sm:grid-cols-2 mb-6">
-              <Artifact
-                name="Index app"
-                href={release.appUrl}
-                sha256={release.appSha256}
-              />
-              <Artifact
-                name="Index Connector"
-                href={release.connectorUrl}
-                sha256={release.connectorSha256}
-              />
-            </div>
-            <a
-              href={release.metadataUrl}
-              className="inline-block text-sm font-medium text-[#041729] hover:text-[#0a2d4a] transition-colors mb-8"
-            >
-              Signed release metadata
-            </a>
-          </>
-        ) : (
-          <div className="rounded border border-gray-200 bg-white/60 px-5 py-4 mb-8">
-            <p className="font-medium text-gray-800">Download unavailable</p>
-            <p className="mt-1 text-sm text-gray-600">
-              A complete verified macOS release has not been configured.
-            </p>
-          </div>
-        )}
-
-        <div>
-          <a
-            href="/"
-            className="inline-block text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            Back to Index
-          </a>
-        </div>
-      </div>
-    </div>
+    </svg>
   );
 }
 

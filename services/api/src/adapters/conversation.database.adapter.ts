@@ -1,7 +1,7 @@
 import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
-import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
+import { emitOpportunityLifecycleBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { log } from '../lib/log';
@@ -1007,7 +1007,21 @@ export class ConversationDatabaseAdapter {
     // here. Publish only after persistence, and only to authenticated owners
     // represented by the stored participant rows.
     try {
-      await publishConversationMessageEvent(message, await this.getParticipants(data.conversationId));
+      const senderUserId = data.senderId.startsWith('agent:')
+        ? data.senderId.slice('agent:'.length)
+        : data.senderId;
+      const [sender] = await db
+        .select({ name: schema.users.name })
+        .from(schema.users)
+        .where(eq(schema.users.id, senderUserId))
+        .limit(1);
+      await publishConversationMessageEvent(
+        {
+          ...message,
+          ...(sender?.name?.trim() ? { senderName: sender.name.trim() } : {}),
+        },
+        await this.getParticipants(data.conversationId),
+      );
     } catch (error) {
       logger.error('Failed to publish conversation SSE event', {
         conversationId: data.conversationId,
@@ -5635,7 +5649,7 @@ export class ConversationDatabaseAdapter {
         .returning({ id: opportunities.id, status: opportunities.status });
       return updated ?? null;
     });
-    if (row) emitOpportunityPendingBestEffort(row);
+    if (row) emitOpportunityLifecycleBestEffort(row);
     return row;
   }
 

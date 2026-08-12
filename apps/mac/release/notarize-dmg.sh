@@ -4,7 +4,7 @@ set -euo pipefail
 set +x
 DMG_RELEASE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DMG_RELEASE_DIRECTORY/notarize-bundle.sh"
-source "$NOTARY_MAC_DIRECTORY/IndexApp/provisioning-profile.sh"
+source "$NOTARY_MAC_DIRECTORY/scripts/provisioning-profile.sh"
 dmg_notary_error() { printf 'production DMG notarization refused: %s\n' "$1" >&2; return 1; }
 sha256_dmg() { shasum -a 256 "$1" | awk '{print $1}'; }
 require_same_digest() { [[ "$(sha256_dmg "$1")" == "$2" ]] || dmg_notary_error "$3 bytes changed unexpectedly"; }

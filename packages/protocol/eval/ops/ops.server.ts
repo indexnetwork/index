@@ -32,7 +32,7 @@ import { z } from "zod";
 import { renderRun, RunSpecSchema, SUPPORTS_SIDES, singleConfigIssues } from "./ops.argv.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
 import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
-import { compareArtifacts } from "./ops.compare.js";
+import { compareArtifacts, HISTORICAL_QUALITY_COMPARISON_REFUSAL } from "./ops.compare.js";
 import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type ConfigStore } from "./ops.configs.js";
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
@@ -43,6 +43,7 @@ import { EXCLUSIVE_HARNESSES, RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
 import type { OpsHarness, RunRecord, RunStatus, RunStepRecord } from "./ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact, type EvalArtifactEnvelope } from "../shared/index.js";
+import { isHistoricalQualityArtifact } from "../shared/artifact.js";
 
 export interface OpsContext {
   /** Absolute path to packages/protocol/eval. */
@@ -826,6 +827,9 @@ async function compare(context: OpsContext, url: URL): Promise<Response> {
       context.artifacts.read(referenceId),
       context.artifacts.read(subjectId),
     ]);
+    if (isHistoricalQualityArtifact(reference) || isHistoricalQualityArtifact(subject)) {
+      return json({ error: HISTORICAL_QUALITY_COMPARISON_REFUSAL }, 422);
+    }
     return json(compareArtifacts(reference, subject));
   } catch (error) {
     const status = (error as { code?: string }).code === "ENOENT" ? 404 : 422;
@@ -859,6 +863,9 @@ async function compareRuns(context: OpsContext, referenceRunId: string, subjectR
     sides.push({ id, record, envelope });
   }
   const [reference, subject] = sides;
+  if (isHistoricalQualityArtifact(reference.envelope) || isHistoricalQualityArtifact(subject.envelope)) {
+    return json({ error: HISTORICAL_QUALITY_COMPARISON_REFUSAL }, 422);
+  }
   const outcome = compareArtifacts(reference.envelope, subject.envelope, 0.05, { allowConfigMismatch: true });
   const side = ({ id, record, envelope }: (typeof sides)[number]) => {
     // v1 envelopes predate the completeness flag; null says "unknown" rather

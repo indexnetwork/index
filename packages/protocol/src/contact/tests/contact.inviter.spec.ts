@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import { generateInviteMessage } from "../contact.inviter.js";
+import { generateInviteMessage } from "../../contacts/application/index.js";
 import { assertLLM } from "../../shared/agent/tests/llm-assert.js";
 
 describe('generateInviteMessage', () => {

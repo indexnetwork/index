@@ -1,75 +1,61 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
-import { cleanup, render } from "@testing-library/react";
-import { Window } from "happy-dom";
-import Download, { MAC_APP_MIN_OS, type MacReleaseDownload } from "@/app/download/page";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 
-let installedWindow: Window | null = null;
+/**
+ * `/download` is the post-invite install page. It always shows Index + Hermes
+ * cards in the centered download layout; the Mac card links only once
+ * `VITE_MAC_APP_DOWNLOAD_URL` is configured.
+ */
+async function renderDownload() {
+  vi.resetModules();
+  const mod = await import("@/app/download/page");
+  const Download = mod.default;
+  render(
+    <MemoryRouter>
+      <Download />
+    </MemoryRouter>,
+  );
+  return mod;
+}
 
-beforeAll(() => {
-  if (typeof document !== "undefined") return;
-  installedWindow = new Window();
-  installedWindow.SyntaxError = SyntaxError;
-  for (const key of Reflect.ownKeys(installedWindow)) {
-    if (key in globalThis) continue;
-    const descriptor = Object.getOwnPropertyDescriptor(installedWindow, key);
-    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-  }
-  Object.assign(globalThis, {
-    window: installedWindow,
-    document: installedWindow.document,
-    navigator: installedWindow.navigator,
-    HTMLElement: installedWindow.HTMLElement,
-    Node: installedWindow.Node,
-  });
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.resetModules();
 });
 
-afterEach(() => cleanup());
-
-afterAll(() => installedWindow?.close());
-
-const release: MacReleaseDownload = {
-  version: "1.0.0",
-  appUrl:
-    "https://github.com/indexnetwork/index/releases/download/v1.0.0/Index-macOS-1.0.0-universal.dmg",
-  appSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  connectorUrl:
-    "https://github.com/indexnetwork/index/releases/download/v1.0.0/IndexConnector-1.0.0-universal.dmg",
-  connectorSha256:
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  metadataUrl:
-    "https://github.com/indexnetwork/index/releases/download/v1.0.0/macos-release.cms",
-};
-
 describe("/download", () => {
-  test("fails closed when the foundational release contract is incomplete", () => {
-    const view = render(<Download release={{ ...release, metadataUrl: "" }} />);
+  test("shows card layout with Hermes install link and disabled Mac action when unpublished", async () => {
+    vi.stubEnv("VITE_MAC_APP_DOWNLOAD_URL", "");
 
-    expect(view.getByText(/Download unavailable/)).toBeTruthy();
-    expect(view.queryByRole("link", { name: /download index app/i })).toBeNull();
-    expect(view.queryByRole("link", { name: /download index connector/i })).toBeNull();
+    const mod = await renderDownload();
+
+    expect(mod.MAC_APP_DOWNLOAD_URL).toBe("");
+    expect(screen.getByText(/You're in/i)).toBeInTheDocument();
+    // Lowercased in the redesign; the heading copy is "get the apps".
+    expect(screen.getByRole("heading", { name: "get the apps" })).toBeInTheDocument();
+    expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
+    expect(screen.getByText(mod.MAC_APP_REQUIREMENTS)).toBeInTheDocument();
+
+    const hermes = screen.getByRole("link", { name: /install hermes plugin/i });
+    expect(hermes).toHaveAttribute("href", mod.HERMES_INSTALL_URL);
+
+    expect(
+      screen.queryByRole("link", { name: /download index for mac/i }),
+    ).not.toBeInTheDocument();
   });
 
-  test("shows versioned app and connector artifacts, checksums, and signed metadata", () => {
-    const view = render(<Download release={release} />);
+  test("renders a real Mac download card once the artifact URL is configured", async () => {
+    const artifact = "https://downloads.index.network/Index-1.0.0.dmg";
+    vi.stubEnv("VITE_MAC_APP_DOWNLOAD_URL", artifact);
 
-    expect(MAC_APP_MIN_OS).toBe("macOS 13 or later");
-    expect(view.getByText("Version 1.0.0")).toBeTruthy();
-    expect(view.getByText(MAC_APP_MIN_OS)).toBeTruthy();
-    expect(view.getByRole("link", { name: /download index app/i }).getAttribute("href"))
-      .toBe(release.appUrl);
-    expect(view.getByRole("link", { name: /download index connector/i }).getAttribute("href"))
-      .toBe(release.connectorUrl);
-    expect(view.getByText(release.appSha256)).toBeTruthy();
-    expect(view.getByText(release.connectorSha256)).toBeTruthy();
-    expect(view.getByRole("link", { name: /signed release metadata/i }).getAttribute("href"))
-      .toBe(release.metadataUrl);
-    expect(view.queryByText(/private testing/i)).toBeNull();
+    const mod = await renderDownload();
+
+    expect(mod.MAC_APP_DOWNLOAD_URL).toBe(artifact);
+    const index = screen.getByRole("link", { name: /download index for mac/i });
+    expect(index).toHaveAttribute("href", artifact);
+    expect(screen.getByRole("link", { name: /install/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Coming soon/i)).not.toBeInTheDocument();
   });
 
-  test("always offers a way back", () => {
-    const view = render(<Download release={release} />);
-
-    expect(view.getByRole("link", { name: /back to index/i }).getAttribute("href"))
-      .toBe("/");
-  });
 });

@@ -13,7 +13,6 @@ describe('UserService.setSocials cascade', () => {
     deps = {
       getPremisesBySource: mock(async () => []),
       retractPremise: mock(async () => {}),
-      enqueueEnrichment: mock(async () => {}),
     };
   });
 
@@ -38,32 +37,22 @@ describe('UserService.setSocials cascade', () => {
     expect(deps.retractPremise).toHaveBeenCalledWith('premise-2');
   });
 
-  it('enqueues enrichment even when there are no integration premises', async () => {
+  it('retracts nothing when there are no integration premises', async () => {
     const svc = new UserService(mockDb as any, deps);
     await svc.setSocials('user-1', []);
 
     expect(deps.retractPremise).not.toHaveBeenCalled();
-    expect(deps.enqueueEnrichment).toHaveBeenCalledWith('user-1');
   });
 
-  it('does not propagate enqueueEnrichment errors to caller', async () => {
-    (deps.enqueueEnrichment as ReturnType<typeof mock>).mockRejectedValue(new Error('queue unavailable'));
-    const svc = new UserService(mockDb as any, deps);
-    await expect(svc.setSocials('user-1', [])).resolves.toBeUndefined();
-  });
-
-  it('retraction order: persist → query → retract loop → enqueue', async () => {
+  it('retraction order: persist → query → retract loop', async () => {
     const callOrder: string[] = [];
     (mockDb as any).setSocials = mock(async () => { callOrder.push('persist'); });
     deps.getPremisesBySource = mock(async () => { callOrder.push('query'); return [{ id: 'p1' }]; });
     deps.retractPremise = mock(async () => { callOrder.push('retract'); });
-    deps.enqueueEnrichment = mock(async () => { callOrder.push('enqueue'); });
 
     const svc = new UserService(mockDb as any, deps);
     await svc.setSocials('user-1', []);
-    // enqueue is fire-and-forget — give it a microtask tick to settle
-    await new Promise(r => setTimeout(r, 0));
 
-    expect(callOrder).toEqual(['persist', 'query', 'retract', 'enqueue']);
+    expect(callOrder).toEqual(['persist', 'query', 'retract']);
   });
 });

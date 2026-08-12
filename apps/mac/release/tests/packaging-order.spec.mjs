@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const releaseDir = resolve(import.meta.dir, "..");
-const orchestratorPath = resolve(repoRoot, "apps/mac/IndexApp/notarize.sh");
+const orchestratorPath = resolve(repoRoot, "apps/mac/scripts/notarize.sh");
 const bundlePath = resolve(releaseDir, "notarize-bundle.sh");
 const createPath = resolve(releaseDir, "create-dmg.sh");
 const dmgPath = resolve(releaseDir, "notarize-dmg.sh");

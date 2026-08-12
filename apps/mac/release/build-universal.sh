@@ -45,7 +45,7 @@ compile_slice() {
   case "$target" in
     app)
       identity="$WORK_DIRECTORY/Index.app.identity.json"
-      bash "$MAC_DIRECTORY/IndexApp/build.sh" --release-slice "$arch" "$output" "$identity"
+      bash "$MAC_DIRECTORY/scripts/build.sh" --release-slice "$arch" "$output" "$identity"
       ;;
     connector)
       identity="$WORK_DIRECTORY/IndexConnector.identity.json"
@@ -178,7 +178,7 @@ prepare_bundles() {
   mkdir -p \
     "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" \
     "$CONNECTOR_BUNDLE/Contents/MacOS"
-  cp "$MAC_DIRECTORY/IndexApp/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+  cp "$MAC_DIRECTORY/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
   cp "$MAC_DIRECTORY/IndexConnector/Info.plist" "$CONNECTOR_BUNDLE/Contents/Info.plist"
   write_release_config \
     "$APP_BUNDLE/Contents/Info.plist" \
@@ -186,9 +186,9 @@ prepare_bundles() {
   verify_slice_configuration \
     "$APP_BUNDLE/Contents/Info.plist" \
     "$CONNECTOR_BUNDLE/Contents/Info.plist"
-  cp "$MAC_DIRECTORY/IndexApp/Resources/index.html" "$APP_BUNDLE/Contents/Resources/index.html"
-  cp "$MAC_DIRECTORY/IndexApp/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-  cp "$MAC_DIRECTORY/IndexApp/Resources/Assets.car" "$APP_BUNDLE/Contents/Resources/Assets.car"
+  cp "$MAC_DIRECTORY/Resources/index.html" "$APP_BUNDLE/Contents/Resources/index.html"
+  cp "$MAC_DIRECTORY/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+  cp "$MAC_DIRECTORY/Resources/Assets.car" "$APP_BUNDLE/Contents/Resources/Assets.car"
 }
 
 main() {

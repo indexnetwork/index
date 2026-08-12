@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const universalBuildPath = resolve(import.meta.dir, "../build-universal.sh");
-const appBuildPath = resolve(repoRoot, "apps/mac/IndexApp/build.sh");
+const appBuildPath = resolve(repoRoot, "apps/mac/scripts/build.sh");
 const connectorBuildPath = resolve(repoRoot, "apps/mac/IndexConnector/build.sh");
 const workflowPath = resolve(repoRoot, ".github/workflows/mac-app-build.yml");
 const unsignedDistPath = resolve(repoRoot, "apps/mac/dist/unsigned");

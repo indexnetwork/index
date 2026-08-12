@@ -15,6 +15,8 @@ The MCP tool currently named `create_opportunities` performs **discovery** — s
 - Service method: `discoverOpportunities` ✅
 - MCP tool: `create_opportunities` ❌ (the outlier)
 
+> **Superseded (2026-08-07):** This historical foreground-tool decision is replaced by background-only discovery; see [background-only discovery release 1](../rollout/background-only-discovery-release-1.md).
+
 This spec aligns the MCP tool with the rest of the codebase by renaming it to `discover_opportunities`. Mechanical find-and-replace across ~38 files. No logic, behavior, or schema changes.
 
 ## Motivation

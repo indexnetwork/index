@@ -1,0 +1,1 @@
+ALTER TABLE "networks" DROP COLUMN "hidden";

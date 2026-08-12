@@ -16,7 +16,7 @@
   --midground: var(--ui-text-secondary);
   --midground-base: var(--ui-bg-tertiary);
   --radius: 6px;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   height: 100%;
   overflow-y: auto;
@@ -89,7 +89,8 @@
   align-items: center;
   padding: 0.1rem 0.5rem;
   border: 1px solid var(--color-border, #d4d4d8);
-  border-radius: var(--radius);
+  /* Square, like the rows and buttons around it. */
+  border-radius: 0;
   font-family: var(--font-mono);
   font-size: 0.68rem;
   line-height: 1.5;
@@ -199,6 +200,16 @@
   color: #fff;
   border-color: #000;
   background: #000;
+}
+
+/* Head action (Networks "Create"): the same square mono button as the Join
+   actions on the rows below, one step down, so it sits quieter than the list
+   it introduces. */
+.index-network-desktop-page .index-dashboard__net-create-btn.idx-btn {
+  min-height: 1.9rem;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
 }
 
 /* The desktop app keeps the header pause/archive pill a step larger than the

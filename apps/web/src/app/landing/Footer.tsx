@@ -16,7 +16,7 @@ export default function Footer() {
       const res = await fetch(apiUrl("/api/subscribe"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "waitlist" }),
+        body: JSON.stringify({ email, type: "newsletter" }),
       });
       if (res.ok) {
         setStatus("success");

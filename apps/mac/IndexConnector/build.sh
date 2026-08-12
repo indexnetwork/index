@@ -438,7 +438,7 @@ run_signed_access_fixture() {
   write_fixture_app_entitlements "$app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP"
   write_connector_entitlements \
     "$connector_entitlements" "$INDEX_TEST_CONNECTOR_KEYCHAIN_GROUP"
-  bash ../IndexApp/link-host.sh --write-entitlements \
+  bash ../scripts/link-host.sh --write-entitlements \
     index.network "$generated_app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP"
   validate_minimal_fixture_entitlements \
     "$app_entitlements" "$INDEX_TEST_APP_KEYCHAIN_GROUP"

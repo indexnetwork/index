@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 const repo = resolve(import.meta.dir, "../../../..");
 const release = resolve(import.meta.dir, "..");
 const dmgScript = join(release, "notarize-dmg.sh");
-const orchestrator = resolve(repo, "apps/mac/IndexApp/notarize.sh");
+const orchestrator = resolve(repo, "apps/mac/scripts/notarize.sh");
 const fixtures = [];
 
 afterEach(() => fixtures.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true })));

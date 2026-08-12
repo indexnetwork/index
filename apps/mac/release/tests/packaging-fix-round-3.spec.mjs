@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-const repo=resolve(import.meta.dir,"../../../.."), rel=resolve(import.meta.dir,".."), dmg=join(rel,"notarize-dmg.sh"), orchestrator=resolve(repo,"apps/mac/IndexApp/notarize.sh");
+const repo=resolve(import.meta.dir,"../../../.."), rel=resolve(import.meta.dir,".."), dmg=join(rel,"notarize-dmg.sh"), orchestrator=resolve(repo,"apps/mac/scripts/notarize.sh");
 function run(s,e={}){return Bun.spawnSync(["bash","-c",s],{cwd:repo,env:{...process.env,...e},stdout:"pipe",stderr:"pipe"})}
 test("standalone notarize-dmg uses the same non-publishing transform as sourced callers",()=>{const s=readFileSync(dmg,"utf8");expect(s).toContain('notarize_dmg_transform "$@"');expect(s).not.toContain("notarize_dmg_transaction");expect(s).not.toContain("notarize_dmg_internal")});
 test("orchestrator sources and invokes only the immutable-source DMG transform",()=>{const s=readFileSync(orchestrator,"utf8");expect(s).toContain('source "$RELEASE_DIRECTORY/notarize-dmg.sh"');expect(s).not.toContain('bash "$RELEASE_DIRECTORY/notarize-dmg.sh"');expect(s).toContain('notarize_dmg_transform "$app_source" "$app_dmg"');expect(s).not.toContain("notarize_dmg_transaction")});

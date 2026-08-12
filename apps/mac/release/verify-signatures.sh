@@ -7,7 +7,7 @@ readonly MAC_DIRECTORY="$(cd "$RELEASE_DIRECTORY/.." && pwd)"
 readonly DEFAULT_SIGNED_DIRECTORY="$MAC_DIRECTORY/dist/signed"
 
 source "$RELEASE_DIRECTORY/release-config.sh"
-source "$MAC_DIRECTORY/IndexApp/provisioning-profile.sh"
+source "$MAC_DIRECTORY/scripts/provisioning-profile.sh"
 
 verify_error() {
   printf 'production signature verification refused: %s\n' "$1" >&2

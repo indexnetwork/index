@@ -8,7 +8,7 @@
  * produced (and evidence-verified) at mining time, so synthesis is pure,
  * auditable, and cheap to re-run for interview-mode chaining.
  */
-import type { Question, QuestionOption, QuestionPoolDiscriminator, QuestionPoolSnapshot } from "../../shared/schemas/question.schema.js";
+import type { Question, QuestionOption, QuestionPoolDiscriminator, QuestionPoolSnapshot } from "../../questions/domain/question.schema.js";
 import { POOL_DISCRIMINATOR_MIN_POOL_SIZE, POOL_QUESTION_MAX_DISCRIMINATORS, POOL_QUESTION_MIN_EVIDENCE_RATE, POOL_QUESTION_MIN_VOI } from "./discriminator.env.js";
 import type { ScoredDiscriminator } from "./discriminator.types.js";
 

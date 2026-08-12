@@ -37,7 +37,7 @@ export class NetworkService {
   /**
    * Create a new index with the requesting user as owner.
    */
-  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown> }) {
+  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown> }) {
     const validatedMetadata = validateNetworkMetadata(data.metadata ?? {});
     logger.verbose('Creating index', { userId, title: data.title });
     const index = await this.adapter.createNetwork({
@@ -109,7 +109,7 @@ export class NetworkService {
    * Update index settings (title, prompt, permissions). Owner-only.
    * @throws Error if the index is a personal network.
    */
-  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }) {
+  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
     logger.verbose('Updating index', { networkId, userId });
     if (await this.adapter.isPersonalNetwork(networkId)) {
       // Personal networks can't be renamed/deleted/repurposed (see assertNotPersonal),
@@ -137,7 +137,7 @@ export class NetworkService {
   /**
    * Update index permissions. Owner-only.
    */
-  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean } }) {
+  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; contextInjection?: { discovery: boolean } }) {
     await this.assertNotPersonal(networkId);
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)

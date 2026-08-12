@@ -3,7 +3,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, expect, it } from "bun:test";
 
-import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "../opportunity.presentation.js";
+import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "../domain/opportunity.presentation.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // viewerCentricCardSummary

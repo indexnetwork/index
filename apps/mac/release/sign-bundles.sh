@@ -14,8 +14,8 @@ readonly SIGNED_CONNECTOR_BUNDLE="$SIGNED_DIRECTORY/IndexConnector.app"
 
 # shellcheck source=release-config.sh
 source "$RELEASE_DIRECTORY/release-config.sh"
-# shellcheck source=../IndexApp/provisioning-profile.sh
-source "$MAC_DIRECTORY/IndexApp/provisioning-profile.sh"
+# shellcheck source=../scripts/provisioning-profile.sh
+source "$MAC_DIRECTORY/scripts/provisioning-profile.sh"
 
 sign_error() {
   printf 'production signing refused: %s\n' "$1" >&2
@@ -254,7 +254,7 @@ main() {
   local app_entitlements="$SIGNING_WORK_DIRECTORY/app.entitlements"
   local connector_entitlements="$SIGNING_WORK_DIRECTORY/connector.entitlements"
   write_release_entitlements \
-    "$MAC_DIRECTORY/IndexApp/IndexApp.entitlements" "$app_entitlements" \
+    "$MAC_DIRECTORY/Index.entitlements" "$app_entitlements" \
     "$app_group" app index.network
   write_release_entitlements \
     "$MAC_DIRECTORY/IndexConnector/IndexConnector.entitlements" "$connector_entitlements" \

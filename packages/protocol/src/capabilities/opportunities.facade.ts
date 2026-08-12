@@ -4,13 +4,13 @@
  * The list is curated by responsibility (discovery, lifecycle, presentation,
  * and question lenses) rather than exposing the opportunity directory.
  *
- * IND-551: canonical paths updated to opportunity/domain and
- * opportunity/application; shims remain at old flat paths for compatibility.
+ * IND-551: canonical paths use opportunity/domain and opportunity/application.
  */
 
 // ── Core graphs ───────────────────────────────────────────────────────────────
 export { RadarGraphFactory } from "../opportunity/radar/radar.graph.js";
 export { OpportunityGraphFactory } from "../opportunity/application/opportunity.graph.js";
+export type { OpportunityGraphThresholdOverrides } from "../opportunity/application/opportunity.graph.js";
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "../opportunity/application/opportunity.newborn-stamping.js";
 
 // ── Presentation safety ───────────────────────────────────────────────────────
@@ -27,15 +27,21 @@ export type { PresenterDatabase } from "../opportunity/application/opportunity.p
 
 // ── MCP tool factory ──────────────────────────────────────────────────────────
 export { createOpportunityTools } from "../opportunity/application/opportunity.tools.js";
-export type { OpportunityToolDeps } from "./opportunities.tools.port.js";
+export type { OpportunityToolDeps } from "../opportunity/ports/index.js";
 
 // ── Discovery env accessors ───────────────────────────────────────────────────
 export {
+  DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
+  DISCOVERY_MIN_SIMILARITY_DEFAULT,
   discoveryAllowedTypes,
+  discoveryEvaluatorMinScore,
   discoveryIntentMatchingEnabled,
+  discoveryMinSimilarity,
   discoveryProfileMatchingEnabled,
   discoveryProfileSource,
   resetDiscoveryEnvWarningsForTests,
+  validateDiscoveryEvaluatorMinScore,
+  validateDiscoveryMinSimilarity,
 } from "../opportunity/discovery.env.js";
 export type { DiscoveryMatchType, DiscoveryProfileSource } from "../opportunity/discovery.env.js";
 
@@ -109,6 +115,6 @@ export type {
 export { presentOpportunity, stripUuids, truncateAtBoundary } from "../opportunity/domain/opportunity.presentation.js";
 export type { UserInfo } from "../opportunity/domain/opportunity.presentation.js";
 export { stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText } from "../opportunity/domain/opportunity.claim-safety.js";
-export { safeFallbackSummary } from "../opportunity/domain/opportunity.safe-presentation.js";
+export { safeFallbackSummary, DEFAULT_FALLBACK_HEADLINE } from "../opportunity/domain/opportunity.safe-presentation.js";
 export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "../opportunity/domain/opportunity.presentation-cache.js";
 export { getOrCreateDeliveryCardBatch } from "../opportunity/application/delivery-card.cache.js";

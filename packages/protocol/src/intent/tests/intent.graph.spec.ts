@@ -61,7 +61,7 @@ mock.module("../../shared/agent/model.config", () => ({
   }),
 }));
 
-const { IntentGraphFactory } = await import("../intent.graph.js");
+const { IntentGraphFactory } = await import("../../signals/application/intent.graph.js");
 
 afterAll(() => mock.restore());
 

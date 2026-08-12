@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact } from "../../shared/index.js";
+import { makeHistoricalQualityArtifact } from "../../shared/tests/artifact.fixtures.js";
 import { compareArtifacts } from "../ops.compare.js";
 
 function envelope(options: {
@@ -29,6 +31,19 @@ function envelope(options: {
 }
 
 describe("compareArtifacts", () => {
+  it("refuses a descriptive quality measurement on either side before scorecard projection", () => {
+    const quality = parseEvalArtifact(makeHistoricalQualityArtifact(), { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE });
+    for (const [reference, subject] of [
+      [quality, envelope({ passes: 10, runs: 10 })],
+      [envelope({ passes: 10, runs: 10 }), quality],
+    ] as const) {
+      const outcome = compareArtifacts(reference, subject);
+      expect(outcome.comparable).toBeFalse();
+      if (outcome.comparable) throw new Error("unreachable");
+      expect(outcome.findings).toEqual([expect.objectContaining({ dimension: "measurement" })]);
+    }
+  });
+
   it("refuses to compare across differing corpus fingerprints", () => {
     const outcome = compareArtifacts(
       envelope({ corpus: "corpus-a", passes: 10, runs: 10 }),

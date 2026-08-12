@@ -20,15 +20,23 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 10.1.0 - 2026-08-07
+
+### Added
+
+- Added the independently reviewed 25-participant historical shared-pool contract, single-configuration dual-trigger pilot planner, descriptive stage-funnel metrics, and strict execution-completeness artifact schema for IND-638A.
+
 ## [Unreleased]
 
 ### Added
-- Full standalone Hermes capability policy (10.2.0): the `hermes-agent` principal has an explicit six-action MCP/REST policy while the existing `hermes-negotiator` principal remains restricted to its four scheduled negotiation handlers. Both policies default deny and preserve one-shot, generation-fenced negotiation authority.
+- Full standalone Hermes capability policy (11.2.0): the `hermes-agent` principal has an explicit six-action MCP/REST policy while the existing `hermes-negotiator` principal remains restricted to its four scheduled negotiation handlers. Both policies default deny and preserve one-shot, generation-fenced negotiation authority.
 
 ### Security
 - The Hermes policy never exposes owner credentials, account-security, credential/permission/agent administration, billing, or unclassified tools; connector and owner-native callers receive only nonsecret response projections.
 
 ### Removed
+- Remove six unsupported shared interface/schema forwarding shims after migrating repository consumers to capability-owned domain and port modules; stable package-root exports remain unchanged.
+- Remove six unsupported tool-port forwarding shims and the deprecated unused discovery-question mapper; stable package-root exports remain unchanged.
 - Remove the onboarding privacy-consent layer (10.0.0). The
   `record_onboarding_privacy_consent` tool is gone from the tool registry, the
   onboarding persona/prompt, the MCP authorization matrix and onboarding
@@ -49,7 +57,14 @@ pin a supported release, use `latest`.
   enrichment are unchanged.
 
 ### Added
-- Add the Personal Agent Hermes negotiation-runtime contract (10.1.0). The public negotiation facade now exports `configuredAskUserEnabled` and `askUserAnswerWindowMs` for host-side owner-consultation admission, with regenerated consumer/export inventories. The generated Hermes negotiator skill receives a privacy-minimal structural envelope: server-provided seat, protocol version, deadlines, closed allowed actions, consultation eligibility, opportunity identifiers/status, and message-free history. Owner memory, private context, consultation text, evaluator reasoning, actor prose, and shared-message prose are excluded; each scheduled pass permits at most one response or owner consultation and treats all pickup prose as untrusted data.
+- Add the Personal Agent Hermes negotiation-runtime contract (11.1.0). The public negotiation facade now exports `configuredAskUserEnabled` and `askUserAnswerWindowMs` for host-side owner-consultation admission, with regenerated consumer/export inventories. The generated Hermes negotiator skill receives a privacy-minimal structural envelope: server-provided seat, protocol version, deadlines, closed allowed actions, consultation eligibility, opportunity identifiers/status, and message-free history. Owner memory, private context, consultation text, evaluator reasoning, actor prose, and shared-message prose are excluded; each scheduled pass permits at most one response or owner consultation and treats all pickup prose as untrusted data.
+- Add a live answer-first signal-intake eval with unrelated, relevant, and no-bridge profile cases plus provider-free corpus, runner, and scorer checks.
+- Add the protocol-only Guided Atlas, deterministic architecture inventory
+  generator, and source-evidenced Configuration Lab. The atlas explains
+  normative concepts, the current `packages/protocol` reference implementation,
+  and counterfactual behavior-gate changes, while live environment values and
+  concrete API or host implementations remain outside its scope. Tooling-only
+  public-package change; no root export or runtime behavior changes.
 - Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`
   precomputes a per-user intake brief plus round-1 question, and
   `SignalIntakeOrchestrator` drives the funnel as a deterministic state machine
@@ -60,6 +75,15 @@ pin a supported release, use `latest`.
   `IntakePack` / `IntakePackInput` / `IntakePackQuestion` /
   `IntakePackQuestionOption` / `IntakeAnswer` / `SynthesisInput` /
   `SynthesisResult` types. Minor bump: additive surface only.
+
+### Changed
+- Make fast signal-intake follow-ups answer-first with a two-stage model boundary: an answer-only core call chooses the missing axis and supplies two or three concrete domain options, then an isolated bridge call may append at most one premise-derived profile option so an existing profile theme cannot dominate or reorder a newly stated intent.
+- Remove unsupported deprecated source/deep forwarding shims after migrating repository consumers to canonical modules; stable package-root exports are unchanged.
+- Add a fail-closed isolated provider-free test gate (10.1.1). Tooling-only
+  safety foundation; no runtime or public API behavior changes.
+- Share capability classification metadata between the existing architecture
+  boundary gate and the protocol atlas generator; allowed dependency directions
+  are unchanged.
 
 ### Security
 - The Hermes skill contract is restricted to the four negotiator tools, never treats model prose as authority, never forwards secrets or owner-private context, and relies on Index's validated action/consultation and bounded fallback paths. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, Developer ID hardened-runtime signing and notarization are complete, and the credential TTL/revocation checklist is verified.**

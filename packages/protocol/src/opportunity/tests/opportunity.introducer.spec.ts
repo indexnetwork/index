@@ -3,7 +3,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { selectByComposition, classifyOpportunity } from '../opportunity.utils.js';
+import { selectByComposition, classifyOpportunity } from '../domain/opportunity.utils.js';
 
 // ─── Bug: BullMQ colon job IDs ────────────────────────────────────────────────
 // Hypothesis: BullMQ rejects ':' in custom job IDs. All job IDs that use

@@ -352,12 +352,18 @@ async function createProductionDeps(): Promise<SmokeDeps> {
         new DeterministicSmokeEmbedder(),
         deterministicHyde,
         deterministicEvaluator,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { evaluatorMinScore: 50 },
       ).createGraph();
 
       const result = await withDiscoveryProfileSource(mode, async () => graph.invoke({
         userId: sourceUserId,
         networkId,
-        options: { minScore: 50 },
+        options: {},
       } as never)) as {
         error?: string;
         candidates?: Array<{ candidateUserId: string }>;

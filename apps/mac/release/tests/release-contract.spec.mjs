@@ -5,9 +5,10 @@ import { join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const releaseConfig = resolve(import.meta.dir, "../release-config.sh");
-const appPlistPath = resolve(repoRoot, "apps/mac/IndexApp/Info.plist");
+const appPlistPath = resolve(repoRoot, "apps/mac/Info.plist");
 const connectorPlistPath = resolve(repoRoot, "apps/mac/IndexConnector/Info.plist");
-const mainSwiftPath = resolve(repoRoot, "apps/mac/IndexApp/Sources/main.swift");
+const appConfigPath = resolve(repoRoot, "apps/mac/Sources/AppConfig.swift");
+const appDelegatePath = resolve(repoRoot, "apps/mac/Sources/AppDelegate.swift");
 const connectorIdentityPath = resolve(
   repoRoot,
   "apps/mac/IndexConnector/Sources/ConnectorIdentity.swift",
@@ -248,17 +249,19 @@ describe("macOS release configuration", () => {
   });
 
   test("native production configuration has no runtime endpoint or inspection override", () => {
-    const mainSwift = readFileSync(mainSwiftPath, "utf8");
+    const appConfig = readFileSync(appConfigPath, "utf8");
+    const appDelegate = readFileSync(appDelegatePath, "utf8");
     const connectorIdentity = readFileSync(connectorIdentityPath, "utf8");
     const connectorMain = readFileSync(connectorMainPath, "utf8");
-    expect(mainSwift).toContain('"IndexAPIURL", production: "https://protocol.index.network"');
-    expect(mainSwift).toContain('"IndexWebURL", production: "https://index.network"');
-    expect(mainSwift).toContain('requiredBool("IndexDevelopmentBuild")');
-    expect(mainSwift).not.toContain('UserDefaults.standard.string(forKey: "API_URL")');
-    expect(mainSwift).not.toContain('UserDefaults.standard.string(forKey: "APP_URL")');
-    expect(mainSwift).toContain("let developmentBuild = AppConfig.isDevelopmentBuild");
-    expect(mainSwift).toMatch(/if developmentBuild \{[\s\S]*developerExtrasEnabled/);
-    expect(mainSwift).toMatch(/if developmentBuild \{[\s\S]*isInspectable/);
+    expect(appConfig).toContain('"IndexAPIURL", developmentOverride: "API_URL", production: "https://protocol.index.network"');
+    expect(appConfig).toContain('"IndexWebURL", developmentOverride: "APP_URL", production: "https://index.network"');
+    expect(appConfig).toContain('requiredBool("IndexDevelopmentBuild")');
+    expect(appConfig).not.toContain('UserDefaults.standard.string(forKey: "API_URL")');
+    expect(appConfig).not.toContain('UserDefaults.standard.string(forKey: "APP_URL")');
+    expect(appConfig).toContain('if !isDevelopmentBuild {');
+    expect(appDelegate).toContain("#if INDEX_DEVELOPMENT_BUILD");
+    expect(appDelegate).toContain("developerExtrasEnabled");
+    expect(appDelegate).toContain("isInspectable");
     expect(connectorIdentity).toContain('"IndexAPIURL", expected: "https://protocol.index.network"');
     expect(connectorIdentity).toContain('"IndexWebURL", expected: "https://index.network"');
     expect(connectorIdentity).toContain('static let apiEnvironment = "production"');

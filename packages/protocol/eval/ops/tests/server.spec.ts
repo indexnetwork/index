@@ -16,7 +16,7 @@ import { createDefaultOpsContext, createOpsHandler, HARNESS_CREDENTIALS, PUBLIC_
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, buildScorecard } from "../../shared/index.js";
-import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
+import { makeHistoricalQualityArtifact, makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
 
 const DATABASE_URL = "postgres://u:p@host/neondb";
 
@@ -1465,6 +1465,28 @@ describe("GET /api/compare", () => {
     expect((await response.json()).error).toMatch(/reference/i);
   });
 
+  it("422s the fixed refusal when either artifact id is a quality measurement", async () => {
+    const dir = path.join(context.evalDir, "discovery/runs");
+    await mkdir(dir, { recursive: true });
+    const quality = makeHistoricalQualityArtifact();
+    const { measurement: _measurement, ...scorecard } = structuredClone(quality);
+    await writeFile(path.join(dir, "quality.json"), JSON.stringify(quality));
+    await writeFile(path.join(dir, "scorecard.json"), JSON.stringify(scorecard));
+    const qualityId = Buffer.from("discovery/runs/quality.json").toString("base64url");
+    const scorecardId = Buffer.from("discovery/runs/scorecard.json").toString("base64url");
+
+    for (const query of [
+      `reference=${qualityId}&subject=${scorecardId}`,
+      `reference=${scorecardId}&subject=${qualityId}`,
+    ]) {
+      const response = await get(`/api/compare?${query}`);
+      expect(response.status).toBe(422);
+      expect((await response.json()).error).toBe(
+        "Historical quality pilot artifacts are descriptive measurements and cannot be compared as scorecards.",
+      );
+    }
+  });
+
   describe("run-vs-run", () => {
     const caseResult = (caseId: string, passes: number, runs: number) => ({
       caseId,
@@ -1510,6 +1532,20 @@ describe("GET /api/compare", () => {
       return created;
     }
 
+    async function seedQualityRun(): Promise<RunRecord> {
+      const created = await store.create({
+        spec: { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 } },
+        argv: ["bun", "run", "eval:discovery"],
+        env: {},
+        profileFingerprint: "quality-fingerprint",
+        experimental: true,
+        workload: 10,
+      });
+      await Bun.write(store.reportPath(created.id), JSON.stringify(makeHistoricalQualityArtifact()));
+      await store.update(created.id, { status: "passed", exitCode: 0, endedAt: new Date().toISOString() });
+      return created;
+    }
+
     it("diffs two run reports across configs and labels each side", async () => {
       const reference = await seedRunWithReport({
         profile: "default",
@@ -1542,6 +1578,23 @@ describe("GET /api/compare", () => {
         profileFingerprint: "fp-subject",
         complete: true,
       });
+    });
+
+    it("422s the fixed refusal when either run report is a quality measurement", async () => {
+      const scorecard = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+      const quality = await seedQualityRun();
+      for (const [reference, subject] of [[quality, scorecard], [scorecard, quality]] as const) {
+        const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=${subject.id}`);
+        expect(response.status).toBe(422);
+        expect((await response.json()).error).toBe(
+          "Historical quality pilot artifacts are descriptive measurements and cannot be compared as scorecards.",
+        );
+      }
     });
 
     it("422s naming the side whose report is missing", async () => {

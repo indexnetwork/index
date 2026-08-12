@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Id, Opportunity, OpportunityActor } from '../../shared/interfaces/database.interface.js';
-import { admitOpportunityPersistence, createEligibleOpportunityStatusUpdater, type OpportunityPersistenceAdmissionPort } from '../opportunity.persistence-admission.js';
+import { admitOpportunityPersistence, createEligibleOpportunityStatusUpdater, type OpportunityPersistenceAdmissionPort } from '../application/opportunity.persistence-admission.js';
 
 describe('opportunity persistence admission', () => {
   test('intersects current owner membership, trigger assignment, explicit scope, and active actor pairs', async () => {

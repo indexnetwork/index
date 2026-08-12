@@ -33,6 +33,7 @@ interface CompareState {
   artifacts: ArtifactRef[];
   result: CompareResult | null;
   loading: boolean;
+  indexed: boolean;
   error: string | null;
 }
 
@@ -44,6 +45,7 @@ function ArtifactCompare() {
     artifacts: [],
     result: null,
     loading: false,
+    indexed: false,
     error: null,
   });
 
@@ -54,7 +56,13 @@ function ArtifactCompare() {
       .artifacts()
       .then((data) => {
         if (mounted) {
-          setState((prev) => ({ ...prev, artifacts: data.refs }));
+          setState((prev) => ({
+            ...prev,
+            artifacts: data.refs.filter(
+              (artifact) => artifact.measurementKind !== 'historical-quality-pilot',
+            ),
+            indexed: true,
+          }));
         }
       })
       .catch((error) => {
@@ -74,6 +82,14 @@ function ArtifactCompare() {
   useEffect(() => {
     if (!referenceId || !subjectId) {
       setState((prev) => ({ ...prev, result: null }));
+      return;
+    }
+    if (!state.indexed) return;
+    if (
+      !state.artifacts.some((artifact) => artifact.id === referenceId)
+      || !state.artifacts.some((artifact) => artifact.id === subjectId)
+    ) {
+      setState((prev) => ({ ...prev, result: null, loading: false }));
       return;
     }
 
@@ -100,7 +116,7 @@ function ArtifactCompare() {
     return () => {
       mounted = false;
     };
-  }, [referenceId, subjectId]);
+  }, [referenceId, subjectId, state.artifacts, state.indexed]);
 
   const handleReferenceChange = (id: string) => {
     const params = new URLSearchParams(searchParams);

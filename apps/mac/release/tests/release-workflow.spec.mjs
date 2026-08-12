@@ -125,7 +125,7 @@ describe("release orchestrator", () => {
   test("checks finalArtifact evidence around promotion and immediately before publication", () => {
     const script = readRequired(orchestratorPath);
     const contract = script.indexOf("assert_no_unrelated_same_uid_processes");
-    const promotion = script.indexOf('bash "$MAC_DIRECTORY/IndexApp/notarize.sh"');
+    const promotion = script.indexOf('bash "$MAC_DIRECTORY/scripts/notarize.sh"');
     const checks = [...script.matchAll(/verify_final_artifact_evidence/g)].map((match) => match.index ?? -1);
     const publication = script.indexOf('{"draft":false}');
     expect(contract).toBeLessThan(promotion);

@@ -24,7 +24,6 @@ const mocks = vi.hoisted(() => ({
     isLoading: false,
     sessionId: null as string | null,
     sendMessage: vi.fn(),
-    sendOnboardingMessage: vi.fn(),
     stopStream: vi.fn(),
     loadSession: vi.fn().mockResolvedValue(undefined),
     loadPreviousMessages: vi.fn(),

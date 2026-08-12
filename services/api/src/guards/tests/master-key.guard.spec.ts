@@ -37,7 +37,7 @@ describe('MasterKeyGuard after rotation', () => {
         title: 'Guard Rotation Test',
         isPersonal: false,
         masterKeyHash: initialHash,
-        permissions: { joinPolicy: 'invite_only', invitationLink: null, allowGuestVibeCheck: false },
+        permissions: { joinPolicy: 'invite_only', invitationLink: null },
       })
       .returning({ id: schema.networks.id });
     networkId = n.id;

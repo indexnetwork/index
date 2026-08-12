@@ -29,7 +29,7 @@ const connectorRuntime = readFileSync(
   'utf8',
 );
 const nativeHermesRuntime = readFileSync(
-  path.join(repositoryRoot, 'apps/mac/IndexApp/Sources/HermesRuntime.swift'),
+  path.join(repositoryRoot, 'apps/mac/Sources/HermesRuntime.swift'),
   'utf8',
 );
 const rolloutPath = path.join(repositoryRoot, 'docs/rollout/hermes-backend-production-assurance.md');
@@ -362,10 +362,10 @@ describe('Hermes final production assurance release contract', () => {
     }
   });
 
-  it('bumps only the API package metadata to 0.80.0', () => {
-    expect(apiPackage.version).toBe('0.80.0');
+  it('bumps only the API package metadata to 0.83.0 after the stacked secure release', () => {
+    expect(apiPackage.version).toBe('0.83.0');
     expect(apiPackage.scripts?.typecheck).toBe('tsc --noEmit');
     expect(lockfile).toContain('"name": "@indexnetwork/api"');
-    expect(lockfile).toContain('"version": "0.80.0"');
+    expect(lockfile).toContain('"version": "0.83.0"');
   });
 });

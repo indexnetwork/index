@@ -8,6 +8,8 @@ interface ConversationEventMessage {
   conversationId: string;
   id: string;
   senderId: string;
+  /** Display name for OS/inbox previews; omitted when unresolved. */
+  senderName?: string;
   role: 'user' | 'agent';
   parts: unknown;
   createdAt: Date;

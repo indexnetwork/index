@@ -9,7 +9,7 @@ const bundleScript = join(releaseDir, "notarize-bundle.sh");
 const createScript = join(releaseDir, "create-dmg.sh");
 const dmgScript = join(releaseDir, "notarize-dmg.sh");
 const mountedScript = join(releaseDir, "verify-mounted-dmg.sh");
-const orchestrator = resolve(repoRoot, "apps/mac/IndexApp/notarize.sh");
+const orchestrator = resolve(repoRoot, "apps/mac/scripts/notarize.sh");
 const fixtures = [];
 
 afterEach(() => fixtures.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true })));

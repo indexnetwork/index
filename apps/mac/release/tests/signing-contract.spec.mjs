@@ -6,7 +6,7 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const signPath = resolve(import.meta.dir, "../sign-bundles.sh");
 const verifyPath = resolve(import.meta.dir, "../verify-signatures.sh");
 const releaseConfigPath = resolve(import.meta.dir, "../release-config.sh");
-const appEntitlementsPath = resolve(repoRoot, "apps/mac/IndexApp/IndexApp.entitlements");
+const appEntitlementsPath = resolve(repoRoot, "apps/mac/Index.entitlements");
 const connectorEntitlementsPath = resolve(repoRoot, "apps/mac/IndexConnector/IndexConnector.entitlements");
 
 function source(path) {

@@ -1,6 +1,6 @@
 import '../src/startup.env';
 
-import { afterAll, describe, expect, it, mock } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 
@@ -9,11 +9,7 @@ import { AuthGuard } from '../src/guards/auth.guard';
 import db from '../src/lib/drizzle/drizzle';
 import { agentPermissions, agents, networkMembers, networks, personalNetworks, users } from '../src/schemas/database.schema';
 
-const addEnrichUserJob = mock(async () => ({}));
-const experimentService = new ExperimentService({
-  addEnrichUserJob,
-  addEnrichUserJobBulk: mock(async () => []),
-});
+const experimentService = new ExperimentService();
 
 const fixtureUserIds = new Set<string>();
 const fixtureNetworkIds = new Set<string>();
