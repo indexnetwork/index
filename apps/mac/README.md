@@ -62,4 +62,13 @@ NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/notarize.sh
 
 A runtime error such as `No matching profile found` means the profile does not authorize the launched app; do not treat prior signing/notarization checks as success. Verify that `https://dev.index.network/u/<id>/chat` stays in the browser while an allowed opportunity/profile link opens the signed app.
 
+4. Package the distributable disk image from the same verified app:
+
+```bash
+NOTARYTOOL_PROFILE='<local-keychain-profile>' ./scripts/dmg.sh
+xcrun stapler validate dist/Index.dmg
+```
+
+`./scripts/dmg.sh` revalidates the signed, stapled bundle, lays out the branded disk image, notarizes it, and staples `dist/Index.dmg`. The DMG is the handoff artifact.
+
 Record only redacted commands and pass/fail status in PR evidence; never IDs, credentials, certificate subjects, or profile names.

@@ -242,7 +242,7 @@ const readme = await Bun.file(new URL('../README.md', import.meta.url)).text();
 const workflow = await Bun.file(new URL('../../../.github/workflows/mac-app-build.yml', import.meta.url)).text();
 
 test('README handoff documents the DMG packaging step', () => {
-  expect(readme).toContain('./dmg.sh');
+  expect(readme).toContain('./scripts/dmg.sh');
   expect(readme).toContain('xcrun stapler validate dist/Index.dmg');
 });
 
