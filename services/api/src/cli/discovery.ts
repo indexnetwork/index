@@ -19,9 +19,10 @@
  * read what the command requires *before* they have any of it.
  */
 import { AB_BRANCH_NAMES, attestAbTargets, parseLegacyAbManifest, type AbManifest } from './discovery.neon';
-import { AB_SIDE_BRANCH_ENV, assertAbConfirmation, assertAbRuntimePrerequisites } from './discovery.gate';
+import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation, assertAbRuntimePrerequisites } from './discovery.gate';
 import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
+import { bindAttestedNeonTls } from './discovery-neon-tls';
 import { formatHistoricalQualityCost, hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, type HistoricalQualityRequest } from './discovery-quality.contract';
 
 import type { AbSideId } from './discovery.plan';
@@ -79,6 +80,7 @@ export interface DiscoveryBootstrapDependencies {
   assertRuntimePrerequisites(env: NodeJS.ProcessEnv): void;
   parseManifest(raw: string | undefined): AbManifest;
   attestTargets(manifest: AbManifest, role: AbInvocationRole): Promise<void>;
+  bindLegacyChildTls?(alreadyAttestedDatabaseUrl: string): string;
   importRuntime(): Promise<DiscoveryRuntime>;
   importQualityRuntime?(): Promise<{
     runHistoricalQualityRuntime(request: HistoricalQualityRequest): Promise<unknown>;
@@ -93,6 +95,7 @@ const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
   assertRuntimePrerequisites: assertAbRuntimePrerequisites,
   parseManifest: parseLegacyAbManifest,
   attestTargets: attestOrRefuse,
+  bindLegacyChildTls: bindAttestedNeonTls,
   importRuntime: async () => await import('./discovery.main'),
   importQualityRuntime: async () => await import('./discovery-quality.runtime'),
   importQualityChildRuntime: async (environment) => {
@@ -151,9 +154,17 @@ export async function runDiscoveryBootstrap(
   if (sideId !== undefined) {
     const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
     if (!target) throw new Error(`Discovery manifest does not name side ${sideId}`);
+    // Compare the raw handoff before deriving any internal representation. This
+    // keeps the parent's exact attested URL authoritative and prevents a child
+    // from normalizing a different URL into an apparently compatible target.
+    if (env.DATABASE_URL !== target.databaseUrl) {
+      throw new AbGateError(`Refusing to mutate: side ${sideId} is not composed against the database its manifest entry declares`);
+    }
+    // Only the child process receives the internal TLS projection. The
+    // manifest remains query-free for strict v2 and byte-for-byte unchanged.
+    env.DATABASE_URL = (dependencies.bindLegacyChildTls ?? bindAttestedNeonTls)(target.databaseUrl);
     // The branch label is derived from the attested manifest, never from
     // operator-supplied text, so the child's gate checks an attested fact.
-    env.DATABASE_URL = target.databaseUrl;
     env[AB_SIDE_BRANCH_ENV] = AB_BRANCH_NAMES[sideId];
   }
   const runtime = await dependencies.importRuntime();
