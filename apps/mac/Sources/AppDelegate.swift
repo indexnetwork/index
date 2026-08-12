@@ -4,6 +4,18 @@ import Network
 import Security
 import CryptoKit
 
+// Pressing noninteractive window chrome asks the native shell to drag the
+// frameless window. Interactive controls and window content remain untouched.
+private let windowDragScript = """
+document.addEventListener('mousedown', function (e) {
+  if (e.button !== 0) return;
+  if (e.target.closest('a, button, input, textarea, select, [contenteditable], [role=button], .amiga-gadget, .mac-close, .mac-zoom')) return;
+  var win = e.target.closest('.amiga-window');
+  if (win && !e.target.closest('.mac-titlebar')) return;
+  window.webkit.messageHandlers.windowDrag.postMessage(null);
+}, true);
+"""
+
 // ---------------------------------------------------------------------------
 // Configuration. API_URL / APP_URL are read from UserDefaults (e.g. `defaults
 // write network.index.system6 API_URL https://…`) or Info.plist, so production
