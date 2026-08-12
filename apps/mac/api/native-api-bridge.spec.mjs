@@ -349,6 +349,8 @@ describe('native owner migration and transport source contracts', () => {
     expect(logoutBlock.indexOf('beginQuarantine')).toBeLessThan(logoutBlock.indexOf('revokeAndDelete'));
     expect(logoutBlock.indexOf('verifyCredentialDenied')).toBeLessThan(logoutBlock.indexOf('store.deleteAndVerify()'));
     expect(mainSwift).toContain('Set(names) == ["request_id", "code", "state"]');
+    expect(mainSwift).toContain('percentEncodedQuery');
+    expect(mainSwift).toContain('addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed)');
     expect(mainSwift).not.toMatch(/api_key|session_token|targetKey/);
   });
 

@@ -242,10 +242,23 @@ struct OwnerCredentialStore {
     }
 }
 
+private enum OwnerCredentialDateCoding {
+    static let fractionalISO8601: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static let wholeSecondISO8601 = ISO8601DateFormatter()
+}
+
 private extension JSONEncoder {
     static var ownerCredential: JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(OwnerCredentialDateCoding.fractionalISO8601.string(from: date))
+        }
         encoder.outputFormatting = [.sortedKeys]
         return encoder
     }
@@ -253,7 +266,18 @@ private extension JSONEncoder {
 private extension JSONDecoder {
     static var ownerCredential: JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            guard let date = OwnerCredentialDateCoding.fractionalISO8601.date(from: value)
+                    ?? OwnerCredentialDateCoding.wholeSecondISO8601.date(from: value) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Invalid owner credential expiry"
+                )
+            }
+            return date
+        }
         return decoder
     }
 }

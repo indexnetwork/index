@@ -5,6 +5,13 @@ import Security
 import UserNotifications
 import CryptoKit
 
+private extension CharacterSet {
+    /// Matches JavaScript encodeURIComponent for the authorization tuple.
+    static let urlQueryValueAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+    )
+}
+
 // Pressing noninteractive window chrome asks the native shell to drag the
 // frameless window. Interactive controls and window content remain untouched.
 private let windowDragScript = """
@@ -857,11 +864,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                 self.finishLogin(.failure(LoopbackAuthServer.AuthError.invalidCallback), admittedGeneration: admittedGeneration); return
                             }
                             var page = URLComponents(string: AppConfig.trimTrailingSlash(AppConfig.appURL) + "/index-app-authorize")
-                            page?.queryItems = [
-                                URLQueryItem(name: "request_id", value: created.requestId),
-                                URLQueryItem(name: "state", value: state),
-                                URLQueryItem(name: "redirect_uri", value: redirect),
+                            let queryValues = [
+                                ("request_id", created.requestId),
+                                ("state", state),
+                                ("redirect_uri", redirect),
                             ]
+                            page?.percentEncodedQuery = queryValues.compactMap { name, value in
+                                value.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed)
+                                    .map { "\(name)=\($0)" }
+                            }.joined(separator: "&")
                             if let url = page?.url { NSWorkspace.shared.open(url) }
                         }
                     }

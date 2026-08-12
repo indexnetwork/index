@@ -131,5 +131,37 @@ enum OwnerCredentialMigrationFixture {
             try keychainOwner.putAndVerify(record)
             throw FixtureFailure.assertion("Keychain read-back mismatch accepted")
         } catch IndexKeychainStoreError.verificationFailed {}
+
+        // Server expiry timestamps include milliseconds. Keychain serialization
+        // must preserve them so strict write/read-back equality does not roll a
+        // successfully exchanged credential back before activation.
+        var storedData: Data?
+        let roundTripSecurity = IndexKeychainSecurityOperations(
+            add: { query, _ in
+                let attributes = query as NSDictionary
+                storedData = attributes[kSecValueData as String] as? Data
+                return errSecSuccess
+            },
+            copyMatching: { _, result in
+                guard let storedData else { return errSecItemNotFound }
+                result?.pointee = storedData as CFData
+                return errSecSuccess
+            },
+            update: { _, _ in errSecSuccess },
+            delete: { _ in errSecSuccess }
+        )
+        let fractionalOwner = try OwnerCredentialStore(
+            accessGroup: group,
+            applicationSupportDirectory: root.appendingPathComponent("fractional-keychain", isDirectory: true),
+            keychain: IndexKeychainStore(security: roundTripSecurity)
+        )
+        let fractionalRecord = OwnerCredentialRecord(
+            credential: "idxo_fractional-expiry", credentialId: UUID().uuidString,
+            installationId: installation, generation: UUID().uuidString,
+            expiresAt: Date(timeIntervalSince1970: 2_000_000_000.270)
+        )
+        try fractionalOwner.putAndVerify(fractionalRecord)
+        let fractionalReadBack = try fractionalOwner.loadCredential()
+        try require(fractionalReadBack == fractionalRecord, "fractional expiry was truncated")
     }
 }
