@@ -268,6 +268,7 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/questions/[^/?]+/(?:answer|dismiss)$"#),
         ("POST", #"^/tools/(?:read_user_contexts|preview_user_context|confirm_user_context)$"#),
         ("POST", #"^/enrichment/enrich$"#),
+        ("GET", #"^/notifications/snapshot$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
         ("POST", #"^/conversations/(?:dm|[^/?]+/messages)$"#),
@@ -280,7 +281,9 @@ final class NativeAPIRequestBridge {
         "data:image/png;base64": ("image/png", "png"),
         "data:image/webp;base64": ("image/webp", "webp"),
     ]
-    static let allowedSSERoutes: Set<String> = ["GET /conversations/stream", "POST /chat/stream"]
+    static let allowedSSERoutes: Set<String> = [
+        "GET /notifications/stream", "GET /conversations/stream", "POST /chat/stream",
+    ]
     static let allowedMCPTools: Set<String> = ["create_intent"]
 
     private let apiBaseURL: URL
@@ -711,7 +714,9 @@ final class NativeAPIRequestBridge {
     }
 
     private static func isAllowedSSEBody(method: String, path: String, body: NativeJSONValue?) -> Bool {
-        if method == "GET" && path == "/conversations/stream" { return body == nil }
+        if method == "GET" && ["/notifications/stream", "/conversations/stream"].contains(path) {
+            return body == nil
+        }
         if method == "POST" && path == "/chat/stream" {
             return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId", "persona"]) { item in
                 boundedString(item["message"], maximum: 65_536)

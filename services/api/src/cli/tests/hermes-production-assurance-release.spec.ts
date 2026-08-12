@@ -362,10 +362,11 @@ describe('Hermes final production assurance release contract', () => {
     }
   });
 
-  it('preserves the Hermes-assured API line in the reconciled 0.83.1 release', () => {
-    expect(apiPackage.version).toBe('0.83.1');
+  it('keeps the current API release synchronized with the root lock', () => {
+    expect(apiPackage.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(apiPackage.scripts?.typecheck).toBe('tsc --noEmit');
-    expect(lockfile).toContain('"name": "@indexnetwork/api"');
-    expect(lockfile).toContain('"version": "0.83.1"');
+    expect(lockfile).toContain(
+      `"services/api": {\n      "name": "@indexnetwork/api",\n      "version": "${apiPackage.version}"`,
+    );
   });
 });

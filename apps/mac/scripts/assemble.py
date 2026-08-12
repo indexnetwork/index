@@ -23,7 +23,7 @@ API_MODULES = (
     "markdown.mjs", "agent-runtime.mjs", "agent-runtime-saga.mjs",
 )
 API_EXPORTS = [
-    "createIndexApiClient", "createPinnedIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
+    "createIndexApiClient", "createNativeAPIRequestBridge", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent", "applyMappedIntentStatus",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",

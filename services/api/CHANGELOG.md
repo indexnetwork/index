@@ -17,6 +17,7 @@ section before promoting to `main`).
 - Dedicated full Hermes audience admission for the six canonical actions, explicit REST/MCP allowlists, and the separate four-handler negotiator boundary. Session-only connected-agent list/pause/revoke controls return nonsecret health, fallback, heartbeat, and expiry views; reconnect requires fresh authorization.
 
 ### Security
+- Admit the Mac app's dedicated native owner credential only to the exact notification stream and snapshot GET routes (API 0.83.2), so credential-free native notification transport works without widening the owner audience's deny-by-default route matrix.
 - Add count-only, duration-only migration preflight evidence, privacy-bounded Hermes lifecycle telemetry, immutable previous-image denial, and dry-run-first idempotent emergency control with exact count/plan confirmation. Production reports exclude credentials, credential hashes, database URLs, identity dimensions, private prose, and raw logs.
 - Dedicated audiences default-deny account security, credential/permission/agent administration, billing, and unknown routes. Authorization, activation, runtime reconciliation, disconnect, and negotiation mutation use owner locks, exact row/generation identity, idempotent receipts, and compare-and-set behavior.
 
