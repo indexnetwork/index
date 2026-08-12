@@ -22,3 +22,7 @@ Task 5: fix round 2/5 (3 Important addressed, 1 Important open; commits 5ef5ea72
 Task 5: fix round 3/5 (numeric/shape defect fixed, 3 semantic Important open; commits f5d0845d9..b8aa51ef8)
 Task 5: fix round 4/5 (3 Important addressed, 0 open; commits b8aa51ef8..79ce2ad71)
 Task 5: complete (commits 8e676b6b1..79ce2ad71, review clean)
+Task 6: fix round 1/5 (3 Critical + 5 Important addressed; commit 2ce999adb)
+Task 6: fix round 2/5 (2 Critical + 4 Important addressed; commit d8277ba9f)
+Task 6: fix round 3/5 (2 Critical + 4 Important addressed; commit 07eea0965)
+Task 6: fix round 4/5 (2 Critical + 4 Important addressed; review pending)

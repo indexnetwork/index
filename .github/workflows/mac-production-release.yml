@@ -56,11 +56,6 @@ jobs:
       INDEX_RELEASE_RUNNER_LISTENER_SHA256: ${{ vars.INDEX_RELEASE_RUNNER_LISTENER_SHA256 }}
       INDEX_RELEASE_RUNNER_WORKER_PATH: ${{ vars.INDEX_RELEASE_RUNNER_WORKER_PATH }}
       INDEX_RELEASE_RUNNER_WORKER_SHA256: ${{ vars.INDEX_RELEASE_RUNNER_WORKER_SHA256 }}
-      INDEX_RELEASE_SCRIPT_PINS: |
-        ce2fd9b5d6ffbeddb66647cce7a5250bfb4f0f3e51bdf39728fc7e793a264f0a  apps/mac/release/build-release.sh
-        16d5472a26ba7bd9ed46ba47104a5bf3dd207ead9293f33c4f7b5f21bad15867  apps/mac/release/sealed-inventory.py
-        fc0359a5e8212982f49daca7d56225edd8b42ec91a8d49bd613abda91c5c0beb  apps/mac/release/verify-tag-ruleset.mjs
-        2f845e1fe7050db57752436d8979e3fa99aa2bedc4d73503cc26c1e81abfe9fb  apps/mac/release/process-isolation.py
     steps:
       - name: Checkout the exact release commit once without credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -77,21 +72,29 @@ jobs:
       - name: Prepare credential-free build handoff
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: apps/mac/release/build-release.sh prepare
 
       - name: Authorize remote tag rules and prior releases
         env:
           GH_TOKEN: ${{ github.token }}
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          printf '%s\n' "$INDEX_RELEASE_SCRIPT_PINS" | /usr/bin/shasum -a 256 -c -
+          cat <<'PINS' | /usr/bin/shasum -a 256 -c -
+          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
+          c05da3b3eb694ea53065b626e89e321fb1aa788ca58a338614ce55800b6d613b  apps/mac/release/verify-tag-ruleset.mjs
+          859f5447ad656262d6d0ec142b176e74cb231063dc614533be9547dcb4c52cb0  apps/mac/release/process-isolation.py
+          f50ebcaa2e39b9caca887564abc79267eaf32e6cca3b4eac4baf8c6a812bf01a  apps/mac/release/verify-prior-release-metadata.sh
+          PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
-          test -z "$(/usr/bin/git status --porcelain --untracked-files=all)"
           apps/mac/release/build-release.sh authorize
 
       - name: Build protected signed and notarized candidate
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
           INDEX_DEVELOPER_ID_CERTIFICATE_P12: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_P12 }}
           INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.INDEX_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
           INDEX_APP_PROVISIONING_PROFILE_BASE64: ${{ secrets.INDEX_APP_PROVISIONING_PROFILE_BASE64 }}
@@ -100,9 +103,14 @@ jobs:
           INDEX_NOTARY_KEY_ID: ${{ secrets.INDEX_NOTARY_KEY_ID }}
           INDEX_NOTARY_ISSUER_ID: ${{ secrets.INDEX_NOTARY_ISSUER_ID }}
         run: |
-          printf '%s\n' "$INDEX_RELEASE_SCRIPT_PINS" | /usr/bin/shasum -a 256 -c -
+          cat <<'PINS' | /usr/bin/shasum -a 256 -c -
+          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
+          c05da3b3eb694ea53065b626e89e321fb1aa788ca58a338614ce55800b6d613b  apps/mac/release/verify-tag-ruleset.mjs
+          859f5447ad656262d6d0ec142b176e74cb231063dc614533be9547dcb4c52cb0  apps/mac/release/process-isolation.py
+          f50ebcaa2e39b9caca887564abc79267eaf32e6cca3b4eac4baf8c6a812bf01a  apps/mac/release/verify-prior-release-metadata.sh
+          PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
-          test -z "$(/usr/bin/git status --porcelain --untracked-files=all)"
           apps/mac/release/build-release.sh candidate
 
       - name: Attest the exact immutable publication asset set
@@ -110,17 +118,16 @@ jobs:
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: |
-            apps/mac/dist/final/Index-macOS-1.0.0-universal.dmg
-            apps/mac/dist/final/Index-macOS-1.0.0-universal.dmg.reproducibility.txt
-            apps/mac/dist/final/IndexConnector-1.0.0-universal.dmg
-            apps/mac/dist/final/IndexConnector-1.0.0-universal.dmg.reproducibility.txt
-            apps/mac/dist/release/macos-release.json
-            apps/mac/dist/release/macos-release.cms
-            apps/mac/dist/release/SHA256SUMS
+            ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/candidate/Index-macOS-1.0.0-universal.dmg
+            ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/candidate/IndexConnector-1.0.0-universal.dmg
+            ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/candidate/macos-release.json
+            ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/candidate/macos-release.cms
+            ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/candidate/SHA256SUMS
 
       - name: Bind successful attestation to the sealed candidate
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
           INDEX_ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
         run: apps/mac/release/build-release.sh record-attestation "$INDEX_ATTESTATION_URL"
 
@@ -128,14 +135,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          printf '%s\n' "$INDEX_RELEASE_SCRIPT_PINS" | /usr/bin/shasum -a 256 -c -
+          cat <<'PINS' | /usr/bin/shasum -a 256 -c -
+          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          f90dd96a12fe92176cdd7e7a385d39429294195a0b5b202cd971c2d3bdc77adf  apps/mac/release/sealed-inventory.py
+          c05da3b3eb694ea53065b626e89e321fb1aa788ca58a338614ce55800b6d613b  apps/mac/release/verify-tag-ruleset.mjs
+          859f5447ad656262d6d0ec142b176e74cb231063dc614533be9547dcb4c52cb0  apps/mac/release/process-isolation.py
+          f50ebcaa2e39b9caca887564abc79267eaf32e6cca3b4eac4baf8c6a812bf01a  apps/mac/release/verify-prior-release-metadata.sh
+          PINS
           /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
-          test -z "$(/usr/bin/git status --porcelain --untracked-files=all)"
           apps/mac/release/build-release.sh publish
 
       - name: Prove exact release absence after pre-publication failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: apps/mac/release/build-release.sh assert-absence
+          INDEX_RELEASE_WORK_ROOT: ${{ runner.temp }}/index-production-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          cat <<'PINS' | /usr/bin/shasum -a 256 -c -
+          8740ba35639506f40434a7a81d42340374d97bfab2474c742b8cde3693046b52  apps/mac/release/build-release.sh
+          PINS
+          /usr/bin/git diff-index --quiet "$GITHUB_SHA" --
+          apps/mac/release/build-release.sh assert-absence
