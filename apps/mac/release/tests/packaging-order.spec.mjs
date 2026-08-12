@@ -17,6 +17,9 @@ afterEach(() => fixtures.splice(0).forEach((path) => rmSync(path, { recursive: t
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "index-package-command-"));
   fixtures.push(root);
+  const helper = join(root, "zip.py");
+  writeFileSync(helper, `import os,sys,zipfile\na=sys.argv[1]; z=zipfile.ZipFile(os.environ["ZIP_DEST"],"w")\nfor r,ds,fs in os.walk(a):\n for n in fs: z.write(os.path.join(r,n),os.path.relpath(os.path.join(r,n),os.path.dirname(a)))\nz.close()\n`);
+  process.env.ZIP_HELPER = helper;
   return root;
 }
 
@@ -66,7 +69,7 @@ test.each([
   mkdirSync(join(app, "Contents"), { recursive: true });
   writeFileSync(join(app, "Contents", "Info.plist"), `<?xml version="1.0"?><plist version="1.0"><dict><key>IndexReleaseChannel</key><string>production</string><key>IndexDevelopmentBuild</key><false/><key>IndexReleaseVersion</key><string>1.0.0</string></dict></plist>`);
   mkdirSync(bin);
-  executable(join(bin, "ditto"), '#!/usr/bin/env bash\nprintf "ditto\\n" >> "$LOG"\n: > "${@: -1}"\n');
+  executable(join(bin, "ditto"), '#!/usr/bin/env bash\nprintf "ditto\\n" >> "$LOG"\nif [[ " $* " == *" -x "* ]]; then cp -R "$APP" "${@: -1}/$(basename "$APP")"; else ZIP_DEST="${@: -1}" python3 "$ZIP_HELPER" "$APP"; fi\n');
   executable(join(bin, "xcrun"), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$LOG"
 if [[ "$1 $2" == "notarytool submit" ]]; then printf '%s\\n' "$NOTARY_JSON"; fi
@@ -96,7 +99,7 @@ test("tool failure during inner submission prevents stapling", () => {
   mkdirSync(join(app, "Contents"), { recursive: true });
   writeFileSync(join(app, "Contents", "Info.plist"), `<?xml version="1.0"?><plist version="1.0"><dict><key>IndexReleaseChannel</key><string>production</string><key>IndexDevelopmentBuild</key><false/><key>IndexReleaseVersion</key><string>1.0.0</string></dict></plist>`);
   mkdirSync(bin);
-  executable(join(bin, "ditto"), '#!/usr/bin/env bash\n: > "${@: -1}"\n');
+  executable(join(bin, "ditto"), '#!/usr/bin/env bash\nif [[ " $* " == *" -x "* ]]; then cp -R "$APP" "${@: -1}/$(basename "$APP")"; else ZIP_DEST="${@: -1}" python3 "$ZIP_HELPER" "$APP"; fi\n');
   executable(join(bin, "spctl"), "#!/usr/bin/env bash\nexit 0\n");
   executable(join(bin, "xcrun"), '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$LOG"\nexit 73\n');
   const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; verify_release_bundle_path() { :; }; notarize_bundle_main "$APP"', {
@@ -119,7 +122,7 @@ test("accepted inner submission verifies, staples, Gatekeeper-checks, and reveri
   mkdirSync(join(app, "Contents"), { recursive: true });
   writeFileSync(join(app, "Contents", "Info.plist"), `<?xml version="1.0"?><plist version="1.0"><dict><key>IndexReleaseChannel</key><string>production</string><key>IndexDevelopmentBuild</key><false/><key>IndexReleaseVersion</key><string>1.0.0</string></dict></plist>`);
   mkdirSync(bin);
-  executable(join(bin, "ditto"), '#!/usr/bin/env bash\nprintf "archive\\n" >> "$LOG"\n: > "${@: -1}"\n');
+  executable(join(bin, "ditto"), '#!/usr/bin/env bash\nprintf "archive\\n" >> "$LOG"\nif [[ " $* " == *" -x "* ]]; then cp -R "$APP" "${@: -1}/$(basename "$APP")"; else ZIP_DEST="${@: -1}" python3 "$ZIP_HELPER" "$APP"; fi\n');
   executable(join(bin, "xcrun"), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$LOG"
 if [[ "$1 $2" == "notarytool submit" ]]; then printf '{"status":"Accepted"}\\n'; fi
@@ -155,14 +158,17 @@ test("DMG creation requires both sibling bundles already stapled and emits read-
   executable(join(bin, "xcrun"), '#!/usr/bin/env bash\nprintf "xcrun:%s\\n" "$*" >> "$LOG"\n');
   executable(join(bin, "spctl"), '#!/usr/bin/env bash\nprintf "spctl:%s\\n" "$*" >> "$LOG"\n');
   executable(join(bin, "ditto"), '#!/usr/bin/env bash\nprintf "ditto:%s\\n" "$*" >> "$LOG"\ncp -R "${@: -2:1}" "${@: -1}"\n');
-  executable(join(bin, "hdiutil"), '#!/usr/bin/env bash\nprintf "hdiutil:%s\\n" "$*" >> "$LOG"\n: > "${@: -1}"\n');
-  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; verify_release_directory() { printf "verify:%s\\n" "$1" >> "$LOG"; }; create_dmg_main "$APP" "$OUTPUT"', {
+  executable(join(bin, "hdiutil"), '#!/usr/bin/env bash\nprintf "hdiutil:%s\\n" "$*" >> "$LOG"\nprintf fixture > "${@: -1}"\n');
+  executable(join(bin, "sw_vers"), '#!/usr/bin/env bash\n[[ "$1" == -productVersion ]] && printf "14.6\\n" || printf "23G80\\n"\n');
+  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; verify_release_directory() { printf "verify:%s\\n" "$1" >> "$LOG"; }; verify_release_bundle_path() { printf "verify-stage:%s\\n" "$1" >> "$LOG"; }; create_dmg_main "$APP" "$OUTPUT"', {
     SCRIPT: createPath,
     APP: app,
     SOURCE_DATE_EPOCH: "0",
     OUTPUT: output,
     LOG: log,
     INDEX_RELEASE_VERSION: "1.0.0",
+    INDEX_RELEASE_MACOS_VERSION: "14.6",
+    INDEX_RELEASE_MACOS_BUILD: "23G80",
     PATH: `${bin}:${process.env.PATH}`,
   });
   expect(result.exitCode).toBe(0);
@@ -181,11 +187,13 @@ test("DMG rejection prevents stapling and mounted verification", () => {
   writeFileSync(dmg, "fixture");
   mkdirSync(bin);
   executable(join(bin, "codesign"), '#!/usr/bin/env bash\nprintf "codesign:%s\\n" "$*" >> "$LOG"\n');
+  executable(join(bin, "security"), "#!/usr/bin/env bash\nexit 0\n");
+  executable(join(bin, "hdiutil"), "#!/usr/bin/env bash\nexit 0\n");
   executable(join(bin, "xcrun"), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$LOG"
 if [[ "$1 $2" == "notarytool submit" ]]; then printf '{"status":"Invalid"}\\n'; fi
 `);
-  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; run_final_verification() { printf "mounted\\n" >> "$LOG"; }; notarize_dmg_main "$DMG"', {
+  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; validate_production_identity() { :; }; verify_mounted_candidate() { :; }; verify_disk_image_signature() { :; }; sha256_dmg() { printf fixed; }; run_final_verification() { printf "mounted\\n" >> "$LOG"; }; notarize_dmg_main "$DMG"', {
     SCRIPT: dmgPath,
     DMG: dmg,
     LOG: log,

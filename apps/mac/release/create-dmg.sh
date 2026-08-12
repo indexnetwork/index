@@ -1,87 +1,67 @@
 #!/usr/bin/env bash
-# Package one already-notarized/stapled production bundle into an exact,
-# read-only DMG. No signing or provider operation occurs here.
+# Build two independently-created identical read-only DMGs on a pinned host.
 set -euo pipefail
-
 readonly RELEASE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# shellcheck source=release-config.sh
-source "$RELEASE_DIRECTORY/release-config.sh"
-# shellcheck source=notarize-bundle.sh
 source "$RELEASE_DIRECTORY/notarize-bundle.sh"
+package_error() { printf 'production DMG creation refused: %s\n' "$1" >&2; return 1; }
+require_package_tool() { command -v "$1" >/dev/null 2>&1 || package_error "$1 is required"; }
 
-package_error() {
-  printf 'production DMG creation refused: %s\n' "$1" >&2
-  return 1
-}
-
-require_package_tool() {
-  command -v "$1" >/dev/null 2>&1 || package_error "$1 is required"
+validate_reproducible_host() {
+  local actual_version actual_build runner
+  [[ -n "${INDEX_RELEASE_MACOS_VERSION:-}" && -n "${INDEX_RELEASE_MACOS_BUILD:-}" ]] \
+    || package_error "pinned macOS version and build are required"
+  [[ "$INDEX_RELEASE_MACOS_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ && "$INDEX_RELEASE_MACOS_BUILD" =~ ^[A-Za-z0-9]+$ ]] \
+    || package_error "pinned macOS values are not canonical"
+  actual_version="$(sw_vers -productVersion)"; actual_build="$(sw_vers -buildVersion)"
+  [[ "$actual_version" == "$INDEX_RELEASE_MACOS_VERSION" && "$actual_build" == "$INDEX_RELEASE_MACOS_BUILD" ]] \
+    || package_error "pinned macOS host does not match"
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    runner="${GITHUB_RUNNER_IMAGE:-${ImageOS:-}}:${GITHUB_RUNNER_IMAGE_VERSION:-${ImageVersion:-}}"
+    [[ "$runner" != : && "$runner" != *: ]] || package_error "pinned GitHub runner image identity/version is required"
+  fi
 }
 
 validate_dmg_contract() {
-  local bundle="$1" output="$2" name expected
-  name="$(basename "$bundle")"
-  case "$name" in
-    Index.app) expected="Index-macOS-${INDEX_RELEASE_VERSION}-universal.dmg" ;;
-    IndexConnector.app) expected="IndexConnector-${INDEX_RELEASE_VERSION}-universal.dmg" ;;
-    *) package_error "only Index.app or IndexConnector.app may be packaged"; return 1 ;;
-  esac
-  [[ "$(basename "$output")" == "$expected" ]] \
-    || package_error "DMG name must be $expected"
+  local name expected; name="$(basename "$1")"
+  case "$name" in Index.app) expected="Index-macOS-1.0.0-universal.dmg";; IndexConnector.app) expected="IndexConnector-1.0.0-universal.dmg";; *) package_error "unapproved product"; return 1;; esac
+  [[ "$(basename "$2")" == "$expected" ]] || package_error "DMG name must be $expected"
 }
+require_stapled_pair() { local d="$1" b; verify_release_directory "$d"; for b in "$d/Index.app" "$d/IndexConnector.app"; do xcrun stapler validate "$b"; spctl --assess --type execute --verbose=4 "$b"; done; verify_release_directory "$d"; }
 
-require_stapled_pair() {
-  local signed_directory="$1" bundle
-  verify_release_directory "$signed_directory"
-  for bundle in "$signed_directory/Index.app" "$signed_directory/IndexConnector.app"; do
-    xcrun stapler validate "$bundle"
-    spctl --assess --type execute --verbose=4 "$bundle"
-  done
-  # Reverify after staple/Gatekeeper checks, immediately before packaging.
-  verify_release_directory "$signed_directory"
+normalize_tree() { python3 - "$1" "${SOURCE_DATE_EPOCH:-0}" <<'PY'
+import os,sys
+root=sys.argv[1]; epoch=int(sys.argv[2])
+for d,ns,fs in os.walk(root):
+ for n in ns+fs: os.utime(os.path.join(d,n),(epoch,epoch),follow_symlinks=False)
+os.utime(root,(epoch,epoch),follow_symlinks=False)
+PY
+}
+sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+build_dmg_once() {
+  local staged="$1" product="$2" destination="$3"
+  hdiutil create -quiet -ov -format UDRO -fs HFS+ -imagekey hfsplus-sparse-band-size=0 \
+    -volname "$(basename "$product" .app)" -srcfolder "$staged" "$destination"
 }
 
 create_dmg_main() (
-  [[ "$(uname -s)" == Darwin ]] || package_error "macOS is required"
-  [[ "$#" -eq 2 ]] || package_error "usage: create-dmg.sh <stapled-app> <output.dmg>"
-  local bundle="$1" output="$2" signed_directory stage temporary source_epoch
-  [[ -d "$bundle/Contents" ]] || package_error "stapled app bundle is missing"
-  [[ -n "${INDEX_RELEASE_VERSION:-}" ]] || package_error "INDEX_RELEASE_VERSION is required"
-  validate_release_version "$INDEX_RELEASE_VERSION"
-  [[ "$INDEX_RELEASE_VERSION" == "$INDEX_FIRST_PRODUCTION_VERSION" ]] \
-    || package_error "INDEX_RELEASE_VERSION must equal $INDEX_FIRST_PRODUCTION_VERSION"
-  validate_dmg_contract "$bundle" "$output"
-  for tool in hdiutil ditto xcrun spctl python3; do require_package_tool "$tool"; done
-  signed_directory="$(cd "$(dirname "$bundle")" && pwd)"
-  [[ -d "$signed_directory/Index.app" && -d "$signed_directory/IndexConnector.app" ]] \
-    || package_error "both signed sibling bundles are required before packaging"
-  require_stapled_pair "$signed_directory"
-
-  temporary="$(mktemp -d "${TMPDIR:-/tmp}/index-dmg-stage.XXXXXX")"
-  trap 'rm -rf "$temporary" "${output}.incomplete"' EXIT
-  stage="$temporary/root"
-  mkdir -p "$stage"
-  COPYFILE_DISABLE=1 ditto --norsrc "$bundle" "$stage/$(basename "$bundle")"
-  source_epoch="${SOURCE_DATE_EPOCH:-0}"
-  [[ "$source_epoch" =~ ^[0-9]+$ ]] || package_error "SOURCE_DATE_EPOCH must be a non-negative integer"
-  python3 - "$stage" "$source_epoch" <<'PY'
-import os, sys
-root, epoch = sys.argv[1], int(sys.argv[2])
-for directory, names, files in os.walk(root):
-    for name in names + files:
-        os.utime(os.path.join(directory, name), (epoch, epoch), follow_symlinks=False)
-os.utime(root, (epoch, epoch), follow_symlinks=False)
-PY
-  rm -f "$output" "${output}.incomplete"
-  mkdir -p "$(dirname "$output")"
-  # UDRO is read-only. Fixed volume metadata and normalized staged mtimes make
-  # creation deterministic to the extent supported by the installed hdiutil.
-  hdiutil create -quiet -ov -format UDRO -fs HFS+ \
-    -volname "$(basename "$bundle" .app)" -srcfolder "$stage" "${output}.incomplete"
-  mv "${output}.incomplete" "$output"
-  rm -rf "$temporary"
-  trap - EXIT
+  [[ "$(uname -s)" == Darwin ]] || package_error "macOS is required"; [[ "$#" -eq 2 ]] || package_error "usage"
+  local bundle="$1" output="$2" signed temporary stage product first second evidence
+  validate_reproducible_host; validate_dmg_contract "$bundle" "$output"
+  for t in hdiutil ditto xcrun spctl python3 shasum sw_vers; do require_package_tool "$t"; done
+  signed="$(cd "$(dirname "$bundle")" && pwd)"; require_stapled_pair "$signed"
+  temporary="$(mktemp -d "${TMPDIR:-/tmp}/index-dmg-transaction.XXXXXX")"; trap 'rm -rf "$temporary"' EXIT
+  stage="$temporary/stage"; mkdir "$stage"; product="$stage/$(basename "$bundle")"
+  COPYFILE_DISABLE=1 ditto --norsrc "$bundle" "$product"
+  validate_exact_product_tree "$stage" "$product"; verify_release_bundle_path "$product"; normalize_tree "$stage"
+  first="$temporary/first.dmg"; second="$temporary/second.dmg"
+  build_dmg_once "$stage" "$bundle" "$first"; build_dmg_once "$stage" "$bundle" "$second"
+  cmp -s "$first" "$second" || package_error "independent deterministic DMG hashes differ"
+  [[ "$(sha256 "$first")" == "$(sha256 "$second")" ]] || package_error "independent deterministic DMG hashes differ"
+  # Credential-free evidence binds the reviewed host/toolchain and equal bytes.
+  evidence="$temporary/reproducibility.txt"
+  printf 'macOS=%s\nbuild=%s\nrunner=%s:%s\nsha256=%s\n' "$INDEX_RELEASE_MACOS_VERSION" "$INDEX_RELEASE_MACOS_BUILD" \
+    "${GITHUB_RUNNER_IMAGE:-${ImageOS:-non-github}}" "${GITHUB_RUNNER_IMAGE_VERSION:-${ImageVersion:-non-github}}" "$(sha256 "$first")" >"$evidence"
+  [[ ! -e "$output" ]] || package_error "refusing to overwrite an existing candidate"
+  mkdir -p "$(dirname "$output")"; mv "$first" "$output"
 )
-
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then create_dmg_main "$@"; fi

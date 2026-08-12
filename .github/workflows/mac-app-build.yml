@@ -87,7 +87,8 @@ jobs:
           bun test \
             apps/mac/IndexApp/*.spec.mjs \
             apps/mac/release/tests/release-contract.spec.mjs \
-            apps/mac/release/tests/packaging-order.spec.mjs
+            apps/mac/release/tests/packaging-order.spec.mjs \
+            apps/mac/release/tests/packaging-security.spec.mjs
           bash -n \
             apps/mac/IndexApp/build.sh \
             apps/mac/IndexApp/link-host.sh \
