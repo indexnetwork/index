@@ -62,7 +62,13 @@ describe("macOS release configuration", () => {
       "https://localhost:3001",
       "https://127.0.0.1:3001",
       "https://dev.index.network",
+      "https://dev-index.network",
+      "https://index-dev.network",
+      "https://development2.index.network",
       "https://staging.index.network",
+      "https://staging-index.network",
+      "https://index-staging.network",
+      "https://stage2.index.network",
       "https://user@index.network",
       "https://index.network/",
       "https://index.network:443",
@@ -139,12 +145,14 @@ describe("macOS release configuration", () => {
   test("fails closed before changing either plist when any production input is invalid", () => {
     const invalidCases = {
       INDEX_RELEASE_VERSION: "1.0.0-rc.1",
+      INDEX_RELEASE_VERSION_AFTER_FIRST_RELEASE: "2.0.0",
       INDEX_BUILD_NUMBER: "0",
       INDEX_RELEASE_COMMIT: "deadbeef",
       INDEX_API_URL: "https://dev.index.network",
       INDEX_WEB_URL: "https://index.network/path",
       INDEX_EXPECTED_TEAM_ID: "OTHERTEAM1",
       INDEX_CONNECTOR_PROTOCOL_VERSION: "0",
+      INDEX_CONNECTOR_PROTOCOL_VERSION_FUTURE: "2",
     };
     const valid = {
       INDEX_RELEASE_VERSION: "1.0.0",
@@ -156,7 +164,10 @@ describe("macOS release configuration", () => {
       INDEX_CONNECTOR_PROTOCOL_VERSION: "1",
     };
 
-    for (const [name, value] of Object.entries(invalidCases)) {
+    for (const [caseName, value] of Object.entries(invalidCases)) {
+      const name = caseName
+        .replace("_AFTER_FIRST_RELEASE", "")
+        .replace("_FUTURE", "");
       const directory = mkdtempSync(join(tmpdir(), "index-release-invalid-"));
       temporaryDirectories.push(directory);
       const appPlist = join(directory, "IndexApp.plist");
@@ -179,6 +190,48 @@ describe("macOS release configuration", () => {
       expect(readFileSync(appPlist)).toEqual(appOriginal);
       expect(readFileSync(connectorPlist)).toEqual(connectorOriginal);
     }
+  });
+
+  test("restores both plists byte-for-byte when the second replacement fails", () => {
+    const directory = mkdtempSync(join(tmpdir(), "index-release-replacement-failure-"));
+    temporaryDirectories.push(directory);
+    const appPlist = join(directory, "IndexApp.plist");
+    const connectorPlist = join(directory, "IndexConnector.plist");
+    const appOriginal = readFileSync(appPlistPath);
+    const connectorOriginal = readFileSync(connectorPlistPath);
+    writeFileSync(appPlist, appOriginal);
+    writeFileSync(connectorPlist, connectorOriginal);
+
+    const result = shell(
+      `source "$RELEASE_CONFIG"
+       move_count=0
+       mv() {
+         move_count=$((move_count + 1))
+         if [[ "$move_count" -eq 2 ]]; then
+           printf 'injected second replacement failure\\n' >&2
+           return 73
+         fi
+         command mv "$@"
+       }
+       write_release_config "$APP_PLIST" "$CONNECTOR_PLIST"`,
+      {
+        RELEASE_CONFIG: releaseConfig,
+        APP_PLIST: appPlist,
+        CONNECTOR_PLIST: connectorPlist,
+        INDEX_RELEASE_VERSION: "1.0.0",
+        INDEX_BUILD_NUMBER: "42",
+        INDEX_RELEASE_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+        INDEX_API_URL: "https://protocol.index.network",
+        INDEX_WEB_URL: "https://index.network",
+        INDEX_EXPECTED_TEAM_ID: "LMQ3XNXLAD",
+        INDEX_CONNECTOR_PROTOCOL_VERSION: "1",
+      },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain("injected second replacement failure");
+    expect(readFileSync(appPlist)).toEqual(appOriginal);
+    expect(readFileSync(connectorPlist)).toEqual(connectorOriginal);
   });
 
   test("committed bundles are explicit development templates at the production floor", () => {

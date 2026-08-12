@@ -52,8 +52,12 @@ except ValueError:
     address = None
 if address is not None and (address.is_loopback or address.is_private or address.is_link_local or address.is_unspecified):
     raise SystemExit('release configuration refused: non-public addresses are forbidden')
-labels = set(host.split('.'))
-if labels.intersection({'dev', 'development', 'staging', 'stage', 'test', 'testing', 'preview', 'local'}):
+import re
+host_tokens = re.split(r'[.-]', host)
+nonproduction_token = re.compile(
+    r'^(?:dev(?:elopment)?|stag(?:e|ing)?|test(?:ing)?|preview|local)[0-9]*$'
+)
+if any(nonproduction_token.fullmatch(token) for token in host_tokens):
     raise SystemExit('release configuration refused: non-production host label is forbidden')
 PY
 }
@@ -73,6 +77,8 @@ validate_release_inputs() {
   done
 
   validate_release_version "$INDEX_RELEASE_VERSION" || return 1
+  [[ "$INDEX_RELEASE_VERSION" == "$INDEX_FIRST_PRODUCTION_VERSION" ]] \
+    || release_config_error "INDEX_RELEASE_VERSION must equal the first production version $INDEX_FIRST_PRODUCTION_VERSION" || return 1
   [[ "$INDEX_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] \
     || release_config_error "INDEX_BUILD_NUMBER must be a positive integer" || return 1
   [[ "$INDEX_RELEASE_COMMIT" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] \
@@ -85,8 +91,8 @@ validate_release_inputs() {
     || release_config_error "INDEX_WEB_URL must equal $INDEX_PRODUCTION_WEB_URL" || return 1
   [[ "$INDEX_EXPECTED_TEAM_ID" == "$INDEX_PRODUCTION_TEAM_ID" ]] \
     || release_config_error "INDEX_EXPECTED_TEAM_ID must equal the pinned Team ID" || return 1
-  [[ "$INDEX_CONNECTOR_PROTOCOL_VERSION" =~ ^[1-9][0-9]*$ ]] \
-    || release_config_error "INDEX_CONNECTOR_PROTOCOL_VERSION must be a positive integer" || return 1
+  [[ "$INDEX_CONNECTOR_PROTOCOL_VERSION" == "1" ]] \
+    || release_config_error "INDEX_CONNECTOR_PROTOCOL_VERSION must equal the pinned local protocol authority 1" || return 1
 }
 
 write_plist_release_config() {
@@ -129,16 +135,35 @@ write_release_config() {
     || release_config_error "write_release_config requires app and connector plist paths" || return 1
   validate_release_inputs || return 1
 
-  local directory app_temporary connector_temporary
+  local directory app_temporary connector_temporary app_backup connector_backup
   directory="$(mktemp -d "${TMPDIR:-/tmp}/index-release-config.XXXXXX")" || return 1
   app_temporary="$directory/app.plist"
   connector_temporary="$directory/connector.plist"
+  app_backup="$directory/app.original.plist"
+  connector_backup="$directory/connector.original.plist"
 
-  write_plist_release_config "$app_plist" "$app_temporary" \
-    && write_plist_release_config "$connector_plist" "$connector_temporary" \
-    && mv "$app_temporary" "$app_plist" \
-    && mv "$connector_temporary" "$connector_plist"
-  local status=$?
+  if ! command cp "$app_plist" "$app_backup" \
+    || ! command cp "$connector_plist" "$connector_backup" \
+    || ! write_plist_release_config "$app_plist" "$app_temporary" \
+    || ! write_plist_release_config "$connector_plist" "$connector_temporary"; then
+    rm -rf "$directory"
+    return 1
+  fi
+
+  local status=0
+  mv "$app_temporary" "$app_plist" || status=$?
+  if [[ "$status" -eq 0 ]]; then
+    mv "$connector_temporary" "$connector_plist" || status=$?
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    local restore_status=0
+    command cp "$app_backup" "$app_plist" || restore_status=1
+    command cp "$connector_backup" "$connector_plist" || restore_status=1
+    if [[ "$restore_status" -ne 0 ]]; then
+      release_config_error "failed to restore plist transaction"
+      status=1
+    fi
+  fi
   rm -rf "$directory"
   return "$status"
 }
