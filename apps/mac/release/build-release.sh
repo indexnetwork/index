@@ -57,23 +57,26 @@ validate_monotonic_release(){
   local dir data record parsed tag_encoded target_encoded tag target_commit draft prerelease njson ncms napp nconnector nsums extra metadata cms
   dir="$(mktemp -d "$STATE_DIRECTORY/prior.XXXXXX")"
   data="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[]|@base64')"||release_error "prior inventory unavailable"
+  [[ -n "$data" ]]||return 0
   while IFS= read -r record;do
     [[ "$record" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]||release_error "historical release record encoding is invalid"
     parsed="$(printf '%s' "$record"|base64 --decode|bun -e '
 const r=JSON.parse(await Bun.stdin.text());
 if(!r||typeof r!=="object"||Array.isArray(r)||typeof r.tag_name!=="string"||typeof r.draft!=="boolean"||typeof r.prerelease!=="boolean"||!Array.isArray(r.assets)||r.assets.some(a=>!a||typeof a!=="object"||typeof a.name!=="string"))process.exit(1);
 const names=r.assets.map(a=>a.name), count=p=>names.filter(p).length, enc=s=>Buffer.from(s).toString("base64");
+const macEvidence=names.some(n=>n==="macos-release.json"||n==="macos-release.cms"||n==="SHA256SUMS"||/^Index-macOS-.*-universal\.dmg$/.test(n)||/^IndexConnector-.*-universal\.dmg$/.test(n));
+if(macEvidence&&!(typeof r.target_commitish==="string"&&/^[0-9a-f]{40}$/.test(r.target_commitish)))process.exit(1);
 console.log([enc(r.tag_name),enc(typeof r.target_commitish==="string"?r.target_commitish:""),r.draft,r.prerelease,count(n=>n==="macos-release.json"),count(n=>n==="macos-release.cms"),count(n=>/^Index-macOS-.*-universal\.dmg$/.test(n)),count(n=>/^IndexConnector-.*-universal\.dmg$/.test(n)),count(n=>n==="SHA256SUMS")].join("|"));
 ')"||release_error "historical release record is malformed"
     IFS='|' read -r tag_encoded target_encoded draft prerelease njson ncms napp nconnector nsums extra<<<"$parsed"
     [[ -z "${extra:-}"&&"$draft" =~ ^(true|false)$&&"$prerelease" =~ ^(true|false)$&&"$njson" =~ ^[0-9]+$&&"$ncms" =~ ^[0-9]+$&&"$napp" =~ ^[0-9]+$&&"$nconnector" =~ ^[0-9]+$&&"$nsums" =~ ^[0-9]+$ ]]||release_error "historical release record fields are malformed"
     tag="$(printf '%s' "$tag_encoded"|base64 --decode)"||release_error "historical release tag encoding is invalid"
     target_commit="$(printf '%s' "$target_encoded"|base64 --decode)"||release_error "historical release target encoding is invalid"
-    [[ -n "$tag"&&"$draft" == false&&"$prerelease" == false ]]||continue
     ((njson+ncms+napp+nconnector+nsums==0))&&continue
     [[ "$target_commit" =~ ^[0-9a-f]{40}$ ]]||release_error "historical release target commit is noncanonical"
-    ((njson==1&&ncms==1&&napp==1&&nconnector==1&&nsums==1))||release_error "historical macOS release has incomplete or duplicate full asset set"
     [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]||release_error "historical macOS release tag is noncanonical"
+    [[ "$draft" == false&&"$prerelease" == false ]]||continue
+    ((njson==1&&ncms==1&&napp==1&&nconnector==1&&nsums==1))||release_error "historical macOS release has incomplete or duplicate full asset set"
     local release_index="${metadata_index:-0}";metadata_index=$((release_index+1));metadata="$dir/$release_index.json";cms="$dir/$release_index.cms";mkdir -m 700 "$dir/$release_index.files"
     gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern macos-release.json --output "$metadata">/dev/null
     gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern macos-release.cms --output "$cms">/dev/null

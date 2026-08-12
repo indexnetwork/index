@@ -55,17 +55,40 @@ function validate(f, release) {
 }
 
 describe("lossless historical release discovery", () => {
-  test("real monotonic inventory refuses missing and empty target authority", () => {
+  test("real monotonic inventory validates macOS authority before publication posture", () => {
+    const f = fixture(), assets = f.assets.map((name) => ({ name }));
+    expect(validate(f, { tag_name: f.tag, draft: true, prerelease: false, assets }).status).not.toBe(0);
+    expect(validate(f, { tag_name: f.tag, target_commitish: 7, draft: false, prerelease: true, assets }).status).not.toBe(0);
+    expect(validate(f, { tag_name: "", draft: false, prerelease: false, assets }).status).not.toBe(0);
+  });
+
+  test("real monotonic inventory refuses missing and empty public target authority", () => {
     const f = fixture(), base = { tag_name: f.tag, draft: false, prerelease: false, assets: f.assets.map((name) => ({ name })) };
     expect(validate(f, base).status).not.toBe(0);
     expect(validate(f, { ...base, target_commitish: "" }).status).not.toBe(0);
   });
 
-  test("real monotonic inventory accepts canonical target and refuses signed commit mismatch", () => {
+  test("real monotonic inventory accepts canonical public target and refuses signed commit mismatch", () => {
     const f = fixture(), base = { tag_name: f.tag, target_commitish: f.commit, draft: false, prerelease: false, assets: f.assets.map((name) => ({ name })) };
     const accepted = validate(f, base);
     expect(accepted.status, `${accepted.stdout}\n${accepted.stderr}`).toBe(0);
     const mismatch = { ...base, target_commitish: "b".repeat(40) };
     expect(validate(f, mismatch).status).not.toBe(0);
+  });
+
+  test("real monotonic inventory accepts an empty first-release history", () => {
+    const f = fixture();
+    const command = `export BUILD_RELEASE_SOURCE_ONLY=1; source "$SCRIPT"; validate_monotonic_release`;
+    const accepted = run("bash", ["-c", command], {
+      SCRIPT: orchestrator,
+      INDEX_RELEASE_WORK_ROOT: join(f.dir, "work"),
+      INDEX_BUILD_NUMBER: "8",
+      INDEX_RELEASE_CMS_CERT_SHA256: f.certDigest,
+      GITHUB_REPOSITORY: f.repository,
+      RELEASE_RECORD: "",
+      FIXTURE_SOURCE: f.source,
+      PATH: `${f.bin}:${process.env.PATH}`,
+    });
+    expect(accepted.status, `${accepted.stdout}\n${accepted.stderr}`).toBe(0);
   });
 });

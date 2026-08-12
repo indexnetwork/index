@@ -346,3 +346,33 @@ No workflow dispatch, GitHub API network call, secret access, Apple service, sig
 
 Task 6 ledger: owner-authorized exception round 6/6 opened for inherited Important TSV field-collapse defect.
 Task 6 ledger: round 6 implementation GREEN; 1 defect addressed/0 known open; review gate pending.
+
+## Owner-authorized exceptional review fix round 7
+
+The owner explicitly authorized this narrow additional round for the remaining validation-order defect. Task 6 remains reviewer-owned and is not marked complete.
+
+### Changes
+
+- Every decoded release object is structurally validated and macOS evidence is classified before draft/prerelease publication posture filtering.
+- Any DMG, metadata JSON/CMS, or `SHA256SUMS` evidence now requires an exact lowercase 40-hex string `target_commitish`, including draft, prerelease, and malformed/empty-tag records.
+- A macOS-evidence tag must be canonical before draft/prerelease filtering; the intentional policy excluding structurally valid draft/prerelease releases from monotonic comparison is preserved.
+- A successful empty historical inventory is explicitly accepted for first release availability.
+- Real production-function regressions cover draft missing target, prerelease non-string target, empty tag missing target, canonical public success, signed-commit mismatch refusal, and empty inventory.
+- Updated the affected privileged workflow script pins.
+
+### Strict TDD and validation evidence
+
+RED before production changes: `bun test apps/mac/release/tests/release-workflow-fix-round-6.spec.mjs` returned `2 pass`, `1 fail`; draft missing target was accepted.
+
+Focused GREEN: all Task 6 workflow suites returned `54 pass`, `0 fail`, `397 expect() calls` across 7 files.
+
+Full provider-free Tasks 1–6 release regression returned `195 pass`, `1 existing platform skip`, `0 fail`, `1172 expect() calls` across 25 files.
+
+Release shell syntax, Python syntax, both workflow YAML parses, `git diff --check`, and the updated build-release workflow pin passed. Generated Python caches were removed.
+
+### Residual protected evidence and attestation
+
+Real GitHub release response/`target_commitish` semantics and historical provider assets remain protected-candidate evidence. No workflow dispatch, network/provider call, secret access, Apple operation, upload, attestation, release mutation, publication, merge, or push occurred.
+
+Task 6 ledger: owner-authorized exception round 7/7 opened for validation ordering and first-release availability.
+Task 6 ledger: round 7 implementation GREEN; requested defect addressed; review gate pending; Task 6 not complete.
