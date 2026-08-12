@@ -22,8 +22,16 @@ describe("tool runtime", () => {
     expect(getToolTimeoutPolicy("read_docs").class).toBe("fast");
     expect(getToolTimeoutPolicy("read_docs").maxOutputBytes).toBeGreaterThan(0);
     expect(getToolTimeoutPolicy("list_opportunities").class).toBe("bounded_slow");
-    expect(getToolTimeoutPolicy("update_user_context").class).toBe("async_candidate");
-    expect(getToolTimeoutPolicy("update_user_profile").class).toBe("bounded_slow");
+    for (const toolName of [
+      "read_user_contexts",
+      "preview_user_context",
+      "create_user_context",
+      "update_user_context",
+    ]) {
+      expect(getToolTimeoutPolicy(toolName).class, toolName).toBe("async_candidate");
+    }
+    expect(getToolTimeoutPolicy("get_enrichment_run").class).toBe("fast");
+    expect(getToolTimeoutPolicy("cancel_enrichment_run").class).toBe("fast");
   });
 
   test("injects requestContext abort signal into tool handlers", async () => {

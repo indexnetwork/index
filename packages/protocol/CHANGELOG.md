@@ -52,6 +52,11 @@ pin a supported release, use `latest`.
 
 ## [Unreleased]
 
+### Changed
+
+- Keep canonical `get_enrichment_run` and `cancel_enrichment_run` in the fast
+  runtime timeout class after retiring their profile-run aliases.
+
 ### Removed
 
 - Remove the seven deprecated REST/chat `*_user_profile` and `*_profile_run`

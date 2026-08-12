@@ -427,7 +427,7 @@ Scoring bands:
 **Role:** Generates a structured identity draft from identity data (scraped web content, user-provided text, or existing identity for updates) for the onboarding draft-approval tools.
 **Model:** `google/gemini-2.5-flash`
 **Output:** A `UserIdentity` draft (name, bio, location); discrete skills/interests are no longer persisted — that content lives in premises and the user context.
-**Used by:** Onboarding draft tools (`preview_/confirm_/create_user_profile`)
+**Used by:** Onboarding draft tools (`preview_/confirm_/create_user_context`)
 
 ### 4.11 HyDE Generator
 
@@ -546,7 +546,7 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 
 | Tool File | Tools | Subgraph(s) Invoked |
 |-----------|-------|---------------------|
-| `enrichment.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Enrichment Graph |
+| `enrichment.tools.ts` | read_user_contexts, preview_user_context, confirm_user_context, create_user_context, update_user_context, get_enrichment_run, cancel_enrichment_run | Enrichment Graph |
 | `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
 | `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Network Graph, Network Membership Graph |
 | `contact.tools.ts` | add_contact, list_contacts, search_contacts | (direct service calls) |
@@ -557,7 +557,7 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 ### How tools are bound to the ChatAgent
 
 During `ChatAgent.create()`:
-1. All subgraphs are compiled (Intent, Profile, Opportunity, etc.) using the injected database, embedder, and scraper adapters
+1. All subgraphs are compiled (Intent, Enrichment, Opportunity, etc.) using the injected database, embedder, and scraper adapters
 2. `createChatTools()` creates LangChain tool definitions that close over these compiled graphs
 3. The tools are bound to the LLM via `.bind_tools()` so the model can call them by name
 4. Each tool receives a `ToolDeps` context containing the userId, compiled graphs, and adapters
@@ -616,7 +616,7 @@ Every registered tool goes through the same lifecycle on every call:
 1. Extract the HTTP request from `ServerContext.http.req`.
 2. Resolve `{ userId, agentId }` via the auth resolver.
 3. Build the `ResolvedToolContext`, set `isMcp = true` and attach `agentId`.
-4. Run the agent-registration gate: unless the tool is on the exempt list (`register_agent`, `read_docs`), a missing `agentId` produces an `Agent not registered` error that tells the caller to register first. (`scrape_url`, contact/Gmail tools, and the deprecated profile/profile-run aliases are omitted from the MCP surface entirely; they remain on the direct HTTP Tool API and chat.)
+4. Run the agent-registration gate: unless the tool is on the exempt list (`register_agent`, `read_docs`), a missing `agentId` produces an `Agent not registered` error that tells the caller to register first. (`scrape_url` and contact/Gmail tools are omitted from MCP but remain available through the direct HTTP Tool API and chat; the retired profile/profile-run aliases are omitted from every surface.)
 5. Build per-request scoped databases via `scopedDepsFactory` and rebuild the tool registry with them.
 6. Validate arguments against the tool's original Zod schema.
 7. Invoke the raw tool handler through `ToolInvocationRuntime`, which attaches a shared `AbortSignal`, wall-clock deadline, trace/progress bridge, and output-size cap.
@@ -626,19 +626,21 @@ Errors are trapped and returned as MCP error responses so a single failing tool 
 
 ### Runtime deadlines, cancellation, and output caps
 
-Every MCP tool call is bounded by `packages/protocol/src/shared/agent/tool.runtime.ts` instead of per-tool ad hoc timers. The runtime classifies tools into three timeout classes:
+Every MCP tool call is bounded by `packages/protocol/src/shared/agent/tool.runtime.ts` instead of per-tool ad hoc timers. The runtime classifies tools into four timeout classes:
 
 | Class | Default | Intended tools |
 |---|---:|---|
-| `fast` | 10 s | Metadata reads, lightweight CRUD, onboarding, delivery confirmation, docs |
+| `fast` | 10 s | Metadata reads, lightweight CRUD, enrichment-run status/cancellation, onboarding, delivery confirmation, docs |
 | `bounded_slow` | 45 s | Normal multi-step calls that may touch storage or a small graph path |
-| `async_candidate` | 50 s | Calls that are currently synchronous but are candidates for future job/status/result/cancel flows, such as imports and discovery |
+| `async_candidate` | 50 s | Calls that are currently synchronous or enqueue background work, including user-context creation/update and imports |
+| `interactive` | 5 min | Human-in-the-loop tools such as `ask_user_question` |
 
 Timeouts can be tuned globally by class or per tool:
 
 - `MCP_TOOL_TIMEOUT_FAST_MS`
 - `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS`
 - `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS`
+- `MCP_TOOL_TIMEOUT_INTERACTIVE_MS`
 - `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where the tool name is uppercased and non-alphanumeric characters become `_` (for example, `MCP_TOOL_TIMEOUT_LIST_OPPORTUNITIES_MS`).
 
 The runtime also enforces response size limits before a tool result is returned to MCP or the REST-safe tool path:
@@ -678,7 +680,7 @@ When `MCP_INSTRUCTIONS` changes, every connected runtime picks up the new guidan
 One section of `MCP_INSTRUCTIONS` ("Negotiation turn mode") switches the caller into a background-subagent stance when the caller's session key is prefixed `index:negotiation:`. A subagent in this mode is told to:
 
 - Fetch the full negotiation via `get_negotiation`.
-- Read the user's profile and intents via `read_user_profiles` and `read_intents`.
+- Read the user's profile context and intents via `read_user_contexts` and `read_intents`.
 - Submit its response via `respond_to_negotiation` — never produce user-facing output, never ask clarifying questions, prefer conservative actions when ambiguous.
 
 This is how personal agents participate in bilateral negotiation. A polling agent pulls pending turns from `POST /api/agents/:id/negotiations/pickup` and launches subagents with an `index:negotiation:`-prefixed session key; the MCP_INSTRUCTIONS contract does the rest — the polling agent itself has no negotiation-specific prompt of its own.
