@@ -162,3 +162,29 @@ Focused metadata suites: `17 pass`, `0 fail`, `149 expect() calls`. Full Task 1-
 ### Residual and attestation
 
 Real macOS Security/Keychain output and trust behavior remain protected Task 6 evidence. No Apple identity/service, production certificate, credential, protected operation, real release CMS, publication, deployment, or push was used.
+
+## Review fix round 3/5
+
+Addressed the remaining Important schema-document finding with strict TDD.
+
+### Changes
+
+- `minItems` and `maxItems` now require nonnegative integers and reject negative, fractional, string/NaN analogues; a schema with `minItems > maxItems` is refused.
+- `minimum` requires a finite number.
+- `required` requires unique strings; `enum` requires a nonempty array with JSON-deep-unique entries.
+- `type` accepts only the exact supported string forms (`object`, `array`, `string`, `integer`) and explicitly refuses array union forms.
+- `pattern` requires a compilable regex string.
+- `properties` and `$defs` require records of object schemas; `prefixItems` and `allOf` require arrays of object schemas, with `allOf` nonempty.
+- `additionalProperties` and `items` accept supported `false` or object-schema forms; `true` boolean schemas are explicitly refused rather than silently mishandled. Boolean child/root schemas are likewise refused explicitly.
+- Local `$ref` values require canonical fragment-pointer form, valid escapes, existing path components, and an object-schema target; remote, malformed, and unresolved refs fail closed.
+- Added evaluator support for object-schema `additionalProperties` and `items` forms so every admitted supported form is actually evaluated.
+
+### Strict TDD evidence
+
+RED command captured at `/tmp/task-5-fix-round-3-red.log`: `1 pass`, `1 fail`; the table stopped on accepted negative `minItems`, proving the gap. GREEN focused metadata command passes `19 pass`, `0 fail`, `177 expect() calls`. The table covers 26 malformed numeric/container/reference cases, and a committed-schema positive test preserves exact generation.
+
+Full Task 1-5 regression passes `137 pass`, `1 skip`, `0 fail`, `754 expect() calls` across 17 files. Focused ESLint, TypeScript, and `git diff --check` pass.
+
+### Residual and attestation
+
+The schema evaluator intentionally supports only the committed closed vocabulary and fails on unimplemented draft keywords/forms. Real protected macOS CMS/Keychain behavior remains Task 6 evidence. No identity, Apple service, protected operation, publication, deployment, or push was used.
