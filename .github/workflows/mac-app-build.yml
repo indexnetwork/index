@@ -88,7 +88,9 @@ jobs:
             apps/mac/IndexApp/*.spec.mjs \
             apps/mac/release/tests/release-contract.spec.mjs \
             apps/mac/release/tests/packaging-order.spec.mjs \
-            apps/mac/release/tests/packaging-security.spec.mjs
+            apps/mac/release/tests/packaging-security.spec.mjs \
+            apps/mac/release/tests/packaging-fix-round-2.spec.mjs \
+            apps/mac/release/tests/packaging-integration.spec.mjs
           bash -n \
             apps/mac/IndexApp/build.sh \
             apps/mac/IndexApp/link-host.sh \

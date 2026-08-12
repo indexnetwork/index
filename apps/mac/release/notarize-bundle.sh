@@ -30,6 +30,8 @@ unset _PRESET_TEAM_ID _PRESET_APP_ID _PRESET_CONNECTOR_ID _PRESET_VERSION
 
 notary_error() { printf 'production bundle notarization refused: %s\n' "$1" >&2; return 1; }
 require_notary_tool() { command -v "$1" >/dev/null 2>&1 || notary_error "$1 is required"; }
+archive_sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+require_same_archive_digest() { [[ "$(archive_sha256 "$1")" == "$2" ]] || notary_error "submission ZIP bytes changed"; }
 
 parse_accepted_status() {
   python3 -c 'import json,sys
@@ -60,7 +62,8 @@ validate_exact_product_tree() {
   local root="$1" expected="$2"
   python3 - "$root" "$expected" <<'PY' || notary_error "product inventory contains extra content, a symlink, or an unsafe path"
 import os, stat, sys
-root, expected = map(os.path.abspath, sys.argv[1:])
+raw_root, raw_expected = map(os.path.abspath, sys.argv[1:])
+root, expected = os.path.realpath(raw_root), os.path.realpath(raw_expected)
 if os.path.basename(expected) not in ('Index.app','IndexConnector.app') or os.path.dirname(expected) != root:
     raise SystemExit(1)
 st = os.lstat(root)
@@ -124,18 +127,22 @@ notarize_bundle_main() (
   [[ "$(uname -s)" == Darwin ]] || notary_error "macOS is required"
   [[ "$#" -eq 1 ]] || notary_error "usage: notarize-bundle.sh <signed-app>"
   [[ -n "${NOTARYTOOL_PROFILE:-}" ]] || notary_error "NOTARYTOOL_PROFILE is required"
-  local bundle="$1" archive response extraction
+  local bundle="$1" archive response extraction archive_digest
   [[ -d "$bundle/Contents" ]] || notary_error "signed app bundle is missing"
-  for tool in ditto xcrun spctl python3; do require_notary_tool "$tool"; done
+  for tool in ditto xcrun spctl python3 shasum; do require_notary_tool "$tool"; done
   validate_notarized_bundle_contract "$bundle"; verify_release_bundle_path "$bundle"
   archive="$(mktemp "${TMPDIR:-/tmp}/index-notary-upload.XXXXXX.zip")"; response="$(mktemp)"; extraction="$(mktemp -d)"
   trap 'rm -rf "$archive" "$response" "$extraction"' EXIT; rm -f "$archive"
   COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc "$bundle" "$archive"
+  chmod 600 "$archive"
+  archive_digest="$(archive_sha256 "$archive")"
   validate_zip_inventory "$archive" "$(basename "$bundle")"
   ditto -x -k "$archive" "$extraction"
   validate_exact_product_tree "$extraction" "$extraction/$(basename "$bundle")"
   verify_release_bundle_path "$extraction/$(basename "$bundle")"
+  require_same_archive_digest "$archive" "$archive_digest"
   xcrun notarytool submit "$archive" --keychain-profile "$NOTARYTOOL_PROFILE" --wait --output-format json >"$response"
+  require_same_archive_digest "$archive" "$archive_digest"
   parse_accepted_status <"$response"
   xcrun stapler staple "$bundle"; xcrun stapler validate "$bundle"; spctl --assess --type execute --verbose=4 "$bundle"
   verify_release_bundle_path "$bundle"

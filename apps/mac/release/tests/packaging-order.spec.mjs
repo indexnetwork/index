@@ -182,8 +182,10 @@ test("DMG creation requires both sibling bundles already stapled and emits read-
 test("DMG rejection prevents stapling and mounted verification", () => {
   const root = fixture();
   const bin = join(root, "bin");
-  const dmg = join(root, "Index-macOS-1.0.0-universal.dmg");
+  const transaction = join(root, ".index-final-transaction.fixture");
+  const dmg = join(transaction, "Index-macOS-1.0.0-universal.dmg");
   const log = join(root, "commands");
+  mkdirSync(transaction, { mode: 0o700 });
   writeFileSync(dmg, "fixture");
   mkdirSync(bin);
   executable(join(bin, "codesign"), '#!/usr/bin/env bash\nprintf "codesign:%s\\n" "$*" >> "$LOG"\n');

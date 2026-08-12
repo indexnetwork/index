@@ -30,10 +30,21 @@ verify_disk_image_signature() {
   # Disk images do not carry a Hardened Runtime CodeDirectory contract.
 }
 
+require_private_transaction_candidate() {
+  local dmg="$1" parent canonical parent_name
+  canonical="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$dmg")"
+  parent="$(dirname "$canonical")"; parent_name="$(basename "$parent")"
+  [[ "$parent_name" == .index-final-transaction.* && "$canonical" == "$parent/$(basename "$dmg")" ]] \
+    || dmg_notary_error "DMG must be inside a private release transaction root"
+  [[ "$(stat -c %a "$parent" 2>/dev/null || stat -f %Lp "$parent")" =~ ^7?00$ ]] \
+    || dmg_notary_error "private release transaction permissions are unsafe"
+}
+
 notarize_dmg_main() (
   [[ "$(uname -s)" == Darwin ]] || dmg_notary_error "macOS is required"; [[ "$#" -eq 1 ]] || dmg_notary_error "usage"
   local dmg="$1" response unsigned_digest signed_digest stapled_digest
   [[ -f "$dmg" && ! -L "$dmg" ]] || dmg_notary_error "DMG missing or linked"
+  require_private_transaction_candidate "$dmg"
   case "$(basename "$dmg")" in Index-macOS-1.0.0-universal.dmg|IndexConnector-1.0.0-universal.dmg);; *) dmg_notary_error "unapproved filename"; return 1;; esac
   [[ -n "${CODESIGN_IDENTITY:-}" && -n "${NOTARYTOOL_PROFILE:-}" ]] || dmg_notary_error "protected inputs required"
   for t in codesign security xcrun python3 shasum hdiutil; do command -v "$t" >/dev/null || dmg_notary_error "$t required"; done

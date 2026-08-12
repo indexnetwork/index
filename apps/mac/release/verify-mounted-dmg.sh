@@ -14,10 +14,18 @@ validate_mounted_inventory() {
   local mount="$1" expected="$2"
   python3 - "$mount" "$expected" <<'PY' || mounted_error "mounted inventory contains extra content, a symlink, or an escaping path"
 import os,stat,sys
-root=os.path.abspath(sys.argv[1]); expected=sys.argv[2]
-allowed={expected,'.Trashes','.fseventsd','.Spotlight-V100','.metadata_never_index'}
+root=os.path.realpath(os.path.abspath(sys.argv[1])); expected=sys.argv[2]
+allowed_dirs={'.Trashes','.fseventsd','.Spotlight-V100'}
+allowed_files={'.metadata_never_index'}
 entries=set(os.listdir(root))
-if expected not in entries or not entries <= allowed: raise SystemExit(1)
+if expected not in entries or not entries <= {expected}|allowed_dirs|allowed_files: raise SystemExit(1)
+for name in entries-{expected}:
+ p=os.path.join(root,name); st=os.lstat(p)
+ if stat.S_ISLNK(st.st_mode): raise SystemExit(1)
+ if name in allowed_dirs:
+  if not stat.S_ISDIR(st.st_mode) or os.listdir(p): raise SystemExit(1)
+ elif name in allowed_files:
+  if not stat.S_ISREG(st.st_mode) or st.st_size != 0: raise SystemExit(1)
 product=os.path.join(root,expected); st=os.lstat(product)
 if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode): raise SystemExit(1)
 for d,ns,fs in os.walk(product,followlinks=False):

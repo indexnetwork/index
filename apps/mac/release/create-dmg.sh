@@ -7,7 +7,7 @@ package_error() { printf 'production DMG creation refused: %s\n' "$1" >&2; retur
 require_package_tool() { command -v "$1" >/dev/null 2>&1 || package_error "$1 is required"; }
 
 validate_reproducible_host() {
-  local actual_version actual_build runner
+  local actual_version actual_build actual_image actual_runner_version
   [[ -n "${INDEX_RELEASE_MACOS_VERSION:-}" && -n "${INDEX_RELEASE_MACOS_BUILD:-}" ]] \
     || package_error "pinned macOS version and build are required"
   [[ "$INDEX_RELEASE_MACOS_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ && "$INDEX_RELEASE_MACOS_BUILD" =~ ^[A-Za-z0-9]+$ ]] \
@@ -16,8 +16,12 @@ validate_reproducible_host() {
   [[ "$actual_version" == "$INDEX_RELEASE_MACOS_VERSION" && "$actual_build" == "$INDEX_RELEASE_MACOS_BUILD" ]] \
     || package_error "pinned macOS host does not match"
   if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    runner="${GITHUB_RUNNER_IMAGE:-${ImageOS:-}}:${GITHUB_RUNNER_IMAGE_VERSION:-${ImageVersion:-}}"
-    [[ "$runner" != : && "$runner" != *: ]] || package_error "pinned GitHub runner image identity/version is required"
+    [[ -n "${INDEX_RELEASE_EXPECTED_RUNNER_IMAGE:-}" && -n "${INDEX_RELEASE_EXPECTED_RUNNER_VERSION:-}" ]] \
+      || package_error "reviewed expected runner image/version is required"
+    actual_image="${ImageOS:-${GITHUB_RUNNER_IMAGE:-}}"
+    actual_runner_version="${ImageVersion:-${GITHUB_RUNNER_IMAGE_VERSION:-}}"
+    [[ "$actual_image" == "$INDEX_RELEASE_EXPECTED_RUNNER_IMAGE" && "$actual_runner_version" == "$INDEX_RELEASE_EXPECTED_RUNNER_VERSION" ]] \
+      || package_error "actual runner image/version does not match reviewed runner pins"
   fi
 }
 
@@ -59,9 +63,13 @@ create_dmg_main() (
   [[ "$(sha256 "$first")" == "$(sha256 "$second")" ]] || package_error "independent deterministic DMG hashes differ"
   # Credential-free evidence binds the reviewed host/toolchain and equal bytes.
   evidence="$temporary/reproducibility.txt"
-  printf 'macOS=%s\nbuild=%s\nrunner=%s:%s\nsha256=%s\n' "$INDEX_RELEASE_MACOS_VERSION" "$INDEX_RELEASE_MACOS_BUILD" \
-    "${GITHUB_RUNNER_IMAGE:-${ImageOS:-non-github}}" "${GITHUB_RUNNER_IMAGE_VERSION:-${ImageVersion:-non-github}}" "$(sha256 "$first")" >"$evidence"
-  [[ ! -e "$output" ]] || package_error "refusing to overwrite an existing candidate"
-  mkdir -p "$(dirname "$output")"; mv "$first" "$output"
+  printf 'macOS.actual=%s\nmacOS.expected=%s\nbuild.actual=%s\nbuild.expected=%s\nrunner.actual=%s:%s\nrunner.expected=%s:%s\nartifact.sha256=%s\n' \
+    "$(sw_vers -productVersion)" "$INDEX_RELEASE_MACOS_VERSION" "$(sw_vers -buildVersion)" "$INDEX_RELEASE_MACOS_BUILD" \
+    "${ImageOS:-${GITHUB_RUNNER_IMAGE:-non-github}}" "${ImageVersion:-${GITHUB_RUNNER_IMAGE_VERSION:-non-github}}" \
+    "${INDEX_RELEASE_EXPECTED_RUNNER_IMAGE:-non-github}" "${INDEX_RELEASE_EXPECTED_RUNNER_VERSION:-non-github}" "$(sha256 "$first")" >"$evidence"
+  [[ ! -e "$output" && ! -e "${output}.reproducibility.txt" ]] || package_error "refusing to overwrite an existing candidate"
+  mkdir -p "$(dirname "$output")"
+  mv "$evidence" "${output}.reproducibility.txt"
+  mv "$first" "$output"
 )
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then create_dmg_main "$@"; fi
