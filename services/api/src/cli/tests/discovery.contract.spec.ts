@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, abAttestationRefusal, abUsage, classifyAbParentFailure, describeAbFailure } from '../discovery.contract';
+import { AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, HistoricalQualitySpentRunError, abAttestationRefusal, abUsage, classifyAbParentFailure, describeAbFailure } from '../discovery.contract';
 import { AbGateError } from '../discovery.gate';
 
 const CLI_DIR = path.resolve(import.meta.dir, '..');
@@ -114,10 +114,12 @@ describe('discovery --help', () => {
 describe('abUsage', () => {
   const usage = abUsage();
 
-  it('states the manifest shape, so an operator can build one from the help alone', () => {
+  it('states the manifest shape and v2 projection compatibility, so an operator can build one from the help alone', () => {
     expect(usage).toContain('DISCOVERY_TARGETS');
     expect(usage).toContain('"sideId":"a"');
     expect(usage).toContain('"baseBranchId":"br-..."');
+    expect(usage).toContain('strict version-2 historical-quality manifest');
+    expect(usage).toContain('projects only its two child targets');
   });
 
   it('states every flag', () => {
@@ -318,6 +320,35 @@ describe('classifyAbParentFailure', () => {
     expect(classified.cause).toBe(cause);
     expect(classified.stage).toBe('spawned');
     expect(describeAbFailure(classified).message).not.toContain('hunter2secret');
+  });
+
+  it('reports cumulative prior-slot spend while preserving the current restore stage', () => {
+    const failure = new HistoricalQualitySpentRunError(
+      'resetting',
+      'restore-failure',
+      undefined,
+      { shape: 'single', priorSideStarted: true },
+    );
+    const report = describeAbFailure(failure);
+    expect(report.message).toContain('while restoring eval-ab-a');
+    expect(report.message).toContain('a prior slot side process was started');
+    expect(report.message).not.toContain('no side was confirmed started');
+  });
+
+  it('reports historical primary and artifact-write failures as separate opaque classes at exit 4', () => {
+    const cause = new Error('Authorization: Bearer raw-secret');
+    const failure = new HistoricalQualitySpentRunError(
+      'spawned',
+      'supervisor-timeout',
+      'artifact-write-failure',
+      { shape: 'single', cause },
+    );
+    const report = describeAbFailure(failure);
+    expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
+    expect(report.message).toContain('supervisor-timeout');
+    expect(report.message).toContain('artifact-write-failure');
+    expect(report.message).not.toContain('raw-secret');
+    expect(failure.cause).toBe(cause);
   });
 });
 

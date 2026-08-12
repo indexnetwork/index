@@ -31,7 +31,34 @@ const DEFAULT_POLL_TIMEOUT_MS = 120_000;
 export const AB_BRANCH_NAMES = { a: 'eval-ab-a', b: 'eval-ab-b' } as const;
 
 export interface AbTarget { sideId: 'a' | 'b'; branchId: string; endpointId: string; databaseUrl: string }
-export interface AbManifest { projectId: string; baseBranchId: string; targets: readonly [AbTarget, AbTarget] }
+export interface LegacyAbManifest { projectId: string; baseBranchId: string; targets: readonly [AbTarget, AbTarget] }
+/** Backwards-compatible name retained for every existing A/B caller. */
+export type AbManifest = LegacyAbManifest;
+export interface DiscoveryManifestV2 {
+  version: 2;
+  projectId: string;
+  baseBranchId: string;
+  baseReadReplica: { endpointId: string; databaseUrl: string };
+  targets: readonly [AbTarget, AbTarget];
+}
+export type DiscoveryManifest = LegacyAbManifest | DiscoveryManifestV2;
+
+export interface QualityBaseRefreshTargetV2 {
+  version: 2;
+  projectId: string;
+  branchId: string;
+  endpointId: string;
+  databaseName: 'protocol_eval';
+  databaseUrl: string;
+}
+
+declare const WRITABLE_REFRESH_ATTESTED: unique symbol;
+export type AttestedWritableQualityBaseTarget = QualityBaseRefreshTargetV2 & {
+  endpointType: 'read_write';
+  branchName: 'eval-discovery-base';
+  primary: false;
+  readonly [WRITABLE_REFRESH_ATTESTED]: true;
+};
 
 /**
  * Module-private brand. It is `declare`d, so it exists only in the type system
@@ -47,6 +74,9 @@ declare const ATTESTED: unique symbol;
  * rather than a convention. The runtime membership check is kept as well.
  */
 export type AttestedAbManifest = AbManifest & { readonly [ATTESTED]: true };
+
+declare const QUALITY_ATTESTED: unique symbol;
+export type AttestedHistoricalQualityManifest = DiscoveryManifestV2 & { readonly [QUALITY_ATTESTED]: true };
 
 function asRecord(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(message);
@@ -77,7 +107,16 @@ function parseUrl(value: string): URL | null {
  * the port rejects nothing legitimate; pinning the database name is what keeps a
  * side from being pointed at some other database on a Neon host.
  */
-function assertNeonPostgresUrl(value: string, field: string): void {
+function hasNonBlankDecodedCredentials(url: URL): boolean {
+  try {
+    return decodeURIComponent(url.username).trim().length > 0
+      && decodeURIComponent(url.password).trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function assertNeonPostgresUrl(value: string, field: string, strictQueryFree = false): void {
   const url = parseUrl(value);
   if (!url || (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') || !url.hostname.endsWith('.neon.tech')) {
     throw new Error(`Discovery manifest ${field} must be a postgres URL on a Neon host`);
@@ -88,10 +127,25 @@ function assertNeonPostgresUrl(value: string, field: string): void {
   if (url.port && url.port !== '5432') {
     throw new Error(`Discovery manifest ${field} port must be exactly 5432`);
   }
+  if (strictQueryFree && !hasNonBlankDecodedCredentials(url)) {
+    throw new Error(`Discovery manifest ${field} must contain database credentials`);
+  }
+  if (strictQueryFree && (url.search !== '' || url.hash !== '')) {
+    throw new Error(`Discovery manifest ${field} must not contain query parameters or fragments`);
+  }
 }
 
-function parseTarget(value: unknown, index: number): AbTarget {
+function assertExactKeys(value: Record<string, unknown>, expected: readonly string[], label: string): void {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+    throw new Error(`Discovery manifest ${label} must contain exactly the documented fields`);
+  }
+}
+
+function parseTarget(value: unknown, index: number, strict = false): AbTarget {
   const entry = asRecord(value, `Discovery manifest target ${index} must be an object`);
+  if (strict) assertExactKeys(entry, ['sideId', 'branchId', 'endpointId', 'databaseUrl'], `target ${index}`);
   const sideId = entry.sideId;
   if (sideId !== 'a' && sideId !== 'b') throw new Error(`Discovery manifest target ${index} sideId must be "a" or "b"`);
   const target: AbTarget = {
@@ -100,7 +154,7 @@ function parseTarget(value: unknown, index: number): AbTarget {
     endpointId: asString(entry.endpointId, `target ${index} endpointId`),
     databaseUrl: asString(entry.databaseUrl, `target ${index} databaseUrl`),
   };
-  assertNeonPostgresUrl(target.databaseUrl, `target ${index} databaseUrl`);
+  assertNeonPostgresUrl(target.databaseUrl, `target ${index} databaseUrl`, strict);
   return target;
 }
 
@@ -113,7 +167,7 @@ function parseTarget(value: unknown, index: number): AbTarget {
  * The two sides are returned in canonical order (a, then b) so callers can index
  * them without re-sorting.
  */
-export function parseAbManifest(raw: string | undefined): AbManifest {
+function parseJsonManifest(raw: string | undefined): Record<string, unknown> {
   if (raw === undefined || raw.trim() === '') throw new Error('Discovery manifest is required');
   let parsed: unknown;
   try {
@@ -121,13 +175,20 @@ export function parseAbManifest(raw: string | undefined): AbManifest {
   } catch {
     throw new Error('Discovery manifest must be valid JSON');
   }
-  const root = asRecord(parsed, 'Discovery manifest must be an object');
-  const projectId = asString(root.projectId, 'projectId');
-  const baseBranchId = asString(root.baseBranchId, 'baseBranchId');
+  return asRecord(parsed, 'Discovery manifest must be an object');
+}
+
+function assertPairwiseDistinctRoleIds(ids: readonly string[]): void {
+  if (new Set(ids).size !== ids.length) {
+    throw new Error('Discovery manifest project, branch, and endpoint role identifiers must be pairwise distinct');
+  }
+}
+
+function parseTargets(root: Record<string, unknown>, baseBranchId: string, strict: boolean): readonly [AbTarget, AbTarget] {
   if (!Array.isArray(root.targets) || root.targets.length !== 2) {
     throw new Error('Discovery manifest must name exactly two sides');
   }
-  const targets = root.targets.map(parseTarget);
+  const targets = root.targets.map((value, index) => parseTarget(value, index, strict));
   const sideA = targets.find((target) => target.sideId === 'a');
   const sideB = targets.find((target) => target.sideId === 'b');
   if (!sideA || !sideB) throw new Error('Discovery manifest must name one side a and one side b');
@@ -137,7 +198,116 @@ export function parseAbManifest(raw: string | undefined): AbManifest {
   if (sideA.branchId === baseBranchId || sideB.branchId === baseBranchId) {
     throw new Error('Discovery manifest sides must not name the base branch');
   }
-  return { projectId, baseBranchId, targets: [sideA, sideB] };
+  return [sideA, sideB];
+}
+
+/**
+ * Parses legacy/unversioned A/B input. A strict v2 document is accepted by
+ * projecting only its two durable child targets, so existing A/B execution
+ * never receives the read-replica URL.
+ */
+export function parseLegacyAbManifest(raw: string | undefined): LegacyAbManifest {
+  const root = parseJsonManifest(raw);
+  if (root.version === 2) {
+    const quality = parseHistoricalQualityManifest(raw);
+    return { projectId: quality.projectId, baseBranchId: quality.baseBranchId, targets: quality.targets };
+  }
+  const projectId = asString(root.projectId, 'projectId');
+  const baseBranchId = asString(root.baseBranchId, 'baseBranchId');
+  return { projectId, baseBranchId, targets: parseTargets(root, baseBranchId, false) };
+}
+
+/** Backwards-compatible parser export used by legacy callers. */
+export function parseAbManifest(raw: string | undefined): AbManifest {
+  return parseLegacyAbManifest(raw);
+}
+
+/** Parses the exact historical-quality v2 declaration, rejecting all extras. */
+export function parseHistoricalQualityManifest(raw: string | undefined): DiscoveryManifestV2 {
+  const root = parseJsonManifest(raw);
+  assertExactKeys(root, ['version', 'projectId', 'baseBranchId', 'baseReadReplica', 'targets'], 'v2 root');
+  if (root.version !== 2) throw new Error('Historical quality discovery manifest must use version 2');
+  const projectId = asString(root.projectId, 'projectId');
+  const baseBranchId = asString(root.baseBranchId, 'baseBranchId');
+  const replica = asRecord(root.baseReadReplica, 'Discovery manifest baseReadReplica must be an object');
+  assertExactKeys(replica, ['endpointId', 'databaseUrl'], 'baseReadReplica');
+  const baseReadReplica = {
+    endpointId: asString(replica.endpointId, 'baseReadReplica endpointId'),
+    databaseUrl: asString(replica.databaseUrl, 'baseReadReplica databaseUrl'),
+  };
+  assertNeonPostgresUrl(baseReadReplica.databaseUrl, 'baseReadReplica databaseUrl', true);
+  const targets = parseTargets(root, baseBranchId, true);
+  assertPairwiseDistinctRoleIds([
+    projectId,
+    baseBranchId,
+    baseReadReplica.endpointId,
+    ...targets.flatMap((target) => [target.branchId, target.endpointId]),
+  ]);
+  const urls = [baseReadReplica.databaseUrl, ...targets.map((target) => target.databaseUrl)];
+  if (new Set(urls).size !== urls.length) {
+    throw new Error('Discovery manifest endpoint URL roles must be distinct');
+  }
+  return { version: 2, projectId, baseBranchId, baseReadReplica, targets };
+}
+
+/**
+ * Strict quality attestation: one read-only endpoint on the exact protected
+ * base plus two read-write endpoints on the exact durable child branches.
+ * Provider/control-plane errors are collapsed so response bodies and URL
+ * credentials never enter an operator-visible error.
+ */
+export async function attestHistoricalQualityTargets(input: {
+  manifest: DiscoveryManifestV2;
+  writableRefreshTarget: AttestedWritableQualityBaseTarget;
+  controlPlane: NeonControlPlane;
+}): Promise<AttestedHistoricalQualityManifest> {
+  try {
+    const { manifest, writableRefreshTarget: refresh, controlPlane } = input;
+    if (refresh.projectId !== manifest.projectId || refresh.branchId !== manifest.baseBranchId
+      || refresh.databaseName !== 'protocol_eval' || refresh.endpointType !== 'read_write'
+      || refresh.branchName !== BASE_NAME || refresh.primary !== false) throw new Error('refresh binding');
+    assertPairwiseDistinctRoleIds([
+      manifest.projectId,
+      manifest.baseBranchId,
+      manifest.baseReadReplica.endpointId,
+      refresh.endpointId,
+      ...manifest.targets.flatMap((target) => [target.branchId, target.endpointId]),
+    ]);
+    if ([manifest.baseReadReplica.databaseUrl, ...manifest.targets.map((target) => target.databaseUrl)].includes(refresh.databaseUrl)) {
+      throw new Error('refresh URL crossing');
+    }
+
+    const base = await controlPlane.getBranch(manifest.projectId, manifest.baseBranchId);
+    if (base.id !== manifest.baseBranchId || base.name !== BASE_NAME || base.primary) throw new Error('base');
+    const baseUrl = parseUrl(manifest.baseReadReplica.databaseUrl);
+    const refreshUrl = parseUrl(refresh.databaseUrl);
+    const baseEndpoints = await controlPlane.listEndpoints(manifest.projectId, manifest.baseBranchId);
+    const replica = baseEndpoints.find((candidate) => candidate.id === manifest.baseReadReplica.endpointId);
+    const refreshEndpoint = baseEndpoints.find((candidate) => candidate.id === refresh.endpointId);
+    if (!baseUrl || !replica || replica.branchId !== base.id || replica.type !== 'read_only'
+      || !isEndpointHost(baseUrl.hostname, replica.host)) throw new Error('replica');
+    if (!refreshUrl || !refreshEndpoint || refreshEndpoint.branchId !== base.id || refreshEndpoint.type !== 'read_write'
+      || !isEndpointHost(refreshUrl.hostname, refreshEndpoint.host) || refreshEndpoint.host === replica.host) throw new Error('refresh');
+    const childEndpointIds = new Set(manifest.targets.map((target) => target.endpointId));
+    if (baseEndpoints.some((endpoint) => childEndpointIds.has(endpoint.id))) throw new Error('base/child endpoint crossing');
+    const endpointHosts = new Set([replica.host, refreshEndpoint.host]);
+
+    for (const target of manifest.targets) {
+      if (target.branchId === base.id || target.endpointId === replica.id || target.endpointId === refreshEndpoint.id) throw new Error('crossed role');
+      const branch = await controlPlane.getBranch(manifest.projectId, target.branchId);
+      if (branch.id !== target.branchId || branch.name !== AB_BRANCH_NAMES[target.sideId]
+        || branch.parentId !== base.id || branch.primary) throw new Error('child branch');
+      const url = parseUrl(target.databaseUrl);
+      const endpoints = await controlPlane.listEndpoints(manifest.projectId, target.branchId);
+      const endpoint = endpoints.find((candidate) => candidate.id === target.endpointId);
+      if (!url || !endpoint || endpoint.branchId !== branch.id || endpoint.type !== 'read_write'
+        || !isEndpointHost(url.hostname, endpoint.host) || endpointHosts.has(endpoint.host)) throw new Error('child endpoint');
+      endpointHosts.add(endpoint.host);
+    }
+    return manifest as AttestedHistoricalQualityManifest;
+  } catch {
+    throw new Error('Historical quality discovery targets failed control-plane attestation');
+  }
 }
 
 /**
@@ -277,33 +447,70 @@ async function awaitOperations(input: {
  * branch that is still being overwritten. Poll interval and timeout are
  * injectable so tests do not sleep.
  */
-export async function resetAbBranch(input: {
-  manifest: AttestedAbManifest; branchId: string; apiKey: string; fetchImpl?: typeof fetch;
+interface AttestedRestoreTopology {
+  projectId: string;
+  baseBranchId: string;
+  targets: readonly AbTarget[];
+}
+
+/** Shared control-plane primitive; public wrappers retain their distinct brands. */
+async function restoreAttestedBranch(input: {
+  topology: AttestedRestoreTopology; branchId: string; apiKey: string; fetchImpl?: typeof fetch;
   pollIntervalMs?: number; pollTimeoutMs?: number;
 }): Promise<void> {
-  const { manifest, branchId, apiKey } = input;
-  if (!manifest.targets.some((target) => target.branchId === branchId)) {
+  const { topology, branchId, apiKey } = input;
+  if (!topology.targets.some((target) => target.branchId === branchId)) {
     throw new Error(`${branchId} is not a designated A/B branch; refusing to reset it`);
   }
   const send = input.fetchImpl ?? fetch;
   const response = await send(
-    `${NEON_API_ORIGIN}/projects/${encodeURIComponent(manifest.projectId)}/branches/${encodeURIComponent(branchId)}/restore`,
+    `${NEON_API_ORIGIN}/projects/${encodeURIComponent(topology.projectId)}/branches/${encodeURIComponent(branchId)}/restore`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_branch_id: manifest.baseBranchId }),
+      body: JSON.stringify({ source_branch_id: topology.baseBranchId }),
       redirect: 'error',
     },
   );
-  // The body may echo credentials; only the status is safe to report.
   if (!response.ok) throw new Error(`Neon control-plane reset failed with status ${response.status}`);
   const operationIds = readOperationIds(await readJson(response, 'restore'));
   await awaitOperations({
-    projectId: manifest.projectId,
+    projectId: topology.projectId,
     operationIds,
     apiKey,
     send,
     pollIntervalMs: input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     pollTimeoutMs: input.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
+  });
+}
+
+export async function resetAbBranch(input: {
+  manifest: AttestedAbManifest; branchId: string; apiKey: string; fetchImpl?: typeof fetch;
+  pollIntervalMs?: number; pollTimeoutMs?: number;
+}): Promise<void> {
+  return restoreAttestedBranch({
+    topology: input.manifest,
+    branchId: input.branchId,
+    apiKey: input.apiKey,
+    ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
+    ...(input.pollIntervalMs === undefined ? {} : { pollIntervalMs: input.pollIntervalMs }),
+    ...(input.pollTimeoutMs === undefined ? {} : { pollTimeoutMs: input.pollTimeoutMs }),
+  });
+}
+
+/** Restores exactly v2 side a; no v2-to-legacy brand conversion exists. */
+export async function restoreHistoricalQualitySelectedChild(input: {
+  manifest: AttestedHistoricalQualityManifest; apiKey: string; fetchImpl?: typeof fetch;
+  pollIntervalMs?: number; pollTimeoutMs?: number;
+}): Promise<void> {
+  const selected = input.manifest.targets.find((target) => target.sideId === 'a');
+  if (!selected) throw new Error('Historical quality topology does not designate side a');
+  return restoreAttestedBranch({
+    topology: input.manifest,
+    branchId: selected.branchId,
+    apiKey: input.apiKey,
+    ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
+    ...(input.pollIntervalMs === undefined ? {} : { pollIntervalMs: input.pollIntervalMs }),
+    ...(input.pollTimeoutMs === undefined ? {} : { pollTimeoutMs: input.pollTimeoutMs }),
   });
 }

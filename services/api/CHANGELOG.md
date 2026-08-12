@@ -10,6 +10,7 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- Add guarded historical-quality runtime reconciliation (API 0.83.1), including the compatible quality-attestation migration after the dev-owned Hermes migration history.
 - Add Hermes backend production assurance (API 0.83.0): a provider-free PostgreSQL 16 release gate now migrates the dedicated disposable `hermes_assurance` database and runs real authority, lifecycle/fault, 100,000-row migration-preflight, aggregate expiry-telemetry, stale/expired Index-coverage, and emergency concurrency/rollback evidence. Release dispatch requires explicit approved lock/total thresholds and the immutable currently deployed API digest; CI exercises emergency control in dry-run mode only and publishes fixed-schema credential-free evidence.
 - Add operator rollout and emergency rollback runbooks for server-before-client deployment, dashboard/expiry checks, forward-fix-first response, and the strict pause → bulk revoke → zero-authority verification → older-binary order.
 - Secure standalone Hermes and native Index-owner authorization (API 0.82.0): canonical PKCE loopback consent, one-time codes, hash-only `idxh_`/`idxo_` credential persistence, 30-day expiry without refresh, Keychain-confirmed activation, exact revocation receipts, and legacy plaintext-era revocation/fresh-login migration.

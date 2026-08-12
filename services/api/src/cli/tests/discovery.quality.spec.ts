@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import path from 'node:path';
 
 import { runDiscoveryBootstrap, type DiscoveryBootstrapDependencies } from '../discovery';
-import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, HISTORICAL_QUALITY_PR_A_REFUSAL, formatHistoricalQualityCost, historicalQualityCost, historicalQualityUsage, parseHistoricalQualityArgs, runHistoricalQualityPrARefusal } from '../discovery-quality.contract';
+import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, formatHistoricalQualityCost, historicalQualityCost, historicalQualityUsage, parseHistoricalQualityArgs, type HistoricalQualityRequest } from '../discovery-quality.contract';
 
 const BOOTSTRAP = path.resolve(import.meta.dir, '../discovery.ts');
 const fullArgs = ['--historical-quality', '--env', 'DISCOVERY_ALLOWED_TYPES=intent,profile'] as const;
@@ -44,7 +44,7 @@ describe('historical quality argument contract', () => {
       'Historical quality cost: 5 cases x 2 triggers x 1 repetition = 10 graph invocations and 10 evaluator calls.',
       'Execution policy: restore before every slot; one attempt and one evaluator call per slot.',
       'Verdict policy: a case or trigger subset produces evidence only; no subset verdict.',
-      'PR A performs no base verification; pre-reset read-only base verification is delivered by PR B.',
+      'Safety order: attest topology; verify the protected base read-only; then restore side a before each serial slot.',
     ].join('\n'));
     expect(formatHistoricalQualityCost(three)).toContain('5 cases x 2 triggers x 3 repetitions = 30 graph invocations and 30 evaluator calls.');
   });
@@ -73,8 +73,8 @@ describe('historical quality argument contract', () => {
   });
 });
 
-describe('historical quality provider-free contract', () => {
-  it('documents every quality flag and the PR A/PR B safety boundary', () => {
+describe('historical quality provider-free preflight contract', () => {
+  it('documents every quality flag and the guarded runtime safety boundary', () => {
     const usage = historicalQualityUsage();
     for (const flag of ['--historical-quality', '--case', '--trigger', '--runs', '--env', '--report', '--force']) {
       expect(usage).toContain(flag);
@@ -82,21 +82,9 @@ describe('historical quality provider-free contract', () => {
     expect(usage).toContain('restore before every slot');
     expect(usage).toContain('one attempt');
     expect(usage).toContain('no subset verdict');
-    expect(usage).toContain('PR A performs no base verification; pre-reset read-only base verification is delivered by PR B.');
-    expect(usage).not.toContain('PR A verifies');
-    expect(usage).not.toContain('PR A resets');
-  });
-
-  it('prints cost then the fixed classified PR A refusal', () => {
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-    const request = parseHistoricalQualityArgs([...fullArgs, '--runs', '1']);
-    expect(runHistoricalQualityPrARefusal(request, {
-      log: (message?: unknown) => stdout.push(String(message)),
-      error: (message?: unknown) => stderr.push(String(message)),
-    })).toBe(2);
-    expect(stdout).toEqual([formatHistoricalQualityCost(request)]);
-    expect(stderr).toEqual([HISTORICAL_QUALITY_PR_A_REFUSAL]);
+    expect(usage).toContain('attests topology');
+    expect(usage).toContain('verifies the protected base read-only before the first restore');
+    expect(usage).not.toContain('runtime is not available');
   });
 
   const spawn = async (args: readonly string[]) => {
@@ -114,12 +102,12 @@ describe('historical quality provider-free contract', () => {
     expect(result).toEqual({ stdout: `${historicalQualityUsage()}\n`, stderr: '', exitCode: 0 });
   }, 30_000);
 
-  it('refuses a non-help quality request before the legacy gate, manifest, Neon, or runtime', async () => {
+  it('prints cost then refuses an unconfirmed request before manifest or Neon access', async () => {
     const request = parseHistoricalQualityArgs([...fullArgs, '--runs', '1']);
     const result = await spawn([...fullArgs, '--runs', '1']);
     expect(result).toEqual({
       stdout: `${formatHistoricalQualityCost(request)}\n`,
-      stderr: `${HISTORICAL_QUALITY_PR_A_REFUSAL}\n`,
+      stderr: 'Refusing to mutate: set DISCOVERY_CONFIRM=1\n',
       exitCode: 2,
     });
   }, 30_000);
@@ -135,6 +123,8 @@ describe('historical quality provider-free contract', () => {
       redisComposition: 0,
       graphComposition: 0,
       dynamicRuntimeImport: 0,
+      qualityRuntimeImport: 0,
+      qualityDispatch: 0,
     };
     const dependencies: DiscoveryBootstrapDependencies = {
       assertConfirmation: () => { calls.confirmation += 1; },
@@ -157,11 +147,15 @@ describe('historical quality provider-free contract', () => {
           },
         };
       },
+      importQualityRuntime: async () => {
+        calls.qualityRuntimeImport += 1;
+        return { runHistoricalQualityRuntime: async () => { calls.qualityDispatch += 1; } };
+      },
     };
     return { calls, dependencies };
   };
 
-  it('refuses through the production bootstrap seam before every gate and runtime operation', async () => {
+  it('dispatches through the quality seam without touching the legacy gate or runtime', async () => {
     const { calls, dependencies } = instrumentBootstrap();
     const stdout: string[] = [];
     const stderr: string[] = [];
@@ -177,10 +171,11 @@ describe('historical quality provider-free contract', () => {
       dependencies,
     );
 
-    expect(exitCode).toBe(2);
+    expect(exitCode).toBeUndefined();
     expect(stdout).toEqual([formatHistoricalQualityCost(request)]);
-    expect(stderr).toEqual([HISTORICAL_QUALITY_PR_A_REFUSAL]);
-    expect(Object.values(calls)).toEqual(Array(9).fill(0));
+    expect(stderr).toEqual([]);
+    expect(calls).toMatchObject({ qualityRuntimeImport: 1, qualityDispatch: 1 });
+    expect(Object.entries(calls).filter(([key]) => !key.startsWith('quality')).map(([, value]) => value)).toEqual(Array(9).fill(0));
   });
 
   it.each([
@@ -198,6 +193,96 @@ describe('historical quality provider-free contract', () => {
       dependencies,
     )).rejects.toThrow(expected);
 
-    expect(Object.values(calls)).toEqual(Array(9).fill(0));
+    expect(Object.values(calls)).toEqual(Array(11).fill(0));
+  });
+});
+
+describe('historical quality PR B dispatch acceptance', () => {
+  it('recognizes a direct quality child before legacy parsing and refuses through the child-runtime seam', async () => {
+    const calls: string[] = [];
+    const dependencies = {
+      assertConfirmation: () => { calls.push('legacy-confirmation'); },
+      parseManifest: () => { calls.push('legacy-manifest'); throw new Error('legacy parser must not run'); },
+      attestTargets: async () => { calls.push('legacy-attest'); },
+      importRuntime: async () => ({ main: async () => { calls.push('legacy-runtime'); } }),
+      importQualityChildRuntime: async () => {
+        calls.push('quality-child-preflight');
+        throw new Error('Historical quality child runtime is unavailable');
+      },
+    } as DiscoveryBootstrapDependencies & {
+      importQualityChildRuntime(): Promise<never>;
+    };
+
+    await expect(runDiscoveryBootstrap(
+      ['--historical-quality-child', '--run-id', 'run', '--slot-id', 'slot', '--configuration-id', 'a'],
+      {},
+      { log: () => {}, error: () => {} },
+      dependencies,
+    )).rejects.toThrow(/child runtime is unavailable/);
+    expect(calls).toEqual(['quality-child-preflight']);
+  });
+
+  it.each([0, 3] as const)('preserves historical quality runtime exit %i through the top-level bootstrap', async (exitCode) => {
+    const previous = process.exitCode;
+    process.exitCode = undefined;
+    const dependencies: DiscoveryBootstrapDependencies = {
+      assertConfirmation: () => { throw new Error('legacy gate must not run'); },
+      parseManifest: () => { throw new Error('legacy manifest must not parse'); },
+      attestTargets: async () => { throw new Error('legacy attestation must not run'); },
+      importRuntime: async () => { throw new Error('legacy runtime must not load'); },
+      importQualityRuntime: async () => ({
+        runHistoricalQualityRuntime: async () => { process.exitCode = exitCode; },
+      }),
+    };
+    try {
+      expect(await runDiscoveryBootstrap(fullArgs, {}, { log: () => {}, error: () => {} }, dependencies)).toBeUndefined();
+      expect(Number(process.exitCode)).toBe(exitCode);
+    } finally {
+      process.exitCode = previous;
+    }
+  });
+
+  it('passes the parsed request to the dedicated quality runtime instead of legacy A/B', async () => {
+    const calls: string[] = [];
+    let dispatchedRequest: HistoricalQualityRequest | undefined;
+    const dependencies: DiscoveryBootstrapDependencies & {
+      importQualityRuntime(): Promise<{
+        runHistoricalQualityRuntime(request: HistoricalQualityRequest): Promise<void>;
+      }>;
+    } = {
+      assertConfirmation: () => { calls.push('legacy-confirmation'); },
+      parseManifest: () => {
+        calls.push('legacy-manifest');
+        throw new Error('quality dispatch must not parse the legacy A/B manifest');
+      },
+      attestTargets: async () => { calls.push('legacy-attest'); },
+      importRuntime: async () => {
+        calls.push('legacy-runtime-import');
+        return { main: async () => { calls.push('legacy-dispatch'); } };
+      },
+      importQualityRuntime: async () => {
+        calls.push('quality-runtime-import');
+        return {
+          runHistoricalQualityRuntime: async (request) => {
+            calls.push('quality-dispatch');
+            dispatchedRequest = request;
+          },
+        };
+      },
+    };
+    const stderr: string[] = [];
+    const request: HistoricalQualityRequest = parseHistoricalQualityArgs([...fullArgs, '--runs', '1']);
+
+    const result = await runDiscoveryBootstrap(
+      [...fullArgs, '--runs', '1'],
+      { DISCOVERY_CONFIRM: '1', TEST_DATABASE_SAFE: '1' },
+      { log: () => {}, error: (message?: unknown) => stderr.push(String(message)) },
+      dependencies,
+    );
+
+    expect(result).toBeUndefined();
+    expect(stderr).toEqual([]);
+    expect(calls).toEqual(['quality-runtime-import', 'quality-dispatch']);
+    expect(dispatchedRequest).toEqual(request);
   });
 });
