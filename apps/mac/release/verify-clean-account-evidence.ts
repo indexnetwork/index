@@ -44,7 +44,20 @@ export function verifyCleanAccountEvidence(value: unknown): void {
   if (evidence.secretScanMatches !== 0) refuse("secret scan must be clean"); exactHashes(evidence.screenshotHashes, "screenshot hashes"); exactHashes(evidence.logHashes, "log hashes");
 }
 
-function readCanonical(path: string): Record<string, unknown> { const bytes = readFileSync(path, "utf8"); if (!bytes.endsWith("\n") || bytes.trim() !== bytes.slice(0, -1)) refuse("evidence JSON must be line terminated without surrounding whitespace"); const value = JSON.parse(bytes); verifyCleanAccountEvidence(value); return value as Record<string, unknown>; }
+function ordered(value: unknown): unknown {
+  return Array.isArray(value)
+    ? value.map(ordered)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [key, ordered((value as Record<string, unknown>)[key])]))
+      : value;
+}
+function canonical(value: unknown): string { return `${JSON.stringify(ordered(value))}\n`; }
+function readCanonical(path: string): Record<string, unknown> {
+  const bytes = readFileSync(path, "utf8"); let value: unknown;
+  try { value = JSON.parse(bytes); } catch { refuse("evidence JSON is invalid or noncanonical"); }
+  if (bytes !== canonical(value)) refuse("evidence JSON bytes must be exact canonical JSON plus one final newline");
+  verifyCleanAccountEvidence(value); return value as Record<string, unknown>;
+}
 export function verifyCleanAccountEvidencePair(values: unknown[]): void {
   if (values.length !== 2) refuse("exactly two evidence records are required"); values.forEach(verifyCleanAccountEvidence); const records = values as Record<string, unknown>[];
   if (new Set(records.map((item) => item.architecture)).size !== 2 || !records.some((item) => item.architecture === "arm64") || !records.some((item) => item.architecture === "x86_64")) refuse("one arm64 and one x86_64 record are required");
@@ -53,7 +66,7 @@ export function verifyCleanAccountEvidencePair(values: unknown[]): void {
   const testers = new Set(records.map((item) => item.tester)), approvers = records.map((item) => item.approver), authorities = records.map((item) => item.approvalAuthority);
   if (new Set(approvers).size !== 2 || approvers.some((approver) => testers.has(approver)) || new Set(authorities).size !== 2) refuse("architecture records require independent approvers and authorities");
 }
-function verifySignedRecord(jsonPath: string, cmsPath: string, expectedPin: string): Record<string, unknown> {
+function verifySignedRecord(jsonPath: string, cmsPath: string, expectedPin: string, expectedArchitecture: "arm64" | "x86_64"): Record<string, unknown> {
   if (!SHA256.test(expectedPin)) refuse("reviewed approval certificate pin is missing or invalid");
   const work = mkdtempSync(join(tmpdir(), "index-approval-cms.")); const recovered = join(work, "record.json"), signer = join(work, "signer.pem");
   try {
@@ -61,13 +74,14 @@ function verifySignedRecord(jsonPath: string, cmsPath: string, expectedPin: stri
     if (result.status !== 0 || !readFileSync(recovered).equals(readFileSync(jsonPath))) refuse("approval signature or exact record bytes are invalid");
     const value = readCanonical(jsonPath); const signerPin = hashCertificate(signer);
     if (signerPin !== expectedPin || value.approvalAuthority !== signerPin) refuse("approval signer does not match reviewed local authority pin");
+    if (value.architecture !== expectedArchitecture) refuse(`${expectedArchitecture} approval pin requires an ${expectedArchitecture} evidence record`);
     return value;
   } finally { rmSync(work, { recursive: true, force: true }); }
 }
 
 export function verifySignedCleanAccountEvidencePair(armJson: string, armCms: string, intelJson: string, intelCms: string): Record<string, unknown>[] {
-  const arm = verifySignedRecord(armJson, armCms, process.env.INDEX_RELEASE_APPROVAL_CERT_SHA256_ARM64 ?? "");
-  const intel = verifySignedRecord(intelJson, intelCms, process.env.INDEX_RELEASE_APPROVAL_CERT_SHA256_X86_64 ?? "");
+  const arm = verifySignedRecord(armJson, armCms, process.env.INDEX_RELEASE_APPROVAL_CERT_SHA256_ARM64 ?? "", "arm64");
+  const intel = verifySignedRecord(intelJson, intelCms, process.env.INDEX_RELEASE_APPROVAL_CERT_SHA256_X86_64 ?? "", "x86_64");
   verifyCleanAccountEvidencePair([arm, intel]); return [arm, intel];
 }
 

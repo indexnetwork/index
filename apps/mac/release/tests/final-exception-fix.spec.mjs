@@ -63,6 +63,33 @@ test("authenticated approval authority refuses unsigned, forged, one-signer, cro
   expect(run("bun", pair, fx.env).status).not.toBe(0);
 });
 
+test("architecture trust pins cannot authenticate swapped architecture records", () => {
+  const fx = signedPair(), pair = [verifier, "--pair", fx.armJson, fx.armCms, fx.intelJson, fx.intelCms];
+  writeFileSync(fx.armJson, canonical(evidence("x86_64", fx.armSigner.digest)));
+  writeFileSync(fx.intelJson, canonical(evidence("arm64", fx.intelSigner.digest)));
+  sign(fx.armJson, fx.armSigner, fx.armCms); sign(fx.intelJson, fx.intelSigner, fx.intelCms);
+  const result = run("bun", pair, fx.env);
+  expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain("arm64");
+});
+
+test("signed evidence bytes must be exact canonical JSON plus one newline", () => {
+  const cases = [
+    (value) => `${JSON.stringify(value)}\n`,
+    (value) => `${JSON.stringify(value, null, 2)}\n`,
+    (value) => canonical(value).replace('"approved":true,', '"approved":true,"approved":true,'),
+    (value) => canonical(value).replace('"releaseVersion":"1.0.0"', '"releaseVersion":"1.0.\\u0030"'),
+  ];
+  for (const mutate of cases) {
+    const fx = signedPair(), pair = [verifier, "--pair", fx.armJson, fx.armCms, fx.intelJson, fx.intelCms];
+    writeFileSync(fx.armJson, mutate(evidence("arm64", fx.armSigner.digest)));
+    sign(fx.armJson, fx.armSigner, fx.armCms);
+    const result = run("bun", pair, fx.env);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("canonical");
+  }
+});
+
 test("exact attestation route requires one recorded id and complete run-bound candidate subjects", () => {
   const dir = fixture("attestation-route-"), candidate = join(dir, "candidate"), bin = join(dir, "bin"); mkdirSync(candidate); mkdirSync(bin);
   const names = ["Index-macOS-1.0.0-universal.dmg", "IndexConnector-1.0.0-universal.dmg", "macos-release.json", "macos-release.cms", "SHA256SUMS"];
@@ -82,6 +109,14 @@ test("exact attestation route requires one recorded id and complete run-bound ca
   expect(result(valid, "https://github.com/indexnetwork/index/attestations/999").status).not.toBe(0);
   expect(result({ ...valid, attestation: { id: 999 } }).status).not.toBe(0);
   expect(result({ ...valid, verificationResult: { ...valid.verificationResult, statement: { subject: subjects.slice(1) } } }).status).not.toBe(0);
+  const pathPrefixed = structuredClone(valid); pathPrefixed.verificationResult.statement.subject[0].name = `nested/${names[0]}`;
+  expect(result(pathPrefixed).status).not.toBe(0);
+  const duplicatePath = structuredClone(valid); duplicatePath.verificationResult.statement.subject[0].name = `nested/${names[1]}`;
+  expect(result(duplicatePath).status).not.toBe(0);
+  const misleadingBundle = { ...valid, attestation: { id: 999, bundle_url: "https://example.invalid/bundles/123.json" } };
+  expect(result(misleadingBundle).status).not.toBe(0);
+  const wrongRef = structuredClone(valid); wrongRef.verificationResult.signature.certificate.extensions.SourceRepositoryRef = "refs/heads/v1.0.0";
+  expect(result(wrongRef).status).not.toBe(0);
   const replay = structuredClone(valid); replay.verificationResult.signature.certificate.extensions.RunInvocationURI = "https://github.com/indexnetwork/index/actions/runs/999/attempts/2";
   expect(result(replay).status).not.toBe(0);
 });
