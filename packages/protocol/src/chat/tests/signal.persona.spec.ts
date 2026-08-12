@@ -579,4 +579,17 @@ describe("buildSignalSystemContent", () => {
     expect(prompt).toContain('"name": "Alice"');
     expect(prompt).toContain("Product builder in Berlin");
   });
+
+  it("intent scope advertises only refinement and suppresses new-signal intake", () => {
+    const intentContext = makeContext({ scopeType: "intent", scopeId: INTENT_ID });
+    const scopedPrompt = buildSignalSystemContent(intentContext, {
+      currentMessage: SIGNAL_NEW_SIGNAL_KICKOFF,
+      recentTools: [],
+      ctx: intentContext,
+    });
+
+    expect(scopedPrompt).toContain("Signals: read_intents, update_intent, search_intents");
+    expect(scopedPrompt).not.toContain("Signals: read_intents, create_intent");
+    expect(scopedPrompt).not.toContain("NEW SIGNAL INTAKE");
+  });
 });

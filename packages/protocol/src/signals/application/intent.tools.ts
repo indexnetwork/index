@@ -588,6 +588,11 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("Invalid intent ID format.");
       }
 
+      const scopedIntentId = focusedIntentId(context);
+      if (scopedIntentId && scopedIntentId !== intentId) {
+        return error("This chat is scoped to one selected intent. You can only update that intent here.");
+      }
+
       // Ownership guard: caller must own the intent
       const intent = await deps.systemDb.getIntent(intentId);
       if (!intent || intent.userId !== context.userId) {
@@ -598,12 +603,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       }
 
       const scopedNetworkId = focusedNetworkId(context);
-      const scopedIntentId = focusedIntentId(context);
       const scopedIndexLabel = focusedNetworkLabel(context);
-
-      if (scopedIntentId && scopedIntentId !== intentId) {
-        return error("This chat is scoped to one selected intent. You can only update that intent here.");
-      }
 
       // Strict scope enforcement: when chat is network-scoped, verify intent is linked to that index
       if (scopedNetworkId) {

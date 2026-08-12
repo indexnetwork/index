@@ -442,6 +442,25 @@ describe("createChatTools", () => {
     expect(names).toContain("update_opportunity");
     expect(names).not.toContain("discover_opportunities");
   });
+
+  test("intent-scoped chat exposes update_intent but not create_intent", async () => {
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = {
+      userId: testUserId,
+      database: mockDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      scopeType: "intent",
+      scopeId: "11111111-1111-4111-8111-111111111111",
+      ...mockProtocolDeps,
+    };
+
+    const tools = await createChatTools(context);
+    const names = tools.map((candidate: { name: string }) => candidate.name);
+
+    expect(names).not.toContain("create_intent");
+    expect(names).toContain("update_intent");
+  });
 });
 
 const testIndexId = "a1b2c3d4-0000-4000-8000-000000000001";

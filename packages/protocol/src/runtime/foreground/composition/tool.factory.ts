@@ -16,7 +16,7 @@ import { protocolLogger } from "../../../shared/observability/protocol.logger.js
 import type { QuestionerEnqueueFn } from "../../../capabilities/questions.facade.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "../../../shared/agent/tool.helpers.js";
-import { deriveAllowedNetworkIds, scopeFromNetworkId } from "../../../shared/agent/tool.scope.js";
+import { deriveAllowedNetworkIds, focusedIntentId, scopeFromNetworkId } from "../../../shared/agent/tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "../../../shared/agent/tool.runtime.js";
 import { createEnrichmentTools } from "../../../enrichment/enrichment.tools.js";
 import { createIntentTools } from "../signals/intent.tools.js";
@@ -245,6 +245,12 @@ export async function createChatTools(
   // ─── Create domain tools ──────────────────────────────────────────────────
   const profileTools = createEnrichmentTools(defineTool, toolDeps);
   const intentTools = createIntentTools(defineTool, toolDeps);
+  // An intent-scoped conversation exists to refine its selected signal. Keep
+  // creation out of the model-visible registry; the update handler separately
+  // clamps writes to the exact scoped intent as a runtime backstop.
+  const intentToolsForChat = focusedIntentId(resolvedContext)
+    ? intentTools.filter((candidate) => (candidate as { name: string }).name !== "create_intent")
+    : intentTools;
   const networkTools = createNetworkTools(defineTool, toolDeps);
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
@@ -273,7 +279,7 @@ export async function createChatTools(
 
   return [
     ...profileTools,
-    ...intentTools,
+    ...intentToolsForChat,
     ...networkTools,
     ...opportunityToolsForChat,
     ...utilityTools,
