@@ -857,11 +857,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                 self.finishLogin(.failure(LoopbackAuthServer.AuthError.invalidCallback), admittedGeneration: admittedGeneration); return
                             }
                             var page = URLComponents(string: AppConfig.trimTrailingSlash(AppConfig.appURL) + "/index-app-authorize")
-                            page?.queryItems = [
-                                URLQueryItem(name: "request_id", value: created.requestId),
-                                URLQueryItem(name: "state", value: state),
-                                URLQueryItem(name: "redirect_uri", value: redirect),
-                            ]
+                            // The authorize page requires every query value in strict
+                            // encodeURIComponent canonical form; URLQueryItem leaves
+                            // ':' and '/' unescaped, which the page rejects.
+                            page?.percentEncodedQuery = [
+                                "request_id=\(Self.encodeURIComponent(created.requestId))",
+                                "state=\(Self.encodeURIComponent(state))",
+                                "redirect_uri=\(Self.encodeURIComponent(redirect))",
+                            ].joined(separator: "&")
                             if let url = page?.url { NSWorkspace.shared.open(url) }
                         }
                     }
@@ -910,10 +913,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                       let store = self.ownerCredentialStore else {
                     DispatchQueue.main.async { self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration) }; return
                 }
+                // The .iso8601 Keychain encoding drops fractional seconds, so
+                // truncate up front or the read-back equality check can never
+                // match a server timestamp carrying milliseconds.
                 let record = OwnerCredentialRecord(
                     credential: exchange.credential, credentialId: exchange.credentialId,
                     installationId: exchange.installationId, generation: exchange.generation,
-                    expiresAt: expiry
+                    expiresAt: Date(timeIntervalSince1970: expiry.timeIntervalSince1970.rounded(.down))
                 )
                 do { try store.putAndVerify(record) }
                 catch {
@@ -1094,6 +1100,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if (typeof window.__indexAuthChanged === 'function') { window.__indexAuthChanged(\(value)); }
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Matches JavaScript encodeURIComponent exactly: only A-Za-z0-9 and
+    /// !'()*-._~ stay literal, everything else becomes uppercase %XX.
+    static func encodeURIComponent(_ value: String) -> String {
+        let allowed = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+        )
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     private func secureRandomState() throws -> String {
