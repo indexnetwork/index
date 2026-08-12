@@ -501,6 +501,50 @@ describe("update_intent", () => {
   });
 });
 
+describe("update_intent — intent scope", () => {
+  test("rejects updates to any intent except the selected one before lookup", async () => {
+    let invokedIntentGraph = false;
+    let lookedUpIntent = false;
+    const tools = captureTools({
+      userDb: {},
+      systemDb: {
+        getIntent: async () => {
+          lookedUpIntent = true;
+          return { id: "22222222-2222-4222-8222-222222222222", userId: "caller-user" };
+        },
+      },
+      graphs: {
+        profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
+        intent: {
+          invoke: async () => {
+            invokedIntentGraph = true;
+            return { executionResults: [{ success: true }], agentTimings: [] };
+          },
+        },
+      },
+    } as unknown as ToolDeps);
+    const tool = tools.find((candidate) => candidate.name === "update_intent")!;
+    const context = {
+      ...makeContext("caller-user"),
+      scopeType: "intent",
+      scopeId: "11111111-1111-4111-8111-111111111111",
+    } as ResolvedToolContext;
+
+    const result = JSON.parse(await tool.handler({
+      context,
+      query: {
+        intentId: "22222222-2222-4222-8222-222222222222",
+        description: "Update a different signal",
+      },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("only update that intent");
+    expect(lookedUpIntent).toBe(false);
+    expect(invokedIntentGraph).toBe(false);
+  });
+});
+
 describe("update_intent — ownership", () => {
   test("returns error when intent does not exist", async () => {
     const tools = captureTools({

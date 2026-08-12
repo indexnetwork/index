@@ -20,4 +20,21 @@ describe('background-only chat prompt', () => {
     expect(prompt).toContain('list_opportunities');
     expect(prompt).toContain('update_opportunity');
   });
+
+  test('intent scope advertises updating the selected intent but not creating another', () => {
+    const intentContext = {
+      ...context,
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+    } as ResolvedToolContext;
+    const prompt = buildSystemContent(intentContext, {
+      recentTools: [],
+      currentMessage: 'refine this signal',
+      ctx: intentContext,
+    });
+
+    expect(prompt).toContain('| **update_intent**');
+    expect(prompt).not.toContain('| **create_intent**');
+    expect(prompt).not.toContain('always call create_intent first');
+  });
 });
