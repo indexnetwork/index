@@ -188,7 +188,7 @@ describe('MCP Server Factory', () => {
     const expectedTools = [
       'read_intents',
       'create_intent',
-      'read_user_profiles',
+      'read_user_contexts',
       'update_opportunity',
       'list_contacts',
       'scrape_url',

@@ -24,10 +24,9 @@ const logger = protocolLogger('ToolRegistry');
 export interface CreateToolRegistryOptions {
   /**
    * Tool-surface profile. The default `'rest'` profile (direct HTTP Tool API)
-   * exposes the full tool set — contact/Gmail tools, `scrape_url`, and the
-   * deprecated profile/profile-run compatibility aliases. The restricted
-   * `'mcp'` profile omits exactly those surfaces (IND-596/597/598); their
-   * non-MCP implementations remain intact for REST and chat.
+   * exposes contact/Gmail tools and `scrape_url`. The restricted `'mcp'`
+   * profile omits those surfaces (IND-596/597). Retired profile/profile-run
+   * compatibility aliases are absent from both profiles (IND-373/598).
    */
   surface?: ToolSurface;
 }
@@ -114,35 +113,6 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
     createChatTools(dt, deps);
   }
 
-  // Deprecated tool-name aliases (IND-371). The canonical implementations are
-  // registered under their *_user_context / *_enrichment_run names; the legacy
-  // *_user_profile / *_profile_run names are retained as thin aliases that
-  // delegate to the exact same handler + schema so existing direct HTTP Tool
-  // API clients keep working. These aliases are NOT exposed on the MCP surface
-  // (IND-598) — MCP callers must use the canonical names.
-  if (!isMcpSurface) {
-    const DEPRECATED_TOOL_ALIASES: ReadonlyArray<readonly [oldName: string, canonicalName: string]> = [
-      ["read_user_profiles", "read_user_contexts"],
-      ["create_user_profile", "create_user_context"],
-      ["update_user_profile", "update_user_context"],
-      ["confirm_user_profile", "confirm_user_context"],
-      ["preview_user_profile", "preview_user_context"],
-      ["get_profile_run", "get_enrichment_run"],
-      ["cancel_profile_run", "cancel_enrichment_run"],
-    ];
-    for (const [oldName, canonicalName] of DEPRECATED_TOOL_ALIASES) {
-      const canonical = registry.get(canonicalName);
-      if (!canonical) {
-        logger.warn('Cannot register deprecated alias: canonical tool not found', { alias: oldName, canonicalName });
-        continue;
-      }
-      registry.set(oldName, {
-        ...canonical,
-        name: oldName,
-        description: `[DEPRECATED — use \`${canonicalName}\` instead; this alias is retained for backward compatibility and will be removed.] ${canonical.description}`,
-      });
-    }
-  }
 
   logger.verbose('Tool registry created', { toolCount: registry.size, surface: options.surface ?? 'rest' });
   return registry;
