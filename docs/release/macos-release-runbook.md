@@ -38,7 +38,16 @@ Never synthesize the CMS, copy a digest from logs, accept a different signer, or
 
 Before any public release, download the private candidate handoff and test those exact DMG bytes with quarantine preserved on macOS 13+ for Apple Silicon and Intel (or an approved equivalent): Gatekeeper launch, standalone connector with Index app absent, browser authorization, all capability families, negotiation pickup/respond/consultation/fallback, near-expiry reconnect, disconnect/revocation, plaintext migration, no-secret scans, uninstall, and reinstall.
 
-Create the two schema-v2 records documented in `macos-clean-account-evidence.md`. Each binds both DMG hashes, the candidate manifest seal, attestation URL, version, commit, floor, tester, and independent approver. Validate the pair provider-free. Then obtain a separate protected-environment approval and dispatch `operation=publish` with the exact candidate run ID, candidate run attempt, and the base64-encoded canonical records. The publish job downloads the exact private handoff, rehashes every byte, validates both records and independence, rechecks CMS/metadata/checksums/tag/ruleset/history/attestation, and only then may create a private draft and issue the sole public `PATCH {"draft":false}`. Never publish from a tag push or candidate dispatch.
+Create the two schema-v3 canonical JSON records and opaque CMS signatures documented in `macos-clean-account-evidence.md`. Each record binds both DMG hashes, the candidate manifest seal, attestation URL, version, commit, floor, tester, and independent approver, and each CMS must be signed by its architecture-specific reviewed certificate pin. Validate all four input files provider-free with:
+
+```bash
+INDEX_RELEASE_APPROVAL_CERT_SHA256_ARM64=<reviewed-sha256> \
+INDEX_RELEASE_APPROVAL_CERT_SHA256_X86_64=<reviewed-sha256> \
+  bun apps/mac/release/verify-clean-account-evidence.ts --pair \
+    arm64.json arm64.cms x86_64.json x86_64.cms
+```
+
+The signed CMS, not an unsigned or self-asserted JSON record, is the approval authority. Then obtain a separate protected-environment approval and dispatch `operation=publish` with the exact candidate run ID, candidate run attempt, and the base64-encoded canonical records. The publish job downloads the exact private handoff, rehashes every byte, validates both records and independence, rechecks CMS/metadata/checksums/tag/ruleset/history/attestation, and only then may create a private draft and issue the sole public `PATCH {"draft":false}`. Never publish from a tag push or candidate dispatch.
 
 ## Download page publication
 

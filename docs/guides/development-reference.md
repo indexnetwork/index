@@ -69,7 +69,7 @@ cd apps/mac
 ./build.sh                                  # Assemble HTML and build the macOS WKWebView app
 ```
 
-Production release is a protected two-stage transaction. A tag push or `operation=candidate` may only emit a private immutable candidate handoff. Public promotion requires a later `operation=publish` dispatch, protected-environment approval, and independently approved schema-v2 clean-account records for exact `arm64` and `x86_64` candidate bytes. Validate records provider-free with `bun apps/mac/release/verify-clean-account-evidence.ts --pair arm64.json x86_64.json`; never dispatch either protected stage during ordinary development or PR verification.
+Production release is a protected two-stage transaction. A tag push or `operation=candidate` may only emit a private immutable candidate handoff. Public promotion requires a later `operation=publish` dispatch, protected-environment approval, and independently approved schema-v3 clean-account records for exact `arm64` and `x86_64` candidate bytes. Each canonical JSON record requires an opaque CMS signed by its architecture-specific reviewed certificate pin. Validate all four input files provider-free with `INDEX_RELEASE_APPROVAL_CERT_SHA256_ARM64=<reviewed-sha256> INDEX_RELEASE_APPROVAL_CERT_SHA256_X86_64=<reviewed-sha256> bun apps/mac/release/verify-clean-account-evidence.ts --pair arm64.json arm64.cms x86_64.json x86_64.cms`; never dispatch either protected stage during ordinary development or PR verification.
 
 ### CLI
 
