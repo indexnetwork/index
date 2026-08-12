@@ -2234,7 +2234,11 @@
           tabButton("discover", "Discover", ICON_GLOBE()),
         ),
         React.createElement("div", { className: "index-dashboard__net-head-actions" },
-          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { if (props.onCreate) props.onCreate(); } }, ICON_PLUS(), "Create"),
+          React.createElement(Button, {
+            type: "button", outlined: true, size: "sm",
+            className: "index-dashboard__net-create-btn",
+            onClick: function () { if (props.onCreate) props.onCreate(); },
+          }, ICON_PLUS(), "Create"),
         ),
       ),
       tab === "discover"
