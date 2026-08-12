@@ -46,7 +46,7 @@ test("production orchestration notarizes both inner bundles before either exact 
   const stapleApp = script.indexOf('notarize-bundle.sh" "$SIGNED_DIRECTORY/Index.app');
   const stapleConnector = script.indexOf('notarize-bundle.sh" "$SIGNED_DIRECTORY/IndexConnector.app');
   const createDmg = script.indexOf('create-dmg.sh"');
-  const stapleDmg = script.indexOf('notarize_owned_candidate "$app_dmg"');
+  const stapleDmg = script.indexOf('notarize_dmg_transaction "$app_dmg"');
   expect(stapleApp).toBeGreaterThan(-1);
   expect(stapleConnector).toBeGreaterThan(stapleApp);
   expect(createDmg).toBeGreaterThan(stapleConnector);
@@ -195,7 +195,7 @@ test("DMG rejection prevents stapling and mounted verification", () => {
 printf '%s\\n' "$*" >> "$LOG"
 if [[ "$1 $2" == "notarytool submit" ]]; then printf '{"status":"Invalid"}\\n'; fi
 `);
-  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; validate_production_identity() { :; }; verify_mounted_candidate() { :; }; verify_disk_image_signature() { :; }; sha256_dmg() { printf fixed; }; run_final_verification() { printf "mounted\\n" >> "$LOG"; }; notarize_dmg_internal "$DMG" "$DMG" "$(candidate_inode_device "$DMG")"', {
+  const result = run('source "$SCRIPT"; uname() { printf "Darwin\\n"; }; validate_production_identity() { :; }; verify_mounted_candidate() { :; }; verify_disk_image_signature() { :; }; run_final_verification() { printf "mounted\\n" >> "$LOG"; }; notarize_dmg_transaction "$DMG"', {
     SCRIPT: dmgPath,
     DMG: dmg,
     LOG: log,

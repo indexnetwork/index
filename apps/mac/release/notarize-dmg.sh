@@ -10,6 +10,7 @@ sha256_dmg() { shasum -a 256 "$1" | awk '{print $1}'; }
 require_same_digest() { [[ "$(sha256_dmg "$1")" == "$2" ]] || dmg_notary_error "$3 bytes changed unexpectedly"; }
 run_final_verification() { bash "$DMG_RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$1"; }
 verify_mounted_candidate() { bash "$DMG_RELEASE_DIRECTORY/verify-mounted-dmg.sh" "$1"; }
+candidate_inode_device() { stat -c '%d:%i' "$1" 2>/dev/null || stat -f '%d:%i' "$1"; }
 
 validate_production_identity() {
   local identity="$1" team
@@ -30,38 +31,44 @@ verify_disk_image_signature() {
   # Disk images do not carry a Hardened Runtime CodeDirectory contract.
 }
 
-candidate_inode_device() { stat -c '%d:%i' "$1" 2>/dev/null || stat -f '%d:%i' "$1"; }
-require_bound_candidate() {
-  local candidate="$1" allowed="$2" expected_inode_device="$3" canonical
-  canonical="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$candidate")"
-  [[ "$canonical" == "$allowed" && "$(candidate_inode_device "$candidate")" == "$expected_inode_device" ]] \
-    || dmg_notary_error "candidate is not the orchestrator-bound inode"
+copy_candidate_without_source_mutation() {
+  local source="$1" candidate="$2" source_digest source_inode_device
+  source_digest="$(sha256_dmg "$source")"
+  source_inode_device="$(candidate_inode_device "$source")"
+  cp -p "$source" "$candidate"
+  [[ "$(candidate_inode_device "$source")" == "$source_inode_device" ]] \
+    || dmg_notary_error "source inode changed during private copy"
+  require_same_digest "$source" "$source_digest" source
+  require_same_digest "$candidate" "$source_digest" copied
 }
 
-notarize_dmg_internal() (
-  [[ "$(uname -s)" == Darwin ]] || dmg_notary_error "macOS is required"; [[ "$#" -eq 3 ]] || dmg_notary_error "internal usage"
-  local dmg="$1" response unsigned_digest signed_digest stapled_digest
-  [[ -f "$dmg" && ! -L "$dmg" ]] || dmg_notary_error "DMG missing or linked"
-  [[ "$#" -eq 3 ]] || dmg_notary_error "internal notarization binding is required"
-  local -r allowed_candidate="$2" allowed_inode_device="$3"
-  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
-  case "$(basename "$dmg")" in Index-macOS-1.0.0-universal.dmg|IndexConnector-1.0.0-universal.dmg);; *) dmg_notary_error "unapproved filename"; return 1;; esac
+notarize_dmg_transaction() (
+  [[ "$(uname -s)" == Darwin ]] || dmg_notary_error "macOS is required"; [[ "$#" -eq 1 ]] || dmg_notary_error "usage"
+  local designated="$1" parent transaction candidate response source_digest source_inode_device unsigned_digest signed_digest stapled_digest
+  [[ -f "$designated" && ! -L "$designated" ]] || dmg_notary_error "DMG missing or linked"
+  case "$(basename "$designated")" in Index-macOS-1.0.0-universal.dmg|IndexConnector-1.0.0-universal.dmg);; *) dmg_notary_error "unapproved filename"; return 1;; esac
   [[ -n "${CODESIGN_IDENTITY:-}" && -n "${NOTARYTOOL_PROFILE:-}" ]] || dmg_notary_error "protected inputs required"
-  for t in codesign security xcrun python3 shasum hdiutil; do command -v "$t" >/dev/null || dmg_notary_error "$t required"; done
+  for t in codesign security xcrun python3 shasum hdiutil cp mv stat; do command -v "$t" >/dev/null || dmg_notary_error "$t required"; done
   validate_production_identity "$CODESIGN_IDENTITY"
-  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
-  unsigned_digest="$(sha256_dmg "$dmg")"; verify_mounted_candidate "$dmg"; require_same_digest "$dmg" "$unsigned_digest" unsigned
-  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
-  codesign --force --timestamp --sign "$CODESIGN_IDENTITY" "$dmg"; verify_disk_image_signature "$dmg"
-  signed_digest="$(sha256_dmg "$dmg")"; response="$(mktemp)"; trap 'rm -f "$response"' EXIT
-  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
-  xcrun notarytool submit "$dmg" --keychain-profile "$NOTARYTOOL_PROFILE" --wait --output-format json >"$response"
-  require_same_digest "$dmg" "$signed_digest" submitted; parse_accepted_status <"$response"
-  require_bound_candidate "$dmg" "$allowed_candidate" "$allowed_inode_device"
-  xcrun stapler staple "$dmg"; xcrun stapler validate "$dmg"; verify_disk_image_signature "$dmg"
-  stapled_digest="$(sha256_dmg "$dmg")"; run_final_verification "$dmg"; require_same_digest "$dmg" "$stapled_digest" final
+  parent="$(cd "$(dirname "$designated")" && pwd -P)"
+  designated="$parent/$(basename "$designated")"
+  source_digest="$(sha256_dmg "$designated")"
+  source_inode_device="$(candidate_inode_device "$designated")"
+  transaction="$(mktemp -d "$parent/.index-dmg-notarize.XXXXXX")"
+  chmod 700 "$transaction"
+  trap 'rm -rf "$transaction"' EXIT
+  candidate="$transaction/$(basename "$designated")"
+  copy_candidate_without_source_mutation "$designated" "$candidate"
+  unsigned_digest="$(sha256_dmg "$candidate")"; verify_mounted_candidate "$candidate"; require_same_digest "$candidate" "$unsigned_digest" unsigned
+  codesign --force --timestamp --sign "$CODESIGN_IDENTITY" "$candidate"; verify_disk_image_signature "$candidate"
+  signed_digest="$(sha256_dmg "$candidate")"; response="$transaction/notary-response.json"
+  xcrun notarytool submit "$candidate" --keychain-profile "$NOTARYTOOL_PROFILE" --wait --output-format json >"$response"
+  require_same_digest "$candidate" "$signed_digest" submitted; parse_accepted_status <"$response"
+  xcrun stapler staple "$candidate"; xcrun stapler validate "$candidate"; verify_disk_image_signature "$candidate"
+  stapled_digest="$(sha256_dmg "$candidate")"; run_final_verification "$candidate"; require_same_digest "$candidate" "$stapled_digest" final
+  [[ "$(candidate_inode_device "$designated")" == "$source_inode_device" ]] \
+    || dmg_notary_error "source inode changed before promotion"
+  require_same_digest "$designated" "$source_digest" source
+  mv -f "$candidate" "$designated"
 )
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  printf 'production DMG notarization refused: standalone execution is forbidden\n' >&2
-  exit 1
-fi
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then notarize_dmg_transaction "$@"; fi
