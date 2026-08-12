@@ -1,6 +1,7 @@
 process.env.DATABASE_URL ??= 'postgresql://unused:unused@localhost:5432/unused';
 
 import { afterAll, describe, expect, it, mock } from 'bun:test';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 const executeCalls: unknown[] = [];
 const database = {
@@ -25,11 +26,18 @@ describe('HermesRuntimeTelemetryDatabaseAdapter', () => {
       .resolves.toEqual({ nearExpiry: 4, expired: 5 });
     expect(executeCalls).toHaveLength(1);
 
-    const source = await Bun.file(new URL('../hermes-runtime-telemetry.database.adapter.ts', import.meta.url)).text();
-    expect(source).toContain("activation_state = 'active'");
-    expect(source).toContain('expires_at >');
-    expect(source).toContain('expires_at <=');
-    expect(source).toContain('count(*)::int');
-    expect(source).not.toContain('SELECT *');
+    const rendered = new PgDialect().sqlToQuery(executeCalls[0] as never);
+    const normalizedSql = rendered.sql.replace(/\s+/g, ' ').trim();
+    expect(rendered.params.filter((param) => param instanceof Date)).toEqual([]);
+    expect(rendered.params).toEqual([
+      now.toISOString(),
+      nearExpiryCutoff.toISOString(),
+      now.toISOString(),
+    ]);
+    expect(normalizedSql).toContain("activation_state = 'active' AND expires_at > $1::timestamptz AND expires_at <= $2::timestamptz");
+    expect(normalizedSql).toContain("activation_state = 'active' AND expires_at <= $3::timestamptz");
+    expect(normalizedSql.match(/::timestamptz/g)).toHaveLength(3);
+    expect(normalizedSql.match(/count\(\*\)::int/g)).toHaveLength(2);
+    expect(normalizedSql).not.toContain('SELECT *');
   });
 });
