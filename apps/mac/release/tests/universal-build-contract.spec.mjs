@@ -198,6 +198,16 @@ describe("macOS Universal 2 production build contract", () => {
     expect(output).toBeNull();
   });
 
+  test("rejects a short final data row at the row grammar boundary", () => {
+    const { result, output } = extractFixture([
+      "0000000100003f40 7b22496e 64657842 75696c64 54617267",
+      "0000000100003f50 6574223a 22617070 227d0000",
+    ]);
+    expect(result.exitCode).not.toBe(0);
+    expect(output).toBeNull();
+    expect(result.stderr.toString()).toContain("malformed data row");
+  });
+
   test("extracts and compares embedded compiled identity records before merge", () => {
     const buildSource = source(universalBuildPath);
     expect(buildSource).toContain("compile_slice()");

@@ -41,6 +41,20 @@ function source(path) {
   return readFileSync(path, "utf8");
 }
 
+function exactDetachArgument(commands) {
+  const detachCommands = commands
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([command]) => command === "detach");
+  expect(detachCommands).toHaveLength(1);
+  expect(detachCommands[0]).toHaveLength(2);
+  return detachCommands[0][1].replaceAll("/private/var/", "/var/");
+}
+
+test("detach command proof rejects an additional bare detach invocation", () => {
+  expect(() => exactDetachArgument("detach /var/folders/mount\ndetach\n")).toThrow();
+});
+
 test("production orchestration notarizes both inner bundles before either exact DMG and verifies shipped bytes", () => {
   const script = source(orchestratorPath);
   const stapleApp = script.indexOf('notarize-bundle.sh" "$SIGNED_DIRECTORY/Index.app');
@@ -249,9 +263,7 @@ fi
   expect(verifiedPath).toContain(`${root}/index-dmg-mount.`);
   const requestedMount = commands.match(/^attach .* -mountpoint (\S+) -plist /m)?.[1];
   expect(requestedMount).toBeTruthy();
-  const detachCommands = commands.match(/^detach .+$/gm) ?? [];
-  expect(detachCommands).toHaveLength(1);
-  const detachedMount = detachCommands[0].slice("detach ".length);
-  expect(detachedMount.replaceAll("/private/var/", "/var/")).toBe(requestedMount.replaceAll("/private/var/", "/var/"));
+  const detachedMount = exactDetachArgument(commands);
+  expect(detachedMount).toBe(requestedMount.replaceAll("/private/var/", "/var/"));
   expect(commands).not.toContain("dist/signed");
 });

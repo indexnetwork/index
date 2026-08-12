@@ -159,7 +159,7 @@ if not lines:
 width = None
 next_address = None
 words = []
-for line_index, line in enumerate(lines):
+for line in lines:
     tokens = line.split()
     if len(tokens) < 2 or not re.fullmatch(r'[0-9A-Fa-f]{16}', tokens[0]):
         raise SystemExit('compiled identity section contains a malformed address-prefixed row')
@@ -167,9 +167,7 @@ for line_index, line in enumerate(lines):
     data = tokens[1:]
     row_width = len(data[0])
     expected_fields = {8: 4, 16: 2}.get(row_width)
-    if expected_fields is None or not 1 <= len(data) <= expected_fields or (
-        line_index < len(lines) - 1 and len(data) != expected_fields
-    ) or any(
+    if expected_fields is None or len(data) != expected_fields or any(
         len(token) != row_width or not re.fullmatch(r'[0-9A-Fa-f]+', token)
         for token in data
     ):
