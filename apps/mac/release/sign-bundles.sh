@@ -32,7 +32,40 @@ require_sign_tool() {
 }
 
 plist_value() {
-  /usr/libexec/PlistBuddy -c "Print :$2" "$1"
+  "${PLIST_BUDDY:-/usr/libexec/PlistBuddy}" -c "Print :$2" "$1"
+}
+
+validate_signing_identifier() {
+  local identifier="$1"
+  [[ "$identifier" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ \
+    && "$identifier" != *..* && "$identifier" != *.-* && "$identifier" != *-. ]] \
+    || sign_error "code signing identifier is invalid"
+}
+
+write_runtime_keychain_group() {
+  local plist="$1" group="$2"
+  python3 - "$plist" "$group" <<'PY'
+import plistlib
+import sys
+path, group = sys.argv[1:]
+with open(path, 'rb') as stream:
+    value = plistlib.load(stream)
+value['IndexOwnerKeychainAccessGroup'] = group
+with open(path, 'wb') as stream:
+    plistlib.dump(value, stream)
+PY
+}
+
+verify_runtime_keychain_group() {
+  local plist="$1" expected="$2" actual
+  actual="$(plist_value "$plist" IndexOwnerKeychainAccessGroup 2>/dev/null)" || {
+    actual="$(python3 - "$plist" <<'PY'
+import plistlib, sys
+with open(sys.argv[1], 'rb') as stream: print(plistlib.load(stream).get('IndexOwnerKeychainAccessGroup', ''))
+PY
+)"
+  }
+  [[ "$actual" == "$expected" ]] || sign_error "runtime owner Keychain group does not match the release contract"
 }
 
 require_sign_bundle_identity() {
@@ -97,7 +130,7 @@ PY
 }
 
 sign_code_path() {
-  local path="$1" identity="$2" identifier requirement
+  local path="$1" identity="$2" identifier requirement entitlements=()
   if [[ -f "$path/Contents/Info.plist" ]]; then
     identifier="$(plist_value "$path/Contents/Info.plist" CFBundleIdentifier)"
   elif [[ -f "$path/Resources/Info.plist" ]]; then
@@ -105,44 +138,68 @@ sign_code_path() {
   else
     identifier="$(basename "$path")"
   fi
-  [[ -n "$identifier" ]] || sign_error "nested code has no signing identifier"
+  validate_signing_identifier "$identifier" || return 1
   requirement="=designated => identifier \"$identifier\" and anchor apple generic and certificate leaf[subject.OU] = \"$INDEX_PRODUCTION_TEAM_ID\""
+  if [[ "$path" == "${SIGN_ROOT_EXECUTABLE:-}" ]]; then
+    entitlements=(--entitlements "$SIGN_ROOT_ENTITLEMENTS")
+  fi
   codesign --force --options runtime --timestamp --identifier "$identifier" \
-    --requirements "$requirement" --sign "$identity" "$path"
+    --requirements "$requirement" "${entitlements[@]}" --sign "$identity" "$path"
 }
 
 sign_deepest_first() {
-  local path
-  if [[ "$#" -eq 0 ]]; then
-    return 0
-  fi
-  while IFS= read -r path; do
+  local path depth
+  local -a ordered=()
+  for path in "$@"; do
+    depth="${path//[^\/]/}"
+    ordered+=("${#depth}:$path")
+  done
+  while [[ "${#ordered[@]}" -gt 0 ]]; do
+    local best=0 index
+    for index in "${!ordered[@]}"; do
+      [[ "${ordered[$index]%%:*}" -gt "${ordered[$best]%%:*}" ]] && best="$index"
+    done
+    path="${ordered[$best]#*:}"
     sign_code_path "$path" "$SIGN_INSIDE_OUT_IDENTITY"
-  done < <(printf '%s\n' "$@" | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
+    unset 'ordered[best]'
+    ordered=("${ordered[@]}")
+  done
 }
 
 # sign_inside_out(bundle, identity)
-sign_inside_out() {
-  local bundle="$1" identity="$2" path kind
+sign_inside_out() (
+  local bundle="$1" identity="$2" entitlements="${3:-}" path kind files bundles executable_name
   local -a macho_paths=() nested_bundles=()
+  files="$(mktemp "${TMPDIR:-/tmp}/index-sign-files.XXXXXX")"
+  bundles="$(mktemp "${TMPDIR:-/tmp}/index-sign-bundles.XXXXXX")"
+  trap 'rm -f "$files" "$bundles"' EXIT
+  find "$bundle" -type f -print0 >"$files" || sign_error "code inventory failed"
+  find "$bundle" -type d \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.appex' \) -print0 >"$bundles" \
+    || sign_error "nested bundle inventory failed"
   while IFS= read -r -d '' path; do
-    kind="$(file -b "$path")"
+    [[ -f "$path" ]] || sign_error "code inventory changed during signing"
+    kind="$(file -b -- "$path")" || sign_error "code inventory inspection failed"
     [[ "$kind" == *"Mach-O"* ]] && macho_paths+=("$path")
-  done < <(find "$bundle" -type f -print0)
+  done <"$files"
   while IFS= read -r -d '' path; do
     [[ "$path" == "$bundle" ]] || nested_bundles+=("$path")
-  done < <(find "$bundle" -type d \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.appex' \) -print0)
+  done <"$bundles"
 
-  # Deepest executable/framework/helper code precedes its containing bundle.
+  if [[ -n "$entitlements" ]]; then
+    executable_name="$(plist_value "$bundle/Contents/Info.plist" CFBundleExecutable)"
+    validate_signing_identifier "$executable_name" || return 1
+    SIGN_ROOT_EXECUTABLE="$bundle/Contents/MacOS/$executable_name"
+    SIGN_ROOT_ENTITLEMENTS="$entitlements"
+  fi
   SIGN_INSIDE_OUT_IDENTITY="$identity"
   sign_deepest_first "${macho_paths[@]}"
   sign_deepest_first "${nested_bundles[@]}"
-  unset SIGN_INSIDE_OUT_IDENTITY
-}
+)
 
 sign_bundle() {
   local bundle="$1" identity="$2" entitlements="$3" bundle_id requirement
   bundle_id="$(plist_value "$bundle/Contents/Info.plist" CFBundleIdentifier)"
+  validate_signing_identifier "$bundle_id" || return 1
   requirement="=designated => identifier \"$bundle_id\" and anchor apple generic and certificate leaf[subject.OU] = \"$INDEX_PRODUCTION_TEAM_ID\""
   codesign --force --options runtime --timestamp --identifier "$bundle_id" \
     --requirements "$requirement" --entitlements "$entitlements" \
@@ -183,6 +240,8 @@ main() {
   local app_group="${INDEX_PRODUCTION_TEAM_ID}.${INDEX_APP_BUNDLE_ID}.owner-credentials"
   local connector_group="${INDEX_PRODUCTION_TEAM_ID}.${INDEX_CONNECTOR_BUNDLE_ID}.credentials"
   [[ "$app_group" != "$connector_group" ]] || sign_error "release Keychain groups must be distinct"
+  write_runtime_keychain_group "$SIGNED_APP_BUNDLE/Contents/Info.plist" "$app_group"
+  verify_runtime_keychain_group "$SIGNED_APP_BUNDLE/Contents/Info.plist" "$app_group"
 
   decode_and_validate_profile \
     "$INDEX_APP_PROVISIONING_PROFILE" "$INDEX_APP_BUNDLE_ID" app index.network "$app_group" \
@@ -203,9 +262,9 @@ main() {
 
   # Explicit inside-out order: connector code then connector bundle, app code
   # then app bundle. There is deliberately no codesign --deep signing command.
-  sign_inside_out "$SIGNED_CONNECTOR_BUNDLE" "$CODESIGN_IDENTITY"
+  sign_inside_out "$SIGNED_CONNECTOR_BUNDLE" "$CODESIGN_IDENTITY" "$connector_entitlements"
   sign_bundle "$SIGNED_CONNECTOR_BUNDLE" "$CODESIGN_IDENTITY" "$connector_entitlements"
-  sign_inside_out "$SIGNED_APP_BUNDLE" "$CODESIGN_IDENTITY"
+  sign_inside_out "$SIGNED_APP_BUNDLE" "$CODESIGN_IDENTITY" "$app_entitlements"
   sign_bundle "$SIGNED_APP_BUNDLE" "$CODESIGN_IDENTITY" "$app_entitlements"
 
   bash "$RELEASE_DIRECTORY/verify-signatures.sh" "$SIGNED_DIRECTORY"

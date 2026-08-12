@@ -153,32 +153,36 @@ describe('Developer ID provisioning profile validation', () => {
     expect(result.stderr.toString()).toBe('');
   });
 
-  test.each(['*', 'applinks:*'])('accepts Apple wildcard authorization %s', async (domain) => {
+  test.each(['*', 'applinks:*'])('rejects wildcard associated-domain authorization %s', async (domain) => {
     const path = await writeProfile({ Entitlements: {
       'com.apple.application-identifier': 'TEAM123.network.index.system6',
       'com.apple.developer.team-identifier': 'TEAM123',
       'com.apple.developer.associated-domains': [domain],
       'keychain-access-groups': [ownerGroup],
     }});
-    expect(validate(path).exitCode).toBe(0);
+    await expectRejected(path, 'does not authorize exactly the selected host');
   });
 
-  test('accepts Apple scalar wildcard authorization', async () => {
+  test('rejects scalar associated-domain authorization', async () => {
     const path = await writeProfile({ Entitlements: {
       'com.apple.application-identifier': 'TEAM123.network.index.system6',
       'com.apple.developer.team-identifier': 'TEAM123',
-      'com.apple.developer.associated-domains': '*',
+      'com.apple.developer.associated-domains': 'applinks:dev.index.network',
       'keychain-access-groups': [ownerGroup],
     }});
-    expect(validate(path).exitCode).toBe(0);
+    await expectRejected(path, 'does not authorize exactly the selected host');
   });
 
   test('rejects an expired profile', async () => {
     await expectRejected(await writeProfile({ ExpirationDate: '2020-01-01T00:00:00Z' }), 'is expired');
   });
 
-  test('rejects a wrong team', async () => {
+  test('rejects a wrong or additional team', async () => {
     await expectRejected(await writeProfile(), 'team does not match', 'OTHERTEAM');
+    await expectRejected(
+      await writeProfile({ TeamIdentifier: ['TEAM123', 'OTHERTEAM'] }),
+      'team identifiers do not exactly match',
+    );
   });
 
   test('rejects a wrong application identifier', async () => {
@@ -192,12 +196,31 @@ describe('Developer ID provisioning profile validation', () => {
     );
   });
 
+  test('rejects additional domains and unexpected profile entitlement authorization', async () => {
+    const additionalDomain = await writeProfile({ Entitlements: {
+      'com.apple.application-identifier': 'TEAM123.network.index.system6',
+      'com.apple.developer.team-identifier': 'TEAM123',
+      'com.apple.developer.associated-domains': ['applinks:dev.index.network', 'applinks:other.example'],
+      'keychain-access-groups': [ownerGroup],
+    }});
+    await expectRejected(additionalDomain, 'does not authorize exactly the selected host');
+
+    const unexpected = await writeProfile({ Entitlements: {
+      'com.apple.application-identifier': 'TEAM123.network.index.system6',
+      'com.apple.developer.team-identifier': 'TEAM123',
+      'com.apple.developer.associated-domains': ['applinks:dev.index.network'],
+      'keychain-access-groups': [ownerGroup],
+      'com.apple.security.get-task-allow': false,
+    }});
+    await expectRejected(unexpected, 'contains entitlements outside the exact app profile contract');
+  });
+
   test('rejects a missing associated-domains authorization', async () => {
     const path = await writeProfile({ Entitlements: {
       'com.apple.application-identifier': 'TEAM123.network.index.system6',
       'com.apple.developer.team-identifier': 'TEAM123',
     }});
-    await expectRejected(path, 'does not authorize Associated Domains');
+    await expectRejected(path, 'does not authorize exactly the owner Keychain group');
   });
 
   test('rejects a different associated domain', async () => {
@@ -207,7 +230,7 @@ describe('Developer ID provisioning profile validation', () => {
       'com.apple.developer.associated-domains': ['applinks:index.network'],
       'keychain-access-groups': [ownerGroup],
     }});
-    await expectRejected(path, 'does not authorize the selected host');
+    await expectRejected(path, 'does not authorize exactly the selected host');
   });
 
   test('rejects a missing owner Keychain group', async () => {

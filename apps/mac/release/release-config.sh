@@ -124,6 +124,8 @@ plist.update({
     'IndexConnectorProtocolVersion': connector_protocol_version,
     'IndexDevelopmentBuild': False,
 })
+if plist.get('CFBundleIdentifier') == 'network.index.system6':
+    plist['IndexOwnerKeychainAccessGroup'] = f'{team_id}.network.index.system6.owner-credentials'
 with open(destination, 'wb') as stream:
     plistlib.dump(plist, stream, fmt=plistlib.FMT_XML, sort_keys=False)
 PY

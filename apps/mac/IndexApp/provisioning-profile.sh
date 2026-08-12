@@ -53,7 +53,9 @@ if not isinstance(expiration, datetime) or expiration <= datetime.now(timezone.u
     fail('is expired')
 
 teams = profile.get('TeamIdentifier')
-if not isinstance(teams, list) or expected_team not in teams:
+if teams != [expected_team]:
+    if isinstance(teams, list) and expected_team in teams:
+        fail('team identifiers do not exactly match the signing certificate')
     fail('team does not match the signing certificate')
 
 prefixes = profile.get('ApplicationIdentifierPrefix')
@@ -64,45 +66,43 @@ entitlements = profile.get('Entitlements')
 if not isinstance(entitlements, dict):
     fail('has no entitlements dictionary')
 
-profile_team = entitlements.get('com.apple.developer.team-identifier')
-if profile_team is not None and profile_team != expected_team:
-    fail('team entitlement does not match the signing certificate')
-
-application_id = (
-    entitlements.get('com.apple.application-identifier')
-    or entitlements.get('application-identifier')
-)
-if application_id != f'{expected_team}.{bundle_id}':
-    fail('application identifier does not match the bundle')
-
+expected_application_id = f'{expected_team}.{bundle_id}'
 if role == 'app':
-    domains = entitlements.get('com.apple.developer.associated-domains')
-    if isinstance(domains, str):
-        domains = [domains]
-    elif not isinstance(domains, list) or not all(isinstance(value, str) for value in domains):
-        fail('does not authorize Associated Domains')
-    expected_domain = f'applinks:{host}'
-    if expected_domain not in domains and 'applinks:*' not in domains and '*' not in domains:
-        fail('does not authorize the selected host')
     canonical_group = f'{expected_team}.{bundle_id}.owner-credentials'
     if expected_group != canonical_group:
         fail('owner Keychain group does not match the signing Team and bundle')
+    expected_entitlements = {
+        'com.apple.application-identifier': expected_application_id,
+        'com.apple.developer.team-identifier': expected_team,
+        'com.apple.developer.associated-domains': [f'applinks:{host}'],
+        'keychain-access-groups': [expected_group],
+    }
     group_error = 'does not authorize exactly the owner Keychain group'
 elif role == 'connector':
     if host:
         fail('connector validation does not accept an Associated Domains host')
-    if 'com.apple.developer.associated-domains' in entitlements:
-        fail('connector profile unexpectedly authorizes Associated Domains')
     canonical_group = f'{expected_team}.{bundle_id}.credentials'
     if expected_group != canonical_group:
         fail('connector Keychain group does not match the signing Team and bundle')
+    expected_entitlements = {
+        'com.apple.application-identifier': expected_application_id,
+        'com.apple.developer.team-identifier': expected_team,
+        'keychain-access-groups': [expected_group],
+    }
     group_error = 'does not authorize exactly the connector Keychain group'
 else:
     fail('has an unknown release bundle role')
 
-groups = entitlements.get('keychain-access-groups')
-if groups != [expected_group]:
+if entitlements.get('com.apple.developer.team-identifier') != expected_team:
+    fail('team entitlement does not match the signing certificate')
+if entitlements.get('com.apple.application-identifier') != expected_application_id:
+    fail('application identifier does not match the bundle')
+if entitlements.get('keychain-access-groups') != [expected_group]:
     fail(group_error)
+if role == 'app' and entitlements.get('com.apple.developer.associated-domains') != [f'applinks:{host}']:
+    fail('does not authorize exactly the selected host')
+if entitlements != expected_entitlements:
+    fail(f'contains entitlements outside the exact {role} profile contract')
 PY
 }
 

@@ -120,6 +120,8 @@ keys = [
     'IndexConnectorProtocolVersion',
     'IndexDevelopmentBuild',
 ]
+if target == 'app':
+    keys.append('IndexOwnerKeychainAccessGroup')
 identity = {'IndexBuildTarget': target, **{key: plist[key] for key in keys}}
 canonical = json.dumps(identity, sort_keys=True, separators=(',', ':'))
 identity['IndexBuildID'] = hashlib.sha256(canonical.encode()).hexdigest()

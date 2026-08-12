@@ -140,6 +140,9 @@ describe("macOS release configuration", () => {
       expect(plistValue(plist, "IndexConnectorProtocolVersion")).toBe("1");
       expect(plistValue(plist, "IndexDevelopmentBuild")).toBe(false);
     }
+    expect(plistValue(readFileSync(appPlist, "utf8"), "IndexOwnerKeychainAccessGroup")).toBe(
+      "LMQ3XNXLAD.network.index.system6.owner-credentials",
+    );
   });
 
   test("fails closed before changing either plist when any production input is invalid", () => {

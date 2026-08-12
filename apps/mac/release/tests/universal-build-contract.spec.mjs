@@ -78,6 +78,7 @@ describe("macOS Universal 2 production build contract", () => {
       "IndexExpectedTeamID",
       "IndexConnectorProtocolVersion",
       "IndexDevelopmentBuild",
+      "IndexOwnerKeychainAccessGroup",
       "IndexBuildID",
     ]) {
       expect(buildSource).toContain(key);
