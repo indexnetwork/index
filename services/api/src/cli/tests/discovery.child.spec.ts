@@ -109,6 +109,7 @@ describe('discovery bootstrap child compatibility', () => {
     const seen: unknown[] = [];
     const dependencies: DiscoveryBootstrapDependencies = {
       assertConfirmation: () => { throw new Error('legacy gate must not run'); },
+      assertRuntimePrerequisites: () => { throw new Error('legacy runtime gate must not run'); },
       parseManifest: () => { throw new Error('legacy manifest must not parse'); },
       attestTargets: async () => { throw new Error('legacy attestation must not run'); },
       importRuntime: async () => { throw new Error('legacy runtime must not load'); },
@@ -130,6 +131,7 @@ describe('discovery bootstrap child compatibility', () => {
     const calls: string[] = [];
     const dependencies: DiscoveryBootstrapDependencies = {
       assertConfirmation: () => { calls.push('gate'); },
+      assertRuntimePrerequisites: () => { calls.push('runtime-prerequisites'); },
       parseManifest: () => ({
         projectId: 'project', baseBranchId: 'base',
         targets: [
@@ -142,7 +144,7 @@ describe('discovery bootstrap child compatibility', () => {
     };
     const env = {};
     await runDiscoveryBootstrap(args, env, { log: () => {}, error: () => {} }, dependencies);
-    expect(calls).toEqual(['gate', 'attest']);
+    expect(calls).toEqual(['gate', 'runtime-prerequisites', 'attest']);
     expect(seen).toEqual([args]);
     expect(env).toMatchObject({ DATABASE_URL: 'postgres://u:p@a.neon.tech/protocol_eval' });
   });

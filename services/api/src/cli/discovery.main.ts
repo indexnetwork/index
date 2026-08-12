@@ -27,7 +27,7 @@ import { statSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-import { AB_BASE_BRANCH, AB_DEFAULT_REPETITIONS, AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abUsage, classifyAbParentFailure, type AbRunShape, type AbRunStage } from './discovery.contract';
+import { AB_BASE_BRANCH, AB_DEFAULT_REPETITIONS, AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, AbChildStageError, abUsage, classifyAbParentFailure, type AbChildFailureStage, type AbRunShape, type AbRunStage } from './discovery.contract';
 import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation, assertAbSideEnvironment } from './discovery.gate';
 import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, resetAbBranch, type AbTarget } from './discovery.neon';
 import { buildAbPlan, configDiff, isAbPair } from './discovery.plan';
@@ -210,11 +210,11 @@ async function runAbSide(
   selection: AbSideSelection,
   deps: Awaited<ReturnType<typeof createChildDependencies>>,
   thresholdOverrides: DiscoveryChildThresholdOverrides,
+  matrixEval: Awaited<ReturnType<typeof loadMatrixEval>>,
+  assertLLM: Awaited<ReturnType<typeof loadJudge>>,
 ): Promise<AbChildOutput> {
-  const { HISTORICAL_MATRIX_CASES, scoreMatrixSlot, buildExecutionEvidence, executeRuns } = await loadMatrixEval();
-  const assertLLM = await loadJudge();
+  const { scoreMatrixSlot, buildExecutionEvidence, executeRuns } = matrixEval;
   const { side, slots } = selection;
-  await verifyAbBranchBase(HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[]);
 
   const batch = await executeRuns(async ({ runIndex, signal }: { runIndex: number; signal: AbortSignal }) => runMatrixBoundary('matrix_runtime_failure', async () => {
     const slot = slots[runIndex]!;
@@ -282,22 +282,122 @@ async function runAbSide(
   );
 }
 
+/** Injected child stages, kept small so every operational failure is classified. */
+export interface AbChildStageDependencies<TDependencies, TOutput> {
+  initializeDependencies(): Promise<TDependencies>;
+  verifyBase(dependencies: TDependencies): Promise<void>;
+  executeRun(dependencies: TDependencies): Promise<TOutput>;
+  writeArtifact(output: TOutput): Promise<void>;
+}
+
+async function atAbChildStage<T>(
+  stage: AbChildFailureStage,
+  operation: () => Promise<T>,
+  observeStage?: (stage: AbChildFailureStage) => void,
+): Promise<T> {
+  try {
+    observeStage?.(stage);
+    return await operation();
+  } catch (error) {
+    if (error instanceof AbChildStageError) throw error;
+    throw new AbChildStageError(stage, { cause: error });
+  }
+}
+
+/** Runs the four ordered child boundaries and never executes beyond a failure. */
+export async function runAbChildStages<TDependencies, TOutput>(
+  stages: AbChildStageDependencies<TDependencies, TOutput>,
+  observeStage?: (stage: AbChildFailureStage) => void,
+): Promise<void> {
+  const dependencies = await atAbChildStage('dependency-initialization', stages.initializeDependencies, observeStage);
+  await atAbChildStage('base-verification', () => stages.verifyBase(dependencies), observeStage);
+  const output = await atAbChildStage('run-execution', () => stages.executeRun(dependencies), observeStage);
+  await atAbChildStage('artifact-write', () => stages.writeArtifact(output), observeStage);
+}
+
+/** Classifies the existing child cleanup boundary without changing its semantics. */
+export async function runAbChildResourceCleanup(
+  cleanup: () => Promise<void>,
+  observeStage?: (stage: AbChildFailureStage) => void,
+): Promise<void> {
+  await atAbChildStage('resource-cleanup', cleanup, observeStage);
+}
+
+export interface AbChildLoadedSetup {
+  slots: readonly AbSlot[];
+  matrixEval: Awaited<ReturnType<typeof loadMatrixEval>>;
+}
+
+export type AbChildSetupSource = readonly AbSlot[] | (() => Promise<AbChildLoadedSetup>);
+
+async function withAbChildEnvironment(
+  config: AbEnvConfig,
+  operation: () => Promise<void>,
+): Promise<void> {
+  let operationCompleted = false;
+  try {
+    await withDiscoveryEnvironment(config, async () => {
+      await operation();
+      operationCompleted = true;
+    });
+  } catch (error) {
+    if (error instanceof AbChildStageError) throw error;
+    throw new AbChildStageError(operationCompleted ? 'resource-cleanup' : 'dependency-initialization', { cause: error });
+  }
+}
+
 /**
  * Runs one side's slots against the branch this process is composed against and
  * writes `{ slots, execution }` — the same artifact shape the matrix child
  * writes, so the parent aggregates both harnesses' children identically.
  */
-export async function runAbChild(sideId: AbSideId, slots: readonly AbSlot[], outputPath: string): Promise<void> {
-  const selection = selectAbSideSlots(sideId, slots);
-  await runWithChildCleanup(async () => {
-    const output = await withDiscoveryEnvironment(selection.side.config, async () => {
-      const thresholdOverrides = discoveryChildThresholdOverrides();
-      const deps = await createChildDependencies(thresholdOverrides);
-      return runAbSide(selection, deps, thresholdOverrides);
-    });
-    await Bun.write(outputPath, JSON.stringify(output));
-    console.log(`Discovery child artifact written: side=${sideId} path=${outputPath}`);
-  }, closeChildResources);
+export async function runAbChild(
+  sideId: AbSideId,
+  setupSource: AbChildSetupSource,
+  outputPath: string,
+  observeStage?: (stage: AbChildFailureStage) => void,
+): Promise<void> {
+  const observedStages = new Set<AbChildFailureStage>();
+  const observeOnce = observeStage === undefined
+    ? undefined
+    : (stage: AbChildFailureStage) => {
+      if (!observedStages.has(stage)) observeStage(stage);
+      observedStages.add(stage);
+    };
+  // This setup previously happened in child main, outside every stage. It has
+  // no composed resources, so a refusal here preserves the former no-cleanup
+  // behavior while gaining an exact dependency-initialization classification.
+  const loaded = await atAbChildStage('dependency-initialization', async () => {
+    const setup = typeof setupSource === 'function'
+      ? await setupSource()
+      : { slots: setupSource, matrixEval: await loadMatrixEval() };
+    return { ...setup, selection: selectAbSideSlots(sideId, setup.slots) };
+  }, observeOnce);
+
+  await runWithChildCleanup(async () => withAbChildEnvironment(loaded.selection.side.config, async () => {
+    await runAbChildStages({
+      initializeDependencies: async () => {
+        const thresholdOverrides = discoveryChildThresholdOverrides();
+        const deps = await createChildDependencies(thresholdOverrides);
+        const assertLLM = await loadJudge();
+        return { deps, thresholdOverrides, assertLLM };
+      },
+      verifyBase: async () => {
+        await verifyAbBranchBase(loaded.matrixEval.HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[]);
+      },
+      executeRun: async ({ deps, thresholdOverrides, assertLLM }) => runAbSide(
+        loaded.selection,
+        deps,
+        thresholdOverrides,
+        loaded.matrixEval,
+        assertLLM,
+      ),
+      writeArtifact: async (output) => {
+        await Bun.write(outputPath, JSON.stringify(output));
+        console.log(`Discovery child artifact written: side=${sideId} path=${outputPath}`);
+      },
+    }, observeOnce);
+  }), () => runAbChildResourceCleanup(closeChildResources, observeOnce));
 }
 
 // ── Parent half ─────────────────────────────────────────────────────────────
@@ -1114,6 +1214,44 @@ async function runAbParent(args: readonly string[]): Promise<void> {
   await withAbSpendAccounting(async (progress) => runAbComparison(args, progress));
 }
 
+export interface AbChildMainDependencies {
+  loadMatrixEval: typeof loadMatrixEval;
+  runChild: typeof runAbChild;
+  observeStage?: (stage: AbChildFailureStage) => void;
+}
+
+const productionAbChildMainDependencies: AbChildMainDependencies = {
+  loadMatrixEval,
+  runChild: runAbChild,
+};
+
+/** Child-only entry after bootstrap attestation; all checks here are preflight. */
+export async function runAbChildInvocation(
+  args: readonly string[],
+  processEnvironment: NodeJS.ProcessEnv,
+  dependencies: AbChildMainDependencies = productionAbChildMainDependencies,
+): Promise<void> {
+  const { sideId, outputPath } = parseAbChildArgs(args);
+  const environment = assertAbSideEnvironment(processEnvironment, sideId);
+  const manifest = parseAbManifest(processEnvironment.DISCOVERY_TARGETS);
+  const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
+  if (!target || new URL(target.databaseUrl).toString() !== environment.databaseUrl.toString()) {
+    throw new AbGateError(`Refusing to mutate: side ${sideId} is not composed against the database its manifest entry declares`);
+  }
+  const selection = parseAbRunArgs(args);
+  await dependencies.runChild(sideId, async () => {
+    const matrixEval = await dependencies.loadMatrixEval();
+    const cases = resolveAbCases(
+      matrixEval.HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[],
+      selection.caseIds,
+    );
+    return {
+      matrixEval,
+      slots: buildAbPlan(cases, selection.sides, selection.repetitions),
+    };
+  }, outputPath, dependencies.observeStage);
+}
+
 /**
  * The one entry point, parent and child.
  *
@@ -1124,16 +1262,5 @@ async function runAbParent(args: readonly string[]): Promise<void> {
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) return void console.log(abUsage());
   if (!args.includes('--side')) return void await runAbParent(args);
-
-  const { sideId, outputPath } = parseAbChildArgs(args);
-  const environment = assertAbSideEnvironment(process.env, sideId);
-  const manifest = parseAbManifest(process.env.DISCOVERY_TARGETS);
-  const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
-  if (!target || new URL(target.databaseUrl).toString() !== environment.databaseUrl.toString()) {
-    throw new AbGateError(`Refusing to mutate: side ${sideId} is not composed against the database its manifest entry declares`);
-  }
-  const selection = parseAbRunArgs(args);
-  const { HISTORICAL_MATRIX_CASES } = await loadMatrixEval();
-  const cases = resolveAbCases(HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[], selection.caseIds);
-  await runAbChild(sideId, buildAbPlan(cases, selection.sides, selection.repetitions), outputPath);
+  await runAbChildInvocation(args, process.env);
 }

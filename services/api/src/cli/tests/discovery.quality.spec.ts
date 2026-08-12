@@ -128,6 +128,7 @@ describe('historical quality provider-free preflight contract', () => {
     };
     const dependencies: DiscoveryBootstrapDependencies = {
       assertConfirmation: () => { calls.confirmation += 1; },
+      assertRuntimePrerequisites: () => { throw new Error('legacy runtime gate must not run'); },
       parseManifest: () => {
         calls.manifestParsing += 1;
         throw new Error('manifest parsing must not run');
@@ -202,6 +203,7 @@ describe('historical quality PR B dispatch acceptance', () => {
     const calls: string[] = [];
     const dependencies = {
       assertConfirmation: () => { calls.push('legacy-confirmation'); },
+      assertRuntimePrerequisites: () => { calls.push('legacy-runtime-prerequisites'); },
       parseManifest: () => { calls.push('legacy-manifest'); throw new Error('legacy parser must not run'); },
       attestTargets: async () => { calls.push('legacy-attest'); },
       importRuntime: async () => ({ main: async () => { calls.push('legacy-runtime'); } }),
@@ -227,6 +229,7 @@ describe('historical quality PR B dispatch acceptance', () => {
     process.exitCode = undefined;
     const dependencies: DiscoveryBootstrapDependencies = {
       assertConfirmation: () => { throw new Error('legacy gate must not run'); },
+      assertRuntimePrerequisites: () => { throw new Error('legacy runtime gate must not run'); },
       parseManifest: () => { throw new Error('legacy manifest must not parse'); },
       attestTargets: async () => { throw new Error('legacy attestation must not run'); },
       importRuntime: async () => { throw new Error('legacy runtime must not load'); },
@@ -251,6 +254,7 @@ describe('historical quality PR B dispatch acceptance', () => {
       }>;
     } = {
       assertConfirmation: () => { calls.push('legacy-confirmation'); },
+      assertRuntimePrerequisites: () => { calls.push('legacy-runtime-prerequisites'); },
       parseManifest: () => {
         calls.push('legacy-manifest');
         throw new Error('quality dispatch must not parse the legacy A/B manifest');

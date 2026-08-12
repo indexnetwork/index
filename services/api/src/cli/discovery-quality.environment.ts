@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { assertAbEnvConfig } from './discovery.flags';
+import { DISCOVERY_RUNTIME_REDIS_KEYS, parseDiscoveryRuntimePrerequisites } from './discovery.runtime-prerequisites';
 
 export const HISTORICAL_QUALITY_RUNTIME_CORE_KEYS = [
   'DISCOVERY_TARGETS', 'NEON_API_KEY', 'DISCOVERY_CONFIRM',
@@ -32,9 +33,7 @@ const HISTORICAL_QUALITY_DISCOVERY_MODEL_RUNTIME_POLICY = Object.freeze(
   ) as Readonly<Record<Exclude<keyof typeof HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY, 'OPENROUTER_BASE_URL'>, string>>,
 );
 
-export const HISTORICAL_QUALITY_RUNTIME_REDIS_KEYS = [
-  'REDIS_URL', 'REDIS_HOST', 'REDIS_PORT', 'REDIS_PASSWORD', 'REDIS_DB',
-] as const;
+export const HISTORICAL_QUALITY_RUNTIME_REDIS_KEYS = DISCOVERY_RUNTIME_REDIS_KEYS;
 
 export const HISTORICAL_QUALITY_MODEL_ASSIGNMENT_CARRIERS = [
   'CHAT_MODEL', 'EVAL_MODEL_OVERRIDES',
@@ -73,31 +72,22 @@ export function parseHistoricalQualityRuntimeEnvironment(
     throw new Error('Historical quality runtime forbids a supplied DATABASE_URL');
   }
   const result: Record<string, string> = {};
-  for (const key of HISTORICAL_QUALITY_RUNTIME_CORE_KEYS) result[key] = required(environment, key);
+  for (const key of HISTORICAL_QUALITY_RUNTIME_CORE_KEYS) {
+    if (key !== 'OPENROUTER_API_KEY') result[key] = required(environment, key);
+  }
   if (result.DISCOVERY_CONFIRM !== '1') throw new Error('Historical quality DISCOVERY_CONFIRM must equal 1');
   if (result.TEST_DATABASE_SAFE !== '1') throw new Error('Historical quality TEST_DATABASE_SAFE must equal 1');
+  const runtimePrerequisites = parseDiscoveryRuntimePrerequisites(environment);
+  result.OPENROUTER_API_KEY = runtimePrerequisites.OPENROUTER_API_KEY;
   for (const key of HISTORICAL_QUALITY_RUNTIME_MODEL_KEYS) {
     const value = defined(environment, key);
     if (value !== undefined) result[key] = value;
   }
   Object.assign(result, HISTORICAL_QUALITY_MODEL_RUNTIME_POLICY);
 
-  const redisUrl = defined(environment, 'REDIS_URL');
-  const splitValues = ['REDIS_HOST', 'REDIS_PORT', 'REDIS_PASSWORD', 'REDIS_DB']
-    .map((key) => defined(environment, key));
-  const hasSplit = splitValues.some((value) => value !== undefined);
-  if ((redisUrl !== undefined && hasSplit) || (redisUrl === undefined && !hasSplit)) {
-    throw new Error('Historical quality runtime requires exactly one Redis configuration');
-  }
-  if (redisUrl !== undefined) {
-    result.REDIS_URL = redisUrl;
-  } else {
-    if (splitValues.some((value) => value === undefined)) {
-      throw new Error('Historical quality runtime requires the complete REDIS_HOST/REDIS_PORT/REDIS_PASSWORD/REDIS_DB form');
-    }
-    HISTORICAL_QUALITY_RUNTIME_REDIS_KEYS.slice(1).forEach((key, index) => {
-      result[key] = splitValues[index]!;
-    });
+  for (const key of HISTORICAL_QUALITY_RUNTIME_REDIS_KEYS) {
+    const value = runtimePrerequisites[key];
+    if (value !== undefined) result[key] = value;
   }
   return Object.freeze(result) as HistoricalQualityRuntimeEnvironment;
 }
