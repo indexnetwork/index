@@ -2,14 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Universal links: macOS only hands over https://index.network/... when
-         the signed app claims the domain here AND the domain serves an
-         apple-app-site-association listing <TEAM_ID>.network.index.system6.
-         The claim is verified against a Developer ID-signed, notarized build,
-         so an ad-hoc dev build never opens these; index:// still does. -->
     <key>com.apple.developer.associated-domains</key>
     <array>
         <string>applinks:index.network</string>
+    </array>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)network.index.system6.owner-credentials</string>
     </array>
 </dict>
 </plist>

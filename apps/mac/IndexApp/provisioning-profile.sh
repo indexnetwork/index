@@ -19,13 +19,25 @@ validate_profile_plist() {
   local host="$4"
   local expected_owner_group="$5"
 
+  validate_release_profile_plist \
+    "$profile_path" "$expected_team" "$bundle_id" app "$host" "$expected_owner_group"
+}
+
+validate_release_profile_plist() {
+  local profile_path="$1"
+  local expected_team="$2"
+  local bundle_id="$3"
+  local role="$4"
+  local host="$5"
+  local expected_group="$6"
+
   python3 - \
-    "$profile_path" "$expected_team" "$bundle_id" "$host" "$expected_owner_group" <<'PY'
+    "$profile_path" "$expected_team" "$bundle_id" "$role" "$host" "$expected_group" <<'PY'
 import plistlib
 import sys
 from datetime import datetime, timezone
 
-profile_path, expected_team, bundle_id, host, expected_owner_group = sys.argv[1:]
+profile_path, expected_team, bundle_id, role, host, expected_group = sys.argv[1:]
 
 
 def fail(message):
@@ -63,21 +75,34 @@ application_id = (
 if application_id != f'{expected_team}.{bundle_id}':
     fail('application identifier does not match the bundle')
 
-domains = entitlements.get('com.apple.developer.associated-domains')
-if isinstance(domains, str):
-    domains = [domains]
-elif not isinstance(domains, list) or not all(isinstance(value, str) for value in domains):
-    fail('does not authorize Associated Domains')
-expected_domain = f'applinks:{host}'
-if expected_domain not in domains and 'applinks:*' not in domains and '*' not in domains:
-    fail('does not authorize the selected host')
+if role == 'app':
+    domains = entitlements.get('com.apple.developer.associated-domains')
+    if isinstance(domains, str):
+        domains = [domains]
+    elif not isinstance(domains, list) or not all(isinstance(value, str) for value in domains):
+        fail('does not authorize Associated Domains')
+    expected_domain = f'applinks:{host}'
+    if expected_domain not in domains and 'applinks:*' not in domains and '*' not in domains:
+        fail('does not authorize the selected host')
+    canonical_group = f'{expected_team}.{bundle_id}.owner-credentials'
+    if expected_group != canonical_group:
+        fail('owner Keychain group does not match the signing Team and bundle')
+    group_error = 'does not authorize exactly the owner Keychain group'
+elif role == 'connector':
+    if host:
+        fail('connector validation does not accept an Associated Domains host')
+    if 'com.apple.developer.associated-domains' in entitlements:
+        fail('connector profile unexpectedly authorizes Associated Domains')
+    canonical_group = f'{expected_team}.{bundle_id}.credentials'
+    if expected_group != canonical_group:
+        fail('connector Keychain group does not match the signing Team and bundle')
+    group_error = 'does not authorize exactly the connector Keychain group'
+else:
+    fail('has an unknown release bundle role')
 
-canonical_owner_group = f'{expected_team}.{bundle_id}.owner-credentials'
-if expected_owner_group != canonical_owner_group:
-    fail('owner Keychain group does not match the signing Team and bundle')
 groups = entitlements.get('keychain-access-groups')
-if groups != [expected_owner_group]:
-    fail('does not authorize exactly the owner Keychain group')
+if groups != [expected_group]:
+    fail(group_error)
 PY
 }
 
@@ -97,11 +122,17 @@ embed_provisioning_profile() (
 
 validate_signed_entitlements() {
   local entitlements_path="$1" host="$2" expected_owner_group="$3"
-  python3 - "$entitlements_path" "$host" "$expected_owner_group" <<'PY'
+  validate_release_entitlements \
+    "$entitlements_path" app "$host" "$expected_owner_group"
+}
+
+validate_release_entitlements() {
+  local entitlements_path="$1" role="$2" host="$3" expected_group="$4"
+  python3 - "$entitlements_path" "$role" "$host" "$expected_group" <<'PY'
 import plistlib
 import sys
 
-entitlements_path, host, expected_owner_group = sys.argv[1:]
+entitlements_path, role, host, expected_group = sys.argv[1:]
 
 
 def fail(message):
@@ -115,16 +146,27 @@ try:
 except Exception:
     fail('could not read signed entitlements')
 
-expected = {
-    'com.apple.developer.associated-domains': [f'applinks:{host}'],
-    'keychain-access-groups': [expected_owner_group],
-}
-if entitlements.get('com.apple.developer.associated-domains') != expected['com.apple.developer.associated-domains']:
-    fail('does not match the signed Associated Domains entitlement')
-if entitlements.get('keychain-access-groups') != expected['keychain-access-groups']:
-    fail('does not match the signed owner Keychain entitlement')
+if role == 'app':
+    expected = {
+        'com.apple.developer.associated-domains': [f'applinks:{host}'],
+        'keychain-access-groups': [expected_group],
+    }
+    if entitlements.get('com.apple.developer.associated-domains') != expected['com.apple.developer.associated-domains']:
+        fail('does not match the signed Associated Domains entitlement')
+    if entitlements.get('keychain-access-groups') != expected['keychain-access-groups']:
+        fail('does not match the signed owner Keychain entitlement')
+    contract = 'app'
+elif role == 'connector':
+    if host:
+        fail('connector signed entitlement validation does not accept a host')
+    expected = {'keychain-access-groups': [expected_group]}
+    if entitlements.get('keychain-access-groups') != expected['keychain-access-groups']:
+        fail('does not match the signed connector Keychain entitlement')
+    contract = 'connector'
+else:
+    fail('has an unknown signed entitlement role')
 if entitlements != expected:
-    fail('contains entitlements outside the signed app contract')
+    fail(f'contains entitlements outside the signed {contract} contract')
 PY
 }
 

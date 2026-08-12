@@ -69,6 +69,22 @@ async function expectRejected(path, fragment, team, bundle, host, expectedOwnerG
   expect(result.stderr.toString()).toContain(fragment);
 }
 
+function validateReleaseProfile(path, bundle, role, host, group) {
+  return Bun.spawnSync([
+    'bash', '-c',
+    'source "$1"; validate_release_profile_plist "$2" TEAM123 "$3" "$4" "$5" "$6"',
+    'test-shell', helper, path, bundle, role, host, group,
+  ]);
+}
+
+function validateReleaseEntitlements(path, role, host, group) {
+  return Bun.spawnSync([
+    'bash', '-c',
+    'source "$1"; validate_release_entitlements "$2" "$3" "$4" "$5"',
+    'test-shell', helper, path, role, host, group,
+  ]);
+}
+
 afterEach(async () => Promise.all(fixtures.splice(0).map((path) => rm(path, { force: true }))));
 
 test('certificate lookup failure under inherited errexit reports the redacted diagnostic', async () => {
@@ -227,6 +243,45 @@ describe('Developer ID provisioning profile validation', () => {
   });
 });
 
+describe('connector release provisioning profile validation', () => {
+  const connectorGroup = 'TEAM123.network.index.connector.credentials';
+
+  test('accepts only the exact connector application and Keychain group', async () => {
+    const path = await writeProfile({ Entitlements: {
+      'com.apple.application-identifier': 'TEAM123.network.index.connector',
+      'com.apple.developer.team-identifier': 'TEAM123',
+      'keychain-access-groups': [connectorGroup],
+    }});
+    const result = validateReleaseProfile(
+      path, 'network.index.connector', 'connector', '', connectorGroup,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.toString()).toBe('');
+  });
+
+  test('rejects associated domains and cross-app Keychain authorization', async () => {
+    for (const entitlements of [
+      {
+        'com.apple.application-identifier': 'TEAM123.network.index.connector',
+        'com.apple.developer.team-identifier': 'TEAM123',
+        'com.apple.developer.associated-domains': ['applinks:index.network'],
+        'keychain-access-groups': [connectorGroup],
+      },
+      {
+        'com.apple.application-identifier': 'TEAM123.network.index.connector',
+        'com.apple.developer.team-identifier': 'TEAM123',
+        'keychain-access-groups': [ownerGroup],
+      },
+    ]) {
+      const result = validateReleaseProfile(
+        await writeProfile({ Entitlements: entitlements }),
+        'network.index.connector', 'connector', '', connectorGroup,
+      );
+      expect(result.exitCode).not.toBe(0);
+    }
+  });
+});
+
 describe('signed entitlement validation', () => {
   async function writeSignedEntitlements(
     groups = [ownerGroup],
@@ -235,8 +290,8 @@ describe('signed entitlement validation', () => {
     const path = `${Bun.env.TMPDIR ?? '/tmp'}/index-signed-entitlements-${crypto.randomUUID()}.plist`;
     fixtures.push(path);
     const value = {
-      'com.apple.developer.associated-domains': domains,
       'keychain-access-groups': groups,
+      ...(domains === null ? {} : { 'com.apple.developer.associated-domains': domains }),
     };
     const proc = Bun.spawnSync(['python3', '-c', `
 import json, plistlib, sys
@@ -279,5 +334,43 @@ with open(sys.argv[1], 'wb') as f: plistlib.dump(json.loads(sys.argv[2]), f)
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr.toString()).toContain('does not match the signed owner Keychain entitlement');
     }
+  });
+
+  test('accepts connector-only signed Keychain entitlement and rejects app access', async () => {
+    const connectorGroup = 'TEAM123.network.index.connector.credentials';
+    const accepted = validateReleaseEntitlements(
+      await writeSignedEntitlements([connectorGroup], null),
+      'connector', '', connectorGroup,
+    );
+    expect(accepted.exitCode).toBe(0);
+
+    const rejected = validateReleaseEntitlements(
+      await writeSignedEntitlements([ownerGroup], null),
+      'connector', '', connectorGroup,
+    );
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.stderr.toString()).toContain('does not match the signed connector Keychain entitlement');
+  });
+
+  test.each([
+    'com.apple.security.app-sandbox',
+    'com.apple.security.get-task-allow',
+    'com.apple.security.cs.allow-jit',
+    'com.apple.security.cs.allow-unsigned-executable-memory',
+    'com.apple.security.cs.allow-dyld-environment-variables',
+    'com.apple.security.cs.disable-library-validation',
+    'unexpected.release.entitlement',
+  ])('rejects forbidden or unexpected signed entitlement %s', async (key) => {
+    const path = await writeSignedEntitlements();
+    const proc = Bun.spawnSync(['python3', '-c', `
+import plistlib, sys
+with open(sys.argv[1], 'rb') as f: value = plistlib.load(f)
+value[sys.argv[2]] = True
+with open(sys.argv[1], 'wb') as f: plistlib.dump(value, f)
+`, path, key]);
+    expect(proc.exitCode).toBe(0);
+    const result = validateSigned(path);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('contains entitlements outside the signed app contract');
   });
 });
