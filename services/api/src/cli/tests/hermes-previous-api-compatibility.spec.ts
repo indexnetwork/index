@@ -599,14 +599,23 @@ describe('previous API compatibility shell gate', () => {
 });
 
 describe('workflow compatibility modes', () => {
-  test('builds the derived approved rollback-base API and keeps it distinct from protected evidence', async () => {
+  test('builds the validated immutable rollback-base API and keeps it distinct from protected evidence', async () => {
     const workflow = await readFile(workflowPath, 'utf8');
 
     expect(workflow).toContain('previous-api-pr-base-evidence:');
     expect(workflow).toContain('Non-production PR rollback-base API evidence');
+    expect(workflow).toContain('Validate and export approved rollback base');
     expect(workflow).toContain(`EXPECTED_ROLLBACK_BASE_SHA: ${approvedRollbackBaseSha}`);
-    expect(workflow).toContain('git merge-base origin/main origin/feat/hermes-secure-standalone-connect');
-    expect(workflow).toContain('git archive "$derived_base_sha"');
+    expect(workflow).toContain('remote_url="$(git remote get-url origin)"');
+    expect(workflow).toContain('[[ "$remote_url" =~ ^https://github\\.com/[^/]+/[^/]+(\\.git)?$ ]]');
+    expect(workflow).toContain('+refs/heads/main:refs/remotes/origin/main');
+    expect(workflow).toContain('+refs/heads/feat/hermes-secure-standalone-connect:refs/remotes/origin/feat/hermes-secure-standalone-connect');
+    expect(workflow).not.toContain('git merge-base origin/main origin/feat/hermes-secure-standalone-connect');
+    expect(workflow).toContain('test "$(git cat-file -t "$rollback_base_sha")" = commit');
+    expect(workflow).toContain('git merge-base --is-ancestor "$rollback_base_sha" origin/main');
+    expect(workflow).toContain('git merge-base --is-ancestor "$rollback_base_sha" origin/feat/hermes-secure-standalone-connect');
+    expect(workflow).toContain('git merge-base --is-ancestor "$rollback_base_sha" "$GITHUB_SHA"');
+    expect(workflow).toContain('git archive "$rollback_base_sha"');
     expect(workflow).toContain('previous-api-base.Dockerfile');
     expect(workflow).not.toContain('Build local previous-API fixture');
     expect(workflow).toContain('previous-api-compatibility-base-${{ steps.rollback_base.outputs.base_sha }}.json');

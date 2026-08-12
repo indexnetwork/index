@@ -151,7 +151,7 @@ jobs:
           TEST_DATABASE_SAFE: "1"
         run: bun run --cwd services/api db:migrate:test
 
-      - name: Derive and export approved rollback base
+      - name: Validate and export approved rollback base
         id: rollback_base
         env:
           EXPECTED_ROLLBACK_BASE_SHA: b3637387ab39a5259ebc4f1e7efb9fff2be3accc
@@ -162,15 +162,16 @@ jobs:
           git fetch --no-tags origin \
             +refs/heads/main:refs/remotes/origin/main \
             +refs/heads/feat/hermes-secure-standalone-connect:refs/remotes/origin/feat/hermes-secure-standalone-connect
-          derived_base_sha="$(git merge-base origin/main origin/feat/hermes-secure-standalone-connect)"
-          test "$derived_base_sha" = "$EXPECTED_ROLLBACK_BASE_SHA"
-          test "$(git cat-file -t "$derived_base_sha")" = commit
-          git merge-base --is-ancestor "$derived_base_sha" "$GITHUB_SHA"
+          rollback_base_sha="$EXPECTED_ROLLBACK_BASE_SHA"
+          test "$(git cat-file -t "$rollback_base_sha")" = commit
+          git merge-base --is-ancestor "$rollback_base_sha" origin/main
+          git merge-base --is-ancestor "$rollback_base_sha" origin/feat/hermes-secure-standalone-connect
+          git merge-base --is-ancestor "$rollback_base_sha" "$GITHUB_SHA"
           base_dir="$RUNNER_TEMP/hermes-rollback-base"
           rm -rf "$base_dir"
           mkdir -p "$base_dir"
-          git archive "$derived_base_sha" | tar -x -C "$base_dir"
-          printf 'base_sha=%s\nbase_dir=%s\n' "$derived_base_sha" "$base_dir" >>"$GITHUB_OUTPUT"
+          git archive "$rollback_base_sha" | tar -x -C "$base_dir"
+          printf 'base_sha=%s\nbase_dir=%s\n' "$rollback_base_sha" "$base_dir" >>"$GITHUB_OUTPUT"
 
       - name: Build real rollback-base API production image
         id: rollback_image
