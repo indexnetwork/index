@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -40,8 +40,6 @@ function runGenerator(final, output, extra = []) {
 function verifyGenerated(final, output) {
   return Bun.spawnSync(["bun", generator, "--verify", final, output, "7", commit], { cwd: repo, stdout: "pipe", stderr: "pipe" });
 }
-function executable(path, source) { writeFileSync(path, source); chmodSync(path, 0o755); }
-
 function assertSortedObjectKeys(value) {
   if (Array.isArray(value)) return value.forEach(assertSortedObjectKeys);
   if (!value || typeof value !== "object") return;
@@ -135,44 +133,14 @@ test("verification rejects noncanonical bytes, extra keys, mutable URLs, wrong n
 test("CMS scripts are provider-free contracts with cryptographic verification and pinned signer certificate", () => {
   const sign = readFileSync(signScript, "utf8");
   const verify = readFileSync(verifyScript, "utf8");
-  expect(sign).toContain("INDEX_RELEASE_CMS_SIGNING_IDENTITY");
+  expect(sign).toContain("cms-identity.sh");
   expect(sign).toMatch(/security cms -S/);
   expect(sign).not.toMatch(/set -x/);
   expect(verify).toMatch(/security cms -V/);
   expect(verify).toMatch(/security cms -D/);
-  expect(verify).toContain("LMQ3XNXLAD");
-  expect(verify).toContain("Developer ID Application:");
-  expect(verify).toMatch(/cmp .*macos-release\.json/);
+  expect(readFileSync(join(release, "cms-identity.sh"), "utf8")).toContain("LMQ3XNXLAD");
+  expect(readFileSync(join(release, "cms-identity.sh"), "utf8")).toContain("Developer\\ ID\\ Application:");
+  expect(verify).toContain('cmp -s "$temporary/platform-recovered.json" "$metadata"');
   expect(verify).toMatch(/shasum -a 256 -c/);
   expect(verify).toContain("openssl cms -verify");
-});
-
-test("mocked CMS sign and verify recover canonical bytes and reject a different signer certificate", () => {
-  const { root, final, output } = fixture();
-  expect(runGenerator(final, output).exitCode).toBe(0);
-  const bin = join(root, "bin"); mkdirSync(bin);
-  executable(join(bin, "security"), `#!/usr/bin/env bash
-set -e
-if [[ "$1" == find-identity ]]; then echo '1) ABC "Developer ID Application: Index Network Fixture"'; exit 0; fi
-if [[ "$1" == find-certificate ]]; then printf '%s\n' '-----BEGIN CERTIFICATE-----' EXPECTED '-----END CERTIFICATE-----'; exit 0; fi
-if [[ "$1 $2" == 'cms -S' ]]; then while (($#)); do [[ "$1" == -i ]] && input="$2"; [[ "$1" == -o ]] && output="$2"; shift; done; cp "$input" "$output"; exit 0; fi
-if [[ "$1 $2" == 'cms -V' || "$1 $2" == 'cms -D' ]]; then while (($#)); do [[ "$1" == -i ]] && input="$2"; [[ "$1" == -o ]] && output="$2"; shift; done; cp "$input" "$output"; exit 0; fi
-exit 1
-`);
-  executable(join(bin, "openssl"), `#!/usr/bin/env bash
-set -e
-if [[ "$1" == x509 && " $* " == *' -subject '* ]]; then echo 'subject=CN=Developer ID Application: Index Network Fixture,OU=LMQ3XNXLAD,O=Index Network'; exit 0; fi
-if [[ "$1" == x509 && " $* " == *' -fingerprint '* ]]; then grep -q OTHER "$3" && echo 'sha256 Fingerprint=OTHER' || echo 'sha256 Fingerprint=EXPECTED'; exit 0; fi
-if [[ "$1 $2" == 'cms -verify' ]]; then while (($#)); do [[ "$1" == -in ]] && input="$2"; [[ "$1" == -out ]] && output="$2"; [[ "$1" == -signer ]] && signer="$2"; shift; done; cp "$input" "$output"; value=EXPECTED; [[ -n "$MOCK_OTHER" ]] && value="$MOCK_OTHER"; printf '%s\n' '-----BEGIN CERTIFICATE-----' "$value" '-----END CERTIFICATE-----' >"$signer"; exit 0; fi
-exit 1
-`);
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, INDEX_RELEASE_CMS_SIGNING_IDENTITY: "Developer ID Application: Index Network Fixture" };
-  let result = Bun.spawnSync(["bash", signScript, output], { cwd: repo, env, stdout: "pipe", stderr: "pipe" });
-  expect(result.exitCode).toBe(0);
-  result = Bun.spawnSync(["bash", verifyScript, final, output, "7", commit], { cwd: repo, env, stdout: "pipe", stderr: "pipe" });
-  expect(result.exitCode).toBe(0);
-  rmSync(join(output, "macos-release.cms"));
-  expect(Bun.spawnSync(["bash", signScript, output], { cwd: repo, env, stdout: "pipe", stderr: "pipe" }).exitCode).toBe(0);
-  result = Bun.spawnSync(["bash", verifyScript, final, output, "7", commit], { cwd: repo, env: { ...env, MOCK_OTHER: "OTHER" }, stdout: "pipe", stderr: "pipe" });
-  expect(result.exitCode).not.toBe(0);
 });

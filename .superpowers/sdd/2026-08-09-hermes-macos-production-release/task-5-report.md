@@ -84,3 +84,53 @@ All passed without diagnostics. `shellcheck` is not installed. Focused scans pas
 ## Attestation
 
 No Apple service, signing identity, certificate material, credential, notary data, real CMS signature, real DMG, publication, deployment, upload, protected environment, push, or protected operation was accessed or used.
+
+## Review fix round 1/5 — supply-chain hardening
+
+Addressed the Critical and all seven Important findings in one strict-TDD provider-free wave.
+
+### Changes
+
+- Platform `security cms -V` remains the CMS trust authority. OpenSSL now performs only explicit opaque binary parsing/content/signature extraction with `-binary -noverify -purpose any`, so a code-signing-only Developer ID certificate is not incorrectly subjected to S/MIME purpose trust.
+- CMS structure inspection requires exactly one `SignerInfo` and exactly one embedded signer certificate before certificate pinning.
+- Replaced label-only selection with protected `INDEX_RELEASE_CMS_IDENTITY_HASH` (canonical lowercase 40-hex Keychain identity hash) and `INDEX_RELEASE_CMS_CERT_SHA256` (canonical lowercase 64-hex DER certificate digest). The obsolete misnamed `INDEX_RELEASE_CMS_IDENTITY_SHA256` is explicitly refused. Identity enumeration must produce exactly one Developer ID Application row; exact-label certificate export must produce one certificate whose CN, Team `LMQ3XNXLAD`, and DER digest all match independently.
+- Generation and verification now load and evaluate the committed draft-2020-12 schema directly. The closed evaluator is driven by the schema file and supports the schema's used `type`, `const`, `enum`, `pattern`, `minimum`, `required`, `additionalProperties`, `prefixItems`, `items`, `allOf`, and local `$ref` vocabulary; release-specific byte/artifact checks remain additional gates.
+- Final artifacts, evidence, metadata, checksums, and schema are opened with `O_NOFOLLOW`; content is read through stable descriptors with before/after `fstat` plus path inode checks. Existing directories are physical/canonical, symlink aliases and overlapping final/output containment are refused.
+- Metadata/checksum writes use exclusive same-directory owned files and hard-link no-clobber publication. Cleanup removes only recorded owned inode identities. There is no cross-filesystem rename or `.incomplete` destination.
+- Signing now takes `FINAL_DIR OUTPUT_DIR BUILD FULL_COMMIT`, runs the canonical schema/final-artifact validator first, writes an exact validated private copy inside the output transaction, signs only that copy, recovers and byte-compares it, rechecks against canonical metadata, then no-clobber publishes CMS in the same destination directory.
+- Replaced circular plaintext verification coverage with locally generated real DER opaque CMS fixtures and code-signing-only certificates. Tests mock only macOS Security trust/Keychain surfaces and reject wrong signer, multiple signers, tampering, malformed CMS, detached CMS, and ambiguous Keychain identities.
+
+### Strict TDD RED
+
+```bash
+bun test apps/mac/release/tests/release-metadata-security.spec.mjs
+```
+
+Captured at `/tmp/task-5-fix-round-1-red.log`: exit 1, `3 pass`, `4 fail`. Failures demonstrated that schema mutation was ignored, descriptor/no-follow/no-clobber primitives were absent, exact hash pins were absent, and a valid real code-signing-only DER CMS fixture was rejected.
+
+### GREEN and regression evidence
+
+```bash
+bun test apps/mac/release/tests/release-metadata-security.spec.mjs \
+  apps/mac/release/tests/release-metadata.spec.mjs
+```
+
+Result: `12 pass`, `0 fail`, `119 expect() calls`.
+
+```bash
+bun test apps/mac/release/tests \
+  apps/mac/IndexApp/notarize.spec.mjs \
+  apps/mac/IndexApp/provisioning-profile.spec.mjs
+```
+
+Result: `130 pass`, `1 skip`, `0 fail`, `696 expect() calls` across 15 files. The one existing skip is the Linux platform gate for a real-codesign fixture.
+
+Shell syntax, focused ESLint, focused TypeScript checking, `git diff --check`, identity-logging scan, and privacy-assignment scan passed. `shellcheck` remains unavailable.
+
+### Self-review and residual protected-context risk
+
+Confirmed exact schema/URLs/checksums/reproducibility fields are unchanged; no metadata schema widening occurred. Confirmed pins are never printed and ambiguous/misnamed pins fail closed. Confirmed same-directory no-clobber publication and owned-inode cleanup for generated files/CMS. Provider-free Linux tests exercise real OpenSSL DER CMS parsing/signatures and code-signing EKU behavior, but protected Task 6 must still prove the exact macOS `security find-identity`, `find-certificate`, and `cms -S/-V/-D` output/behavior against the reviewed real Developer ID identity on an isolated runner.
+
+### Attestation
+
+No Apple identity/service, production certificate, credential, notary data, real release CMS, publication, deployment, protected operation, or push was used.
