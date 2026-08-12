@@ -25,6 +25,7 @@ type Metadata = {
 type FileSnapshot = { bytes: Buffer; device: number; inode: number; size: number };
 type Schema = Record<string, unknown>;
 
+const SCHEMA_KEYS = new Set(["$schema", "$id", "$ref", "$defs", "title", "type", "additionalProperties", "required", "properties", "const", "enum", "pattern", "prefixItems", "items", "minItems", "maxItems", "allOf", "minimum"]);
 function refuse(message: string): never { throw new Error(`release metadata refused: ${message}`); }
 function sameIdentity(left: { dev: number; ino: number }, right: { dev: number; ino: number }): boolean { return left.dev === right.dev && left.ino === right.ino; }
 function canonicalExistingDirectory(path: string, label: string): string {
@@ -95,6 +96,27 @@ function resolveSchemaReference(root: Schema, reference: string): Schema {
   for (const token of reference.slice(2).split("/")) value = schemaObject(value, "schema reference")[token.replaceAll("~1", "/").replaceAll("~0", "~")];
   return schemaObject(value, "schema reference target");
 }
+function validateSchemaDocument(rawSchema: Schema): void {
+  const visit = (schema: Schema, location: string): void => {
+    for (const key of Object.keys(schema)) if (!SCHEMA_KEYS.has(key)) refuse(`${location} uses unsupported schema keyword ${key}`);
+    if ("$schema" in schema && typeof schema.$schema !== "string") refuse(`${location} has malformed $schema`);
+    if ("$id" in schema && typeof schema.$id !== "string") refuse(`${location} has malformed $id`);
+    if ("title" in schema && typeof schema.title !== "string") refuse(`${location} has malformed title`);
+    if ("$ref" in schema) { if (typeof schema.$ref !== "string" || !schema.$ref.startsWith("#/")) refuse(`${location} has unsupported $ref`); resolveSchemaReference(rawSchema, schema.$ref); }
+    if ("type" in schema && !["object", "array", "string", "integer"].includes(String(schema.type))) refuse(`${location} has unsupported type`);
+    if ("additionalProperties" in schema && typeof schema.additionalProperties !== "boolean") refuse(`${location} has malformed additionalProperties`);
+    if ("required" in schema && (!Array.isArray(schema.required) || schema.required.some((value) => typeof value !== "string"))) refuse(`${location} has malformed required`);
+    if ("properties" in schema) for (const [key, value] of Object.entries(schemaObject(schema.properties, `${location}.properties`))) { const child = schemaObject(value, `${location}.properties.${key}`); visit(child, `${location}.properties.${key}`); }
+    if ("$defs" in schema) for (const [key, value] of Object.entries(schemaObject(schema.$defs, `${location}.$defs`))) visit(schemaObject(value, `${location}.$defs.${key}`), `${location}.$defs.${key}`);
+    if ("enum" in schema && !Array.isArray(schema.enum)) refuse(`${location} has malformed enum`);
+    if ("pattern" in schema) { if (typeof schema.pattern !== "string") refuse(`${location} has malformed pattern`); try { new RegExp(schema.pattern); } catch { refuse(`${location} has invalid pattern`); } }
+    for (const key of ["minItems", "maxItems", "minimum"]) if (key in schema && (typeof schema[key] !== "number" || !Number.isFinite(schema[key]))) refuse(`${location} has malformed ${key}`);
+    if ("prefixItems" in schema) { if (!Array.isArray(schema.prefixItems)) refuse(`${location} has malformed prefixItems`); schema.prefixItems.forEach((value, index) => visit(schemaObject(value, `${location}.prefixItems[${index}]`), `${location}.prefixItems[${index}]`)); }
+    if ("items" in schema && schema.items !== false) refuse(`${location} uses unsupported items form`);
+    if ("allOf" in schema) { if (!Array.isArray(schema.allOf)) refuse(`${location} has malformed allOf`); schema.allOf.forEach((value, index) => visit(schemaObject(value, `${location}.allOf[${index}]`), `${location}.allOf[${index}]`)); }
+  };
+  visit(rawSchema, "schema");
+}
 function validateAgainstSchema(value: unknown, rawSchema: Schema): void {
   const evaluate = (candidate: unknown, schemaValue: Schema, location: string): void => {
     if (typeof schemaValue.$ref === "string") evaluate(candidate, resolveSchemaReference(rawSchema, schemaValue.$ref), location);
@@ -133,6 +155,7 @@ function loadSchema(): Schema {
   try { schema = JSON.parse(snapshot.bytes.toString("utf8")); } catch { refuse("release metadata schema is not JSON"); }
   const object = schemaObject(schema, "release metadata schema");
   if (object.$schema !== "https://json-schema.org/draft/2020-12/schema") refuse("release metadata schema draft is not approved");
+  validateSchemaDocument(object);
   return object;
 }
 function validateMetadata(value: unknown, expected: Metadata, schema: Schema): asserts value is Metadata {

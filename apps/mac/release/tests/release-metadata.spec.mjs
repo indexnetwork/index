@@ -142,5 +142,5 @@ test("CMS scripts are provider-free contracts with cryptographic verification an
   expect(readFileSync(join(release, "cms-identity.sh"), "utf8")).toContain("Developer\\ ID\\ Application:");
   expect(verify).toContain('cmp -s "$temporary/platform-recovered.json" "$metadata"');
   expect(verify).toMatch(/shasum -a 256 -c/);
-  expect(verify).toContain("openssl cms -verify");
+  expect(readFileSync(join(release, "cms-verify.sh"), "utf8")).toContain("openssl cms -verify");
 });

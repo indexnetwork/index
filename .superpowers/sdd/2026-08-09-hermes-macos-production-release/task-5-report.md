@@ -78,7 +78,7 @@ All passed without diagnostics. `shellcheck` is not installed. Focused scans pas
 ## Residual protected-context risks
 
 - Linux provider-free mocks establish command semantics, exact-byte recovery, and wrong-signer refusal, but real macOS `security cms -S/-V/-D`, Keychain certificate selection, OpenSSL parsing of Apple's CMS encoding, and trust-chain behavior require the later protected isolated macOS Task 6 run.
-- Task 6 must retain Task 4 evidence beside both promoted DMGs, use a new private mode-0700 metadata output directory, supply `INDEX_RELEASE_CMS_SIGNING_IDENTITY` without tracing/logging it, and run verification before publication.
+- Task 6 must retain Task 4 evidence beside both promoted DMGs, use a new private mode-0700 metadata output directory, supply reviewed `INDEX_RELEASE_CMS_IDENTITY_HASH` and `INDEX_RELEASE_CMS_CERT_SHA256` pins without tracing/logging them, and run verification before publication.
 - No `macos-release.cms` was generated here because no signing identity was used, as required.
 
 ## Attestation
@@ -134,3 +134,31 @@ Confirmed exact schema/URLs/checksums/reproducibility fields are unchanged; no m
 ### Attestation
 
 No Apple identity/service, production certificate, credential, notary data, real release CMS, publication, deployment, protected operation, or push was used.
+
+## Review fix round 2/5
+
+Addressed all four open Important findings with strict TDD.
+
+### Changes
+
+- Factored `cms-verify.sh` so signing and verification run the same exact opaque DER structure/signature/content/signer check. Before publication, the private CMS must contain exactly one SignerInfo and certificate, recover exact validated bytes, and expose a signer certificate whose DER SHA-256 equals `INDEX_RELEASE_CMS_CERT_SHA256`; a same-label wrong certificate cannot publish.
+- `publish_owned_noreplace` now explicitly returns on hard-link failure, checks the candidate/destination inode identity around link creation, removes only the owned candidate after link success, and propagates cleanup failure. Concurrent destination creation fails nonzero without clobber or owned residue.
+- Added recursive schema-document validation against an exact supported draft-2020-12 vocabulary and keyword value shapes before instance evaluation. Unknown keywords, malformed types/patterns, non-local refs, unresolved refs, and unsupported schema forms fail closed while runtime remains schema-file-driven.
+- Added `snapshot-file.py`: verification opens CMS with `O_NOFOLLOW`, requires stable regular-file descriptor/path identity, copies into an exclusive mode-0600 same-output private snapshot, and returns its SHA-256. Every `security` and OpenSSL phase consumes only that snapshot, whose hash is checked before/after phases; source replacement cannot switch verifier inputs. Owned transaction cleanup removes the snapshot.
+- Corrected the stale Task 6 report instruction to the reviewed identity/certificate pins.
+
+### Strict TDD RED
+
+```bash
+bun test apps/mac/release/tests/release-metadata-fix-round-2.spec.mjs
+```
+
+Captured at `/tmp/task-5-fix-round-2-red.log`: exit 1, `1 pass`, `4 fail`. Failures demonstrated wrong-cert CMS publication, permissive schema vocabulary, CMS symlink reaching Security, and mutable-path verification failure.
+
+### GREEN and regression evidence
+
+Focused metadata suites: `17 pass`, `0 fail`, `149 expect() calls`. Full Task 1-5 regression: `135 pass`, `1 skip`, `0 fail`, `726 expect() calls` across 16 files. Shell syntax, Python syntax, focused ESLint, focused TypeScript, `git diff --check`, identity logging scan, and privacy assignment scan passed.
+
+### Residual and attestation
+
+Real macOS Security/Keychain output and trust behavior remain protected Task 6 evidence. No Apple identity/service, production certificate, credential, protected operation, real release CMS, publication, deployment, or push was used.

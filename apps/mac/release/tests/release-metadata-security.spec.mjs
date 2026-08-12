@@ -70,7 +70,7 @@ test("CMS contracts require exact reviewed hashes, unique selection, validated c
   for (const text of [sign, verify]) { expect(text).toContain("cms-identity.sh"); expect(text).not.toContain("INDEX_RELEASE_CMS_SIGNING_IDENTITY"); }
   const identity = readFileSync(join(release, "cms-identity.sh"), "utf8"); expect(identity).toContain("INDEX_RELEASE_CMS_IDENTITY_HASH"); expect(identity).toContain("INDEX_RELEASE_CMS_CERT_SHA256"); expect(identity).toContain("INDEX_RELEASE_CMS_IDENTITY_SHA256");
   expect(sign).toContain("generate-release-metadata.ts"); expect(sign).toContain("validated-metadata.json"); expect(sign).toMatch(/security cms -D/); expect(sign).toContain("ln "); expect(sign).not.toMatch(/\bmv\b/);
-  expect(verify).toContain("-noverify"); expect(verify).toContain("-purpose any"); expect(verify).toContain("-binary");
+  const cmsVerifier = readFileSync(join(release, "cms-verify.sh"), "utf8"); expect(cmsVerifier).toContain("-noverify"); expect(cmsVerifier).toContain("-purpose any"); expect(cmsVerifier).toContain("-binary");
 });
 
 test("signing refuses invalid metadata before invoking CMS and leaves no incomplete residue", () => {
@@ -103,7 +103,8 @@ exit 1
     if (variant === "tampered") { const bytes = readFileSync(fx.cms); bytes[Math.floor(bytes.length / 2)] ^= 1; writeFileSync(fx.cms, bytes); }
     if (variant === "malformed") writeFileSync(fx.cms, "not cms");
     if (variant === "detached") expect(run(["openssl", "cms", "-sign", "-binary", "-nosmimecap", "-in", fx.metadata, "-signer", join(fx.certs, "one.pem"), "-inkey", join(fx.certs, "one.key"), "-outform", "DER", "-out", fx.cms]).exitCode).toBe(0);
-    expect(run(["bash", verifyScript, fx.final, fx.output, "7", commit], fx.env).exitCode).not.toBe(0);
+    const verification = run(["bash", verifyScript, fx.final, fx.output, "7", commit], fx.env);
+    expect(verification.exitCode, variant).not.toBe(0);
   }
 });
 
