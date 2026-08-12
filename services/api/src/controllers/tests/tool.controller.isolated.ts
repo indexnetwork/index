@@ -177,11 +177,11 @@ describe("ToolController Integration", () => {
     console.log("read_networks result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
-  test("POST /tools/read_user_profiles should return profile data", async () => {
-    const { status, data } = await invokeTool("read_user_profiles", {});
+  test("POST /tools/read_user_contexts should return profile data", async () => {
+    const { status, data } = await invokeTool("read_user_contexts", {});
     expect(status).toBe(200);
     expect(data).toBeDefined();
-    console.log("read_user_profiles result:", JSON.stringify(data).slice(0, 200));
+    console.log("read_user_contexts result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
   test("POST /tools/list_opportunities should return opportunities", async () => {
@@ -228,14 +228,14 @@ describe("ToolController Integration", () => {
 
     // ── Profile (CLI: profile search, show, create, update) ──────
 
-    test("read_user_profiles with query (CLI: profile search)", async () => {
-      const { status, data } = await invokeTool("read_user_profiles", { query: "nonexistent-xyz" });
+    test("read_user_contexts with query (CLI: profile search)", async () => {
+      const { status, data } = await invokeTool("read_user_contexts", { query: "nonexistent-xyz" });
       expect(status).toBe(200);
       expect(data.success).toBe(true);
     }, 30_000);
 
-    test("read_user_profiles with userId (CLI: profile show via tool)", async () => {
-      const { status, data } = await invokeTool("read_user_profiles", { userId: testUserId });
+    test("read_user_contexts with userId (CLI: profile show via tool)", async () => {
+      const { status, data } = await invokeTool("read_user_contexts", { userId: testUserId });
       expect(status).toBe(200);
       expect(data.success).toBe(true);
     }, 30_000);
@@ -370,7 +370,7 @@ describe("ToolController Integration", () => {
     // ── Sync (CLI: sync) ─────────────────────────────────────────
 
     test("all sync tools accept empty query (CLI: sync)", async () => {
-      const syncTools = ["read_user_profiles", "read_networks", "read_intents", "list_contacts"];
+      const syncTools = ["read_user_contexts", "read_networks", "read_intents", "list_contacts"];
       for (const toolName of syncTools) {
         const { status, data } = await invokeTool(toolName, {});
         expect(status).toBe(200);
@@ -411,16 +411,16 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    openRouterTest("create_user_profile with confirm (CLI: profile sync - no profile)", async () => {
-      const { status, data } = await invokeTool("create_user_profile", {
+    openRouterTest("create_user_context with confirm (CLI: profile sync - no profile)", async () => {
+      const { status, data } = await invokeTool("create_user_context", {
         confirm: true,
       });
       expect(status).toBe(200);
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    openRouterTest("update_user_profile with action (CLI: profile sync - has profile)", async () => {
-      const { status, data } = await invokeTool("update_user_profile", {
+    openRouterTest("update_user_context with action (CLI: profile sync - has profile)", async () => {
+      const { status, data } = await invokeTool("update_user_context", {
         action: "regenerate",
       });
       expect(status).toBe(200);

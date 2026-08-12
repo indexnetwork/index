@@ -46,8 +46,6 @@ const FAST_TOOLS = new Set([
   "delete_network_membership",
   "confirm_opportunity_delivery",
   "read_docs",
-  "get_profile_run",
-  "cancel_profile_run",
   "remove_contact",
   "read_own_agent",
   "register_agent",
@@ -62,16 +60,10 @@ const FAST_TOOLS = new Set([
 const INTERACTIVE_TOOLS = new Set(["ask_user_question"]);
 
 const ASYNC_CANDIDATE_TOOLS = new Set([
-  // Canonical *_user_context names (IND-371)
   "read_user_contexts",
   "preview_user_context",
   "create_user_context",
   "update_user_context",
-  // Deprecated *_user_profile aliases (kept until IND-373 retires them)
-  "read_user_profiles",
-  "preview_user_profile",
-  "create_user_profile",
-  "update_user_profile",
   "create_intent",
   "update_intent",
   "scrape_url",

@@ -9,6 +9,10 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- Retire the deprecated REST/chat profile and profile-run tool aliases with protocol 12.0.0; direct Tool API callers must use canonical user-context and enrichment-run names.
+- Record production evidence for the separately gated `opportunity_discovery_runs` Release 2 cleanup; no destructive migration is included.
+
 ### Added
 - Add guarded historical-quality runtime reconciliation (API 0.83.1), including the compatible quality-attestation migration after the dev-owned Hermes migration history.
 - Add Hermes backend production assurance (API 0.83.0): a provider-free PostgreSQL 16 release gate now migrates the dedicated disposable `hermes_assurance` database and runs real authority, lifecycle/fault, 100,000-row migration-preflight, aggregate expiry-telemetry, stale/expired Index-coverage, and emergency concurrency/rollback evidence. Release dispatch requires explicit approved lock/total thresholds and the immutable currently deployed API digest; CI exercises emergency control in dry-run mode only and publishes fixed-schema credential-free evidence.
