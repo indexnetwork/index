@@ -33,7 +33,7 @@ Download only the `hermes-backend-production-assurance` aggregate artifact and t
 
 ## Deployment order: server before client
 
-Deploy the server before client. Do not distribute or enable a Hermes client that depends on API 0.80.0 until the server is healthy.
+Deploy the server before client. Do not distribute or enable a Hermes client that depends on API 0.83.0 until the server is healthy.
 
 1. Under separate migration authorization, inject the production `DATABASE_URL` without printing it and run:
 
@@ -46,7 +46,7 @@ Deploy the server before client. Do not distribute or enable a Hermes client tha
    ```
 
    Save only the fixed count/duration report. A nonzero count, timeout, malformed report, or missing threshold stops rollout.
-2. Deploy API 0.80.0. Wait for health, migration, error-rate, and latency checks. Do not deploy the client yet.
+2. Deploy API 0.83.0. Wait for health, migration, error-rate, and latency checks. Do not deploy the client yet.
 3. Run the server smoke below.
 4. Only after the server smoke and dashboard hold period pass, distribute/enable the matching notarized client through its separately approved release procedure.
 
@@ -69,7 +69,7 @@ The required order is **prepare → select → pickup → respond → consult �
 
    Verify the final state from both boundaries: refresh the owner server binding and require selected Index, no executor, inactive old installation, revoked dedicated credential, removed negotiation authority, and `indexCovering:true`; then refresh signed connector status and require the same terminal disconnected/null-authority state. A Hermes pickup with the old credential/generation must remain denied, and reconnect must require fresh authorization rather than extending the old credential.
 
-The release contract for this order is the combination of `apps/mac/api/agent-runtime-saga.mjs`, `apps/mac/api/agent-runtime-saga.spec.mjs`, `apps/mac/api/client.mjs`, `apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift`, `apps/mac/IndexConnector/Sources/ConnectorRuntime.swift`, `apps/mac/IndexApp/Sources/HermesRuntime.swift`, `services/api/src/controllers/hermes-authorization.controller.ts`, `services/api/src/controllers/agent-runtime.controller.ts`, and `services/api/src/cli/tests/hermes-production-assurance-release.spec.ts`. The production-assurance workflow triggers on the complete `apps/mac/**` trust surface and runs `bun test apps/mac/api/agent-runtime-saga.spec.mjs` provider-free on Ubuntu. This portable gate does not claim a Swift or macOS build; native validation remains in the separate existing Mac workflow.
+The release contract for this order is the combination of `apps/mac/api/agent-runtime-saga.mjs`, `apps/mac/api/agent-runtime-saga.spec.mjs`, `apps/mac/api/client.mjs`, `apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift`, `apps/mac/IndexConnector/Sources/ConnectorRuntime.swift`, `apps/mac/Sources/HermesRuntime.swift`, `services/api/src/controllers/hermes-authorization.controller.ts`, `services/api/src/controllers/agent-runtime.controller.ts`, and `services/api/src/cli/tests/hermes-production-assurance-release.spec.ts`. The production-assurance workflow triggers on the complete `apps/mac/**` trust surface and runs `bun test apps/mac/api/agent-runtime-saga.spec.mjs` provider-free on Ubuntu. This portable gate does not claim a Swift or macOS build; native validation remains in the separate existing Mac workflow.
 
 Do not record the smoke's IDs or secrets. Record only step names, pass/fail, fixed health/reason enums, counts, and durations.
 

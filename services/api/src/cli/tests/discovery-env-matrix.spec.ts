@@ -5,8 +5,8 @@ import { evaluateControlCalibratedGate, MATRIX_ROWS } from '../../../../../packa
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE, executeRuns } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { BASE_FIXTURE_CORPUS_VERSION, baseSeedPayload } from '../discovery-env-matrix.shared';
-import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildConcurrency, parseMatrixChildTimeoutMs, runBoundedChildTasks, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
-import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, discoveryChildThresholdOverrides, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildConcurrency, parseMatrixChildTimeoutMs, runBoundedChildTasks, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
+import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withDiscoveryEnvironment, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 /** 15 single-run slots per row with the requested number of passing slots. */
 const buildGateSlots = (passesByRow: Record<string, number>): MatrixSlotResult[] =>
@@ -19,6 +19,17 @@ const buildGateSlots = (passesByRow: Record<string, number>): MatrixSlotResult[]
     } as MatrixSlotResult)));
 
 describe('discovery environment matrix runtime seams', () => {
+  it('derives the A/B child constructor evaluator override from the current side environment', async () => {
+    expect(await withDiscoveryEnvironment(
+      { DISCOVERY_EVALUATOR_MIN_SCORE: '37.5' },
+      async () => discoveryChildThresholdOverrides(),
+    )).toEqual({ evaluatorMinScore: 37.5 });
+    expect(await withDiscoveryEnvironment(
+      { DISCOVERY_EVALUATOR_MIN_SCORE: '82' },
+      async () => discoveryChildThresholdOverrides(),
+    )).toEqual({ evaluatorMinScore: 82 });
+  });
+
   it('uses the audited historical-matrix-v2 seed contract', () => {
     expect(BASE_FIXTURE_CORPUS_VERSION).toBe('historical-matrix-v2');
     expect(baseSeedPayload(HISTORICAL_MATRIX_CASES).fixtureCorpusVersion).toBe('historical-matrix-v2');
@@ -121,8 +132,8 @@ describe('discovery environment matrix runtime seams', () => {
     }
 
     expect(calls).toEqual([
-      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
-      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
+      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: {} }),
+      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: {} }),
     ]);
     expect(signals).toEqual([controller.signal, controller.signal]);
     expect(() => resolveFixtureTriggerIntent(

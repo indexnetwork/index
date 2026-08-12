@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import base64
 import importlib.util
 import io
@@ -13,6 +14,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -106,6 +108,66 @@ class FakeResponse:
         return json.dumps(self.payload).encode()
 
 
+class FakeStreamingResponse:
+    def __init__(self, lines, *, read_error=None):
+        self.lines = list(lines)
+        self.read_error = read_error
+        self.closed = False
+        self.close_event = threading.Event()
+        self.read_thread_ids = []
+        self.close_thread_id = None
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.read_error is not None:
+            raise self.read_error
+        return self.lines.pop(0) if self.lines else b""
+
+    def close(self):
+        self.close_thread_id = threading.get_ident()
+        self.closed = True
+        self.close_event.set()
+
+
+class FakeIdleStreamingResponse(FakeStreamingResponse):
+    def __init__(self):
+        super().__init__([b": keep-alive\n"])
+        self.idle_read_started = threading.Event()
+
+    def readline(self):
+        self.read_thread_ids.append(threading.get_ident())
+        if self.lines:
+            return self.lines.pop(0)
+        self.idle_read_started.set()
+        self.close_event.wait()
+        return b""
+
+
+class FakeWebSocket:
+    def __init__(self, disconnect_error=None, disconnect_event=None):
+        self.accepted = False
+        self.sent = []
+        self.disconnect_error = disconnect_error
+        self.disconnect_event = disconnect_event
+        self.receive_calls = 0
+
+    async def accept(self):
+        self.accepted = True
+
+    async def receive(self):
+        self.receive_calls += 1
+        if self.disconnect_event is None:
+            await asyncio.Future()
+        else:
+            await asyncio.to_thread(self.disconnect_event.wait)
+        return {"type": "websocket.disconnect"}
+
+    async def send_json(self, payload):
+        if self.disconnect_error is not None:
+            raise self.disconnect_error
+        self.sent.append(payload)
+
+
 def http_error(status, payload, *, url="https://api.example.test/api/error"):
     """A urllib HTTPError whose body carries a JSON `{error, advisory}` (matches REST 4xx)."""
     body = json.dumps(payload).encode()
@@ -129,6 +191,7 @@ def install_fake_urlopen(responses, captured):
         captured.append(
             {
                 "timeout": timeout,
+                "thread_id": threading.get_ident(),
                 "url": request.full_url,
                 "method": request.get_method(),
                 "headers": dict(request.header_items()),
@@ -417,6 +480,39 @@ def main() -> None:
     # Background pollers must be gated on the signed-in state so pre-login 401s
     # cannot race the login transition (else the user must reload the page).
     assert 'auth !== "authed"' in dashboard_js
+    assert "InviteJoinModal" not in dashboard_js
+    assert "index-network-invite" not in dashboard_js
+    assert "index-network-public-join" not in dashboard_js
+    # Owner network detail: overview / settings / access (web parity, no integrations).
+    assert "NetworkDetailModal" in dashboard_js
+    assert "networkShareUrl" in dashboard_js
+    assert "/regenerate-invitation" in dashboard_js
+    assert "resolveShareBase" in dashboard_js
+    assert "Invitation link" in dashboard_js
+    assert "/permissions" in dashboard_js
+    assert "regenerate_network_invitation" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/bootstrap" in dashboard_js
+    assert "/networks/home" in dashboard_js
+    assert "/intents/" in dashboard_js
+    assert "loadIntentDetail" in dashboard_js
+    assert "questionsLoading" in dashboard_js
+    assert "radarLoading" in dashboard_js
+    assert "questionsPath" in dashboard_js
+    assert "payload.pending" in dashboard_js
+    plugin_api_src = (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "/bootstrap" in plugin_api_src
+    assert "intent_radar" in plugin_api_src
+    assert "networks_home" in plugin_api_src
+    assert "/notifications/stream" in plugin_api_src
+    assert "_notification_stream" in plugin_api_src
+    assert "/networks/search-users" in dashboard_js
+    assert "/members/invite" in dashboard_js
+    assert "Your Signals" in dashboard_js
+    assert "Danger Zone" in dashboard_js
+    assert "index-dashboard__net-invite" in dashboard_js
+    assert "index-dashboard__net-visibility" in dashboard_js
+    assert "index-dashboard__net-members" in dashboard_js
+    assert "index-dashboard__net-settings-panel" in dashboard_js
 
     # Hermes Desktop ships the same Getting started gate via the built bundle.
     desktop_js_path = ROOT / "desktop" / "dist" / "plugin.js"
@@ -431,11 +527,41 @@ def main() -> None:
     assert "SettingUpScreen" in desktop_js
     assert "index-dashboard__setting-up" in desktop_js
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
+    assert "startDesktopNotifications" in desktop_js
+    assert "ctx.socket" in desktop_js
+    assert "/notifications/socket" in desktop_js
+    assert "/conversations/socket" in desktop_js
+    assert "/notifications/snapshot" in desktop_js
+    assert "60000" in desktop_js
+    assert "notifiedEntitiesV2" in desktop_js
+    assert "checkOpportunities" not in desktop_js
+    # Native notifications use only authenticated SDK doors. Keep this assertion
+    # on the source fragment because the shared dashboard bundle has its own
+    # browser transport implementation in the same generated module.
+    desktop_tail = (ROOT / "desktop" / "tail.js").read_text()
+    assert "ctx.socket" in desktop_tail
+    assert "ctx.rest" in desktop_tail
+    assert "window.fetch" not in desktop_tail
+    assert "getConnection" not in desktop_tail
+    assert "X-Hermes-Session-Token" not in desktop_tail
+    assert "authedPluginStreamFetch" not in desktop_tail
+    assert "connectPluginStream" not in desktop_tail
+    assert "retries > 10" not in desktop_tail
+    dispose_start = desktop_tail.index("return function dispose()")
+    stopped_index = desktop_tail.index("state.stopped = true", dispose_start)
+    timer_index = desktop_tail.index("window.clearInterval(snapshotTimer)", dispose_start)
+    socket_index = desktop_tail.index("disposeDesktopSocket(notificationSocket)", dispose_start)
+    assert dispose_start < stopped_index < timer_index < socket_index
     # Hermes Desktop ships the same browser-login gate via the built bundle.
     assert "log in with browser" in desktop_js
     assert "retry secure disconnect" in desktop_js
     assert "/auth/login/start" in desktop_js
     assert "index-dashboard__login" in desktop_js
+    assert "InviteJoinModal" not in desktop_js
+    assert "handleIndexDeepLink" not in desktop_js
+    assert "onDeepLink" not in desktop_js
+    assert "NetworkDetailModal" in desktop_js
+    assert "/regenerate-invitation" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js
@@ -556,6 +682,7 @@ def main() -> None:
     old_api_url = os.environ.pop("INDEX_API_URL", None)
     old_development_transport = os.environ.get("INDEX_PLUGIN_DEVELOPMENT_TRANSPORT")
     os.environ["INDEX_PLUGIN_DEVELOPMENT_TRANSPORT"] = "1"
+
     old_urlopen = urllib.request.urlopen
     try:
         missing_key = json.loads(plugin.tools.index_read_intents({}))
@@ -1000,10 +1127,58 @@ def main() -> None:
         }
 
         dashboard_api = load_dashboard_api()
+        assert hasattr(dashboard_api, "_watch_websocket_disconnect")
+
+        # Hermes Desktop realtime paths remain credential-free above the
+        # connector transport seam: the dashboard never handles an API key.
+        assert dashboard_api.parse_sse_data_line(
+            b'data: {"type":"question.new","questionId":"q-1"}\n'
+        ) == {"type": "question.new", "questionId": "q-1"}
+        for ignored_line in (
+            b': keep-alive\n', b'event: notification\n', b'data: not-json\n',
+            b'data: ["not", "an", "object"]\n', b'data: {"partial": true}',
+        ):
+            assert dashboard_api.parse_sse_data_line(ignored_line) is None
+
+        class FakeRealtimeTransport:
+            def __init__(self):
+                self.stream_paths = []
+                self.rest_calls = []
+
+            def stream_sse(self, path):
+                self.stream_paths.append(path)
+                yield b': keep-alive\n'
+                yield b'data: {"type":"question.new","questionId":"q-1"}\n'
+
+            def request_rest(self, method, path, body=None, **_kwargs):
+                self.rest_calls.append((method, path, body))
+                return {"success": True, "notifications": [{"id": "notification-1"}]}
+
+        realtime = FakeRealtimeTransport()
+        dashboard_api.tools.set_transport_for_tests(realtime)
+        try:
+            websocket = FakeWebSocket()
+            asyncio.run(dashboard_api.notifications_socket(websocket))
+            assert websocket.accepted is True
+            assert websocket.sent == [{"type": "question.new", "questionId": "q-1"}]
+            assert realtime.stream_paths == ["/notifications/stream"]
+
+            conversation_socket = FakeWebSocket()
+            asyncio.run(dashboard_api.conversations_socket(conversation_socket))
+            assert realtime.stream_paths[-1] == "/conversations/stream"
+
+            assert asyncio.run(dashboard_api.notifications_snapshot()) == {
+                "success": True,
+                "notifications": [{"id": "notification-1"}],
+            }
+            assert realtime.rest_calls == [("GET", "/notifications/snapshot", None)]
+        finally:
+            dashboard_api.tools.set_transport_for_tests(None)
+
         captured = []
         install_fake_urlopen(
             [
-                # summary → GET /auth/me (identity + onboarding gate).
+                # bootstrap → GET /auth/me (identity + onboarding gate).
                 FakeResponse({
                     "user": {
                         "id": "user-1",
@@ -1026,8 +1201,48 @@ def main() -> None:
                         "pagination": {"current": 1, "total": 1, "count": 1, "totalCount": 1},
                     }
                 ),
-                # _call_questions_by_intent("pending") → server-scoped per intent
-                # (identical query to the Mac app; nested detection/payload).
+            ],
+            captured,
+        )
+        boot = dashboard_api.bootstrap()
+        assert boot["success"] is True
+        assert boot["onboarding"] == {
+            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
+            "needsProfileConfirm": False,
+        }
+        intents = boot["intents"]
+        assert len(intents) == 1
+        intent = intents[0]
+        assert intent["id"] == "intent-1"
+        assert intent["title"] == "Looking for mentors in applied robotics."
+        assert intent["status"] == "live"
+        assert intent["lifecycleStatus"] == "ACTIVE"
+        assert intent["pendingCount"] == 2
+        assert "questions" not in intent
+        assert "opportunities" not in intent
+        calls = [(entry["method"], entry["url"]) for entry in captured]
+        assert calls == [
+            ("GET", "https://api.example.test/api/auth/me"),
+            ("POST", "https://api.example.test/api/intents/list"),
+        ]
+        assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
+
+        # summary is a deprecated alias for bootstrap.
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"user": {"id": "user-1", "onboarding": {"profileConfirmedAt": "2026-01-01T00:00:00.000Z"}}}),
+                FakeResponse({"intents": [{"id": "intent-1", "payload": "x", "status": "ACTIVE"}], "pagination": {"current": 1, "total": 1}}),
+            ],
+            captured,
+        )
+        summary_alias = dashboard_api.summary()
+        assert summary_alias["success"] is True
+        assert len(summary_alias["intents"]) == 1
+
+        captured = []
+        install_fake_urlopen(
+            [
                 FakeResponse(
                     {
                         "questions": [
@@ -1045,8 +1260,18 @@ def main() -> None:
                         ]
                     }
                 ),
-                # _call_questions_by_intent("answered") → server-scoped settled records
-                # per intent (identical scope to the Mac app), surviving reloads.
+            ],
+            captured,
+        )
+        pending = dashboard_api.intent_questions("intent-1", status="pending")
+        assert pending["success"] is True
+        assert pending["questions"][0]["id"] == "question-1"
+        assert pending["questions"][0]["options"][0]["label"] == "Hiring"
+        assert captured[-1]["url"] == "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"
+
+        captured = []
+        install_fake_urlopen(
+            [
                 FakeResponse(
                     {
                         "questions": [
@@ -1069,7 +1294,131 @@ def main() -> None:
                         ]
                     }
                 ),
-                # GET /networks (joined) and GET /networks/discovery/public (discover).
+            ],
+            captured,
+        )
+        answered = dashboard_api.intent_questions("intent-1", status="answered")
+        assert answered["success"] is True
+        assert answered["questions"][0]["id"] == "question-answered"
+        assert answered["questions"][0]["answerText"] == "Hiring"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "questions": [
+                            {
+                                "id": "question-1",
+                                "status": "pending",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
+                                    "title": "Robotics focus",
+                                    "prompt": "Which robotics area should Index prioritize?",
+                                    "options": [{"label": "Hiring", "description": "Find mentors for recruiting."}],
+                                    "multiSelect": False,
+                                },
+                            },
+                        ]
+                    }
+                ),
+                FakeResponse(
+                    {
+                        "questions": [
+                            {
+                                "id": "question-answered",
+                                "status": "answered",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
+                                    "title": "Focus",
+                                    "prompt": "Which robotics area did you pick?",
+                                    "options": [],
+                                    "multiSelect": False,
+                                },
+                                "answer": {
+                                    "selectedOptions": ["Hiring"],
+                                    "freeText": "",
+                                    "answeredAt": "2026-06-01T00:00:00.000Z",
+                                },
+                            }
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        both = dashboard_api.intent_questions("intent-1")
+        assert both["success"] is True
+        assert both["pending"][0]["id"] == "question-1"
+        assert both["answered"][0]["id"] == "question-answered"
+        assert len(captured) == 2
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "items": [
+                            {
+                                "opportunityId": "opp-1",
+                                "userId": "other",
+                                "name": "Ada",
+                                "avatar": "avatars/other/pic.png",
+                                "status": "pending",
+                                "mainText": "Can advise on robotics hiring.",
+                            },
+                            {
+                                "opportunityId": "opp-expired",
+                                "userId": "expired-other",
+                                "name": "Expired Match",
+                                "status": "expired",
+                                "mainText": "Missed window.",
+                            },
+                        ],
+                        "meta": {"totalOpportunities": 2},
+                    }
+                ),
+            ],
+            captured,
+        )
+        radar = dashboard_api.intent_radar("intent-1")
+        assert radar["success"] is True
+        assert radar["items"][0]["opportunityId"] == "opp-1"
+        assert radar["items"][0]["avatar"] == "https://protocol.index.network/api/storage/avatars/other/pic.png"
+        assert radar["items"][0]["name"] == "Ada"
+        assert radar["items"][0]["counterpartUserId"] == "other"
+        assert radar["items"][0]["intentScopeId"] == "intent-1"
+        assert "statuses=latent,pending,negotiating,stalled,accepted,expired" in captured[-1]["url"]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "items": [
+                            {
+                                "opportunityId": "opp-1",
+                                "userId": "other",
+                                "name": "Ada",
+                                "status": "pending",
+                                "mainText": "",
+                                "presentationPending": True,
+                            }
+                        ]
+                    }
+                ),
+            ],
+            captured,
+        )
+        skeleton = dashboard_api.intent_radar("intent-1", presentation="skeleton")
+        assert skeleton["success"] is True
+        assert skeleton["items"][0]["presentationPending"] is True
+        assert "presentation=skeleton" in captured[-1]["url"]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"user": {"id": "user-1"}}),
                 FakeResponse(
                     {
                         "networks": [
@@ -1079,7 +1428,13 @@ def main() -> None:
                                 "prompt": "People building robotics companies.",
                                 "isPersonal": False,
                                 "type": "community",
-                                "user": {"id": "owner-x", "name": "Owner"},
+                                "hasMasterKey": False,
+                                "role": "owner",
+                                "permissions": {
+                                    "joinPolicy": "invite_only",
+                                    "invitationLink": {"code": "invite-abc"},
+                                },
+                                "user": {"id": "other-owner", "name": "Owner"},
                                 "_count": {"members": 3},
                             }
                         ],
@@ -1087,164 +1442,20 @@ def main() -> None:
                     }
                 ),
                 FakeResponse({"networks": [{"id": "network-2", "title": "Not joined", "memberCount": 5}]}),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-1",
-                                "status": "pending",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Ada",
-                                "counterpartAvatar": "avatars/other/pic.png",
-                                "interpretation": {"category": "mentor", "reasoning": "Can advise on robotics hiring."},
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "other", "networkId": "network-1", "intent": "other-intent", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-general",
-                                "status": "pending",
-                                "detection": {},
-                                "counterpartName": "Grace",
-                                "interpretation": {"category": "intro", "reasoning": "Worth a direct follow-up."},
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "role": "agent"},
-                                    {"userId": "intro", "networkId": "network-1", "role": "introducer"},
-                                    {"userId": "other-general", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-waiting-on-other",
-                                "status": "pending",
-                                "detection": {},
-                                "counterpartName": "Already Sent",
-                                "interpretation": {"category": "intro", "reasoning": "Waiting for the other side."},
-                                "actors": [
-                                    {
-                                        "userId": "user-1",
-                                        "networkId": "network-1",
-                                        "role": "agent",
-                                        "actedAt": "2026-05-12T10:00:00.000Z",
-                                    },
-                                    {"userId": "other-waiting", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                            {
-                                "id": "opp-rejected",
-                                "status": "rejected",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Rejected Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            },
-                        ]
-                    }
-                ),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-expired",
-                                "status": "expired",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Expired Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "expired-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            }
-                        ]
-                    }
-                ),
             ],
             captured,
         )
-        summary = dashboard_api.summary()
-        assert summary["success"] is True
-        assert summary["onboarding"] == {
-            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
-            "needsProfileConfirm": False,
-        }
-        intents = summary["intents"]
-        assert len(intents) == 1
-        intent = intents[0]
-        assert intent["id"] == "intent-1"
-        assert intent["title"] == "Looking for mentors in applied robotics."
-        # Mac-app signalStatus parity: an active intent with no accepted or
-        # negotiating opportunities reads "live".
-        assert intent["status"] == "live"
-        assert intent["lifecycleStatus"] == "ACTIVE"
-        assert intent["questionCount"] == 1
-        assert intent["opportunityCount"] == 1
-        # Consolidated badge count from the server list fields.
-        assert intent["pendingCount"] == 2
-        assert intent["totalOpportunityCount"] == 2
-        assert intent["statusCounts"]["pending"] == 1
-        # Rejected is hidden entirely (mac-app parity): no bucket, no count.
-        assert "rejected" not in intent["statusCounts"]
-        assert intent["statusCounts"]["expired"] == 1
-        assert intent["networks"] == ["Robotics Guild"]
-        assert intent["questions"][0]["id"] == "question-1"
-        assert intent["questions"][0]["options"][0]["label"] == "Hiring"
-        # Settled records ride along per intent, pending counts unaffected.
-        assert intent["answeredQuestions"][0]["id"] == "question-answered"
-        assert intent["answeredQuestions"][0]["answerText"] == "Hiring"
-        assert intent["opportunities"][0]["opportunityId"] == "opp-1"
-        assert intent["opportunities"][0]["avatar"] == "https://protocol.index.network/api/storage/avatars/other/pic.png"
-        assert intent["opportunities"][0]["name"] == "Ada"
-        assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
-        assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
-        assert "networks" not in intent["opportunities"][0]
-        assert intent["opportunities"][0]["counterpartUserId"] == "other"
-        assert intent["opportunities"][0]["intentScopeId"] == "intent-1"
-        # Questions are server-scoped per intent, so the general questions
-        # bucket is always empty (only unlinked opportunities remain general).
-        assert summary["general"]["count"] == 1
-        assert summary["general"]["questionCount"] == 0
-        assert summary["general"]["opportunityCount"] == 1
-        assert summary["general"]["questions"] == []
-        assert summary["general"]["opportunities"][0]["opportunityId"] == "opp-general"
-        assert summary["general"]["opportunities"][0]["counterpartUserId"] == "other-general"
-        all_opp_ids = [
-            opp["opportunityId"]
-            for group in summary["intents"] + [summary["general"]]
-            for opp in group.get("opportunities", [])
-        ]
-        assert "opp-waiting-on-other" not in all_opp_ids
-        assert "opp-rejected" not in all_opp_ids
-        assert summary["general"]["statusCounts"]["pending"] == 1
-        assert summary["negotiations"]["count"] == 2
-        assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
-        assert summary["negotiations"]["items"][0]["subtitle"] == "Looking for mentors in applied robotics."
-        assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
-        assert summary["networks"]["count"] == 1
-        assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
-        assert summary["totals"] == {
-            "intents": 1,
-            "questions": 1,
-            "opportunities": 2,
-            "totalOpportunities": 3,
-            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "expired": 1},
-        }
-        # The summary is now fully REST (Mac-app parity): no MCP tool calls remain.
-        calls = [(entry["method"], entry["url"]) for entry in captured]
-        assert calls[:8] == [
-            ("GET", "https://api.example.test/api/auth/me"),
-            ("POST", "https://api.example.test/api/intents/list"),
-            ("GET", "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"),
-            ("GET", "https://api.example.test/api/questions?status=answered&scopeType=intent&scopeId=intent-1"),
-            ("GET", "https://api.example.test/api/networks"),
-            ("GET", "https://api.example.test/api/networks/discovery/public"),
-            ("GET", "https://api.example.test/api/opportunities"),
-            ("GET", "https://api.example.test/api/opportunities?status=expired"),
-        ]
-        assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
-        # No per-counterpart /users/:id fetches: cards no longer carry socials.
-        assert calls[8:] == []
-
+        networks_home = dashboard_api.networks_home()
+        assert networks_home["success"] is True
+        assert networks_home["networks"]["count"] == 1
+        assert networks_home["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert networks_home["networks"]["items"][0]["role"] == "owner"
+        assert networks_home["networks"]["items"][0]["joinPolicy"] == "invite_only"
+        assert networks_home["networks"]["items"][0]["invitationLink"] == {"code": "invite-abc"}
+        home_calls = [(entry["method"], entry["url"]) for entry in captured]
+        assert home_calls[0] == ("GET", "https://api.example.test/api/auth/me")
+        assert ("GET", "https://api.example.test/api/networks") in home_calls
+        assert ("GET", "https://api.example.test/api/networks/discovery/public") in home_calls
         captured = []
         install_fake_urlopen([FakeResponse({"success": True})], captured)
         answer_result = dashboard_api.answer_question(
@@ -1335,6 +1546,7 @@ def main() -> None:
         assert start_chat_result["success"] is True
         assert start_chat_result["conversationId"] == "conv-9"
         assert start_chat_result["counterpartUserId"] == "other"
+        # Public links use the fixed credential-free Index origin.
         assert start_chat_result["chatUrl"] == "https://index.network/chat/conv-9"
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/opportunities/opp-1/start-chat"

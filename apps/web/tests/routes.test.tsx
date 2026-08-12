@@ -6,6 +6,7 @@
  * every route component can mount without throwing -- NOT to test
  * functionality.
  */
+import { waitFor } from '@testing-library/react';
 import { describe, test, expect, vi, beforeAll } from 'vitest';
 import { renderWithRouter } from '@/test/test-utils';
 
@@ -38,6 +39,7 @@ vi.mock('@/lib/api', () => {
   };
   return {
     apiClient: mockApi,
+    apiUrl: (path: string) => path,
     APIError: class APIError extends Error {
       status: number;
       constructor(msg: string, status: number) {
@@ -66,28 +68,83 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-// Mock APIContext
+// Mock APIContext with the empty response shape each covered route expects.
 vi.mock('@/contexts/APIContext', () => {
-  const noopService = new Proxy(
-    {},
-    { get: () => vi.fn().mockResolvedValue({}) }
-  );
+  const indexesService = {
+    discoverPublicIndexes: vi.fn().mockResolvedValue({ data: [] }),
+    getCurrentUserMemberSettings: vi.fn().mockResolvedValue({ isOwner: false }),
+    getNetwork: vi.fn().mockRejectedValue(new Error('Network not found')),
+    getSharedIndexes: vi.fn().mockResolvedValue([]),
+    joinIndex: vi.fn().mockResolvedValue({ alreadyMember: false }),
+  };
+  const networkRequestsService = {
+    listMine: vi.fn().mockResolvedValue({ requests: [], canReview: false }),
+    listPending: vi.fn().mockResolvedValue([]),
+    create: vi.fn(),
+    update: vi.fn(),
+    dismiss: vi.fn().mockResolvedValue(undefined),
+    review: vi.fn(),
+  };
+  const intentsService = {
+    getIntent: vi.fn().mockRejectedValue(new Error('Signal not found')),
+    visitIntent: vi.fn().mockResolvedValue(undefined),
+    archiveIntent: vi.fn(),
+    setIntentStatus: vi.fn(),
+    refineIntent: vi.fn(),
+  };
+  const opportunitiesService = {
+    getRadarView: vi.fn().mockResolvedValue({
+      items: [],
+      meta: { totalOpportunities: 0 },
+    }),
+  };
+  const conversationsService = {
+    getNegotiationActivity: vi.fn().mockResolvedValue([]),
+  };
+  const questionsService = {
+    getPending: vi.fn().mockResolvedValue([]),
+    getAnswered: vi.fn().mockResolvedValue([]),
+    getByConversation: vi.fn().mockResolvedValue([]),
+    answer: vi.fn(),
+    dismiss: vi.fn(),
+  };
+  const usersService = {
+    getUserProfile: vi.fn().mockResolvedValue(null),
+    triggerDiscoveryNegotiation: vi.fn(),
+  };
+  const noopService = new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) });
+  const services = {
+    indexesService,
+    networkRequestsService,
+    intentsService,
+    connectionsService: noopService,
+    synthesisService: noopService,
+    discoverService: noopService,
+    authService: noopService,
+    integrationsService: noopService,
+    usersService,
+    opportunitiesService,
+    conversationService: conversationsService,
+    apiKeysService: noopService,
+    agentsService: noopService,
+    questionsService,
+  };
   return {
     APIProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    useAPI: () =>
-      new Proxy({}, { get: () => noopService }),
-    useIndexes: () => noopService,
-    useIntents: () => noopService,
+    useAPI: () => services,
+    useIndexes: () => indexesService,
+    useNetworks: () => indexesService,
+    useNetworkRequests: () => networkRequestsService,
+    useIntents: () => intentsService,
     useConnections: () => noopService,
     useSynthesis: () => noopService,
     useDiscover: () => noopService,
-    useSync: () => noopService,
     useAuth: () => noopService,
     useIntegrations: () => noopService,
-    useAdmin: () => noopService,
-    useUsers: () => noopService,
-    useOpportunities: () => noopService,
-    useQuestionsService: () => noopService,
+    useUsers: () => usersService,
+    useOpportunities: () => opportunitiesService,
+    useConversations: () => conversationsService,
+    useQuestionsService: () => questionsService,
   };
 });
 
@@ -123,42 +180,83 @@ vi.mock('@/contexts/AIChatSessionsContext', () => ({
   }),
 }));
 
-// Mock AIChatContext — use a Proxy so any property access returns a safe default
-vi.mock('@/contexts/AIChatContext', () => ({
-  AIChatProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useAIChat: () =>
-    new Proxy(
-      {
-        messages: [],
-        isStreaming: false,
-        isLoading: false,
-        sessionId: null,
-        tools: [],
-        debugMeta: null,
-        suggestions: [],
-        opportunities: [],
-      },
-      {
-        get(target, prop) {
-          if (prop in target) return (target as Record<string | symbol, unknown>)[prop];
-          // Any unknown property returns a no-op function (covers setters, send, clear, etc.)
-          return vi.fn();
-        },
-      }
-    ),
-}));
+type AIChatContextContract = ReturnType<
+  typeof import('@/contexts/AIChatContext')['useAIChat']
+>;
+
+// Mock AIChatContext with a compile-time-complete context contract.
+vi.mock('@/contexts/AIChatContext', () => {
+  const context = {
+    isOpen: false,
+    setIsOpen: vi.fn(),
+    messages: [],
+    sessionId: null,
+    sessionTitle: null,
+    sessionPersona: null,
+    setSessionId: vi.fn(),
+    sessionNetworkId: null,
+    chatScope: null,
+    setChatScope: vi.fn(),
+    scopeNetworkId: null,
+    setScopeNetworkId: vi.fn(),
+    resolveIntentSession: vi.fn().mockResolvedValue(null),
+    suggestions: [],
+    isLoading: false,
+    turnBlock: null,
+    stopStream: vi.fn(),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
+    sendWebMessage: vi.fn().mockResolvedValue(undefined),
+    clearChat: vi.fn(),
+    startSignalSession: vi.fn(),
+    startReporterSession: vi.fn().mockResolvedValue(false),
+    loadSession: vi.fn().mockResolvedValue(false),
+    loadPreviousMessages: vi.fn().mockResolvedValue(undefined),
+    hasPreviousSession: false,
+    isLoadingPreviousMessages: false,
+    sessionLoadState: {
+      status: 'error',
+      targetSessionId: 'mock-session-id',
+      error: 'Conversation not found',
+    },
+    isSessionReady: vi.fn().mockReturnValue(false),
+    updateSessionTitle: vi.fn().mockResolvedValue(false),
+    pendingQueue: [],
+    cancelQueuedMessage: vi.fn(),
+    submitMidStreamMessage: vi.fn(),
+    liveQuestions: [],
+  } satisfies AIChatContextContract;
+  return {
+    AIChatProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    useAIChat: () => context,
+  };
+});
 
 // Mock ConversationContext
 vi.mock('@/contexts/ConversationContext', () => ({
   ConversationProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useConversation: () =>
-    new Proxy({}, { get: () => vi.fn() }),
+    new Proxy(
+      {
+        conversations: [],
+        negotiations: [],
+        messages: new Map(),
+        sessionHistory: new Map(),
+        sessionOpportunityMap: new Map(),
+        isConnected: false,
+      },
+      {
+        get(target, prop) {
+          if (prop in target) return (target as Record<string | symbol, unknown>)[prop];
+          return vi.fn().mockResolvedValue(undefined);
+        },
+      },
+    ),
 }));
 
 // Mock IndexesContext
 vi.mock('@/contexts/IndexesContext', () => ({
-  IndexesProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useIndexesState: () => ({
+  NetworksProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useNetworksState: () => ({
     indexes: [],
     loading: false,
     error: null,
@@ -169,12 +267,29 @@ vi.mock('@/contexts/IndexesContext', () => ({
   }),
 }));
 
-// Mock IndexFilterContext
+// Mock NetworkFilterContext
 vi.mock('@/contexts/IndexFilterContext', () => ({
-  IndexFilterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useIndexFilter: () => ({
-    selectedIndexIds: [],
-    setSelectedIndexIds: vi.fn(),
+  NetworkFilterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useNetworkFilter: () => ({
+    selectedNetworkIds: [],
+    setSelectedNetworkIds: vi.fn(),
+  }),
+}));
+
+// Mock QuestionsContext
+vi.mock('@/contexts/QuestionsContext', () => ({
+  QuestionsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useQuestions: () => ({
+    questions: [],
+    count: 0,
+    globalPending: 0,
+    pushedPoolPending: 0,
+    personalAgentPending: 0,
+    pendingRevision: 'anonymous:',
+    loading: false,
+    answer: vi.fn(),
+    dismiss: vi.fn(),
+    refresh: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -195,14 +310,15 @@ vi.mock('@/contexts/SaveBarContext', () => ({
   useSaveBarVisible: () => false,
 }));
 
-// Mock indexes service (standalone, used by /index/[indexId] and /l/[code])
-const noopServiceProxy = () =>
-  new Proxy({}, { get: () => vi.fn().mockResolvedValue({}) });
-
-vi.mock('@/services/indexes', () => ({
-  indexesService: noopServiceProxy(),
-  createIndexesService: () => noopServiceProxy(),
-  useIndexService: () => noopServiceProxy(),
+// Mock the public/authenticated network services used by /l/[code].
+vi.mock('@/services/networks', () => ({
+  indexesService: {
+    getIndexByShareCode: vi.fn().mockRejectedValue(new Error('Invitation not found')),
+  },
+  createIndexesService: vi.fn(),
+  useNetworkService: () => ({
+    acceptInvitation: vi.fn().mockResolvedValue(undefined),
+  }),
 }));
 
 // Mock v2 indexes service (used by IndexesContext)
@@ -246,12 +362,18 @@ vi.mock('@/components/FeedbackWidget', () => ({
   default: () => null,
 }));
 
-// Stub global fetch
+// Stub global fetch with endpoint-specific empty response contracts.
 beforeAll(() => {
-  global.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve([]),
-    text: () => Promise.resolve(''),
+  global.fetch = vi.fn().mockImplementation((input: string | URL | Request) => {
+    const url = String(input);
+    const body = url.includes('/api/chat/shared/')
+      ? { session: { id: 'shared-session', createdAt: new Date(0).toISOString() }, messages: [] }
+      : [];
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve(body),
+      text: () => Promise.resolve(''),
+    });
   });
 });
 
@@ -288,6 +410,7 @@ describe('Route rendering smoke tests', () => {
     const { Component } = await import('@/app/blog/[slug]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/blog/test-post',
+      routePattern: '/blog/:slug',
     });
     expect(container).toBeTruthy();
   });
@@ -302,32 +425,27 @@ describe('Route rendering smoke tests', () => {
     const { Component } = await import('@/app/d/[id]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/d/mock-session-id',
+      routePattern: '/d/:id',
     });
-    expect(container).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain('Could not load this chat'));
   });
 
   test('/i/:intentId — Intent detail page renders without crashing', async () => {
     const { Component } = await import('@/app/i/[intentId]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/i/mock-intent-id',
+      routePattern: '/i/:intentId',
     });
-    expect(container).toBeTruthy();
-  });
-
-  test('/index/:indexId — Index detail page renders without crashing', async () => {
-    const { Component } = await import('@/app/index/[indexId]/page');
-    const { container } = renderWithRouter(<Component />, {
-      route: '/index/mock-index-id',
-    });
-    expect(container).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain('Signal not found'));
   });
 
   test('/l/:code — Invitation page renders without crashing', async () => {
     const { Component } = await import('@/app/l/[code]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/l/mock-invite-code',
+      routePattern: '/l/:code',
     });
-    expect(container).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain('Invitation unavailable'));
   });
 
   test('/networks — Networks page renders without crashing', async () => {
@@ -335,15 +453,16 @@ describe('Route rendering smoke tests', () => {
     const { container } = renderWithRouter(<Component />, {
       route: '/networks',
     });
-    expect(container).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain('Networks'));
   });
 
   test('/networks/:id — Network detail page renders without crashing', async () => {
     const { Component } = await import('@/app/networks/[id]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/networks/mock-network-id',
+      routePattern: '/networks/:id/*',
     });
-    expect(container).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain('Network not found'));
   });
 
   test('/pages/privacy-policy — Privacy policy page renders without crashing', async () => {
@@ -366,14 +485,16 @@ describe('Route rendering smoke tests', () => {
     const { Component } = await import('@/app/s/[token]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/s/mock-share-token',
+      routePattern: '/s/:token',
     });
-    expect(container).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain('Shared conversation'));
   });
 
   test('/c/:code — Connect-link landing page renders without crashing', async () => {
     const { Component } = await import('@/app/c/[code]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/c/mock-connect-code',
+      routePattern: '/c/:code',
     });
     expect(container).toBeTruthy();
     expect(container.textContent).toContain('Open in the Index app');
@@ -383,6 +504,7 @@ describe('Route rendering smoke tests', () => {
     const { Component } = await import('@/app/o/[id]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/o/mock-opportunity-id',
+      routePattern: '/o/:id',
     });
     expect(container).toBeTruthy();
     expect(container.textContent).toContain('Open in the Index app');
@@ -394,21 +516,24 @@ describe('Route rendering smoke tests', () => {
       route: '/download',
     });
     expect(container).toBeTruthy();
-    expect(container.textContent).toContain('Index for macOS');
+    // Lowercased in the redesign; the heading copy is "get the apps".
+    expect(container.textContent).toContain('get the apps');
   });
 
   test('/u/:id — User profile page renders without crashing', async () => {
     const { Component } = await import('@/app/u/[id]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/u/mock-user-id',
+      routePattern: '/u/:id',
     });
-    expect(container).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain('User not found'));
   });
 
   test('/u/:id/chat — User chat page renders without crashing', async () => {
     const { Component } = await import('@/app/u/[id]/chat/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/u/mock-user-id/chat',
+      routePattern: '/u/:id/chat',
     });
     expect(container).toBeTruthy();
   });

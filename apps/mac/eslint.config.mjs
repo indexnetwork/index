@@ -4,8 +4,8 @@ import reactHooks from "eslint-plugin-react-hooks";
 
 const macSourceFiles = [
   "apps/mac/api/**/*.mjs",
-  "apps/mac/IndexApp/**/*.mjs",
-  "apps/mac/IndexApp/src/index-amiga/**/*.jsx",
+  "apps/mac/**/*.mjs",
+  "apps/mac/src/ui/**/*.jsx",
 ];
 
 export default [
@@ -24,7 +24,7 @@ export default [
     },
   },
   {
-    files: ["apps/mac/IndexApp/src/index-amiga/**/*.jsx"],
+    files: ["apps/mac/src/ui/**/*.jsx"],
     languageOptions: {
       globals: {
         React: "readonly",

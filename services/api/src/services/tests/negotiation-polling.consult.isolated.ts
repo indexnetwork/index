@@ -114,7 +114,7 @@ describe('NegotiationPollingService.consult', () => {
       principal,
       safeAskUser: {
         disclosureSubject: 'your permission',
-        draftQuestion: 'May we share the information needed to explore this collaboration?',
+        draftQuestion: 'May I share the information needed to explore this collaboration?',
       },
     });
     expect(cancelClaim).toHaveBeenCalledWith(taskId, claimedAt.toISOString());

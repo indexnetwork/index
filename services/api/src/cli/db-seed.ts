@@ -317,7 +317,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
           permissions: {
             joinPolicy: idx.joinPolicy,
             invitationLink: null,
-            allowGuestVibeCheck: false,
           },
         });
         if (!silent) console.log(`  Index ${i + 1}/${SEED_INDEXES.length}: ${idx.title} — created`);

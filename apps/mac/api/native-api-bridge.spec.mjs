@@ -3,19 +3,21 @@ import { readFileSync } from 'node:fs';
 
 import { createIndexApiClient, createNativeAPIRequestBridge } from './client.mjs';
 
-const mainSwift = readFileSync(new URL('../IndexApp/Sources/main.swift', import.meta.url), 'utf8');
-const ownerStore = readFileSync(new URL('../IndexApp/Sources/OwnerCredentialStore.swift', import.meta.url), 'utf8');
-const nativeBridge = readFileSync(new URL('../IndexApp/Sources/NativeAPIRequestBridge.swift', import.meta.url), 'utf8');
+const appDelegate = readFileSync(new URL('../Sources/AppDelegate.swift', import.meta.url), 'utf8');
+const loopbackAuth = readFileSync(new URL('../Sources/LoopbackAuthServer.swift', import.meta.url), 'utf8');
+const mainSwift = `${appDelegate}\n${loopbackAuth}`;
+const ownerStore = readFileSync(new URL('../Sources/OwnerCredentialStore.swift', import.meta.url), 'utf8');
+const nativeBridge = readFileSync(new URL('../Sources/NativeAPIRequestBridge.swift', import.meta.url), 'utf8');
 const clientSource = readFileSync(new URL('./client.mjs', import.meta.url), 'utf8');
-const apiSource = readFileSync(new URL('../IndexApp/src/index-amiga/api.jsx', import.meta.url), 'utf8');
-const appSource = readFileSync(new URL('../IndexApp/src/index-amiga/app.jsx', import.meta.url), 'utf8');
-const settingsSource = readFileSync(new URL('../IndexApp/src/index-amiga/settings.jsx', import.meta.url), 'utf8');
-const plist = readFileSync(new URL('../IndexApp/Info.plist', import.meta.url), 'utf8');
-const build = readFileSync(new URL('../IndexApp/build.sh', import.meta.url), 'utf8');
-const migrationFixture = readFileSync(new URL('../IndexApp/Tests/OwnerCredentialMigrationFixture.swift', import.meta.url), 'utf8');
-const streamFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIStreamDelegateFixture.swift', import.meta.url), 'utf8');
-const bodyFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIBodyValidationFixture.swift', import.meta.url), 'utf8');
-const quarantineFixture = readFileSync(new URL('../IndexApp/Tests/NativeAPIQuarantineFixture.swift', import.meta.url), 'utf8');
+const apiSource = readFileSync(new URL('../src/ui/bridge.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../src/ui/app.jsx', import.meta.url), 'utf8');
+const settingsSource = readFileSync(new URL('../src/ui/settings.jsx', import.meta.url), 'utf8');
+const plist = readFileSync(new URL('../Info.plist', import.meta.url), 'utf8');
+const build = readFileSync(new URL('../scripts/build.sh', import.meta.url), 'utf8');
+const migrationFixture = readFileSync(new URL('../Tests/OwnerCredentialMigrationFixture.swift', import.meta.url), 'utf8');
+const streamFixture = readFileSync(new URL('../Tests/NativeAPIStreamDelegateFixture.swift', import.meta.url), 'utf8');
+const bodyFixture = readFileSync(new URL('../Tests/NativeAPIBodyValidationFixture.swift', import.meta.url), 'utf8');
+const quarantineFixture = readFileSync(new URL('../Tests/NativeAPIQuarantineFixture.swift', import.meta.url), 'utf8');
 const macWorkflow = readFileSync(new URL('../../../.github/workflows/mac-app-build.yml', import.meta.url), 'utf8');
 const mcpTransportSource = readFileSync(new URL('../../../node_modules/@modelcontextprotocol/server/dist/index.mjs', import.meta.url), 'utf8');
 
@@ -107,7 +109,7 @@ describe('native owner migration and transport source contracts', () => {
     ]) expect(migrationFixture).toContain(evidence);
     expect(migrationFixture).not.toMatch(/require\(\s*try/s);
     expect(build).toContain('--fixture OwnerCredentialMigrationFixture');
-    expect(macWorkflow).toContain('./build.sh --fixture OwnerCredentialMigrationFixture');
+    expect(macWorkflow).toContain('./scripts/build.sh --fixture OwnerCredentialMigrationFixture');
   });
 
   it('enforces exact native method/path/MCP/upload/SSE bounds before network work', () => {
@@ -159,9 +161,9 @@ describe('native owner migration and transport source contracts', () => {
     expect(build).toContain('--fixture NativeAPIStreamDelegateFixture');
     expect(build).toContain('--fixture NativeAPIBodyValidationFixture');
     expect(build).toContain('--fixture NativeAPIQuarantineFixture');
-    expect(macWorkflow).toContain('./build.sh --fixture NativeAPIStreamDelegateFixture');
-    expect(macWorkflow).toContain('./build.sh --fixture NativeAPIBodyValidationFixture');
-    expect(macWorkflow).toContain('./build.sh --fixture NativeAPIQuarantineFixture');
+    expect(macWorkflow).toContain('./scripts/build.sh --fixture NativeAPIStreamDelegateFixture');
+    expect(macWorkflow).toContain('./scripts/build.sh --fixture NativeAPIBodyValidationFixture');
+    expect(macWorkflow).toContain('./scripts/build.sh --fixture NativeAPIQuarantineFixture');
     for (const evidence of ['depth overflow accepted', 'object-key overflow accepted', 'array overflow accepted',
       'string overflow accepted', 'serialized overflow accepted', 'wrong/null/unknown typed body accepted',
       'bool-as-number accepted', 'arbitrary MCP tool accepted', 'arbitrary REST tool accepted',

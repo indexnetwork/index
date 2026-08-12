@@ -5,15 +5,12 @@
  * ContactServiceAdapter and an optional contactsEnabled flag that gates
  * write-path tools (import_contacts, add_contact).
  *
- * NOTE: This type is intentionally defined inline (not derived via Pick from
- * ToolRegistryCompositionDeps in shared/agent/tool.helpers.ts) to avoid a
- * module cycle. ToolRegistryCompositionDeps imports ContactServiceAdapter
- * from shared/interfaces/contact.interface.ts, which after IND-549 forwards
- * to contacts/ports — creating a cycle back here.
+ * NOTE: This type is intentionally defined inline rather than derived from
+ * ToolRegistryCompositionDeps, keeping the capability port independent from
+ * the all-capability composition contract.
  *
- * Structural equivalence with the Pick<ToolRegistryCompositionDeps,
- * "contactService" | "contactsEnabled"> definition in the legacy shim is
- * preserved.
+ * Its shape remains structurally equivalent to the matching
+ * ToolRegistryCompositionDeps fields.
  *
  * IND-549: extracted from capabilities/contacts.tools.port.ts into the
  * contacts capability's dedicated ports layer.

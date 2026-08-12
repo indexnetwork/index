@@ -1,10 +1,11 @@
 /**
- * Pure response mappers for the macOS/iOS prototypes.
+ * Pure response mappers for the macOS prototype.
  *
  * These functions translate services/api response envelopes into the current
  * `window.INDEX_DATA`-style view models, but this file deliberately has no
  * dependency on the app bundles and no side effects.
  */
+import { normalizeSocial, socialHrefOf } from './socials.mjs';
 
 const DEFAULT_EVENT = {
   name: 'index',
@@ -71,7 +72,6 @@ export function mapIntent(intent, questionCount = 0) {
     title: intent.summary || intent.payload || 'untitled signal',
     edges: networkTitles.join(' · '),
     offLimits: '',
-    shape: 'warm',
     status: archived ? 'archived' : paused ? 'paused' : 'active',
     pipeline: { warm: 0, considering: 0, negotiating: 0 },
     lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
@@ -87,6 +87,27 @@ export function mapIntent(intent, questionCount = 0) {
     inbound: [],
     source: intent,
   };
+}
+
+/**
+ * Patch one mapped signal row's hub status after pause/archive/resume.
+ * Keeps the intents shelf in sync without waiting for a full snapshot reload.
+ * @param {Array<Object>} intents
+ * @param {string} intentId
+ * @param {'active'|'paused'|'archived'} nextStatus
+ * @returns {Array<Object>}
+ */
+export function applyMappedIntentStatus(intents = [], intentId, nextStatus) {
+  if (!Array.isArray(intents) || !intentId) return intents;
+  const status = String(nextStatus || '').toLowerCase();
+  if (status !== 'active' && status !== 'paused' && status !== 'archived') return intents;
+  let found = false;
+  const next = intents.map((intent) => {
+    if (!intent || intent.id !== intentId) return intent;
+    found = true;
+    return { ...intent, status };
+  });
+  return found ? next : intents;
 }
 
 /**
@@ -167,12 +188,10 @@ export function mapCounterpartProfile(source = {}) {
 export function mapSocials(socials) {
   if (!Array.isArray(socials)) return [];
   return socials
-    .map((entry) => {
-      const id = entry.id || entry.label || entry.platform || 'website';
-      const handle = entry.handle || entry.username || entry.value || '';
-      return { id: String(id).toLowerCase(), prefix: entry.prefix || '', handle };
-    })
-    .filter((entry) => entry.handle);
+    .map((entry) => normalizeSocial(entry))
+    // An entry that resolves to no address is dropped here rather than drawn
+    // as a link that goes nowhere. See socials.mjs for what fails to resolve.
+    .filter((entry) => entry.handle && socialHrefOf(entry));
 }
 
 /**

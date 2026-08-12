@@ -1,0 +1,2 @@
+UPDATE "networks" SET "permissions" = ("permissions"::jsonb - 'allowGuestVibeCheck')::json WHERE "permissions"::jsonb ? 'allowGuestVibeCheck';--> statement-breakpoint
+ALTER TABLE "networks" ALTER COLUMN "permissions" SET DEFAULT '{"joinPolicy":"invite_only","invitationLink":null}'::json;

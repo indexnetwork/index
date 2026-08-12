@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { api, onAuthRefusal, subscribeToRun, encodeArtifactId } from '../src/api/client';
+import type { ArtifactRef, HistoricalQualityArtifact } from '../src/api/client';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, historicalQualityRef } from './historical-quality.fixture';
 
 describe('subscribeToRun', () => {
   let mockSource: {
@@ -334,6 +336,41 @@ describe('config and run-comparison client methods', () => {
     await expect(api.createConfig(profile)).rejects.toThrow(
       'A config named "sonnet-evaluator" already exists',
     );
+  });
+});
+
+describe('historical quality client types', () => {
+  it('prohibits impossible ArtifactRef discriminator/completeness combinations', () => {
+    const qualityRef = historicalQualityRef();
+    if (qualityRef.measurementKind !== 'historical-quality-pilot') {
+      throw new Error('fixture did not select the quality ref branch');
+    }
+    const { qualityCompleteness: _omitted, ...missingCompleteness } = qualityRef;
+
+    // @ts-expect-error historical quality refs require validated slot counts
+    const missing: ArtifactRef = missingCompleteness;
+    // @ts-expect-error generic refs cannot carry historical quality completeness
+    const genericWithQuality: ArtifactRef = { ...qualityRef, measurementKind: null };
+
+    expect(_omitted.completedSlots).toBe(30);
+    expect(missing.measurementKind).toBe('historical-quality-pilot');
+    expect(genericWithQuality.qualityCompleteness).toEqual(_omitted);
+  });
+
+  it('name the strict measurement, funnel, and participant fields served by V2', () => {
+    const artifact = COMPLETE_HISTORICAL_QUALITY_ARTIFACT as HistoricalQualityArtifact;
+    const first = artifact.payload.cases[0]!;
+
+    expect(artifact.measurement.kind).toBe('historical-quality-pilot');
+    expect(artifact.measurement.completedSlots).toBe(30);
+    const indexed: ArtifactRef['qualityCompleteness'] = {
+      requestedSlots: artifact.measurement.requestedSlots,
+      completedSlots: artifact.measurement.completedSlots,
+    };
+    expect(indexed).toEqual({ requestedSlots: 30, completedSlots: 30 });
+    expect(first.stageFunnel?.participants).toBe(24);
+    expect(first.participantMetrics).toHaveLength(24);
+    expect(first.participantMetrics[0]?.role).toBe('target');
   });
 });
 

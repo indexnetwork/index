@@ -18,9 +18,10 @@ Adapter-free protocol layer: LangGraph workflows, structured LLM agents, MCP/cha
 packages/protocol/
 ├── src/index.ts                  # public package barrel
 ├── src/shared/                   # interfaces, tools, model config, schemas
-├── src/chat/, intent/            # chat and intent workflows
-├── src/opportunity/, negotiation/# discovery and negotiation domains
-├── src/questioner/, hyde/, etc.  # supporting protocol domains
+├── src/signals/, communities/    # intent/signal and index/network workflows
+├── src/questions/, participant-agents/, contacts/, integrations/
+├── src/opportunity/, negotiation/# domain/ contracts and application/ workflows
+├── src/chat/, hyde/, etc.        # supporting protocol domains
 └── skills/                       # Claude plugin skill templates/partials
 ```
 

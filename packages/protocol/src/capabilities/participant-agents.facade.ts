@@ -21,8 +21,8 @@
  */
 
 // ── Agent registration and permission management ──────────────────────────────
-export { createAgentTools } from "../participant-agents/application/index.js";
-export type { AgentToolDeps } from "../participant-agents/ports/index.js";
+export { createAgentTools, SYSTEM_AGENT_IDS } from "../participant-agents/public/index.js";
+export type { AgentToolDeps } from "../participant-agents/public/index.js";
 
 // ── Runtime chat graph ────────────────────────────────────────────────────────
 export { ChatGraphFactory } from "../chat/chat.graph.js";

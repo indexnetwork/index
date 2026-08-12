@@ -42,6 +42,7 @@ afterAll(() => {
 });
 
 import type { FromIntentJobData, FromIntentDatabase, FromIntentDeps, FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+import { buildIntentDiscoveryTrigger } from '../opportunity/discovery-trigger.builders';
 
 const { FromIntentQueue, QUEUE_NAME } = await import('../opportunity/from-intent.queue');
 const { summarizeOpportunityDiscoveryResult } = await import('../opportunity/discovery.shared');
@@ -245,16 +246,13 @@ describe('FromIntentQueue', () => {
         networkIds: ['idx1'],
       });
       expect(markIntentFirstDiscoverySucceeded).toHaveBeenCalledWith('i1');
-      expect(invokeOpportunityGraph).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'u1',
-          searchQuery: 'Build a SaaS',
-          operationMode: 'create',
-          networkId: 'idx1',
-          triggerIntentId: 'i1',
-          options: { initialStatus: 'latent' },
-        })
-      );
+      const expected = buildIntentDiscoveryTrigger({
+        userId: 'u1',
+        searchQuery: 'Build a SaaS',
+        networkIds: ['idx1'],
+        triggerIntentId: 'i1',
+      });
+      expect(JSON.stringify(invokeOpportunityGraph.mock.calls[0]![0])).toBe(JSON.stringify(expected));
     });
 
     it('discover: does not stamp when the graph fails', async () => {
@@ -499,17 +497,6 @@ describe('FromIntentQueue', () => {
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
     });
 
-    it('discover: without invokeOpportunityGraph uses real graph (may need Redis)', async () => {
-      const db = {
-        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-      };
-      const queue = new FromIntentQueue({ database: asDb(db) });
-      try {
-        await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
-      } catch {
-        // Real graph can fail without Redis/DB
-      }
-    });
   });
 
   describe('completion telemetry', () => {

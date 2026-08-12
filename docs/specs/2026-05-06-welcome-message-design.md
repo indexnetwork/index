@@ -14,6 +14,8 @@ updated: 2026-05-06
 
 ## Problem
 
+> **Superseded (2026-08-07):** This historical foreground-discovery design is replaced by background-only discovery; see [background-only discovery release 1](../rollout/background-only-discovery-release-1.md).
+
 After the user completes onboarding, there is no immediate follow-up message. The user calls `complete_onboarding()`, the onboarding subagent says "You're all set," and then silence until the next scheduled ambient or daily digest pass fires. The first intent is already captured during onboarding (Step 3), and `discover_opportunities` runs at Step 4 — pending opportunities may already exist. The system should deliver a welcome message immediately, framing those initial results.
 
 ## Solution

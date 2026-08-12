@@ -17,6 +17,7 @@ import { ContentContainer } from "@/components/layout";
 import { SaveBarProvider } from "@/contexts/SaveBarContext";
 import AgentApiKeysSection from "@/components/settings/AgentApiKeysSection";
 import { useIntegrationsService } from "@/services/integrations";
+import { parseSocial } from "@/lib/socials";
 
 const SETTINGS_TABS = ["profile", "notifications", "api-keys"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -405,14 +406,25 @@ export default function ProfilePage() {
                 { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial('linkedin'), onChange: (v: string) => setSocial('linkedin', v) },
                 { prefix: "github.com/", label: "github", value: getSocial('github'), onChange: (v: string) => setSocial('github', v) },
                 { prefix: "t.me/", label: "telegram", value: getSocial('telegram'), onChange: (v: string) => setSocial('telegram', v) },
-              ].map(({ prefix, value, onChange }) => (
+              ].map(({ prefix, label, value, onChange }) => (
                 <div key={prefix} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
                   <span className="px-3 py-2 bg-gray-50 text-gray-400 font-ibm-plex-mono text-xs border-r border-gray-200 whitespace-nowrap select-none">
                     {prefix}
                   </span>
                   <Input
                     value={value}
+                    placeholder="username"
                     onChange={(e) => onChange(e.target.value)}
+                    // A whole URL pasted from a browser is as welcome as a bare
+                    // handle: it is trimmed back to the handle once the field is
+                    // left, and untouched while typing so it never fights the
+                    // keyboard. A link for some other platform keeps its full
+                    // text, since that is where it goes.
+                    onBlur={(e) => {
+                      const resolved = parseSocial({ label, value: e.target.value });
+                      const platform = label === 'twitter' ? 'x' : label;
+                      onChange(resolved.platform === platform ? resolved.handle : e.target.value.trim());
+                    }}
                     className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm"
                   />
                 </div>

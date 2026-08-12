@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
-import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnswerWindowMs, DEFAULT_ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../negotiation.protocol.js";
-import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
-import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questioner/questioner.types.js";
-import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../negotiation.consultation-policy.js";
-import type { NegotiationConsultationReason } from "../negotiation.consultation-policy.js";
+import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
+import { NegotiationGraphState } from "../domain/negotiation.state.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
+import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnswerWindowMs, DEFAULT_ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../domain/negotiation.protocol.js";
+import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../domain/negotiation.state.js";
+import type { NegotiationTurn } from "../domain/negotiation.state.js";
+import type { QuestionerEnqueuePayload } from "../../questions/application/question.input.js";
+import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../domain/negotiation.consultation-policy.js";
+import type { NegotiationConsultationReason } from "../domain/negotiation.consultation-policy.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
 

@@ -5,4 +5,11 @@
  * of the legacy integration/ shim directory.
  */
 export { createIntegrationTools } from "../integrations/public/index.js";
-export type { IntegrationToolDeps } from "../integrations/public/index.js";
+export type {
+  IntegrationAdapter,
+  IntegrationConnection,
+  IntegrationSession,
+  IntegrationSessionOptions,
+  IntegrationToolDeps,
+  ToolActionResponse,
+} from "../integrations/public/index.js";

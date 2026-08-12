@@ -5,9 +5,7 @@
  * elicitation dispatch, plus internal generator, persistence, and delivery
  * envelopes used across the questions capability.
  *
- * IND-547: extracted from shared/schemas/question.schema.ts into the
- * questions domain layer.  Legacy path (shared/schemas/question.schema.ts)
- * is a thin compatibility shim pointing here.
+ * IND-547: canonical question schema in the questions domain layer.
  */
 import { z } from "zod";
 

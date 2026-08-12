@@ -60,11 +60,10 @@ jobs:
             apps/mac/api/native-api-bridge.spec.mjs \
             apps/mac/api/deeplink.spec.mjs
           bun test \
-            apps/mac/IndexApp/hermes-runtime.spec.mjs \
-            apps/mac/IndexApp/deep-link-host.spec.mjs \
-            apps/mac/IndexApp/link-host.spec.mjs
-          python3 apps/mac/IndexApp/assemble.py
-          git diff --exit-code -- apps/mac/IndexApp/Resources/index.html
+            apps/mac/hermes-runtime.spec.mjs \
+            apps/mac/scripts/deep-link-host.spec.mjs \
+            apps/mac/scripts/link-host.spec.mjs
+          python3 apps/mac/scripts/assemble.py
 
       - name: Protocol architecture and provider-free Hermes contracts
         env:

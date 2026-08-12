@@ -197,8 +197,236 @@
     + '<path d="M459.46 29.5H450.42V42.61H442.95V0.72998H462.13C470.57 0.72998 477 6.91996 477 15.12C477 21.31 473.36 26.35 467.9 28.47L477.55 42.61H468.45L459.47 29.5H459.46ZM450.42 20.33H461.95C466.44 20.33 469.23 18.27 469.23 15.11C469.23 11.95 466.44 9.88998 461.95 9.88998H450.42V20.33Z"/>'
     + '<path d="M497.83 25.56L491.4 30.96V42.61H483.93V0.72998H491.4V17.67H492.92L509.07 0.72998H521.03L503.31 20.21L521.46 42.61H512.11L497.85 25.55L497.83 25.56Z"/>'
     + '</svg>';
-  const SOCIAL_FIELDS = [["twitter", "x.com/"], ["linkedin", "linkedin.com/in/"], ["github", "github.com/"], ["telegram", "t.me/"]];
-  const FIXED_SOCIAL_LABELS = ["twitter", "linkedin", "github", "telegram"];
+  /* ---------- Social links: one normalizer for everything ----------
+     Ported from apps/mac/api/socials.mjs, which carries the reasoning in full
+     and is covered by `bun test api/` there. Kept in sync by hand: this bundle
+     is hand-authored with no import step, so it cannot share the module.
+
+     Values arrive in every shape a person or a scraper can produce: a full URL,
+     a host with a path, a bare handle, an @handle, and — from enrichment — a
+     few of those packed into one field separated by commas. The label is no
+     steadier: the API's vocabulary is linkedin|twitter|github|telegram|custom,
+     and 'custom' is also where every website lands, so a LinkedIn URL routinely
+     arrives labelled 'custom'.
+
+     The rule that keeps a link working: when the value carries a host, the
+     value decides where it goes and is never reassembled. Rebuilding from a
+     label the value disagrees with is what turned a linkedin.com/in/… value
+     into https://eugene-pavlenko-b31a0430/. The label is consulted only for a
+     bare handle, which carries no destination of its own. */
+
+  /** Where a bare handle lives, per platform. */
+  const SOCIAL_PREFIX = {
+    x: "x.com/",
+    twitter: "x.com/",
+    linkedin: "linkedin.com/in/",
+    github: "github.com/",
+    telegram: "t.me/",
+  };
+
+  /** Labels that name a bucket rather than a platform, so the value decides. */
+  const GENERIC_SOCIAL_LABELS = ["", "custom", "website", "web", "link", "site", "url", "other"];
+
+  /** Hosts we can name. Anything else is a website, which is not a lesser kind. */
+  const PLATFORM_HOSTS = [
+    [/^(mobile\.)?(x\.com|twitter\.com)$/, "x"],
+    [/^([a-z0-9-]+\.)?linkedin\.com$/, "linkedin"],
+    [/^github\.com$/, "github"],
+    [/^(t\.me|telegram\.me|telegram\.dog)$/, "telegram"],
+  ];
+
+  const SOCIAL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+  /** The platforms the editor always offers, in the order it shows them. */
+  const EDITABLE_PLATFORMS = ["x", "linkedin", "github", "telegram"];
+
+  /**
+   * The first address in a field that may hold several. Enrichment writes
+   * discoveries like "tidemid , https://instagram.com/nick/" into one value;
+   * used whole it became a single unopenable link. A URL contains none of these
+   * separators, so splitting on them cannot damage a well-formed one.
+   */
+  function firstSocialValue(raw) {
+    const text = String(raw == null ? "" : raw).trim();
+    if (!text) return "";
+    const parts = text.split(/[\s,;|]+/).filter(Boolean);
+    // Trailing sentence punctuation rides along when these are scraped from prose.
+    return (parts[0] || "").replace(/[),.;:]+$/, "");
+  }
+
+  /** Whether a value names a host of its own, rather than being a bare handle. */
+  function looksHosted(value) {
+    if (SOCIAL_SCHEME.test(value)) return true;
+    const head = value.replace(/^\/\//, "").split("/")[0];
+    // A dotted label is a domain; "eugenepx" is not, and treating it as one is
+    // exactly how https://eugenepx/ got rendered as a link.
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)+\.?$/i.test(head);
+  }
+
+  /** Split a hosted value into a lowercase bare host and its path. */
+  function splitSocialHostPath(value) {
+    let text = value.replace(SOCIAL_SCHEME, "").replace(/^\/\//, "");
+    text = text.replace(/^www\./i, "");
+    const cut = text.search(/[/?#]/);
+    const host = (cut === -1 ? text : text.slice(0, cut)).toLowerCase().replace(/\.$/, "");
+    const path = (cut === -1 ? "" : text.slice(cut)).replace(/\/+$/, "");
+    return { host: host, path: path };
+  }
+
+  function platformForHost(host) {
+    for (let i = 0; i < PLATFORM_HOSTS.length; i += 1) {
+      if (PLATFORM_HOSTS[i][0].test(host)) return PLATFORM_HOSTS[i][1];
+    }
+    return "";
+  }
+
+  /** The platform an entry's own label names, or '' when it names a bucket. */
+  function labelPlatform(social) {
+    const id = String(social.id || social.label || social.platform || "").toLowerCase().trim();
+    if (GENERIC_SOCIAL_LABELS.indexOf(id) >= 0) return "";
+    if (id === "twitter" || id === "x") return "x";
+    return SOCIAL_PREFIX[id] ? id : "";
+  }
+
+  /** The identifying part of a hosted value: no scheme, no host, no /in/. */
+  function handleFromPath(platform, host, path) {
+    if (platform === "website") return host + path;
+    const rest = path.replace(/^\//, "").replace(/^@/, "");
+    // LinkedIn keeps people under /in/ and everything else (companies, schools)
+    // one segment up, so only /in/ is dropped: what is left still says which.
+    return platform === "linkedin" ? rest.replace(/^in\//, "") : rest;
+  }
+
+  /**
+   * The canonical address for a platform plus an already-bare handle. A handle
+   * that kept a slash is a path under the platform's own host rather than a
+   * username, so LinkedIn's /in/ is left off for those.
+   */
+  function platformHref(platform, handle) {
+    if (!handle) return "";
+    if (platform === "linkedin") {
+      return handle.indexOf("/") >= 0 ? "https://linkedin.com/" + handle : "https://linkedin.com/in/" + handle;
+    }
+    const prefix = SOCIAL_PREFIX[platform];
+    return prefix ? "https://" + prefix + handle : "";
+  }
+
+  /**
+   * Resolve any stored or typed entry to {platform, handle, href}. `href` is ''
+   * when there is no openable destination; callers hide those rather than
+   * rendering a dead link.
+   */
+  function parseSocial(social) {
+    const entry = social || {};
+    const fromLabel = labelPlatform(entry);
+    const raw = firstSocialValue(entry.handle == null ? entry.value : entry.handle);
+    if (!raw) return { platform: fromLabel || "website", handle: "", href: "" };
+
+    if (looksHosted(raw)) {
+      const parts = splitSocialHostPath(raw);
+      const platform = platformForHost(parts.host) || fromLabel || "website";
+      const handle = handleFromPath(platform, parts.host, parts.path);
+      // A platform host with nothing after it is the platform's front page, not
+      // anybody's profile.
+      if (platform !== "website" && !handle) return { platform: platform, handle: "", href: "" };
+      // A named platform is rebuilt onto its canonical host, so twitter.com and
+      // the mobile host settle to one address; a website keeps the host it came
+      // with, because there it is the identity.
+      const href = platform === "website"
+        ? "https://" + parts.host + parts.path
+        : platformHref(platform, handle);
+      return { platform: platform, handle: handle, href: href };
+    }
+
+    const bare = raw.replace(/^@+/, "");
+    const platform = fromLabel || "website";
+    return { platform: platform, handle: bare, href: platformHref(platform, bare) };
+  }
+
+  /**
+   * The label to store an entry under. The API's set is fixed
+   * (linkedin|twitter|github|telegram|custom), so 'x' is stored as 'twitter'.
+   * A label outside the set silently loses the link.
+   */
+  function socialApiLabelOf(social) {
+    const entry = social || {};
+    const platform = entry.platform || parseSocial(entry).platform;
+    if (platform === "x" || platform === "twitter") return "twitter";
+    return SOCIAL_PREFIX[platform] ? platform : "custom";
+  }
+
+  /**
+   * Bucket a stored social list into the editor's fixed fields plus websites.
+   * Every field is always present so it can be cleared and filled again.
+   */
+  function splitProfileSocials(socials) {
+    const handles = {};
+    for (let i = 0; i < EDITABLE_PLATFORMS.length; i += 1) handles[EDITABLE_PLATFORMS[i]] = "";
+    const websites = [];
+    const list = Array.isArray(socials) ? socials : [];
+    for (let i = 0; i < list.length; i += 1) {
+      const parsed = parseSocial(list[i]);
+      if (Object.prototype.hasOwnProperty.call(handles, parsed.platform)) {
+        // Duplicates happen (enrichment and the person can both supply one);
+        // the first that resolves wins rather than stacking up as extras.
+        if (!handles[parsed.platform] && parsed.handle) handles[parsed.platform] = parsed.handle;
+      } else if (parsed.href) {
+        const shown = parsed.href.replace(SOCIAL_SCHEME, "");
+        if (websites.indexOf(shown) < 0) websites.push(shown);
+      }
+    }
+    return { handles: handles, websites: websites };
+  }
+
+  /** The editor's fields back into the API's {label, value} rows. */
+  function buildProfileSocials(handles, websites) {
+    const rows = [];
+    function add(platform, typed) {
+      const parsed = parseSocial({ id: platform, handle: typed });
+      if (!parsed.href) return;
+      // 'custom' is the one label the per-user uniqueness index exempts, so more
+      // than one website can be stored; a second linkedin would be rejected.
+      const label = socialApiLabelOf({ platform: parsed.platform });
+      let clash = false;
+      for (let i = 0; i < rows.length; i += 1) {
+        if (rows[i].value === parsed.href || (label !== "custom" && rows[i].label === label)) {
+          clash = true;
+          break;
+        }
+      }
+      if (!clash) rows.push({ label: label, value: parsed.href });
+    }
+    for (let i = 0; i < EDITABLE_PLATFORMS.length; i += 1) {
+      add(EDITABLE_PLATFORMS[i], (handles || {})[EDITABLE_PLATFORMS[i]] || "");
+    }
+    const sites = Array.isArray(websites) ? websites : [];
+    for (let i = 0; i < sites.length; i += 1) add("website", sites[i]);
+    return rows;
+  }
+
+  /** Rows for read-only display: resolved, deduplicated, dead links dropped. */
+  function displayProfileSocials(socials) {
+    const rows = [];
+    const list = Array.isArray(socials) ? socials : [];
+    for (let i = 0; i < list.length; i += 1) {
+      const parsed = parseSocial(list[i]);
+      if (!parsed.href) continue;
+      let seen = false;
+      for (let j = 0; j < rows.length; j += 1) {
+        if (rows[j].href === parsed.href) { seen = true; break; }
+      }
+      if (seen) continue;
+      // The prefix already names the platform, so the handle is shown under it
+      // rather than repeating the label: "x.com/pm", not "twitter: https://…".
+      const prefix = SOCIAL_PREFIX[parsed.platform] || "";
+      rows.push({
+        href: parsed.href,
+        platform: parsed.platform,
+        text: prefix ? prefix + parsed.handle : parsed.handle,
+      });
+    }
+    return rows;
+  }
 
   function fetchPluginJSON(path, options) {
     if (SDK.fetchJSON) {
@@ -362,8 +590,9 @@
       const key = idx >= 0 ? pair.slice(0, idx) : pair;
       params[key] = idx >= 0 ? decodeURIComponent(pair.slice(idx + 1)) : "";
     });
-    if (params.intent) return { intentId: params.intent };
-    return { intentId: null };
+    return {
+      intentId: params.intent || null,
+    };
   }
 
   function writeHash(intentId) {
@@ -598,6 +827,15 @@
     return key in STATUS_BUCKET ? STATUS_BUCKET[key] : "pending";
   }
 
+  function statusCountsFromOpportunities(opportunities) {
+    const counts = { pending: 0, negotiating: 0, accepted: 0, expired: 0 };
+    (opportunities || []).forEach(function (opp) {
+      const bucket = bucketForStatus(opp && opp.status);
+      if (bucket && bucket in counts) counts[bucket] += 1;
+    });
+    return counts;
+  }
+
   function RadarStrip(props) {
     const counts = props.counts || {};
     return React.createElement("div", { className: "index-dashboard__radar-strip" },
@@ -615,11 +853,102 @@
 
   const OPP_RESOLVED_LABEL = { accepted: "Connected", expired: "Missed" };
 
-  function initialsFor(name) {
-    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "?";
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
+  // palette, so dashboard avatars match the Index web app exactly.
+  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+  function baHash(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = (hash << 5) - hash + name.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  }
+
+  function baDigit(num, ntn) {
+    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  }
+
+  function baBool(num, ntn) {
+    return !(baDigit(num, ntn) % 2);
+  }
+
+  function baUnit(num, range, index) {
+    const value = num % range;
+    if (index && baDigit(num, index) % 2 === 0) return -value;
+    return value;
+  }
+
+  function baColor(num) {
+    return BORING_PALETTE[num % BORING_PALETTE.length];
+  }
+
+  function BoringAvatar(props) {
+    const SIZE = 80;
+    const ELEMENTS = 4;
+    const seed = String(props.seed || "default");
+    const num = baHash(seed);
+    const props_ = [];
+    for (let t = 0; t < ELEMENTS; t++) {
+      props_.push({
+        color: baColor(num + t),
+        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+        rotate: baUnit(num * (t + 1), 360),
+        isSquare: baBool(num, 2),
+      });
+    }
+    const maskId = "ba-mask-" + num;
+    return React.createElement("svg", {
+      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
+      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
+    },
+      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
+        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+      ),
+      React.createElement("g", { mask: "url(#" + maskId + ")" },
+        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
+        React.createElement("rect", {
+          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
+          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
+          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+        React.createElement("circle", {
+          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
+          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+        }),
+        React.createElement("line", {
+          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
+          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+      ),
+    );
+  }
+
+  function UserAvatar(props) {
+    const seed = props.id || props.name || "default";
+    const size = props.size;
+    const className = "index-dashboard__avatar"
+      + (props.className ? " " + props.className : "")
+      + (props.ghost ? " index-dashboard__net-member-avatar--ghost" : "");
+    const style = size ? { width: size, height: size } : undefined;
+    const children = [React.createElement(BoringAvatar, { key: "fallback", seed: seed })];
+    if (props.avatar) {
+      children.push(React.createElement("img", {
+        key: "img",
+        className: "index-dashboard__avatar-img",
+        src: props.avatar,
+        alt: "",
+        loading: "lazy",
+        onError: function (e) { if (e && e.currentTarget) e.currentTarget.style.display = "none"; },
+      }));
+    }
+    return React.createElement("span", {
+      className: className,
+      style: style,
+      "aria-hidden": props.ariaHidden !== false ? "true" : undefined,
+    }, children);
   }
 
   function OpportunityCard(props) {
@@ -669,18 +998,11 @@
     return React.createElement("article", { className: "index-dashboard__opp" },
       React.createElement("div", { className: "index-dashboard__opp-head" },
         React.createElement("div", idProps,
-          React.createElement("span", { className: "index-dashboard__avatar", "aria-hidden": "true" },
-            initialsFor(opportunity.name),
-            opportunity.avatar
-              ? React.createElement("img", {
-                className: "index-dashboard__avatar-img",
-                src: opportunity.avatar,
-                alt: "",
-                loading: "lazy",
-                onError: function (e) { e.target.style.display = "none"; },
-              })
-              : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: opportunity.counterpartUserId,
+            name: opportunity.name,
+            avatar: opportunity.avatar,
+          }),
           React.createElement("div", { className: "index-dashboard__opp-meta" },
             React.createElement("strong", { className: "index-dashboard__opp-name" }, opportunity.name || "New match"),
             React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
@@ -789,75 +1111,809 @@
     ]);
   }
 
-  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
-  // palette, so dashboard network avatars match the Index web app exactly.
-  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+  function ICON_LOCK() {
+    return svgIcon("index-dashboard__net-tab-icon", [
+      React.createElement("rect", { key: "a", x: 3, y: 11, width: 18, height: 11, rx: 2, ry: 2 }),
+      svgPath("M7 11V7a5 5 0 0 1 10 0v4"),
+    ]);
+  }
 
-  function baHash(name) {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = (hash << 5) - hash + name.charCodeAt(i);
-      hash = hash & hash;
+  function resolveShareBase(webUrl, apiUrl) {
+    if (webUrl) return String(webUrl).replace(/\/+$/, "");
+    // Derive from the API the summary reported — never invent production.
+    if (apiUrl) {
+      try {
+        const u = new URL(apiUrl);
+        let host = u.hostname;
+        if (host === "localhost" || host === "127.0.0.1") {
+          return u.protocol + "//" + host + ":3000";
+        }
+        if (host.indexOf("protocol.") === 0) host = host.slice("protocol.".length);
+        return "https://" + host;
+      } catch (e) { /* ignore */ }
     }
-    return Math.abs(hash);
+    return null;
   }
 
-  function baDigit(num, ntn) {
-    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  function networkShareUrl(network, webUrl, apiUrl) {
+    if (!network || network.isPersonal || network.hasMasterKey) return null;
+    if (network.role !== "owner") return null;
+    const base = resolveShareBase(webUrl, apiUrl);
+    if (!base) return null;
+    const code = network.invitationLink && network.invitationLink.code;
+    if (code) return base + "/l/" + encodeURIComponent(code);
+    return null;
   }
 
-  function baBool(num, ntn) {
-    return !(baDigit(num, ntn) % 2);
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        resolve();
+      } catch (e) { reject(e); }
+    });
   }
 
-  function baUnit(num, range, index) {
-    const value = num % range;
-    if (index && baDigit(num, index) % 2 === 0) return -value;
-    return value;
+  function ICON_COPY() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("rect", { key: "a", x: 9, y: 9, width: 13, height: 13, rx: 2, ry: 2 }),
+      svgPath("M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"),
+    ]);
   }
 
-  function baColor(num) {
-    return BORING_PALETTE[num % BORING_PALETTE.length];
+  function ICON_CHECK() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("polyline", { key: "a", points: "20 6 9 17 4 12" }),
+    ]);
   }
 
-  function BoringAvatar(props) {
-    const SIZE = 80;
-    const ELEMENTS = 4;
-    const seed = String(props.seed || "default");
-    const num = baHash(seed);
-    const props_ = [];
-    for (let t = 0; t < ELEMENTS; t++) {
-      props_.push({
-        color: baColor(num + t),
-        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
-        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
-        rotate: baUnit(num * (t + 1), 360),
-        isSquare: baBool(num, 2),
+  function ICON_REFRESH() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      svgPath("M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"),
+      svgPath("M21 3v5h-5"),
+      svgPath("M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"),
+      svgPath("M8 16H3v5"),
+    ]);
+  }
+
+  // Owner network detail — web overview / settings / access parity (no integrations).
+  function NetworkDetailModal(props) {
+    const network = props.network || {};
+    const isOwner = network.role === "owner";
+    const showOwnerTabs = isOwner && !network.isPersonal;
+    const meId = props.currentUserId || "";
+    const tabState = React.useState("overview");
+    const tab = tabState[0];
+    const setTab = tabState[1];
+    const localState = React.useState(network);
+    const local = localState[0];
+    const setLocal = localState[1];
+    React.useEffect(function () { setLocal(network); }, [network]);
+    const copiedState = React.useState(false);
+    const copied = copiedState[0];
+    const setCopied = copiedState[1];
+    const busyState = React.useState(false);
+    const busy = busyState[0];
+    const setBusy = busyState[1];
+    const errState = React.useState(null);
+    const err = errState[0];
+    const setErr = errState[1];
+    const signalsState = React.useState([]);
+    const signals = signalsState[0];
+    const setSignals = signalsState[1];
+    const signalsLoadingState = React.useState(false);
+    const signalsLoading = signalsLoadingState[0];
+    const setSignalsLoading = signalsLoadingState[1];
+    const membersState = React.useState([]);
+    const members = membersState[0];
+    const setMembers = membersState[1];
+    const membersLoadingState = React.useState(false);
+    const membersLoading = membersLoadingState[0];
+    const setMembersLoading = membersLoadingState[1];
+    const queryState = React.useState("");
+    const query = queryState[0];
+    const setQuery = queryState[1];
+    const suggestionsState = React.useState([]);
+    const suggestions = suggestionsState[0];
+    const setSuggestions = suggestionsState[1];
+    const showSugState = React.useState(false);
+    const showSug = showSugState[0];
+    const setShowSug = showSugState[1];
+    const pageState = React.useState(1);
+    const page = pageState[0];
+    const setPage = pageState[1];
+    const titleState = React.useState(network.title || "");
+    const title = titleState[0];
+    const setTitle = titleState[1];
+    const promptState = React.useState(network.detail || "");
+    const prompt = promptState[0];
+    const setPrompt = promptState[1];
+    const imageState = React.useState(network.imageUrl || null);
+    const imagePreview = imageState[0];
+    const setImagePreview = imageState[1];
+    const imageDataState = React.useState(null);
+    const imageData = imageDataState[0];
+    const setImageData = imageDataState[1];
+    const removeImageState = React.useState(false);
+    const removeImage = removeImageState[0];
+    const setRemoveImage = removeImageState[1];
+    const deleteTextState = React.useState("");
+    const deleteText = deleteTextState[0];
+    const setDeleteText = deleteTextState[1];
+    const showDeleteState = React.useState(false);
+    const showDelete = showDeleteState[0];
+    const setShowDelete = showDeleteState[1];
+    const showRegenerateConfirmState = React.useState(false);
+    const showRegenerateConfirm = showRegenerateConfirmState[0];
+    const setShowRegenerateConfirm = showRegenerateConfirmState[1];
+    const PAGE_SIZE = 10;
+    const shareUrl = networkShareUrl(local, props.webUrl, props.apiUrl);
+    const count = typeof local.memberCount === "number" ? local.memberCount : members.length || null;
+    const isPublic = local.joinPolicy === "anyone";
+    const label = "Invitation link";
+    const settingsDirty = title !== (local.title || "")
+      || prompt !== (local.detail || "")
+      || !!imageData
+      || removeImage;
+
+    React.useEffect(function () {
+      setTitle(network.title || "");
+      setPrompt(network.detail || "");
+      setImagePreview(network.imageUrl || null);
+      setImageData(null);
+      setRemoveImage(false);
+    }, [network.id, network.title, network.detail, network.imageUrl]);
+
+    React.useEffect(function () {
+      if (!local.id) return;
+      let cancelled = false;
+      setSignalsLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/overview")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load signals.");
+          setSignals(Array.isArray(payload.intents) ? payload.intents : []);
+        })
+        .catch(function () { if (!cancelled) setSignals([]); })
+        .finally(function () { if (!cancelled) setSignalsLoading(false); });
+      return function () { cancelled = true; };
+    }, [local.id]);
+
+    React.useEffect(function () {
+      if (!showOwnerTabs || !local.id || tab !== "access") return;
+      let cancelled = false;
+      setMembersLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load members.");
+          setMembers(Array.isArray(payload.members) ? payload.members : []);
+        })
+        .catch(function () { if (!cancelled) setMembers([]); })
+        .finally(function () { if (!cancelled) setMembersLoading(false); });
+      return function () { cancelled = true; };
+    }, [showOwnerTabs, local.id, tab]);
+
+    React.useEffect(function () {
+      if (!query.trim()) { setSuggestions([]); return; }
+      const handle = setTimeout(function () {
+        fetchPluginJSON(API + "/networks/search-users?q=" + encodeURIComponent(query.trim()) + "&networkId=" + encodeURIComponent(local.id || ""))
+          .then(function (payload) {
+            const users = (payload && Array.isArray(payload.users)) ? payload.users : [];
+            const ids = {};
+            members.forEach(function (m) { if (m && m.id) ids[m.id] = true; });
+            setSuggestions(users.filter(function (u) { return u && u.id && !ids[u.id]; }));
+            setShowSug(true);
+          })
+          .catch(function () { setSuggestions([]); });
+      }, 220);
+      return function () { clearTimeout(handle); };
+    }, [query, local.id, members]);
+
+    function patchLocal(patch) {
+      const merged = Object.assign({}, local, patch);
+      setLocal(merged);
+      if (props.onUpdated) props.onUpdated(merged);
+    }
+
+    function onCopy() {
+      if (!shareUrl) return;
+      copyText(shareUrl).then(function () {
+        setCopied(true);
+        setTimeout(function () { setCopied(false); }, 2000);
+      }).catch(function () { /* leave idle */ });
+    }
+
+    function regenerateLink() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/regenerate-invitation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not regenerate invitation link.");
+          }
+          patchLocal({
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+          setShowRegenerateConfirm(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function setJoinPolicy(anyone) {
+      if (!local.id || busy) return;
+      const next = anyone ? "anyone" : "invite_only";
+      if (local.joinPolicy === next) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/permissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ joinPolicy: next }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update visibility.");
+          }
+          patchLocal({
+            joinPolicy: payload.joinPolicy || next,
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function onPickImage(event) {
+      const file = event.target && event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function () {
+        setImageData(String(reader.result || ""));
+        setImagePreview(String(reader.result || ""));
+        setRemoveImage(false);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function saveSettings() {
+      if (!local.id || busy || !title.trim()) return;
+      setBusy(true);
+      setErr(null);
+      const finish = function (imageUrl) {
+        const body = { title: title.trim(), prompt: prompt.trim() || null };
+        if (imageUrl !== undefined) body.imageUrl = imageUrl;
+        return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not save settings.");
+          }
+          const patch = {
+            title: payload.title || title.trim(),
+            detail: payload.detail != null ? payload.detail : (prompt.trim() || ""),
+          };
+          if (payload.imageUrl !== undefined) patch.imageUrl = payload.imageUrl;
+          else if (removeImage) patch.imageUrl = null;
+          patchLocal(patch);
+          setImageData(null);
+          setRemoveImage(false);
+        });
+      };
+      const upload = imageData
+        ? fetchPluginJSON(API + "/network-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataUrl: imageData }),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Image upload failed.");
+          }
+          return payload.imageUrl;
+        })
+        : Promise.resolve(removeImage ? null : undefined);
+      upload.then(finish)
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function deleteNetwork() {
+      if (!local.id || busy || deleteText !== local.title) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not delete network.");
+          }
+          if (props.onDeleted) props.onDeleted(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); setBusy(false); });
+    }
+
+    function leaveNetwork() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/leave", { method: "POST" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not leave network.");
+          }
+          if (props.onLeft) props.onLeft(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function addMember(user) {
+      if (!local.id || busy || !user || !user.id) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, permissions: ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not add member.");
+          }
+          if (payload.member) setMembers(function (prev) { return prev.concat([payload.member]); });
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function inviteEmail(email) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not invite.");
+          }
+          return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members");
+        })
+        .then(function (payload) {
+          setMembers((payload && Array.isArray(payload.members)) ? payload.members : []);
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function removeMember(id) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not remove member.");
+          }
+          setMembers(function (prev) { return prev.filter(function (m) { return m.id !== id; }); });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function setMemberRole(id, role) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: role === "owner" ? ["owner"] : ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update role.");
+          }
+          const updated = payload.member;
+          if (updated) {
+            setMembers(function (prev) {
+              return prev.map(function (m) {
+                return m.id === id ? Object.assign({}, m, { permissions: updated.permissions || m.permissions }) : m;
+              });
+            });
+          }
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function tabButton(id, labelText) {
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__profile-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
+        onClick: function () { setTab(id); },
+      }, labelText);
+    }
+
+    function memberAvatar(member, size) {
+      const sz = size || 28;
+      const avatar = member.avatar;
+      const looksAbsolute = avatar && /^(https?:|data:)/i.test(String(avatar));
+      return React.createElement(UserAvatar, {
+        id: member.id,
+        name: member.name,
+        avatar: looksAbsolute ? avatar : null,
+        size: sz,
+        ghost: !!member.isGhost,
+        className: "index-dashboard__net-member-avatar"
+          + (looksAbsolute ? "" : " index-dashboard__net-member-avatar--fallback"),
       });
     }
-    const maskId = "ba-mask-" + num;
-    return React.createElement("svg", {
-      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
-      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
-    },
-      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
-        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+
+    const head = React.createElement("div", { className: "index-dashboard__net-detail-head" },
+      React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-avatar--lg", "aria-hidden": "true" },
+        local.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: local.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: local.id || local.title }),
       ),
-      React.createElement("g", { mask: "url(#" + maskId + ")" },
-        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
-        React.createElement("rect", {
-          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
-          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
-          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+      React.createElement("div", { className: "index-dashboard__net-detail-head-text" },
+        React.createElement("h3", { className: "index-dashboard__net-detail-title" }, local.title || "Untitled network"),
+        React.createElement("div", { className: "index-dashboard__net-detail-bits" },
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            isPublic ? ICON_GLOBE() : ICON_LOCK(),
+            isPublic ? "Public" : "Private",
+          ),
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            ICON_USERS(),
+            (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
+          ),
+          isOwner
+            ? React.createElement("span", { className: "index-dashboard__net-detail-owner" }, "Owner")
+            : null,
+        ),
+      ),
+      !isOwner
+        ? React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-leave-btn",
+          disabled: busy,
+          onClick: leaveNetwork,
+        }, "Leave")
+        : null,
+    );
+
+    const totalPages = Math.max(1, Math.ceil(members.length / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const pageMembers = members.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const noResults = showSug && query.trim() && suggestions.length === 0;
+
+    const accessBody = React.createElement("div", { className: "index-dashboard__net-access-panel" },
+      !local.hasMasterKey
+        ? React.createElement("div", null,
+          React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Visibility"),
+          React.createElement("div", { className: "index-dashboard__net-visibility" },
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(true); },
+            }, ICON_GLOBE(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Public"),
+              React.createElement("span", null, "Anyone can join"),
+            )),
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (!isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(false); },
+            }, ICON_LOCK(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Private"),
+              React.createElement("span", null, "Invite only"),
+            )),
+          ),
+        )
+        : null,
+      !local.hasMasterKey
+        ? (shareUrl
+          ? React.createElement("div", { className: "index-dashboard__net-invite" },
+            React.createElement("p", { className: "index-dashboard__net-invite-label" }, label),
+            React.createElement("div", { className: "index-dashboard__net-invite-row" },
+              React.createElement("code", { className: "index-dashboard__net-invite-url" }, shareUrl),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__net-invite-copy" + (showRegenerateConfirm ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": "Regenerate invitation link",
+                title: "Regenerate invitation link",
+                disabled: busy,
+                onClick: function () { setShowRegenerateConfirm(!showRegenerateConfirm); },
+              }, ICON_REFRESH()),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__net-invite-copy" + (copied ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": copied ? "Copied" : "Copy link",
+                title: copied ? "Copied" : "Copy link",
+                onClick: onCopy,
+              }, copied ? ICON_CHECK() : ICON_COPY()),
+            ),
+            showRegenerateConfirm
+              ? React.createElement("div", { className: "index-dashboard__net-regenerate" },
+                React.createElement("p", null, "The current link stops working immediately. Regenerate?"),
+                React.createElement("div", { className: "index-dashboard__net-regenerate-actions" },
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: function () { setShowRegenerateConfirm(false); },
+                  }, "Cancel"),
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: regenerateLink,
+                  }, busy ? "Regenerating…" : "Regenerate"),
+                ),
+              )
+              : null,
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet."))
+        : null,
+      React.createElement("div", { className: "index-dashboard__net-members" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" },
+          "Members (", String(members.length), ")"),
+        React.createElement("div", { className: "index-dashboard__net-member-search" },
+          React.createElement("input", {
+            className: "index-dashboard__net-member-input",
+            value: query,
+            placeholder: "Search by name or add by email…",
+            onChange: function (e) { setQuery(e.target.value); setShowSug(true); },
+            onFocus: function () { setShowSug(true); },
+          }),
+          showSug && query.trim() && suggestions.length > 0
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              suggestions.map(function (u) {
+                return React.createElement("button", {
+                  key: u.id,
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  onClick: function () { addMember(u); },
+                }, memberAvatar(u, 24), React.createElement("span", null, u.name || u.email || "User"), React.createElement("em", null, "Add"));
+              }),
+            )
+            : null,
+          noResults
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              query.indexOf("@") >= 0
+                ? React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  disabled: busy,
+                  onClick: function () { inviteEmail(query.trim()); },
+                }, "Invite \"" + query.trim() + "\"")
+                : React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "No results found"),
+            )
+            : null,
+        ),
+        membersLoading
+          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading members…")
+          : React.createElement("div", { className: "index-dashboard__net-member-list" },
+            pageMembers.map(function (m) {
+              const perms = Array.isArray(m.permissions) ? m.permissions : [];
+              const owner = perms.indexOf("owner") >= 0;
+              const isSelf = meId && m.id === meId;
+              return React.createElement("div", { key: m.id, className: "index-dashboard__net-member-row" },
+                React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-main",
+                  onClick: function () { if (props.onOpenUser) props.onOpenUser(m.id); },
+                },
+                  memberAvatar(m),
+                  React.createElement("span", { className: "index-dashboard__net-member-name" },
+                    m.name || "Unknown",
+                    m.isGhost ? React.createElement("em", { className: "index-dashboard__net-member-ghost" }, "ghost") : null,
+                  ),
+                ),
+                React.createElement("span", {
+                  className: "index-dashboard__net-member-role" + (owner ? " index-dashboard__net-member-role--owner" : ""),
+                }, owner ? "Owner" : (perms.indexOf("member") >= 0 ? "Member" : "Contact")),
+                !owner && perms.indexOf("member") >= 0 && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Promote to owner", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "owner"); },
+                  }, "↑")
+                  : null,
+                owner && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Demote to member", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "member"); },
+                  }, "↓")
+                  : null,
+                !owner
+                  ? React.createElement("button", {
+                    type: "button", title: "Remove member", disabled: busy,
+                    className: "index-dashboard__net-member-act index-dashboard__net-member-act--danger",
+                    onClick: function () { removeMember(m.id); },
+                  }, "×")
+                  : null,
+              );
+            }),
+          ),
+        totalPages > 1
+          ? React.createElement("div", { className: "index-dashboard__net-member-pager" },
+            React.createElement("span", null,
+              String((safePage - 1) * PAGE_SIZE + 1) + "–" + String(Math.min(safePage * PAGE_SIZE, members.length)) + " of " + String(members.length)),
+            React.createElement("span", null,
+              React.createElement("button", { type: "button", disabled: safePage <= 1, onClick: function () { setPage(safePage - 1); } }, "prev"),
+              React.createElement("button", { type: "button", disabled: safePage >= totalPages, onClick: function () { setPage(safePage + 1); } }, "next"),
+            ),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const settingsBody = React.createElement("div", { className: "index-dashboard__net-settings-panel" },
+      React.createElement("div", { className: "index-dashboard__net-settings-photo" },
+        React.createElement("label", { className: "index-dashboard__net-settings-photo-btn" },
+          (imagePreview && !removeImage)
+            ? React.createElement("img", { src: imagePreview, alt: "", className: "index-dashboard__net-settings-photo-img" })
+            : React.createElement(BoringAvatar, { seed: local.id || title }),
+          React.createElement("input", { type: "file", accept: "image/*", onChange: onPickImage, hidden: true }),
+        ),
+        imagePreview && !removeImage
+          ? React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__net-settings-remove",
+            onClick: function () { setRemoveImage(true); setImageData(null); },
+          }, "Remove image")
+          : null,
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Title"),
+        React.createElement("input", {
+          value: title,
+          onChange: function (e) { setTitle(e.target.value); },
         }),
-        React.createElement("circle", {
-          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
-          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Prompt"),
+        React.createElement("textarea", {
+          rows: 4,
+          value: prompt,
+          onChange: function (e) { setPrompt(e.target.value); },
+          placeholder: "What people can share in this network…",
         }),
-        React.createElement("line", {
-          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
-          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
-        }),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-settings-actions" },
+        React.createElement("button", {
+          type: "button",
+          disabled: !settingsDirty || busy,
+          onClick: function () {
+            setTitle(local.title || "");
+            setPrompt(local.detail || "");
+            setImagePreview(local.imageUrl || null);
+            setImageData(null);
+            setRemoveImage(false);
+          },
+        }, "Cancel"),
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-settings-save",
+          disabled: !settingsDirty || !title.trim() || busy,
+          onClick: saveSettings,
+        }, busy ? "Saving…" : "Save"),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-danger" },
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-danger-toggle",
+          "aria-expanded": showDelete,
+          onClick: function () { setShowDelete(!showDelete); },
+        },
+          React.createElement("span", {
+            className: "index-dashboard__net-danger-chevron",
+            "aria-hidden": "true",
+          }, showDelete ? "▲" : "▼"),
+          "Danger Zone"),
+        showDelete
+          ? React.createElement("div", { className: "index-dashboard__net-danger-box" },
+            React.createElement("p", null, "Delete this network. Type the name to confirm."),
+            React.createElement("input", {
+              value: deleteText,
+              placeholder: local.title || "",
+              onChange: function (e) { setDeleteText(e.target.value); },
+            }),
+            React.createElement("button", {
+              type: "button",
+              disabled: deleteText !== local.title || busy,
+              onClick: deleteNetwork,
+            }, "Delete"),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const overviewBody = React.createElement("div", { className: "index-dashboard__net-overview" },
+      React.createElement("div", { className: "index-dashboard__net-overview-head" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Your Signals"),
+        React.createElement("span", { className: "index-dashboard__net-overview-count" },
+          signalsLoading ? "…" : (String(signals.length) + (signals.length === 1 ? " signal" : " signals"))),
+      ),
+      signalsLoading
+        ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading signals…")
+        : (signals.length
+          ? React.createElement("div", { className: "index-dashboard__net-signal-list" },
+            signals.map(function (sig) {
+              const text = (sig.summary && String(sig.summary).trim()) || sig.payload || "Untitled signal";
+              return React.createElement("button", {
+                key: sig.id,
+                type: "button",
+                className: "index-dashboard__net-signal-row",
+                onClick: function () {
+                  if (props.onSelectIntent) props.onSelectIntent(sig.id);
+                  if (props.onClose) props.onClose();
+                },
+              }, React.createElement("span", null, text));
+            }),
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" },
+            "You haven't shared any signals in this network yet")),
+    );
+
+    const body = (showOwnerTabs && tab === "access")
+      ? accessBody
+      : (showOwnerTabs && tab === "settings")
+        ? settingsBody
+        : overviewBody;
+
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", {
+        className: "index-dashboard__profile-panel index-dashboard__net-detail-modal",
+        onClick: function (e) { e.stopPropagation(); },
+      },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Network"),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        React.createElement("div", { className: "index-dashboard__net-detail-body" },
+          head,
+          showOwnerTabs
+            ? React.createElement("div", { className: "index-dashboard__profile-tabs" },
+              tabButton("overview", "overview"),
+              tabButton("settings", "settings"),
+              tabButton("access", "access"),
+            )
+            : null,
+          body,
+        ),
       ),
     );
   }
@@ -866,7 +1922,11 @@
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
     const isOwner = network.role === "owner";
-    return React.createElement("div", { className: "index-dashboard__net-row" },
+    return React.createElement("button", {
+      type: "button",
+      className: "index-dashboard__net-row index-dashboard__net-row--button",
+      onClick: props.onOpen ? function () { props.onOpen(network); } : undefined,
+    },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -921,7 +1981,7 @@
       items.map(function (network, index) {
         return props.discover
           ? React.createElement(NetworkDiscoverRow, { key: network.id || String(index), network: network, onJoin: props.onJoin, joiningId: props.joiningId })
-          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
       }),
     );
   }
@@ -1049,8 +2109,8 @@
     if (done) {
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("p", { className: "index-dashboard__net-request-note" },
-          "We’re reviewing ", React.createElement("strong", null, (done && done.title) || trimmed),
-          " and will get back to you shortly."),
+          React.createElement("strong", null, (done && done.title) || trimmed),
+          " is in review. You’ll hear back shortly."),
         React.createElement("div", { className: "index-dashboard__net-request-actions" },
           React.createElement(Button, { type: "button", size: "sm", onClick: props.onClose }, "Close"),
         ),
@@ -1071,7 +2131,7 @@
 
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       React.createElement("p", { className: "index-dashboard__net-request-intro" },
-        "Network creation is still early. Fill this in and we’ll review it before it goes live."),
+        "Network creation is still early. Fill this in and it gets reviewed before it goes live."),
       React.createElement("div", { className: "index-dashboard__net-request-identity" },
         React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
           React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-request-photo-mark", "aria-hidden": "true" },
@@ -1139,7 +2199,8 @@
   }
 
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
-  // on the right. Create opens the (reviewed) request form as a modal.
+  // on the right. Create opens the (reviewed) request form as a modal. Owner
+  // rows open a detail modal with Access-tab invite links (web parity).
   function NetworksMini(props) {
     const networks = props.networks || { items: [], count: 0, discover: [] };
     const items = Array.isArray(networks.items) ? networks.items : [];
@@ -1148,12 +2209,23 @@
     const tabState = React.useState("mine");
     const tab = tabState[0];
     const setTab = tabState[1];
+    const openState = React.useState(null);
+    const openNet = openState[0];
+    const setOpenNet = openState[1];
     function tabButton(id, label, icon) {
       return React.createElement("button", {
         type: "button",
         className: "index-dashboard__profile-tab index-dashboard__net-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
         onClick: function () { setTab(id); },
       }, icon || null, React.createElement("span", null, label));
+    }
+    function onUpdated(merged) {
+      setOpenNet(merged);
+      if (props.onNetworkUpdated) props.onNetworkUpdated(merged);
+    }
+    function onRemoved(net) {
+      setOpenNet(null);
+      if (props.onNetworkRemoved) props.onNetworkRemoved(net);
     }
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
@@ -1162,7 +2234,11 @@
           tabButton("discover", "Discover", ICON_GLOBE()),
         ),
         React.createElement("div", { className: "index-dashboard__net-head-actions" },
-          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { if (props.onCreate) props.onCreate(); } }, ICON_PLUS(), "Create"),
+          React.createElement(Button, {
+            type: "button", outlined: true, size: "sm",
+            className: "index-dashboard__net-create-btn",
+            onClick: function () { if (props.onCreate) props.onCreate(); },
+          }, ICON_PLUS(), "Create"),
         ),
       ),
       tab === "discover"
@@ -1181,10 +2257,28 @@
               ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
               : React.createElement("div", { className: "index-dashboard__net-list" },
                 items.map(function (network, index) {
-                  return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+                  return React.createElement(NetworkMiniRow, {
+                    key: network.id || String(index),
+                    network: network,
+                    onOpen: setOpenNet,
+                  });
                 }),
               ),
         ),
+      openNet
+        ? React.createElement(NetworkDetailModal, {
+          network: openNet,
+          webUrl: props.webUrl,
+          apiUrl: props.apiUrl,
+          currentUserId: props.currentUserId,
+          onClose: function () { setOpenNet(null); },
+          onUpdated: onUpdated,
+          onDeleted: onRemoved,
+          onLeft: onRemoved,
+          onOpenUser: props.onOpenUser,
+          onSelectIntent: props.onSelectIntent,
+        })
+        : null,
     );
   }
 
@@ -1248,6 +2342,8 @@
       return bucketForStatus(opp.status) === selectedBucket;
     });
     const radarEmpty = "No matches here yet.";
+    const questionsLoading = !!props.questionsLoading;
+    const radarLoading = !!props.radarLoading;
     return React.createElement("div", { className: "index-dashboard__detail" },
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
@@ -1282,11 +2378,15 @@
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
-        React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
+        questionsLoading
+          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading questions…")
+          : React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
         React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
+          radarLoading && !allOpps.length
+            ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading radar…")
+            : React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -1310,14 +2410,7 @@
   }
 
   function socialUrl(label, raw) {
-    const value = String(raw || "").trim();
-    if (/^https?:\/\//i.test(value)) return value;
-    const handle = value.replace(/^@/, "");
-    if (label === "twitter") return "https://x.com/" + handle;
-    if (label === "linkedin") return "https://linkedin.com/in/" + handle;
-    if (label === "github") return "https://github.com/" + handle;
-    if (label === "telegram") return "https://t.me/" + handle;
-    return value.indexOf("http") === 0 ? value : "https://" + value;
+    return parseSocial({ id: label, handle: raw }).href;
   }
 
   function ProfileField(props) {
@@ -1532,6 +2625,12 @@
         socials: Array.isArray(p.socials) ? p.socials.slice() : [],
         notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
       };
+      // The stored rows are bucketed by what each value resolves to, not by the
+      // label it arrived under, so a linkedin URL stored as 'custom' still edits
+      // in the linkedin row instead of showing up as a stray website.
+      const split = splitProfileSocials(next.socials);
+      next.socialHandles = split.handles;
+      next.websites = split.websites;
       assembledRef.current = next;
       setForm(next);
       setDirty(false);
@@ -1549,6 +2648,11 @@
           : ((base && base.socials) || []),
         context: (base && base.context) || p.intro || "",
       });
+      // Enrichment is the messiest source (packed multi-value fields, handles
+      // labelled 'custom'), so its rows are re-bucketed the same way.
+      const enrichedSplit = splitProfileSocials(next.socials);
+      next.socialHandles = enrichedSplit.handles;
+      next.websites = enrichedSplit.websites;
       assembledRef.current = next;
       setForm(next);
       setDirty(false);
@@ -1604,36 +2708,32 @@
       setNote(null);
     }
 
-    function getSocial(label) {
-      const found = (form.socials || []).filter(function (s) { return s.label === label; })[0];
-      return found ? found.value : "";
+    function getSocial(platform) {
+      return (form.socialHandles || {})[platform] || "";
     }
 
-    function setSocial(label, value) {
+    // The field holds whatever was typed, handle or pasted URL, and is only
+    // resolved on save; resolving each keystroke would rewrite the text under
+    // the cursor while someone is still typing it.
+    function setSocial(platform, value) {
       setForm(function (prev) {
-        const without = (prev.socials || []).filter(function (s) { return s.label !== label; });
-        const next = value ? without.concat([{ label: label, value: value }]) : without;
-        return Object.assign({}, prev, { socials: next });
+        const handles = Object.assign({}, prev.socialHandles || {});
+        handles[platform] = value;
+        return Object.assign({}, prev, { socialHandles: handles });
       });
       setDirty(true);
       setNote(null);
     }
 
     function customSocials() {
-      return (form.socials || []).filter(function (s) { return FIXED_SOCIAL_LABELS.indexOf(s.label) < 0; });
+      return form.websites || [];
     }
 
     function updateCustom(index, value) {
       setForm(function (prev) {
-        let seen = -1;
-        const next = (prev.socials || []).map(function (s) {
-          if (FIXED_SOCIAL_LABELS.indexOf(s.label) < 0) {
-            seen += 1;
-            if (seen === index) return { label: "custom", value: value };
-          }
-          return s;
-        });
-        return Object.assign({}, prev, { socials: next });
+        const next = (prev.websites || []).slice();
+        next[index] = value;
+        return Object.assign({}, prev, { websites: next });
       });
       setDirty(true);
       setNote(null);
@@ -1641,15 +2741,8 @@
 
     function removeCustom(index) {
       setForm(function (prev) {
-        let seen = -1;
-        const next = (prev.socials || []).filter(function (s) {
-          if (FIXED_SOCIAL_LABELS.indexOf(s.label) < 0) {
-            seen += 1;
-            return seen !== index;
-          }
-          return true;
-        });
-        return Object.assign({}, prev, { socials: next });
+        const next = (prev.websites || []).filter(function (_, i) { return i !== index; });
+        return Object.assign({}, prev, { websites: next });
       });
       setDirty(true);
       setNote(null);
@@ -1657,7 +2750,7 @@
 
     function addCustom() {
       setForm(function (prev) {
-        return Object.assign({}, prev, { socials: (prev.socials || []).concat([{ label: "custom", value: "" }]) });
+        return Object.assign({}, prev, { websites: (prev.websites || []).concat([""]) });
       });
       setDirty(true);
       setNote(null);
@@ -1686,7 +2779,10 @@
           intro: form.intro,
           location: form.location,
           timezone: form.timezone,
-          socials: (form.socials || []).filter(function (s) { return s.value && s.value.trim(); }),
+          // The fields hold a handle or a pasted URL; buildProfileSocials turns
+          // both into the API's {label, value} rows, drops what cannot resolve
+          // to an openable address, and deduplicates.
+          socials: buildProfileSocials(form.socialHandles, form.websites),
           notificationPreferences: form.notificationPreferences,
           context: form.context || "",
         };
@@ -1768,22 +2864,20 @@
     }
 
     function socialRows() {
-      return SOCIAL_FIELDS.map(function (pair) {
-        const label = pair[0];
-        const prefix = pair[1];
-        return React.createElement("div", { key: label, className: "index-dashboard__profile-social" },
-          React.createElement("span", { className: "index-dashboard__profile-social-prefix" }, prefix),
+      return EDITABLE_PLATFORMS.map(function (platform) {
+        return React.createElement("div", { key: platform, className: "index-dashboard__profile-social" },
+          React.createElement("span", { className: "index-dashboard__profile-social-prefix" }, SOCIAL_PREFIX[platform]),
           React.createElement("input", {
             className: "index-dashboard__profile-input index-dashboard__profile-social-input",
-            value: getSocial(label),
-            onChange: function (e) { setSocial(label, e.target.value); },
+            value: getSocial(platform),
+            onChange: function (e) { setSocial(platform, e.target.value); },
           }),
         );
-      }).concat(customSocials().map(function (social, index) {
+      }).concat(customSocials().map(function (site, index) {
         return React.createElement("div", { key: "custom-" + index, className: "index-dashboard__profile-social" },
           React.createElement("input", {
             className: "index-dashboard__profile-input index-dashboard__profile-social-input",
-            value: social.value,
+            value: site,
             placeholder: "https://example.com",
             onChange: function (e) { updateCustom(index, e.target.value); },
           }),
@@ -1802,15 +2896,16 @@
     }
 
     function profileTab() {
-      const initials = initialsFor(form.name);
       const avatarSrc = avatarPreview || form.avatar;
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
           React.createElement("label", { className: "index-dashboard__profile-avatar" },
-            React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-              initials,
-              avatarSrc ? React.createElement("img", { className: "index-dashboard__avatar-img", src: avatarSrc, alt: "", loading: "lazy" }) : null,
-            ),
+            React.createElement(UserAvatar, {
+              id: form.id,
+              name: form.name,
+              avatar: avatarSrc,
+              className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+            }),
             React.createElement("input", { type: "file", accept: "image/*", className: "index-dashboard__profile-avatar-input", onChange: onAvatarFile }),
           ),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
@@ -1866,14 +2961,15 @@
     }
 
     function readOnlyView() {
-      const initials = initialsFor(form.name);
-      const socials = (form.socials || []).filter(function (s) { return s.value && s.value.trim(); });
+      const socials = displayProfileSocials(form.socials);
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
-          React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-            initials,
-            form.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: form.avatar, alt: "", loading: "lazy" }) : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: form.id,
+            name: form.name,
+            avatar: form.avatar,
+            className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+          }),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
             React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Profile"),
             form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
@@ -1889,7 +2985,13 @@
           ? React.createElement(ProfileField, { label: "Socials" },
             React.createElement("div", { className: "index-dashboard__profile-read-socials" },
               socials.map(function (s, index) {
-                return React.createElement("a", { key: String(index) + s.label, className: "index-dashboard__profile-read-social", href: socialUrl(s.label, s.value), target: "_blank", rel: "noopener noreferrer" }, s.label + ": " + s.value);
+                return React.createElement("a", {
+                  key: String(index) + s.href,
+                  className: "index-dashboard__profile-read-social",
+                  href: s.href,
+                  target: "_blank",
+                  rel: "noopener noreferrer",
+                }, s.text);
               }),
             ),
           )
@@ -2364,10 +3466,12 @@
                       className: "index-dashboard__msg-conv" + (active ? " index-dashboard__msg-conv--active" : "") + (unread ? " index-dashboard__msg-conv--unread" : ""),
                       onClick: function () { loadThread(c.id); },
                     },
-                      React.createElement("span", { className: "index-dashboard__avatar index-dashboard__msg-conv-avatar", "aria-hidden": "true" },
-                        initialsFor(c.counterpartName || c.title),
-                        c.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: c.avatar, alt: "", loading: "lazy" }) : null,
-                      ),
+                      React.createElement(UserAvatar, {
+                        id: c.counterpartUserId,
+                        name: c.counterpartName || c.title,
+                        avatar: c.avatar,
+                        className: "index-dashboard__avatar index-dashboard__msg-conv-avatar",
+                      }),
                       React.createElement("span", { className: "index-dashboard__msg-conv-main" },
                         React.createElement("span", { className: "index-dashboard__msg-conv-name" },
                           unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,
@@ -2435,6 +3539,18 @@
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
+    const networksState = useState(null);
+    const networks = networksState[0];
+    const setNetworks = networksState[1];
+    const intentDetailsState = useState({});
+    const intentDetails = intentDetailsState[0];
+    const setIntentDetails = intentDetailsState[1];
+    const questionsLoadingState = useState(false);
+    const questionsLoading = questionsLoadingState[0];
+    const setQuestionsLoading = questionsLoadingState[1];
+    const radarLoadingState = useState(false);
+    const radarLoading = radarLoadingState[0];
+    const setRadarLoading = radarLoadingState[1];
     const needsOnboardingState = useState(false);
     const needsOnboarding = needsOnboardingState[0];
     const setNeedsOnboarding = needsOnboardingState[1];
@@ -2500,9 +3616,100 @@
     const auth = authState[0];
     const setAuth = authState[1];
     const loadRef = useRef(null);
+    const loadIntentDetailRef = useRef(null);
+    const selectedIdRef = useRef(selectedId);
+    selectedIdRef.current = selectedId;
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
     const openMessagesRef = useRef(null);
+
+    function loadNetworks() {
+      fetchPluginJSON(API + "/networks/home")
+        .then(function (payload) {
+          if (!payload || payload.success === false) return;
+          setNetworks(payload.networks || { items: [], count: 0, discover: [] });
+        })
+        .catch(function () { /* noop */ });
+    }
+
+    function mergeIntentDetail(baseIntent, detail) {
+      if (!baseIntent) return null;
+      const opps = (detail && detail.opportunities) || [];
+      const questions = (detail && detail.questions) || [];
+      const statusCounts = statusCountsFromOpportunities(opps);
+      return Object.assign({}, baseIntent, {
+        questions: questions,
+        answeredQuestions: (detail && detail.answeredQuestions) || [],
+        opportunities: opps,
+        questionCount: questions.length,
+        opportunityCount: statusCounts.pending || 0,
+        totalOpportunityCount: opps.length,
+        statusCounts: statusCounts,
+      });
+    }
+
+    function loadIntentDetail(intentId, passive) {
+      if (!intentId) return Promise.resolve();
+      if (!passive) {
+        setQuestionsLoading(true);
+        setRadarLoading(true);
+      }
+      const seq = Date.now();
+      const radarPath = API + "/intents/" + encodeURIComponent(intentId) + "/radar";
+      const questionsPath = API + "/intents/" + encodeURIComponent(intentId) + "/questions";
+
+      function mergeDetail(patch) {
+        if (selectedIdRef.current !== intentId) return;
+        setIntentDetails(function (prev) {
+          const existing = prev[intentId] || {};
+          return Object.assign({}, prev, {
+            [intentId]: Object.assign({}, existing, patch, { _seq: seq }),
+          });
+        });
+      }
+
+      const questionsPromise = fetchPluginJSON(questionsPath)
+        .then(function (payload) {
+          if (selectedIdRef.current !== intentId) return;
+          let questions = [];
+          let answeredQuestions = [];
+          if (payload && payload.pending !== undefined) {
+            questions = payload.pending || [];
+            answeredQuestions = payload.answered || [];
+          } else if (payload && payload.questions) {
+            questions = payload.questions;
+          }
+          mergeDetail({ questions: questions, answeredQuestions: answeredQuestions });
+        })
+        .catch(function () { /* keep prior detail on failure */ })
+        .finally(function () {
+          if (selectedIdRef.current === intentId && !passive) setQuestionsLoading(false);
+        });
+
+      const skeletonPromise = passive
+        ? Promise.resolve(null)
+        : fetchPluginJSON(radarPath + "?presentation=skeleton")
+            .then(function (skeleton) {
+              if (selectedIdRef.current !== intentId) return;
+              if (skeleton && skeleton.success !== false && Array.isArray(skeleton.items)) {
+                mergeDetail({ opportunities: skeleton.items });
+              }
+            })
+            .catch(function () { return null; });
+
+      const radarPromise = fetchPluginJSON(radarPath)
+        .then(function (radarPayload) {
+          if (selectedIdRef.current !== intentId) return;
+          const opportunities = (radarPayload && radarPayload.items) || [];
+          mergeDetail({ opportunities: opportunities });
+        })
+        .catch(function () { /* keep prior detail on failure */ })
+        .finally(function () {
+          if (selectedIdRef.current === intentId && !passive) setRadarLoading(false);
+        });
+
+      return Promise.all([questionsPromise, skeletonPromise, radarPromise]);
+    }
 
     function load() {
       setLoading(true);
@@ -2510,9 +3717,9 @@
       if (!SDK.fetchJSON && !window.fetch) {
         setError("This Hermes dashboard host does not expose authenticated plugin fetches.");
         setLoading(false);
-        return;
+        return Promise.resolve();
       }
-      fetchPluginJSON(API + "/summary")
+      return fetchPluginJSON(API + "/bootstrap")
         .then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
@@ -2596,7 +3803,9 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Question answer could not be saved.");
           }
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           unrecordAnswer(question.id);
@@ -2615,7 +3824,9 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Question could not be skipped.");
           }
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           unrecordAnswer(question.id);
@@ -2682,7 +3893,9 @@
             throw new Error((payload && payload.error) || "That action could not be completed.");
           }
           if (onPayload) onPayload(payload);
-          load();
+          load().then(function () {
+            if (selectedIdRef.current) loadIntentDetail(selectedIdRef.current, true);
+          });
         })
         .catch(function (err) {
           setActionError(err && err.message ? err.message : String(err));
@@ -2785,7 +3998,7 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Could not join that network.");
           }
-          load();
+          loadNetworks();
         })
         .catch(function (err) {
           setActionError(err && err.message ? err.message : String(err));
@@ -2837,11 +4050,14 @@
     function closeCreate() { setCreateOpen(false); setEditingRequest(null); }
 
     loadRef.current = load;
+    loadIntentDetailRef.current = loadIntentDetail;
 
     function enterDashboard() {
       setAuth("authed");
       load();
+      loadNetworks();
       loadNetworkRequests();
+      if (initial.intentId) loadIntentDetail(initial.intentId);
     }
 
     function checkAuth() {
@@ -2884,6 +4100,12 @@
     useEffect(function () {
       checkAuth();
     }, []);
+
+    useEffect(function () {
+      if (auth !== "authed" || !selectedId) return undefined;
+      loadIntentDetail(selectedId);
+      return undefined;
+    }, [auth, selectedId]);
 
     useEffect(function () {
       const header = document.querySelector('header[role="banner"]');
@@ -2974,12 +4196,18 @@
     }, [autoRefresh, loading]);
 
     useEffect(function () {
-      // Only poll once signed in: firing /summary while the login gate (or the
+      // Only poll once signed in: firing bootstrap while the login gate (or the
       // initial auth check) is showing produces 401s that can land after the
       // login transition and clobber the fresh state, forcing a manual reload.
       if (!autoRefresh || auth !== "authed") return undefined;
       const id = setInterval(function () {
-        if (loadRef.current) loadRef.current();
+        if (loadRef.current) {
+          loadRef.current().then(function () {
+            if (selectedIdRef.current && loadIntentDetailRef.current) {
+              loadIntentDetailRef.current(selectedIdRef.current, true);
+            }
+          });
+        }
       }, 5000);
       return function () { clearInterval(id); };
     }, [autoRefresh, auth]);
@@ -3018,7 +4246,10 @@
     }
 
     const selectedIntent = selectedId
-      ? intents.filter(function (intent) { return intent.id === selectedId; })[0]
+      ? mergeIntentDetail(
+        intents.filter(function (intent) { return intent.id === selectedId; })[0],
+        intentDetails[selectedId],
+      )
       : null;
 
     // Settled records = the server-backed answered questions from the summary
@@ -3040,7 +4271,7 @@
     })();
 
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, questionsLoading: questionsLoading, radarLoading: radarLoading, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
@@ -3048,7 +4279,39 @@
             React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, requests: networkRequests, onCreate: openCreate, onJoin: joinNetwork, joiningId: joiningId, onEditRequest: editNetworkRequest, onDismissRequest: dismissNetworkRequest }),
+            React.createElement(NetworksMini, {
+              networks: networks,
+              requests: networkRequests,
+              webUrl: summary && summary.webUrl,
+              apiUrl: summary && summary.apiUrl,
+              currentUserId: summary && summary.currentUserId,
+              onCreate: openCreate,
+              onJoin: joinNetwork,
+              joiningId: joiningId,
+              onEditRequest: editNetworkRequest,
+              onDismissRequest: dismissNetworkRequest,
+              onOpenUser: openUser,
+              onSelectIntent: selectIntent,
+              onNetworkUpdated: function (merged) {
+                if (!merged || !merged.id) return;
+                setNetworks(function (prev) {
+                  if (!prev || !Array.isArray(prev.items)) return prev;
+                  return Object.assign({}, prev, {
+                    items: prev.items.map(function (n) {
+                      return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
+                    }),
+                  });
+                });
+              },
+              onNetworkRemoved: function (net) {
+                if (!net || !net.id) return;
+                setNetworks(function (prev) {
+                  if (!prev || !Array.isArray(prev.items)) return prev;
+                  const items = prev.items.filter(function (n) { return !n || n.id !== net.id; });
+                  return Object.assign({}, prev, { items: items, count: items.length });
+                });
+              },
+            }),
           ),
         ),
       );

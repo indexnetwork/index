@@ -11,6 +11,8 @@ interface AuthFormProps {
   callbackURL?: string;
   /** Called after a non-redirecting (email/password) sign-in succeeds. */
   onAuthenticated?: () => void;
+  /** Hide default title/lede when embedded (e.g. invite landing). */
+  variant?: 'default' | 'inline';
 }
 
 type AuthView = 'main' | 'magic-link-sent' | 'email-password';
@@ -20,7 +22,7 @@ type AuthView = 'main' | 'magic-link-sent' | 'email-password';
  * the AuthModal overlay or inline on a page (e.g. /cli-auth) — the surrounding
  * `.auth` / `.auth-light` wrapper picks the dark or light theme.
  */
-export default function AuthForm({ callbackURL, onAuthenticated }: AuthFormProps) {
+export default function AuthForm({ callbackURL, onAuthenticated, variant = 'default' }: AuthFormProps) {
   const [view, setView] = useState<AuthView>('main');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -153,6 +155,8 @@ export default function AuthForm({ callbackURL, onAuthenticated }: AuthFormProps
     }
   };
 
+  const inline = variant === 'inline';
+
   return (
     <>
       {view === 'magic-link-sent' && (
@@ -180,14 +184,18 @@ export default function AuthForm({ callbackURL, onAuthenticated }: AuthFormProps
 
       {view === 'main' && (
         <>
-          <div className="av-head">
-            <h2 id="auth-modal-title" className="av-title">
-              Sign in to the Index Network
-            </h2>
-          </div>
-          <p className="av-lede">
-            Write what you want — let the network bring people to you.
-          </p>
+          {!inline && (
+            <>
+              <div className="av-head">
+                <h2 id="auth-modal-title" className="av-title">
+                  Sign in to the Index Network
+                </h2>
+              </div>
+              <p className="av-lede">
+                Write what you want — let the network bring people to you.
+              </p>
+            </>
+          )}
 
           {providersStatus === 'error' && (
             <p className="av-note">

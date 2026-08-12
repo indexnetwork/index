@@ -211,7 +211,7 @@ describe('Hermes emergency receipt schema and migration', () => {
     const forbidden = ['owner_id', 'agent_id', 'installation_id', 'credential_id', 'secret', 'hash', 'database_url', 'error'];
     for (const name of forbidden) expect(table.columns.some((column) => column.name === name)).toBe(false);
 
-    const migration = await Bun.file(path.resolve(import.meta.dir, '../../../drizzle/0122_add_hermes_emergency_receipts.sql')).text();
+    const migration = await Bun.file(path.resolve(import.meta.dir, '../../../drizzle/0124_add_hermes_emergency_receipts.sql')).text();
     expect(migration).toContain('CREATE TABLE "hermes_emergency_receipts"');
     expect(migration).toContain('PRIMARY KEY');
     expect(migration).toContain("= 'hermes-agent'");

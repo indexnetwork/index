@@ -19,7 +19,7 @@ export type NegotiationSettlement = {
   resumeClaimed: boolean;
 };
 
-interface QuestionCreatedPayload {
+export interface QuestionCreatedPayload {
   questionId: string;
   userId: string;
   mode: QuestionMode;

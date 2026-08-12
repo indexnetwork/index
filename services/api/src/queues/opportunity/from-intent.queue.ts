@@ -3,11 +3,12 @@ import { Job } from 'bullmq';
 import type { DeduplicationOptions } from 'bullmq';
 import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
-import type { Id } from '../../types/common.types';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import type { NegotiationGraphLike, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
+import { buildIntentDiscoveryTrigger, type FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
+export type { FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
 import { maybeMinePoolDiscriminators, minePoolDiscriminatorsOnCompletion, type PoolMiningTrigger } from '../pool/mining.shared';
 import { maybeEnqueueIntentRecovery } from '../questioner/recovery.shared';
 import type { RecoveryQuestionerJobData } from '../questioner.queue';
@@ -30,16 +31,6 @@ export type FromIntentDatabase = Pick<
   ChatDatabaseAdapter,
   'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded'
 >;
-
-export interface FromIntentGraphInvokeOptions {
-  userId: string;
-  searchQuery: string;
-  operationMode: 'create';
-  networkId?: string;
-  indexScope?: string[];
-  triggerIntentId: string;
-  options: { initialStatus: 'latent' };
-}
 
 export interface FromIntentDeps {
   database?: FromIntentDatabase;
@@ -174,16 +165,12 @@ export class FromIntentQueue {
       }
     }
 
-    const invokeOpts: FromIntentGraphInvokeOptions = {
-      userId: userId as Id<'users'>,
+    const invokeOpts = buildIntentDiscoveryTrigger({
+      userId,
       searchQuery,
-      operationMode: 'create',
-      ...(validNetworkIds.length === 1
-        ? { networkId: validNetworkIds[0] as Id<'networks'> }
-        : { indexScope: validNetworkIds as Id<'networks'>[] }),
+      networkIds: validNetworkIds,
       triggerIntentId: intentId,
-      options: { initialStatus: 'latent' },
-    };
+    });
 
     const summary = await runOpportunityDiscovery({
       graphDb: this.graphDb,

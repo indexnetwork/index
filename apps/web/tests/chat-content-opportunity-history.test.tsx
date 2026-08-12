@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => {
     isLoading: false,
     stopStream: vi.fn(),
     sendMessage: vi.fn(),
-    sendOnboardingMessage: vi.fn(),
     sendWebMessage: vi.fn(),
     clearChat: vi.fn(),
     startSignalSession: vi.fn(),

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { buildLifecycleNarration, createNegotiationTools } from "../negotiation.tools.js";
-import { readAuthorizedNegotiationDetail } from '../negotiation.detail-reader.js';
+import { buildLifecycleNarration, createNegotiationTools } from "../application/negotiation.tools.js";
+import { readAuthorizedNegotiationDetail } from '../application/negotiation.detail-reader.js';
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown

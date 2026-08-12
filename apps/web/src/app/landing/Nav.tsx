@@ -124,10 +124,10 @@ export default function Nav() {
           className="nav-subscribe"
           onClick={() => {
             closeMenu();
-            window.dispatchEvent(new Event("openSubscribeModal"));
+            window.dispatchEvent(new CustomEvent("openAccessModal"));
           }}
         >
-          Subscribe
+          Request Access
         </button>
       </div>
     </nav>

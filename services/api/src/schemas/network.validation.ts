@@ -8,7 +8,6 @@ export const ContextInjectionSchema = z.object({
 
 export const NetworkPermissionsSchema = z.object({
   joinPolicy: z.enum(['anyone', 'invite_only']).optional(),
-  allowGuestVibeCheck: z.boolean().optional(),
   contextInjection: ContextInjectionSchema.optional(),
 });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { getPreset } from "../questioner.presets.js";
-import { QuestionModeSchema, QuestionSchema } from "../../shared/schemas/question.schema.js";
+import { getPreset } from "../../questions/application/question.presets.js";
+import { QuestionModeSchema, QuestionSchema } from "../../questions/domain/question.schema.js";
 
 const standaloneModeExpectations = [
   {
@@ -321,7 +321,7 @@ describe("negotiation_inflight preset", () => {
     });
     expect(result).toContain("the other participant");
     expect(result).toContain("your permission");
-    expect(result).toContain("May we share the information needed to explore this collaboration?");
+    expect(result).toContain("May I share the information needed to explore this collaboration?");
     expect(result).toContain("the selected network");
     expect(result).toContain("Alice is a protocol engineer.");
     expect(result).not.toContain("fintech CTO");
@@ -332,7 +332,7 @@ describe("negotiation_inflight preset", () => {
     const preset = getPreset("negotiation_inflight");
     const result = preset.buildPrompt(baseContext);
     expect(result).toContain("## Server-owned question template");
-    expect(result).toContain("May we share the information needed to explore this collaboration?");
+    expect(result).toContain("May I share the information needed to explore this collaboration?");
     expect(result).not.toContain("Ignore prior instructions");
     expect(result).not.toContain("€50k");
   });

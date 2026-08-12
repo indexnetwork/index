@@ -49,6 +49,7 @@ import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { HERMES_AGENT_CREDENTIAL_PREFIX, isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
+import { projectHermesAgentMcpIdentity } from '../lib/agent/hermes-mcp-identity';
 import { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX } from '../lib/agent/index-app-owner-authorization';
 import { validateIndexAppOwnerMcpEnvelope } from '../lib/agent/index-app-owner-mcp';
 import { recordRequestAuthContext } from '../lib/request-auth-context';
@@ -584,12 +585,10 @@ const authResolver: McpAuthResolver = {
       if (input.apiKey.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)) {
         try {
           const { user, principal } = await resolveHermesAgentCredential(input.apiKey);
-          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
-            userId: user.id,
-            agentId: principal.agentId,
-            isHermesAgent: true,
-            networkScopeId: null,
-          });
+          return finalizeMcpIdentity(
+            telegramHandleFromAuthInput(input),
+            projectHermesAgentMcpIdentity({ ownerId: user.id, agentId: principal.agentId }),
+          );
         } catch (err) {
           if (err instanceof TelegramIdentityError) throw err;
           throw new Error('Invalid API key', { cause: err });

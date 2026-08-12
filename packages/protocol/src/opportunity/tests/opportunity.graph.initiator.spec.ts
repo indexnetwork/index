@@ -2,11 +2,11 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { OpportunityGraphFactory } from '../opportunity.graph.js';
+import { OpportunityGraphFactory } from '../application/opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, OpportunityActor } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
+import type { EvaluatedOpportunityWithActors } from '../application/opportunity.evaluator.js';
 
 /**
  * IND-396 — the negotiate node stamps `initiatorUserId` for every fresh

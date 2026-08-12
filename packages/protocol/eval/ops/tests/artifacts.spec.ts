@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { decodeArtifactId, encodeArtifactId, FsArtifactSource } from "../ops.artifacts.js";
 import { OPS_HARNESSES } from "../ops.registry.js";
+import { makeHistoricalQualityArtifact } from "../../shared/tests/artifact.fixtures.js";
 
 function baselineArtifact(overrides: Record<string, unknown> = {}) {
   return {
@@ -150,6 +151,8 @@ describe("FsArtifactSource", () => {
     expect(ref.aggregatePassRate).toBe(1);
     expect(ref.caseCount).toBe(1);
     expect(ref.complete).toBeNull();
+    expect(ref.measurementKind).toBeNull();
+    expect(ref).not.toHaveProperty("qualityCompleteness");
     expect(ref.sizeBytes).toBeGreaterThan(0);
     expect(ref.mtimeMs).toBeGreaterThan(0);
   });
@@ -207,6 +210,29 @@ describe("FsArtifactSource", () => {
     expect(refs).toHaveLength(1);
     expect(refs[0].harness).toBe("discovery");
     expect(refs[0].kind).toBe("run");
+  });
+
+  it("projects a non-discovery quality artifact into the discriminated ref branch", async () => {
+    const runId = "quality-run";
+    await mkdir(path.join(evalDir, ".ops-runs", runId), { recursive: true });
+    await writeFile(
+      path.join(evalDir, ".ops-runs", runId, "report.json"),
+      JSON.stringify({ ...makeHistoricalQualityArtifact(), harness: "matching" }),
+    );
+
+    const { refs, issues } = await new FsArtifactSource({ evalDir }).list();
+
+    expect(issues).toEqual([]);
+    expect(refs).toHaveLength(1);
+    expect(refs[0].harness).toBe("matching");
+    expect(refs[0].measurementKind).toBe("historical-quality-pilot");
+    if (refs[0].measurementKind !== "historical-quality-pilot") {
+      throw new Error("quality ref did not preserve its discriminator");
+    }
+    expect(refs[0].qualityCompleteness).toEqual({
+      requestedSlots: 10,
+      completedSlots: 10,
+    });
   });
 
   it("round-trips artifact ids and rejects traversal", async () => {

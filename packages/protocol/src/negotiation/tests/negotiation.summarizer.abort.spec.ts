@@ -3,7 +3,7 @@ config({ path: ".env.test", override: true });
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key-for-unit-tests";
 
 import { describe, it, expect } from "bun:test";
-import { NegotiationSummarizer } from "../negotiation.summarizer.js";
+import { NegotiationSummarizer } from "../application/negotiation.summarizer.js";
 import type { DiscoveryNegotiation } from "../../shared/schemas/discovery-question.schema.js";
 
 function makeSummarizer(

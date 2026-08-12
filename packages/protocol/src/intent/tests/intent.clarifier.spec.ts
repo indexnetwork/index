@@ -40,7 +40,7 @@ mock.module("../../shared/agent/model.config", () => ({
   },
 }));
 
-const { IntentClarifier } = await import("../intent.clarifier.js");
+const { IntentClarifier } = await import("../../signals/application/intent.clarifier.js");
 
 afterAll(() => mock.restore());
 

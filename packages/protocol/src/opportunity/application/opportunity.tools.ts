@@ -4,14 +4,14 @@ import { requestContext } from "../../shared/observability/request-context.js";
 
 
 import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { OpportunityToolDeps } from "../../capabilities/opportunities.tools.port.js";
+import type { OpportunityToolDeps } from "../ports/index.js";
 import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
 import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "../domain/opportunity.labels.js";
 import { narratorRemarkFromReasoning, stripUuids } from "../domain/opportunity.presentation.js";
 import { safeFallbackSummary, getSafePresentationOrSkip } from "../domain/opportunity.safe-presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
-import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../../capabilities/questions.runtime.facade.js";
+import { isUptakeGuardEnabled } from "../../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from './opportunity.update-admission.js';

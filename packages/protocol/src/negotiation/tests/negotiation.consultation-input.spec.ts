@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { AskUserPayloadSchema } from '../../shared/schemas/negotiation-state.schema.js';
-import { consultationPromptFor } from '../negotiation.consultation-policy.js';
+import { consultationPromptFor } from '../domain/negotiation.consultation-policy.js';
 
 describe('closed owner consultation input', () => {
   it.each([
@@ -30,7 +30,7 @@ describe('closed owner consultation input', () => {
     const prompt = consultationPromptFor('consequential_disclosure_permission');
     expect(prompt).toEqual({
       disclosureSubject: 'your permission',
-      draftQuestion: 'May we share the information needed to explore this collaboration?',
+      draftQuestion: 'May I share the information needed to explore this collaboration?',
     });
     expect(JSON.stringify(prompt)).not.toContain('Ignore prior instructions');
   });

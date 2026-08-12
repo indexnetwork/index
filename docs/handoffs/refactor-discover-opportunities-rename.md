@@ -1,5 +1,6 @@
 ---
 trigger: "Rename MCP tool create_opportunities to discover_opportunities — the tool performs discovery, not creation, and the rest of the stack (queue job, service method) already uses the correct verb."
+superseded: "2026-08-07: Replaced by background-only discovery; see docs/rollout/background-only-discovery-release-1.md."
 type: refactor
 branch: refactor/discover-opportunities-rename
 base-branch: dev
