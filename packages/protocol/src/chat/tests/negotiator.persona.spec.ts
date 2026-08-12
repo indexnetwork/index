@@ -124,13 +124,16 @@ describe("buildNegotiatorSystemContent", () => {
 describe("buildNegotiatorSystemContent — pinned signal (intent scope)", () => {
   const scopedCtx = makeCtx({ scopeType: "intent", scopeId: "intent-42" } as Partial<ResolvedToolContext>);
 
-  it("renders the pinned-signal section without offering bulk opportunity listing", () => {
+  it("renders the pinned-signal section without offering bulk opportunity listing or intent creation", () => {
     const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
     expect(prompt).toContain("## Pinned signal");
     expect(prompt).toContain("intent id: intent-42");
     expect(prompt).not.toContain("list_opportunities");
+    expect(prompt).not.toContain("**create_intent**");
+    expect(prompt).toContain("update_intent");
     expect(prompt).toContain("adjacent Radar");
     expect(prompt).toContain("Do not repeat or bulk-list");
+    expect(prompt).toContain("only this pinned signal");
     // Awareness, not a sandbox — the prompt must say the focus is not a wall.
     expect(prompt).toContain("This is a focus, not a wall");
   });
@@ -271,7 +274,7 @@ describe("filterNegotiatorToolsForContext", () => {
     "answer_pending_question",
   ].map((name) => ({ name }));
 
-  it("removes only opportunity listing from intent-scoped tools", () => {
+  it("removes only opportunity listing from intent-scoped negotiator tools", () => {
     const filteredNames = filterNegotiatorToolsForContext(tools, {
       scopeType: "intent",
       scopeId: "intent-42",

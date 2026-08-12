@@ -103,7 +103,8 @@ export function filterNegotiatorTools<T extends { name: string }>(tools: T[]): T
 /**
  * Applies negotiator tool availability rules that depend on the focused scope.
  * Intent-pinned chats use the adjacent Radar for opportunity listing, while all
- * other negotiator capabilities remain available.
+ * other negotiator-specific capabilities remain available. Shared intent tool
+ * filtering independently removes create_intent from every intent-scoped chat.
  */
 export function filterNegotiatorToolsForContext<T extends { name: string }>(
   tools: T[],

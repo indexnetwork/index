@@ -1,6 +1,7 @@
 import type { BaseMessage, AIMessage } from "@langchain/core/messages";
 
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
+import { focusedIntentId } from "../shared/agent/tool.scope.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -169,15 +170,15 @@ const urlScrapingModule: PromptModule = {
   id: "url-scraping",
   triggers: ["scrape_url"],
   regex: /(https?:\/\/)/i,
-  content: () => `
+  content: (ctx) => `
 ### 3. User includes a URL
 
-**YOU handle scraping before intent creation.**
+**YOU handle scraping before ${focusedIntentId(ctx) ? "updating the selected intent" : "intent creation"}.**
 
 \`\`\`
 1. scrape_url(url, objective="Extract key details for an intent")
 2. Synthesize a conceptual description from scraped content
-3. create_intent(description=synthesized_summary)
+3. ${focusedIntentId(ctx) ? `update_intent(intentId="${focusedIntentId(ctx)}", description=synthesized_summary)` : "create_intent(description=synthesized_summary)"}
 \`\`\`
 
 Exception: for profile creation, pass URLs directly to create_user_context (it handles scraping internally).
