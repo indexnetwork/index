@@ -293,3 +293,56 @@ Real hosted-macOS `libproc` ABI/path behavior and reviewed Runner Listener/Worke
 No workflow dispatch, GitHub API network call, secret access, Apple service, signing/notarization, upload, attestation, release/draft mutation, publication, deployment, merge, or push occurred in round 5. Only local provider-free fixtures with temporary files, a generated local fixture certificate, and route-aware command stubs ran.
 
 Task 6: fix round 5/5 (4 addressed/0 open; commits 913f3cc4b..fe5d95c98)
+
+## Owner-authorized exceptional review fix round 6
+
+The normal five-round breaker tripped. The owner explicitly authorized exactly this additional round for the remaining Important historical-discovery transport defect. Task 6 remains reviewer-owned and is not marked complete.
+
+### Changes
+
+- Replaced historical release TSV transport with one base64-encoded JSON release object per record. The production function decodes and structurally validates each complete object before classifying draft/prerelease posture or macOS evidence, so missing/empty fields cannot shift adjacent authority fields.
+- Missing, empty, non-string, noncanonical, or mismatched `target_commitish` now fails closed for any release containing macOS evidence. Exact lowercase 40-hex binding and the real signed-metadata commit equality check remain in the production path, along with tag/repository/DMG/checksum/CMS/inventory and monotonic gates.
+- Added an executable production-function regression that stubs only GitHub command boundaries and exercises real `validate_monotonic_release`, real downloads, and real CMS/metadata verification for missing/empty target refusal, canonical success, and mismatch refusal.
+- Updated the affected workflow source pin and the earlier structural assertion to match lossless JSON discovery.
+
+### Strict TDD evidence
+
+RED, before production changes:
+
+```bash
+bun test apps/mac/release/tests/release-workflow-fix-round-6.spec.mjs
+```
+
+Captured at `/tmp/task-6-fix-round-6-red.log`: exit `1`, `0 pass`, `2 fail`, `7 expect() calls`. Missing target authority and a signed-commit mismatch were silently skipped/accepted through the real production discovery function.
+
+Focused GREEN:
+
+```bash
+bun test apps/mac/release/tests/release-workflow.spec.mjs \
+  apps/mac/release/tests/release-workflow-fix-round-{1,2,3,4,5,6}.spec.mjs
+```
+
+Result: `52 pass`, `0 fail`, `389 expect() calls` across 7 files.
+
+Full provider-free Tasks 1–6 release regression:
+
+```bash
+bun test apps/mac/release/tests \
+  apps/mac/IndexApp/notarize.spec.mjs \
+  apps/mac/IndexApp/provisioning-profile.spec.mjs
+```
+
+Result: `193 pass`, `1 existing platform skip`, `0 fail`, `1164 expect() calls` across 25 files.
+
+Shell syntax, Python syntax, both workflow YAML parses, all four affected literal workflow pins, privacy/obsolete-bypass scans, and `git diff --check` passed. Generated Python caches were removed.
+
+### Residual protected evidence
+
+Real GitHub release response/`target_commitish` semantics and historical provider assets remain protected-candidate evidence. No network/provider/protected operation was performed.
+
+### Attestation
+
+No workflow dispatch, GitHub API network call, secret access, Apple service, signing/notarization, upload, attestation, release mutation, publication, merge, or push occurred in round 6. The regression uses local files, a generated fixture certificate, and a route-aware local `gh` stub.
+
+Task 6 ledger: owner-authorized exception round 6/6 opened for inherited Important TSV field-collapse defect.
+Task 6 ledger: round 6 implementation GREEN; 1 defect addressed/0 known open; review gate pending.
