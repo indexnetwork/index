@@ -1,14 +1,9 @@
-import type { NegotiationAction, NegotiationProtocolVersion, NegotiationSeat } from "../../shared/schemas/negotiation-state.schema.js";
+import type { NegotiationAction, NegotiationConsultationReason, NegotiationProtocolVersion, NegotiationSeat } from "../../shared/schemas/negotiation-state.schema.js";
+
+export type { NegotiationConsultationReason } from "../../shared/schemas/negotiation-state.schema.js";
 
 /** Independent rollout modes for IND-508's deterministic consultation policy. */
 export type NegotiationConsultationPolicyMode = "off" | "shadow" | "on";
-
-/** Stable, content-free categories emitted by the consultation funnel. */
-export type NegotiationConsultationReason =
-  | "unresolved_owner_constraint"
-  | "consequential_disclosure_permission"
-  | "repeated_non_convergence"
-  | "insufficient_commitment_authority";
 
 /** The only data the policy may inspect: action/role enums and routing coordinates. */
 export interface ConsultationEligibilityInput {

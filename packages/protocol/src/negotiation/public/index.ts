@@ -31,6 +31,9 @@
 
 // ── Domain: protocol rules ────────────────────────────────────────────────────
 export {
+  DEFAULT_NEGOTIATION_MAX_TURNS,
+  isNegotiationTurnCapReached,
+  expectedNegotiationSpeaker,
   allowedActionsFor,
   isTerminalAction,
   isRejectLikeAction,
@@ -51,6 +54,28 @@ export {
   FinalCounterpartyTurnSchema,
   InitiatorAskUserTurnSchema,
   CounterpartyAskUserTurnSchema,
+} from "../domain/index.js";
+export type {
+  NegotiationSpeakerParticipants,
+  NegotiationSpeakerMessage,
+} from "../domain/index.js";
+
+// ── Domain: Hermes structural response contract ──────────────────────────────
+export {
+  HERMES_OWNER_DIRECTIVE,
+  HERMES_SHARED_MESSAGE_TEMPLATES,
+  HermesNegotiationActionSchema,
+  HermesNegotiationResponseSchema,
+  HermesOwnerDirectiveSchema,
+  HermesRoleAlignmentSchema,
+  allowedHermesActionsFor,
+  buildHermesNegotiationTurn,
+} from "../domain/index.js";
+export type {
+  HermesNegotiationAction,
+  HermesNegotiationResponse,
+  HermesOwnerDirective,
+  HermesRoleAlignment,
 } from "../domain/index.js";
 
 // ── Domain: graph state types ─────────────────────────────────────────────────

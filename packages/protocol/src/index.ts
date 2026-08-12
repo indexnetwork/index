@@ -69,7 +69,11 @@ export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, Int
 export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
 export type { Scraper } from "./shared/interfaces/scraper.interface.js";
 export type { EnrichmentRunInput, EnrichmentRunRecord } from "./shared/interfaces/enrichment-run.interface.js";
-export type { NegotiationTimeoutQueue, AskUserExpiryPayload } from "./shared/interfaces/negotiation-events.interface.js";
+export type {
+  NegotiationTimeoutQueue,
+  AskUserExpiryPayload,
+  NegotiationContinuationTimeoutIdentity,
+} from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
 export { SYSTEM_AGENT_IDS } from './capabilities/participant-agents.facade.js';
 
@@ -376,15 +380,37 @@ export type {
 // ─── States (for advanced graph consumers) ────────────────────────────────────
 // @experimental — internal graph-state shapes; may change in a minor release.
 
+export {
+  AskUserPayloadSchema,
+  NEGOTIATION_CONSULTATION_REASONS,
+  NegotiationConsultationReasonSchema,
+} from "./shared/schemas/negotiation-state.schema.js";
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
-export type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "./shared/schemas/negotiation-state.schema.js";
+export type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat, NegotiationProtocolVersion } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationGraphLike } from "./capabilities/negotiation.facade.js";
+export {
+  HERMES_OWNER_DIRECTIVE,
+  HERMES_SHARED_MESSAGE_TEMPLATES,
+  HermesNegotiationActionSchema,
+  HermesNegotiationResponseSchema,
+  HermesOwnerDirectiveSchema,
+  HermesRoleAlignmentSchema,
+  allowedHermesActionsFor,
+  buildHermesNegotiationTurn,
+} from "./capabilities/negotiation.facade.js";
+export type {
+  HermesNegotiationAction,
+  HermesNegotiationResponse,
+  HermesOwnerDirective,
+  HermesRoleAlignment,
+} from "./capabilities/negotiation.facade.js";
 
 // ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
 
-export { allowedActionsFor, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./capabilities/negotiation.facade.js";
+export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached, expectedNegotiationSpeaker, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./capabilities/negotiation.facade.js";
+export type { NegotiationSpeakerParticipants, NegotiationSpeakerMessage } from "./capabilities/negotiation.facade.js";
 export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "./capabilities/negotiation.facade.js";
-export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode, NegotiationConsultationReason } from "./capabilities/negotiation.facade.js";
+export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode } from "./capabilities/negotiation.facade.js";
 export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,

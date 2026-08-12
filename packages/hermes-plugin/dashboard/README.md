@@ -53,7 +53,9 @@ It does **not**:
 
 ## Runtime behavior
 
-The tab registers as `index-network` and loads through `SDK.fetchJSON`, so Hermes dashboard session authentication is handled by the host.
+Hermes discovers this dashboard manifest and mounts its backend independently of the Python plugin's `register(ctx)`. Runtime authorization is therefore independent too. `plugin_api.py` attaches every route to an internal full router, reads `INDEX_PLUGIN_MODE` through the package's shared raw parser, and exports those routes only for absent, empty, or exact `full`. For `negotiator`, an unknown non-empty value, whitespace-only, or a padded value, its exported router is empty: boot/detail APIs, write routes, realtime relays, assets, and even the mode probe are unavailable. The static manifest can still be discovered because the host manifest format has no conditional environment field, but discovery alone activates neither an API nor a component.
+
+The web bundle first requests the full-only `/api/plugins/index-network/mode` endpoint. It registers the `index-network` component only after receiving exactly `{ "success": true, "mode": "full" }`; a missing/rejected/non-full response leaves the bundle inert. After that gate, calls use `SDK.fetchJSON`, so Hermes dashboard session authentication is handled by the host.
 
 **Boot (`GET /bootstrap`, or the deprecated `/summary` alias):** `GET /auth/me` plus `POST /intents/list` (page 1, limit 100). Intent rows carry `pendingCount` from `pendingQuestionCount + waitingOpportunityCount` only — no embedded questions, opportunities, or status counts.
 
@@ -64,7 +66,7 @@ The tab registers as `index-network` and loads through `SDK.fetchJSON`, so Herme
 
 **Networks (lazy):** when the Networks column mounts, `GET /networks/home` fetches `GET /networks` and `GET /networks/discovery/public` in parallel.
 
-Auto-refresh re-fetches bootstrap intents and, when an intent is selected, that intent's detail fetches only — not a global fan-out across all intents.
+Auto-refresh re-fetches bootstrap intents and, when an intent is selected, that intent's detail fetches only — not a global fan-out across all intents. Full mode also exposes the authenticated conversation and actionable-notification SSE/WebSocket relays added by the desktop integration.
 
 Question answers are submitted to `/api/plugins/index-network/questions/:id/answer`; the plugin backend validates the small answer payload and forwards it to Index's `/api/questions/:id/answer` endpoint with the configured `INDEX_API_KEY`. Negotiation conversation threads are not rendered — only the per-signal radar status counts (derived client-side from loaded radar items).
 
@@ -76,7 +78,7 @@ From the monorepo root:
 cd packages/hermes-plugin && bun run test
 ```
 
-For manual Hermes dashboard testing, restart `hermes dashboard` after changing `plugin_api.py` (backend routes are mounted at dashboard startup). For asset-only changes, refresh plugin discovery:
+The smoke command includes Python exported-router cases and JavaScript registration cases for absent, empty, exact `full`, `negotiator`, unknown, whitespace-only, and padded values. For manual Hermes dashboard testing, restart `hermes dashboard` after changing `plugin_api.py` or `INDEX_PLUGIN_MODE` (backend routes are selected and mounted at dashboard startup). For asset-only changes, refresh plugin discovery:
 
 ```bash
 curl http://127.0.0.1:9119/api/dashboard/plugins/rescan

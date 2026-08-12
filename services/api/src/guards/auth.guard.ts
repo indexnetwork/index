@@ -1,13 +1,16 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { eq } from 'drizzle-orm/sql';
 
-import db from '../lib/drizzle/drizzle';
 import { hashApiKey } from '../lib/apikey/credential';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { apikeys, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { getRequestAuthContext, recordRequestAuthContext } from '../lib/request-auth-context';
+import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
+
+export { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND } from '../lib/agent/hermes-credential';
+export type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
 const logger = log.server.from('auth.guard');
 
@@ -15,6 +18,21 @@ export interface AuthenticatedUser {
   id: string;
   email: string | null;
   name: string;
+}
+
+export interface ApiKeyAuthenticationCredential {
+  id?: string;
+  referenceId: string | null;
+  userId: string | null;
+  enabled: boolean;
+  expiresAt: Date | null;
+  metadata: string | null;
+}
+
+/** Persistence boundary used by the real API-key authentication algorithm. */
+export interface ApiKeyAuthenticationStore {
+  findCredentialByHash(hash: string): Promise<ApiKeyAuthenticationCredential | null>;
+  findUserById(userId: string): Promise<AuthenticatedUser | null>;
 }
 
 const JWKS = createRemoteJWKSet(
@@ -56,6 +74,14 @@ export class SessionRequiredError extends Error {
   constructor(message = 'This endpoint requires a session token; API keys are not accepted') {
     super(message);
     this.name = 'SessionRequiredError';
+  }
+}
+
+/** Thrown when an agent-bound key reaches an owner-control endpoint. */
+export class OwnerControlRequiredError extends Error {
+  constructor(message = 'This endpoint requires an owner credential; agent-bound API keys are not accepted') {
+    super(message);
+    this.name = 'OwnerControlRequiredError';
   }
 }
 
@@ -106,6 +132,91 @@ function parseApiKeyAgentId(metadata: string | null): string | null {
   return typeof parsed?.agentId === 'string' ? parsed.agentId : null;
 }
 
+function parseApiKeyAudience(metadata: string | null): typeof HERMES_NEGOTIATOR_AUDIENCE | null {
+  const parsed = parseApiKeyMetadata(metadata);
+  return parsed?.audience === HERMES_NEGOTIATOR_AUDIENCE
+    ? HERMES_NEGOTIATOR_AUDIENCE
+    : null;
+}
+
+function parseApiKeySetupAttemptId(metadata: string | null): string | null {
+  const parsed = parseApiKeyMetadata(metadata);
+  return typeof parsed?.setupAttemptId === 'string' ? parsed.setupAttemptId : null;
+}
+
+/**
+ * Dedicated-audience credentials are a closed authentication contract. Inspect
+ * the audience directly before resolving an owner so malformed dedicated rows
+ * cannot collapse into the legacy `audience: null` / unbound-key behavior.
+ */
+function hasValidHermesAuthenticationIdentity(row: ApiKeyAuthenticationCredential): boolean {
+  const parsed = parseApiKeyMetadata(row.metadata);
+  if (parsed?.audience !== HERMES_NEGOTIATOR_AUDIENCE) return true;
+
+  return typeof row.id === 'string'
+    && row.id.trim().length > 0
+    && typeof parsed.agentId === 'string'
+    && parsed.agentId.trim().length > 0
+    && typeof parsed.setupAttemptId === 'string'
+    && parsed.setupAttemptId.trim().length > 0
+    && parsed.kind === HERMES_NEGOTIATOR_CREDENTIAL_KIND
+    && row.expiresAt !== null
+    && typeof parsed.expiresAt === 'string'
+    && parsed.expiresAt === row.expiresAt.toISOString();
+}
+
+/** Stable 403 for an explicitly negotiation-only credential used elsewhere. */
+export class HermesNegotiatorRouteDeniedError extends Error {
+  constructor(message = 'This Hermes negotiator credential is not authorized for this endpoint') {
+    super(message);
+    this.name = 'HermesNegotiatorRouteDeniedError';
+  }
+}
+
+/**
+ * Centrally enforce the REST allowlist for the dedicated Hermes audience.
+ * Legacy agent-bound keys have no explicit audience and retain their historical
+ * route behavior. The URL is matched exactly after removing the optional API
+ * prefix; query strings never influence admission.
+ */
+export function assertApiKeyAudienceRoute(
+  req: Request,
+  principal: Pick<NegotiationCredentialPrincipal, 'agentId' | 'audience'>,
+): void {
+  if (principal.audience !== HERMES_NEGOTIATOR_AUDIENCE) return;
+
+  const method = req.method.toUpperCase();
+  const rawPath = new URL(req.url, 'http://localhost').pathname;
+  const path = rawPath === '/api' ? '/' : rawPath.replace(/^\/api(?=\/)/, '');
+  if (method === 'GET' && path === '/agents/me') return;
+
+  const escapedAgentId = principal.agentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const negotiationRoute = new RegExp(
+    `^/agents/${escapedAgentId}/negotiations/(?:pickup|[^/]+/(?:respond|consult))$`,
+  );
+  if (method === 'POST' && negotiationRoute.test(path)) return;
+
+  throw new HermesNegotiatorRouteDeniedError();
+}
+
+/** Read the exact authenticated principal required by negotiation mutations. */
+export function requireNegotiationCredentialPrincipal(req: Request): NegotiationCredentialPrincipal {
+  const context = getRequestAuthContext(req);
+  if (
+    context?.kind !== 'api_key'
+    || !context.agentId
+    || !context.credentialId
+  ) {
+    throw new OwnerControlRequiredError('Negotiation polling requires an exact agent-bound API key');
+  }
+  return {
+    credentialId: context.credentialId,
+    agentId: context.agentId,
+    audience: context.audience ?? null,
+    setupAttemptId: context.setupAttemptId ?? null,
+  };
+}
+
 function isLegacyCliV1Metadata(metadata: string | null): boolean {
   const parsed = parseApiKeyMetadata(metadata);
   return parsed?.client === 'cli'
@@ -133,6 +244,8 @@ export const isSessionAuthenticated = (req: Request): boolean =>
  * binding. Authorization is intentionally NOT re-checked here — callers
  * must run `AuthGuard` first.
  */
+export type AgentPrincipalResolver = (request: Request) => Promise<string | null>;
+
 export const resolveApiKeyAgentId = async (req: Request): Promise<string | null> => {
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) return null;
@@ -144,7 +257,8 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
 
   const hashed = await hashApiKey(apiKey);
 
-  const [row] = await db
+  const database = (await import('../lib/drizzle/drizzle')).default;
+  const [row] = await database
     .select({ metadata: apikeys.metadata })
     .from(apikeys)
     .where(eq(apikeys.key, hashed))
@@ -153,26 +267,43 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
   return parseApiKeyAgentId(row?.metadata ?? null);
 };
 
-async function resolveApiKeyCredential(
+async function hasExactAgentPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver,
+): Promise<boolean> {
+  return await resolvePrincipal(request) === agentId;
+}
+
+/** Exact agent-bound principal check used by negotiation pickup. */
+export async function authorizeNegotiationPickupPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
+): Promise<boolean> {
+  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
+}
+
+/** Exact agent-bound principal check used by negotiation respond. */
+export async function authorizeNegotiationRespondPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
+): Promise<boolean> {
+  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
+}
+
+export async function authenticateApiKey(
   req: Request,
   apiKey: string,
+  store: ApiKeyAuthenticationStore = databaseApiKeyAuthenticationStore,
   options: {
     metadataAllowed?: (metadata: string | null) => boolean;
     forceNullAgentId?: boolean;
   } = {},
 ): Promise<AuthenticatedUser> {
   const hashed = await hashApiKey(apiKey);
-  const [row] = await db
-    .select({
-      referenceId: apikeys.referenceId,
-      userId: apikeys.userId,
-      enabled: apikeys.enabled,
-      expiresAt: apikeys.expiresAt,
-      metadata: apikeys.metadata,
-    })
-    .from(apikeys)
-    .where(eq(apikeys.key, hashed))
-    .limit(1);
+  const row = await store.findCredentialByHash(hashed);
 
   // Log a prefix of the stored SHA-256 hash, never raw credential material.
   const keyHashPrefix = hashed.slice(0, 8);
@@ -190,6 +321,10 @@ async function resolveApiKeyCredential(
     logger.warn('API key rejected', { reason: 'incompatible_bearer_metadata', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
+  if (!hasValidHermesAuthenticationIdentity(row)) {
+    logger.warn('API key rejected', { reason: 'malformed_hermes_identity', keyHashPrefix, ua });
+    throw new Error('Invalid API key');
+  }
 
   let userId: string | null;
   try {
@@ -203,20 +338,24 @@ async function resolveApiKeyCredential(
     throw new Error('Invalid API key');
   }
 
-  const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  const user = await store.findUserById(userId);
 
   if (!user) {
     logger.warn('API key rejected', { reason: 'user_not_found', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
 
-  recordRequestAuthContext(req, {
-    kind: 'api_key',
+  const context = {
+    kind: 'api_key' as const,
     agentId: options.forceNullAgentId ? null : parseApiKeyAgentId(row.metadata),
+    audience: options.forceNullAgentId ? null : parseApiKeyAudience(row.metadata),
+    credentialId: row.id ?? null,
+    setupAttemptId: options.forceNullAgentId ? null : parseApiKeySetupAttemptId(row.metadata),
+  };
+  recordRequestAuthContext(req, context);
+  if (context.agentId) assertApiKeyAudienceRoute(req, {
+    agentId: context.agentId,
+    audience: context.audience,
   });
 
   return {
@@ -241,7 +380,7 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
       return await resolveJwtUser(req);
     } catch (jwtError) {
       try {
-        return await resolveApiKeyCredential(req, authHeader.slice(7), {
+        return await authenticateApiKey(req, authHeader.slice(7), databaseApiKeyAuthenticationStore, {
           metadataAllowed: isLegacyCliV1Metadata,
           forceNullAgentId: true,
         });
@@ -259,5 +398,49 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     throw new Error('Access token or API key required');
   }
 
-  return resolveApiKeyCredential(req, apiKey);
+  return authenticateApiKey(req, apiKey);
+};
+
+const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
+  async findCredentialByHash(hash) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database
+      .select({
+        id: apikeys.id,
+        referenceId: apikeys.referenceId,
+        userId: apikeys.userId,
+        enabled: apikeys.enabled,
+        expiresAt: apikeys.expiresAt,
+        metadata: apikeys.metadata,
+      })
+      .from(apikeys)
+      .where(eq(apikeys.key, hash))
+      .limit(1);
+    return row ?? null;
+  },
+  async findUserById(userId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [user] = await database
+      .select({ id: users.id, email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
+  },
+};
+
+/**
+ * Authenticate an owner-control request while rejecting every agent-bound key.
+ * Sessions and unbound owner keys remain accepted.
+ */
+export const OwnerControlGuard = async (
+  req: Request,
+  authenticate: (request: Request) => Promise<AuthenticatedUser> = AuthGuard,
+): Promise<AuthenticatedUser> => {
+  const user = await authenticate(req);
+  const context = getRequestAuthContext(req);
+  if (context?.kind === 'api_key' && context.agentId !== null) {
+    throw new OwnerControlRequiredError();
+  }
+  return user;
 };

@@ -39,10 +39,21 @@ window.IndexApp = (function () {
     if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
     return window.IndexApi.createIndexApiClient({
       apiBaseUrl: native().apiBaseUrl,
-      // Read the key lazily so a mid-session login/logout is picked up without
-      // rebuilding the client.
       getApiKey: () => native().apiKey,
     });
+  }
+
+  // Runtime sagas pin one owner credential for their entire lifetime. Logout
+  // or owner replacement may update INDEX_NATIVE while compensation is still
+  // running; this client deliberately never rereads that mutable global.
+  function getOwnerClient(ownerCredential) {
+    if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
+    if (!ownerCredential) return null;
+    // The API base is public configuration; the credential is the exact value
+    // captured by AgentRuntimeProvider and is never reread from INDEX_NATIVE.
+    return window.IndexApi.createPinnedIndexApiClient({
+      apiBaseUrl: native().apiBaseUrl,
+    }, ownerCredential);
   }
 
   // ---- native auth bridge --------------------------------------------------
@@ -50,13 +61,30 @@ window.IndexApp = (function () {
   function hasBridge() {
     return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth);
   }
-  function post(action) {
+  function post(action, payload) {
     if (!hasBridge()) return false;
-    window.webkit.messageHandlers.indexAuth.postMessage({ action });
+    window.webkit.messageHandlers.indexAuth.postMessage({ action, ...(payload || {}) });
     return true;
   }
   function login() { return post("login"); }
-  function logout() { return post("logout"); }
+  let logoutSafetyHandler = null;
+  let logoutInFlight = false;
+  function setLogoutSafetyHandler(handler) {
+    logoutSafetyHandler = typeof handler === "function" ? handler : null;
+    return () => { if (logoutSafetyHandler === handler) logoutSafetyHandler = null; };
+  }
+  function logout() {
+    if (!hasBridge() || !logoutSafetyHandler) return false;
+    if (logoutInFlight) return true;
+    logoutInFlight = true;
+    Promise.resolve()
+      .then(() => logoutSafetyHandler())
+      // Native key deletion/revocation is unreachable until the coordinator has
+      // persisted select-Index recovery and proven local scheduling paused.
+      .then((result) => post("completeLogout", { ownerId:result.ownerId }))
+      .catch(() => { logoutInFlight = false; });
+    return true;
+  }
 
   // Swift answers a detectHarnesses post via window.__indexHarnessesDetected.
   // Resolves with [{id,label,command,path}], or null when there is no native
@@ -73,32 +101,52 @@ window.IndexApp = (function () {
     });
   }
 
-  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
-  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
-  const hermesWaiters = [];
-  window.__indexHermesSetup = function (result) {
-    while (hermesWaiters.length) hermesWaiters.shift()(result || {});
-  };
-  function setupHermes(apiKey) {
-    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
-    return new Promise((resolve) => {
-      hermesWaiters.push(resolve);
-      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
-    });
+  // ---- generation-fenced Hermes runtime bridge ----------------------------
+
+  function hasHermesRuntimeBridge() {
+    return !!(window.webkit && window.webkit.messageHandlers
+      && window.webkit.messageHandlers.hermesRuntime);
   }
-  // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
-  function teardownHermes() {
-    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
-    return new Promise((resolve) => {
-      hermesWaiters.push(resolve);
-      post("teardownHermes");
-    });
+
+  function runtimeRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return `runtime-${Math.random().toString(36).slice(2)}-${performance.now()}`;
+  }
+
+  const hermesRuntimeBridge = window.IndexApi.createHermesRuntimeBridge({
+    createRequestId: runtimeRequestId,
+    postMessage:(message) => {
+      if (!hasHermesRuntimeBridge()) throw new Error("no native Hermes runtime bridge");
+      window.webkit.messageHandlers.hermesRuntime.postMessage(message);
+    },
+  });
+
+  // Swift emits this credential-free callback only after dequeueing the request
+  // on its trusted serial queue. Only then does JS start the execution timeout.
+  window.__indexHermesRuntimeProgress = function (progress) {
+    hermesRuntimeBridge.receiveProgress(progress);
+  };
+
+  // Late replies after timeout/abort are consumed as unknown and cannot settle
+  // a later request because the production bridge already removed the waiter.
+  window.__indexHermesRuntimeResult = function (result) {
+    hermesRuntimeBridge.receive(result);
+  };
+
+  function hermesRuntime(command, payload, options) {
+    if (!hasHermesRuntimeBridge()) {
+      return Promise.reject(new Error("no native Hermes runtime bridge"));
+    }
+    return hermesRuntimeBridge.request(command, payload || {}, options || {});
   }
 
   // Swift calls window.__indexAuthChanged(apiKeyOrNull) after it updates
   // window.INDEX_NATIVE. Fan that out to any React subscribers.
   const authSubscribers = new Set();
   window.__indexAuthChanged = function (key) {
+    if (!key) logoutInFlight = false;
     authSubscribers.forEach((cb) => { try { cb(key); } catch (e) { /* ignore */ } });
   };
   function onAuthChanged(cb) {
@@ -457,6 +505,7 @@ window.IndexApp = (function () {
     avatarUrl,
     webBaseUrl,
     getClient,
+    getOwnerClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,
     normalizeList,
@@ -465,9 +514,9 @@ window.IndexApp = (function () {
     mapDiscoverNetworks,
     login,
     logout,
+    setLogoutSafetyHandler,
     detectHarnesses,
-    setupHermes,
-    teardownHermes,
+    hermesRuntime,
     onAuthChanged,
     onDeepLink,
     createIntent,

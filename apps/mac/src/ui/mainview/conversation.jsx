@@ -524,15 +524,14 @@ function timeAgo(t) {
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
 
-// Agent replies arrive as markdown; render them through the vendored marked
-// UMD (window.marked). `<` is escaped first so raw HTML in model output never
-// reaches the DOM — only markdown-generated tags do. Falls back to plain text
-// if marked is missing or throws (e.g. on a half-streamed construct).
+// Agent replies are untrusted model output. The shared renderer escapes raw
+// HTML, then allowlists the markdown tree and only retains normalized http(s)
+// links. WKNavigationDelegate sends those links to NSWorkspace, never into this
+// credential-bearing document.
 function AgentMarkdown({ text }) {
   const html = useMemo(() => {
-    if (!window.marked || !text) return null;
     try {
-      return window.marked.parse(String(text).replace(/</g, "&lt;"), { breaks: true, async: false });
+      return window.IndexApi.renderAgentMarkdown(window.marked, window.DOMParser, text);
     } catch (e) { return null; }
   }, [text]);
   if (html == null) return text || null;

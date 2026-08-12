@@ -934,9 +934,9 @@ Revoke an API key bound to an owned personal agent.
 
 ### POST /api/agents/:id/negotiations/pickup
 
-Claim the next pending negotiation turn for an owned personal agent. Authenticates with the agent's API key (`x-api-key` header) or a regular session. Idempotent: if the agent already holds a claimed turn, the same turn is returned instead of a new one.
+Claim the next pending negotiation turn for an owned personal agent. Authenticates with the agent's API key (`x-api-key` header) or a regular session. Legacy credentials are idempotent for an existing claim. A dedicated `hermes-negotiator` credential must also send the native `x-index-hermes-run-id` header; one process run can bind only one task, so a second pickup with that run returns `409`.
 
-The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'` row where the caller's user is a participant to `state = 'claimed'`. The park timeout is cancelled and a claim timeout is enqueued with the **remaining** park-window budget (a single shared budget of `AMBIENT_PARK_WINDOW_MS` = 5 minutes from park start — park and claim timers never stack). If the agent does not respond before the budget expires — or the turn is never claimed at all — the system `Index Negotiator` takes the turn as a fallback (seat-scoped under v2); an expired claim is not re-parked for another pickup attempt.
+The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'` row where the caller's user is a participant to `state = 'claimed'`. The exact park-generation timeout is cancelled and a claim-generation timeout is enqueued with the **remaining** park-window budget (a single shared budget of `AMBIENT_PARK_WINDOW_MS` = 5 minutes from park start — park and claim timers never stack). Repeating pickup for the preserved exact claim idempotently repairs both queue operations without extending the original deadline; an elapsed deadline is repaired as an immediate fallback. Timeout workers validate the job generation and turn count in one transaction, so redelivery from an older re-park/reclaim cannot mutate the current task or continuation fence. If the agent does not respond before the budget expires — or the turn is never claimed at all — the system `Index Negotiator` takes the turn as a fallback (seat-scoped under v2); an expired claim is not re-parked for another pickup attempt.
 
 **Request body**: empty.
 
@@ -973,23 +973,58 @@ The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'
   },
   "seat": "initiator",
   "protocolVersion": "v2",
-  "allowedActions": ["outreach", "counter", "question", "withdraw"]
+  "allowedActions": ["outreach", "counter", "question", "withdraw"],
+  "canConsultOwner": true
 }
 ```
 
 - `turn.deadline` — ISO-8601 timestamp; park start + the park-window budget (`AMBIENT_PARK_WINDOW_MS`, 5 minutes). The claim shares this same budget — it is not extended by picking up.
 - `turn.counterpartyAction` — action from the preceding turn, or `"none"` if this is the first turn.
-- `seat` / `protocolVersion` / `allowedActions` — the claiming user's seat under the task's protocol version and the exact actions that seat may submit this turn (`propose | accept | reject | counter | question` on v1 tasks; seat-scoped `outreach | counter | question | withdraw` vs `accept | decline | counter | question` on v2).
+- `seat` / `protocolVersion` / `allowedActions` — the claiming user's seat under the task's protocol version and the exact actions that seat may submit this turn (`propose | accept | reject | counter | question` on v1 tasks; seat-scoped `outreach | counter | question | withdraw` vs `accept | decline | counter | question` on v2). Final turns expose only their final-turn vocabulary.
+- `canConsultOwner` — `true` only when this exact v2, non-opening, non-final claim can enter the server's Questioner-backed owner-consultation continuation. The server derives policy eligibility from persisted action, role, claim, and lifecycle data; clients cannot request or advertise consultation on a final turn.
 - `context.ownUser` / `context.otherUser` — the persisted absolute source/candidate context projected into the claiming user's perspective. May be `null` only for legacy tasks created before turn-context persistence landed.
 - `negotiatorMemory` — optional array of the claiming user's own negotiator-memory entries (present only when `NEGOTIATOR_MEMORY_INJECT` is on and the user's agent has relevant memories — never contains the counterparty's).
 - `opportunity` — `null` when the task has no linked opportunity.
 
+A dedicated Hermes response is a different privacy-minimal projection: opportunity is limited to `id`/`status`; history omits `message`; `context`, `negotiatorMemory`, `privateConsultation`, owner selections/free text, evaluator reasoning, actor prose, and all shared-message prose are absent. Its `allowedActions` contains only `accept | decline | request_time | continue`, `ownerDirective` is the fixed server-derived `protect_private_context`, and `runCapability` is returned only for the native plugin to retain outside model-visible arguments.
+
 **Errors**:
-- `403` if the agent is not owned by the authenticated user.
+- `403` unless the request uses the exact currently selected agent-bound credential (including the current Hermes setup generation when explicitly Hermes-audience), and dedicated Hermes pickup includes its native run header.
+- `409` when the dedicated process run already picked up a task.
+
+### POST /api/agents/:id/negotiations/:negotiationId/consult
+
+Pause an exact externally claimed v2 turn to consult the represented owner through the existing private Questioner lifecycle. The endpoint requires the exact currently selected agent-bound credential. Dedicated Hermes requests also require their native run ID and opaque capability headers. It accepts only a closed server-owned consultation reason; unknown fields and all free-form disclosure/question text are rejected. Questioner renders fixed copy for the category and receives no agent-authored instructions. The exact task/credential/setup-generation/run capability is atomically consumed with the pause.
+
+**Request body** (strict):
+```json
+{
+  "reason": "consequential_disclosure_permission"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "status": "input_required",
+  "settlementId": "negotiation-question-settlement-v1-<task-id>"
+}
+```
+
+The server arms an attempt-specific expiry for the configured answer window (24 hours by default) before atomically writing one server-authored `ask_user` turn, its exact material binding, and `input_required`. Answer, dismissal, or expiry uses the existing exact-task continuation pipeline and resumes at most one successor. A failed Questioner enqueue remains recoverable through the durable expiry.
+
+**Errors**:
+- `400` for an unknown/mismatched reason, any extra/free-form field, v1/opening/final turns, prior same-seat consultation, missing lifecycle wiring, or policy-ineligible admission.
+- `403` unless the request uses the exact currently selected agent-bound credential and its current setup generation.
+- `404` for a missing, non-negotiation, or wrong-owner task.
+- `409` when the exact claim, claimant, continuation fence, or material binding lost a race.
+
+Every rejected consultation preserves the original `claimed` state and claim deadline. Duplicate losers cancel only their own server-only attempt expiry; they cannot cancel or settle the winning consultation.
 
 ### POST /api/agents/:id/negotiations/:negotiationId/respond
 
-Submit a response for a negotiation turn previously claimed via `pickup`. Authenticates with the agent's API key or a session. The submitted action is validated against the caller's seat + the task's protocol version **before** any state change. The backend then atomically CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn, then either finalizes the negotiation (on a terminal action — `accept`/`reject` on v1, `accept`/`decline`/`withdraw` on v2 — or when the turn cap is reached) or returns it to `waiting_for_agent` with a fresh 5-minute park window for the counterparty.
+Submit a response for a negotiation turn previously claimed via `pickup`. Authenticates with the agent's API key or a session. The submitted action is validated against the caller's seat + the task's protocol version **before** any state change. Runtime deselection, disconnect, credential rotation, and revocation serialize behind the same owner fence until message/task/artifact/opportunity/continuation effects and timeout rearming finish. Any committed rearm outbox stores an absolute `deadlineAt`; retries enqueue only the remaining `max(0, deadlineAt - now)` delay and never grant a fresh window after an outage.
 
 **Request body**:
 ```json
@@ -1006,9 +1041,18 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 }
 ```
 
-- `action` — must be within the seat's `allowedActions` returned by `pickup`: v1 tasks accept `propose | accept | reject | counter | question`; v2 tasks are seat-scoped (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`).
+- `action` — must be within the seat's `allowedActions` returned by `pickup`: v1 tasks accept `propose | accept | reject | counter | question`; v2 tasks are seat-scoped (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`). `ask_user` is never accepted here; use the dedicated consultation endpoint when `canConsultOwner` is true.
 - `message` — optional string or `null`.
 - `assessment.suggestedRoles.ownUser` / `.otherUser` — each one of `agent`, `patient`, `peer`.
+
+For a dedicated `hermes-negotiator` credential, the body is instead strict and closed:
+```json
+{
+  "action": "accept | decline | request_time | continue",
+  "roleAlignment": "peers | owner_leads | counterparty_leads"
+}
+```
+The native `x-index-hermes-run-id` and `x-index-hermes-run-capability` headers are required but are not model arguments. The server maps the directive to an allowed protocol action and fixed shared-message/assessment templates. Any `message`, reasoning, assessment, run/capability body field, or other prose is rejected. The capability is consumed atomically at the claimed-to-working CAS; the owner runtime fence remains held through final durable effects and the completion receipt, making exact retries idempotent and cross-task/generation/credential replay invalid.
 
 **Response**:
 ```json
@@ -1017,7 +1061,7 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 
 **Errors**:
 - `400` if the action is outside the caller's seat's allowed set for the task's protocol version (the claim stays intact for a retry).
-- `403` if the agent is not owned by the authenticated user.
+- `403` unless the request uses the exact currently selected agent-bound credential (including the current Hermes setup generation when explicitly Hermes-audience).
 - `404` if the negotiation does not exist or the referenced task is not a negotiation.
 - `409` if the task is not in `claimed` state or is claimed by a different agent.
 
@@ -1062,7 +1106,7 @@ Uses the same `getOpportunitiesForUser` database adapter as the feed graph. Elig
 
 **Errors**:
 - `400` if `limit` is present but does not parse to a finite number (e.g. `abc`, `Infinity`, `NaN`) — `{"error":"limit must be a finite number"}`.
-- `403` if the agent is not owned by the authenticated user.
+- `403` if the agent is not owned by the authenticated user. Legacy agent-bound keys retain this historical ownership behavior; the dedicated Hermes negotiator audience is denied this route.
 
 ### GET /api/agents/:id/opportunities/accepted
 
@@ -1104,7 +1148,7 @@ Fetch accepted opportunities where the authenticated user is the counterparty (n
 
 **Errors**:
 - `400` if `limit` is present but does not parse to a finite number.
-- `403` if the agent is not owned by the authenticated user.
+- `403` if the agent is not owned by the authenticated user. Legacy agent-bound keys retain this historical ownership behavior; the dedicated Hermes negotiator audience is denied this route.
 
 ### GET /api/agents/:id/opportunities/delivery-stats
 
@@ -1132,7 +1176,7 @@ Return committed delivery counts for an owned personal agent since a given times
 **Response 400**: `{ "error": "..." }` when `since` is missing or cannot be parsed as a valid ISO 8601 date.
 
 **Errors**:
-- `403` if the agent is not owned by the authenticated user.
+- `403` if the agent is not owned by the authenticated user. Legacy agent-bound keys retain this historical ownership behavior; the dedicated Hermes negotiator audience is denied this route.
 
 **Used by**: the OpenClaw plugin's ambient discovery poller, which calls this endpoint before each cycle to feed today's committed delivery count into the agent's prompt for soft self-restraint against a ≤3/day target.
 
@@ -3712,3 +3756,16 @@ Serves the Bull Board UI for monitoring BullMQ job queues. Monitors the followin
 - questioner (when `QUESTIONER_ENABLED=true`)
 
 Accessible at `http://localhost:3001/dev/queues/` when the protocol server is running in development mode.
+
+
+## Agent negotiation runtime owner control
+
+All five routes require an owner-control credential (session or unbound owner API key). Agent-bound credentials, including the dedicated Hermes negotiator audience, are rejected.
+
+- `GET /api/agent-runtime?installationId=<uuid>` — read the selected runtime, exact installation state, heartbeat health, and Index fallback state.
+- `POST /api/agent-runtime/hermes/prepare` — prepare/rotate an installation generation and return one finite-lived `hermes-negotiator` / `agent-runtime` credential. Preparation grants no negotiation authority.
+- `PUT /api/agent-runtime` — select Index (`{ "runtime": "index" }`) or activate the exact prepared Hermes installation/executor/setup generation.
+- `POST /api/agent-runtime/rollback` — compare-and-clear only the named setup generation.
+- `DELETE /api/agent-runtime/hermes/:installationId` — select Index, revoke the installation credentials, and mark that installation inactive.
+
+Hermes credentials are centrally default-denied on REST and MCP. Their only REST capabilities are `GET /api/agents/me` and exact matching-agent negotiation pickup/respond/consult routes. Pickup, response, and consultation revalidate the current selected executor, global `manage:negotiations` grant, credential row, audience, and setup generation under the same owner runtime advisory-lock transaction as task mutation. Legacy agent-bound keys without an explicit Hermes audience retain compatibility.

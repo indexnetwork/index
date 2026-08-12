@@ -177,13 +177,13 @@ INDEX_PICKUP_NEGOTIATION = {
 INDEX_RESPOND_NEGOTIATION = {
     "name": "index_respond_negotiation",
     "description": (
-        "Respond to a claimed Index Network negotiation turn as the user's "
-        "personal agent. Use after index_pickup_negotiation returns pending=true. "
-        "Choose one action, provide concise reasoning, and include suggested "
-        "roles for both sides."
+        "Consume this scheduled pass by submitting one closed response for the "
+        "negotiation returned by index_pickup_negotiation. The server selects "
+        "the protocol action and shared prose from fixed templates."
     ),
     "parameters": {
         "type": "object",
+        "additionalProperties": False,
         "properties": {
             "agentId": {
                 "type": "string",
@@ -198,42 +198,58 @@ INDEX_RESPOND_NEGOTIATION = {
             },
             "action": {
                 "type": "string",
-                "enum": ["propose", "accept", "reject", "counter", "question"],
+                "enum": ["accept", "decline", "request_time", "continue"],
                 "description": (
-                    "One negotiation response action. Use counter to propose a "
-                    "modified introduction, question to ask for missing context, "
-                    "accept/reject for final decisions, or propose for an initial proposal."
+                    "One closed directive copied from the pickup response's allowedActions. "
+                    "No model-authored shared message is accepted."
                 ),
             },
-            "message": {
+            "roleAlignment": {
                 "type": "string",
-                "description": (
-                    "Optional human-readable message. Required for counter and "
-                    "question actions; recommended whenever the decision needs explanation."
-                ),
-            },
-            "reasoning": {
-                "type": "string",
-                "description": "Required private rationale for the assessment and chosen action.",
-            },
-            "suggestedRoles": {
-                "type": "object",
-                "description": "Required role assessment for the caller and counterparty.",
-                "properties": {
-                    "ownUser": {
-                        "type": "string",
-                        "enum": ["agent", "patient", "peer"],
-                        "description": "Suggested role for the user's side of the opportunity.",
-                    },
-                    "otherUser": {
-                        "type": "string",
-                        "enum": ["agent", "patient", "peer"],
-                        "description": "Suggested role for the counterparty's side of the opportunity.",
-                    },
-                },
-                "required": ["ownUser", "otherUser"],
+                "enum": ["peers", "owner_leads", "counterparty_leads"],
+                "description": "Closed role alignment used to derive protocol roles.",
             },
         },
-        "required": ["negotiationId", "action", "reasoning", "suggestedRoles"],
+        "required": ["negotiationId", "action", "roleAlignment"],
+    },
+}
+
+INDEX_CONSULT_OWNER = {
+    "name": "index_consult_owner",
+    "description": (
+        "Pause one eligible claimed negotiation turn and ask the owning user a "
+        "privacy-minimal question. Use only when pickup returns canConsultOwner=true. "
+        "A successful consultation ends this autonomous pass; do not also respond."
+    ),
+    "parameters": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "agentId": {
+                "type": "string",
+                "description": (
+                    "Optional personal agent UUID. Omit to resolve it from "
+                    "/agents/me using the configured agent-bound API key."
+                ),
+            },
+            "negotiationId": {
+                "type": "string",
+                "description": "Required negotiation UUID returned by index_pickup_negotiation.",
+            },
+            "reason": {
+                "type": "string",
+                "enum": [
+                    "consequential_disclosure_permission",
+                    "repeated_non_convergence",
+                    "insufficient_commitment_authority",
+                    "unresolved_owner_constraint",
+                ],
+                "description": (
+                    "Required closed server consultation category. The server "
+                    "must independently derive the same category for this claim."
+                ),
+            },
+        },
+        "required": ["negotiationId", "reason"],
     },
 }

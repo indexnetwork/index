@@ -2,13 +2,12 @@ import type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } fro
 import type { NegotiationTimeoutQueue } from '@indexnetwork/protocol';
 
 import type { AgentWithRelations } from '../adapters/agent.database.adapter';
-
+import { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 import { log } from '../lib/log';
 
-const logger = log.service.from('AgentDispatcher');
+export { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 
-/** How recently an external (poller) agent must have polled to be considered live. */
-const FRESHNESS_THRESHOLD_MS = 90_000;
+const logger = log.service.from('AgentDispatcher');
 
 /** Subset of AgentService needed by the dispatcher. */
 interface AgentLookup {
@@ -55,32 +54,36 @@ export class AgentDispatcherImpl implements AgentDispatcher {
   ): Promise<AgentDispatchResult> {
     const authorizedAgents = await this.findAuthorizedAgentsForScope(userId, scope);
 
-    const externalAgents = authorizedAgents.filter((a) => a.type === 'external');
+    const externalAgents = authorizedAgents.filter(
+      (agent) => agent.type === 'external' && agent.handleNegotiations,
+    );
 
     if (externalAgents.length === 0) {
       return { handled: false, reason: 'no_agent' };
     }
 
-    const cutoff = Date.now() - FRESHNESS_THRESHOLD_MS;
     const freshAgents = externalAgents.filter(
-      (a) => a.lastSeenAt != null && a.lastSeenAt.getTime() > cutoff,
+      (agent) => isNegotiationExecutorFresh(agent.lastNegotiationPickupAt),
     );
 
     if (freshAgents.length === 0) {
       logger.info('External agent registered but stale — falling back to system agent', {
         userId,
         agentCount: externalAgents.length,
-        freshnessThresholdMs: FRESHNESS_THRESHOLD_MS,
+        freshnessThresholdMs: NEGOTIATION_EXECUTOR_FRESHNESS_MS,
       });
       return { handled: false, reason: 'timeout' };
     }
 
+    const parkGeneration = crypto.randomUUID();
     if (this.timeoutQueue) {
       try {
         await this.timeoutQueue.enqueueTimeout(
           payload.negotiationId,
           payload.history.length,
           options.timeoutMs,
+          parkGeneration,
+          payload.timeoutContinuation,
         );
       } catch (err) {
         // Without a safety timer, a parked turn could strand forever. Fall back to
@@ -101,7 +104,7 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       parkWindowMs: options.timeoutMs,
     });
 
-    return { handled: false, reason: 'waiting', resumeToken: payload.negotiationId };
+    return { handled: false, reason: 'waiting', resumeToken: parkGeneration };
   }
 
   /**
@@ -118,7 +121,7 @@ export class AgentDispatcherImpl implements AgentDispatcher {
     scope: { action: string; scopeType: string; scopeId?: string },
   ): Promise<boolean> {
     const agents = await this.findAuthorizedAgentsForScope(userId, scope);
-    return agents.some((a) => a.type === 'external');
+    return agents.some((agent) => agent.type === 'external' && agent.handleNegotiations);
   }
 
   /**

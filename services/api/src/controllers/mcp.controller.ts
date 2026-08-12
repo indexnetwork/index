@@ -48,6 +48,7 @@ import { negotiatorMemoryWriteService } from '../services/negotiator-memory.serv
 import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
+import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
@@ -396,8 +397,16 @@ export function resolveMcpApiKeyPrincipal(
   enrollmentCapable?: boolean;
   isDeliveryAgent?: boolean;
 } | null {
+  // Check the raw metadata before the canonical MCP schema parses (and strips)
+  // unknown fields. Audience is deliberately outside MCP's capability schema.
+  if (isHermesNegotiatorAudience(row.metadata)) {
+    throw new Error('Hermes negotiator credentials are not accepted by MCP');
+  }
   const metadata = parseApiKeyMetadata(row.metadata);
 
+  // Negotiation-only Hermes credentials are REST principals and have no MCP
+  // capability profile. Reject them before owner identity resolution can
+  // collapse the credential into a broad owner principal.
   // Agent keys must additionally carry BOTH principal columns (the adapter
   // mints them with referenceId === userId); a missing side signals a
   // cross-wired/tampered agent key. Divergence between populated columns is

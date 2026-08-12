@@ -97,11 +97,11 @@ A screen failure (LLM error/timeout) **fails open** in every mode (including enf
 
 ### Client consultation (`ask_user`, flag-gated)
 
-With `NEGOTIATION_ASK_USER_ENABLED=true`, v2 negotiators gain one extra non-final action per seat: **`ask_user`** — pause the negotiation to consult **their own client** (not the counterparty; `question` covers that). The turn carries `askUser: { disclosureSubject, draftQuestion }`.
+With `NEGOTIATION_ASK_USER_ENABLED=true`, v2 negotiators gain one extra non-final action per seat: **`ask_user`** — pause the negotiation to consult **their own client** (not the counterparty; `question` covers that). The action carries only `askUser: { reason }`, where `reason` is one of the closed server-owned consultation categories; disclosure and question copy are derived from fixed server templates.
 
 IND-508 adds `NEGOTIATION_CONSULTATION_POLICY_MODE=off|shadow|on` (default/invalid `off`) as an independent, centralized deterministic admission policy. In `shadow`, it evaluates and emits only content-free eligibility telemetry while preserving the legacy spontaneous `ask_user` path exactly (it cannot itself ask, persist, park, arm a timer, or enqueue continuation work). In `on`, it requires the existing ask-user master gate and may authorize exactly one safe consultation for the exact acting seat/task when structured action/role/history state indicates one of four stable categories: unresolved owner-controlled constraint, consequential disclosure/permission choice, repeated non-convergence, or insufficient authority to commit. The disclosure category is independently reachable from a patient-side counter, rather than requiring an invalid action. It never reads free-form turns, evaluator reasoning, identities/profiles, match rationale, or counterparty data; it replaces the prompt input with fixed safe labels before the existing safety/persistence choke points. `off` preserves the legacy spontaneous model path. `delivered` telemetry is emitted only after Questioner persistence succeeds; enqueue/generation acknowledgement is not delivery.
 
-Flow: the `ask_user` turn is persisted → an exact settlement key and recipient/intent/opportunity/network binding are parked on the task → the **24 h answer window** is armed (`NEGOTIATION_ASK_USER_WINDOW_MS` overridable) → the task transitions to `input_required` → only validated structured `askUser` fields may be refined by the questioner's `negotiation_inflight` preset. Missing or unsafe fields, Redis enqueue failure, empty model output, and final-admission rejection create no card, but the armed timeout still closes and resumes the exact task. Raw turn text, assessment/evaluator reasoning, match reason, counterparty identity/profile/intent, community/event claims, and internal IDs never become Questioner prompt context or visible copy.
+Flow: the `ask_user` turn is persisted → an exact settlement key and recipient/intent/opportunity/network binding are parked on the task → the **24 h answer window** is armed (`NEGOTIATION_ASK_USER_WINDOW_MS` overridable) → the task transitions to `input_required` → the server maps the validated closed reason to fixed disclosure/question copy before the questioner's `negotiation_inflight` preset refines it. Missing or mismatched reasons, Redis enqueue failure, empty model output, and final-admission rejection create no card, but the armed timeout still closes and resumes the exact task. Raw turn text, assessment/evaluator reasoning, match reason, counterparty identity/profile/intent, community/event claims, and internal IDs never become Questioner prompt context or visible copy.
 
 The graph exits at the turn boundary, so a user-facing request does not wait on a question. Cards carry a server-only versioned provenance envelope binding the exact recipient, owned opportunity actor intent, opportunity, non-personal network, and task. The API proves current ownership, ACTIVE lifecycle/fingerprint, assignment, membership, actor visibility, and exact task state before generation and again under one deterministic advisory/cohort/provenance lock order immediately before insertion.
 
@@ -112,7 +112,41 @@ The graph exits at the turn boundary, so a user-facing request does not wait on 
 - **Rationing**: at most **one client consultation per negotiation per side**, checked against the full turn history (continuations count prior sessions). Opening turns and final-cap turns never offer the action.
 - The 5-min park/claim timeout machinery ignores paused tasks: those workers only act on `waiting_for_agent`/`claimed` states.
 
-The action is only offered when the full pause loop is wired (questioner enabled, answer-window timer available, an opportunity to resume against); it is not accepted from the external polling `respond` surface — polling agents have their own channel to their user.
+The action is only offered when the full pause loop is wired (questioner enabled, answer-window timer available, an opportunity to resume against). It is not accepted from the external polling `respond` surface. An exact selected polling executor instead uses `POST /api/agents/:agentId/negotiations/:negotiationId/consult` with exactly `{reason}`. The server independently rechecks exact claim identity, policy/cardinality, actor binding, category agreement, and deadline, then derives all disclosure/question copy before persisting the same server-authored `ask_user` turn and exact continuation settlement described above.
+
+### Personal Agent executor selection and fallback
+
+The Personal Agent is one owner-scoped identity even when its negotiation work
+runs in different places. Its persisted turns, owner memory, server policy
+envelope, consultation cards, and product history remain server-owned and
+continuous across runtime changes; they are not copied wholesale into each
+runtime. A dedicated Hermes executor receives only privacy-minimal structural
+facts and closed server-authored directives, never raw owner context or memory,
+private consultation prose, evaluator/actor prose, or shared-message prose.
+Hermes' executor row and key are runtime attribution and an authorization
+principal only; changing runtime does not create, rename, or reset the Personal
+Agent. The Mac renders the same identity, profile/memory navigation,
+negotiation-history navigation, and negotiations-only policy subtree in every
+runtime state; executor status is a separate view.
+
+A selected Hermes executor is preferred only while its server-observed
+negotiation pickup heartbeat is fresh. If it is stale before dispatch, Index
+handles the turn inline and the task is never parked. If it was fresh when the
+turn was parked but then stops, the existing pickup/claim response window expires
+into one bounded Index fallback. Atomic task and claim transitions prevent the
+former executor and Index from both completing the turn. The UI may display
+`unavailable — Index is covering` from the server health classification, but it
+must not calculate timestamp freshness itself or claim which runtime handled a
+turn without backend attribution.
+
+Selecting Index atomically removes external negotiation pickup authority and the
+Mac disables Hermes' owned schedule, while retaining the installation and its
+wiring for reselection. The former key may still authenticate its executor
+identity, but exact selected-poller authorization rejects new pickup. Disconnect
+is stronger: the server selects Index and revokes all keys for the installation,
+then the Mac removes the exact owned schedule, Index env keys, negotiator plugin
+wiring, and dashboard copy. Neither operation changes the Personal Agent's
+identity, memory, policy, consultations, or negotiation history.
 
 ### Deadlock detection & bargaining shift (flag-gated)
 
@@ -214,6 +248,8 @@ A parked turn lives on a **single ambient response-window budget** that is armed
 3. The agent deliberates and submits its decision via `POST /api/agents/:id/negotiations/:negotiationId/respond` with `{ action, message?, assessment: { reasoning, suggestedRoles } }`. The backend CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn as a message on the negotiation conversation, and cancels the claim timeout.
 4. The submitted action is validated against the caller's seat + the task's protocol version before any state changes — an out-of-seat action (e.g. a v2 initiator submitting `accept`) returns HTTP 400 and leaves the claim intact for a retry. If the action is terminal (`accept`, `reject`, `withdraw`, `decline`) or pushes the turn count over the cap, the task is completed and an outcome artifact is written. Otherwise the task returns to `waiting_for_agent` and a **fresh 5-minute park window** is enqueued for the counterparty.
 5. When the budget expires — whether the turn was never picked up (park timeout) or was claimed and abandoned (claim timeout) — the in-process system `Index Negotiator` takes the turn as a fallback. Under v2 the fallback is **seat-scoped**: an initiator-seat fallback can never accept on the user's behalf. If the fallback's action is terminal or hits the cap, the negotiation finalizes; if it counters under the cap, a fresh 5-minute park window is armed for the next speaker. An expired claim is *not* re-parked for another pickup attempt.
+
+Response and timeout-completion rearm outboxes persist the **absolute commit-time deadline**, not a reusable relative delay. Every delivery or replay enqueues `max(0, deadlineAt - now)`, so a Redis outage or repeated process replay cannot extend the response window. Startup upgrade of legacy rows runs behind one renewable, owner-checked Redis lease; an authoritative global pending count proves quiescence after every bounded scan. For claimed legacy rows without `hermesParkStartedAt`, the preserved pre-claim `statusTimestamp` is the only fallback origin; claim-time `updatedAt` is never used, and malformed/reversed chronology fails closed.
 
 `ask_user`-paused tasks (`input_required`) are invisible to both timeout workers — they run on the separate 24-hour answer window described above.
 

@@ -14,6 +14,7 @@ import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '..
 import type { NegotiatorMemoryEntry } from '../../negotiation/domain/negotiation.memory.js';
 import type { AttributedPriorDialogue } from '../../negotiation/negotiation.attribution.js';
 import type { NegotiationPrivateConsultation } from './database.interface.js';
+import type { NegotiationContinuationTimeoutIdentity } from './negotiation-events.interface.js';
 
 /** Payload sent to the dispatcher for each negotiation turn. */
 export interface NegotiationTurnPayload {
@@ -50,6 +51,8 @@ export interface NegotiationTurnPayload {
    * one under negotiation now. Absent → no attributed prior dialogue available.
    */
   priorDialogue?: AttributedPriorDialogue;
+  /** Server-only continuation generation used to fence the delayed park timeout. */
+  timeoutContinuation?: NegotiationContinuationTimeoutIdentity;
 }
 
 /** Result of a dispatch attempt. */

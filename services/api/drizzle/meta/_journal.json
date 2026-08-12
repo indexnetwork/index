@@ -848,6 +848,13 @@
       "when": 1786282685733,
       "tag": "0121_easy_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1786509426264,
+      "tag": "0122_add_hermes_runtime_binding",
+      "breakpoints": true
     }
   ]
 }

@@ -429,6 +429,12 @@
       "source": "./shared/interfaces/negotiation-events.interface.js"
     },
     {
+      "name": "NegotiationContinuationTimeoutIdentity",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/interfaces/negotiation-events.interface.js"
+    },
+    {
       "name": "AgentDispatcher",
       "kind": "type",
       "stability": "stable",
@@ -2361,6 +2367,24 @@
       "source": "./mcp/mcp.authorization-policy.js"
     },
     {
+      "name": "AskUserPayloadSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
+      "name": "NEGOTIATION_CONSULTATION_REASONS",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
+      "name": "NegotiationConsultationReasonSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
       "name": "UserNegotiationContext",
       "kind": "type",
       "stability": "experimental",
@@ -2391,6 +2415,12 @@
       "source": "./shared/schemas/negotiation-state.schema.js"
     },
     {
+      "name": "NegotiationConsultationReason",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./shared/schemas/negotiation-state.schema.js"
+    },
+    {
       "name": "NegotiationSeat",
       "kind": "type",
       "stability": "experimental",
@@ -2409,7 +2439,109 @@
       "source": "./capabilities/negotiation.facade.js"
     },
     {
+      "name": "HERMES_OWNER_DIRECTIVE",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HERMES_SHARED_MESSAGE_TEMPLATES",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationActionSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationResponseSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesOwnerDirectiveSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesRoleAlignmentSchema",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "allowedHermesActionsFor",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "buildHermesNegotiationTurn",
+      "kind": "value",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationAction",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesNegotiationResponse",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesOwnerDirective",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "HermesRoleAlignment",
+      "kind": "type",
+      "stability": "experimental",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "DEFAULT_NEGOTIATION_MAX_TURNS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "isNegotiationTurnCapReached",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "expectedNegotiationSpeaker",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
       "name": "allowedActionsFor",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "askUserAnswerWindowMs",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "configuredAskUserEnabled",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/negotiation.facade.js"
@@ -2445,6 +2577,18 @@
       "source": "./capabilities/negotiation.facade.js"
     },
     {
+      "name": "NegotiationSpeakerParticipants",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "NegotiationSpeakerMessage",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
       "name": "assessConsultationEligibility",
       "kind": "value",
       "stability": "stable",
@@ -2476,12 +2620,6 @@
     },
     {
       "name": "NegotiationConsultationPolicyMode",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./capabilities/negotiation.facade.js"
-    },
-    {
-      "name": "NegotiationConsultationReason",
       "kind": "type",
       "stability": "stable",
       "source": "./capabilities/negotiation.facade.js"

@@ -45,6 +45,7 @@ describe('isolated test inventory', () => {
     expect(e2eFiles).toEqual([
       'tests/contacts-disabled.e2e.isolated.ts',
       'tests/limiter.e2e.isolated.ts',
+      'tests/negotiation-polling-consultation.e2e.isolated.ts',
       'tests/negotiation.ask-user.e2e.isolated.ts',
       'tests/negotiation.e2e.isolated.ts',
       'tests/network-resend-invite.e2e.isolated.ts',
@@ -81,6 +82,62 @@ describe('isolated test inventory', () => {
     expect(() => loadIsolatedTestInventory(root)).toThrow(
       'Unregistered files: tests/unregistered.isolated.ts',
     );
+  });
+});
+
+describe('isolated import harness', () => {
+  const harness = './src/lib/testing/isolated-test-import-harness.spec.ts';
+
+  function runHarness(apiRoot: string, target: string, marker?: string) {
+    const environment = {
+      ...process.env,
+      API_TEST_ISOLATED_CHILD: '1',
+      API_TEST_ISOLATED_TARGET: target,
+      ...(marker ? { API_TEST_ISOLATED_MARKER: marker } : {}),
+    };
+    delete environment.API_TEST_REQUIRE_DATABASE;
+    delete environment.API_TEST_DATABASE_READY;
+    delete environment.API_TEST_PARENT_PID;
+    return Bun.spawnSync(['bun', 'test', harness], {
+      cwd: apiRoot,
+      env: environment,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+  }
+
+  it('executes a registered non-discoverable test in a real fresh Bun process', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const markerRoot = makeApiRoot();
+    const marker = path.join(markerRoot, 'isolated-executed.txt');
+    const child = runHarness(
+      apiRoot,
+      'src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts',
+      marker,
+    );
+
+    expect(child.exitCode).toBe(0);
+    expect(readFileSync(marker, 'utf8')).toMatch(/^executed:\d+$/);
+    const output = new TextDecoder().decode(child.stdout) + new TextDecoder().decode(child.stderr);
+    expect(output).toContain('1 pass');
+  });
+
+  it.each([
+    ['invalid empty target', ''],
+    ['path traversal', '../src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts'],
+    ['absolute path', '/tmp/isolated-import-target.isolated.ts'],
+  ])('rejects %s before import', (_label, target) => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const child = runHarness(apiRoot, target);
+    expect(child.exitCode).not.toBe(0);
+    expect(new TextDecoder().decode(child.stderr)).toContain('Invalid API_TEST_ISOLATED_TARGET');
+  });
+
+  it('rejects a well-formed but unregistered target', () => {
+    const apiRoot = path.resolve(import.meta.dir, '../../../..');
+    const child = runHarness(apiRoot, 'src/lib/testing/tests/not-registered.isolated.ts');
+    expect(child.exitCode).not.toBe(0);
+    expect(new TextDecoder().decode(child.stderr)).toContain('Target is not registered in .test-isolated');
   });
 });
 

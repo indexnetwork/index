@@ -38,15 +38,37 @@ jobs:
           swiftc --version
           python3 --version
 
-      - name: Deep-link parser tests
+      - name: Provider-free Mac runtime and deep-link tests
         working-directory: apps/mac
-        run: bun test api/
+        run: |
+          # Keep this macOS compile workflow dependency-free. React/happy-dom
+          # render tests and the protocol-composed acceptance run in the
+          # frozen-install Hermes security workflow on Linux.
+          bun test \
+            api/agent-runtime.spec.mjs \
+            api/agent-runtime-saga.spec.mjs \
+            api/client.spec.mjs \
+            api/deeplink.spec.mjs
 
       - name: macOS shell and handoff tests
         working-directory: apps/mac
         run: |
           bun test scripts/*.spec.mjs
+          bun test *.spec.mjs
           bash -n scripts/build.sh scripts/link-host.sh scripts/provisioning-profile.sh scripts/notarize.sh scripts/dmg.sh
+
+      - name: Native historical Hermes persistence compatibility
+        working-directory: apps/mac
+        run: |
+          swiftc -parse-as-library \
+            Sources/HermesRuntime.swift \
+            Tests/HermesPersistenceCompatibility.swift \
+            -o "$RUNNER_TEMP/hermes-persistence-compatibility"
+          "$RUNNER_TEMP/hermes-persistence-compatibility"
+
+      - name: Assemble web layer
+        working-directory: apps/mac
+        run: python3 scripts/assemble.py
 
       - name: Build and sign the app bundle
         working-directory: apps/mac

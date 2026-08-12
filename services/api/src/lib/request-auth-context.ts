@@ -1,6 +1,17 @@
+export type ApiKeyAudience = 'hermes-negotiator' | null;
+
 export type RequestAuthContext =
   | { kind: 'session' }
-  | { kind: 'api_key'; agentId: string | null };
+  | {
+      kind: 'api_key';
+      agentId: string | null;
+      /** Explicit credential audience. Null preserves legacy API-key behavior. */
+      audience?: ApiKeyAudience;
+      /** Exact persisted API-key row used by this request. */
+      credentialId?: string | null;
+      /** Hermes setup generation carried by the authenticated credential. */
+      setupAttemptId?: string | null;
+    };
 
 const requestAuthContexts = new WeakMap<Request, RequestAuthContext>();
 

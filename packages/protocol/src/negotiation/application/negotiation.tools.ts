@@ -13,6 +13,8 @@ import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { focusedIntentId, focusedNetworkId } from '../../shared/agent/tool.scope.js';
 import { readAuthorizedNegotiationDetail } from './negotiation.detail-reader.js';
 import { buildLifecycleNarration } from '../domain/negotiation.lifecycle-narration.js';
+import { isNegotiationTurnCapReached } from '../domain/negotiation.turn-cap.js';
+import { expectedNegotiationSpeaker } from '../domain/negotiation.expected-speaker.js';
 
 export { buildLifecycleNarration } from '../domain/negotiation.lifecycle-narration.js';
 
@@ -194,14 +196,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
             ? ((lastMessage.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data as { action?: string; assessment?: { reasoning?: string }; message?: string | null } | undefined)
             : undefined;
 
-          // Determine whose turn it is from the last message's sender — not
-          // parity, which misattributes across continuation sessions. Rows
-          // without senderId (legacy) fall back to parity.
           const turnCount = messages.length;
-          const lastSenderId = turnCount > 0 ? messages[turnCount - 1].senderId : null;
-          const currentSpeaker = lastSenderId
-            ? (lastSenderId === `agent:${meta.sourceUserId}` ? 'candidate' : 'source')
-            : (turnCount % 2 === 0 ? 'source' : 'candidate');
+          const expectedSpeaker = expectedNegotiationSpeaker(meta, messages);
 
           // Map task state to tool status
           const status = task.state === 'working' ? 'active'
@@ -209,8 +205,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
             : task.state === 'completed' ? 'completed'
             : task.state;
 
-          const isUsersTurn = status !== 'completed' &&
-            ((isSource && currentSpeaker === 'source') || (!isSource && currentSpeaker === 'candidate'));
+          const isUsersTurn = status !== 'completed' && expectedSpeaker === context.userId;
 
           const base = {
             id: task.id,
@@ -438,10 +433,27 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           maxTurns?: number;
           networkId?: string;
           turnContext?: { indexContext?: { networkId?: string } };
+          negotiationParkGeneration?: string;
+          continuationExecution?: {
+            priorTaskId: string;
+            settlementId: string;
+            successorTaskId: string;
+            token: string;
+            fence: number;
+          };
         } | null;
         if (meta?.type !== 'negotiation') {
           return error('Negotiation not found.');
         }
+        const timeoutContinuation = meta.continuationExecution
+          ? {
+              priorTaskId: meta.continuationExecution.priorTaskId,
+              settlementId: meta.continuationExecution.settlementId,
+              successorTaskId: meta.continuationExecution.successorTaskId,
+              token: meta.continuationExecution.token,
+              fence: meta.continuationExecution.fence,
+            }
+          : undefined;
 
         // Network-scope check (mirrors get_negotiation): a network-bound agent
         // must not act on negotiations outside its bound network.
@@ -474,18 +486,11 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           return error(seatViolationMessage(query.action, seat, protocolVersion));
         }
 
-        // Determine whose turn it is from the last message's sender — not
-        // parity, which misattributes across continuation sessions. Rows
-        // without senderId (legacy) fall back to the parity heuristic.
         const messages = await negotiationDatabase.getMessagesForConversation(task.conversationId);
         const turnCount = messages.length;
-        const lastSenderId = turnCount > 0 ? messages[turnCount - 1].senderId : null;
-        const paritySpeaker = turnCount % 2 === 0 ? 'source' : 'candidate';
-        const isUsersTurn = lastSenderId
-          ? lastSenderId !== `agent:${context.userId}`
-          : ((isSource && paritySpeaker === 'source') || (!isSource && paritySpeaker === 'candidate'));
+        const expectedSpeaker = expectedNegotiationSpeaker(meta, messages);
 
-        if (!isUsersTurn) {
+        if (expectedSpeaker !== context.userId) {
           return error('It is not your turn to respond in this negotiation.');
         }
 
@@ -498,8 +503,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         }
 
         // ── Cancel pending timeout ──
-        if (deps.negotiationTimeoutQueue) {
-          await deps.negotiationTimeoutQueue.cancelTimeout(task.id);
+        if (deps.negotiationTimeoutQueue && meta.negotiationParkGeneration) {
+          await deps.negotiationTimeoutQueue.cancelTimeout(task.id, meta.negotiationParkGeneration);
         }
 
         // ── Build and persist the external agent's turn ──
@@ -555,8 +560,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         }
 
         // ── Handle counter/question: check if under max turns ──
-        const maxTurns = meta.maxTurns ?? 6; // Read from task metadata; fallback to system default
-        if (newTurnCount >= maxTurns) {
+        if (isNegotiationTurnCapReached(newTurnCount, meta.maxTurns)) {
           // Max turns reached — finalize with turn_cap
           const allMessages = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
           const history: NegotiationTurn[] = turnsFromMessages(allMessages);
@@ -590,7 +594,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         const allMessagesWithTurn = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
         const historyForDispatch: NegotiationTurn[] = turnsFromMessages(allMessagesWithTurn);
 
-        const isFinalTurn = newTurnCount + 1 >= maxTurns;
+        const isFinalTurn = isNegotiationTurnCapReached(newTurnCount + 1, meta.maxTurns);
 
         const ownUserCtx: UserNegotiationContext = { id: counterpartyUserId, intents: [], profile: {} };
         const otherUserCtx: UserNegotiationContext = { id: context.userId, intents: [], profile: {} };
@@ -608,6 +612,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           seat: counterpartySeat,
           protocolVersion,
           allowedActions: [...allowedActionsFor(protocolVersion, counterpartySeat, isFinalTurn)],
+          ...(timeoutContinuation ? { timeoutContinuation } : {}),
         };
 
         const scope = { action: 'negotiation.respond', scopeType: 'negotiation', scopeId: task.id };
@@ -616,12 +621,15 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         const dispatchResult = await deps.agentDispatcher?.dispatch(counterpartyUserId, scope, dispatchPayload, { timeoutMs });
 
         if (dispatchResult?.handled === false && dispatchResult.reason === 'waiting') {
-          // Counterparty's agent acknowledged — yield and wait
-          await negotiationDatabase.updateTaskState(task.id, 'waiting_for_agent');
-
-          if (deps.negotiationTimeoutQueue) {
-            await deps.negotiationTimeoutQueue.enqueueTimeout(task.id, newTurnCount, timeoutMs);
-          }
+          // The dispatcher armed this exact generation before acknowledging;
+          // persist that same token with the waiting state.
+          await negotiationDatabase.updateTaskState(
+            task.id,
+            'waiting_for_agent',
+            undefined,
+            undefined,
+            dispatchResult.resumeToken,
+          );
 
           return success({
             message: `${query.action === 'question' ? 'Question' : query.action === 'propose' ? 'Proposal' : query.action === 'outreach' ? 'Outreach' : 'Counter-proposal'} submitted. Waiting for counterparty response.`,
@@ -721,7 +729,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         }
 
         // Counterparty countered/questioned — check if max turns reached
-        if (finalTurnCount >= maxTurns) {
+        if (isNegotiationTurnCapReached(finalTurnCount, meta.maxTurns)) {
           const fullHistory = [...historyForDispatch, aiTurn];
           const outcome = buildNegotiationOutcome(fullHistory, finalTurnCount, 'counter', meta.sourceUserId!, meta.candidateUserId!, counterpartySpeaker === 'source' ? 'candidate' : 'source');
 
@@ -751,22 +759,36 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           indexContext: { networkId: '' },
           seedAssessment,
           history: [...historyForDispatch, aiTurn],
-          isFinalTurn: finalTurnCount + 1 >= maxTurns,
+          isFinalTurn: isNegotiationTurnCapReached(finalTurnCount + 1, meta.maxTurns),
           isDiscoverer: true,
           seat,
           protocolVersion,
-          allowedActions: [...allowedActionsFor(protocolVersion, seat, finalTurnCount + 1 >= maxTurns)],
+          allowedActions: [...allowedActionsFor(protocolVersion, seat, isNegotiationTurnCapReached(finalTurnCount + 1, meta.maxTurns))],
+          ...(timeoutContinuation ? { timeoutContinuation } : {}),
         };
 
         const userDispatchResult = await deps.agentDispatcher?.dispatch(context.userId, scope, userDispatchPayload, { timeoutMs });
 
         if (!userDispatchResult || (userDispatchResult.handled === false && userDispatchResult.reason === 'no_agent')) {
-          // No agent for user — set back to waiting_for_agent so they can use respond_to_negotiation
-          await negotiationDatabase.updateTaskState(task.id, 'waiting_for_agent');
-
+          // No agent for user — arm and persist one exact generation so they
+          // can still use respond_to_negotiation while fallback is bounded.
+          const parkGeneration = crypto.randomUUID();
           if (deps.negotiationTimeoutQueue) {
-            await deps.negotiationTimeoutQueue.enqueueTimeout(task.id, finalTurnCount, timeoutMs);
+            await deps.negotiationTimeoutQueue.enqueueTimeout(
+              task.id,
+              finalTurnCount,
+              timeoutMs,
+              parkGeneration,
+              timeoutContinuation,
+            );
           }
+          await negotiationDatabase.updateTaskState(
+            task.id,
+            'waiting_for_agent',
+            undefined,
+            undefined,
+            parkGeneration,
+          );
 
           return success({
             message: `${query.action === 'question' ? 'Question' : 'Counter'} submitted. Counterparty responded. Your turn to respond.`,
@@ -779,12 +801,14 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         }
 
         if (userDispatchResult.handled === false && userDispatchResult.reason === 'waiting') {
-          // User's agent acknowledged — yield and wait
-          await negotiationDatabase.updateTaskState(task.id, 'waiting_for_agent');
-
-          if (deps.negotiationTimeoutQueue) {
-            await deps.negotiationTimeoutQueue.enqueueTimeout(task.id, finalTurnCount, timeoutMs);
-          }
+          // The dispatcher armed this exact generation before acknowledging.
+          await negotiationDatabase.updateTaskState(
+            task.id,
+            'waiting_for_agent',
+            undefined,
+            undefined,
+            userDispatchResult.resumeToken,
+          );
 
           return success({
             message: `${query.action === 'question' ? 'Question' : 'Counter'} submitted. Counterparty countered back. Waiting for your agent's response.`,
@@ -833,7 +857,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
             });
           }
 
-          if (userTurnCount >= maxTurns) {
+          if (isNegotiationTurnCapReached(userTurnCount, meta.maxTurns)) {
             const fullHistory = [...historyForDispatch, aiTurn, userAgentTurn];
             const outcome = buildNegotiationOutcome(fullHistory, userTurnCount, 'counter', meta.sourceUserId!, meta.candidateUserId!, isSource ? 'candidate' : 'source');
 
@@ -855,12 +879,25 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
             });
           }
 
-          // User's agent countered/questioned — arm timeout for counterparty's next turn
-          await negotiationDatabase.updateTaskState(task.id, 'waiting_for_agent');
-
+          // User's agent countered/questioned — arm one exact generation for
+          // the counterparty's next turn.
+          const parkGeneration = crypto.randomUUID();
           if (deps.negotiationTimeoutQueue) {
-            await deps.negotiationTimeoutQueue.enqueueTimeout(task.id, userTurnCount, timeoutMs);
+            await deps.negotiationTimeoutQueue.enqueueTimeout(
+              task.id,
+              userTurnCount,
+              timeoutMs,
+              parkGeneration,
+              timeoutContinuation,
+            );
           }
+          await negotiationDatabase.updateTaskState(
+            task.id,
+            'waiting_for_agent',
+            undefined,
+            undefined,
+            parkGeneration,
+          );
 
           return success({
             message: `Your agent responded with ${userAgentTurn.action}. Waiting for counterparty.`,

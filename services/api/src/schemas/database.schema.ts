@@ -1100,7 +1100,11 @@ export const agents = pgTable('agents', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  lastNegotiationPickupAt: timestamp('last_negotiation_pickup_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  runtimeKind: text('runtime_kind').$type<'hermes' | null>(),
+  installationId: text('installation_id'),
+  runtimeSetupAttemptId: text('runtime_setup_attempt_id'),
   notifyOnOpportunity: boolean('notify_on_opportunity').notNull().default(true),
   dailySummaryEnabled: boolean('daily_summary_enabled').notNull().default(true),
   handleNegotiations: boolean('handle_negotiations').notNull().default(false),
@@ -1109,11 +1113,18 @@ export const agents = pgTable('agents', {
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
   lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
+  lastNegotiationPickupAtIdx: index('agents_last_negotiation_pickup_at_idx').on(table.lastNegotiationPickupAt),
   // One active personal negotiator row per owner. External (poller) and system
   // rows are unconstrained.
   uniquePersonalPerOwner: uniqueIndex('uniq_agents_personal_per_owner')
     .on(table.ownerId)
     .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
+  uniqueHermesInstallation: uniqueIndex('uniq_agents_hermes_installation')
+    .on(table.ownerId, table.runtimeKind, table.installationId)
+    .where(sql`${table.type} = 'external' AND ${table.runtimeKind} = 'hermes' AND ${table.installationId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+  uniqueSelectedNegotiationExecutor: uniqueIndex('uniq_agents_selected_negotiation_executor')
+    .on(table.ownerId)
+    .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
 }));
 
 export const agentTransports = pgTable('agent_transports', {

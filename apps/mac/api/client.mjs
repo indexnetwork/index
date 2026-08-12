@@ -57,6 +57,11 @@ export function normalizeApiBaseUrl(value) {
  * Create a resource-oriented client for services/api.
  * @param {IndexApiClientOptions} [options]
  */
+export function createPinnedIndexApiClient(options = {}, apiKey) {
+  if (!apiKey) throw new Error('Pinned owner API key is required');
+  return createIndexApiClient({ ...options, getApiKey: () => apiKey });
+}
+
 export function createIndexApiClient(options = {}) {
   const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
@@ -154,6 +159,30 @@ export function createIndexApiClient(options = {}) {
 
   return {
     request,
+
+    // Owner-control runtime binding. These methods deliberately use the Mac's
+    // unbound owner credential; agent-bound Hermes credentials are rejected by
+    // the server guard and never flow back through this client after prepare.
+    getRuntimeBinding: (installationId, options = {}) => request(
+      `/agent-runtime${toQueryString({ installationId })}`,
+      options,
+    ),
+    prepareHermesRuntime: (installationId, setupAttemptId, options = {}) => request(
+      '/agent-runtime/hermes/prepare',
+      { ...options, method: 'POST', body: { installationId, setupAttemptId } },
+    ),
+    setRuntimeBinding: (body, options = {}) => request(
+      '/agent-runtime',
+      { ...options, method: 'PUT', body },
+    ),
+    rollbackHermesRuntime: (setupAttemptId, options = {}) => request(
+      '/agent-runtime/rollback',
+      { ...options, method: 'POST', body: { setupAttemptId } },
+    ),
+    disconnectHermesRuntime: (installationId, options = {}) => request(
+      `/agent-runtime/hermes/${encodeURIComponent(installationId)}`,
+      { ...options, method: 'DELETE' },
+    ),
 
     auth: {
       me: (options = {}) => request('/auth/me', options),

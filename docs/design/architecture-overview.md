@@ -659,6 +659,65 @@ New opportunities (status: latent)
 
 ---
 
+## Personal Agent Runtime Binding
+
+Index presents one owner-scoped Personal Agent. Its name, avatar, memory, policy,
+and negotiation history are not properties of an executor. The server stores a
+separate negotiation-runtime binding that chooses either the built-in Index
+executor or one preferred external executor. A Mac-provisioned Hermes record is
+therefore a security principal and execution binding, not a second persona.
+Legacy selected external records remain representable as `external`; the Mac
+selector does not relabel them as Index or Hermes and instead requires attention.
+
+The backend is authoritative for selection, exact `manage:negotiations`
+authority, server-observed pickup heartbeat, deadlines, claims, consultations,
+memory, and fallback. Owner-control runtime routes accept only a Better Auth
+session or the Mac's unbound owner key. The Hermes poller uses its separate
+agent-bound generation credential only for identity, pickup, response, and the
+structured consultation route; it cannot select itself or mint authority.
+
+The macOS client coordinates setup as a generation-fenced saga:
+
+1. native inspection supplies a stable, non-secret `installationId`;
+2. each prepare uses a fresh `setupAttemptId` and returns one transient executor
+   credential;
+3. the native bridge configures plugin/env/schedule while the schedule is
+   disabled;
+4. the owner route activates that exact server generation;
+5. native enables the owned schedule and gateway;
+6. JavaScript applies one hard 90-second wall-clock deadline to reads and
+   sleeps, waits for the server to classify the matching executor heartbeat as
+   active, then confirms that generation healthy.
+
+Only `configureDisabled` receives the bootstrap credential. It is not placed in
+React state, web storage, logs, or native callback results. Swift emits a
+credential-free dequeue acknowledgement from its serial queue; JavaScript starts
+the per-command execution timeout only then and bounds queue wait separately.
+Configure, enable, and confirm results are accepted only at their expected native stage with a
+complete local state matching the requested installation, executor, and setup
+generation; stale-generation success no-ops fail selection. Every post-prepare
+failure compares and rolls back the exact server generation first. A lost
+rollback response permits cleanup only when a binding read made with the journal's
+pinned owner proves that exact generation absent; uncertainty preserves recovery
+evidence. The authenticated runtime provider is always mounted at the app root.
+Both JS and native journals bind the stable non-secret authenticated app-user
+`ownerId`. A different owner may inspect and generation-pause local scheduling,
+but never uses their credential to read/rollback the old owner's installation or
+clear its journal. On relaunch the native journal
+inspection pauses an enabled owned schedule before JavaScript reconciles every
+partial stage, so recovery does not depend on opening the Personal Agent screen
+and a stale relaunch cannot undo a newer active generation. Malformed or
+operation/stage-mismatched journals are preserved and fail closed.
+
+Selecting Index clears external negotiation authority and disables the matching
+local schedule while retaining Hermes wiring and its credential for quick
+reselection. Disconnect is distinct: it selects Index and revokes the exact
+installation server-side first, then removes the owned cron job, Index env keys,
+plugin/dashboard wiring, and local generation. In either operation the Personal
+Agent identity and history remain unchanged.
+
+---
+
 ## Further Reading
 
 - **Protocol package README**: `packages/protocol/src/README.md` — graph, agent, and tool documentation

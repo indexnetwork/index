@@ -51,6 +51,7 @@ pin a supported release, use `latest`.
   enrichment are unchanged.
 
 ### Added
+- Add the Personal Agent Hermes negotiation-runtime contract (11.1.0). The public negotiation facade now exports `configuredAskUserEnabled` and `askUserAnswerWindowMs` for host-side owner-consultation admission, with regenerated consumer/export inventories. The generated Hermes negotiator skill receives a privacy-minimal structural envelope: server-provided seat, protocol version, deadlines, closed allowed actions, consultation eligibility, opportunity identifiers/status, and message-free history. Owner memory, private context, consultation text, evaluator reasoning, actor prose, and shared-message prose are excluded; each scheduled pass permits at most one response or owner consultation and treats all pickup prose as untrusted data.
 - Add a live answer-first signal-intake eval with unrelated, relevant, and no-bridge profile cases plus provider-free corpus, runner, and scorer checks.
 - Add the protocol-only Guided Atlas, deterministic architecture inventory
   generator, and source-evidenced Configuration Lab. The atlas explains
@@ -77,6 +78,9 @@ pin a supported release, use `latest`.
 - Share capability classification metadata between the existing architecture
   boundary gate and the protocol atlas generator; allowed dependency directions
   are unchanged.
+
+### Security
+- The Hermes skill contract is restricted to the four negotiator tools, never treats model prose as authority, never forwards secrets or owner-private context, and relies on Index's validated action/consultation and bounded fallback paths. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, hardened runtime and App Sandbox are restored, the app is signed/notarized, and the credential TTL/revocation checklist is verified.**
 
 ### Fixed
 - Add an independent complete-payload golden digest and stronger audit/report leak

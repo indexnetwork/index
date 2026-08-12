@@ -163,10 +163,6 @@ export class AgentService {
       cleanUpdates.dailySummaryEnabled = updates.dailySummaryEnabled;
     }
 
-    if (updates.handleNegotiations !== undefined) {
-      cleanUpdates.handleNegotiations = updates.handleNegotiations;
-    }
-
     const hasColumnUpdates = Object.keys(cleanUpdates).length > 0;
     const syncingNegotiations = updates.handleNegotiations !== undefined;
 
@@ -182,7 +178,12 @@ export class AgentService {
     }
 
     if (syncingNegotiations) {
-      await this.reconcileNegotiationsPermission(agent, updates.handleNegotiations!);
+      await this.db.setNegotiationExecutorBinding({
+        ownerId: userId,
+        targetAgentId: updates.handleNegotiations ? agentId : null,
+        exactTargetPermissions: false,
+        ...(!updates.handleNegotiations && { disableTargetAgentId: agentId }),
+      });
     }
 
     const refreshed = await this.db.getAgentWithRelations(agentId);
@@ -395,6 +396,11 @@ export class AgentService {
     return this.db.touchLastSeen(agentId);
   }
 
+  /** Stamp only the negotiation polling heartbeat used for runtime routing. */
+  async touchNegotiationPickup(agentId: string): Promise<void> {
+    return this.db.touchNegotiationPickup(agentId);
+  }
+
   async hasPermission(
     agentId: string,
     userId: string,
@@ -481,42 +487,6 @@ export class AgentService {
     return results.filter((result) => !result.hasPermission).map((result) => result.action);
   }
 
-  /**
-   * Keeps `handle_negotiations` column in sync with the presence of
-   * `manage:negotiations` in the owner's global permission row.
-   *
-   * Uses an atomic upsert (INSERT ... ON CONFLICT ... DO UPDATE) keyed on the
-   * partial unique index `uniq_agent_permissions_global`, so concurrent toggle
-   * requests cannot produce duplicate rows or lose other actions on partial
-   * failure. When the resulting action list would be empty, the row is deleted
-   * outright rather than persisted with an empty array.
-   */
-  private async reconcileNegotiationsPermission(
-    agent: AgentWithRelations,
-    enabled: boolean,
-  ): Promise<void> {
-    const ownerPerm = agent.permissions.find(
-      (p) => p.userId === agent.ownerId && p.scope === 'global',
-    );
-    const current = ownerPerm?.actions ?? [];
-    const hasNeg = current.includes('manage:negotiations');
-    if (enabled === hasNeg) return;
-
-    const nextActions = enabled
-      ? [...current, 'manage:negotiations']
-      : current.filter((a) => a !== 'manage:negotiations');
-
-    if (nextActions.length === 0) {
-      await this.db.revokeGlobalPermission(agent.id, agent.ownerId);
-      return;
-    }
-
-    await this.db.upsertGlobalPermission({
-      agentId: agent.id,
-      userId: agent.ownerId,
-      actions: nextActions,
-    });
-  }
 }
 
 export const agentService = new AgentService();
