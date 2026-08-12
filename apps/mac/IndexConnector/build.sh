@@ -13,6 +13,33 @@ runner_temp() {
   printf '%s\n' "${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 }
 
+compile_connector_binary() {
+  local arch="$1" output="$2"
+  shift 2
+  local -a target_flags
+  case "$arch" in
+    arm64) target_flags=(-target arm64-apple-macos13.0) ;;
+    x86_64) target_flags=(-target x86_64-apple-macos13.0) ;;
+    *) echo "unsupported production architecture: $arch" >&2; return 64 ;;
+  esac
+  local -a sources=(
+    Sources/ConnectorProtocol.swift
+    Sources/ConnectorIdentity.swift
+    Sources/ConnectorCredentialStore.swift
+    Sources/ConnectorInstallationStore.swift
+    Sources/ConnectorHTTPClient.swift
+    Sources/BrowserAuthorization.swift
+    Sources/ConnectorRuntime.swift
+    ../Security/Sources/IndexKeychainStore.swift
+  )
+  mkdir -p "$(dirname "$output")"
+  swiftc -parse-as-library -O -whole-module-optimization \
+    "${target_flags[@]}" "$@" \
+    -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
+    "${sources[@]}" Sources/main.swift \
+    -o "$output"
+}
+
 compile_connector_protocol_fixture() {
   local output="$(runner_temp)/index-connector-protocol-fixture"
   swiftc -parse-as-library \
@@ -105,24 +132,12 @@ build_connector() {
     flags+=("-DINDEX_CONNECTOR_NONPRODUCTION")
     generated_sources+=("$generated")
   fi
-  local -a sources=(
-    Sources/ConnectorProtocol.swift
-    Sources/ConnectorIdentity.swift
-    Sources/ConnectorCredentialStore.swift
-    Sources/ConnectorInstallationStore.swift
-    Sources/ConnectorHTTPClient.swift
-    Sources/BrowserAuthorization.swift
-    Sources/ConnectorRuntime.swift
-    ../Security/Sources/IndexKeychainStore.swift
-  )
   rm -rf "$app"
   mkdir -p "${contents}/MacOS"
   cp Info.plist "${contents}/Info.plist"
-  MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -parse-as-library -O \
-    -framework Foundation -framework Security -framework AppKit -framework CryptoKit \
-    ${flags[@]+"${flags[@]}"} "${sources[@]}" \
-    ${generated_sources[@]+"${generated_sources[@]}"} Sources/main.swift \
-    -o "$executable"
+  compile_connector_binary "$(uname -m)" "$executable" \
+    ${flags[@]+"${flags[@]}"} \
+    ${generated_sources[@]+"${generated_sources[@]}"}
   chmod 0755 "$executable"
   echo "Built ${app} (${mode})"
 }
@@ -489,6 +504,14 @@ run_signed_access_fixture() {
 }
 
 case "${1:-}" in
+  --release-slice)
+    if [[ "$#" -ne 3 ]]; then
+      echo "usage: $0 --release-slice <arm64|x86_64> <output>" >&2
+      exit 64
+    fi
+    compile_connector_binary "$2" "$3"
+    chmod 0755 "$3"
+    ;;
   --fixture)
     case "${2:-}" in
       ConnectorProtocolFixture) compile_connector_protocol_fixture ;;
@@ -517,7 +540,7 @@ case "${1:-}" in
     build_connector production
     ;;
   *)
-    echo "usage: $0 [--nonproduction] | --fixture ConnectorProtocolFixture|KeychainIntegrationFixture|AuthorizationFixture|TransportFixture|InstallationStoreMultiprocessFixture | --validate-profile-pair-fixture ... | --signed-access-fixture" >&2
+    echo "usage: $0 [--release-slice <arm64|x86_64> <output>|--nonproduction] | --fixture ConnectorProtocolFixture|KeychainIntegrationFixture|AuthorizationFixture|TransportFixture|InstallationStoreMultiprocessFixture | --validate-profile-pair-fixture ... | --signed-access-fixture" >&2
     exit 64
     ;;
 esac

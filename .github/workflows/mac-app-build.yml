@@ -82,11 +82,17 @@ jobs:
           fi
           ./build.sh --signed-access-fixture
 
-      - name: macOS shell and handoff tests
-        working-directory: apps/mac/IndexApp
+      - name: macOS shell, release, and handoff tests
         run: |
-          bun test *.spec.mjs
-          bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh
+          bun test apps/mac/IndexApp/*.spec.mjs apps/mac/release/tests/*.spec.mjs
+          bash -n \
+            apps/mac/IndexApp/build.sh \
+            apps/mac/IndexApp/link-host.sh \
+            apps/mac/IndexApp/provisioning-profile.sh \
+            apps/mac/IndexApp/notarize.sh \
+            apps/mac/IndexConnector/build.sh \
+            apps/mac/release/release-config.sh \
+            apps/mac/release/build-universal.sh
 
       - name: Native owner credential migration and Keychain failure fixture
         working-directory: apps/mac/IndexApp
@@ -124,6 +130,38 @@ jobs:
             git diff --stat -- apps/mac/IndexApp/Resources/index.html
             exit 1
           fi
+
+      - name: Build unsigned Universal 2 production bundles
+        env:
+          INDEX_RELEASE_VERSION: "1.0.0"
+          INDEX_BUILD_NUMBER: ${{ github.event.pull_request.number || github.run_number }}
+          INDEX_RELEASE_COMMIT: ${{ github.sha }}
+          INDEX_API_URL: https://protocol.index.network
+          INDEX_WEB_URL: https://index.network
+          INDEX_EXPECTED_TEAM_ID: LMQ3XNXLAD
+          INDEX_CONNECTOR_PROTOCOL_VERSION: "1"
+        run: apps/mac/release/build-universal.sh
+
+      - name: Verify unsigned Universal 2 production bundles
+        run: |
+          set -euo pipefail
+          app_binary=apps/mac/dist/unsigned/Index.app/Contents/MacOS/Index
+          connector_binary=apps/mac/dist/unsigned/IndexConnector.app/Contents/MacOS/IndexConnector
+          lipo -archs apps/mac/dist/unsigned/Index.app/Contents/MacOS/Index
+          lipo -archs apps/mac/dist/unsigned/IndexConnector.app/Contents/MacOS/IndexConnector
+          for binary in "$app_binary" "$connector_binary"; do
+            archs="$(lipo -archs "$binary")"
+            [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]]
+            [[ "$(wc -w <<<"$archs" | tr -d ' ')" == "2" ]]
+            for arch in arm64 x86_64; do
+              otool -arch "$arch" -l "$binary" | grep -A6 LC_BUILD_VERSION
+              [[ "$(otool -arch "$arch" -l "$binary" | awk '/LC_BUILD_VERSION/{seen=1; next} seen && $1=="minos" {print $2; exit}')" == "13.0" ]]
+            done
+          done
+          plutil -extract IndexReleaseChannel raw -o - apps/mac/dist/unsigned/Index.app/Contents/Info.plist | grep -Fx production
+          plutil -extract IndexDevelopmentBuild raw -o - apps/mac/dist/unsigned/Index.app/Contents/Info.plist | grep -Fx false
+          plutil -extract IndexReleaseChannel raw -o - apps/mac/dist/unsigned/IndexConnector.app/Contents/Info.plist | grep -Fx production
+          plutil -extract IndexDevelopmentBuild raw -o - apps/mac/dist/unsigned/IndexConnector.app/Contents/Info.plist | grep -Fx false
 
       - name: Build and sign the app bundle
         working-directory: apps/mac/IndexApp

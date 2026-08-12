@@ -4,6 +4,49 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+verify_production_connector_pins() {
+    # The connector trust anchor is compiled into and covered by the app's
+    # signature. Production builds fail closed if the immutable source pin is
+    # missing or changed; release CMS metadata is evidence, never authority.
+    grep -Fq 'private static let expectedTeamID = "LMQ3XNXLAD"' Sources/HermesRuntime.swift \
+        && grep -Fq 'private static let expectedBundleID = "network.index.connector"' Sources/HermesRuntime.swift \
+        && grep -Fq 'anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\" and identifier \"\(expectedBundleID)\"' Sources/HermesRuntime.swift \
+        || { echo 'production connector trust pins missing or mismatched' >&2; return 1; }
+}
+
+compile_app_binary() {
+    local arch="$1" output="$2"
+    shift 2
+    local -a target_flags
+    case "$arch" in
+        arm64) target_flags=(-target arm64-apple-macos13.0) ;;
+        x86_64) target_flags=(-target x86_64-apple-macos13.0) ;;
+        *) echo "unsupported production architecture: $arch" >&2; return 64 ;;
+    esac
+    mkdir -p "$(dirname "$output")"
+    swiftc -O -whole-module-optimization \
+        "${target_flags[@]}" "$@" \
+        -framework Cocoa -framework WebKit -framework Network -framework Security \
+        -o "$output" \
+        ../Security/Sources/IndexKeychainStore.swift \
+        Sources/OwnerCredentialStore.swift \
+        Sources/NativeAPIRequestBridge.swift \
+        Sources/ConnectorLaunchAttestation.swift \
+        Sources/HermesRuntime.swift \
+        Sources/main.swift
+}
+
+if [ "${1:-}" = "--release-slice" ]; then
+    if [ "$#" -ne 3 ]; then
+        echo "usage: $0 --release-slice <arm64|x86_64> <output>" >&2
+        exit 64
+    fi
+    verify_production_connector_pins
+    compile_app_binary "$2" "$3"
+    chmod 0755 "$3"
+    exit 0
+fi
+
 if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "ConnectorLaunchAttestationFixture" ] && [ "$#" -eq 2 ]; then
     OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/connector-launch-attestation-fixture"
     swiftc -parse-as-library -framework Foundation -framework Security \
@@ -57,7 +100,7 @@ if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIQuarantineFixture" ] && 
     exit 0
 fi
 if [ "$#" -ne 0 ]; then
-    echo "usage: $0 [--fixture ConnectorLaunchAttestationFixture|--fixture OwnerCredentialMigrationFixture|--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
+    echo "usage: $0 [--release-slice <arm64|x86_64> <output>|--fixture ConnectorLaunchAttestationFixture|--fixture OwnerCredentialMigrationFixture|--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
     exit 64
 fi
 
@@ -91,29 +134,15 @@ echo "==> Cleaning previous build"
 rm -rf dist
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 
-echo "==> Compiling Swift (host arch)"
+echo "==> Compiling optimized Swift (host arch)"
 SWIFT_DEFINES=()
 if [ "${INDEX_DEVELOPMENT_BUILD:-0}" = "1" ]; then
     SWIFT_DEFINES+=("-DINDEX_DEVELOPMENT_BUILD")
 else
-    # The connector trust anchor is compiled into and covered by the app's
-    # signature. Production builds fail closed if the immutable source pin is
-    # missing or changed; release CMS metadata is evidence, never authority.
-    grep -Fq 'private static let expectedTeamID = "LMQ3XNXLAD"' Sources/HermesRuntime.swift \
-        && grep -Fq 'private static let expectedBundleID = "network.index.connector"' Sources/HermesRuntime.swift \
-        && grep -Fq 'anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\" and identifier \"\(expectedBundleID)\"' Sources/HermesRuntime.swift \
-        || { echo 'production connector trust pins missing or mismatched' >&2; exit 1; }
+    verify_production_connector_pins
 fi
-swiftc -Onone ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"} \
-    -target "$(uname -m)-apple-macosx13.0" \
-    -framework Cocoa -framework WebKit -framework Network -framework Security \
-    -o "${CONTENTS}/MacOS/${APP_NAME}" \
-    ../Security/Sources/IndexKeychainStore.swift \
-    Sources/OwnerCredentialStore.swift \
-    Sources/NativeAPIRequestBridge.swift \
-    Sources/ConnectorLaunchAttestation.swift \
-    Sources/HermesRuntime.swift \
-    Sources/main.swift
+compile_app_binary "$(uname -m)" "${CONTENTS}/MacOS/${APP_NAME}" \
+    ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"}
 
 echo "==> Copying resources"
 cp Info.plist "${CONTENTS}/Info.plist"

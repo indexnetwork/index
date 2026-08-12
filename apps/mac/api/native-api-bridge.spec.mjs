@@ -218,7 +218,8 @@ describe('native owner migration and transport source contracts', () => {
     expect(ownerStore).not.toContain('network.index.connector.credentials');
     expect(build).toContain('Sources/OwnerCredentialStore.swift');
     expect(build).toContain('Sources/NativeAPIRequestBridge.swift');
-    expect(build).toContain('apple-macosx13.0');
+    expect(build).toContain('arm64-apple-macos13.0');
+    expect(build).toContain('x86_64-apple-macos13.0');
     expect(plist).toMatch(/<key>LSMinimumSystemVersion<\/key>\s*<string>13\.0<\/string>/);
     expect(mainSwift).toContain('requiredBool("IndexDevelopmentBuild")');
     expect(mainSwift).toContain('let developmentBuild = AppConfig.isDevelopmentBuild');
