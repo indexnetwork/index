@@ -1,6 +1,6 @@
 import { ReactElement } from 'react';
 import { render, RenderOptions } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 
 /**
  * Renders a component wrapped in a MemoryRouter for route-aware testing.
@@ -11,12 +11,19 @@ export function renderWithRouter(
   ui: ReactElement,
   {
     route = '/',
+    routePattern,
     ...renderOptions
-  }: { route?: string } & Omit<RenderOptions, 'wrapper'> = {}
+  }: { route?: string; routePattern?: string } & Omit<RenderOptions, 'wrapper'> = {}
 ) {
   return render(ui, {
     wrapper: ({ children }) => (
-      <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+      <MemoryRouter initialEntries={[route]}>
+        {routePattern ? (
+          <Routes>
+            <Route path={routePattern} element={children} />
+          </Routes>
+        ) : children}
+      </MemoryRouter>
     ),
     ...renderOptions,
   });
