@@ -460,31 +460,23 @@ window.IndexApp = (function () {
       send(event);
     }
 
-    function authedHeaders() {
-      const headers = {};
-      const key = apiKey();
-      if (key) headers["x-api-key"] = key;
-      return headers;
-    }
-
-    // Keep an SSE stream alive for the pipeline's lifetime; a dropped or
+    // Keep a native SSE stream alive for the pipeline's lifetime; a dropped or
     // refused stream reconnects after a pause instead of dying silently.
     function keepStream(path, handler) {
-      let close = null;
+      let controller = null;
       (async () => {
         while (!stopped) {
-          await new Promise((done) => {
-            const controller = new AbortController();
-            close = () => controller.abort();
-            fetch(`${apiBaseUrl()}${path}`, { headers: authedHeaders(), signal: controller.signal })
-              .then((response) => (response.ok ? readSSE(response, handler) : null))
-              .catch(() => { /* aborted or network drop */ })
-              .finally(done);
-          });
+          controller = new AbortController();
+          try {
+            await nativeAPIBridge.request(
+              { kind:"sse", method:"GET", path },
+              { signal:controller.signal, onEvent:handler, timeoutMs:300000 },
+            );
+          } catch (e) { /* aborted or network drop */ }
           if (!stopped) await new Promise((r) => setTimeout(r, 15000));
         }
       })();
-      return () => { if (close) close(); };
+      return () => { if (controller) controller.abort(); };
     }
 
     const closeNotifications = keepStream("/notifications/stream", (e) => onRealtime(e, false));
@@ -495,10 +487,11 @@ window.IndexApp = (function () {
       if (stopped || reconciling) return;
       reconciling = true;
       try {
-        const response = await fetch(`${apiBaseUrl()}/notifications/snapshot`, { headers: authedHeaders() });
-        if (!response.ok) return;
-        const payload = await response.json();
+        const response = await nativeAPIBridge.request({
+          kind:"http", method:"GET", path:"/notifications/snapshot",
+        });
         if (stopped) return;
+        const payload = response.body;
         const result = N.reconcileNotificationSnapshot(payload, state);
         state.hasSnapshot = result.state.hasSnapshot;
         state.notifiedEntities = result.state.notifiedEntities;
