@@ -9,7 +9,7 @@ test('assembled IndexApi facade initializes with every declared export', () => {
   expect(result.exitCode).toBe(0);
 
   const html = readFileSync(`${macRoot}Resources/index.html`, 'utf8');
-  const match = html.match(/<script>\s*(\(function\(\)\{[\s\S]*?window\.IndexApi = \{[\s\S]*?\}\;\s*\}\)\(\);)\s*<\/script>/);
+  const match = html.match(/<script>\s*(\(function\(\)\{[\s\S]*?window\.IndexApi = \{[\s\S]*?};\s*}\)\(\);)\s*<\/script>/);
   expect(match).not.toBeNull();
 
   const window = {};
