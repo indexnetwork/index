@@ -848,6 +848,11 @@ describe('runHistoricalQualityChild ordering and cleanup', () => {
 });
 
 describe('runtime environment, embedding, and exact selected-child attestation', () => {
+  it('freezes paid embedding SDK retries and timeout in the quality child', async () => {
+    const source = await readFile(new URL('../discovery-quality.child.ts', import.meta.url), 'utf8');
+    expect(source).toContain('new embedderModule.EmbedderAdapter({ maxRetries: 0, timeout: 60_000 })');
+  });
+
   it('rejects DATABASE_URL from a complete child handoff during preflight', async () => {
     await expect(preflightHistoricalQualityChildRuntime({
       ...childEnvironment,

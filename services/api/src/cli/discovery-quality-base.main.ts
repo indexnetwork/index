@@ -106,7 +106,7 @@ async function createRefreshDependencies() {
   const connection = await createDatabaseConnection();
   try {
     const { EmbedderAdapter } = await import('../adapters/embedder.adapter');
-    const adapter = new EmbedderAdapter();
+    const adapter = new EmbedderAdapter({ maxRetries: 0, timeout: 60_000 });
     if (adapter.identity.dimensions !== 2000) throw new Error('Historical quality embedder must resolve exactly 2000 dimensions');
     const embedder: HistoricalQualityEmbedder = {
       identity: { ...adapter.identity, dimensions: 2000 },

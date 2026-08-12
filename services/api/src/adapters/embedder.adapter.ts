@@ -118,7 +118,13 @@ export class EmbedderAdapter {
   private model: string;
   readonly identity: EmbedderAdapterIdentity;
 
-  constructor(options?: { apiKey?: string; baseURL?: string; dimensions?: number }) {
+  constructor(options?: {
+    apiKey?: string;
+    baseURL?: string;
+    dimensions?: number;
+    maxRetries?: number;
+    timeout?: number;
+  }) {
     const baseURL = options?.baseURL ?? OPENROUTER_EMBEDDING_BASE_URL;
     this.dimensions = options?.dimensions ?? OPENROUTER_EMBEDDING_DIMENSIONS;
     this.model = OPENROUTER_EMBEDDING_MODEL;
@@ -131,6 +137,8 @@ export class EmbedderAdapter {
             'HTTP-Referer': 'https://index.network',
             'X-Title': 'Index Network',
           },
+      ...(options?.maxRetries === undefined ? {} : { maxRetries: options.maxRetries }),
+      ...(options?.timeout === undefined ? {} : { timeout: options.timeout }),
     };
     const configuration = {
       provider: 'openrouter' as const,

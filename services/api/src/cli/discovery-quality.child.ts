@@ -977,7 +977,7 @@ function productionDependencies(environment: HistoricalQualityChildEnvironment):
       const adapterModule = await import('../adapters/chat.database.adapter');
       const database = new adapterModule.ChatDatabaseAdapter();
       const embedderModule = await import('../adapters/embedder.adapter');
-      const embedder = new embedderModule.EmbedderAdapter();
+      const embedder = new embedderModule.EmbedderAdapter({ maxRetries: 0, timeout: 60_000 });
       if (embedder.identity.model !== embedding.model || embedder.identity.dimensions !== embedding.dimensions) {
         throw new Error('Historical quality constructed embedder identity drifted after verification');
       }

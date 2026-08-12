@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 import { HISTORICAL_SHARED_POOL_SEED_PROJECTION } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-quality.shared-pool.fixture.js';
 import { fingerprintHistoricalQualityVector, historicalQualityAttestationRoot, HISTORICAL_QUALITY_METADATA_KEY } from '../discovery-quality-attestation';
@@ -630,6 +631,11 @@ describe('historical quality base state', () => {
 });
 
 describe('historical quality read-only command', () => {
+  it('freezes paid embedding SDK retries and timeout in base refresh', async () => {
+    const source = await readFile(new URL('../discovery-quality-base.main.ts', import.meta.url), 'utf8');
+    expect(source).toContain('new EmbedderAdapter({ maxRetries: 0, timeout: 60_000 })');
+  });
+
   it('requires transaction_read_only=on', async () => {
     await expect(assertReadOnlySession(async () => [{ transactionReadOnly: 'on' }])).resolves.toBe('on');
     await expect(assertReadOnlySession(async () => [{ transactionReadOnly: 'off' }])).rejects.toThrow('not read-only');

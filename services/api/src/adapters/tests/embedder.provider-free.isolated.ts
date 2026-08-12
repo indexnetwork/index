@@ -6,6 +6,8 @@ const constructedOptions: Array<{
   apiKey?: string;
   baseURL?: string;
   defaultHeaders?: Record<string, string>;
+  maxRetries?: number;
+  timeout?: number;
 }> = [];
 let embeddingRequests = 0;
 
@@ -99,6 +101,24 @@ describe('EmbedderAdapter provider-free lifecycle', () => {
       apiKey: 'custom-test-key',
       baseURL: 'https://embedding.test/v1',
       defaultHeaders: undefined,
+    });
+    expect(constructedOptions[1]).not.toHaveProperty('maxRetries');
+    expect(constructedOptions[1]).not.toHaveProperty('timeout');
+  });
+
+  it('passes explicit historical-quality retry and timeout policy to OpenAI', async () => {
+    const { EmbedderAdapter } = await import('../embedder.adapter');
+    const adapter = new EmbedderAdapter({
+      apiKey: 'quality-test-key',
+      dimensions: 2,
+      maxRetries: 0,
+      timeout: 60_000,
+    });
+
+    expect(await adapter.generate('quality endpoint')).toEqual([0.25, 0.75]);
+    expect(constructedOptions[2]).toMatchObject({
+      maxRetries: 0,
+      timeout: 60_000,
     });
   });
 });
