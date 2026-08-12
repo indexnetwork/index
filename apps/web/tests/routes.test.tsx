@@ -38,6 +38,7 @@ vi.mock('@/lib/api', () => {
   };
   return {
     apiClient: mockApi,
+    apiUrl: (path: string) => path,
     APIError: class APIError extends Error {
       status: number;
       constructor(msg: string, status: number) {
@@ -77,6 +78,8 @@ vi.mock('@/contexts/APIContext', () => {
     useAPI: () =>
       new Proxy({}, { get: () => noopService }),
     useIndexes: () => noopService,
+    useNetworks: () => noopService,
+    useNetworkRequests: () => noopService,
     useIntents: () => noopService,
     useConnections: () => noopService,
     useSynthesis: () => noopService,
@@ -86,6 +89,7 @@ vi.mock('@/contexts/APIContext', () => {
     useIntegrations: () => noopService,
     useUsers: () => noopService,
     useOpportunities: () => noopService,
+    useConversations: () => noopService,
     useQuestionsService: () => noopService,
   };
 });
@@ -122,42 +126,64 @@ vi.mock('@/contexts/AIChatSessionsContext', () => ({
   }),
 }));
 
-// Mock AIChatContext — use a Proxy so any property access returns a safe default
+// Mock AIChatContext
 vi.mock('@/contexts/AIChatContext', () => ({
   AIChatProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useAIChat: () =>
-    new Proxy(
-      {
-        messages: [],
-        isStreaming: false,
-        isLoading: false,
-        sessionId: null,
-        tools: [],
-        debugMeta: null,
-        suggestions: [],
-        opportunities: [],
-      },
-      {
-        get(target, prop) {
-          if (prop in target) return (target as Record<string | symbol, unknown>)[prop];
-          // Any unknown property returns a no-op function (covers setters, send, clear, etc.)
-          return vi.fn();
-        },
-      }
-    ),
+  useAIChat: () => ({
+    messages: [],
+    isLoading: false,
+    stopStream: vi.fn(),
+    sendWebMessage: vi.fn(),
+    clearChat: vi.fn(),
+    startSignalSession: vi.fn(),
+    loadSession: vi.fn().mockResolvedValue(false),
+    loadPreviousMessages: vi.fn(),
+    hasPreviousSession: false,
+    isLoadingPreviousMessages: false,
+    sessionLoadState: { status: 'idle', targetSessionId: null, error: null },
+    isSessionReady: vi.fn().mockReturnValue(false),
+    sessionId: null,
+    sessionTitle: null,
+    sessionPersona: null,
+    turnBlock: null,
+    suggestions: [],
+    chatScope: null,
+    setChatScope: vi.fn(),
+    setScopeNetworkId: vi.fn(),
+    sessionNetworkId: null,
+    updateSessionTitle: vi.fn(),
+    cancelQueuedMessage: vi.fn(),
+    submitMidStreamMessage: vi.fn(),
+    liveQuestions: [],
+  }),
 }));
 
 // Mock ConversationContext
 vi.mock('@/contexts/ConversationContext', () => ({
   ConversationProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useConversation: () =>
-    new Proxy({}, { get: () => vi.fn() }),
+    new Proxy(
+      {
+        conversations: [],
+        negotiations: [],
+        messages: new Map(),
+        sessionHistory: new Map(),
+        sessionOpportunityMap: new Map(),
+        isConnected: false,
+      },
+      {
+        get(target, prop) {
+          if (prop in target) return (target as Record<string | symbol, unknown>)[prop];
+          return vi.fn().mockResolvedValue(undefined);
+        },
+      },
+    ),
 }));
 
 // Mock IndexesContext
 vi.mock('@/contexts/IndexesContext', () => ({
-  IndexesProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useIndexesState: () => ({
+  NetworksProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useNetworksState: () => ({
     indexes: [],
     loading: false,
     error: null,
@@ -168,12 +194,29 @@ vi.mock('@/contexts/IndexesContext', () => ({
   }),
 }));
 
-// Mock IndexFilterContext
+// Mock NetworkFilterContext
 vi.mock('@/contexts/IndexFilterContext', () => ({
-  IndexFilterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useIndexFilter: () => ({
-    selectedIndexIds: [],
-    setSelectedIndexIds: vi.fn(),
+  NetworkFilterProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useNetworkFilter: () => ({
+    selectedNetworkIds: [],
+    setSelectedNetworkIds: vi.fn(),
+  }),
+}));
+
+// Mock QuestionsContext
+vi.mock('@/contexts/QuestionsContext', () => ({
+  QuestionsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useQuestions: () => ({
+    questions: [],
+    count: 0,
+    globalPending: 0,
+    pushedPoolPending: 0,
+    personalAgentPending: 0,
+    pendingRevision: 'anonymous:',
+    loading: false,
+    answer: vi.fn(),
+    dismiss: vi.fn(),
+    refresh: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
