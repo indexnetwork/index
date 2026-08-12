@@ -467,13 +467,15 @@ window.IndexApp = (function () {
       (async () => {
         while (!stopped) {
           controller = new AbortController();
+          let completed = false;
           try {
             await nativeAPIBridge.request(
               { kind:"sse", method:"GET", path },
               { signal:controller.signal, onEvent:handler, timeoutMs:300000 },
             );
+            completed = true;
           } catch (e) { /* aborted or network drop */ }
-          if (!stopped) await new Promise((r) => setTimeout(r, 15000));
+          if (!stopped && !completed) await new Promise((r) => setTimeout(r, 15000));
         }
       })();
       return () => { if (controller) controller.abort(); };

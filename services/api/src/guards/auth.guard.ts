@@ -325,7 +325,8 @@ const INDEX_APP_OWNER_STATIC_ROUTES = new Set([
   'GET /questions', 'POST /tools/read_user_contexts',
   'POST /tools/preview_user_context', 'POST /tools/confirm_user_context',
   'POST /enrichment/enrich', 'GET /conversations', 'GET /conversations/negotiations',
-  'GET /conversations/stream', 'POST /conversations/dm', 'POST /chat/stream',
+  'GET /conversations/stream', 'GET /notifications/stream', 'GET /notifications/snapshot',
+  'POST /conversations/dm', 'POST /chat/stream',
   'POST /storage/avatars', 'POST /storage/index-images',
 ]);
 

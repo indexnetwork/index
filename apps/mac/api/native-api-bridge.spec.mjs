@@ -170,23 +170,39 @@ describe('credential-free native API JavaScript boundary', () => {
       })).toBe(true);
       await Promise.resolve();
       await Promise.resolve();
-      const retry = timers.find((timer) => timer.delay === 15_000 && !timer.cleared);
-      expect(retry).toBeDefined();
-      retry.callback();
-      await Promise.resolve();
-      const retried = posted.find((message) => (
+      const rotated = posted.find((message) => (
         message.requestId !== notifications.requestId
         && message.operation.kind === 'sse'
         && message.operation.path === '/notifications/stream'
       ));
-      expect(retried).toBeDefined();
+      expect(rotated).toBeDefined();
+      expect(timers.some((timer) => timer.delay === 15_000 && !timer.cleared)).toBe(false);
+
+      expect(window.__indexAPIResponse({
+        requestId: inbox.requestId, ok: false, status: 503, errorCode: 'http_error', body: {},
+      })).toBe(true);
+      await Promise.resolve();
+      await Promise.resolve();
+      const retry = timers.find((timer) => timer.delay === 15_000 && !timer.cleared);
+      expect(retry).toBeDefined();
+      expect(posted.filter((message) => (
+        message.operation.kind === 'sse' && message.operation.path === '/conversations/stream'
+      ))).toHaveLength(1);
+      retry.callback();
+      await Promise.resolve();
+      const retriedInbox = posted.find((message) => (
+        message.requestId !== inbox.requestId
+        && message.operation.kind === 'sse'
+        && message.operation.path === '/conversations/stream'
+      ));
+      expect(retriedInbox).toBeDefined();
 
       dispose();
       dispose = null;
       const cancelled = posted
         .filter((message) => message.operation.kind === 'cancel')
         .map((message) => message.operation.targetRequestId);
-      expect(cancelled).toEqual(expect.arrayContaining([inbox.requestId, retried.requestId]));
+      expect(cancelled).toEqual(expect.arrayContaining([rotated.requestId, retriedInbox.requestId]));
       expect(intervals).toHaveLength(1);
       expect(intervals[0]).toMatchObject({ delay: 60_000, cleared: true });
     } finally {
