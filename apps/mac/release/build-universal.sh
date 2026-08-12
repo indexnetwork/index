@@ -41,10 +41,16 @@ cleanup_build() {
 
 # compile_slice(target, arch, output)
 compile_slice() {
-  local target="$1" arch="$2" output="$3" identity="$4"
+  local target="$1" arch="$2" output="$3" identity
   case "$target" in
-    app) bash "$MAC_DIRECTORY/IndexApp/build.sh" --release-slice "$arch" "$output" "$identity" ;;
-    connector) bash "$MAC_DIRECTORY/IndexConnector/build.sh" --release-slice "$arch" "$output" "$identity" ;;
+    app)
+      identity="$WORK_DIRECTORY/Index.app.identity.json"
+      bash "$MAC_DIRECTORY/IndexApp/build.sh" --release-slice "$arch" "$output" "$identity"
+      ;;
+    connector)
+      identity="$WORK_DIRECTORY/IndexConnector.identity.json"
+      bash "$MAC_DIRECTORY/IndexConnector/build.sh" --release-slice "$arch" "$output" "$identity"
+      ;;
     *) release_error "unknown native target: $target" ;;
   esac
 }
@@ -210,10 +216,10 @@ main() {
   write_compiled_identity app "$APP_BUNDLE/Contents/Info.plist" "$app_identity"
   write_compiled_identity connector "$CONNECTOR_BUNDLE/Contents/Info.plist" "$connector_identity"
 
-  compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64" "$app_identity"
-  compile_slice app x86_64 "$WORK_DIRECTORY/Index.x86_64" "$app_identity"
-  compile_slice connector arm64 "$WORK_DIRECTORY/IndexConnector.arm64" "$connector_identity"
-  compile_slice connector x86_64 "$WORK_DIRECTORY/IndexConnector.x86_64" "$connector_identity"
+  compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64"
+  compile_slice app x86_64 "$WORK_DIRECTORY/Index.x86_64"
+  compile_slice connector arm64 "$WORK_DIRECTORY/IndexConnector.arm64"
+  compile_slice connector x86_64 "$WORK_DIRECTORY/IndexConnector.x86_64"
 
   compare_compiled_identities \
     "$WORK_DIRECTORY/Index.arm64" "$WORK_DIRECTORY/Index.x86_64" \

@@ -45,6 +45,18 @@ describe("macOS Universal 2 production build contract", () => {
     expect(source(universalBuildPath)).toContain("lipo -create");
   });
 
+  test("preserves the public three-argument compile_slice interface", () => {
+    const buildSource = source(universalBuildPath);
+    const compileSlice = buildSource.match(
+      /compile_slice\(\) \{([\s\S]*?)\n\}/,
+    )?.[1] ?? "";
+    expect(buildSource).toContain("# compile_slice(target, arch, output)");
+    expect(compileSlice).toContain('local target="$1" arch="$2" output="$3"');
+    expect(compileSlice).not.toContain('"$4"');
+    expect(buildSource).toContain('compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64"');
+    expect(buildSource).not.toContain('compile_slice app arm64 "$WORK_DIRECTORY/Index.arm64" "$app_identity"');
+  });
+
   test("extracts and compares embedded compiled identity records before merge", () => {
     const buildSource = source(universalBuildPath);
     expect(buildSource).toContain("compile_slice()");
