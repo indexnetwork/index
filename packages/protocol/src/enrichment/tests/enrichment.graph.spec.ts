@@ -671,7 +671,7 @@ describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
       mockDatabase,
       mockScraper,
       { enrichUserProfile: mockEnrichUserProfile },
-      mockPremiseGraph as any, // premiseGraph — 5th constructor arg
+      mockPremiseGraph as any, // premiseGraph — 4th constructor arg
     );
     const graph = factory.createGraph();
 
@@ -700,7 +700,6 @@ describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
       mockDatabase,
       mockScraper,
       { enrichUserProfile: mockEnrichUserProfile },
-      undefined,
       mockPremiseGraph as any,
     );
     const graph = factory.createGraph();

@@ -481,7 +481,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
         mockDatabase,
         mockScraper,
         undefined, // no enricher
-          failingPremiseGraph,
+        failingPremiseGraph,
       ).createGraph();
 
       // The decompose node swallows per-premise failures — the invoke resolves

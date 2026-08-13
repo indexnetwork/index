@@ -21,7 +21,6 @@ const APPROVED_CONFIGURATION_MODE_IDS = {
   "negotiation-consultation": ["off", "shadow", "v2-on", "v2-short-window"],
   "negotiation-deadlock": ["off", "v2-threshold-4", "v2-fast-2", "v2-skeptic"],
   "questioner-uptake": ["off", "on-threshold-70", "on-threshold-90"],
-  "questioner-discovery-contract": ["off", "transcripts-unresolved", "insights-unresolved"],
   "pool-question-contract": ["off", "shadow-mining", "on-pull", "on-push", "on-visit", "on-newborn"],
   "pool-ranking": ["off", "on"],
   "negotiation-evidence-contract": ["off", "shadow", "on-alias"],
@@ -192,7 +191,7 @@ test("loads dependency-free classic assets in deterministic order", async () => 
 });
 
 describe("protocol atlas curated content", () => {
-  test("accepts the approved seven chapters, five flows, and 20 configuration experiments", async () => {
+  test("accepts the approved seven chapters, five flows, and 19 configuration experiments", async () => {
     const content = await loadAtlasContent() as {
       chapters: Array<{ id: string }>;
       flows: Array<{ id: string }>;
@@ -208,7 +207,7 @@ describe("protocol atlas curated content", () => {
       experiment.id,
       experiment.modes.map((mode) => mode.id),
     ]))).toEqual(APPROVED_CONFIGURATION_MODE_IDS);
-    expect(content.configurationExperiments.flatMap((experiment) => experiment.modes)).toHaveLength(61);
+    expect(content.configurationExperiments.flatMap((experiment) => experiment.modes)).toHaveLength(58);
     const input = await loadProtocolGeneratorInput(repoRoot);
     const artifact = buildAtlasArtifact(input, content);
     expect(validateCuratedReferences(content, artifact)).toEqual([]);
@@ -723,12 +722,12 @@ describe("protocol atlas generator", () => {
     definitive.consumerSymbol = "MissingConsumer";
     definitive.referenceChain![0].symbol = "MissingHop";
     definitive.behaviorTest!.testName = "missing test name";
-    const unresolved = content.configurationExperiments.find(({ id }) => id === "questioner-discovery-contract")!.modes[1].deltas[0];
+    const unresolved = content.configurationExperiments.find(({ id }) => id === "outcome-questions-contract")!.modes[1].deltas[0];
     unresolved.consumerPath = "packages/protocol/src/opportunity/application/opportunity.graph.ts";
     const input = await loadProtocolGeneratorInput(repoRoot);
-    input.sourceFiles["packages/protocol/src/questions/application/unresolved-consumer.ts"] = [
-      'import { isDiscoveryQuestionsEnabled } from "./question.env.js";',
-      "export const active = isDiscoveryQuestionsEnabled();",
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
+      'import { outcomeQuestionsMode } from "./outcome.env.js";',
+      "export const active = outcomeQuestionsMode();",
     ].join("\n");
     const artifact = buildAtlasArtifact(input, content);
     const issues = validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n");

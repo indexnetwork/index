@@ -341,7 +341,7 @@ describe("ProtocolAtlasCore configuration lab", () => {
 
     const availability = core().configurationAvailability(generated);
     expect(availability.available).toBe(true);
-    expect(availability.experiments).toHaveLength(20);
+    expect(availability.experiments).toHaveLength(19);
     expect(availability.errors).toEqual([]);
   });
 
