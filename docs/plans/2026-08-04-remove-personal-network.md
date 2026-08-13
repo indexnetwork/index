@@ -47,8 +47,8 @@ default.
       `utility.tools.ts`, `database.interface.ts`, and prompts
       (`chat.prompt.ts`, `signal.prompt.ts`, `onboarding.prompt.ts`,
       `reporter.prompt.ts`).
-- [ ] Regenerate `architecture/exports.snapshot.json` (static-inventory
-      check) and update/delete affected specs.
+- [ ] Update affected architecture specs and the protocol-atlas export metadata
+      if the root export sources change.
 
 ### Task 2 — API service (`services/api`)
 
