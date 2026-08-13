@@ -2,6 +2,7 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
+import { enrichmentQueue } from '../queues/enrichment.queue';
 
 const logger = log.service.from("UserService");
 
@@ -15,6 +16,23 @@ export interface UserServiceDeps {
   getPremisesBySource?: (userId: string, source: string) => Promise<Array<{ id: string }>>;
   /** Retract a single premise (set status RETRACTED + retractedAt). Lifecycle events fire in the DB adapter. */
   retractPremise?: (premiseId: string) => Promise<void>;
+  /** Enqueue an enrichment job to rebuild premises from updated socials. */
+  enqueueEnrichment?: (userId: string) => Promise<void>;
+}
+
+/**
+ * Order-insensitive identity of a stored social set.
+ *
+ * Only `label`/`value` carry meaning — row `id` is regenerated on every write
+ * (the adapter deletes and re-inserts), so it must not take part in the
+ * comparison. Field and entry separators are control characters that cannot
+ * appear in a label or URL, so distinct sets cannot collide on the same key.
+ */
+function socialSetKey(socials: Array<{ label: string; value: string }>): string {
+  return socials
+    .map(s => `${s.label}\u0000${s.value}`)
+    .sort()
+    .join('\u0001');
 }
 
 /**
@@ -89,19 +107,47 @@ export class UserService {
         return this.db.getSocials(userId);
     }
 
+    /**
+     * Persist the user's social links, rebuilding integration-derived premises
+     * only when the stored set actually changed.
+     *
+     * The comparison reads stored rows either side of the write, so the
+     * adapter's normalization (label detection, telegram handle rewriting,
+     * dedup, trimming, dropping blanks) has already been applied to both sides.
+     * That matters because the web and mac settings screens submit the full
+     * socials array on every save: comparing the raw payload against stored
+     * rows would read an untouched form as a change and retract the user's
+     * whole integration premise base for nothing.
+     */
     async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
         logger.verbose('Setting socials', { userId, count: socials.length });
+
+        const before = await this.db.getSocials(userId);
         await this.db.setSocials(userId, socials);
-        await this.retractIntegrationPremises(userId);
+        const after = await this.db.getSocials(userId);
+
+        if (socialSetKey(before) === socialSetKey(after)) {
+            logger.verbose('Socials unchanged; keeping integration premises', { userId });
+            return;
+        }
+
+        await this.rebuildIntegrationPremises(userId);
     }
 
     /**
-     * Retract all `source='integration'` premises for a user after their social
-     * URLs change, so stale integration-derived premises don't linger.
+     * Retract all `source='integration'` premises for a user whose social URLs
+     * changed, then fire-and-forget a re-enrichment job to rebuild from the new
+     * social set.
+     *
+     * Retraction and re-enrichment are a pair: retracting without re-enriching
+     * leaves the user with no active premises at all, which silently strips
+     * them out of discovery and cascades their live opportunities to `expired`.
+     * Only call this when the social set genuinely changed.
      *
      * Retraction loop is synchronous — errors propagate to the caller.
+     * Re-enrichment failure is logged and swallowed (best-effort).
      */
-    private async retractIntegrationPremises(userId: string): Promise<void> {
+    private async rebuildIntegrationPremises(userId: string): Promise<void> {
         const getPremisesBySource =
             this.deps?.getPremisesBySource ??
             ((uid: string, src: string) => chatDatabaseAdapter.getPremisesBySource(uid, src));
@@ -112,9 +158,13 @@ export class UserService {
             this.deps?.retractPremise ??
             (async (id: string) => { await chatDatabaseAdapter.updatePremise(id, { status: 'RETRACTED', retractedAt: new Date() }); });
 
+        const enqueueEnrichment =
+            this.deps?.enqueueEnrichment ??
+            (async (uid: string) => { await enrichmentQueue.addEnrichUserJob({ userId: uid, reason: 'socials_updated' }); });
+
         const toRetract = await getPremisesBySource(userId, 'integration');
 
-        logger.verbose('Retracting integration premises after social update', {
+        logger.verbose('Retracting integration premises before re-enrich', {
             userId,
             count: toRetract.length,
         });
@@ -122,6 +172,14 @@ export class UserService {
         for (const { id } of toRetract) {
             await retractPremise(id);
         }
+
+        // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
+        enqueueEnrichment(userId).catch(err =>
+            logger.error('Failed to enqueue re-enrichment after social update', {
+                userId,
+                error: err,
+            }),
+        );
     }
 
     async softDelete(userId: string) {
