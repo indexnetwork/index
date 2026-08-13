@@ -58,6 +58,18 @@ test('native logout always completes even when Hermes was never configured', () 
   expect(shell.indexOf('verifyCredentialDenied')).toBeLessThan(shell.indexOf('store.deleteAndVerify()'));
 });
 
+test('reload re-reads Keychain auth before the document-start injection runs', () => {
+  const shell = readFileSync(new URL('../Sources/AppDelegate.swift', import.meta.url), 'utf8');
+  expect(shell).toContain('func refreshNativeUserScripts()');
+  expect(shell).toContain('decidePolicyFor navigationAction');
+  expect(shell.indexOf('refreshNativeUserScripts()')).toBeLessThan(
+    shell.indexOf('decisionHandler(.allow)'),
+  );
+  expect(shell.indexOf('try store.putAndVerify(record)')).toBeLessThan(
+    shell.lastIndexOf('refreshNativeUserScripts()'),
+  );
+});
+
 test('the selector is Index versus Hermes and renders mapper-owned states/actions', () => {
   expect(agents).toContain('mapAgentRuntimeState');
   expect(agents).toContain('createAgentRuntimeCoordinator');

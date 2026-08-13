@@ -10,7 +10,7 @@ The native `indexAPI` bridge accepts only the exact bundled main document and do
 
 ## Owner sign-in
 
-Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The callback returns an ordinary 90-day API key plus its key ID; the app verifies the Keychain write/read-back before treating login as complete.
+Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The callback returns an ordinary 90-day API key plus its key ID; the app verifies the Keychain write/read-back before treating login as complete. A reload re-reads that Keychain item into the document-start `authenticated` flag so an in-session sign-in survives Cmd+R.
 
 Logout signs the UI out immediately, then quarantines in-flight bridge work, best-effort pauses/scrubs Hermes if it was configured, revokes the exact API key via `/auth/cli-credential/revoke`, verifies denial, and deletes the Keychain item. Hermes disconnect evidence is optional so a first-run install that never selected Hermes can still sign out.
 

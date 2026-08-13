@@ -103,16 +103,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
         // Window-drag bridge (see windowDragScript above).
         config.userContentController.add(self, name: "windowDrag")
-        config.userContentController.addUserScript(WKUserScript(
-            source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
 
         // Native auth bridge: the page posts {action:"login"|"logout"} and reads
         // window.INDEX_NATIVE (injected at document start from CredentialStore).
         config.userContentController.add(self, name: "indexAuth")
         config.userContentController.add(self, name: "indexAPI")
         config.userContentController.add(self, name: "hermesRuntime")
-        config.userContentController.addUserScript(WKUserScript(
-            source: nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        installNativeUserScripts(on: config.userContentController)
 
         // Desktop notification bridge: the page posts {id,title,body,url?,imageUrl?}
         // and the native side owns delivery (UNUserNotificationCenter) plus the
@@ -232,6 +229,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if isMainFrame,
            let trustedBundledDocumentURL,
            requestURL == trustedBundledDocumentURL {
+            // Re-read Keychain here: the document-start script is a snapshot,
+            // and a reload after in-session login would otherwise reinject the
+            // launch-time `authenticated: false`.
+            refreshNativeUserScripts()
             decisionHandler(.allow)
             return
         }
@@ -743,6 +744,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
+    /// Replace the document-start injection so the next load sees current Keychain auth.
+    private func refreshNativeUserScripts() {
+        installNativeUserScripts(on: webView.configuration.userContentController)
+    }
+
+    private func installNativeUserScripts(on controller: WKUserContentController) {
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(
+            source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(
+            source: nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
     /// Document-start metadata is deliberately credential-free.
     private func nativeInjectionScript() -> String {
         let authenticated = (currentOwnerCredential()?.expiresAt ?? .distantPast) > Date()
@@ -821,6 +835,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         do {
             try store.putAndVerify(record)
             try nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
+            refreshNativeUserScripts()
         } catch {
             try? ownerCredentialStore?.deleteAndVerify()
             notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
