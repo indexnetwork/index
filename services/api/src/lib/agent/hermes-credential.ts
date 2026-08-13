@@ -1,20 +1,19 @@
-import { HERMES_AGENT_AUDIENCE } from './hermes-authorization';
-import type { HermesCapability } from './hermes-capabilities';
-
 export const HERMES_NEGOTIATOR_AUDIENCE = 'hermes-negotiator' as const;
 export const HERMES_NEGOTIATOR_CREDENTIAL_KIND = 'agent-runtime' as const;
-export const HERMES_AGENT_CREDENTIAL_PREFIX = 'idxh_' as const;
 
-export type HermesCredentialAudience =
-  | typeof HERMES_NEGOTIATOR_AUDIENCE
-  | typeof HERMES_AGENT_AUDIENCE;
+export const HERMES_INSTALLATION_NAME = 'Hermes on macOS' as const;
 
-/** Both dedicated audiences use the stricter scheduled-negotiation protocol. */
+export type HermesActivationState = 'active' | 'revoked';
+
+export type HermesCredentialAudience = typeof HERMES_NEGOTIATOR_AUDIENCE;
+
+/** The negotiator audience uses the stricter scheduled-negotiation protocol. */
 export function isDedicatedHermesNegotiationAudience(
   audience: HermesCredentialAudience | null,
 ): audience is HermesCredentialAudience {
-  return audience === HERMES_NEGOTIATOR_AUDIENCE || audience === HERMES_AGENT_AUDIENCE;
+  return audience === HERMES_NEGOTIATOR_AUDIENCE;
 }
+
 /** Prepared installations rotate through setup; credentials may never be perpetual. */
 export const HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 
@@ -40,8 +39,4 @@ export type NegotiationCredentialPrincipal = {
   agentId: string;
   audience: HermesCredentialAudience | null;
   setupAttemptId: string | null;
-  /** Present for the full standalone principal; absent on legacy/negotiator keys. */
-  installationId?: string | null;
-  /** Exact active dedicated-row capabilities used by the transaction fence. */
-  actions?: readonly HermesCapability[];
 };

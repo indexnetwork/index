@@ -108,7 +108,6 @@ def main() -> None:
 
     try:
         import os
-        os.environ["INDEX_PLUGIN_DEVELOPMENT_TRANSPORT"] = "1"
         os.environ["INDEX_API_KEY"] = "gateway-test-key"
         os.environ["INDEX_API_URL"] = "https://api.example.test/api"
         urllib.request.urlopen = fake_urlopen
@@ -220,15 +219,15 @@ def main() -> None:
         # Forced capacity must preserve every kind of live authority/tombstone,
         # reject a sixth task locally, and permit reuse only after TTL expiry.
         run_forced_capacity_test(tools)
-        run_connector_ambiguous_replay_test(tools)
+        run_ambiguous_replay_test(tools)
     finally:
         urllib.request.urlopen = original_urlopen
 
     print("Hermes plugin direct gateway tests passed")
 
 
-def run_connector_ambiguous_replay_test(tools):
-    class FakeConnectorTransport:
+def run_ambiguous_replay_test(tools):
+    class FakeReplayTransport:
         def __init__(self):
             self.calls = []
             self.failures = {}
@@ -262,7 +261,7 @@ def run_connector_ambiguous_replay_test(tools):
             return {"success": True, "status": "recorded"}
 
     tools._reset_negotiation_run_for_tests()
-    fake = FakeConnectorTransport()
+    fake = FakeReplayTransport()
     tools.set_transport_for_tests(fake)
     try:
         pickup_path = "/agents/agent/negotiations/pickup"
@@ -302,7 +301,7 @@ def run_connector_ambiguous_replay_test(tools):
         timeout_calls = [call for call in fake.calls if call[1] == timeout_path]
         assert len(timeout_calls) == 2 and timeout_calls[0] == timeout_calls[1]
 
-        fake.failures[pickup_path] = ["connector_invalid_response"]
+        fake.failures[pickup_path] = ["network_error"]
         picked = decode(tools.index_pickup_negotiation(
             {"agentId": "agent"}, task_id="connector-pickup"
         ))
@@ -315,7 +314,7 @@ def run_connector_ambiguous_replay_test(tools):
         assert len(pickup_calls) == 2 and pickup_calls[0] == pickup_calls[1]
 
         respond_path = "/agents/agent/negotiations/neg-pickup/respond"
-        fake.failures[respond_path] = ["upstream_ambiguous_response"]
+        fake.failures[respond_path] = ["network_error"]
         response_args = {
             "agentId": "agent", "negotiationId": "neg-pickup",
             "action": "continue", "roleAlignment": "peers",
@@ -335,7 +334,7 @@ def run_connector_ambiguous_replay_test(tools):
             {"agentId": "agent"}, task_id="connector-consult"
         ))
         consult_path = "/agents/agent/negotiations/neg-consult/consult"
-        fake.failures[consult_path] = ["connector_invalid_response"]
+        fake.failures[consult_path] = ["network_error"]
         consult_args = {
             "agentId": "agent", "negotiationId": "neg-consult",
             "reason": "repeated_non_convergence",

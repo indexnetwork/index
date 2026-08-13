@@ -185,10 +185,9 @@ describe("handleLogin", () => {
       keyId: "old-key-id",
     });
     const revokeApiKey = mock(async () => {});
-    const credentialClientFactory = mock((nextApiUrl: string, token: string, authKind: "session" | "api_key") => {
+    const credentialClientFactory = mock((nextApiUrl: string, token: string) => {
       expect(nextApiUrl).toBe(apiUrl);
       expect(token).toBe("new-key");
-      expect(authKind).toBe("api_key");
       return { revokeApiKey };
     });
     const fakeServer = createFakeLoginServer();
@@ -275,53 +274,28 @@ describe("handleLogin", () => {
     });
     const state = stateFromAuthUrl(authUrl);
 
-    expect((await fakeServer.dispatch(`/callback/?session_token=jwt&state=${state}`)).status).toBe(404);
-    expect((await fakeServer.dispatch(`/callback?session_token=jwt&state=${state}`, "POST")).status).toBe(404);
-    expect((await fakeServer.dispatch(`/callback?session_token=jwt&state=${state}`)).status).toBe(200);
+    expect((await fakeServer.dispatch(`/callback/?api_key=key&key_id=id&state=${state}`)).status).toBe(404);
+    expect((await fakeServer.dispatch(`/callback?api_key=key&key_id=id&state=${state}`, "POST")).status).toBe(404);
+    expect((await fakeServer.dispatch(`/callback?api_key=key&key_id=id&state=${state}`)).status).toBe(200);
     expect((await callbackPromise).success).toBe(true);
   });
 
-  it("retains state-bound legacy session-token callback support", async () => {
-    const apiUrl = "http://localhost:3001";
+  it("rejects a legacy session-token callback", async () => {
     const fakeServer = createFakeLoginServer();
-    const { authUrl, callbackPromise } = await handleLogin(apiUrl, apiUrl, store, {
-      serverFactory: fakeServer.factory,
-    });
-
-    await fakeServer.dispatch(
-      `/callback?session_token=mock-jwt-token&state=${stateFromAuthUrl(authUrl)}`,
-    );
-
-    expect((await callbackPromise).success).toBe(true);
-    expect(await store.load()).toEqual({
-      token: "mock-jwt-token",
-      apiUrl,
-      authKind: "session",
-    });
-  });
-
-  it("returns a safe failure immediately when legacy session credentials cannot be saved", async () => {
-    const fakeServer = createFakeLoginServer();
-    store.save = async () => {
-      throw new Error("legacy secret storage internals");
-    };
     const { authUrl, callbackPromise } = await handleLogin("http://localhost:3001", "http://localhost:3001", store, {
-      timeoutMs: 10_000,
       serverFactory: fakeServer.factory,
     });
 
     const response = await fakeServer.dispatch(
-      `/callback?session_token=secret-session&state=${stateFromAuthUrl(authUrl)}`,
+      `/callback?session_token=mock-jwt-token&state=${stateFromAuthUrl(authUrl)}`,
     );
 
-    expect(response.status).toBe(500);
-    expect(response.body).toContain("CLI credentials could not be saved");
-    expect(response.body).not.toContain("secret-session");
-    expect(response.body).not.toContain("legacy secret storage internals");
+    expect(response.status).toBe(400);
     expect(await callbackPromise).toEqual({
       success: false,
-      error: "Failed to save CLI credentials.",
+      error: "No CLI credential received in callback.",
     });
+    expect(await store.load()).toBeNull();
   });
 
   it("rejects an API-key callback that omits the exact key ID", async () => {

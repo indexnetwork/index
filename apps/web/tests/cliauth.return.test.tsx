@@ -67,13 +67,6 @@ describe('unauthenticated CLI auth inline sign-in', () => {
     vi.unstubAllGlobals();
   });
 
-  test('preserves the exact v1 request through the inline form and Better Auth', async () => {
-    await expectGoogleCallback({
-      protocolVersion: 1,
-      callback: 'http://127.0.0.1:43123/callback',
-    });
-  });
-
   test('preserves the exact state-bound v2 request through the inline form and Better Auth', async () => {
     await expectGoogleCallback({
       protocolVersion: 2,

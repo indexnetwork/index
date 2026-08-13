@@ -78,7 +78,7 @@ function closeServer(server: CallbackServer): Promise<void> {
  * 2. Constructs the OAuth URL pointing the callback to the local server.
  * 3. Returns the URL so the caller can open it in a browser.
  * 4. Waits for the callback (or timeout).
- * 5. Saves the received API key (or a legacy session token) to the credential store.
+ * 5. Saves the received API key to the credential store.
  *
  * @param apiUrl - The protocol server base URL.
  * @param appUrl - The frontend app URL (serves the /cli-auth page).
@@ -135,7 +135,6 @@ export async function handleLogin(
 
     const apiKey = url.searchParams.get("api_key");
     const keyId = url.searchParams.get("key_id");
-    const sessionToken = url.searchParams.get("session_token");
     if (apiKey && keyId) {
       try {
         const cleanup = await storeReplacementCredentials(store, previousCredentials, {
@@ -143,25 +142,6 @@ export async function handleLogin(
           apiUrl: baseUrl,
           authKind: "api_key",
           keyId,
-        }, { clientFactory: options.credentialClientFactory });
-        resolveCallback({ success: true, ...cleanup });
-      } catch {
-        resolveCallback({ success: false, error: "Failed to save CLI credentials." });
-        res.writeHead(500, { "Content-Type": "text/html" });
-        res.end(callbackHtml("Authorization failed", "CLI credentials could not be saved. Return to the terminal and try again."));
-        return;
-      }
-
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(callbackHtml("CLI authorized", "You can close this window and return to the terminal.", true));
-      return;
-    }
-    if (!apiKey && sessionToken) {
-      try {
-        const cleanup = await storeReplacementCredentials(store, previousCredentials, {
-          token: sessionToken,
-          apiUrl: baseUrl,
-          authKind: "session",
         }, { clientFactory: options.credentialClientFactory });
         resolveCallback({ success: true, ...cleanup });
       } catch {

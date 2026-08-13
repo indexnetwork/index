@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { apiClient } from "@/lib/api";
 import AuthForm from "@/components/AuthForm";
-import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, buildLegacyCliCallbackUrl, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
+import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
 
 /**
  * CLI authentication bridge page.
@@ -11,19 +11,14 @@ import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthRe
  * Opened by `index login` — exchanges the user's existing browser session
  * for a revocable CLI API key and redirects to the local callback server.
  *
- * Query params:
- *   - v1 (TEMPORARY): callback only, for the already-released CLI
- *   - v2: callback, exact version=2, and one-time state
+ * Query params: callback, exact version=2, and one-time state.
  *
  * Flow:
  *   1. Fail closed on malformed/unknown protocol combinations
  *   2. If user has a session cookie, mint a version-tagged CLI API key
- *   3. Return the v1-compatible session_token name or the state-bound v2 fields
+ *   3. Return the state-bound api_key/key_id/state callback fields
  *   4. If no session, show the sign-in form inline; Better Auth returns to
  *      this exact validated request after login
- *
- * The v1 bridge must remain until released clients have aged out. Its
- * session_token value is deliberately an API-key secret, never a browser JWT.
  */
 function CliAuthPage() {
   const [request] = useState<CliAuthRequest | null>(() =>
@@ -69,14 +64,12 @@ function CliAuthPage() {
         }
 
         setStatus("redirecting");
-        window.location.href = authRequest.protocolVersion === 1
-          ? buildLegacyCliCallbackUrl(authRequest.callback, credential.key)
-          : buildCliApiKeyCallbackUrl(
-            authRequest.callback,
-            authRequest.state,
-            credential.key,
-            credential.id,
-          );
+        window.location.href = buildCliApiKeyCallbackUrl(
+          authRequest.callback,
+          authRequest.state,
+          credential.key,
+          credential.id,
+        );
       } catch {
         setStatus("error");
         setError("Authentication failed. Please try signing in again from the app.");

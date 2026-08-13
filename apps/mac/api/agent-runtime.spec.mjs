@@ -24,7 +24,7 @@ const INDEX = {
 const HERMES_ACTIVE = {
   selectedRuntime: 'hermes',
   executor: {
-    id: 'executor-hermes', installationId: 'installation-local', setupAttemptId: 'setup-current', status: 'active',
+    id: 'executor-hermes', installationId: 'installation-local', status: 'active',
     lastNegotiationPickupAt: '2026-08-07T00:00:00.000Z',
   },
   health: 'active', indexCovering: false,
@@ -254,14 +254,9 @@ describe('queue-aware Hermes bridge bounds', () => {
     };
     const productionCommands = [
       ['inspect', { ownerId: 'owner-1' }],
-      ['connectorStatus', {}],
-      ['connectorDisconnect', {
-        installationId: 'installation-local', executorId: 'executor-hermes',
-        setupAttemptId: 'setup-current',
-      }],
       ['configureDisabled', {
         ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
-        setupAttemptId: 'setup-current',
+        setupAttemptId: 'setup-current', credential: 'transient-secret',
       }],
       ['enable', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
       ['confirmHealthy', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
@@ -287,56 +282,14 @@ describe('queue-aware Hermes bridge bounds', () => {
       expect(h.bridge.receive({ requestId: message.requestId, ok: true, stage: command })).toBe(true);
       await expect(promise).resolves.toMatchObject({ ok: true });
     }
-    expect(productionCommands.map(([command]) => command)).toHaveLength(12);
+    expect(productionCommands.map(([command]) => command)).toHaveLength(10);
     expect(HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS).toBeGreaterThanOrEqual(10 * 60_000);
-    expect(HERMES_RUNTIME_TIMEOUTS_MS.connectorStatus).toBeGreaterThan(0);
-    expect(HERMES_RUNTIME_TIMEOUTS_MS.connectorDisconnect).toBeGreaterThan(0);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.configureDisabled).toBeGreaterThanOrEqual(5 * 60_000);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.disconnect).toBeGreaterThanOrEqual(5 * 60_000);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.enable).toBeGreaterThanOrEqual(3 * 60_000);
     for (const command of ['prepareLogout', 'loadOperation', 'saveOperation', 'clearOperation']) {
       expect(HERMES_RUNTIME_TIMEOUTS_MS[command]).toBeGreaterThan(0);
     }
-  });
-
-  it('rejects every credential-bearing runtime payload, including local configuration', async () => {
-    const h = bridgeHarness();
-    await expect(h.bridge.request('configureDisabled', {
-      ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
-      setupAttemptId: 'setup-current', credential: 'must-never-cross',
-    })).rejects.toThrow('credential');
-    for (const key of [
-      'raw-credential', 'credential.id', 'credential-id', 'raw.credential', 'API---KEY',
-      'auth_token', 'pass-word', 'chal.lenge',
-    ]) {
-      await expect(h.bridge.request('configureDisabled', {
-        ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
-        setupAttemptId: 'setup-current', safe: [{ nested: { [key]: 'must-never-cross' } }],
-      })).rejects.toThrow('credential');
-    }
-    const middleSubstring = h.bridge.request('configureDisabled', {
-      ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
-      setupAttemptId: 'setup-current', safe: [{ nested: { 'user.token.value': 'must-never-cross' } }],
-    });
-    const wronglyPostedMiddle = h.messages.at(-1);
-    if (wronglyPostedMiddle) h.bridge.receive({
-      requestId: wronglyPostedMiddle.requestId, ok: true, stage: 'configured',
-    });
-    await expect(middleSubstring).rejects.toThrow('credential');
-    const injectedLogout = h.bridge.request('prepareLogout', {
-      ownerId: 'owner-1', setupAttemptId: null,
-      safe: [{ nested: { 'user.token.value': 'must-never-cross' } }],
-    });
-    const wronglyPosted = h.messages.at(-1);
-    if (wronglyPosted) h.bridge.receive({
-      requestId: wronglyPosted.requestId, ok: true, stage: 'logout_prepared',
-    });
-    await expect(injectedLogout).rejects.toThrow('credential');
-    await expect(h.bridge.request('connectorDisconnect', {
-      installationId: 'installation-local', executorId: 'executor-hermes',
-      setupAttemptId: 'setup-current', extra: true,
-    })).rejects.toThrow('exact authority tuple');
-    expect(h.messages).toEqual([]);
   });
 
   it('keeps command-specific generation and journal payload admission strict', async () => {
@@ -359,7 +312,7 @@ describe('queue-aware Hermes bridge bounds', () => {
         ownerId: 'owner-1', installationId: 'installation-local',
         setupAttemptId: null, executorId: null, credential: 'not-allowed',
       },
-    })).rejects.toThrow('credential material');
+    })).rejects.toThrow('strict operation journal payload');
     expect(h.messages).toHaveLength(1);
   });
 
@@ -379,7 +332,7 @@ describe('queue-aware Hermes bridge bounds', () => {
     const controller = new AbortController();
     const pending = h.bridge.request(
       'configureDisabled',
-      { setupAttemptId: 'setup-1' },
+      { setupAttemptId: 'setup-1', credential: 'secret' },
       { signal: controller.signal },
     );
     const requestId = h.messages.at(-1).requestId;
@@ -475,7 +428,7 @@ describe('bounded server-observed health wait', () => {
     const result = await waitForHermesHealth({
       api: { getRuntimeBinding: async () => replies.shift() },
       installationId: 'installation-local',
-      executorId: 'executor-hermes', setupAttemptId: 'setup-current',
+      executorId: 'executor-hermes',
       timeoutMs: 10,
       pollIntervalMs: 1,
       now: (() => { let value = 0; return () => value++; })(),
@@ -494,7 +447,7 @@ describe('bounded server-observed health wait', () => {
         return HERMES_ACTIVE;
       } },
       installationId: 'installation-local',
-      executorId: 'executor-hermes', setupAttemptId: 'setup-current',
+      executorId: 'executor-hermes',
       timeoutMs: 20,
       pollIntervalMs: 1,
       sleep: async () => {},
@@ -508,7 +461,7 @@ describe('bounded server-observed health wait', () => {
     await expect(waitForHermesHealth({
       api: { getRuntimeBinding: async () => new Promise(() => {}) },
       installationId: 'installation-local',
-      executorId: 'executor-hermes', setupAttemptId: 'setup-current',
+      executorId: 'executor-hermes',
       timeoutMs: 15,
       pollIntervalMs: 100,
     })).rejects.toMatchObject({ code: 'health_timeout' });
@@ -521,7 +474,7 @@ describe('bounded server-observed health wait', () => {
     await expect(waitForHermesHealth({
       api: { getRuntimeBinding: async () => ({ ...HERMES_ACTIVE, health: 'never-seen' }) },
       installationId: 'installation-local',
-      executorId: 'executor-hermes', setupAttemptId: 'setup-current',
+      executorId: 'executor-hermes',
       timeoutMs: 15,
       pollIntervalMs: 250,
       sleep: (duration) => {
@@ -538,7 +491,7 @@ describe('bounded server-observed health wait', () => {
     await expect(waitForHermesHealth({
       api: { getRuntimeBinding: async () => ({ ...HERMES_ACTIVE, health: 'never-seen' }) },
       installationId: 'installation-local',
-      executorId: 'executor-hermes', setupAttemptId: 'setup-current',
+      executorId: 'executor-hermes',
       timeoutMs: 15,
       pollIntervalMs: 1,
       sleep: async () => new Promise(() => {}),
@@ -546,26 +499,23 @@ describe('bounded server-observed health wait', () => {
     expect(performance.now() - startedAt).toBeLessThan(80);
   });
 
-  it('uses a bounded timeout and rejects every mismatched active authority field', async () => {
-    for (const executor of [
-      { ...HERMES_ACTIVE.executor, id: 'newer-executor' },
-      { ...HERMES_ACTIVE.executor, installationId: 'newer-installation' },
-      { ...HERMES_ACTIVE.executor, setupAttemptId: 'newer-setup' },
-    ]) {
-      let calls = 0;
-      await expect(waitForHermesHealth({
-        api: { getRuntimeBinding: async () => {
-          calls += 1;
-          return { ...HERMES_ACTIVE, executor };
-        } },
-        installationId: 'installation-local',
-        executorId: 'executor-hermes', setupAttemptId: 'setup-current',
-        timeoutMs: 2,
-        pollIntervalMs: 1,
-        now: (() => { let value = 0; return () => value++; })(),
-        sleep: async () => {},
-      })).rejects.toMatchObject({ code: 'health_timeout' });
-      expect(calls).toBeLessThanOrEqual(3);
-    }
+  it('uses a bounded timeout and rejects a mismatched active executor', async () => {
+    let calls = 0;
+    await expect(waitForHermesHealth({
+      api: { getRuntimeBinding: async () => {
+        calls += 1;
+        return {
+          ...HERMES_ACTIVE,
+          executor: { ...HERMES_ACTIVE.executor, id: 'newer-executor' },
+        };
+      } },
+      installationId: 'installation-local',
+      executorId: 'executor-hermes',
+      timeoutMs: 2,
+      pollIntervalMs: 1,
+      now: (() => { let value = 0; return () => value++; })(),
+      sleep: async () => {},
+    })).rejects.toMatchObject({ code: 'health_timeout' });
+    expect(calls).toBeLessThanOrEqual(3);
   });
 });

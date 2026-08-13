@@ -16,8 +16,6 @@ export interface ParsedCommand {
   apiUrl?: string;
   /** Override the app URL (frontend, serves /cli-auth). */
   appUrl?: string;
-  /** Manually provided bearer token for login. */
-  token?: string;
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
@@ -98,10 +96,9 @@ export function parseArgs(args: string[]): ParsedCommand {
   let commandIndex = -1;
   for (let j = 0; j < args.length; j++) {
     const a = args[j];
-    if (a === "--api-url" || a === "--app-url" || a === "--token" || a === "-t") {
+    if (a === "--api-url" || a === "--app-url") {
       if (a === "--api-url") result.apiUrl = args[j + 1];
-      else if (a === "--app-url") result.appUrl = args[j + 1];
-      else result.token = args[j + 1];
+      else result.appUrl = args[j + 1];
       j++; // skip value
     } else if (a === "--help" || a === "-h") {
       result.command = "help";
@@ -148,9 +145,6 @@ export function parseArgs(args: string[]): ParsedCommand {
       i += 2;
     } else if (arg === "--app-url") {
       result.appUrl = args[i + 1];
-      i += 2;
-    } else if (arg === "--token" || arg === "-t") {
-      result.token = args[i + 1];
       i += 2;
     } else if (arg === "--archived") {
       result.archived = true;

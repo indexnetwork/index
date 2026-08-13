@@ -47,9 +47,8 @@ test('native logout revocation is gated behind the serialized runtime safety bar
   expect(native).toContain('func logoutEvidence(ownerId: String)');
   expect(native).toContain('evidence.stage == "server-complete"');
   expect(native).toContain('try verifyLogoutPostconditions');
-  expect(native).toContain('present.intersection(legacy).isEmpty');
   expect(shell.indexOf('hermesRuntime.logoutEvidence')).toBeLessThan(shell.indexOf('revokeAndDelete(record: record'));
-  expect(shell).toContain('/index-app-owner-authorizations/revoke');
+  expect(shell).toContain('/auth/cli-credential/revoke');
   expect(shell.indexOf('verifyCredentialDenied')).toBeLessThan(shell.indexOf('store.deleteAndVerify()'));
 });
 

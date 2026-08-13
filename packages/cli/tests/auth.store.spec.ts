@@ -25,8 +25,10 @@ describe("CredentialStore", () => {
 
   it("saves and loads credentials", async () => {
     const credentials = {
-      token: "test-jwt-token-123",
+      token: "test-api-key-123",
       apiUrl: "http://localhost:3001",
+      authKind: "api_key" as const,
+      keyId: "key-1",
     };
     await store.save(credentials);
 
@@ -35,16 +37,24 @@ describe("CredentialStore", () => {
   });
 
   it("overwrites existing credentials on save", async () => {
-    await store.save({ token: "old-token", apiUrl: "http://localhost:3001" });
-    await store.save({ token: "new-token", apiUrl: "http://localhost:3002" });
+    await store.save({ token: "old-token", apiUrl: "http://localhost:3001", authKind: "api_key", keyId: "key-1" });
+    await store.save({ token: "new-token", apiUrl: "http://localhost:3002", authKind: "api_key", keyId: "key-2" });
 
     const loaded = await store.load();
     expect(loaded?.token).toBe("new-token");
     expect(loaded?.apiUrl).toBe("http://localhost:3002");
   });
 
+  it("treats legacy files without an API-key row ID as signed out", async () => {
+    const legacyStore = store as unknown as { save(credentials: object): Promise<void> };
+    await legacyStore.save({ token: "legacy-session", apiUrl: "http://localhost:3001" });
+
+    const loaded = await store.load();
+    expect(loaded).toBeNull();
+  });
+
   it("clears credentials", async () => {
-    await store.save({ token: "test-token", apiUrl: "http://localhost:3001" });
+    await store.save({ token: "test-token", apiUrl: "http://localhost:3001", authKind: "api_key", keyId: "key-1" });
     await store.clear();
 
     const loaded = await store.load();
@@ -66,7 +76,7 @@ describe("CredentialStore", () => {
     const nestedDir = join(tempDir, "nested", ".index");
     const nestedStore = new CredentialStore(nestedDir);
 
-    await nestedStore.save({ token: "test", apiUrl: "http://localhost:3001" });
+    await nestedStore.save({ token: "test", apiUrl: "http://localhost:3001", authKind: "api_key", keyId: "key-1" });
     const loaded = await nestedStore.load();
     expect(loaded?.token).toBe("test");
   });

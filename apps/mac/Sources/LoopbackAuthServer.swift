@@ -1,24 +1,18 @@
 import Foundation
 import Network
 
-/// Single-use loopback callback. It admits only request_id/code/state; no
-/// credential field is parsed, retained, reflected, or returned by the browser.
+/// Single-use loopback callback for the /cli-auth v2 handshake. It admits
+/// exactly api_key/key_id/state and requires the one-time state to match.
 final class LoopbackAuthServer {
     private let expectedState: String
-    private var expectedRequestId: String?
-    private let onResult: (Result<(requestId: String, code: String, state: String), Error>) -> Void
+    private let onResult: (Result<(apiKey: String, keyId: String), Error>) -> Void
     private var listener: NWListener?
     private var timeout: DispatchWorkItem?
     private var finished = false
 
-    init(state: String, onResult: @escaping (Result<(requestId: String, code: String, state: String), Error>) -> Void) {
+    init(state: String, onResult: @escaping (Result<(apiKey: String, keyId: String), Error>) -> Void) {
         self.expectedState = state
         self.onResult = onResult
-    }
-
-    func bind(requestId: String) {
-        guard !finished, UUID(uuidString: requestId) != nil else { return }
-        expectedRequestId = requestId.lowercased()
     }
 
     /// Start listening and return the assigned loopback port.
@@ -63,7 +57,7 @@ final class LoopbackAuthServer {
         listener = nil
     }
 
-    private func finish(_ result: Result<(requestId: String, code: String, state: String), Error>) {
+    private func finish(_ result: Result<(apiKey: String, keyId: String), Error>) {
         if finished { return }
         finished = true
         stop()
@@ -91,29 +85,29 @@ final class LoopbackAuthServer {
               firstLine.hasPrefix("GET "),
               let path = firstLine.split(separator: " ").dropFirst().first,
               let comps = URLComponents(string: "http://127.0.0.1\(path)"),
-              comps.path == "/callback", comps.fragment == nil,
-              let expectedRequestId else {
+              comps.path == "/callback", comps.fragment == nil else {
             respond(conn, status: "404 Not Found", title: "Not found", message: "Unexpected request.")
             return
         }
         let items = comps.queryItems ?? []
         let names = items.map(\.name)
-        guard items.count == 3, Set(names) == ["request_id", "code", "state"],
+        guard items.count == 3, Set(names) == ["api_key", "key_id", "state"],
               names.allSatisfy({ name in names.filter { $0 == name }.count == 1 }) else {
             respond(conn, status: "400 Bad Request", title: "Authorization failed", message: "Invalid callback.")
             finish(.failure(AuthError.invalidCallback)); return
         }
         func q(_ name: String) -> String? { items.first { $0.name == name }?.value }
         guard q("state") == expectedState,
-              q("request_id")?.lowercased() == expectedRequestId,
-              let code = q("code"), !code.isEmpty, code.count <= 256 else {
+              let apiKey = q("api_key"), !apiKey.isEmpty, apiKey.count <= 256,
+              let keyId = q("key_id"), !keyId.isEmpty, keyId.count <= 256,
+              keyId.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else {
             respond(conn, status: "400 Bad Request", title: "Authorization failed",
                     message: "Invalid login state. Return to Index and try again.")
             finish(.failure(AuthError.invalidCallback)); return
         }
         respond(conn, status: "200 OK", title: "Authentication complete",
                 message: "You may now close this window", ok: true)
-        finish(.success((requestId: expectedRequestId, code: code, state: expectedState)))
+        finish(.success((apiKey: apiKey, keyId: keyId)))
     }
 
     /// The web frontend's index-wordmark.svg, inlined so the page renders the

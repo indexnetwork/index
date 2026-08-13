@@ -290,6 +290,10 @@ export function createIndexApiClient(options = {}) {
       '/agent-runtime/rollback',
       { ...options, method: 'POST', body: { setupAttemptId } },
     ),
+    disconnectHermesRuntime: (installationId, options = {}) => request(
+      `/agent-runtime/hermes/${encodeURIComponent(installationId)}`,
+      { ...options, method: 'DELETE' },
+    ),
     auth: {
       me: (options = {}) => request('/auth/me', options),
       updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),

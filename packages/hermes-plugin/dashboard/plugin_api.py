@@ -2,7 +2,7 @@
 
 Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
-question-answer writes stay scoped to the connector-authenticated principal.
+question-answer writes stay scoped to the API-key-authenticated principal.
 
 The dashboard is intent-centric: each intent carries its own pending and
 answered questions (server-scoped per intent, the Mac app's queries) and its
@@ -23,7 +23,7 @@ import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
 _PLUGIN_ROOT = _DASHBOARD_DIR.parent
@@ -432,7 +432,7 @@ def _avatar_filename(content_type: str) -> str:
 
 
 def _api_multipart(path: str, field: str, filename: str, content: bytes, content_type: str) -> dict[str, Any]:
-    """Upload through the connector's bounded start/chunk/finish protocol."""
+    """Upload through the transport's bounded start/chunk/finish protocol."""
     try:
         return tools.get_transport().upload(path, field, filename, content, content_type)
     except tools.TransportError as exc:
@@ -1128,7 +1128,7 @@ def _build_dashboard(
 
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
-    """Report connector health without reading or receiving a credential."""
+    """Report transport health from the configured API key."""
     try:
         status = tools.get_transport().status()
     except tools.TransportError as exc:
@@ -1153,42 +1153,72 @@ def auth_status() -> dict[str, Any]:
 def _login_app_base_url() -> str:
     """Web origin that serves `/cli-auth`, paired with the active API environment.
 
-    Delegates to `tools._app_base_url` so login, invites, and opportunity
-    `appUrl`s all share one pairing rule (`INDEX_APP_BASE_URL`, else derive
-    from `INDEX_API_URL` / `~/.hermes/.env`, else production).
+    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
+    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
+    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
+    pointed at dev/staging signs in against the matching web app instead of prod.
+    Without this pairing a dev-configured plugin would mint a prod key that then
+    401s against the dev API.
     """
-    return tools._app_base_url()
+    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
+        return tools._app_base_url()
+    api_url = os.environ.get("INDEX_API_URL", "").strip()
+    if not api_url:
+        return tools.INDEX_APP_BASE_URL
+    try:
+        parts = urlsplit(api_url)
+    except ValueError:
+        return tools.INDEX_APP_BASE_URL
+    if parts.scheme in ("http", "https") and parts.netloc:
+        host = parts.netloc
+        if host.startswith("protocol."):
+            host = host[len("protocol."):]
+        return f"{parts.scheme}://{host}"
+    return tools.INDEX_APP_BASE_URL
+
 
 @full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Migrate plaintext first, then let the connector open browser consent."""
+    """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
+
+    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
+    a headless/remote agent host where opening a browser is not possible.
+    """
     try:
-        result = auth_login.start_login(tools.get_transport())
-    except tools.TransportError as exc:
-        return exc.as_payload()
+        auth_url = auth_login.start_login(_login_app_base_url())
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Could not start login: {exc}"}
-    return {"success": True, "started": result.get("status") == "pending", **result}
+    opener = tools._url_opener_command(auth_url)
+    open_error = tools._open_url(opener) if opener else "No URL opener is available on this host."
+    return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
 
 
 @full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the connector-owned browser authorization attempt."""
-    try:
-        result = auth_login.poll_status(tools.get_transport())
-    except tools.TransportError as exc:
-        return exc.as_payload()
-    return {"success": result.get("status") != "failed", **result}
+    """Poll the pending login; on success the key is already persisted server-side."""
+    result = auth_login.poll_status()
+    if result.get("status") == "success":
+        # The next transport build must read the freshly persisted key.
+        tools.reset_transport()
+    payload: dict[str, Any] = {"success": result.get("status") != "failed", "status": result.get("status")}
+    if result.get("error"):
+        payload["error"] = result.get("error")
+    return payload
 
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Revoke through connector recovery and delete only after confirmation."""
-    try:
-        result = auth_login.disconnect(tools.get_transport())
-    except tools.TransportError as exc:
-        return exc.as_payload()
-    return {"success": result.get("status") == "disconnected", "needsLogin": True, **result}
+    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
+    if api_key and key_id:
+        try:
+            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
+        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
+            pass
+    auth_login.clear_api_key()
+    tools.reset_transport()
+    return {"success": True, "needsLogin": True}
 
 
 @full_router.get("/bootstrap")
@@ -2058,7 +2088,7 @@ async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
 
 
 async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
-    """Relay connector-owned SSE frames to a dashboard WebSocket."""
+    """Relay transport-owned SSE frames to a dashboard WebSocket."""
     await websocket.accept()
     iterator = tools.get_transport().stream_sse(path)
     relay_task: asyncio.Task[None] | None = None
@@ -2246,7 +2276,7 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
 
 
 def _conversation_stream():
-    """Relay connector-owned, bounded SSE polling to the dashboard tab."""
+    """Relay transport-owned, bounded SSE polling to the dashboard tab."""
     try:
         yield from tools.get_transport().stream_sse("/conversations/stream")
     except Exception as exc:  # noqa: BLE001 - surface a sanitized stream frame.
@@ -2273,7 +2303,7 @@ async def conversations_socket(websocket: WebSocket) -> None:
 
 
 def _notification_stream():
-    """Relay connector-owned notification SSE to Hermes clients."""
+    """Relay transport-owned notification SSE to Hermes clients."""
     try:
         yield from tools.get_transport().stream_sse("/notifications/stream")
     except Exception as exc:  # noqa: BLE001

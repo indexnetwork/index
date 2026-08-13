@@ -83,18 +83,6 @@ describe("parseArgs", () => {
     expect(result.appUrl).toBe("http://app.example.com");
   });
 
-  it("parses --token flag", () => {
-    const result = parseArgs(["login", "--token", "my-token"]);
-    expect(result.command).toBe("login");
-    expect(result.token).toBe("my-token");
-  });
-
-  it("parses -t shorthand for --token", () => {
-    const result = parseArgs(["login", "-t", "my-token"]);
-    expect(result.command).toBe("login");
-    expect(result.token).toBe("my-token");
-  });
-
   // ── Contact commands ───────────────────────────────────────────────
 
   describe("contact", () => {

@@ -1,8 +1,9 @@
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
-import { HERMES_AGENT_AUDIENCE, type HermesActivationState } from '../lib/agent/hermes-authorization';
+import type { HermesActivationState } from '../lib/agent/hermes-credential';
 import type { HermesCapability } from '../lib/agent/hermes-capabilities';
+import { HERMES_NEGOTIATOR_AUDIENCE } from '../lib/agent/hermes-credential';
 import * as schema from '../schemas/database.schema';
 
 type OwnerInput = { ownerId: string; installationId: string };
@@ -16,8 +17,8 @@ type HermesConnectionRecord = {
   expiresAt: Date;
 };
 
-function capabilities(value: string[]): readonly HermesCapability[] {
-  return value as HermesCapability[];
+function capabilities(value: string[] | null): readonly HermesCapability[] {
+  return (value ?? []) as HermesCapability[];
 }
 
 /** Owner-locked persistence for browser-visible standalone Hermes controls. */
@@ -26,39 +27,46 @@ export class ConnectedAgentsDatabaseAdapter {
     return db.transaction(async (tx) => {
       await this.acquireOwnerLock(tx, ownerId);
       const rows = await tx.select({
-        installationId: schema.hermesAgentCredentials.installationId,
-        agentId: schema.hermesAgentCredentials.agentId,
-        actions: schema.hermesAgentCredentials.actions,
-        activationState: schema.hermesAgentCredentials.activationState,
-        expiresAt: schema.hermesAgentCredentials.expiresAt,
-        issuedAt: schema.hermesAgentCredentials.issuedAt,
+        installationId: schema.agents.installationId,
+        agentId: schema.agents.id,
         selected: schema.agents.handleNegotiations,
         lastHeartbeatAt: schema.agents.lastNegotiationPickupAt,
-      }).from(schema.hermesAgentCredentials)
-        .innerJoin(schema.agents, and(
-          eq(schema.agents.id, schema.hermesAgentCredentials.agentId),
+        actions: schema.agentPermissions.actions,
+        keyEnabled: schema.apikeys.enabled,
+        keyExpiresAt: schema.apikeys.expiresAt,
+        updatedAt: schema.agents.updatedAt,
+      }).from(schema.agents)
+        .leftJoin(schema.agentPermissions, and(
+          eq(schema.agentPermissions.agentId, schema.agents.id),
+          eq(schema.agentPermissions.userId, ownerId),
+          eq(schema.agentPermissions.scope, 'global'),
+        ))
+        .leftJoin(schema.apikeys, and(
+          sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${schema.agents.id}`,
+          sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
+        ))
+        .where(and(
           eq(schema.agents.ownerId, ownerId),
           eq(schema.agents.type, 'external'),
           eq(schema.agents.runtimeKind, 'hermes'),
           isNull(schema.agents.deletedAt),
         ))
-        .where(and(
-          eq(schema.hermesAgentCredentials.ownerId, ownerId),
-          eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
-        ))
-        .orderBy(desc(schema.hermesAgentCredentials.issuedAt), desc(schema.hermesAgentCredentials.id));
+        .orderBy(desc(schema.agents.updatedAt), desc(schema.agents.id));
 
       const latest = new Map<string, HermesConnectionRecord>();
       for (const row of rows) {
-        if (latest.has(row.installationId)) continue;
+        if (!row.installationId || latest.has(row.installationId)) continue;
+        const live = Boolean(row.keyEnabled)
+          && row.keyExpiresAt !== null
+          && row.keyExpiresAt.getTime() > Date.now();
         latest.set(row.installationId, {
           installationId: row.installationId,
           agentId: row.agentId,
           actions: capabilities(row.actions),
-          activationState: row.activationState as HermesActivationState,
+          activationState: live ? 'active' : 'revoked',
           selected: row.selected,
           lastHeartbeatAt: row.lastHeartbeatAt,
-          expiresAt: row.expiresAt,
+          expiresAt: row.keyExpiresAt ?? new Date(0),
         });
       }
       return [...latest.values()];
@@ -84,7 +92,7 @@ export class ConnectedAgentsDatabaseAdapter {
     });
   }
 
-  /** Select Index, revoke every installation credential, and remove target authority. */
+  /** Select Index, delete every installation credential, and remove target authority. */
   async revokeHermesConnection(input: OwnerInput): Promise<'revoked' | 'absent' | 'owner_mismatch'> {
     return db.transaction(async (tx) => {
       await this.acquireOwnerLock(tx, input.ownerId);
@@ -105,15 +113,6 @@ export class ConnectedAgentsDatabaseAdapter {
         ${schema.apikeys.metadata} IS NOT NULL
         AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}
       `);
-      await tx.update(schema.hermesAgentCredentials).set({
-        activationState: 'revoked',
-        revokedAt,
-      }).where(and(
-        eq(schema.hermesAgentCredentials.ownerId, input.ownerId),
-        eq(schema.hermesAgentCredentials.installationId, input.installationId),
-        eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
-        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
-      ));
       await tx.update(schema.agents).set({
         status: 'inactive',
         handleNegotiations: false,

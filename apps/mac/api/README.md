@@ -14,7 +14,7 @@ It is now **wired into the mac app**: `scripts/assemble.py` inlines `client.mjs`
 
 ## Authentication
 
-The native macOS client uses a dedicated 30-day `idxo_` owner credential created through canonical browser PKCE authorization. The Swift shell stores it only in the owner Keychain access group and supplies it directly to `NativeAPIRequestBridge`; JavaScript receives only credential-free structured operations and nonsecret authentication status. Credentials, authorization codes, PKCE verifiers, and API-key headers are never exposed to the WKWebView, browser callback, local storage, or logs.
+The native macOS client uses an ordinary 90-day Better Auth API key minted through the web `/cli-auth` handshake. The Swift shell stores it only in the Keychain and supplies it directly to `NativeAPIRequestBridge`; JavaScript receives only credential-free structured operations and nonsecret authentication status. Credentials and API-key headers are never exposed to the WKWebView, browser callback, local storage, or logs.
 
 Native REST, MCP, upload, and bounded SSE requests are method/path allowlisted before the Swift bridge attaches the credential. Session-only routes remain unavailable through this principal. Logout quarantines in-flight work, revokes authority, verifies denial, and deletes Keychain state only after confirmed server-side revocation.
 

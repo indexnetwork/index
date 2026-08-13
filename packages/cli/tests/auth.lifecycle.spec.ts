@@ -29,10 +29,9 @@ describe("storeReplacementCredentials", () => {
       expect(targetKey).toBe("old-secret");
       events.push("revoke");
     });
-    const clientFactory = mock((apiUrl: string, token: string, authKind: "session" | "api_key") => {
+    const clientFactory = mock((apiUrl: string, token: string) => {
       expect(apiUrl).toBe(replacementApiKey.apiUrl);
       expect(token).toBe(replacementApiKey.token);
-      expect(authKind).toBe("api_key");
       return { revokeApiKey };
     });
 
@@ -59,41 +58,17 @@ describe("storeReplacementCredentials", () => {
     expect(clientFactory).not.toHaveBeenCalled();
   });
 
-  it("does not revoke a previous session credential", async () => {
+  it("does not revoke anything on a fresh first login", async () => {
     const save = mock(async () => {});
     const clientFactory = mock(() => ({ revokeApiKey: mock(async () => {}) }));
 
     await expect(storeReplacementCredentials(
       { save },
-      { token: "old-session", apiUrl: "https://old-api.index.network", authKind: "session" },
+      null,
       replacementApiKey,
       { clientFactory },
     )).resolves.toEqual({});
     expect(clientFactory).not.toHaveBeenCalled();
-  });
-
-  it("uses a newly stored session credential when that is the replacement transport", async () => {
-    const save = mock(async () => {});
-    const revokeApiKey = mock(async () => {});
-    const replacementSession: Credentials = {
-      token: "new-session",
-      apiUrl: "https://new-api.index.network",
-      authKind: "session",
-    };
-    const clientFactory = mock((apiUrl: string, token: string, authKind: "session" | "api_key") => {
-      expect(apiUrl).toBe(replacementSession.apiUrl);
-      expect(token).toBe(replacementSession.token);
-      expect(authKind).toBe("session");
-      return { revokeApiKey };
-    });
-
-    await expect(storeReplacementCredentials(
-      { save },
-      previousApiKey,
-      replacementSession,
-      { clientFactory },
-    )).resolves.toEqual({});
-    expect(revokeApiKey).toHaveBeenCalledWith("old-key-id", "old-secret");
   });
 
   it("keeps the successful replacement and warns when prior-key revocation fails", async () => {
@@ -114,19 +89,4 @@ describe("storeReplacementCredentials", () => {
     expect(result.warning).toContain("removed in Index web settings");
   });
 
-  it("never guesses an ID-less prior key and returns a truthful warning", async () => {
-    const save = mock(async () => {});
-    const clientFactory = mock(() => ({ revokeApiKey: mock(async () => {}) }));
-
-    const result = await storeReplacementCredentials(
-      { save },
-      { ...previousApiKey, keyId: undefined },
-      replacementApiKey,
-      { clientFactory },
-    );
-
-    expect(clientFactory).not.toHaveBeenCalled();
-    expect(result.warning).toContain("no exact revocation ID");
-    expect(result.warning).toContain("removed in Index web settings");
-  });
 });

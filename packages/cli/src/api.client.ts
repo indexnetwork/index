@@ -50,27 +50,18 @@ function isEarlyAccessNetworkCreationError(error: unknown): error is ApiError {
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
-  private readonly authKind: "session" | "api_key";
 
   /**
    * @param baseUrl - Protocol server base URL (e.g. `http://localhost:3001`).
-   * @param token - Session JWT or API key.
-   * @param authKind - Credential transport; defaults to legacy session JWT.
+   * @param token - CLI API key.
    */
-  constructor(
-    baseUrl: string,
-    token: string,
-    authKind: "session" | "api_key" = "session",
-  ) {
+  constructor(baseUrl: string, token: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
-    this.authKind = authKind;
   }
 
   private authHeaders(): Record<string, string> {
-    return this.authKind === "api_key"
-      ? { "x-api-key": this.token }
-      : { Authorization: `Bearer ${this.token}` };
+    return { "x-api-key": this.token };
   }
 
   /**
@@ -83,23 +74,6 @@ export class ApiClient {
     const res = await this.get("/api/chat/sessions");
     const body = (await res.json()) as { sessions: ChatSession[] };
     return body.sessions;
-  }
-
-  /** Mint a time-bounded API key for non-web CLI compatibility. */
-  async mintCliApiKey(protocolVersion: 1 | 2 = 2): Promise<{ key: string; keyId: string }> {
-    const res = await this.post("/api/auth/cli-credential", { protocolVersion });
-    const body = (await res.json()) as { key?: unknown; id?: unknown; expiresAt?: unknown };
-    if (
-      typeof body.key !== "string"
-      || !body.key
-      || typeof body.id !== "string"
-      || !body.id
-      || typeof body.expiresAt !== "string"
-      || !body.expiresAt
-    ) {
-      throw new Error("CLI credential response did not include a key, key ID, and expiry");
-    }
-    return { key: body.key, keyId: body.id };
   }
 
   /**

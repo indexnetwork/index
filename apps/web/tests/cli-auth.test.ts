@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, buildLegacyCliCallbackUrl, parseCliAuthRequest, validateCliAuthState, validateCliCallbackUrl } from '@/lib/cli-auth';
+import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, parseCliAuthRequest, validateCliAuthState, validateCliCallbackUrl } from '@/lib/cli-auth';
 
 describe('validateCliCallbackUrl', () => {
   test('accepts only a port-bound loopback callback path', () => {
@@ -35,28 +35,23 @@ describe('CLI one-time state', () => {
     expect(validateCliAuthState('A'.repeat(129))).toBeNull();
   });
 
-  test('parses explicit v1 and v2 contracts and tags minted keys', () => {
+  test('parses the exact v2 contract and tags minted keys', () => {
     const callback = encodeURIComponent('http://127.0.0.1:43123/callback');
     const state = 'state_token-that-is-url-safe-1234567890';
-    const v1 = parseCliAuthRequest(new URLSearchParams(`callback=${callback}`));
     const v2 = parseCliAuthRequest(new URLSearchParams(
       `callback=${callback}&version=2&state=${state}`,
     ));
 
-    expect(v1).toEqual({
-      protocolVersion: 1,
-      callback: 'http://127.0.0.1:43123/callback',
-    });
     expect(v2).toEqual({
       protocolVersion: 2,
       callback: 'http://127.0.0.1:43123/callback',
       state,
     });
-    expect(buildCliCredentialCreateBody(v1!)).toEqual({ protocolVersion: 1 });
     expect(buildCliCredentialCreateBody(v2!)).toEqual({ protocolVersion: 2 });
   });
 
   test.each([
+    `callback=${encodeURIComponent('http://127.0.0.1:43123/callback')}`,
     `callback=${encodeURIComponent('http://127.0.0.1:43123/callback')}&state=${'A'.repeat(43)}`,
     `callback=${encodeURIComponent('http://127.0.0.1:43123/callback')}&version=2`,
     `callback=${encodeURIComponent('http://127.0.0.1:43123/callback')}&version=2&state=short`,
@@ -69,35 +64,18 @@ describe('CLI one-time state', () => {
     expect(parseCliAuthRequest(new URLSearchParams(query))).toBeNull();
   });
 
-  test('preserves exact v1 and v2 contracts through login return', () => {
-    const v1Return = new URL(buildCliAuthReturnPath('/cli-auth', {
-      protocolVersion: 1,
-      callback: 'http://127.0.0.1:43123/callback',
-    }), 'https://index.network');
+  test('preserves the exact v2 contract through login return', () => {
     const v2Return = new URL(buildCliAuthReturnPath('/cli-auth', {
       protocolVersion: 2,
       callback: 'http://127.0.0.1:43123/callback',
       state: 'state_token-that-is-url-safe-1234567890',
     }), 'https://index.network');
 
-    expect(v1Return.origin).toBe('https://index.network');
-    expect(v1Return.pathname).toBe('/cli-auth');
-    expect(v1Return.searchParams.get('callback')).toBe('http://127.0.0.1:43123/callback');
-    expect(v1Return.searchParams.has('version')).toBe(false);
-    expect(v1Return.searchParams.has('state')).toBe(false);
+    expect(v2Return.origin).toBe('https://index.network');
+    expect(v2Return.pathname).toBe('/cli-auth');
+    expect(v2Return.searchParams.get('callback')).toBe('http://127.0.0.1:43123/callback');
     expect(v2Return.searchParams.get('version')).toBe('2');
     expect(v2Return.searchParams.get('state')).toBe('state_token-that-is-url-safe-1234567890');
-  });
-
-  test('returns a v1 API-key secret under the legacy session_token field', () => {
-    const callback = new URL(buildLegacyCliCallbackUrl(
-      'http://127.0.0.1:43123/callback',
-      'legacy-secret',
-    ));
-
-    expect(callback.searchParams.get('session_token')).toBe('legacy-secret');
-    expect(callback.searchParams.has('api_key')).toBe(false);
-    expect(callback.searchParams.has('state')).toBe(false);
   });
 
   test('returns the exact key ID, secret, and state only to the validated loopback callback', () => {

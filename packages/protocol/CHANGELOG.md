@@ -54,6 +54,9 @@ pin a supported release, use `latest`.
 
 ### Changed
 
+- The eval ops sign-in callback accepts only the `api_key` field (protocol
+  12.1.0); the legacy `session_token` fallback name was removed together with
+  the web cli-auth v1 contract.
 - Keep canonical `get_enrichment_run` and `cancel_enrichment_run` in the fast
   runtime timeout class after retiring their profile-run aliases.
 

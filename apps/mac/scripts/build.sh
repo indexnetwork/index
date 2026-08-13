@@ -5,25 +5,6 @@ set -euo pipefail
 MAC_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$MAC_ROOT"
 
-if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "ConnectorLaunchAttestationFixture" ] && [ "$#" -eq 2 ]; then
-    OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/connector-launch-attestation-fixture"
-    swiftc -parse-as-library -framework Foundation -framework Security \
-        Sources/ConnectorLaunchAttestation.swift \
-        Tests/ConnectorLaunchAttestationFixture.swift \
-        -o "$OUT"
-    "$OUT"
-    exit 0
-fi
-if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "OwnerCredentialMigrationFixture" ] && [ "$#" -eq 2 ]; then
-    OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/owner-credential-migration-fixture"
-    swiftc -parse-as-library -framework Foundation -framework Security \
-        Security/Sources/IndexKeychainStore.swift \
-        Sources/OwnerCredentialStore.swift \
-        Tests/OwnerCredentialMigrationFixture.swift \
-        -o "$OUT"
-    "$OUT"
-    exit 0
-fi
 if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIStreamDelegateFixture" ] && [ "$#" -eq 2 ]; then
     OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/native-api-stream-delegate-fixture"
     swiftc -parse-as-library -framework Foundation -framework Security -framework WebKit \
@@ -58,7 +39,7 @@ if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIQuarantineFixture" ] && 
     exit 0
 fi
 if [ "$#" -ne 0 ]; then
-    echo "usage: $0 [--fixture ConnectorLaunchAttestationFixture|--fixture OwnerCredentialMigrationFixture|--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
+    echo "usage: $0 [--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
     exit 64
 fi
 
@@ -96,14 +77,6 @@ echo "==> Compiling Swift (host arch)"
 SWIFT_DEFINES=()
 if [ "${INDEX_DEVELOPMENT_BUILD:-0}" = "1" ]; then
     SWIFT_DEFINES+=("-DINDEX_DEVELOPMENT_BUILD")
-else
-    # The connector trust anchor is compiled into and covered by the app's
-    # signature. Production builds fail closed if the immutable source pin is
-    # missing or changed; release CMS metadata is evidence, never authority.
-    grep -Fq 'private static let expectedTeamID = "LMQ3XNXLAD"' Sources/HermesRuntime.swift \
-        && grep -Fq 'private static let expectedBundleID = "network.index.connector"' Sources/HermesRuntime.swift \
-        && grep -Fq 'anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\" and identifier \"\(expectedBundleID)\"' Sources/HermesRuntime.swift \
-        || { echo 'production connector trust pins missing or mismatched' >&2; exit 1; }
 fi
 swiftc -Onone ${SWIFT_DEFINES[@]+"${SWIFT_DEFINES[@]}"} \
     -target "$(uname -m)-apple-macosx13.0" \

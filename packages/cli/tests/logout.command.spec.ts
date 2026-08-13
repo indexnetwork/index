@@ -91,37 +91,17 @@ describe("handleLogout", () => {
     expect(clear).toHaveBeenCalledTimes(1);
   });
 
-  it("never guesses another key for legacy ID-less API credentials", async () => {
-    const credentials = {
-      token: "legacy-api-key",
-      apiUrl: "https://api.index.network",
-      authKind: "api_key" as const,
+  it("treats legacy credential files without a key ID as signed out", async () => {
+    const failingStore = {
+      load: mock(async () => null),
+      clear: mock(async () => {}),
     };
-    await store.save(credentials);
     const clientFactory = mock(() => ({ revokeApiKey: mock(async () => {}) }));
 
-    const result = await handleLogout(store, { clientFactory });
-
-    expect(result).toEqual({
-      success: false,
-      warning: expect.stringContaining("Remove the old key in Index web settings first"),
-    });
-    expect(clientFactory).not.toHaveBeenCalled();
-    expect(await store.load()).toEqual(credentials);
-  });
-
-  it("clears legacy session credentials locally without an API request", async () => {
-    await store.save({
-      token: "legacy-session",
-      apiUrl: "https://api.index.network",
-    });
-    const clientFactory = mock(() => ({ revokeApiKey: mock(async () => {}) }));
-
-    await expect(handleLogout(store, { clientFactory })).resolves.toEqual({
+    await expect(handleLogout(failingStore, { clientFactory })).resolves.toEqual({
       success: true,
-      message: "Logged out. Session cleared.",
+      message: "Already logged out.",
     });
     expect(clientFactory).not.toHaveBeenCalled();
-    expect(await store.load()).toBeNull();
   });
 });

@@ -48,8 +48,6 @@ export const REQUIRED_TEST_DATABASE_OBJECTS = [
   'public.tasks',
   'public.agents',
   'public.apikey',
-  'public.hermes_authorizations',
-  'public.hermes_agent_credentials',
   'public.negotiator_memories',
   'public.opportunity_outcome_events',
   'public.questions_recovery_recipient_intent_fingerprint_uniq',

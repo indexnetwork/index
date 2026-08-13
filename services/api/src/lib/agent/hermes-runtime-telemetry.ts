@@ -51,20 +51,6 @@ export type HermesTelemetryGauge = typeof HERMES_TELEMETRY_GAUGES[number];
 export type HermesTelemetryObservation = typeof HERMES_TELEMETRY_OBSERVATIONS[number];
 export type HermesTelemetryReason = typeof HERMES_TELEMETRY_REASONS[number];
 
-export const HERMES_CREDENTIAL_NEAR_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
-
-export type HermesCredentialExpiryHealth = {
-  nearExpiry: number;
-  expired: number;
-};
-
-export interface HermesCredentialExpiryHealthStore {
-  countActiveCredentialExpiryHealth(input: {
-    now: Date;
-    nearExpiryCutoff: Date;
-  }): Promise<HermesCredentialExpiryHealth>;
-}
-
 /** The only supported label is a bounded reason enum. */
 export type HermesTelemetryAttributes = Readonly<{
   reason?: HermesTelemetryReason;
@@ -162,35 +148,6 @@ export class HermesRuntimeTelemetry {
 }
 
 export const hermesRuntimeTelemetry = new HermesRuntimeTelemetry();
-
-/** Refresh aggregate active-credential health without letting the telemetry query affect authority. */
-export async function refreshHermesCredentialExpiryGauges(
-  telemetry: HermesRuntimeTelemetry,
-  store: HermesCredentialExpiryHealthStore,
-  now: Date,
-): Promise<void> {
-  try {
-    const health = await store.countActiveCredentialExpiryHealth({
-      now,
-      nearExpiryCutoff: new Date(now.getTime() + HERMES_CREDENTIAL_NEAR_EXPIRY_MS),
-    });
-    telemetry.gauge('credentials_near_expiry', health.nearExpiry);
-    telemetry.gauge('credentials_expired', health.expired);
-  } catch {
-    // A telemetry snapshot must never alter authentication or lifecycle behavior.
-  }
-}
-
-/** Start an aggregate snapshot after an authority decision and consume every failure off-path. */
-export function scheduleHermesCredentialExpiryGaugeRefresh(
-  telemetry: HermesRuntimeTelemetry,
-  store: HermesCredentialExpiryHealthStore,
-  now: Date,
-): void {
-  queueMicrotask(() => {
-    void refreshHermesCredentialExpiryGauges(telemetry, store, now).catch(() => undefined);
-  });
-}
 
 /** Time only the database lock acquisition; telemetry remains synchronous and unlabeled. */
 export async function observeHermesAdvisoryLockWait(

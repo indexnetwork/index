@@ -9,6 +9,11 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- **Breaking (API 0.85.0):** remove the Aug-10 dedicated credential layer. The `hermes-authorization` and `index-app-owner-authorization` controllers, services, adapters, PKCE flows, and the `hermes_agent_credentials`, `hermes_authorizations`, `hermes_emergency_receipts`, `index_app_owner_authorizations`, and `index_app_owner_credentials` tables are deleted via forward migration. `idxh_`/`idxo_` credentials stop authenticating; Hermes and the Mac app use ordinary Better Auth API keys.
+- **Breaking:** remove the CLI v1 Bearer bridge (`isLegacyCliV1Metadata`) and the v1 `protocolVersion` on `/auth/cli-credential`. `AuthGuard` is now JWT (Bearer/query token) or `x-api-key`, nothing else; released v1 CLI binaries must upgrade.
+- Remove the Hermes production-assurance workflow, migration-preflight and emergency-control CLIs, and their isolated database fixtures, which existed solely for the removed credential layer.
+
 ### Changed
 - Retire the deprecated REST/chat profile and profile-run tool aliases with protocol 12.0.0; direct Tool API callers must use canonical user-context and enrichment-run names.
 - Record production evidence for the separately gated `opportunity_discovery_runs` Release 2 cleanup; no destructive migration is included.
