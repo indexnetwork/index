@@ -96,6 +96,11 @@ them, and only after proving `DATABASE_URL` points at a dedicated, disposable da
 then set `TEST_DATABASE_SAFE=1`. The guard is fail-closed by design; never bypass it, and
 never set the marker before the URL has been proven disposable.
 
+Use **local Postgres**, provisioned with `bun run db:setup:local` — it satisfies that
+proof (database `index_test`, nothing but test data) and is roughly 500x faster than a
+remote branch. CI's `test` job only runs hermetic specs that mock the database, so the
+database-backed suite is gated nowhere except your machine.
+
 ## Finishing a branch
 
 The full checklist lives in the Development Reference under **Git Workflow → Finishing a

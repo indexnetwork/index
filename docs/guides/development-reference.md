@@ -1029,6 +1029,31 @@ bun test                                    # Run ALL tests (avoid unless necess
 
 **Test locations**: `services/api/tests/` (integration/E2E), `services/api/src/lib/*/tests/` (unit tests).
 
+### Database-backed tests
+
+Run them against **local Postgres**, not a remote Neon branch. Provision once:
+
+```bash
+bun run db:setup:local            # postgresql@17 + pgvector, database `index_test`, migrations
+bun run db:setup:local --recreate # start over from an empty database
+```
+
+Then set the repo-root `.env.test` to `DATABASE_URL=postgresql://<your-unix-user>@localhost:5432/index_test`
+and run with `TEST_DATABASE_SAFE=1`. The `index_test` name matters: the fail-closed
+guard in `src/lib/drizzle/test-database-readiness.ts` refuses any database whose name
+matches `/^(.*_)?(prod|production)$/`, which is what every Neon branch calls its copy of
+real user data.
+
+Why local: the four questioner adapter suites take **~0.6 s** locally against **~340 s**
+on a remote branch, individual specs were taking 25-90 s, and one stalled for 905 s.
+That latency was also the source of failures indistinguishable from real ones —
+`questioner.recovery.lifecycle.spec.ts` failed intermittently on remote and passes
+consistently on local.
+
+Note that CI's `test` job runs only the hermetic specs that mock Redis, the LLM and the
+database, so the database-backed suite is gated **nowhere** except locally. Running it
+before pushing is the only coverage it gets.
+
 **Standards**: Load env at top before imports. Import from `bun:test` (destructured). Use `describe` grouping. Set timeouts (agent: 30s, graph: 60s, LLM: 120s). Clean up in `afterAll`. Mock externals. Test success and error paths. Never commit without running affected tests.
 
 ## Database Workflow
