@@ -254,8 +254,8 @@ describe("QuestionPoolSnapshot", () => {
 describe("QuestionDetection", () => {
   it("accepts a valid detection object", () => {
     const result = QuestionDetectionSchema.safeParse({
-      mode: "discovery",
-      sourceType: "opportunity",
+      mode: "chat",
+      sourceType: "conversation",
       sourceId: "abc-123",
       timestamp: "2026-05-24T12:00:00.000Z",
     });
@@ -348,7 +348,7 @@ describe("QuestionDetection", () => {
       },
     };
     expect(QuestionDetectionSchema.safeParse(base).success).toBe(true);
-    expect(QuestionDetectionSchema.safeParse({ ...base, mode: "discovery" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, mode: "chat" }).success).toBe(false);
     expect(QuestionDetectionSchema.safeParse({ ...base, sourceType: "opportunity" }).success).toBe(false);
     expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-2" }).success).toBe(false);
     expect(QuestionDetectionSchema.safeParse({ ...base, recovery: undefined }).success).toBe(false);
@@ -536,7 +536,7 @@ describe("QuestionAnswer", () => {
 });
 
 describe("QuestionMode", () => {
-  it.each(["discovery", "intent", "enrichment", "negotiation"])("accepts '%s'", (mode) => {
+  it.each(["intent", "negotiation", "negotiation_inflight", "chat", "pool_discovery"])("accepts '%s'", (mode) => {
     const result = QuestionModeSchema.safeParse(mode);
     expect(result.success).toBe(true);
   });

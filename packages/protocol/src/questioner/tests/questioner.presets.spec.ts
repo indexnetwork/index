@@ -4,22 +4,10 @@ import { QuestionModeSchema, QuestionSchema } from "../../questions/domain/quest
 
 const standaloneModeExpectations = [
   {
-    mode: "discovery" as const,
-    anchors: ["original query", "discovery pattern", "connection pattern", "concrete learned fact"],
-    positiveExample: "For your AI crypto decentralized deep-tech search",
-    negativeExample: "Which area is most critical right now?",
-  },
-  {
     mode: "intent" as const,
     anchors: ["source intent/topic", "intent or summary"],
     positiveExample: "For your decentralized identity protocol-design search",
     negativeExample: "What kind of collaboration are you looking for?",
-  },
-  {
-    mode: "enrichment" as const,
-    anchors: ["profile signal or gap", "current profile", "existing premises", "identified gaps"],
-    positiveExample: "To improve matches from your founder/operator profile",
-    negativeExample: "What kind of role are you looking for?",
   },
   {
     mode: "negotiation" as const,
@@ -38,7 +26,7 @@ const standaloneModeExpectations = [
 // Modes whose prompts must carry the shared referential-closure guardrail.
 // (chat renders inline in the active conversation, so it is exempt from the
 // standalone-prompt contract above but still carries referential closure.)
-const ALL_MODES = ["discovery", "intent", "enrichment", "negotiation", "negotiation_inflight", "chat"] as const;
+const ALL_MODES = ["intent", "negotiation", "negotiation_inflight", "chat"] as const;
 
 describe("standalone prompt contract", () => {
   it.each(standaloneModeExpectations)("mode '$mode' requires self-contained generated prompt text", ({ mode, anchors, positiveExample, negativeExample }) => {
@@ -65,43 +53,6 @@ describe("QUD taxonomy contract", () => {
     expect(prompt).toContain("open_alternative_set");
     expect(prompt).toContain("Strategy and underspecification type are orthogonal");
     expect(prompt).toContain("Use null");
-  });
-});
-
-describe("getPreset", () => {
-  it("returns the discovery preset with systemPrompt and buildPrompt", () => {
-    const preset = getPreset("discovery");
-    expect(preset).toBeDefined();
-    expect(typeof preset.systemPrompt).toBe("string");
-    expect(preset.systemPrompt.length).toBeGreaterThan(0);
-    expect(typeof preset.buildPrompt).toBe("function");
-  });
-
-  it("discovery buildPrompt produces a string containing the query", () => {
-    const preset = getPreset("discovery");
-    const result = preset.buildPrompt({
-      query: "looking for ML engineers",
-      userContext: "Alice is an AI researcher.",
-      negotiationDigests: [],
-      summary: {
-        totalCandidates: 5,
-        opportunitiesFound: 2,
-        noOpportunityCount: 3,
-        timeoutCount: 1,
-        roleDistribution: {},
-      },
-      now: "2026-05-24T12:00:00.000Z",
-    });
-    expect(typeof result).toBe("string");
-    expect(result).toContain("looking for ML engineers");
-    expect(result).toContain("Alice");
-  });
-
-  it("requires discovery prompts to include source context", () => {
-    const preset = getPreset("discovery");
-    expect(preset.systemPrompt).toContain("Standalone prompt rule");
-    expect(preset.systemPrompt).toContain("original query");
-    expect(preset.systemPrompt).toContain("discovery pattern");
   });
 });
 
@@ -162,73 +113,6 @@ describe("recovery intent preset", () => {
     for (const unsafe of ["counterpartyHint", "matchReason", "reasoning", "transcript", "networkId", "opportunityId"]) {
       expect(prompt).not.toContain(unsafe);
     }
-  });
-});
-
-describe("profile preset", () => {
-  it("returns the profile preset with systemPrompt and buildPrompt", () => {
-    const preset = getPreset("enrichment");
-    expect(preset).toBeDefined();
-    expect(typeof preset.systemPrompt).toBe("string");
-    expect(preset.systemPrompt.length).toBeGreaterThan(0);
-    expect(typeof preset.buildPrompt).toBe("function");
-  });
-
-  it("profile buildPrompt produces a string containing the gaps", () => {
-    const preset = getPreset("enrichment");
-    const result = preset.buildPrompt({
-      userContext: "Bob is an engineer.",
-      gaps: ["location", "current work"],
-    });
-    expect(typeof result).toBe("string");
-    expect(result).toContain("location");
-    expect(result).toContain("current work");
-    expect(result).toContain("Bob");
-  });
-
-  it("profile buildPrompt includes existing premises when provided", () => {
-    const preset = getPreset("enrichment");
-    const result = preset.buildPrompt({
-      userContext: "Bob is an engineer.",
-      gaps: ["goals"],
-      existingPremises: ["I live in Berlin", "I am a CTO at Acme Corp"],
-    });
-    expect(result).toContain("## Existing premises");
-    expect(result).toContain("1. I live in Berlin");
-    expect(result).toContain("2. I am a CTO at Acme Corp");
-  });
-
-  it("profile buildPrompt shows (none) when existingPremises is empty", () => {
-    const preset = getPreset("enrichment");
-    const result = preset.buildPrompt({
-      userContext: "Bob is an engineer.",
-      gaps: ["location"],
-      existingPremises: [],
-    });
-    expect(result).toContain("## Existing premises");
-    expect(result).toContain("(none)");
-  });
-
-  it("profile buildPrompt shows (none) when existingPremises is absent", () => {
-    const preset = getPreset("enrichment");
-    const result = preset.buildPrompt({
-      userContext: "Bob is an engineer.",
-      gaps: ["location"],
-    });
-    expect(result).toContain("## Existing premises");
-    expect(result).toContain("(none)");
-  });
-
-  it("profile system prompt mentions premises", () => {
-    const preset = getPreset("enrichment");
-    expect(preset.systemPrompt).toContain("premises");
-  });
-
-  it("requires profile prompts to naturally include profile context", () => {
-    const preset = getPreset("enrichment");
-    expect(preset.systemPrompt).toContain("Standalone prompt rule");
-    expect(preset.systemPrompt).toContain("profile signal or gap");
-    expect(preset.systemPrompt).toContain("To improve matches from your founder/operator profile");
   });
 });
 

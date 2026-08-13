@@ -1,7 +1,7 @@
 /**
  * questions/application/question.input — QuestionerAgent input envelope.
  *
- * Defines per-mode context types (DiscoveryContext, IntentContext, …),
+ * Defines per-mode context types (IntentContext, NegotiationContext, …),
  * the discriminated QuestionerInput union, and the runtime validation guard
  * `isValidQuestionerInputContract`.
  *
@@ -17,19 +17,12 @@
  * IND-547: canonical home — previously questioner/questioner.types.ts.
  * Legacy path is a thin compatibility shim pointing here.
  */
-import type { DiscoveryQuestionInput } from "../../shared/schemas/discovery-question.schema.js";
 import type { ToolScopeType } from "../../shared/agent/tool.scope.js";
 import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "../domain/question.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../../capabilities/negotiation.questions.facade.js";
 import type { NegotiationConsultationReason } from "../../capabilities/negotiation.questions.facade.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
-
-/**
- * Discovery context — wraps the existing DiscoveryQuestionInput wholesale.
- * The discovery preset's buildPrompt delegates to `question.discovery.prompt.ts`.
- */
-export type DiscoveryContext = DiscoveryQuestionInput;
 
 /** Intent context — data needed to generate questions about an intent. */
 export interface IntentContext {
@@ -45,15 +38,6 @@ export interface RecoveryIntentContext extends IntentContext {
   purpose: "recovery";
   /** Privacy-safe aggregate signal; raw negotiation evidence is never provided. */
   rejectedNegotiationCount?: number;
-}
-
-/** Profile context — data needed to generate questions to fill profile gaps. */
-export interface ProfileContext {
-  /** The user's global user_context paragraph (profile-replacing identity text). */
-  userContext?: string;
-  gaps: string[];
-  /** Existing premise texts the user has already stated (e.g. "I live in Berlin"). */
-  existingPremises?: string[];
 }
 
 /** Shared context fields for negotiation-mode questions. */
@@ -150,10 +134,8 @@ export interface PoolDiscoveryContext {
 
 /** Discriminated union: mode selects the context shape. */
 export type QuestionerContext =
-  | DiscoveryContext
   | IntentContext
   | RecoveryIntentContext
-  | ProfileContext
   | NegotiationContext
   | NegotiationInflightContext
   | ChatContext

@@ -149,7 +149,7 @@ export async function createChatTools(
 
   const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, deps.enricher, sessionAwareEnqueue, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database, scraper, deps.enricher, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
@@ -222,7 +222,6 @@ export async function createChatTools(
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
-    ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
     ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
     ...(deps.findPendingQuestions && { findPendingQuestions: deps.findPendingQuestions }),
     ...(deps.answerPendingQuestion && { answerPendingQuestion: deps.answerPendingQuestion }),

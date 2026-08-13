@@ -20,6 +20,37 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 13.0.0 - 2026-08-13
+
+### Removed
+
+- **BREAKING**: removed the `discovery` and `enrichment` question modes from
+  `QuestionModeSchema`. Neither had a reachable producer — the inline
+  `questionGenerator.generate()` call site did not exist anywhere in the
+  repository, and `EnrichmentGraphFactory` accepted a `questionerEnqueue`
+  dependency it never invoked. Production confirms both stopped emitting
+  (newest `discovery` row 2026-07-09, newest `enrichment` row 2026-06-15).
+- **BREAKING**: removed the `QuestionGeneratorReader` port,
+  `question.generator.port.ts`, `question.discovery.prompt.ts`, the
+  `DiscoveryQuestionInput` composite type, and the `DiscoveryContext` /
+  `ProfileContext` questioner contexts.
+- **BREAKING**: removed the `questionGenerator` dependency from
+  `ToolRegistryCompositionDeps` and `OpportunityToolDeps`.
+- Removed the `QUESTIONER_DISCOVERY_ENABLED`, `QUESTIONER_DISCOVERY_INPUT_MODE`,
+  and `QUESTIONER_DISCOVERY_TIMEOUT_MS` env accessors.
+- Dropped the unused `questionerEnqueue` constructor parameter from
+  `EnrichmentGraphFactory` (positional — callers passing it must drop the arg).
+
+### Changed
+
+- `SELF_OWNED_MODES` narrows from `["enrichment", "intent", "discovery"]` to
+  `["intent"]`, which also narrows the reporter persona's
+  `read_pending_questions` mode filter.
+- `QUESTION_MODE_TO_DOMAIN` deliberately **retains** its `enrichment` and
+  `discovery` entries. Rows created before this release remain readable and
+  answerable, and dropping the mapping would fall back to the `chat` domain and
+  change which permission an agent needs to answer a pre-existing row.
+
 ## 11.2.1 - 2026-08-11
 
 ### Added

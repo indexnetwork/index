@@ -34,7 +34,6 @@ import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
-import { QuestionGeneratorService } from '../services/question-generator.service';
 import { NegotiationSummaryService } from '../services/negotiation-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
@@ -75,7 +74,6 @@ type McpToolDeps = ToolDeps & {
 const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
-const questionGeneratorService = new QuestionGeneratorService();
 const questionerAdapter = new QuestionerAdapter(db);
 const negotiationSummaryService = new NegotiationSummaryService();
 const integrationImporter = new IntegrationService(integration, contactService);
@@ -155,7 +153,6 @@ const protocolDeps = {
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
   negotiationSummary: negotiationSummaryService,
-  questionGenerator: questionGeneratorService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
   integrationImporter,
@@ -231,7 +228,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const qEnqueue = protocolDeps.questionerEnqueue;
   const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -728,7 +725,6 @@ function createMcpServerInstance(): McpServer {
     chatSession: protocolDeps.chatSession,
     chatSummary: protocolDeps.chatSummary,
     negotiationSummary: protocolDeps.negotiationSummary,
-    questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
     opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,

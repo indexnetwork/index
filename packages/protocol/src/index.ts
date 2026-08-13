@@ -35,7 +35,7 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 export type { McpAuthResolver } from "./shared/interfaces/auth.interface.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./shared/interfaces/cache.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
-export type { QuestionGeneratorReader, QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./capabilities/questions.facade.js";
+export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./capabilities/questions.facade.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer } from "./capabilities/negotiation.facade.js";
@@ -108,7 +108,7 @@ export type {
   McpApiKeyMetadata,
   McpResolvedIdentity,
 } from "./shared/schemas/mcp-auth.schema.js";
-export type { DiscoverySummary, DiscoveryNegotiation, DiscoveryTurn, DiscoveryOutcome, DiscoveryQuestionInput, NegotiationRole } from "./shared/schemas/discovery-question.schema.js";
+export type { DiscoverySummary, DiscoveryNegotiation, DiscoveryTurn, DiscoveryOutcome, NegotiationRole } from "./shared/schemas/discovery-question.schema.js";
 export type { NetworkAssignmentMetadata } from "./shared/schemas/network-assignment.schema.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
 export { buildCandidateEvidence } from "./capabilities/opportunities.facade.js";

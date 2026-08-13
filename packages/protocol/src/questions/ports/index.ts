@@ -16,7 +16,6 @@
  * - ChatQuestionAnswerOutcome — resolution shape for awaited answers.
  *
  * ### Generator port (deprecated)
- * - QuestionGeneratorReader — legacy inline discovery question generator.
  *
  * ### Tool host ports
  * - QuestionerToolDeps — host capabilities for async question delivery tools.
@@ -36,7 +35,6 @@ export type {
 } from "./question.persistence.port.js";
 
 // ── Generator (deprecated) ────────────────────────────────────────────────────
-export type { QuestionGeneratorReader } from "./question.generator.port.js";
 
 // ── Tool host ports ───────────────────────────────────────────────────────────
 export type { QuestionerToolDeps, AskUserQuestionToolDeps } from "./question.tools.port.js";

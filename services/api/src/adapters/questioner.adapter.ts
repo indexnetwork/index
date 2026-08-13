@@ -79,7 +79,7 @@ function poolPushThreshold(consecutiveDismissals: number): number {
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
 
 /** Union of all question modes the adapter stores. */
-export type AdapterQuestionMode = 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+export type AdapterQuestionMode = 'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
 
 /** Detection context describing how/where a question was generated. */
 export type AdapterNegotiationQuestionPurpose = 'uptake' | 'stalled_followup' | 'inflight_consultation';
@@ -1388,11 +1388,6 @@ export class QuestionerAdapter {
               ${questions.detection}->>'mode' = 'intent'
               AND ${questions.detection}->>'sourceType' = 'intent'
               AND ${questions.detection}->>'sourceId' = ${filters.scopeId}
-            )
-            OR (
-              ${questions.detection}->>'mode' = 'discovery'
-              AND ${questions.detection}->>'sourceType' = 'discovery'
-              AND ${questions.detection}->>'triggeredBy' = ${filters.scopeId}
             )
             OR (
               ${questions.detection}->>'sourceType' = 'opportunity'

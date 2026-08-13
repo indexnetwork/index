@@ -5,9 +5,13 @@ import type { PendingQuestion } from '@/services/questions';
 import type { Answer } from '@/components/DecisionQuestions/flatten';
 import type { AnswerBody } from '@/services/questions';
 
-/** Map (sourceType, mode) → human-readable group label. */
+/**
+ * Map (sourceType, mode) → human-readable group label.
+ *
+ * `profile` covers rows from the retired `enrichment` generator: the mode no
+ * longer exists, but pending rows predating its removal still render here.
+ */
 export function groupLabel(sourceType: string, mode: string): string {
-  if (sourceType === 'opportunity' && mode === 'discovery') return 'About your opportunities';
   if (sourceType === 'opportunity' && mode === 'negotiation') return 'About a negotiation';
   if (sourceType === 'opportunity' && mode === 'negotiation_inflight') return 'Your Personal Agent needs your input';
   if (sourceType === 'intent') return 'About your signal';

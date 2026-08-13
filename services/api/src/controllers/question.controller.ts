@@ -24,7 +24,7 @@ const answerBodySchema = z.object({
 
 const statusQuerySchema = z.enum(['pending', 'answered', 'dismissed']).default('pending');
 const purposeQuerySchema = z.enum(['uptake']);
-const modeQuerySchema = z.enum(['discovery', 'intent', 'enrichment', 'negotiation', 'negotiation_inflight', 'chat', 'pool_discovery']);
+const modeQuerySchema = z.enum(['intent', 'negotiation', 'negotiation_inflight', 'chat', 'pool_discovery']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -128,14 +128,14 @@ export class QuestionController {
       filters.networkId = networkScopeId;
       // Match MCP scope policy: negotiation questions can contain context from
       // another user/network and are not listable through network-scoped keys.
-      filters.modes = ['enrichment', 'intent', 'discovery'];
+      filters.modes = ['intent'];
     }
 
     if (rawMode) {
       const modeResult = modeQuerySchema.safeParse(rawMode);
       if (!modeResult.success) {
         return Response.json(
-          { error: 'Invalid mode; use one of: discovery, intent, enrichment, negotiation, negotiation_inflight, chat, pool_discovery' },
+          { error: 'Invalid mode; use one of: intent, negotiation, negotiation_inflight, chat, pool_discovery' },
           { status: 400 },
         );
       }

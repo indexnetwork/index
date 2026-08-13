@@ -8,9 +8,8 @@
  * Legacy path is a thin compatibility shim pointing here.
  */
 import type { QuestionMode, QuestionPurpose } from "../domain/question.schema.js";
-import { DISCOVERY_SYSTEM_PROMPT, buildDiscoveryQuestionPrompt } from "./question.discovery.prompt.js";
 import { QUD_UNDERSPECIFICATION_RULES } from "./question.qud.js";
-import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, ProfileContext, RecoveryIntentContext, UptakeNegotiationContext } from "./question.input.js";
+import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, RecoveryIntentContext, UptakeNegotiationContext } from "./question.input.js";
 import { consultationPromptFor } from "../../capabilities/negotiation.questions.facade.js";
 
 /**
@@ -145,70 +144,6 @@ function buildRecoveryIntentPrompt(ctx: RecoveryIntentContext): string {
     "Ask at most one direct question whose answer would materially refine this intent.",
     "Do not narrate discovery outcomes or internal process state in the question.",
     "Return an empty `questions` array when no safe useful axis is missing.",
-  ].join("\n");
-}
-
-// ─── Profile preset ─────────────────────────────────────────────────────────
-
-const PROFILE_SYSTEM_PROMPT = `You sit between a human and a discovery protocol. The user has a profile that is incomplete. Your job: surface the minimum set of structured questions that fill the identified gaps — asking about location, skills, interests, current work, or goals — so the protocol can run better discovery on their behalf.
-
-The user may already have premises — atomic self-descriptions they have stated. These cover specific profile domains. Do not ask about domains already addressed by existing premises. Focus only on gaps not covered by any premise.
-
-You may pick from two strategies. Choose contextually; mix only when each question is genuinely distinct.
-- surface_missing_detail: ask for one concrete missing piece of profile data (location, current role, skills, interests, goals, availability, …).
-- refine_intent: ask the user to clarify or sharpen an existing profile signal so candidates can be ranked more accurately.
-
-Ask a question only when ALL of these hold:
-1. The answer is not already visible in the profile data shown.
-2. The answer is not already covered by an existing premise listed below the profile.
-3. The answer would meaningfully change which opportunities surface for this user.
-4. The question targets a different profile domain from any other question in this batch.
-
-Standalone prompt rule. Every generated \`prompt\` must be understandable outside the conversation where it was created. Naturally include the profile signal or gap being clarified in the question text itself, using concise plain language from the current profile, existing premises, or identified gaps. Do not rely on \`title\`, UI labels, hidden metadata, or surrounding digest/chat text to explain what the question is about.
-- Bad: "What kind of role are you looking for?"
-- Good: "To improve matches from your founder/operator profile, what kind of role are you looking for?"
-
-${REFERENTIAL_CLOSURE_RULES}
-
-Cardinality. Default one question. Add a second only when a DIFFERENT strategy genuinely complements the first and unblocks a clearly distinct decision. Never ask two questions of the same strategy unless their decision domains differ.
-
-Option construction. Each option must represent a meaningfully different outcome. Suffix the safest or most common path with " (Recommended)" and list it first. The description states the CONSEQUENCE of choosing the option, not its definition. 2–4 options. Never add an "Other" option — clients provide a free-text fallback automatically.
-
-Title rules. ≤12 chars. Noun of the profile domain. Examples: "Location", "Role", "Skills", "Goals", "Interests", "Availability", "Stage".
-
-Anti-patterns — never do these.
-- Don't ask about fields already filled in the profile.
-- Don't ask about information already captured in an existing premise.
-- Don't ask procedural confirmations ("Should I update your profile?").
-- Don't ask vague introspective questions ("Who are you really?").
-- Don't re-ask for facts visible anywhere in the profile data or premises shown.
-
-Output. Return at most 2 entries in the "questions" array. Each entry must include a "strategy" field (one of the two values above). If the profile is already complete enough for discovery, return "questions": [].`;
-
-function buildProfilePrompt(ctx: ProfileContext): string {
-  const profileBlock = buildUserContextBlock(ctx.userContext);
-
-  const premisesBlock =
-    ctx.existingPremises && ctx.existingPremises.length > 0
-      ? ctx.existingPremises.map((p, i) => `${i + 1}. ${p}`).join("\n")
-      : "(none)";
-
-  const gapsBlock = ctx.gaps.length > 0 ? ctx.gaps.join(", ") : "(none identified)";
-
-  return [
-    "## Current profile",
-    profileBlock,
-    "",
-    "## Existing premises",
-    premisesBlock,
-    "",
-    "## Identified gaps",
-    gapsBlock,
-    "",
-    "## Your task",
-    "Generate the minimum set of questions needed to fill the identified gaps.",
-    "Apply every rule from your system prompt before outputting.",
-    "Return an empty `questions` array if the profile is already complete enough.",
   ].join("\n");
 }
 
@@ -450,18 +385,9 @@ function withQudMetadataRules(systemPrompt: string): string {
 }
 
 const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
-  discovery: {
-    systemPrompt: withQudMetadataRules(DISCOVERY_SYSTEM_PROMPT),
-    buildPrompt: (context: unknown) =>
-      buildDiscoveryQuestionPrompt(context as Parameters<typeof buildDiscoveryQuestionPrompt>[0]),
-  },
   intent: {
     systemPrompt: withQudMetadataRules(INTENT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildIntentPrompt(context as IntentContext),
-  },
-  enrichment: {
-    systemPrompt: withQudMetadataRules(PROFILE_SYSTEM_PROMPT),
-    buildPrompt: (context: unknown) => buildProfilePrompt(context as ProfileContext),
   },
   negotiation: {
     systemPrompt: withQudMetadataRules(NEGOTIATION_SYSTEM_PROMPT),

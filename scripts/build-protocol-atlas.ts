@@ -68,7 +68,6 @@ const APPROVED_CONFIGURATION_MODE_IDS: Readonly<Record<string, readonly string[]
   "negotiation-consultation": ["off", "shadow", "v2-on", "v2-short-window"],
   "negotiation-deadlock": ["off", "v2-threshold-4", "v2-fast-2", "v2-skeptic"],
   "questioner-uptake": ["off", "on-threshold-70", "on-threshold-90"],
-  "questioner-discovery-contract": ["off", "transcripts-unresolved", "insights-unresolved"],
   "pool-question-contract": ["off", "shadow-mining", "on-pull", "on-push", "on-visit", "on-newborn"],
   "pool-ranking": ["off", "on"],
   "negotiation-evidence-contract": ["off", "shadow", "on-alias"],

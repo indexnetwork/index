@@ -313,7 +313,7 @@ export class EnrichmentQueue {
     // Inject the env-gated questioner enqueue so profile regeneration runs
     // (onboarding, premise cascades) generate profile-gap questions instead
     // of silently dropping them (the gap that left prod's questions table empty).
-    const factory = new EnrichmentGraphFactory(database, scraper, { enrichUserProfile }, questionerEnqueueIfEnabled(), premiseGraph);
+    const factory = new EnrichmentGraphFactory(database, scraper, { enrichUserProfile }, premiseGraph);
     const graph = factory.createGraph();
     return graph.invoke({ userId, operationMode });
   }
