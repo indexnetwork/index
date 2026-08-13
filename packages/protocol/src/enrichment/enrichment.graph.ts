@@ -86,7 +86,6 @@ export class EnrichmentGraphFactory {
     private database: EnrichmentGraphDatabase,
     private scraper: Scraper,
     private enricher?: ProfileEnricher,
-    private questionerEnqueue?: QuestionerEnqueueFn,
     private premiseGraph?: CompiledPremiseGraph,
   ) { }
 

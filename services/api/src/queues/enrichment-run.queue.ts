@@ -197,9 +197,6 @@ export class EnrichmentRunQueue {
       chatDatabaseAdapter,
       scraperAdapter,
       enricherAdapter,
-      // Env-gated questioner enqueue: async profile runs generate
-      // profile-gap questions just like the MCP composition root.
-      questionerEnqueueIfEnabled(),
       premiseGraph,
     ).createGraph();
 

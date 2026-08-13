@@ -128,11 +128,8 @@ const envSchema = z.object({
   // a typo must never disable discovery, so startup validation stays permissive.
   DISCOVERY_PROFILE_SOURCE: z.string().optional(),
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
-  QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
   QUESTIONER_UPTAKE_ENABLED: optionalBoolean,
   QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: optionalInt,
-  QUESTIONER_DISCOVERY_INPUT_MODE: z.string().optional(),
-  QUESTIONER_DISCOVERY_TIMEOUT_MS: optionalInt,
   QUESTIONER_CHAT_WAIT_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
@@ -284,18 +281,10 @@ function collectEnvWarnings(): string[] {
   if (hasValue('TELEGRAM_BOT_TOKEN') && !hasValue('TELEGRAM_BOT_USERNAME')) {
     warnings.push('TELEGRAM_BOT_USERNAME: set the bot username so Telegram integration links can be generated.');
   }
-  const discoveryQuestionsInputMode = process.env.QUESTIONER_DISCOVERY_INPUT_MODE?.trim();
-  if (discoveryQuestionsInputMode && !['transcripts', 'insights'].includes(discoveryQuestionsInputMode)) {
-    warnings.push('QUESTIONER_DISCOVERY_INPUT_MODE: expected "transcripts" or "insights"; current value will fall back to transcript mode.');
-  }
-
   // Question-related env vars were consolidated under the QUESTIONER_ prefix
   // (clean cutover — old names are ignored). Warn loudly when a stale name is
   // still set so operators notice the silent behavior change.
   const renamedQuestionVars: Array<[oldName: string, newName: string]> = [
-    ['ENABLE_DISCOVERY_QUESTIONS', 'QUESTIONER_DISCOVERY_ENABLED'],
-    ['DISCOVERY_QUESTIONS_INPUT_MODE', 'QUESTIONER_DISCOVERY_INPUT_MODE'],
-    ['DISCOVERY_QUESTIONS_TIMEOUT_MS', 'QUESTIONER_DISCOVERY_TIMEOUT_MS'],
     ['CHAT_QUESTION_WAIT_TIMEOUT_MS', 'QUESTIONER_CHAT_WAIT_TIMEOUT_MS'],
   ];
   for (const [oldName, newName] of renamedQuestionVars) {

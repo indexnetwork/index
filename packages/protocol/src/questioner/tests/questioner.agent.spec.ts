@@ -4,7 +4,7 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key-for
 
 import { describe, it, expect } from "bun:test";
 import { QuestionerAgent } from "../../questions/application/question.agent.js";
-import type { QuestionerInput, DiscoveryContext, IntentContext, ProfileContext, NegotiationContext } from "../../questions/application/question.input.js";
+import type { QuestionerInput, IntentContext, NegotiationContext } from "../../questions/application/question.input.js";
 
 const okOption = { label: "A", description: "desc-a" };
 
@@ -20,25 +20,17 @@ function makeQuestion(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeDiscoveryInput(): QuestionerInput {
-  const context: DiscoveryContext = {
-    query: "test query",
+function makeIntentInput(): QuestionerInput {
+  const context: IntentContext = {
+    intentId: "i-0",
+    payload: "test query",
     userContext: "Tester is a builder.",
-    negotiationDigests: [],
-    summary: {
-      totalCandidates: 0,
-      opportunitiesFound: 0,
-      noOpportunityCount: 0,
-      timeoutCount: 0,
-      roleDistribution: {},
-    },
-    now: "2026-05-24T12:00:00.000Z",
   };
   return {
-    mode: "discovery",
+    mode: "intent",
     userId: "user-1",
-    sourceType: "opportunity",
-    sourceId: "opp-1",
+    sourceType: "intent",
+    sourceId: "i-0",
     context,
   };
 }
@@ -57,30 +49,12 @@ function messageContent(message: unknown): string {
   return typeof content === "string" ? content : JSON.stringify(content);
 }
 
-function modeInput(mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation'): QuestionerInput {
-  const discoveryContext: DiscoveryContext = {
-    query: "find decentralized identity protocol designers",
-    userContext: "Dana is a builder of agent tools.",
-    negotiationDigests: [],
-    summary: {
-      totalCandidates: 3,
-      opportunitiesFound: 1,
-      noOpportunityCount: 2,
-      timeoutCount: 1,
-      roleDistribution: {},
-    },
-    now: "2026-05-24T12:00:00.000Z",
-  };
+function modeInput(mode: 'intent' | 'negotiation'): QuestionerInput {
   const intentContext: IntentContext = {
     intentId: "i-1",
     payload: "Connect with people building decentralized identity protocols",
     summary: "Decentralized identity protocol design collaborations",
     userContext: "Dana is a builder of agent tools.",
-  };
-  const profileContext: ProfileContext = {
-    userContext: "Dana is a builder of agent tools.",
-    gaps: ["availability"],
-    existingPremises: ["I build agent tools for event communities"],
   };
   if (mode === 'negotiation') {
     const negotiationContext: NegotiationContext = {
@@ -108,7 +82,7 @@ function modeInput(mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation'):
       context: negotiationContext,
     };
   }
-  const contexts = { discovery: discoveryContext, intent: intentContext, enrichment: profileContext };
+  const contexts = { intent: intentContext };
   return {
     mode,
     userId: 'user-1',
@@ -121,19 +95,19 @@ function modeInput(mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation'):
 describe("QuestionerAgent", () => {
   it("returns null when the LLM throws", async () => {
     const agent = makeAgent(async () => { throw new Error("model down"); });
-    const result = await agent.invoke(makeDiscoveryInput());
+    const result = await agent.invoke(makeIntentInput());
     expect(result).toBeNull();
   });
 
   it("returns null when LLM output fails Zod parse", async () => {
     const agent = makeAgent(async () => ({ questions: "not-an-array" }));
-    const result = await agent.invoke(makeDiscoveryInput());
+    const result = await agent.invoke(makeIntentInput());
     expect(result).toBeNull();
   });
 
   it("returns null when LLM emits an empty questions array", async () => {
     const agent = makeAgent(async () => ({ questions: [] }));
-    const result = await agent.invoke(makeDiscoveryInput());
+    const result = await agent.invoke(makeIntentInput());
     expect(result).toBeNull();
   });
 
@@ -141,7 +115,7 @@ describe("QuestionerAgent", () => {
     const agent = makeAgent(async () => ({
       questions: [makeQuestion({ title: "Stage" })],
     }));
-    const result = await agent.invoke(makeDiscoveryInput());
+    const result = await agent.invoke(makeIntentInput());
     expect(result).not.toBeNull();
     expect(result!.questions).toHaveLength(1);
     expect(result!.questions[0].title).toBe("Stage");
@@ -156,7 +130,7 @@ describe("QuestionerAgent", () => {
         underspecificationType: "missing_constraint",
       })],
     }));
-    const result = await agent.invoke(makeDiscoveryInput());
+    const result = await agent.invoke(makeIntentInput());
     expect(result).not.toBeNull();
     expect(result!.underspecificationTypes).toEqual(["missing_constraint"]);
     const publicQuestion = result!.questions[0] as Record<string, unknown>;
@@ -172,7 +146,7 @@ describe("QuestionerAgent", () => {
         makeQuestion({ title: "Timing", strategy: "surface_missing_detail" }),
       ],
     }));
-    const result = await agent.invoke(makeDiscoveryInput());
+    const result = await agent.invoke(makeIntentInput());
     expect(result).not.toBeNull();
     expect(result!.questions).toHaveLength(2);
     expect(result!.questions[0].prompt).toBe("first?");
@@ -186,7 +160,7 @@ describe("QuestionerAgent", () => {
         makeQuestion({ title: "A3", strategy: "refine_intent" }),
       ],
     }));
-    const result = await agent.invoke(makeDiscoveryInput());
+    const result = await agent.invoke(makeIntentInput());
     expect(result).not.toBeNull();
     expect(result!.questions).toHaveLength(2);
   });
@@ -198,7 +172,7 @@ describe("QuestionerAgent", () => {
       return { questions: [makeQuestion({ title: "Stage" })] };
     });
     const controller = new AbortController();
-    const result = await agent.invoke(makeDiscoveryInput(), { signal: controller.signal });
+    const result = await agent.invoke(makeIntentInput(), { signal: controller.signal });
     expect(result).not.toBeNull();
     expect(captured?.signal).toBe(controller.signal);
   });
@@ -209,14 +183,12 @@ describe("QuestionerAgent", () => {
       controller.abort(new Error("deadline"));
       throw new Error("aborted");
     });
-    const result = await agent.invoke(makeDiscoveryInput(), { signal: controller.signal });
+    const result = await agent.invoke(makeIntentInput(), { signal: controller.signal });
     expect(result).toBeNull();
   });
 
   it.each([
-    { mode: "discovery" as const, contextNeedles: ["find decentralized identity protocol designers", "3 people reviewed"] },
     { mode: "intent" as const, contextNeedles: ["Connect with people building decentralized identity protocols", "Decentralized identity protocol design collaborations"] },
-    { mode: "enrichment" as const, contextNeedles: ["availability", "I build agent tools for event communities"] },
     { mode: "negotiation" as const, contextNeedles: ["the other participant", "Find an AI infrastructure collaborator"] },
   ])("mode '$mode' sends standalone-context instructions alongside source evidence", async ({ mode, contextNeedles }) => {
     let capturedMessages: unknown[] | undefined;
@@ -239,7 +211,7 @@ describe("QuestionerAgent", () => {
     }
   });
 
-  it.each(["discovery", "intent", "enrichment", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
+  it.each(["intent", "negotiation"] as const)("mode '%s' invokes the LLM and returns questions", async (mode) => {
     const agent = makeAgent(async () => ({
       questions: [makeQuestion({ title: "Test" })],
     }));

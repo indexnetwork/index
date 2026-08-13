@@ -191,9 +191,7 @@ export const NegotiationQuestionProvenanceSchema = z.object({
 });
 
 export const QuestionModeSchema = z.enum([
-  "discovery",
   "intent",
-  "enrichment",
   "negotiation",
   // Negotiator-initiated mid-negotiation client questions (ask_user action, P3).
   // Distinct from "negotiation", which covers post-stall questions only.

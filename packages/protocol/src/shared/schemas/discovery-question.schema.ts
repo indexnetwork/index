@@ -1,12 +1,8 @@
 /**
- * DiscoveryQuestionInput and nested types.
- * Leaf types have full Zod schemas. The composite DiscoveryQuestionInput is
- * a pure interface referencing cross-schema types (DiscoveryNegotiationDigest,
- * ChatContextDigest) to avoid Zod cross-schema runtime coupling.
+ * Discovery negotiation summary types shared by the opportunity graph and its
+ * negotiation-summary builder. Leaf types carry full Zod schemas.
  */
 import { z } from "zod";
-import type { DiscoveryNegotiationDigest } from "./negotiation-digest.schema.js";
-import type { ChatContextDigest } from "./chat-context.schema.js";
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
@@ -67,20 +63,3 @@ export const DiscoverySourceProfileSchema = z.object({
   interests: z.array(z.string()).optional(),
 });
 export type DiscoverySourceProfile = z.infer<typeof DiscoverySourceProfileSchema>;
-
-// ─── Composite input (pure interface — references cross-schema types) ─────────
-
-/**
- * Full input to the question generator.
- * Defined as a pure interface so it can reference DiscoveryNegotiationDigest
- * and ChatContextDigest from sibling schemas without Zod runtime coupling.
- */
-export interface DiscoveryQuestionInput {
-  query: string;
-  /** The seeker's global user_context paragraph (profile-replacing identity text). */
-  userContext: string;
-  negotiationDigests: DiscoveryNegotiationDigest[];
-  summary: DiscoverySummary;
-  chatContext?: ChatContextDigest;
-  now: string;
-}

@@ -184,7 +184,6 @@ describe('ProfileGraph - Premise Decomposition', () => {
       mockDatabase,
       mockScraper,
       undefined, // no enricher
-      undefined, // no questionerEnqueue
       mockPremiseGraph,
     ).createGraph();
   }
@@ -482,7 +481,6 @@ describe('ProfileGraph - Premise Decomposition', () => {
         mockDatabase,
         mockScraper,
         undefined, // no enricher
-        undefined, // no questionerEnqueue
         failingPremiseGraph,
       ).createGraph();
 

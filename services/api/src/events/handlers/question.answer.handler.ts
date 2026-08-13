@@ -6,9 +6,13 @@
  * rather than performing heavy processing inline. Errors are caught and logged
  * so one failing handler doesn't block others.
  *
+ * `discovery` and `enrichment` are retired generators: nothing produces them
+ * any more, but rows created before their removal stay answerable, so their
+ * reactions are retained.
+ *
  * Mode reactions:
- * - discovery: no-op (answers enrich chat context via the message path)
- * - profile:   create a premise from the answer → triggers profile regen
+ * - discovery: no-op (retired; answers enriched chat context via the message path)
+ * - enrichment: retired; create a premise from the answer → triggers profile regen
  * - intent:    enqueue intent refinement with the new context
  * - negotiation: no-op after authoritative adapter settlement (uptake private;
  *              ordinary shared context already committed)

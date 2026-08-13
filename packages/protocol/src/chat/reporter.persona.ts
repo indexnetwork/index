@@ -154,7 +154,7 @@ export function narrowReporterTools(
         async (query: { limit?: number }) => {
           if (!boundary.findPendingQuestions) return error("Question lookup is not available.");
           const questions = await boundary.findPendingQuestions(context.userId, {
-            modes: ["enrichment", "intent", "discovery"],
+            modes: ["intent"],
             limit: query.limit ?? 10,
           });
           return success({ questions: questions.slice(0, query.limit ?? 10) });

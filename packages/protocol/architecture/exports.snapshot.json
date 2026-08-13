@@ -135,12 +135,6 @@
       "source": "./shared/interfaces/chat-summary.interface.js"
     },
     {
-      "name": "QuestionGeneratorReader",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./capabilities/questions.facade.js"
-    },
-    {
       "name": "QuestionerDatabase",
       "kind": "type",
       "stability": "stable",
@@ -622,12 +616,6 @@
     },
     {
       "name": "DiscoveryOutcome",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./shared/schemas/discovery-question.schema.js"
-    },
-    {
-      "name": "DiscoveryQuestionInput",
       "kind": "type",
       "stability": "stable",
       "source": "./shared/schemas/discovery-question.schema.js"

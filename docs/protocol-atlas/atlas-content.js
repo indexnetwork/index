@@ -676,11 +676,6 @@
       mode("on-threshold-70", { QUESTIONER_ENABLED: "true", QUESTIONER_UPTAKE_ENABLED: "true", QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: "70" }, "Pending uptake questions can interlock low-authority acceptance.", false, "activated"),
       mode("on-threshold-90", { QUESTIONER_ENABLED: "true", QUESTIONER_UPTAKE_ENABLED: "true", QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: "90" }, "The uptake guard is active; the configured authority threshold is declared but has no direct protocol consumer.", false, "changed", [], [], { additionalUnresolvedSettingKeys: ["QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD"] }),
     ], definitiveEvidence.uptake, ["accept-or-decline"]),
-    experiment("questioner-discovery-contract", "Questioner discovery contract", "questions", ["QUESTIONER_ENABLED", "QUESTIONER_DISCOVERY_ENABLED", "QUESTIONER_DISCOVERY_INPUT_MODE"], "off", [
-      mode("off", {}, "The discovery-question contract is inactive.", true),
-      mode("transcripts-unresolved", { QUESTIONER_ENABLED: "true", QUESTIONER_DISCOVERY_ENABLED: "true", QUESTIONER_DISCOVERY_INPUT_MODE: "transcripts" }, "The accessor resolves transcript input, but no direct package behavior consumer is established."),
-      mode("insights-unresolved", { QUESTIONER_ENABLED: "true", QUESTIONER_DISCOVERY_ENABLED: "true", QUESTIONER_DISCOVERY_INPUT_MODE: "insights" }, "The accessor resolves insight input, but no direct package behavior consumer is established."),
-    ], null, ["evaluate-fit"], "unresolved", ["QUESTIONER_DISCOVERY_ENABLED", "QUESTIONER_DISCOVERY_INPUT_MODE"]),
     experiment("pool-question-contract", "Pool question activation contract", "opportunities", ["POOL_QUESTIONS_MINING", "POOL_QUESTIONS_MODE", "POOL_QUESTIONS_PUSH", "POOL_QUESTIONS_VISIT_TRIGGER", "POOL_QUESTIONS_STAMP_NEWBORN"], "off", [
       mode("off", {}, "Pool-question activation contracts resolve off.", true),
       mode("shadow-mining", { POOL_QUESTIONS_MINING: "shadow" }, "Shadow mining is declared; direct package activation remains unresolved."),

@@ -9,14 +9,6 @@
  *                                       interlock. Requires the master switch.
  *   QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD
  *                                       authority threshold (0-100, default 70).
- *   QUESTIONER_DISCOVERY_ENABLED        per-surface switch — decision questions during
- *                                       chat/MCP opportunity discovery. Only effective
- *                                       when the master switch is on (the discovery
- *                                       question step adds inline summarizer latency,
- *                                       so operators can turn it off independently).
- *   QUESTIONER_DISCOVERY_INPUT_MODE     'transcripts' | 'insights' generator input.
- *   QUESTIONER_DISCOVERY_TIMEOUT_MS     per-call deadline for the discovery-questions
- *                                       LLM step (default 12s).
  *   QUESTIONER_CHAT_WAIT_TIMEOUT_MS     how long the blocking ask_user_question chat
  *                                       tool waits for an inline answer (default 4 min).
  *
@@ -28,15 +20,6 @@
  * Legacy path is a thin compatibility shim pointing here.
  */
 
-/**
- * Question-generator budget. Sized against Railway's ~60 s edge timeout:
- * the discovery + evaluation + negotiate phases consume ~50 s on the slow
- * path, leaving ~10 s of headroom for the tail. 12 s is the larger end of
- * "fits"; the question step usually completes in 4-8 s, so most legitimate
- * calls finish well inside. Aborted calls return `null` (no questions);
- * the rest of the discovery payload still ships.
- */
-export const DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT = 12_000;
 export const CHAT_QUESTION_WAIT_TIMEOUT_MS_DEFAULT = 240_000;
 export const UPTAKE_AUTHORITY_THRESHOLD_DEFAULT = 70;
 
@@ -58,13 +41,6 @@ export function isQuestionerEnabled(): boolean {
   return process.env.QUESTIONER_ENABLED === "true";
 }
 
-/**
- * Per-surface switch: should chat/MCP opportunity discovery produce decision
- * questions? Hierarchical — always false when the master switch is off.
- */
-export function isDiscoveryQuestionsEnabled(): boolean {
-  return isQuestionerEnabled() && process.env.QUESTIONER_DISCOVERY_ENABLED === "true";
-}
 
 /** Advisory uptake interlock. Flag-off by default and subordinate to the master switch. */
 export function isUptakeGuardEnabled(): boolean {
@@ -80,21 +56,7 @@ export function uptakeAuthorityThreshold(): number {
   return Math.min(100, Math.max(0, parsed));
 }
 
-/**
- * Input mode for the discovery question generator. Only `transcripts` is
- * implemented; any other value falls back to `transcripts` (startup.env.ts
- * warns on invalid values).
- */
-export function discoveryQuestionsInputMode(): "transcripts" | "insights" {
-  return process.env.QUESTIONER_DISCOVERY_INPUT_MODE?.trim() === "insights"
-    ? "insights"
-    : "transcripts";
-}
 
-/** Per-call deadline for the discovery-questions LLM step. */
-export function discoveryQuestionsTimeoutMs(): number {
-  return positiveIntEnv("QUESTIONER_DISCOVERY_TIMEOUT_MS", DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT);
-}
 
 /** Wait budget for the blocking ask_user_question chat tool. */
 export function chatQuestionWaitTimeoutMs(): number {

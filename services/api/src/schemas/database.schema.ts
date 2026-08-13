@@ -584,7 +584,7 @@ export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
 }));
 
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+  mode: 'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
   /** Internal generation purpose; stripped from public API responses. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
   /** Exact negotiation recipient/intent/task routing provenance. Internal only. */
