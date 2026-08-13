@@ -1182,17 +1182,28 @@ per checkout.
 
 ### Receiving Code Review
 
-Code reviews on this project are done by **GitHub Copilot**, triggered manually by the user (via the Reviewers menu on the PR, or `gh pr edit PR-NUMBER --add-reviewer @copilot`). Copilot does not auto-review on push and replies do not trigger it — only an explicit re-review request does.
+**There is no automated reviewer on this project.** No bot reviews a PR on push, and
+none is triggered by opening one. Unless a human is explicitly asked to look, a PR
+arrives at merge time with nothing but its checks behind it.
 
-When handling Copilot reviews on PRs, follow this workflow:
+That has one consequence worth stating outright, because it is easy to drift into: a
+green PR is an *unreviewed* PR. Checks prove the suite passes, not that the change is
+correct, well-scoped, or wanted. When handing work over, say which it is — "green, not
+reviewed" — rather than letting green imply more than it does. `dev` is unprotected, so
+nothing else will catch the difference.
 
-1. **Fetch unresolved conversations**: Use `gh api` to list all review comments on the PR. Focus on unresolved conversation threads from `github-copilot[bot]`.
-2. **Evaluate each conversation**: For each unresolved thread, decide whether a code fix is actually needed:
-   - **Fix needed**: Implement the fix, push, then **manually resolve the conversation** (Copilot does not auto-resolve when commits are pushed or suggestions are applied).
-   - **No fix needed**: Reply in the comment thread with technical reasoning for why the current code is correct (e.g., YAGNI, reviewer lacks context, breaks existing patterns), then resolve it. Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` to reply inline.
-3. **Resolve all conversations**: Every conversation must be manually resolved before the PR can merge.
+When review comments *do* get opened, by a human or anything else:
 
-> **IMPORTANT:** Copilot never sees follow-up comments and will not respond to `@copilot` mentions in threads — replies are for human context only. On re-review, Copilot may re-raise already-resolved comments; that is expected behavior.
+1. **Fetch the threads**: `gh api` lists review comments on the PR; work through the
+   unresolved ones.
+2. **Evaluate each**: decide whether a code fix is actually needed.
+   - **Fix needed**: implement it, push, then resolve the conversation. Pushing a commit
+     does not resolve a thread on its own.
+   - **No fix needed**: reply inline with the technical reasoning for why the current
+     code is right (YAGNI, missing context, conflicts with an existing pattern), then
+     resolve it.
+3. **Resolve everything before merge**: an unresolved thread is an open question, and
+   merging over it silently discards the question rather than answering it.
 
 **Key commands:**
 ```bash
@@ -1202,8 +1213,8 @@ gh api repos/{owner}/{repo}/pulls/{pr}/comments
 # Reply to a specific review comment thread (USE THIS — not gh pr comment)
 gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -f body="..."
 
-# Request a Copilot review on an existing PR
-gh pr edit PR-NUMBER --add-reviewer @copilot
+# Ask a human for review
+gh pr edit PR-NUMBER --add-reviewer USERNAME
 ```
 
 ## Session Learning Capture

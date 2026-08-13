@@ -111,7 +111,8 @@ Branch**. The parts that are easy to miss:
 - Merge approval is always explicit and separate — never infer it from green checks.
   Merge server-side from a non-canonical checkout; never check out or merge `dev` inside
   a feature worktree.
-- Code review on PRs is GitHub Copilot, triggered manually by the user. Every review
-  conversation must be resolved manually before merge; see the Development Reference for
-  the exact `gh api` reply/resolve flow.
+- There is no automated PR reviewer. Nothing reviews a PR unless a human is asked to,
+  so green checks are the only signal a PR carries by default — and green is not review.
+  Say so plainly when handing one over. If review comments do get opened, resolve every
+  conversation before merge; see the Development Reference for the reply/resolve flow.
 - Sync the canonical root afterwards only with `git pull --ff-only origin dev`.
