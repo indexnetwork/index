@@ -185,14 +185,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/cli-auth", () => import("@/app/cli-auth/page")),
       },
       {
-        path: "/hermes-authorize",
-        lazy: lazyRoute("/hermes-authorize", () => import("@/app/hermes-authorize/page")),
-      },
-      {
-        path: "/index-app-authorize",
-        lazy: lazyRoute("/index-app-authorize", () => import("@/app/index-app-authorize/page")),
-      },
-      {
         path: "/login",
         lazy: lazyRoute("/login", () => import("@/app/login/page")),
       },

@@ -23,19 +23,13 @@ The `index` CLI is a standalone Bun-based binary in `packages/cli/`. It communic
 3. Starts a temporary local HTTP server (ephemeral port), generates a 32-byte one-time state, and includes the strict loopback callback, exact `version=2`, and state in the browser URL.
 4. The web bridge validates and preserves the exact v2 request through authentication, then calls the project-JWT-authenticated `POST /api/auth/cli-credential` endpoint with only `{protocolVersion:2}`. The session-only endpoint fixes the name, 90-day expiry, and `{client:'cli', protocolVersion:2}` metadata, and returns the secret and exact key ID for the restricted loopback callback.
 5. After exact state validation, stores the credential, key ID, API-key auth kind, and API base URL in `~/.index/credentials.json`. Requests send the key through `x-api-key`, so CLI chat remains on the non-web orchestrator compatibility surface without creating a session-authenticated browser bypass. On re-login, the replacement is stored first and calls the constrained CLI revocation endpoint as the active caller while supplying the captured prior raw secret and exact prior row ID; failure keeps the replacement valid and prints a truthful cleanup warning.
-6. **Temporary mixed-version bridge:** the already-released v1 CLI sends only a validated loopback callback. The web bridge mints a separately tagged `{client:'cli', protocolVersion:1}` 90-day key and returns its secret under the old `session_token` field. The API accepts only that exact v1 tag as a Bearer fallback after JWT verification fails; query tokens, default keys, agent keys, and v2 keys never receive this fallback. Remove this bridge only after released v1 clients have aged out.
-7. An upgraded v2 CLI transparently exchanges a still-valid stored browser JWT for a tagged v2 key before making any compatibility request. The released old binary cannot perform that exchange and must recover after deployment by running `index login`, which receives a tagged v1 key through the temporary bridge; its ordinary session JWT cannot be treated as non-web without reopening the web/Signal boundary.
-8. **Rolling order:** v2 clients require the v2 web bridge and keep state validation fail closed against old-web unbound callbacks. The dev CLI is an RC, so API and web deployments must both succeed before v2 login testing; do not weaken this boundary for mixed deployment windows.
-9. Prints confirmation with the authenticated user's name and email.
-10. The local server shuts down after receiving the callback (or after a 120-second timeout).
-
-### `index login --token <token>`
-
-Legacy manual session-token flow — skips the browser entirely. Uses the JWT only to verify the user and call the fixed-shape `POST /api/auth/cli-credential` endpoint with protocol v2, then stores the returned API key and exact key ID; the session JWT is not retained as the CLI transport.
+6. **No version downgrade:** the web bridge fails every non-v2 request shape closed. There is no `session_token` callback field and no Bearer API-key fallback on the server; released v1 CLI binaries must upgrade and run `index login` again.
+7. Prints confirmation with the authenticated user's name and email.
+8. The local server shuts down after receiving the callback (or after a 120-second timeout).
 
 ### `index logout`
 
-For current API-key credentials, calls `POST /api/auth/cli-credential/revoke` with strict `{keyId,targetKey}` proof, using the current CLI key in `x-api-key` and again as `targetKey` for self-revocation. The endpoint accepts only authoritative, unbound, server-issued v1/v2 CLI rows and returns success only after deletion. Revocation failures retain credentials and exit nonzero. If revocation succeeds but local cleanup fails, logout also exits nonzero and warns that the server key is revoked while the local credential file still needs manual removal. The temporary v1 released CLI knows only its old local credential shape, so its logout removes the token locally but cannot identify and revoke the server row; that tagged v1 key remains bounded by its 90-day expiry. Legacy API-key credentials without a key ID are retained by the new CLI with a non-success warning directing the user to remove the old key in web settings first; logout never lists or guesses another key to revoke.
+Calls `POST /api/auth/cli-credential/revoke` with strict `{keyId,targetKey}` proof, using the current CLI key in `x-api-key` and again as `targetKey` for self-revocation. The endpoint accepts only authoritative, unbound, server-issued CLI rows and returns success only after deletion. Revocation failures retain credentials and exit nonzero. If revocation succeeds but local cleanup fails, logout also exits nonzero and warns that the server key is revoked while the local credential file still needs manual removal. A legacy `credentials.json` without an exact key ID loads as signed out; logout never lists or guesses another key to revoke.
 
 ---
 
@@ -51,7 +45,7 @@ The `index conversation` command is the unified entry point for the conversation
 **One-shot mode** (message provided as positional argument):
 
 1. Reads credentials from `~/.index/credentials.json`. Exits with error if not logged in.
-2. Sends `POST /api/chat/stream` with `{ message }` and the stored credential transport (`x-api-key` for current v2 credentials; temporary released v1 clients send their tagged v1 key as Bearer).
+2. Sends `POST /api/chat/stream` with `{ message }` and the stored API key as `x-api-key`.
 3. Reads the SSE stream, printing assistant text tokens to stdout as they arrive.
 4. On `done` event, prints the session ID for future reference and exits 0.
 5. On `error` event, prints the error to stderr and exits 1.
@@ -364,7 +358,6 @@ Marks the user's onboarding as complete.
 ### Login / Logout
 1. `index login` completes an OAuth flow and stores valid credentials.
 2. `index login` fails gracefully if the browser cannot be opened (prints URL for manual copy).
-3. `index login --token <token>` stores the token and verifies it.
 
 ### Conversation
 4. `index conversation "hello"` sends a message and prints the streamed response.

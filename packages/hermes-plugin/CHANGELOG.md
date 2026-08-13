@@ -7,6 +7,13 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-13
+### Removed
+- **Breaking:** the signed Index Connector transport, PKCE loopback authorization, dedicated `idxh_` Keychain credential, plaintext-scrub migration, and recovery-only disconnect machinery are all removed. Connector-based installs stop authenticating and must reconfigure.
+
+### Changed
+- The plugin authenticates with a single `INDEX_API_KEY` environment variable (an ordinary agent API key created in Index web settings). `INDEX_API_URL`/`INDEX_MCP_URL` remain optional endpoint overrides. The dashboard login screen now explains the API-key setup instead of opening a browser flow.
+
 ## [0.20.0] - 2026-08-12
 ### Added
 - Secure standalone macOS connection (0.20.0): production Hermes uses the signed Index Connector, canonical PKCE loopback approval, a dedicated Keychain-only `idxh_` identity, and fixed production endpoints rather than persisted plugin credentials. Full mode receives the exact six canonical actions while negotiator mode remains the four-handler, server-fenced execution surface.

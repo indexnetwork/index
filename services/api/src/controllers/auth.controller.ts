@@ -15,7 +15,7 @@ import { log } from '../lib/log';
 const logger = log.controller.from('auth');
 
 const createCliCredentialSchema = z.object({
-  protocolVersion: z.union([z.literal(1), z.literal(2)]),
+  protocolVersion: z.literal(2),
 }).strict();
 
 const revokeCliCredentialSchema = z.object({

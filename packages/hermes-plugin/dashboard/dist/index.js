@@ -2450,87 +2450,29 @@
     );
   }
 
-  // Connector-owned browser sign-in and revocation-recovery gate. The browser
-  // never receives a credential; recovery retries only the connector's exact
-  // disconnect until server denial and Keychain deletion are both verified.
+  // API-key sign-in gate: the plugin authenticates with the INDEX_API_KEY
+  // environment variable; this screen explains that and re-checks status.
   function LoginScreen(props) {
     const useState = React.useState;
-    const useEffect = React.useEffect;
-    const useRef = React.useRef;
     const waitingState = useState(false);
     const waiting = waitingState[0];
     const setWaiting = waitingState[1];
     const errorState = useState(null);
     const loginError = errorState[0];
     const setLoginError = errorState[1];
-    const linkState = useState(null);
-    const manualLink = linkState[0];
-    const setManualLink = linkState[1];
-    const pollRef = useRef(null);
 
-    function stopPolling() {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    }
-
-    useEffect(function () { return stopPolling; }, []);
-
-    function poll() {
-      fetchPluginJSON(API + "/auth/login/status")
+    function check() {
+      setLoginError(null);
+      setWaiting(true);
+      fetchPluginJSON(API + "/auth/status")
         .then(function (payload) {
-          const status = payload && payload.status;
-          if (status === "connected") {
-            stopPolling();
-            setWaiting(false);
+          setWaiting(false);
+          if (payload && payload.authenticated) {
             if (props.onAuthed) props.onAuthed();
-          } else if (status === "failed") {
-            stopPolling();
-            setWaiting(false);
-            setLoginError((payload && payload.error) || "Login failed. Please try again.");
-          } else if (status === "idle") {
-            stopPolling();
-            setWaiting(false);
+            return;
           }
-        })
-        .catch(function () { /* keep polling; transient host hiccup */ });
-    }
-
-    function retryDisconnect() {
-      setLoginError(null);
-      setWaiting(true);
-      fetchPluginJSON(API + "/auth/logout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }).then(function (payload) {
-        setWaiting(false);
-        if (payload && payload.status === "disconnected") {
-          if (props.onRecovered) props.onRecovered();
-          return;
-        }
-        setLoginError("Secure disconnect is still pending. Index access remains quarantined.");
-      }).catch(function () {
-        setWaiting(false);
-        setLoginError("Secure disconnect is still pending. Retry when the network is available.");
-      });
-    }
-
-    function start() {
-      setLoginError(null);
-      setManualLink(null);
-      setWaiting(true);
-      fetchPluginJSON(API + "/auth/login/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Could not start login.");
-          }
-          // Headless/remote agent host: no browser to open, so surface the link.
-          if (!payload.opened && payload.authUrl) setManualLink(payload.authUrl);
-          stopPolling();
-          pollRef.current = setInterval(poll, 1500);
+          setLoginError((payload && payload.error)
+            || "Not connected. Set INDEX_API_KEY in the Hermes environment (create an agent API key in Index web settings), then restart Hermes.");
         })
         .catch(function (err) {
           setWaiting(false);
@@ -2545,23 +2487,15 @@
           dangerouslySetInnerHTML: { __html: INDEX_WORDMARK_SVG },
         }),
         React.createElement("p", { className: "index-dashboard__login-copy" },
-          props.recovery
-            ? "Secure disconnect is pending. Local Index activity is paused while the old credential is denied and removed from Keychain."
-            : "index finds the right people for you, before you even think to look."),
+          "index finds the right people for you, before you even think to look."),
+        React.createElement("p", { className: "index-dashboard__login-copy" },
+          "To connect, create an agent API key in Index web settings and set INDEX_API_KEY in the Hermes environment, then restart Hermes."),
         React.createElement(Button, {
           type: "button",
           className: "index-dashboard__login-btn",
           disabled: waiting,
-          onClick: props.recovery ? retryDisconnect : start,
-        }, waiting
-          ? (props.recovery ? "retrying secure disconnect…" : "waiting for browser…")
-          : (props.recovery ? "retry secure disconnect" : "log in with browser")),
-        manualLink
-          ? React.createElement("p", { className: "index-dashboard__login-manual" },
-            "No browser opened here — ",
-            React.createElement("a", { href: manualLink, target: "_blank", rel: "noopener noreferrer" }, "open this link to continue"),
-            ".")
-          : null,
+          onClick: check,
+        }, waiting ? "checking connection…" : "check connection"),
         loginError
           ? React.createElement("p", { className: "index-dashboard__login-error" }, loginError)
           : null,
@@ -4063,10 +3997,7 @@
     function checkAuth() {
       fetchPluginJSON(API + "/auth/status")
         .then(function (payload) {
-          if (payload && payload.revocationPending) {
-            setAuth("recovery");
-            setLoading(false);
-          } else if (payload && payload.needsLogin) {
+          if (payload && payload.needsLogin) {
             setAuth("needsLogin");
             setLoading(false);
           } else {
@@ -4074,7 +4005,7 @@
           }
         })
         .catch(function () {
-          // Connector status uncertainty never admits the dashboard.
+          // Status uncertainty never admits the dashboard.
           setAuth("needsLogin");
           setLoading(false);
         });
@@ -4086,14 +4017,14 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      }).then(function (payload) {
+      }).then(function () {
         setSummary(null);
         setNeedsOnboarding(false);
-        setAuth(payload && payload.status === "disconnected" ? "needsLogin" : "recovery");
+        setAuth("needsLogin");
       }).catch(function () {
         setSummary(null);
         setNeedsOnboarding(false);
-        setAuth("recovery");
+        setAuth("needsLogin");
       });
     }
 
@@ -4343,12 +4274,7 @@
 
       auth === "needsLogin"
         ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
-        : (auth === "recovery"
-          ? React.createElement(LoginScreen, {
-            recovery: true,
-            onRecovered: function () { setAuth("needsLogin"); },
-          })
-          : (auth === "checking"
+        : (auth === "checking"
           ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
             LOADING_IMAGE()
               ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
@@ -4368,7 +4294,7 @@
                   ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
                   : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
               )
-              : React.createElement("div", { className: "index-dashboard__body" }, intentsView))))),
+              : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
     );
   }
 

@@ -251,6 +251,7 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/agent-runtime(?:\?installationId=[A-Za-z0-9_-]+)?$"#),
         ("PUT", #"^/agent-runtime$"#),
         ("POST", #"^/agent-runtime/(?:hermes/prepare|rollback|reconcile-index)$"#),
+        ("DELETE", #"^/agent-runtime/hermes/[A-Za-z0-9_-]+$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
         ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
         ("GET", #"^/networks/[^/?]+/(?:overview|my-intents)$"#),

@@ -659,7 +659,7 @@ New opportunities (status: latent)
 
 ---
 
-## Secure standalone Hermes and Personal Agent runtime binding
+## Standalone Hermes and Personal Agent runtime binding
 
 Index presents one owner-scoped Personal Agent. Its name, avatar, memory, policy,
 and negotiation history never belong to an executor. The server stores a separate
@@ -669,76 +669,33 @@ optional owner-control client, not a dependency for standalone Hermes.
 
 ### Identities and trust boundaries
 
-Two dedicated credentials replace plaintext configuration and generic API-key
-reuse:
+Authentication uses the two pre-existing credential concepts:
 
-- `idxh_` / `hermes-agent` belongs to the standalone connector, has exact owner,
-  agent, installation, setup-generation, ordered six-action metadata, and is
-  stored only in the connector Keychain identity;
-- `idxo_` / `index-app-owner` belongs to the Index app, has exact owner,
-  installation, and generation metadata, and is stored only in the app Keychain
-  identity.
+- **Session/JWT** — the browser.
+- **Better Auth `apikeys`** — agent-bound keys minted from web settings or MCP,
+  CLI/Mac-app keys from the `/cli-auth` handshake, and the master key.
 
-The items have different services/access groups. Neither native executable can
-read the other item's credential, and neither credential enters JavaScript,
-Application Support journals, configuration files, logs, arguments, or browser
-callbacks. Both expire after 30 days with no refresh. The connector reports a
-seven-day reconnect warning using nonsecret status only.
+The Hermes plugin authenticates with an agent-bound API key supplied through the
+`INDEX_API_KEY` environment variable. The Index macOS app stores an ordinary
+90-day API key (from the same `/cli-auth` handshake the CLI uses) in the
+Keychain; the key never enters JavaScript, configuration files, logs, arguments,
+or browser callbacks. Revocation, expiry, and per-agent scoping come from the
+`apikeys` table.
 
-The signed Index Connector is the Hermes production transport. The plugin trusts
-only two fixed Applications locations after no-symlink/ownership/mode checks and
-CMS, Team ID, bundle/designated-requirement, SHA-256, protocol-v1, build-mode,
-and endpoint-environment verification. Its JSON-lines protocol has exactly seven
-operations (`hello`, `status`, `authorize.start`, `authorize.poll`, `rest`, `mcp`,
-`disconnect`). It owns PKCE S256, a canonical high-port `127.0.0.1/callback`,
-Keychain lifecycle, immutable production endpoints, bounded allowlisted REST/MCP
-forwarding, 8 MiB uploads, bounded SSE queues, and recursive response redaction.
-A source-only environment transport requires both a compile/package-excluded
-marker and explicit development flag; production has no caller-supplied endpoint,
-credential, arbitrary header, or executable path.
+### Scheduled negotiation authority
 
-### Authorization and authority
-
-The browser gives a session owner a state- and redirect-bound consent view for
-the exact six durable actions: identity, premises, intents, networks,
-opportunities, and negotiations. Approval is owner-locked: it selects Index
-fallback, revokes earlier installation generations, then issues a one-time code.
-Exchange atomically validates code, state, callback, PKCE challenge, expiry,
-replay receipt, and current generation; only hashes persist. Native Keychain
-read-back is required before activation. The `hermes-agent` full principal is
-explicitly allowlisted for normal product REST/MCP capability families but cannot
-reach owner security, billing, credential/permission/agent administration, or
-unknown routes.
-
-This full principal is distinct from the scheduled `hermes-negotiator` boundary.
-Full mode has all six action families. Negotiator mode has exactly four Hermes
-handlers—identity, pickup, respond, consult—and only its precise route matrix.
-Pickup/respond/consult revalidate selection, owner, agent, installation,
-generation, credential row/expiry, expected speaker, and hidden one-shot run
-capability under the owner transaction; one mutation has an idempotent receipt.
-The server falls back to Index immediately on expiry, stale heartbeat, pause,
-revocation, or authority mismatch.
-
-### Recovery, migration, and optional owner client
-
-A historical Hermes configuration is never silently adopted. Migration takes the
-canonical cron lock, identifies all immutable-marker-attributable jobs, pauses
-and verifies them, scrubs the six owned historical values, re-reads the fence
-immediately before connector authorization, and keeps every failure recovery-only.
-The nonsecret journal has installation/generation/phase data only. Fallback and
-cron mutations use exact identity/generation compare-and-set fencing so a stale
+Scheduled negotiation runs use the `hermes-negotiator` audience: an API-key
+principal with exactly four Hermes handlers—identity, pickup, respond,
+consult—and only its precise route matrix. Pickup/respond/consult revalidate
+selection, owner, agent, generation, credential row/expiry, expected speaker,
+and hidden one-shot run capability under the owner transaction; one mutation has
+an idempotent receipt. The server falls back to Index immediately on expiry,
+stale heartbeat, pause, revocation, or authority mismatch. Fallback and cron
+mutations use exact identity/generation compare-and-set fencing so a stale
 relaunch, callback, or cleanup cannot alter a newer installation.
 
-The Index app's native bridge is credential-free and constructs allowlisted
-requests with the app-only owner credential. Its historical plaintext migration
-retains only a legacy key ID, deletes/verifies the old file, forces a new browser
-login, and revokes the legacy server authority before activating the replacement.
-Pause deselects Hermes while retaining its credential; revoke/disconnect selects
-Index, revokes the exact generation, verifies denial, then performs fenced local
-cleanup. Uncertain server/Keychain cleanup retains nonsecret recovery evidence;
-connector recovery permits status and idempotent revocation only, never normal
-operations. Website and optional-app owner views expose only installation,
-actions, health, heartbeat, expiry, fallback, pause, revoke, and reconnect state.
+Website and optional-app owner views expose only installation, actions, health,
+heartbeat, expiry, fallback, pause, revoke, and reconnect state.
 
 Direct macOS distribution targets macOS 13+, Developer ID signing, Hardened
 Runtime, notarization, stapling, Universal 2 artifacts, immutable production HTTPS

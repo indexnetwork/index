@@ -3,8 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { authorizeNegotiationPickupPrincipal, authorizeNegotiationRespondPrincipal } from '../../guards/auth.guard';
 import { NegotiationPollingAuthorization } from '../../lib/agent/negotiation-polling-authorization';
 import { AgentRuntimeTransactionHarness } from '../../../tests/support/agent-runtime-transaction.harness';
-import { HERMES_AGENT_AUDIENCE } from '../../lib/agent/hermes-authorization';
-import { HERMES_CANONICAL_ACTIONS } from '../../lib/agent/hermes-capabilities';
+import { HERMES_NEGOTIATOR_AUDIENCE } from '../../lib/agent/hermes-credential';
 
 const OWNER_ID = 'owner-1';
 const AGENT_ID = 'agent-1';
@@ -44,62 +43,45 @@ describe('pickup/respond controller principal authorization', () => {
   }
 });
 
-describe('full Hermes transaction-time negotiation authority', () => {
-  function fullHarness(overrides: Parameters<AgentRuntimeTransactionHarness['seedFullHermesExecutor']>[0] = {}) {
+describe('Hermes negotiator transaction-time negotiation authority', () => {
+  function negotiatorHarness(overrides: Parameters<AgentRuntimeTransactionHarness['seedHermesExecutor']>[0] = {}) {
     const persistence = new AgentRuntimeTransactionHarness();
     persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
-    const seeded = persistence.seedFullHermesExecutor({ id: AGENT_ID, ownerId: OWNER_ID, ...overrides });
+    const seeded = persistence.seedHermesExecutor({ id: AGENT_ID, ownerId: OWNER_ID, ...overrides });
     const principal = {
       credentialId: seeded.credentialId,
       agentId: seeded.agentId,
-      audience: HERMES_AGENT_AUDIENCE,
-      installationId: seeded.installationId,
+      audience: HERMES_NEGOTIATOR_AUDIENCE,
       setupAttemptId: seeded.setupAttemptId,
-      actions: [...HERMES_CANONICAL_ACTIONS],
     } as const;
     return { persistence, principal };
   }
 
-  it('admits only the selected active full principal with canonical manage:negotiations authority', async () => {
-    const { persistence, principal } = fullHarness();
+  it('admits only the selected active negotiator principal with manage:negotiations authority', async () => {
+    const { persistence, principal } = negotiatorHarness();
     await expect(persistence.attemptNegotiationMutation(OWNER_ID, principal)).resolves.toBe(true);
     expect(persistence.negotiationMutationCount()).toBe(1);
   });
 
-  it('rechecks active row, expiry, generation, installation, selection, and canonical actions under the mutation lock', async () => {
+  it('rechecks expiry, generation, and selection under the mutation lock', async () => {
     const cases = [
-      fullHarness({ activationState: 'pending' }),
-      fullHarness({ activationState: 'revoked' }),
-      fullHarness({ expiresAt: new Date(0) }),
-      fullHarness({ handleNegotiations: false }),
-      fullHarness({ actions: HERMES_CANONICAL_ACTIONS.slice(0, -1) }),
+      negotiatorHarness({ expiresAt: new Date(0) }),
+      negotiatorHarness({ handleNegotiations: false }),
     ];
     for (const { persistence, principal } of cases) {
       await expect(persistence.attemptNegotiationMutation(OWNER_ID, principal)).resolves.toBe(false);
       expect(persistence.negotiationMutationCount()).toBe(0);
     }
 
-    const wrongGeneration = fullHarness();
+    const wrongGeneration = negotiatorHarness();
     await expect(wrongGeneration.persistence.attemptNegotiationMutation(OWNER_ID, {
       ...wrongGeneration.principal,
       setupAttemptId: 'other-setup',
     })).resolves.toBe(false);
-
-    const wrongInstallation = fullHarness();
-    await expect(wrongInstallation.persistence.attemptNegotiationMutation(OWNER_ID, {
-      ...wrongInstallation.principal,
-      installationId: 'other-installation',
-    })).resolves.toBe(false);
-
-    const retiredActions = fullHarness();
-    await expect(retiredActions.persistence.attemptNegotiationMutation(OWNER_ID, {
-      ...retiredActions.principal,
-      actions: [...HERMES_CANONICAL_ACTIONS, 'manage:profile'] as never,
-    })).resolves.toBe(false);
   });
 
-  it('serializes revocation between preflight and mutation so no stale full-principal mutation commits', async () => {
-    const { persistence, principal } = fullHarness();
+  it('serializes revocation between preflight and mutation so no stale principal mutation commits', async () => {
+    const { persistence, principal } = negotiatorHarness();
     await expect(persistence.attemptNegotiationMutation(OWNER_ID, principal, async () => {
       persistence.revokeCredentialsForAgent(AGENT_ID);
     })).resolves.toBe(false);

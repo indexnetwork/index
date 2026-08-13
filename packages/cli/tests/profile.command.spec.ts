@@ -133,17 +133,17 @@ describe("ApiClient — profile methods", () => {
       expect(user.isGhost).toBe(false);
     });
 
-    it("sends the authorization header", async () => {
-      let receivedAuth = "";
+    it("sends the x-api-key header", async () => {
+      let receivedApiKey = "";
       mock.on("GET", "/api/users/user-xyz", (req) => {
-        receivedAuth = req.headers.get("authorization") ?? "";
+        receivedApiKey = req.headers.get("x-api-key") ?? "";
         return Response.json({
           user: { id: "user-xyz", name: "Bob", isGhost: false, createdAt: "2026-01-01" },
         });
       });
 
       await client.getUser("user-xyz");
-      expect(receivedAuth).toBe("Bearer test-token-123");
+      expect(receivedApiKey).toBe("test-token-123");
     });
 
     it("throws on 401", async () => {

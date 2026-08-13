@@ -103,7 +103,7 @@ INDEX_AGENT_ME = {
     "name": "index_agent_me",
     "description": (
         "Return the authenticated Index Network personal agent bound to the "
-        "secure connector connection. Use this before autonomous negotiation when "
+        "configured API key. Use this before autonomous negotiation when "
         "you need the agent id or want to verify the connection is agent-bound."
     ),
     "parameters": {

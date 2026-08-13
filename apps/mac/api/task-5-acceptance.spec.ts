@@ -19,20 +19,16 @@ describe('Task 5 production-boundary acceptance', () => {
     persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
     const runtime = new AgentRuntimeService(persistence);
     const polling = new NegotiationPollingAuthorization(persistence);
-    const prepared = await runtime.prepareHermes(OWNER_ID, INSTALLATION, ATTEMPT);
-    const transientKey = prepared.credential.key;
-    const transientCredentialId = prepared.credential.id;
-    const connectorStatus = {
-      connected: true, health: 'active', revocationPending: false,
-      installationId: INSTALLATION, agentId: prepared.executorId, setupAttemptId: ATTEMPT,
-      actions: [
-        'manage:identity', 'manage:premises', 'manage:intents',
-        'manage:networks', 'manage:opportunities', 'manage:negotiations',
-      ],
-      expiresAt: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000).toISOString(),
-    };
+    let transientKey = '';
+    let transientCredentialId = '';
 
     const api = {
+      prepareHermesRuntime: async (installationId: string, setupAttemptId: string) => {
+        const result = await runtime.prepareHermes(OWNER_ID, installationId, setupAttemptId);
+        transientKey = result.credential.key;
+        transientCredentialId = result.credential.id;
+        return result;
+      },
       setRuntimeBinding: (input: Parameters<AgentRuntimeService['setRuntime']>[1]) => (
         runtime.setRuntime(OWNER_ID, input)
       ),
@@ -40,9 +36,7 @@ describe('Task 5 production-boundary acceptance', () => {
       rollbackHermesRuntime: async (setupAttemptId: string) => ({
         rolledBack: await runtime.rollbackHermes(OWNER_ID, setupAttemptId),
       }),
-      compareAndSelectIndex: (expected: {
-        agentId: string; installationId: string; setupAttemptId: string;
-      }) => runtime.compareAndSelectIndex(OWNER_ID, expected),
+      disconnectHermesRuntime: (installationId: string) => runtime.disconnectHermes(OWNER_ID, installationId),
     };
 
     let local = {
@@ -56,9 +50,6 @@ describe('Task 5 production-boundary acceptance', () => {
       scheduleEnabled: false,
     };
     const nativeRuntime = async (command: string, payload: Record<string, string> = {}) => {
-      if (command === 'connectorStatus') {
-        return { ok: true, stage: 'connector_status', connectorStatus };
-      }
       if (command === 'configureDisabled') {
         local = {
           ownerId: payload.ownerId,
@@ -68,9 +59,7 @@ describe('Task 5 production-boundary acceptance', () => {
           pluginInstalled: true, negotiatorMode: true,
           schedulePresent: true, scheduleEnabled: false,
         };
-        return {
-          ok: true, stage: 'connectorActivationConfirmed', state: local, connectorStatus,
-        };
+        return { ok: true, stage: 'scheduleDisabled', state: local };
       }
       if (command === 'enable') {
         local = { ...local, scheduleEnabled: true };
@@ -80,18 +69,6 @@ describe('Task 5 production-boundary acceptance', () => {
       if (command === 'disable') {
         if (payload.setupAttemptId === local.setupAttemptId) local = { ...local, scheduleEnabled: false };
         return { ok: true, stage: 'disabled', state: local };
-      }
-      if (command === 'prepareLogout') {
-        local = { ...local, negotiatorMode: false, scheduleEnabled: false };
-        return { ok: true, stage: 'logout_prepared', state: local };
-      }
-      if (command === 'connectorDisconnect') {
-        persistence.revokeCredentialsForAgent(prepared.executorId);
-        return { ok: true, stage: 'connector_disconnected', connectorStatus: {
-          connected: false, health: 'disconnected', revocationPending: false,
-          installationId: INSTALLATION, agentId: null, setupAttemptId: null,
-          actions: [], expiresAt: null,
-        } };
       }
       if (command === 'disconnect') {
         if (payload.setupAttemptId === local.setupAttemptId) {

@@ -1,13 +1,17 @@
 import Foundation
 import Darwin
-import CryptoKit
-import Security
 
-// Request-correlated local reconciliation. JavaScript owns the server saga;
-// native code observes only nonsecret authority metadata from the separately
-// signed connector and never reads the connector's Keychain item.
+// Darwin's Swift overlay imports `struct flock` under the same name as the
+// flock(2) function. Bind the stable libc syscall explicitly rather than
+// relying on ambiguous overload resolution.
+@_silgen_name("flock")
+private func hermesFlock(_ descriptor: Int32, _ operation: Int32) -> Int32
+
+// Request-correlated, local-only Hermes reconciliation. This file deliberately
+// has no networking: JavaScript owns the server saga and passes only one
+// bootstrap credential transiently to configureDisabled.
 enum HermesRuntimeCommand: String, Decodable {
-    case inspect, connectorStatus, connectorDisconnect, configureDisabled, enable, confirmHealthy, disable, prepareLogout, disconnect
+    case inspect, configureDisabled, enable, confirmHealthy, disable, prepareLogout, disconnect
     case loadOperation, saveOperation, clearOperation
 }
 
@@ -18,18 +22,8 @@ struct HermesRuntimeRequest: Decodable {
     let installationId: String?
     let executorId: String?
     let setupAttemptId: String?
+    let credential: String?
     let operationJournal: HermesSagaOperationRecord?
-}
-
-struct HermesConnectorStatus: Codable, Equatable {
-    let connected: Bool
-    let health: String
-    let revocationPending: Bool
-    let installationId: String
-    let agentId: String?
-    let setupAttemptId: String?
-    let actions: [String]
-    let expiresAt: String?
 }
 
 struct HermesLocalState: Codable {
@@ -41,7 +35,6 @@ struct HermesLocalState: Codable {
     let schedulePresent: Bool
     let scheduleEnabled: Bool
     let setupAttemptId: String?
-    let connectorActivationConfirmed: Bool
 }
 
 struct HermesRuntimeResult: Encodable {
@@ -50,7 +43,6 @@ struct HermesRuntimeResult: Encodable {
     let stage: String
     let state: HermesLocalState?
     let operationJournal: HermesSagaOperationRecord?
-    let connectorStatus: HermesConnectorStatus?
     let errorCode: String?
     let retryable: Bool
 
@@ -60,7 +52,6 @@ struct HermesRuntimeResult: Encodable {
         stage: String,
         state: HermesLocalState?,
         operationJournal: HermesSagaOperationRecord? = nil,
-        connectorStatus: HermesConnectorStatus? = nil,
         errorCode: String?,
         retryable: Bool
     ) {
@@ -69,7 +60,6 @@ struct HermesRuntimeResult: Encodable {
         self.stage = stage
         self.state = state
         self.operationJournal = operationJournal
-        self.connectorStatus = connectorStatus
         self.errorCode = errorCode
         self.retryable = retryable
     }
@@ -80,11 +70,9 @@ enum HermesSetupStage: String, Codable, Hashable {
     case environmentWritten
     case pluginInstalled
     case scheduleDisabled
-    case connectorActivationConfirmed
     case enabling
     case awaitingHeartbeat
     case disconnecting
-    case connectorDisconnected
     /// All external/local postconditions are proven and generation publication
     /// may be nil; only durable journal unlink remains retryable.
     case disconnectCleanupComplete
@@ -104,9 +92,6 @@ struct HermesSetupJournal: Codable, Equatable {
 struct HermesInstallationRecord: Codable {
     let installationId: String
     var currentOwnerId: String?
-    /// Connector installation is separate from the historical app-local ID.
-    /// Both remain stable; migration never rewrites the old identifier.
-    var currentConnectorInstallationId: String?
     var currentExecutorId: String?
     var currentSetupAttemptId: String?
     /// Immutable capability for the one app-created Hermes job. The adjacent
@@ -115,15 +100,13 @@ struct HermesInstallationRecord: Codable {
     var currentCronSetupAttemptId: String?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case installationId, currentOwnerId, currentConnectorInstallationId
-        case currentExecutorId, currentSetupAttemptId
+        case installationId, currentOwnerId, currentExecutorId, currentSetupAttemptId
         case currentCronJobId, currentCronSetupAttemptId
     }
 
     init(
         installationId: String,
         currentOwnerId: String?,
-        currentConnectorInstallationId: String? = nil,
         currentExecutorId: String?,
         currentSetupAttemptId: String?,
         currentCronJobId: String?,
@@ -131,7 +114,6 @@ struct HermesInstallationRecord: Codable {
     ) {
         self.installationId = installationId
         self.currentOwnerId = currentOwnerId
-        self.currentConnectorInstallationId = currentConnectorInstallationId
         self.currentExecutorId = currentExecutorId
         self.currentSetupAttemptId = currentSetupAttemptId
         self.currentCronJobId = currentCronJobId
@@ -147,9 +129,6 @@ struct HermesInstallationRecord: Codable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         installationId = try values.decode(String.self, forKey: .installationId)
         currentOwnerId = try values.decodeIfPresent(String.self, forKey: .currentOwnerId)
-        currentConnectorInstallationId = try values.decodeIfPresent(
-            String.self, forKey: .currentConnectorInstallationId
-        )
         currentExecutorId = try values.decodeIfPresent(String.self, forKey: .currentExecutorId)
         currentSetupAttemptId = try values.decodeIfPresent(String.self, forKey: .currentSetupAttemptId)
         currentCronJobId = try values.decodeIfPresent(String.self, forKey: .currentCronJobId)
@@ -159,7 +138,6 @@ struct HermesInstallationRecord: Codable {
         )
         guard !installationId.isEmpty,
               installationId.rangeOfCharacter(from: .newlines) == nil,
-              currentConnectorInstallationId?.isEmpty != true,
               (currentCronJobId == nil) == (currentCronSetupAttemptId == nil) else {
             throw HermesRuntimeFailure.installationStoreInvalid
         }
@@ -186,10 +164,7 @@ struct HermesSagaOperationRecord: Codable, Equatable {
     let executorId: String?
 
     private static let stageMap: [String: Set<String>] = [
-        "select-hermes": [
-            "prepare-pending", "prepared", "configured", "activated", "native-recovery",
-            "connector-confirmed", "connector-configured", "connector-selected",
-        ],
+        "select-hermes": ["prepare-pending", "prepared", "configured", "activated", "native-recovery"],
         "select-index": ["server-pending", "server-complete"],
         "disconnect": ["server-pending", "server-complete"],
     ]
@@ -264,11 +239,8 @@ private enum HermesRuntimeFailure: Error {
     case operationStoreFailed
     case envWriteFailed
     case environmentChanged
-    case connectorUnverified
-    case connectorStatusFailed
     case pluginInstallFailed
     case pluginEnableFailed
-    case pluginDisableFailed
     case pluginRemoveFailed
     case cronStoreInvalid
     case cronAmbiguous
@@ -298,11 +270,8 @@ private enum HermesRuntimeFailure: Error {
         case .operationStoreFailed: return "operation_store_failed"
         case .envWriteFailed: return "env_write_failed"
         case .environmentChanged: return "env_write_failed"
-        case .connectorUnverified: return "connector_unverified"
-        case .connectorStatusFailed: return "connector_status_failed"
         case .pluginInstallFailed: return "plugin_install_failed"
         case .pluginEnableFailed: return "plugin_enable_failed"
-        case .pluginDisableFailed: return "plugin_disable_failed"
         case .pluginRemoveFailed: return "plugin_remove_failed"
         case .cronStoreInvalid: return "cron_store_invalid"
         case .cronAmbiguous: return "cron_ambiguous"
@@ -364,32 +333,6 @@ private final class HermesBoundedOutputBuffer {
         lock.lock()
         defer { lock.unlock() }
         return data
-    }
-}
-
-private final class HermesExactBoundedCapture {
-    private let lock = NSLock()
-    private let limit: Int
-    private var data = Data()
-    private var overflow = false
-
-    init(limit: Int) { self.limit = limit }
-
-    func append(_ chunk: Data) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !overflow else { return }
-        guard data.count + chunk.count <= limit else {
-            overflow = true
-            return
-        }
-        data.append(chunk)
-    }
-
-    func result() -> (data: Data, overflow: Bool) {
-        lock.lock()
-        defer { lock.unlock() }
-        return (data, overflow)
     }
 }
 
@@ -512,40 +455,6 @@ private final class HermesDirectoryDescriptor {
     deinit { _ = Darwin.close(rawValue) }
 }
 
-/// Retained readable capability for exact regular-vnode snapshot, hash, and
-/// file-identity checks. Execution always uses the staged pathname.
-private final class HermesRegularFileDescriptor {
-    let rawValue: Int32
-    init(rawValue: Int32) { self.rawValue = rawValue }
-    deinit { _ = Darwin.close(rawValue) }
-
-    func snapshot() throws -> HermesFileSnapshot {
-        var before = stat()
-        guard Darwin.fstat(rawValue, &before) == 0,
-              before.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let duplicate = Darwin.dup(rawValue)
-        guard duplicate >= 0 else { throw HermesRuntimeFailure.connectorUnverified }
-        let handle = FileHandle(fileDescriptor: duplicate, closeOnDealloc: true)
-        do {
-            try handle.seek(toOffset: 0)
-            let data = try handle.readToEnd() ?? Data()
-            try handle.close()
-            var after = stat()
-            guard Darwin.fstat(rawValue, &after) == 0,
-                  HermesFileIdentity(before) == HermesFileIdentity(after),
-                  data.count == Int(before.st_size) else {
-                throw HermesRuntimeFailure.connectorUnverified
-            }
-            return HermesFileSnapshot(data: data, identity: HermesFileIdentity(after))
-        } catch {
-            try? handle.close()
-            throw error
-        }
-    }
-}
-
 /// Descriptor-oriented boundary checks used by every sensitive read, publish,
 /// and destructive cleanup. Existing path components must be real directories;
 /// no parent symlink is followed.
@@ -567,74 +476,26 @@ private enum HermesFilesystem {
         guard root >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
         var current = HermesDirectoryDescriptor(rawValue: root)
         for component in standardized.pathComponents.dropFirst() {
-            var next = try openVerifiedChildDirectory(in: current, name: component)
-            if next == nil, createMissing {
+            let opened = component.withCString {
+                Darwin.openat(current.rawValue, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+            }
+            var next = opened
+            if next < 0, errno == ENOENT, createMissing {
                 let made = component.withCString {
                     Darwin.mkdirat(current.rawValue, $0, mode_t(0o700))
                 }
                 guard made == 0 || errno == EEXIST else {
                     throw HermesRuntimeFailure.localCleanupFailed
                 }
-                next = try openVerifiedChildDirectory(in: current, name: component)
+                next = component.withCString {
+                    Darwin.openat(current.rawValue, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+                }
             }
-            if next == nil, !createMissing { return nil }
-            guard let next else { throw HermesRuntimeFailure.localCleanupFailed }
-            current = next
+            if next < 0, errno == ENOENT, !createMissing { return nil }
+            guard next >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
+            current = HermesDirectoryDescriptor(rawValue: next)
         }
         return current
-    }
-
-    private static func isDirectoryPathRecord(_ status: stat) -> Bool {
-        let type = status.st_mode & fileTypeMask
-        return type == directoryType && type != symbolicLinkType
-    }
-
-    /// Opens one descriptor-relative directory without O_NOFOLLOW, which is
-    /// incompatible with APFS firmlinks. The two no-follow path observations
-    /// must identify the same directory as the retained descriptor, so a user
-    /// symlink or any concurrent path replacement is rejected.
-    private static func openVerifiedChildDirectory(
-        in parent: HermesDirectoryDescriptor,
-        name: String
-    ) throws -> HermesDirectoryDescriptor? {
-        var before = stat()
-        let beforeResult = name.withCString {
-            Darwin.fstatat(parent.rawValue, $0, &before, AT_SYMLINK_NOFOLLOW)
-        }
-        if beforeResult < 0, errno == ENOENT { return nil }
-        guard beforeResult == 0, isDirectoryPathRecord(before) else {
-            throw HermesRuntimeFailure.localCleanupFailed
-        }
-
-        let descriptor = name.withCString {
-            Darwin.openat(parent.rawValue, $0, O_RDONLY | O_DIRECTORY)
-        }
-        guard descriptor >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
-        var closeDescriptor = true
-        defer {
-            if closeDescriptor { _ = Darwin.close(descriptor) }
-        }
-
-        var opened = stat()
-        guard Darwin.fstat(descriptor, &opened) == 0 else {
-            throw HermesRuntimeFailure.localCleanupFailed
-        }
-        var after = stat()
-        let afterResult = name.withCString {
-            Darwin.fstatat(parent.rawValue, $0, &after, AT_SYMLINK_NOFOLLOW)
-        }
-        guard afterResult == 0,
-              isDirectoryPathRecord(after),
-              opened.st_mode & fileTypeMask == directoryType,
-              before.st_dev == opened.st_dev,
-              before.st_ino == opened.st_ino,
-              opened.st_dev == after.st_dev,
-              opened.st_ino == after.st_ino else {
-            throw HermesRuntimeFailure.localCleanupFailed
-        }
-
-        closeDescriptor = false
-        return HermesDirectoryDescriptor(rawValue: descriptor)
     }
 
     static func entryStatus(
@@ -671,41 +532,6 @@ private enum HermesFilesystem {
         }
         guard errno == 0 else { throw HermesRuntimeFailure.localCleanupFailed }
         return result
-    }
-
-    static func openRegularFileDescriptor(_ url: URL) throws -> HermesRegularFileDescriptor? {
-        guard let parent = try openDirectory(
-            url.deletingLastPathComponent(), createMissing: false
-        ) else { return nil }
-        var before = stat()
-        let observed = url.lastPathComponent.withCString {
-            Darwin.fstatat(parent.rawValue, $0, &before, AT_SYMLINK_NOFOLLOW)
-        }
-        if observed < 0, errno == ENOENT { return nil }
-        guard observed == 0,
-              before.st_mode & fileTypeMask == regularType else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let descriptor = url.lastPathComponent.withCString {
-            Darwin.openat(parent.rawValue, $0, O_RDONLY | O_NOFOLLOW)
-        }
-        guard descriptor >= 0 else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        var opened = stat()
-        var after = stat()
-        let observedAfter = url.lastPathComponent.withCString {
-            Darwin.fstatat(parent.rawValue, $0, &after, AT_SYMLINK_NOFOLLOW)
-        }
-        guard Darwin.fstat(descriptor, &opened) == 0,
-              observedAfter == 0,
-              opened.st_mode & fileTypeMask == regularType,
-              HermesFileIdentity(before) == HermesFileIdentity(opened),
-              HermesFileIdentity(opened) == HermesFileIdentity(after) else {
-            _ = Darwin.close(descriptor)
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        return HermesRegularFileDescriptor(rawValue: descriptor)
     }
 
     static func readRegularFile(_ url: URL) throws -> HermesFileSnapshot? {
@@ -804,7 +630,12 @@ private enum HermesFilesystem {
         in parent: HermesDirectoryDescriptor,
         name: String
     ) throws -> HermesDirectoryDescriptor? {
-        try openVerifiedChildDirectory(in: parent, name: name)
+        let descriptor = name.withCString {
+            Darwin.openat(parent.rawValue, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        }
+        if descriptor < 0, errno == ENOENT { return nil }
+        guard descriptor >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
+        return HermesDirectoryDescriptor(rawValue: descriptor)
     }
 
     private static func removeDirectoryContents(
@@ -878,10 +709,10 @@ private enum HermesFilesystem {
         guard Darwin.fstat(descriptor, &status) == 0,
               status.st_mode & fileTypeMask == regularType,
               Darwin.fchmod(descriptor, mode_t(0o600)) == 0,
-              Darwin.lockf(descriptor, F_LOCK, 0) == 0 else {
+              hermesFlock(descriptor, LOCK_EX) == 0 else {
             throw HermesRuntimeFailure.localCleanupFailed
         }
-        defer { _ = Darwin.lockf(descriptor, F_ULOCK, 0) }
+        defer { _ = hermesFlock(descriptor, LOCK_UN) }
         return try body(parent)
     }
 
@@ -1145,16 +976,13 @@ final class HermesLocalStore {
 }
 
 private final class HermesEnvironmentFile {
-    // Historical names are assembled to keep production source/binaries free
-    // of credential-shaped string literals while still scrubbing exact legacy
-    // lines. No member of this set is a production configuration input.
-    static let legacyOwnedKeys = [
-        "INDEX_" + "API_KEY",
-        "INDEX_" + "API_URL",
-        "INDEX_" + "MCP_URL",
-        "INDEX_" + "AGENT_ID",
-        "INDEX_" + "INSTALLATION_ID",
-        "INDEX_" + "PLUGIN_MODE",
+    static let ownedKeys = [
+        "INDEX_API_KEY",
+        "INDEX_API_URL",
+        "INDEX_MCP_URL",
+        "INDEX_AGENT_ID",
+        "INDEX_INSTALLATION_ID",
+        "INDEX_PLUGIN_MODE",
     ]
 
     private static let mutationLockName = ".index-network.env.lock"
@@ -1213,7 +1041,7 @@ private final class HermesEnvironmentFile {
         for line in try existingLines() {
             guard let separator = line.firstIndex(of: "=") else { continue }
             let key = String(line[..<separator])
-            if Self.legacyOwnedKeys.contains(key) {
+            if Self.ownedKeys.contains(key) {
                 values[key] = String(line[line.index(after: separator)...])
             }
         }
@@ -1221,7 +1049,7 @@ private final class HermesEnvironmentFile {
     }
 
     func upsert(_ updates: [(String, String)]) throws {
-        guard updates.allSatisfy({ Self.legacyOwnedKeys.contains($0.0) && isValidValue($0.1) }) else {
+        guard updates.allSatisfy({ Self.ownedKeys.contains($0.0) && isValidValue($0.1) }) else {
             throw HermesRuntimeFailure.invalidArguments
         }
         let keys = Set(updates.map(\.0))
@@ -1235,7 +1063,7 @@ private final class HermesEnvironmentFile {
     }
 
     func removeOwnedValues() throws {
-        let keys = Set(Self.legacyOwnedKeys)
+        let keys = Set(Self.ownedKeys)
         try mutate { lines in
             lines.removeAll { line in
                 guard let separator = line.firstIndex(of: "=") else { return false }
@@ -1679,648 +1507,6 @@ private enum HermesGatewayState {
     }
 }
 
-protocol HermesConnectorStatusProviding {
-    func status() throws -> HermesConnectorStatus
-    func disconnect(
-        installationId: String,
-        agentId: String,
-        setupAttemptId: String
-    ) throws -> HermesConnectorStatus
-}
-
-/// Fixed-path trust boundary for the standalone connector. The source bundle is
-/// copied into an app-owned private staging directory before any trust decision;
-/// only that immutable staged path is verified and executed. The bridge exposes
-/// exactly hello/status and generation-fenced disconnect.
-final class HermesVerifiedConnectorStatusProvider: HermesConnectorStatusProviding {
-    private static let protocolVersion = 1
-    private static let maximumConnectorResponseBytes = 1_048_576
-    private static let timeout: TimeInterval = 40
-    private static let expectedTeamID = "LMQ3XNXLAD"
-    private static let expectedBundleID = "network.index.connector"
-    private static let expectedDesignatedRequirement =
-        "anchor apple generic and certificate leaf[subject.OU] = \"\(expectedTeamID)\" and identifier \"\(expectedBundleID)\""
-    private static let allowedChildEnvironmentKeys = ["HOME", "TMPDIR", "LANG", "LC_ALL"]
-    private static let forbiddenCanonicalKeys: Set<String> = [
-        "credential", "rawcredential", "credentialid", "apikey", "token", "secret",
-        "password", "auth", "authorization", "authorizationcode", "verifier", "challenge",
-        "headers",
-    ]
-    private static let canonicalActions = [
-        "manage:identity", "manage:premises", "manage:intents",
-        "manage:networks", "manage:opportunities", "manage:negotiations",
-    ]
-    private static let releaseKeys: Set<String> = [
-        "schemaVersion", "teamId", "bundleId", "designatedRequirement",
-        "connectorProtocolVersion", "sha256", "downloadUrl",
-    ]
-    private static let statusKeys: Set<String> = [
-        "connected", "accountLabel", "installationId", "agentId", "setupAttemptId",
-        "actions", "expiresAt", "health", "revocationPending",
-    ]
-
-    private let homeURL: URL
-    private let pluginRoot: URL
-    private let stagingRoot: URL
-    private let now: () -> Date
-
-    init(
-        homeURL: URL = URL(fileURLWithPath: NSHomeDirectory()),
-        pluginRoot: URL? = nil,
-        stagingRoot: URL? = nil,
-        now: @escaping () -> Date = Date.init
-    ) {
-        self.homeURL = homeURL
-        self.pluginRoot = pluginRoot ?? homeURL
-            .appendingPathComponent(".hermes/plugins/index-network", isDirectory: true)
-        self.stagingRoot = stagingRoot ?? homeURL
-            .appendingPathComponent("Library/Application Support/network.index.system6/connector-staging", isDirectory: true)
-        self.now = now
-    }
-
-    func status() throws -> HermesConnectorStatus {
-        try withVerifiedConnector { executable, descriptor, fileIdentity, launchIdentity, requirement in
-            let helloID = UUID().uuidString.lowercased()
-            let statusID = UUID().uuidString.lowercased()
-            let responses = try launch(
-                executable: executable,
-                executableDescriptor: descriptor,
-                expectedFileIdentity: fileIdentity,
-                expectedLaunchIdentity: launchIdentity,
-                requirement: requirement,
-                requests: [
-                    request(id: helloID, operation: "hello"),
-                    request(id: statusID, operation: "status"),
-                ]
-            )
-            guard responses.count == 2 else { throw HermesRuntimeFailure.connectorStatusFailed }
-            try validateHello(try result(responses[0], id: helloID))
-            return try parseStatus(try result(responses[1], id: statusID))
-        }
-    }
-
-    func disconnect(
-        installationId: String,
-        agentId: String,
-        setupAttemptId: String
-    ) throws -> HermesConnectorStatus {
-        guard UUID(uuidString: installationId) != nil,
-              UUID(uuidString: agentId) != nil,
-              UUID(uuidString: setupAttemptId) != nil else {
-            throw HermesRuntimeFailure.invalidArguments
-        }
-        return try withVerifiedConnector {
-            executable, descriptor, fileIdentity, launchIdentity, requirement in
-            let helloID = UUID().uuidString.lowercased()
-            let beforeID = UUID().uuidString.lowercased()
-            let disconnectID = UUID().uuidString.lowercased()
-            let afterID = UUID().uuidString.lowercased()
-            let responses = try launch(
-                executable: executable,
-                executableDescriptor: descriptor,
-                expectedFileIdentity: fileIdentity,
-                expectedLaunchIdentity: launchIdentity,
-                requirement: requirement,
-                requests: [
-                    request(id: helloID, operation: "hello"),
-                    request(id: beforeID, operation: "status"),
-                    request(id: disconnectID, operation: "disconnect"),
-                    request(id: afterID, operation: "status"),
-                ]
-            )
-            guard responses.count == 4 else { throw HermesRuntimeFailure.connectorStatusFailed }
-            try validateHello(try result(responses[0], id: helloID))
-            let before = try parseStatus(try result(responses[1], id: beforeID))
-            let exactGeneration = before.installationId == installationId
-                && before.agentId == agentId
-                && before.setupAttemptId == setupAttemptId
-            let alreadyDisconnected = before.installationId == installationId
-                && !before.connected && !before.revocationPending
-                && before.health == "disconnected"
-                && before.agentId == nil && before.setupAttemptId == nil
-            guard exactGeneration || alreadyDisconnected else {
-                throw HermesRuntimeFailure.connectorStatusFailed
-            }
-            let disconnectResult = try result(responses[2], id: disconnectID)
-            guard Set(disconnectResult.keys) == ["status"],
-                  let disconnectState = disconnectResult["status"] as? String,
-                  ["disconnected", "recovery_only"].contains(disconnectState) else {
-                throw HermesRuntimeFailure.connectorStatusFailed
-            }
-            let after = try parseStatus(try result(responses[3], id: afterID))
-            if disconnectState == "disconnected" {
-                guard !after.connected, !after.revocationPending,
-                      after.health == "disconnected",
-                      after.agentId == nil, after.setupAttemptId == nil else {
-                    throw HermesRuntimeFailure.connectorStatusFailed
-                }
-            } else {
-                guard !after.connected, after.revocationPending,
-                      after.health == "recovery_only",
-                      after.installationId == installationId,
-                      after.agentId == agentId,
-                      after.setupAttemptId == setupAttemptId else {
-                    throw HermesRuntimeFailure.connectorStatusFailed
-                }
-            }
-            return after
-        }
-    }
-
-    private func request(id: String, operation: String) -> [String: Any] {
-        ["protocolVersion": Self.protocolVersion, "id": id, "operation": operation, "payload": [:]]
-    }
-
-    private func validateHello(_ hello: [String: Any]) throws {
-        guard Set(hello.keys) == ["protocolVersion", "buildMode", "apiEnvironment"],
-              exactInteger(hello["protocolVersion"]) == Self.protocolVersion,
-              hello["buildMode"] as? String == "production",
-              hello["apiEnvironment"] as? String == "production" else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-    }
-
-    private func parseStatus(_ payload: [String: Any]) throws -> HermesConnectorStatus {
-        guard Set(payload.keys) == Self.statusKeys,
-              let connected = exactBool(payload["connected"]),
-              let revocationPending = exactBool(payload["revocationPending"]),
-              let installationId = payload["installationId"] as? String,
-              UUID(uuidString: installationId) != nil,
-              let health = payload["health"] as? String,
-              ["active", "recovery_only", "expired", "disconnected"].contains(health),
-              let actions = payload["actions"] as? [String], actions.count <= Self.canonicalActions.count,
-              payload["accountLabel"] is NSNull
-                || ((payload["accountLabel"] as? String)?.utf8.count ?? 257) <= 256 else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        let agentId = payload["agentId"] is NSNull ? nil : payload["agentId"] as? String
-        let setupAttemptId = payload["setupAttemptId"] is NSNull
-            ? nil : payload["setupAttemptId"] as? String
-        let expiresAt = payload["expiresAt"] is NSNull ? nil : payload["expiresAt"] as? String
-        guard (expiresAt?.utf8.count ?? 0) <= 64,
-              (agentId == nil || UUID(uuidString: agentId!) != nil),
-              (setupAttemptId == nil || UUID(uuidString: setupAttemptId!) != nil),
-              (agentId == nil) == (setupAttemptId == nil),
-              (expiresAt == nil) == (agentId == nil),
-              (!connected || (health == "active" && !revocationPending)),
-              (!revocationPending || health == "recovery_only") else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        if connected || revocationPending || health == "expired" {
-            guard actions == Self.canonicalActions,
-                  let expiresAt,
-                  let expiry = ISO8601DateFormatter().date(from: expiresAt) else {
-                throw HermesRuntimeFailure.connectorStatusFailed
-            }
-            if connected {
-                let observed = now()
-                guard expiry > observed,
-                      expiry.timeIntervalSince(observed) <= 30 * 24 * 60 * 60 else {
-                    throw HermesRuntimeFailure.connectorStatusFailed
-                }
-            }
-        } else {
-            guard actions.isEmpty, expiresAt == nil else {
-                throw HermesRuntimeFailure.connectorStatusFailed
-            }
-        }
-        return HermesConnectorStatus(
-            connected: connected, health: health, revocationPending: revocationPending,
-            installationId: installationId, agentId: agentId,
-            setupAttemptId: setupAttemptId, actions: actions, expiresAt: expiresAt
-        )
-    }
-
-    private func exactBool(_ value: Any?) -> Bool? {
-        guard let number = value as? NSNumber,
-              CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
-        return number.boolValue
-    }
-
-    private func exactInteger(_ value: Any?) -> Int? {
-        guard let number = value as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let double = number.doubleValue
-        guard double.isFinite, double.rounded(.towardZero) == double,
-              double >= 0, double <= Double(Int.max) else { return nil }
-        return Int(double)
-    }
-
-    private func candidateBundles() -> [URL] {
-        [
-            URL(fileURLWithPath: "/Applications/Index Connector.app", isDirectory: true),
-            homeURL.appendingPathComponent("Applications/Index Connector.app", isDirectory: true),
-        ]
-    }
-
-    private func withVerifiedConnector<T>(
-        _ body: (
-            URL,
-            HermesRegularFileDescriptor,
-            HermesFileIdentity,
-            HermesConnectorLaunchIdentity,
-            SecRequirement
-        ) throws -> T
-    ) throws -> T {
-        var selected: URL?
-        for bundle in candidateBundles() {
-            if (try? HermesFilesystem.openDirectory(bundle, createMissing: false)) != nil {
-                selected = bundle
-                break
-            }
-        }
-        guard let sourceBundle = selected else { throw HermesRuntimeFailure.connectorUnverified }
-        let sourceExecutable = sourceBundle.appendingPathComponent("Contents/MacOS/IndexConnector")
-        guard let sourceBefore = try HermesFilesystem.readRegularFile(sourceExecutable) else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let releaseSource = pluginRoot.appendingPathComponent("connector-release.cms")
-        guard let cmsSnapshot = try HermesFilesystem.readRegularFile(releaseSource) else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-
-        let stage = stagingRoot.appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
-        defer { try? HermesFilesystem.removeOwnedDirectory(stage) }
-        guard let stagingParent = try HermesFilesystem.openDirectory(stagingRoot, createMissing: true) else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        guard Darwin.fchmod(stagingParent.rawValue, mode_t(0o700)) == 0 else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        try FileManager.default.copyItem(at: sourceBundle, to: stage)
-        try hardenAndRejectSymlinks(stage)
-        let stagedCMS = stage.appendingPathComponent("connector-release.cms")
-        try HermesSecureFileWriter.write(cmsSnapshot.data, to: stagedCMS, expected: .absent)
-
-        guard let sourceAfter = try HermesFilesystem.readRegularFile(sourceExecutable),
-              sourceAfter.identity == sourceBefore.identity,
-              sourceAfter.data == sourceBefore.data else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let executable = stage.appendingPathComponent("Contents/MacOS/IndexConnector")
-        guard let executableDescriptor = try HermesFilesystem.openRegularFileDescriptor(executable) else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let stagedExecutable = try executableDescriptor.snapshot()
-        guard stagedExecutable.data == sourceBefore.data else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let verified = try verifyStagedBundle(
-            stage, executable: executable, cms: stagedCMS, executableSnapshot: stagedExecutable
-        )
-        let descriptorSnapshot = try executableDescriptor.snapshot()
-        guard descriptorSnapshot.identity == stagedExecutable.identity,
-              descriptorSnapshot.data == stagedExecutable.data,
-              let immediatelyBeforeExecution = try HermesFilesystem.readRegularFile(executable),
-              immediatelyBeforeExecution.identity == stagedExecutable.identity else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let value = try body(
-            executable,
-            executableDescriptor,
-            stagedExecutable.identity,
-            verified.identity,
-            verified.requirement
-        )
-        let afterExecution = try executableDescriptor.snapshot()
-        guard afterExecution.identity == stagedExecutable.identity,
-              afterExecution.data == stagedExecutable.data else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        return value
-    }
-
-    private func hardenAndRejectSymlinks(_ root: URL) throws {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in false }
-        ) else { throw HermesRuntimeFailure.connectorUnverified }
-        var urls = [root]
-        while let url = enumerator.nextObject() as? URL { urls.append(url) }
-        for url in urls {
-            var status = stat()
-            guard Darwin.lstat(url.path, &status) == 0,
-                  status.st_mode & mode_t(S_IFMT) != mode_t(S_IFLNK),
-                  status.st_uid == getuid() else {
-                throw HermesRuntimeFailure.connectorUnverified
-            }
-            let type = status.st_mode & mode_t(S_IFMT)
-            if type == mode_t(S_IFDIR) {
-                guard Darwin.chmod(url.path, mode_t(0o700)) == 0 else {
-                    throw HermesRuntimeFailure.connectorUnverified
-                }
-            } else if type == mode_t(S_IFREG) {
-                let executable = status.st_mode & mode_t(0o111) != 0
-                guard Darwin.chmod(url.path, executable ? mode_t(0o700) : mode_t(0o600)) == 0 else {
-                    throw HermesRuntimeFailure.connectorUnverified
-                }
-            } else {
-                throw HermesRuntimeFailure.connectorUnverified
-            }
-        }
-    }
-
-    private func verifyStagedBundle(
-        _ bundle: URL,
-        executable: URL,
-        cms: URL,
-        executableSnapshot: HermesFileSnapshot
-    ) throws -> (identity: HermesConnectorLaunchIdentity, requirement: SecRequirement) {
-        let decoded = try runCommand(
-            executable: "/usr/bin/security", arguments: ["cms", "-D", "-i", cms.path]
-        )
-        guard decoded.status == 0,
-              let data = decoded.output.data(using: .utf8),
-              let metadata = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Set(metadata.keys) == Self.releaseKeys,
-              exactInteger(metadata["schemaVersion"]) == 1,
-              metadata["teamId"] as? String == Self.expectedTeamID,
-              metadata["bundleId"] as? String == Self.expectedBundleID,
-              metadata["designatedRequirement"] as? String == Self.expectedDesignatedRequirement,
-              exactInteger(metadata["connectorProtocolVersion"]) == Self.protocolVersion,
-              metadata["downloadUrl"] as? String == "https://index.network/download",
-              let expectedSHA = metadata["sha256"] as? String,
-              expectedSHA.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-
-        var staticCode: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(bundle as CFURL, SecCSFlags(), &staticCode) == errSecSuccess,
-              let staticCode else { throw HermesRuntimeFailure.connectorUnverified }
-        var requirement: SecRequirement?
-        guard SecRequirementCreateWithString(
-            Self.expectedDesignatedRequirement as CFString, SecCSFlags(), &requirement
-        ) == errSecSuccess, let requirement else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let validityFlags = SecCSFlags(rawValue:
-            kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode
-        )
-        guard SecStaticCodeCheckValidity(staticCode, validityFlags, requirement) == errSecSuccess else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let launchIdentity: HermesConnectorLaunchIdentity
-        do {
-            launchIdentity = try HermesConnectorCodeAttestor.captureExpectedIdentity(
-                staticCode: staticCode,
-                expectedTeamID: Self.expectedTeamID,
-                expectedBundleID: Self.expectedBundleID
-            )
-        } catch {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        var signingInfo: CFDictionary?
-        guard SecCodeCopySigningInformation(
-            staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &signingInfo
-        ) == errSecSuccess,
-              let info = signingInfo as? [String: Any],
-              info[kSecCodeInfoTeamIdentifier as String] as? String == Self.expectedTeamID,
-              info[kSecCodeInfoIdentifier as String] as? String == Self.expectedBundleID else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let digest = SHA256.hash(data: executableSnapshot.data)
-            .map { String(format: "%02x", $0) }.joined()
-        guard digest == expectedSHA,
-              let after = try HermesFilesystem.readRegularFile(executable),
-              after.identity == executableSnapshot.identity,
-              after.data == executableSnapshot.data else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        return (launchIdentity, requirement)
-    }
-
-    private func result(_ response: [String: Any], id: String) throws -> [String: Any] {
-        guard Set(response.keys) == ["protocolVersion", "id", "success", "result", "error"],
-              exactInteger(response["protocolVersion"]) == Self.protocolVersion,
-              response["id"] as? String == id,
-              exactBool(response["success"]) == true,
-              response["error"] is NSNull,
-              let payload = response["result"] as? [String: Any],
-              !containsForbiddenField(payload) else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        return payload
-    }
-
-    private func containsForbiddenField(_ value: Any) -> Bool {
-        if let object = value as? [String: Any] {
-            if object.keys.contains(where: { key in
-                let canonical = String(key.unicodeScalars.filter {
-                    CharacterSet.alphanumerics.contains($0)
-                }).lowercased()
-                return Self.forbiddenCanonicalKeys.contains(where: canonical.contains)
-            }) { return true }
-            return object.values.contains(where: containsForbiddenField)
-        }
-        if let array = value as? [Any] { return array.contains(where: containsForbiddenField) }
-        return false
-    }
-
-    /// Spawns the staged pathname suspended, binds trust to the loaded child's
-    /// PID-derived dynamic code identity, and resumes it before protocol I/O.
-    private func launch(
-        executable: URL,
-        executableDescriptor: HermesRegularFileDescriptor,
-        expectedFileIdentity: HermesFileIdentity,
-        expectedLaunchIdentity: HermesConnectorLaunchIdentity,
-        requirement: SecRequirement,
-        requests: [[String: Any]]
-    ) throws -> [[String: Any]] {
-        let immediatelyBeforeExecution = try executableDescriptor.snapshot()
-        guard immediatelyBeforeExecution.identity == expectedFileIdentity else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let input = try requests.map {
-            let data = try JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys])
-            guard data.count <= 262_144 else { throw HermesRuntimeFailure.connectorStatusFailed }
-            return data
-        }.reduce(into: Data()) { buffer, line in
-            buffer.append(line); buffer.append(0x0a)
-        }
-
-        var inputPipe = [Int32](repeating: -1, count: 2)
-        var outputPipe = [Int32](repeating: -1, count: 2)
-        guard inputPipe.withUnsafeMutableBufferPointer({ Darwin.pipe($0.baseAddress!) }) == 0,
-              outputPipe.withUnsafeMutableBufferPointer({ Darwin.pipe($0.baseAddress!) }) == 0 else {
-            if inputPipe[0] >= 0 { _ = Darwin.close(inputPipe[0]); _ = Darwin.close(inputPipe[1]) }
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        defer {
-            for descriptor in inputPipe + outputPipe where descriptor >= 0 {
-                _ = Darwin.close(descriptor)
-            }
-        }
-
-        var actions: posix_spawn_file_actions_t? = nil
-        guard posix_spawn_file_actions_init(&actions) == 0 else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        defer { posix_spawn_file_actions_destroy(&actions) }
-        let stderrAction = "/dev/null".withCString {
-            posix_spawn_file_actions_addopen(
-                &actions, STDERR_FILENO, $0, O_WRONLY, mode_t(0)
-            )
-        }
-        guard posix_spawn_file_actions_adddup2(&actions, inputPipe[0], STDIN_FILENO) == 0,
-              posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDOUT_FILENO) == 0,
-              stderrAction == 0,
-              posix_spawn_file_actions_addclose(&actions, inputPipe[1]) == 0,
-              posix_spawn_file_actions_addclose(&actions, outputPipe[0]) == 0 else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-
-        let environment = Self.allowedChildEnvironmentKeys.compactMap { key -> String? in
-            guard let value = ProcessInfo.processInfo.environment[key] else { return nil }
-            return "\(key)=\(value)"
-        }
-        var arguments = [executable.path.withCString { strdup($0) }, nil]
-        var environmentPointers = environment.map { value in
-            value.withCString { strdup($0) }
-        } + [nil]
-        defer {
-            arguments.compactMap { $0 }.forEach { free($0) }
-            environmentPointers.compactMap { $0 }.forEach { free($0) }
-        }
-        var attributes: posix_spawnattr_t? = nil
-        guard posix_spawnattr_init(&attributes) == 0 else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        defer { posix_spawnattr_destroy(&attributes) }
-        let flags = POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_START_SUSPENDED
-        guard posix_spawnattr_setflags(&attributes, Int16(flags)) == 0 else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        let capture = HermesExactBoundedCapture(limit: Self.maximumConnectorResponseBytes)
-        let io = DispatchGroup()
-        let outcome: HermesSuspendedChildOutcome
-        do {
-            outcome = try HermesSuspendedChildLifecycle.run(
-                spawnSuspended: {
-                    var child = pid_t()
-                    let spawnStatus = executable.path.withCString { path in
-                        arguments.withUnsafeMutableBufferPointer { argv in
-                            environmentPointers.withUnsafeMutableBufferPointer { envp in
-                                posix_spawn(
-                                    &child, path, &actions, &attributes,
-                                    argv.baseAddress, envp.baseAddress
-                                )
-                            }
-                        }
-                    }
-                    guard spawnStatus == 0 else {
-                        throw HermesSuspendedChildLifecycleError.spawnFailed
-                    }
-                    // The shared lifecycle owns the child from this return. The
-                    // parent no longer needs the descriptors installed in it.
-                    _ = Darwin.close(inputPipe[0]); inputPipe[0] = -1
-                    _ = Darwin.close(outputPipe[1]); outputPipe[1] = -1
-                    return child
-                },
-                attest: { child in
-                    try HermesConnectorCodeAttestor.attestSuspendedChild(
-                        pid: child,
-                        expected: expectedLaunchIdentity,
-                        requirement: requirement
-                    )
-                },
-                startIO: {
-                    // This closure is invoked only after attestation and SIGCONT.
-                    let outputReadDescriptor = outputPipe[0]; outputPipe[0] = -1
-                    let inputWriteDescriptor = inputPipe[1]; inputPipe[1] = -1
-                    io.enter()
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        let handle = FileHandle(
-                            fileDescriptor: outputReadDescriptor, closeOnDealloc: true
-                        )
-                        defer { try? handle.close(); io.leave() }
-                        do {
-                            while let chunk = try handle.read(upToCount: 16_384),
-                                  !chunk.isEmpty {
-                                capture.append(chunk)
-                            }
-                        } catch {
-                            capture.append(Data(
-                                repeating: 0,
-                                count: Self.maximumConnectorResponseBytes + 1
-                            ))
-                        }
-                    }
-                    io.enter()
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        let handle = FileHandle(
-                            fileDescriptor: inputWriteDescriptor, closeOnDealloc: true
-                        )
-                        defer { try? handle.close(); io.leave() }
-                        do { try handle.write(contentsOf: input) } catch {}
-                    }
-                },
-                timeoutNanoseconds: UInt64(Self.timeout * 1_000_000_000)
-            )
-        } catch let error as HermesSuspendedChildLifecycleError {
-            switch error {
-            case .attestationFailed, .resumeFailed:
-                throw HermesRuntimeFailure.connectorUnverified
-            default:
-                throw HermesRuntimeFailure.connectorStatusFailed
-            }
-        } catch {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-
-        let waitStatus = outcome.status
-        let timedOut = outcome.timedOut
-        let ioCompleted = io.wait(timeout: .now() + 2) == .success
-        let captured = capture.result()
-        let afterExecution = try executableDescriptor.snapshot()
-        let exitedNormally = waitStatus & 0x7f == 0
-        let exitStatus = (waitStatus >> 8) & 0xff
-        guard !timedOut, ioCompleted, exitedNormally, exitStatus == 0, !captured.overflow,
-              afterExecution.identity == expectedFileIdentity,
-              let text = String(data: captured.data, encoding: .utf8) else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.count == requests.count + 1, lines.last?.isEmpty == true else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        return try lines.dropLast().map { line in
-            let data = Data(line.utf8)
-            guard data.count <= 262_144,
-                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw HermesRuntimeFailure.connectorStatusFailed
-            }
-            return object
-        }
-    }
-
-    private func runCommand(executable: String, arguments: [String]) throws -> HermesCommandOutput {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = Self.allowedChildEnvironmentKeys.reduce(into: [:]) { result, key in
-            if let value = ProcessInfo.processInfo.environment[key] { result[key] = value }
-        }
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        process.standardInput = FileHandle.nullDevice
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in finished.signal() }
-        try process.run()
-        guard finished.wait(timeout: .now() + Self.timeout) == .success else {
-            process.terminate()
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        let data = try output.fileHandleForReading.readToEnd() ?? Data()
-        guard data.count <= Self.maximumConnectorResponseBytes else {
-            throw HermesRuntimeFailure.connectorUnverified
-        }
-        return HermesCommandOutput(
-            status: process.terminationStatus,
-            output: String(data: data, encoding: .utf8) ?? ""
-        )
-    }
-}
 final class HermesRuntimeManager {
     static let ownedCronName = "Index Personal Agent Negotiator"
     static let ownedCronSchedule = "every 1m"
@@ -2336,7 +1522,6 @@ final class HermesRuntimeManager {
     private let hermesHome: URL
     private let environment: HermesEnvironmentFile
     private let cronStore: HermesCronStore
-    private let connectorStatusProvider: HermesConnectorStatusProviding
 
     init(
         runner: HermesCommandRunning = HermesCommandRunner(),
@@ -2344,8 +1529,7 @@ final class HermesRuntimeManager {
             HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"]
         },
         applicationSupportURL: URL? = nil,
-        hermesHomeURL: URL? = nil,
-        connectorStatusProvider: HermesConnectorStatusProviding? = nil
+        hermesHomeURL: URL? = nil
     ) {
         self.runner = runner
         self.binaryProvider = binaryProvider
@@ -2354,11 +1538,6 @@ final class HermesRuntimeManager {
             .appendingPathComponent(".hermes", isDirectory: true)
         environment = HermesEnvironmentFile(homeURL: hermesHome)
         cronStore = HermesCronStore(homeURL: hermesHome)
-        self.connectorStatusProvider = connectorStatusProvider
-            ?? HermesVerifiedConnectorStatusProvider(
-                homeURL: hermesHome.deletingLastPathComponent(),
-                pluginRoot: hermesHome.appendingPathComponent("plugins/index-network")
-            )
     }
 
     private func localStore() throws -> HermesLocalStore {
@@ -2397,16 +1576,10 @@ final class HermesRuntimeManager {
                   evidence.stage == "server-complete",
                   evidence.ownerId == ownerId else { return nil }
             let installation = try store.loadOrCreateInstallation()
-            let exactPublishedGeneration = evidence.installationId
-                    == (installation.currentConnectorInstallationId ?? installation.installationId)
-                && evidence.setupAttemptId == installation.currentSetupAttemptId
-                && evidence.executorId == installation.currentExecutorId
-            let terminallyClearedGeneration = installation.currentOwnerId == nil
-                && installation.currentConnectorInstallationId == nil
-                && installation.currentExecutorId == nil
-                && installation.currentSetupAttemptId == nil
-            guard installation.currentOwnerId == nil || installation.currentOwnerId == ownerId,
-                  exactPublishedGeneration || terminallyClearedGeneration else {
+            guard evidence.installationId == installation.installationId,
+                  installation.currentOwnerId == nil || installation.currentOwnerId == ownerId,
+                  evidence.setupAttemptId == installation.currentSetupAttemptId,
+                  evidence.executorId == installation.currentExecutorId else {
                 return nil
             }
             try verifyLogoutPostconditions(installation: installation)
@@ -2429,10 +1602,6 @@ final class HermesRuntimeManager {
             switch request.command {
             case .inspect:
                 return try inspect(request)
-            case .connectorStatus:
-                return try connectorStatus(request)
-            case .connectorDisconnect:
-                return try connectorDisconnect(request)
             case .configureDisabled:
                 return try configureDisabled(request)
             case .enable:
@@ -2471,61 +1640,6 @@ final class HermesRuntimeManager {
                 retryable: true
             )
         }
-    }
-
-    private func connectorStatus(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
-        HermesRuntimeResult(
-            requestId: request.requestId,
-            ok: true,
-            stage: "connector_status",
-            state: nil,
-            connectorStatus: try connectorStatusProvider.status(),
-            errorCode: nil,
-            retryable: false
-        )
-    }
-
-    private func connectorDisconnect(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
-        guard let installationId = validValue(request.installationId),
-              let agentId = validValue(request.executorId),
-              let setupAttemptId = validValue(request.setupAttemptId) else {
-            throw HermesRuntimeFailure.invalidArguments
-        }
-        let status = try connectorStatusProvider.disconnect(
-            installationId: installationId,
-            agentId: agentId,
-            setupAttemptId: setupAttemptId
-        )
-        if !status.revocationPending {
-            let store = try localStore()
-            let installation = try store.loadOrCreateInstallation()
-            if installation.currentSetupAttemptId != nil {
-                guard installation.currentConnectorInstallationId == installationId,
-                      installation.currentExecutorId == agentId,
-                      installation.currentSetupAttemptId == setupAttemptId,
-                      let ownerId = installation.currentOwnerId else {
-                    throw HermesRuntimeFailure.ownerMismatch
-                }
-                try saveStage(
-                    .connectorDisconnected,
-                    owner: ownerId,
-                    attempt: setupAttemptId,
-                    executor: agentId,
-                    cronJobId: installation.currentCronJobId,
-                    store: store
-                )
-            }
-        }
-        return HermesRuntimeResult(
-            requestId: request.requestId,
-            ok: true,
-            stage: status.revocationPending
-                ? "connector_revocation_pending" : "connector_disconnected",
-            state: try? localState(),
-            connectorStatus: status,
-            errorCode: nil,
-            retryable: status.revocationPending
-        )
     }
 
     private func loadOperation(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
@@ -2722,8 +1836,8 @@ final class HermesRuntimeManager {
                     || journal.ownerId != installation.currentOwnerId
                     || journal.executorId != installation.currentExecutorId)
             let cronPublishedStages: Set<HermesSetupStage> = [
-                .scheduleDisabled, .connectorActivationConfirmed, .enabling, .awaitingHeartbeat,
-                .disconnecting, .connectorDisconnected, .disconnectCleanupComplete,
+                .scheduleDisabled, .enabling, .awaitingHeartbeat,
+                .disconnecting, .disconnectCleanupComplete,
             ]
             let mismatchedCronFence = journal.cronJobId != nil
                 && journal.cronJobId != installation.currentCronJobId
@@ -2740,7 +1854,6 @@ final class HermesRuntimeManager {
            journal?.stage == .disconnectCleanupComplete {
             try finishTerminalDisconnect(store: store, installation: installation)
             installation.currentOwnerId = nil
-            installation.currentConnectorInstallationId = nil
             installation.currentExecutorId = nil
             installation.currentCronJobId = nil
             installation.currentCronSetupAttemptId = nil
@@ -2774,42 +1887,15 @@ final class HermesRuntimeManager {
         )
     }
 
-    private func developmentTransportEnabled() throws -> Bool {
-        guard ProcessInfo.processInfo.environment["INDEX_PLUGIN_DEVELOPMENT_TRANSPORT"] == "1" else {
-            return false
-        }
-        let marker = hermesHome
-            .appendingPathComponent("plugins/index-network", isDirectory: true)
-            .appendingPathComponent(".index-plugin-development")
-        guard let snapshot = try HermesFilesystem.readRegularFile(marker) else { return false }
-        return String(data: snapshot.data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            == "source-checkout-only"
-    }
-
-    private func verifyEnvironmentPolicy(developmentTransport: Bool) throws {
-        let values = try environment.values()
-        let present = Set(values.keys)
-        let legacy = Set(HermesEnvironmentFile.legacyOwnedKeys)
-        let secretKey = HermesEnvironmentFile.legacyOwnedKeys[0]
-        guard !present.contains(secretKey) else { throw HermesRuntimeFailure.envWriteFailed }
-        if developmentTransport {
-            guard present.intersection(legacy) == Set(legacy.dropFirst()) else {
-                throw HermesRuntimeFailure.envWriteFailed
-            }
-        } else {
-            guard present.intersection(legacy).isEmpty else {
-                throw HermesRuntimeFailure.envWriteFailed
-            }
-        }
-    }
-
     private func configureDisabled(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
         let store = try localStore()
         var installation = try store.loadOrCreateInstallation()
         guard let ownerId = validValue(request.ownerId),
-              let requestedInstallationId = validValue(request.installationId),
+              let requestedInstallationId = request.installationId,
+              requestedInstallationId == installation.installationId,
               let executorId = validValue(request.executorId),
-              let setupAttemptId = validValue(request.setupAttemptId) else {
+              let setupAttemptId = validValue(request.setupAttemptId),
+              let credential = validValue(request.credential) else {
             throw HermesRuntimeFailure.invalidArguments
         }
 
@@ -2879,19 +1965,15 @@ final class HermesRuntimeManager {
             try pauseCronByID(hermes, jobId: priorCron!.id)
         }
 
-        let developmentTransport = try developmentTransportEnabled()
         do {
-            try environment.removeOwnedValues()
-            if developmentTransport {
-                try environment.upsert([
-                    ("INDEX_API_URL", AppConfig.apiBaseURL),
-                    ("INDEX_MCP_URL", AppConfig.trimTrailingSlash(AppConfig.apiURL) + "/mcp"),
-                    ("INDEX_AGENT_ID", executorId),
-                    ("INDEX_INSTALLATION_ID", requestedInstallationId),
-                    ("INDEX_PLUGIN_MODE", "negotiator"),
-                ])
-            }
-            try verifyEnvironmentPolicy(developmentTransport: developmentTransport)
+            try environment.upsert([
+                ("INDEX_API_KEY", credential),
+                ("INDEX_API_URL", AppConfig.apiBaseURL),
+                ("INDEX_MCP_URL", AppConfig.trimTrailingSlash(AppConfig.apiURL) + "/mcp"),
+                ("INDEX_AGENT_ID", executorId),
+                ("INDEX_INSTALLATION_ID", installation.installationId),
+                ("INDEX_PLUGIN_MODE", "negotiator"),
+            ])
         } catch let failure as HermesRuntimeFailure {
             throw failure
         } catch {
@@ -2921,28 +2003,7 @@ final class HermesRuntimeManager {
             executor: executorId, cronJobId: installation.currentCronJobId, store: store
         )
 
-        let connectorActivationConfirmed = try connectorStatusProvider.status()
-        guard connectorActivationConfirmed.installationId == requestedInstallationId,
-              connectorActivationConfirmed.agentId == executorId,
-              connectorActivationConfirmed.setupAttemptId == setupAttemptId else {
-            throw HermesRuntimeFailure.connectorStatusFailed
-        }
-        try verifyEnvironmentPolicy(developmentTransport: developmentTransport)
-        installation.currentConnectorInstallationId = requestedInstallationId
-        try store.saveInstallation(installation)
-        try saveStage(
-            .connectorActivationConfirmed, owner: ownerId, attempt: setupAttemptId,
-            executor: executorId, cronJobId: installation.currentCronJobId, store: store
-        )
-        return HermesRuntimeResult(
-            requestId: request.requestId,
-            ok: true,
-            stage: HermesSetupStage.connectorActivationConfirmed.rawValue,
-            state: try localState(),
-            connectorStatus: connectorActivationConfirmed,
-            errorCode: nil,
-            retryable: false
-        )
+        return try success(request, stage: HermesSetupStage.scheduleDisabled.rawValue)
     }
 
     private func enable(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
@@ -3132,7 +2193,8 @@ final class HermesRuntimeManager {
             }
         }
         let env = try environment.values()
-        guard Set(env.keys).intersection(HermesEnvironmentFile.legacyOwnedKeys).isEmpty else {
+        guard env["INDEX_API_KEY"] == nil,
+              Set(env.keys).intersection(HermesEnvironmentFile.ownedKeys).isEmpty else {
             throw HermesRuntimeFailure.envWriteFailed
         }
     }
@@ -3179,25 +2241,8 @@ final class HermesRuntimeManager {
             }
         }
 
-        if let attempt = installation.currentSetupAttemptId,
-           let executor = installation.currentExecutorId {
-            try saveStage(
-                .disconnecting, owner: ownerId, attempt: attempt,
-                executor: executor, cronJobId: installation.currentCronJobId, store: store
-            )
-        }
-
         var pendingFailure: HermesRuntimeFailure?
         do {
-            if try isPluginInstalled() {
-                let disabled = try runner.run(
-                    executable: requireHermesBinary(),
-                    arguments: ["plugins", "disable", "index-network"]
-                )
-                guard disabled.status == 0 else {
-                    throw HermesRuntimeFailure.pluginDisableFailed
-                }
-            }
             try adoptLegacyCronIfNeeded(installation: &installation, store: store)
             if let (_, job) = try verifiedOwnedCron(installation: installation), job.enabled {
                 try pauseCronByID(try requireHermesBinary(), jobId: job.id)
@@ -3251,7 +2296,6 @@ final class HermesRuntimeManager {
             }
             try finishTerminalDisconnect(store: store, installation: installation)
             installation.currentOwnerId = nil
-            installation.currentConnectorInstallationId = nil
             installation.currentExecutorId = nil
             installation.currentCronJobId = nil
             installation.currentCronSetupAttemptId = nil
@@ -3271,26 +2315,10 @@ final class HermesRuntimeManager {
         guard let executor = installation.currentExecutorId else {
             throw HermesRuntimeFailure.installationStoreInvalid
         }
-        if installation.currentConnectorInstallationId != nil {
-            let operation = try store.loadOperation()
-            guard journal?.stage == .connectorDisconnected,
-                  journal?.ownerId == ownerId,
-                  journal?.setupAttemptId == expectedSetupAttemptId,
-                  journal?.executorId == executor,
-                  operation?.operation == "disconnect",
-                  operation?.stage == "server-complete",
-                  operation?.ownerId == ownerId,
-                  operation?.installationId == installation.currentConnectorInstallationId,
-                  operation?.setupAttemptId == expectedSetupAttemptId,
-                  operation?.executorId == executor else {
-                throw HermesRuntimeFailure.localCleanupFailed
-            }
-        } else {
-            try saveStage(
-                .disconnecting, owner: ownerId, attempt: expectedSetupAttemptId,
-                executor: executor, cronJobId: installation.currentCronJobId, store: store
-            )
-        }
+        try saveStage(
+            .disconnecting, owner: ownerId, attempt: expectedSetupAttemptId,
+            executor: executor, cronJobId: installation.currentCronJobId, store: store
+        )
 
         // Safe app-owned filesystem cleanup continues even when CLI work fails
         // or the executable disappeared. The generation/journal remain until
@@ -3439,7 +2467,6 @@ final class HermesRuntimeManager {
         try store.saveInstallation(installation)
         try finishTerminalDisconnect(store: store, installation: installation)
         installation.currentOwnerId = nil
-        installation.currentConnectorInstallationId = nil
         installation.currentExecutorId = nil
         installation.currentCronJobId = nil
         installation.currentCronSetupAttemptId = nil
@@ -3657,7 +2684,7 @@ final class HermesRuntimeManager {
             throw HermesRuntimeFailure.localCleanupFailed
         }
         let remainingOwnedKeys = Set(try environment.values().keys)
-            .intersection(HermesEnvironmentFile.legacyOwnedKeys)
+            .intersection(HermesEnvironmentFile.ownedKeys)
         guard remainingOwnedKeys.isEmpty else {
             throw HermesRuntimeFailure.envWriteFailed
         }
@@ -3697,7 +2724,7 @@ final class HermesRuntimeManager {
         let store = try localStore()
         let installation = try store.loadOrCreateInstallation()
         let journal = try store.loadJournal()
-        _ = try environment.values() // unreadable env state still fails every successful result
+        let env = try environment.values()
         let generationOwnerIsUnattributed = installation.currentSetupAttemptId != nil
             && (installation.currentOwnerId?.isEmpty != false
                 || installation.currentExecutorId?.isEmpty != false)
@@ -3717,17 +2744,14 @@ final class HermesRuntimeManager {
             cron = try verifiedOwnedCron(installation: installation)?.1
         }
         return HermesLocalState(
-            installationId: installation.currentConnectorInstallationId ?? installation.installationId,
+            installationId: installation.installationId,
             ownerId: journal?.ownerId ?? installation.currentOwnerId,
-            executorId: journal?.executorId ?? installation.currentExecutorId,
+            executorId: journal?.executorId ?? installation.currentExecutorId ?? env["INDEX_AGENT_ID"],
             pluginInstalled: try isPluginInstalled(),
-            negotiatorMode: cron != nil
-                && journal?.stage != .disconnecting
-                && journal?.stage != .connectorDisconnected,
+            negotiatorMode: env["INDEX_PLUGIN_MODE"] == "negotiator",
             schedulePresent: cron != nil,
             scheduleEnabled: cron?.enabled ?? false,
-            setupAttemptId: journal?.setupAttemptId ?? installation.currentSetupAttemptId,
-            connectorActivationConfirmed: installation.currentConnectorInstallationId != nil
+            setupAttemptId: journal?.setupAttemptId ?? installation.currentSetupAttemptId
         )
     }
 

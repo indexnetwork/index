@@ -24,9 +24,7 @@ PYTHON_FILES = [
     "__init__.py",
     "_mode.py",
     "transport.py",
-    "connector_transport.py",
     "env_transport.py",
-    "migration.py",
     "schemas.py",
     "tools.py",
     "dashboard/plugin_api.py",
@@ -243,19 +241,15 @@ def main() -> None:
     assert denied_wrappers.isdisjoint(plugin_mcp_tools)
 
     protocol_path = ROOT.parent / "protocol/src/mcp/mcp.authorization-policy.ts"
-    connector_path = ROOT.parent.parent / "apps/mac/IndexConnector/Sources/ConnectorHTTPClient.swift"
-    # The monorepo CI proves three-way parity. The public plugin subtree does
-    # not contain its protocol/Mac siblings, so its self-test retains the exact
-    # local 31-name assertion above without attempting to read absent siblings.
-    if protocol_path.exists() and connector_path.exists():
+    # The monorepo CI proves parity with the protocol policy. The public plugin
+    # subtree does not contain its protocol sibling, so its self-test retains
+    # the exact local 31-name assertion above without reading absent siblings.
+    if protocol_path.exists():
         protocol_source = protocol_path.read_text()
         policy_block = protocol_source.split("HERMES_AGENT_MCP_TOOL_PERMISSIONS =", 1)[1].split("});", 1)[0]
         protocol_tools = re.findall(r"^  ([a-z_]+): \{", policy_block, re.MULTILINE)
-        connector_source = connector_path.read_text()
-        connector_block = connector_source.split("static let allowedMCPTools", 1)[1].split("]", 1)[0]
-        connector_tools = re.findall(r'"([a-z_]+)"', connector_block)
-        assert set(protocol_tools) == set(canonical_mcp_tools) == set(connector_tools)
-        assert len(protocol_tools) == len(connector_tools) == 31
+        assert set(protocol_tools) == set(canonical_mcp_tools)
+        assert len(protocol_tools) == 31
 
     tool_names = [entry["name"] for entry in ctx.tools]
     expected_tool_names = (
@@ -466,13 +460,11 @@ def main() -> None:
     assert "Getting a sense of you" in dashboard_js
     assert "index-dashboard__getting-started-btn" in dashboard_js
     assert "index-dashboard__opp-id--clickable" in dashboard_js
-    # Mac/CLI-parity browser login gate + sign out.
+    # API-key login gate + sign out.
     assert "LoginScreen" in dashboard_js
-    assert "log in with browser" in dashboard_js
-    assert "retry secure disconnect" in dashboard_js
+    assert "INDEX_API_KEY" in dashboard_js
+    assert "check connection" in dashboard_js
     assert "/auth/status" in dashboard_js
-    assert "/auth/login/start" in dashboard_js
-    assert "/auth/login/status" in dashboard_js
     assert "/auth/logout" in dashboard_js
     assert "index-dashboard__login" in dashboard_js
     assert "needsLogin" in dashboard_js
@@ -552,10 +544,9 @@ def main() -> None:
     timer_index = desktop_tail.index("window.clearInterval(snapshotTimer)", dispose_start)
     socket_index = desktop_tail.index("disposeDesktopSocket(notificationSocket)", dispose_start)
     assert dispose_start < stopped_index < timer_index < socket_index
-    # Hermes Desktop ships the same browser-login gate via the built bundle.
-    assert "log in with browser" in desktop_js
-    assert "retry secure disconnect" in desktop_js
-    assert "/auth/login/start" in desktop_js
+    # Hermes Desktop ships the same API-key login gate via the built bundle.
+    assert "INDEX_API_KEY" in desktop_js
+    assert "check connection" in desktop_js
     assert "index-dashboard__login" in desktop_js
     assert "InviteJoinModal" not in desktop_js
     assert "handleIndexDeepLink" not in desktop_js
@@ -622,32 +613,10 @@ def main() -> None:
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
-    production_docs = {
-        "plugin": package_readme,
-        "dashboard": dashboard_readme,
-        "mac": (ROOT.parents[1] / "apps" / "mac" / "README.md").read_text(),
-    }
     assert "Connect to Index" in package_readme
-    assert "PKCE S256" in package_readme
-    assert "idxh_" in package_readme
-    assert "30 days" in package_readme and "seven days" in package_readme
-    assert "manage:identity" in package_readme and "manage:negotiations" in package_readme
-    assert "exactly four handlers" in package_readme
-    assert "recovery-only" in package_readme
-    assert "JSON lines protocol v1" in package_readme
-    assert "source-only development transport" in package_readme
+    assert "INDEX_API_KEY" in package_readme
     assert "credential-free" in dashboard_readme
-    assert "recovery-only disconnect" in dashboard_readme
     assert "INDEX_PLUGIN_MODE=negotiator" in dashboard_readme
-    assert "App Sandbox is not a production requirement" in production_docs["mac"]
-    # Production instructions must never tell an operator to persist a Hermes or
-    # owner credential in an environment file, browser storage, or plaintext file.
-    for name, document in production_docs.items():
-        assert "INDEX_API_KEY" not in document, name
-        assert "saves it to Hermes" not in document, name
-        assert "writes it to Hermes" not in document, name
-        assert "set INDEX_API_KEY" not in document, name
-        assert "persist.*credential" not in document.lower(), name
 
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
@@ -680,8 +649,6 @@ def main() -> None:
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
-    old_development_transport = os.environ.get("INDEX_PLUGIN_DEVELOPMENT_TRANSPORT")
-    os.environ["INDEX_PLUGIN_DEVELOPMENT_TRANSPORT"] = "1"
 
     old_urlopen = urllib.request.urlopen
     try:
@@ -1130,7 +1097,7 @@ def main() -> None:
         assert hasattr(dashboard_api, "_watch_websocket_disconnect")
 
         # Hermes Desktop realtime paths remain credential-free above the
-        # connector transport seam: the dashboard never handles an API key.
+        # transport seam: the dashboard never handles an API key.
         assert dashboard_api.parse_sse_data_line(
             b'data: {"type":"question.new","questionId":"q-1"}\n'
         ) == {"type": "question.new", "questionId": "q-1"}
@@ -2011,7 +1978,7 @@ def main() -> None:
 
         assert dashboard_api.public_profile("") == {"success": False, "error": "A user id is required."}
 
-        # --- Connector-owned browser authorization backend -------------------
+        # --- Auth backend routes over the transport seam ----------------------
         class FakeAuthTransport:
             def __init__(self):
                 self.calls = []
@@ -2039,9 +2006,7 @@ def main() -> None:
                 return {"status": "disconnected"}
 
         fake_auth = FakeAuthTransport()
-        original_start_login = dashboard_api.auth_login.start_login
         dashboard_api.tools.set_transport_for_tests(fake_auth)
-        dashboard_api.auth_login.start_login = lambda transport: transport.start_authorization()
         try:
             status_ok = dashboard_api.auth_status()
             assert status_ok["authenticated"] is True and status_ok["needsLogin"] is False
@@ -2058,7 +2023,6 @@ def main() -> None:
             }
             assert fake_auth.calls == ["status", "authorize.start", "authorize.poll", "disconnect"]
         finally:
-            dashboard_api.auth_login.start_login = original_start_login
             dashboard_api.tools.set_transport_for_tests(None)
     finally:
         urllib.request.urlopen = old_urlopen
@@ -2074,10 +2038,6 @@ def main() -> None:
             os.environ["INDEX_PLUGIN_MODE"] = old_plugin_mode
         else:
             os.environ.pop("INDEX_PLUGIN_MODE", None)
-        if old_development_transport is None:
-            os.environ.pop("INDEX_PLUGIN_DEVELOPMENT_TRANSPORT", None)
-        else:
-            os.environ["INDEX_PLUGIN_DEVELOPMENT_TRANSPORT"] = old_development_transport
 
 
 if __name__ == "__main__":

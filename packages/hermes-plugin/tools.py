@@ -21,7 +21,7 @@ import urllib.parse
 from collections import OrderedDict
 from typing import Any
 
-from .connector_transport import TransportError
+from .env_transport import TransportError
 from .transport import get_transport, set_transport_for_tests
 
 # Universal-link host for Index deep links. The macOS app claims /c/*, /o/* and
@@ -192,7 +192,7 @@ def _negotiation_run_authority(
     *,
     include_capability: bool = False,
 ) -> dict[str, str]:
-    """Project hidden run state into the connector's closed structured shape."""
+    """Project hidden run state into the transport's closed structured shape."""
     with _NEGOTIATION_RUN_LOCK:
         authority = {"runId": state.run_id}
         if include_capability and state.capability:
@@ -434,9 +434,6 @@ def _api_request(
 
 
 _AMBIGUOUS_REPLAY_CODES = {
-    "connector_unavailable",
-    "connector_invalid_response",
-    "upstream_ambiguous_response",
     "network_error",
     "timeout",
 }

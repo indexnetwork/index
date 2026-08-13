@@ -28,28 +28,20 @@ function setPage(query: string): void {
   window.location.href = `http://localhost/cli-auth?${query}`;
 }
 
-describe('CLI auth page mixed-version bridge', () => {
+describe('CLI auth page v2 bridge', () => {
   beforeEach(() => {
     mocks.getSession.mockReset();
     mocks.post.mockReset();
   });
 
-  test('mints and returns the temporary v1 contract for an authenticated session', async () => {
-    mocks.getSession.mockResolvedValue({ data: { session: { id: 'session-1' } } });
-    mocks.post.mockResolvedValue({
-      key: 'v1-secret',
-      id: 'v1-key-id',
-      expiresAt: '2026-10-16T12:00:00.000Z',
-    });
+  test('fails a legacy v1 callback-only request closed', async () => {
     setPage(`callback=${encodeURIComponent(callback)}`);
 
     render(<CliAuthPage />);
 
-    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
-      '/auth/cli-credential',
-      { protocolVersion: 1 },
-    ));
-    await waitFor(() => expect(window.location.search).toBe('?session_token=v1-secret'));
+    expect(await screen.findByText('Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.')).toBeTruthy();
+    expect(mocks.getSession).not.toHaveBeenCalled();
+    expect(mocks.post).not.toHaveBeenCalled();
   });
 
   test('mints and returns the exact state-bound v2 contract', async () => {

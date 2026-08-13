@@ -8,7 +8,7 @@ const CLI_CREDENTIAL_NAME = 'Index CLI';
 const CLI_CREDENTIAL_PERMISSIONS = JSON.stringify({ credential: ['cli'] });
 const CLI_CREDENTIAL_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
 
-export type CliProtocolVersion = 1 | 2;
+export type CliProtocolVersion = 2;
 
 export interface CreateCliCredentialResult {
   id: string;
@@ -43,7 +43,7 @@ function parseCliMetadata(metadata: string | null): { client: 'cli'; protocolVer
     if (keys.length !== 3
       || keys[0] !== 'client' || keys[1] !== 'enrollmentCapable' || keys[2] !== 'protocolVersion'
       || record.enrollmentCapable !== true) return null;
-    if (record.client !== 'cli' || (record.protocolVersion !== 1 && record.protocolVersion !== 2)) return null;
+    if (record.client !== 'cli' || record.protocolVersion !== 2) return null;
     return { client: 'cli', protocolVersion: record.protocolVersion };
   } catch {
     return null;

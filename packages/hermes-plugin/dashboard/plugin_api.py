@@ -2,7 +2,7 @@
 
 Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
-question-answer writes stay scoped to the connector-authenticated principal.
+question-answer writes stay scoped to the API-key-authenticated principal.
 
 The dashboard is intent-centric: each intent carries its own pending and
 answered questions (server-scoped per intent, the Mac app's queries) and its
@@ -432,7 +432,7 @@ def _avatar_filename(content_type: str) -> str:
 
 
 def _api_multipart(path: str, field: str, filename: str, content: bytes, content_type: str) -> dict[str, Any]:
-    """Upload through the connector's bounded start/chunk/finish protocol."""
+    """Upload through the transport's bounded start/chunk/finish protocol."""
     try:
         return tools.get_transport().upload(path, field, filename, content, content_type)
     except tools.TransportError as exc:
@@ -1128,7 +1128,7 @@ def _build_dashboard(
 
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
-    """Report connector health without reading or receiving a credential."""
+    """Report transport health from the configured API key."""
     try:
         status = tools.get_transport().status()
     except tools.TransportError as exc:
@@ -1161,7 +1161,7 @@ def _login_app_base_url() -> str:
 
 @full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Migrate plaintext first, then let the connector open browser consent."""
+    """Explain how to configure INDEX_API_KEY; there is no browser flow."""
     try:
         result = auth_login.start_login(tools.get_transport())
     except tools.TransportError as exc:
@@ -1173,7 +1173,7 @@ def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
 
 @full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the connector-owned browser authorization attempt."""
+    """Report the (env-keyed) authorization state."""
     try:
         result = auth_login.poll_status(tools.get_transport())
     except tools.TransportError as exc:
@@ -1183,7 +1183,7 @@ def auth_login_status() -> dict[str, Any]:
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Revoke through connector recovery and delete only after confirmation."""
+    """Forget the in-process key; revoke the API key in Index web settings."""
     try:
         result = auth_login.disconnect(tools.get_transport())
     except tools.TransportError as exc:
@@ -2058,7 +2058,7 @@ async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
 
 
 async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
-    """Relay connector-owned SSE frames to a dashboard WebSocket."""
+    """Relay transport-owned SSE frames to a dashboard WebSocket."""
     await websocket.accept()
     iterator = tools.get_transport().stream_sse(path)
     relay_task: asyncio.Task[None] | None = None
@@ -2246,7 +2246,7 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
 
 
 def _conversation_stream():
-    """Relay connector-owned, bounded SSE polling to the dashboard tab."""
+    """Relay transport-owned, bounded SSE polling to the dashboard tab."""
     try:
         yield from tools.get_transport().stream_sse("/conversations/stream")
     except Exception as exc:  # noqa: BLE001 - surface a sanitized stream frame.
@@ -2273,7 +2273,7 @@ async def conversations_socket(websocket: WebSocket) -> None:
 
 
 def _notification_stream():
-    """Relay connector-owned notification SSE to Hermes clients."""
+    """Relay transport-owned notification SSE to Hermes clients."""
     try:
         yield from tools.get_transport().stream_sse("/notifications/stream")
     except Exception as exc:  # noqa: BLE001

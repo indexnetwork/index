@@ -1,9 +1,8 @@
-"""Single credential-free transport seam for every Index plugin surface."""
+"""Single transport seam for every Index plugin surface."""
 
 from __future__ import annotations
 
 import importlib.util
-import os
 import pathlib
 import sys
 import threading
@@ -11,7 +10,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Iterator
 
 _PLUGIN_ROOT = pathlib.Path(__file__).resolve().parent
-_DEVELOPMENT_MARKER = ".index-plugin-development"
 _transport_lock = threading.Lock()
 _transport: "IndexTransport | None" = None
 
@@ -86,27 +84,10 @@ def _load_sibling(module_name: str):
 def build_transport(
     *, platform: str | None = None, plugin_root: pathlib.Path | None = None
 ) -> IndexTransport:
-    """Build the only authorized transport for this package/runtime.
-
-    The environment credential path is source-checkout-only and requires two
-    independent gates. All other configurations select the native connector and
-    do not inspect credential environment variables.
-    """
-    root = pathlib.Path(plugin_root or _PLUGIN_ROOT)
-    development_requested = os.environ.get("INDEX_PLUGIN_DEVELOPMENT_TRANSPORT") == "1"
-    if development_requested:
-        marker = root / _DEVELOPMENT_MARKER
-        if not marker.is_file() or marker.is_symlink() or marker.read_text(encoding="utf-8") != "source-checkout-only\n":
-            connector_module = _load_sibling("connector_transport")
-            raise connector_module.TransportError(
-                "development_transport_denied",
-                "Development credential transport is unavailable in this package.",
-            )
-        environment_module = _load_sibling("env_transport")
-        return environment_module.EnvironmentCredentialTransport()
-
-    connector_module = _load_sibling("connector_transport")
-    return connector_module.ConnectorTransport(plugin_root=root, platform=platform)
+    """Build the only transport: direct HTTPS keyed by INDEX_API_KEY."""
+    del platform, plugin_root
+    environment_module = _load_sibling("env_transport")
+    return environment_module.EnvironmentCredentialTransport()
 
 
 def get_transport() -> IndexTransport:

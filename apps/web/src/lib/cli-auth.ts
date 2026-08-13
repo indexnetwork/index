@@ -1,13 +1,11 @@
 const CLI_STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
-/** Validated temporary CLI browser-auth protocol request. */
-export type CliAuthRequest =
-  | { protocolVersion: 1; callback: string }
-  | { protocolVersion: 2; callback: string; state: string };
+/** Validated CLI browser-auth protocol request. */
+export type CliAuthRequest = { protocolVersion: 2; callback: string; state: string };
 
 /** Fixed custom-endpoint body for a validated CLI auth request. */
 export interface CliCredentialCreateBody {
-  protocolVersion: 1 | 2;
+  protocolVersion: 2;
 }
 
 /**
@@ -48,13 +46,10 @@ export function validateCliCallbackUrl(value: string | null): string | null {
 }
 
 /**
- * Parse an explicit CLI browser-auth protocol version without downgrade.
- *
- * TEMPORARY: v1 supports already-released CLIs that send only a strict
- * loopback callback. Remove it only after the published v1 client ages out.
+ * Parse the v2 CLI browser-auth request; every other shape is rejected.
  *
  * @param params - Auth-page query parameters.
- * @returns A validated v1/v2 request, or null for every malformed mix.
+ * @returns A validated v2 request, or null for every malformed mix.
  */
 export function parseCliAuthRequest(params: URLSearchParams): CliAuthRequest | null {
   if (params.getAll('callback').length !== 1) return null;
@@ -63,10 +58,6 @@ export function parseCliAuthRequest(params: URLSearchParams): CliAuthRequest | n
 
   const versions = params.getAll('version');
   const states = params.getAll('state');
-  if (versions.length === 0) {
-    return states.length === 0 ? { protocolVersion: 1, callback } : null;
-  }
-
   if (versions.length !== 1 || versions[0] !== '2' || states.length !== 1) return null;
   const state = validateCliAuthState(states[0]);
   return state ? { protocolVersion: 2, callback, state } : null;
@@ -86,29 +77,14 @@ export function buildCliAuthReturnPath(
 ): string {
   const returnUrl = new URL(pathname, 'https://index.local');
   returnUrl.searchParams.set('callback', request.callback);
-  if (request.protocolVersion === 2) {
-    returnUrl.searchParams.set('version', '2');
-    returnUrl.searchParams.set('state', request.state);
-  }
+  returnUrl.searchParams.set('version', '2');
+  returnUrl.searchParams.set('state', request.state);
   return `${returnUrl.pathname}${returnUrl.search}`;
 }
 
 /** Build the fixed-shape CLI credential request body. */
 export function buildCliCredentialCreateBody(request: CliAuthRequest): CliCredentialCreateBody {
   return { protocolVersion: request.protocolVersion };
-}
-
-/**
- * Build the temporary v1 callback expected by already-released CLIs.
- * The value named session_token is an API-key secret, not a browser JWT.
- */
-export function buildLegacyCliCallbackUrl(
-  validatedCallback: string,
-  apiKey: string,
-): string {
-  const callback = new URL(validatedCallback);
-  callback.searchParams.set('session_token', apiKey);
-  return callback.toString();
 }
 
 /**

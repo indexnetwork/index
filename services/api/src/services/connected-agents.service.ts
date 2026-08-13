@@ -1,8 +1,10 @@
-import { HERMES_INSTALLATION_NAME, type HermesActivationState } from '../lib/agent/hermes-authorization';
 import type { HermesCapability } from '../lib/agent/hermes-capabilities';
+import { HERMES_INSTALLATION_NAME, type HermesActivationState } from '../lib/agent/hermes-credential';
 import { NEGOTIATION_EXECUTOR_FRESHNESS_MS, isNegotiationExecutorFresh } from '../lib/agent/negotiation-executor';
 
-export type ConnectedAgentHealth = 'pending' | 'active' | 'stale' | 'never_seen' | 'expired' | 'revoked';
+export { HERMES_INSTALLATION_NAME, type HermesActivationState };
+
+export type ConnectedAgentHealth = 'active' | 'stale' | 'never_seen' | 'expired' | 'revoked';
 
 export type HermesConnectionRecord = {
   installationId: string;
@@ -81,13 +83,11 @@ export class ConnectedAgentsService {
       ? 'revoked'
       : record.expiresAt <= now
         ? 'expired'
-        : record.activationState === 'pending'
-          ? 'pending'
-          : record.lastHeartbeatAt === null
-            ? 'never_seen'
-            : isNegotiationExecutorFresh(record.lastHeartbeatAt, now.getTime())
-              ? 'active'
-              : 'stale';
+        : record.lastHeartbeatAt === null
+          ? 'never_seen'
+          : isNegotiationExecutorFresh(record.lastHeartbeatAt, now.getTime())
+            ? 'active'
+            : 'stale';
     const selected = record.selected
       && record.activationState === 'active'
       && record.expiresAt > now;

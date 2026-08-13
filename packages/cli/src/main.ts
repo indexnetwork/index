@@ -11,7 +11,6 @@ import { spawn } from "node:child_process";
 import packageJson from "../package.json" with { type: "json" };
 
 import { parseArgs } from "./args.parser";
-import { storeReplacementCredentials } from "./auth.lifecycle";
 import { CredentialStore } from "./auth.store";
 import { ApiClient } from "./api.client";
 import { handleLogin } from "./login.command";
@@ -82,7 +81,6 @@ function helpRowCont(leftW: number, right: string): string {
 function renderHelp(): void {
   const gsLefts = [
     "index login",
-    "index login --token <token>",
     "index logout",
     'index intent create "..."',
     "index negotiation list",
@@ -121,7 +119,6 @@ function renderHelp(): void {
   const optLefts = [
     "--api-url <url>",
     "--app-url <url>",
-    "--token <token>",
     "--session <id>",
     "--archived",
     "--status <status>",
@@ -149,7 +146,6 @@ function renderHelp(): void {
 
   panel("getting started", [
     helpRowCmd(gsLW, "index login", "authenticate via browser"),
-    helpRowCmd(gsLW, "index login --token <token>", "authenticate with a bearer token"),
     helpRowCmd(gsLW, "index logout", "clear stored session"),
     helpRowCmd(gsLW, 'index intent create "..."', "describe what you're looking for"),
     helpRowCmd(gsLW, "index negotiation list", "see agent debates in progress"),
@@ -190,7 +186,6 @@ function renderHelp(): void {
   panel("options", [
     helpRowDim(optLW, "--api-url <url>", "override API server URL"),
     helpRowDim(optLW, "--app-url <url>", "override app URL for login"),
-    helpRowDim(optLW, "--token <token>", "provide bearer token directly"),
     helpRowDim(optLW, "--session <id>", "resume a chat session"),
     helpRowDim(optLW, "--archived", "include archived signals"),
     helpRowDim(optLW, "--status <status>", "filter opportunities by status"),
@@ -228,55 +223,18 @@ async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
   }
 
   const apiUrl = apiUrlOverride ?? creds.apiUrl;
-  if (creds.authKind !== "api_key") {
-    try {
-      // Exchange the still-valid legacy browser JWT for a tagged API key before
-      // any compatibility request. The JWT itself never reaches chat routing,
-      // so this preserves non-web CLI behavior without reopening the web bypass.
-      const sessionClient = new ApiClient(apiUrl, creds.token, "session");
-      const { key, keyId } = await sessionClient.mintCliApiKey();
-      const migrated = { token: key, apiUrl, authKind: "api_key" as const, keyId };
-      await store.save(migrated);
-      return new ApiClient(apiUrl, migrated.token, migrated.authKind);
-    } catch {
-      output.error("Stored CLI credentials need to be refreshed. Run `index login` again.", 1);
-      process.exit(1);
-    }
-  }
-  return new ApiClient(apiUrl, creds.token, creds.authKind);
+  return new ApiClient(apiUrl, creds.token);
 }
 
 // ── Login / Logout ──────────────────────────────────────────────────
 
 /**
- * Handle the login command — supports both browser OAuth and manual token.
+ * Handle the login command via the browser handshake.
  */
-async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, manualToken?: string): Promise<void> {
+async function runLogin(apiUrlOverride?: string, appUrlOverride?: string): Promise<void> {
   const store = new CredentialStore();
   const apiUrl = apiUrlOverride ?? DEFAULT_API_URL;
   const appUrl = appUrlOverride ?? DEFAULT_APP_URL;
-
-  // Manual JWT flow: use the session only to mint a tagged v2 CLI key.
-  if (manualToken) {
-    const previousCredentials = await store.load();
-    try {
-      const sessionClient = new ApiClient(apiUrl, manualToken, "session");
-      const user = await sessionClient.getMe();
-      const { key, keyId } = await sessionClient.mintCliApiKey();
-      const cleanup = await storeReplacementCredentials(store, previousCredentials, {
-        token: key,
-        apiUrl,
-        authKind: "api_key",
-        keyId,
-      });
-      output.success(`Logged in as ${user.name} (${user.email})`);
-      if (cleanup.warning) output.warn(cleanup.warning);
-    } catch {
-      output.error("Could not exchange that session token. Run `index login` instead.", 1);
-      process.exitCode = 1;
-    }
-    return;
-  }
 
   // Browser flow: opens /cli-auth which exchanges existing session or starts OAuth
   output.info(`Authenticating with ${apiUrl}...`);
@@ -319,7 +277,7 @@ async function runLogin(apiUrlOverride?: string, appUrlOverride?: string, manual
     try {
       const creds = await store.load();
       if (creds) {
-        const client = new ApiClient(creds.apiUrl, creds.token, creds.authKind);
+        const client = new ApiClient(creds.apiUrl, creds.token);
         const user = await client.getMe();
         output.success(`Logged in as ${user.name} (${user.email})`);
       }
@@ -366,7 +324,7 @@ async function main(): Promise<void> {
       output.error(`Unknown command: ${args.unknown}`, 1);
       return;
     case "login":
-      await runLogin(args.apiUrl, args.appUrl, args.token);
+      await runLogin(args.apiUrl, args.appUrl);
       return;
     case "logout":
       await runLogout();

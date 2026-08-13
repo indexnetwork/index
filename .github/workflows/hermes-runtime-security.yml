@@ -37,13 +37,11 @@ jobs:
           bun pm cache rm || true
           bun install --frozen-lockfile
 
-      - name: Hermes plugin transport, migration, smoke, and dashboard gates
+      - name: Hermes plugin transport, smoke, and dashboard gates
         env:
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
         run: |
-          python3 packages/hermes-plugin/tests/connector_protocol.py
-          python3 packages/hermes-plugin/tests/migration.py
           python3 packages/hermes-plugin/tests/smoke.py
           python3 packages/hermes-plugin/tests/gateway.py
           node packages/hermes-plugin/tests/dashboard-registration.test.cjs
@@ -91,14 +89,9 @@ jobs:
           bun test \
             tests/agent-runtime.service.spec.ts \
             src/controllers/tests/agent-runtime.controller.spec.ts \
-            src/controllers/tests/hermes-authorization.controller.spec.ts \
             src/controllers/tests/connected-agents.controller.spec.ts \
             src/services/tests/connected-agents.service.spec.ts \
-            src/guards/tests/hermes-agent-audience.spec.ts \
             src/guards/tests/hermes-negotiator-audience.spec.ts \
-            src/controllers/tests/index-app-owner-authorization.controller.spec.ts \
-            src/guards/tests/index-app-owner-audience.spec.ts \
-            src/lib/agent/index-app-owner-mcp.spec.ts \
             src/lib/agent/tests/hermes-negotiation-run.spec.ts \
             src/lib/negotiation/tests/expected-speaker.spec.ts \
             src/lib/negotiation/tests/consultation.spec.ts \

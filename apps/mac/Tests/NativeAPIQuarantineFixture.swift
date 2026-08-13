@@ -11,8 +11,7 @@ enum NativeAPIQuarantineFixture {
     static func main() throws {
         let now = Date()
         let record = OwnerCredentialRecord(
-            credential: "idxo_fixture", credentialId: "credential-1",
-            installationId: UUID().uuidString, generation: UUID().uuidString,
+            credential: "fixture-owner-key", credentialId: "credential-1",
             expiresAt: now.addingTimeInterval(600)
         )
         var ordering: [String] = []

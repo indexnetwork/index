@@ -12,10 +12,8 @@ export interface LogoutOptions {
 }
 
 /**
- * Revoke revocable CLI API-key credentials before clearing local storage.
- * Legacy session credentials are local-only and can be cleared immediately.
- * ID-less API keys are retained because guessing a key row could revoke a
- * different login.
+ * Revoke the stored CLI API key before clearing local storage. Legacy
+ * credential files without a key ID load as signed out.
  *
  * @param store - Persistent CLI credential store.
  * @param options - Optional API-client factory for tests.
@@ -30,20 +28,8 @@ export async function handleLogout(
     return { success: true, message: "Already logged out." };
   }
 
-  if (credentials.authKind !== "api_key") {
-    await store.clear();
-    return { success: true, message: "Logged out. Session cleared." };
-  }
-
-  if (!credentials.keyId) {
-    return {
-      success: false,
-      warning: "Stored API-key credentials do not include a revocation ID and were retained. Remove the old key in Index web settings first, then delete the local credentials and sign in again.",
-    };
-  }
-
   const createClient = options.clientFactory
-    ?? ((apiUrl: string, token: string) => new ApiClient(apiUrl, token, "api_key"));
+    ?? ((apiUrl: string, token: string) => new ApiClient(apiUrl, token));
   try {
     await createClient(credentials.apiUrl, credentials.token).revokeApiKey(credentials.keyId, credentials.token);
   } catch (error) {

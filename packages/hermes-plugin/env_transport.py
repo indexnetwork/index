@@ -1,4 +1,4 @@
-"""Explicit source-checkout-only environment credential transport."""
+"""Direct HTTP transport authenticated with the INDEX_API_KEY environment key."""
 
 from __future__ import annotations
 
@@ -10,22 +10,32 @@ import urllib.error
 import urllib.request
 from typing import Any, Iterator
 
-try:
-    from .connector_transport import TransportError
-except ImportError:
-    from connector_transport import TransportError
-
 _DEFAULT_API = "https://protocol.index.network/api"
 _DEFAULT_MCP = "https://protocol.index.network/mcp"
 
+_API_KEY_HELP = (
+    "Set INDEX_API_KEY in the Hermes environment (create an agent API key in "
+    "Index web settings), then restart Hermes."
+)
+
+
+class TransportError(RuntimeError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+    def as_payload(self) -> dict[str, Any]:
+        return {"success": False, "error": self.message, "code": self.code}
+
 
 class EnvironmentCredentialTransport:
-    """Legacy direct HTTP transport, reachable only through build_transport gates."""
+    """The production transport: plain HTTPS with an `x-api-key` header."""
 
     def __init__(self) -> None:
         self._api_key = os.environ.get("INDEX_API_KEY", "").strip()
         if not self._api_key:
-            raise TransportError("development_credential_missing", "INDEX_API_KEY is required for development transport.")
+            raise TransportError("api_key_missing", _API_KEY_HELP)
         self._api = os.environ.get("INDEX_API_URL", _DEFAULT_API).strip().rstrip("/") or _DEFAULT_API
         self._mcp = os.environ.get("INDEX_MCP_URL", _DEFAULT_MCP).strip() or _DEFAULT_MCP
 
@@ -62,7 +72,7 @@ class EnvironmentCredentialTransport:
         }
 
     def start_authorization(self) -> dict[str, Any]:
-        raise TransportError("development_authorization_unsupported", "Development transport uses its explicit environment credential.")
+        raise TransportError("api_key_required", _API_KEY_HELP)
 
     def poll_authorization(self) -> dict[str, Any]:
         return {"status": "idle"}

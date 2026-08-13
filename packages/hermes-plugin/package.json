@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Hermes-native Index Network plugin with MCP and personal-agent tools",
   "license": "MIT",
   "type": "module",
@@ -16,10 +16,7 @@
     "schemas.py",
     "tools.py",
     "transport.py",
-    "connector_transport.py",
     "env_transport.py",
-    "migration.py",
-    "connector-release.cms",
     "skills/",
     "dashboard/",
     "desktop/dist/",
@@ -28,8 +25,7 @@
     "CHANGELOG.md",
     "LICENSE",
     "!**/__pycache__/**",
-    "!**/*.py[cod]",
-    "!.index-plugin-development"
+    "!**/*.py[cod]"
   ],
   "scripts": {
     "test": "node tests/desktop-notifications.mjs && python3 tests/smoke.py",

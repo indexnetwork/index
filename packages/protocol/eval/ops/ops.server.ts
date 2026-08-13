@@ -370,9 +370,8 @@ async function completeSignIn(context: OpsContext, request: Request, url: URL): 
     );
   }
 
-  // The bridge sends the key as `api_key` (v2) or `session_token` (the v1 name,
-  // which is also an API-key secret rather than a browser token).
-  const credential = url.searchParams.get("api_key") ?? url.searchParams.get("session_token");
+  // The bridge sends the key as `api_key` — an API-key secret, not a browser token.
+  const credential = url.searchParams.get("api_key");
   if (credential === null || credential === "") {
     return refusalPage("The sign-in did not deliver a credential. Start the sign-in again from the eval ops site.", 403);
   }

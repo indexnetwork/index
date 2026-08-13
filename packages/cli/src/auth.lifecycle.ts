@@ -8,11 +8,7 @@ export interface CredentialReplacementResult {
 
 /** Dependencies that can be replaced by focused auth-lifecycle tests. */
 export interface CredentialReplacementOptions {
-  clientFactory?: (
-    apiUrl: string,
-    token: string,
-    authKind: "session" | "api_key",
-  ) => Pick<ApiClient, "revokeApiKey">;
+  clientFactory?: (apiUrl: string, token: string) => Pick<ApiClient, "revokeApiKey">;
 }
 
 /**
@@ -34,27 +30,18 @@ export async function storeReplacementCredentials(
 ): Promise<CredentialReplacementResult> {
   await store.save(replacement);
 
-  if (previous?.authKind !== "api_key") return {};
-  if (!previous.keyId) {
-    return {
-      warning: "Login succeeded, but the previous CLI API key has no exact revocation ID and may remain active. It should be removed in Index web settings.",
-    };
-  }
-  if (replacement.authKind === "api_key" && replacement.keyId === previous.keyId) {
+  if (!previous) return {};
+  if (replacement.keyId === previous.keyId) {
     return {};
   }
 
-  const authKind = replacement.authKind ?? "session";
   const createClient = options.clientFactory
-    ?? ((apiUrl: string, token: string, kind: "session" | "api_key") => (
-      new ApiClient(apiUrl, token, kind)
-    ));
+    ?? ((apiUrl: string, token: string) => new ApiClient(apiUrl, token));
 
   try {
     await createClient(
       replacement.apiUrl,
       replacement.token,
-      authKind,
     ).revokeApiKey(previous.keyId, previous.token);
     return {};
   } catch (error) {

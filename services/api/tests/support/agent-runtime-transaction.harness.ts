@@ -3,8 +3,6 @@ import type { ApiKeyAuthenticationCredential, ApiKeyAuthenticationStore, Authent
 import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../../src/lib/apikey/credential';
 import type { NegotiationPollingAuthorizationStore } from '../../src/lib/agent/negotiation-polling-authorization';
 import type { AgentRuntimeStore } from '../../src/services/agent-runtime.service';
-import { HERMES_AGENT_AUDIENCE } from '../../src/lib/agent/hermes-authorization';
-import { HERMES_CANONICAL_ACTIONS } from '../../src/lib/agent/hermes-capabilities';
 import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS, type NegotiationCredentialPrincipal } from '../../src/lib/agent/hermes-credential';
 
 interface PersistedCredential extends ApiKeyAuthenticationCredential {
@@ -78,21 +76,18 @@ export class AgentRuntimeTransactionHarness implements
     return id;
   }
 
-  seedFullHermesExecutor(overrides: {
+  seedHermesExecutor(overrides: {
     id?: string;
     ownerId?: string;
     installationId?: string;
     setupAttemptId?: string;
-    actions?: string[];
     handleNegotiations?: boolean;
     expiresAt?: Date;
-    activationState?: 'pending' | 'active' | 'revoked';
   } = {}): { credentialId: string; agentId: string; installationId: string; setupAttemptId: string } {
     const id = overrides.id ?? `agent-${++this.sequence}`;
     const ownerId = overrides.ownerId ?? 'owner-1';
     const installationId = overrides.installationId ?? 'installation-full';
     const setupAttemptId = overrides.setupAttemptId ?? 'setup-full';
-    const actions = overrides.actions ?? [...HERMES_CANONICAL_ACTIONS];
     const row = this.makeAgent({
       id,
       ownerId,
@@ -102,25 +97,24 @@ export class AgentRuntimeTransactionHarness implements
       handleNegotiations: overrides.handleNegotiations ?? true,
     });
     this.state.agents.set(id, row);
-    const permission = this.makePermission(id, ownerId, actions);
+    const permission = this.makePermission(id, ownerId, ['manage:negotiations']);
     this.state.permissions.set(permission.id, permission);
     const credentialId = `credential-${++this.sequence}`;
+    const expiresAt = overrides.expiresAt ?? new Date(Date.now() + 60_000);
     this.state.credentials.set(credentialId, {
       id: credentialId,
-      keyHash: `dedicated-hash-${this.sequence}`,
-      start: 'idxh',
+      keyHash: `negotiator-hash-${this.sequence}`,
+      start: 'seeded',
       referenceId: ownerId,
       userId: ownerId,
       enabled: true,
-      expiresAt: overrides.expiresAt ?? new Date(Date.now() + 60_000),
+      expiresAt,
       metadata: JSON.stringify({
-        audience: HERMES_AGENT_AUDIENCE,
         agentId: id,
-        installationId,
         setupAttemptId,
-        credentialId,
-        actions,
-        activationState: overrides.activationState ?? 'active',
+        audience: HERMES_NEGOTIATOR_AUDIENCE,
+        kind: HERMES_NEGOTIATOR_CREDENTIAL_KIND,
+        expiresAt: expiresAt.toISOString(),
       }),
     });
     return { credentialId, agentId: id, installationId, setupAttemptId };
@@ -158,25 +152,8 @@ export class AgentRuntimeTransactionHarness implements
         && row.userId === ownerId
         && row.scope === 'global'
         && row.actions.includes('manage:negotiations'));
-      const fullHermes = principal.audience === HERMES_AGENT_AUDIENCE;
-      const fullActions = Array.isArray(credentialMetadata?.actions)
-        ? credentialMetadata.actions as string[]
-        : [];
-      const principalActions = principal.actions ?? [];
-      const dedicatedIdentity = fullHermes
-        ? credentialMetadata?.audience === HERMES_AGENT_AUDIENCE
-          && credentialMetadata.activationState === 'active'
-          && credentialMetadata.credentialId === principal.credentialId
-          && credentialMetadata.installationId === principal.installationId
-          && credentialMetadata.installationId === agent?.installationId
-          && principalActions.length === HERMES_CANONICAL_ACTIONS.length
-          && HERMES_CANONICAL_ACTIONS.every((action, index) => principalActions[index] === action)
-          && principalActions.includes('manage:negotiations')
-          && fullActions.length === HERMES_CANONICAL_ACTIONS.length
-          && HERMES_CANONICAL_ACTIONS.every((action, index) => fullActions[index] === action)
-          && fullActions.includes('manage:negotiations')
-        : credentialMetadata?.audience === HERMES_NEGOTIATOR_AUDIENCE
-          && credentialMetadata.kind === HERMES_NEGOTIATOR_CREDENTIAL_KIND;
+      const dedicatedIdentity = credentialMetadata?.audience === HERMES_NEGOTIATOR_AUDIENCE
+        && credentialMetadata.kind === HERMES_NEGOTIATOR_CREDENTIAL_KIND;
       const authorized = Boolean(
         agent
         && agent.ownerId === ownerId

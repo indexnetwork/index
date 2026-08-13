@@ -40,8 +40,7 @@ Words you will see elsewhere in this doc: **network** = a community you are in; 
 Authenticate with Index Network. Opens a browser window that uses your existing session (or a fresh OAuth flow) to call the session-only, fixed-shape CLI credential endpoint, which mints a 90-day API key while keeping CLI requests on the non-web compatibility surface.
 
 ```bash
-index login                     # Browser-based auth (default)
-index login --token <jwt>       # Legacy manual session token (skip browser)
+index login                     # Browser-based auth
 index login --api-url <url>     # Custom server URL
 ```
 
@@ -49,7 +48,7 @@ Credentials are stored in `~/.index/credentials.json`. Current browser login exp
 
 **Rolling deploy order:** v2 clients require the v2 web bridge and intentionally reject callbacks from older web deployments that cannot return the bound state. On dev, this CLI is an RC: wait for both the API and web deployments to succeed before testing v2 login. Do not relax state validation to make a new CLI work against old web.
 
-**Temporary compatibility:** the already-released v1 CLI can still recover with `index login`; the web bridge asks the custom session-only endpoint for a separately tagged 90-day v1 API key and returns it under the old `session_token` callback field, and the API accepts only that tag as a Bearer fallback. An upgraded v2 CLI transparently exchanges a still-valid stored browser JWT through the same endpoint for a tagged v2 key before making any compatibility request; an old binary must re-login because its ordinary session JWT must remain on the web/Signal surface. Remove the v1 bridge only after released clients have aged out.
+The v1 login contract (`session_token` callback, Bearer API-key fallback, `--token` manual flow) is removed. Released v1 binaries and legacy `credentials.json` files without a key ID are treated as signed out; upgrade and run `index login`.
 
 ### `index logout`
 
@@ -205,7 +204,6 @@ index opportunity reject <id>
 | -------------------- | ----- | --------------------------------------------------------------- |
 | `--api-url <url>`    |       | Override API server (default: `https://protocol.index.network`) |
 | `--app-url <url>`    |       | Override app URL for login (default: `https://index.network`)   |
-| `--token <token>`    | `-t`  | Provide bearer token directly                                   |
 | `--session <id>`     | `-s`  | Resume a specific chat session                                  |
 | `--archived`         |       | Include archived signals (intent list)                          |
 | `--status <status>`  |       | Filter opportunities by status                                  |

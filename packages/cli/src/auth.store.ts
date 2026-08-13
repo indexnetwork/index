@@ -6,10 +6,9 @@ import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 export interface Credentials {
   token: string;
   apiUrl: string;
-  /** Credential transport. Missing means legacy session JWT. */
-  authKind?: "session" | "api_key";
-  /** Exact Better Auth API-key row ID. Missing on legacy credentials. */
-  keyId?: string;
+  authKind: "api_key";
+  /** Exact Better Auth API-key row ID. */
+  keyId: string;
 }
 
 const CREDENTIALS_FILE = "credentials.json";
@@ -33,16 +32,17 @@ export class CredentialStore {
   }
 
   /**
-   * Load stored credentials.
+   * Load stored credentials. Legacy files without an API-key row ID are
+   * treated as signed out.
    *
    * @returns The stored credentials, or null if none exist.
    */
   async load(): Promise<Credentials | null> {
     try {
       const raw = await readFile(this.filePath, "utf-8");
-      const parsed = JSON.parse(raw) as Credentials;
-      if (parsed.token && parsed.apiUrl) {
-        return parsed;
+      const parsed = JSON.parse(raw) as Partial<Credentials>;
+      if (parsed.token && parsed.apiUrl && parsed.authKind === "api_key" && parsed.keyId) {
+        return parsed as Credentials;
       }
       return null;
     } catch {
