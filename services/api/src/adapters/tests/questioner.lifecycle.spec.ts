@@ -62,6 +62,13 @@ function poolQuestion(
   };
 }
 
+/**
+ * This file covers pool reconciliation and axis retention, not the per-intent
+ * refinement budget, so the budget is held open here. See
+ * questioner.dailycap.spec.ts for the cap itself.
+ */
+const UNCAPPED = Number.MAX_SAFE_INTEGER;
+
 const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
@@ -282,6 +289,7 @@ describe('QuestionerAdapter material intent lifecycle', () => {
       userId,
       () => true,
       3,
+      UNCAPPED,
       () => true,
     )).toBeNull();
 
@@ -290,6 +298,7 @@ describe('QuestionerAdapter material intent lifecycle', () => {
       userId,
       () => true,
       3,
+      UNCAPPED,
       () => true,
     );
     expect(distinctQuestionId).toEqual(expect.any(String));

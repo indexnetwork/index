@@ -34,6 +34,11 @@ const POOL_QUESTION_PUSH_BASE_VOI = 0.6;
 const POOL_QUESTION_PUSH_DISMISSAL_DECAY = 1.15;
 const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
 const POOL_QUESTION_PUSH_DAILY_CAP = 2;
+// Locally aligned with INTENT_QUESTION_DAILY_WINDOW_HOURS in protocol's
+// question.env. The cap itself is injected by callers (see the
+// `intentQuestionDailyCap` parameter) because adapters cannot import protocol
+// runtime values; only the window width is duplicated here.
+const INTENT_QUESTION_DAILY_WINDOW_HOURS = 24;
 const UPTAKE_AUTHORITY_THRESHOLD_DEFAULT = 70;
 
 class InflightConsultationPausePendingError extends Error {
@@ -558,6 +563,34 @@ export interface AdapterQuestionFilters {
  *
  * Accepts a Drizzle DB instance via constructor injection for testability.
  */
+/**
+ * Predicate matching the refinement questions one intent has generated inside
+ * the rolling budget window.
+ *
+ * Recovery and pool-discovery rows both stamp `triggeredBy` with the intent, so
+ * one key covers both families. Chat intake is deliberately excluded: there the
+ * asking is the conversation, not a background loop.
+ *
+ * Every row created in the window counts regardless of status or void reason —
+ * this is a budget on *asking*, and a question that was shown and then answered,
+ * dismissed, or voided by an intent edit was still asked.
+ *
+ * @param userId - Recipient the questions were addressed to.
+ * @param intentId - Intent that triggered them.
+ * @returns Drizzle condition selecting those rows.
+ */
+function intentQuestionBudgetWhere(userId: string, intentId: string) {
+  return and(
+    sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId, role: 'subject' }])}::jsonb`,
+    sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
+    sql`(
+      (${questions.detection}->>'mode' = 'intent' AND ${questions.detection}->>'purpose' = 'recovery')
+      OR ${questions.detection}->>'mode' = 'pool_discovery'
+    )`,
+    sql`${questions.createdAt} > NOW() - ${sql.raw(`INTERVAL '${INTENT_QUESTION_DAILY_WINDOW_HOURS} hours'`)}`,
+  );
+}
+
 export class QuestionerAdapter {
   constructor(private readonly db: DrizzleDB) {}
 
@@ -943,6 +976,7 @@ export class QuestionerAdapter {
   async prepareRecoveryRefinement(
     userId: string,
     intentId: string,
+    intentQuestionDailyCap: number,
   ): Promise<RecoveryPreparation | null> {
     const [intent] = await this.db.select({
       id: intents.id,
@@ -957,6 +991,14 @@ export class QuestionerAdapter {
     if (!intent || intent.archivedAt || (intent.status !== null && intent.status !== 'ACTIVE')) {
       return null;
     }
+
+    // Refuse before the caller spends an LLM call on a question the durable
+    // gate in persistFreshRecoveryQuestion would discard anyway. That gate stays
+    // authoritative — this read is unlocked and only saves generation cost.
+    const [budget] = await this.db.select({ value: count() })
+      .from(questions)
+      .where(intentQuestionBudgetWhere(userId, intentId));
+    if (Number(budget?.value ?? 0) >= intentQuestionDailyCap) return null;
 
     const intentFingerprint = computeIntentFingerprint(intent.payload, intent.summary);
     const [anchor] = await this.db.select({ id: questions.id })
@@ -1004,6 +1046,7 @@ export class QuestionerAdapter {
     question: AdapterPersistableQuestion,
     userId: string,
     expectedIntentFingerprint: string,
+    intentQuestionDailyCap: number,
   ): Promise<string | null> {
     const intentId = question.detection.sourceId;
     const recovery = question.detection.recovery;
@@ -1049,6 +1092,11 @@ export class QuestionerAdapter {
         ))
         .limit(1);
       if (anchor) return null;
+
+      const [budget] = await tx.select({ value: count() })
+        .from(questions)
+        .where(intentQuestionBudgetWhere(userId, intentId));
+      if (Number(budget?.value ?? 0) >= intentQuestionDailyCap) return null;
 
       const [inserted] = await tx.insert(questions).values({
         detection: {
@@ -1116,6 +1164,7 @@ export class QuestionerAdapter {
     userId: string,
     modeEnabled: () => boolean,
     maxPendingForIntent: number,
+    intentQuestionDailyCap: number,
     isFresh: (
       pool: import('@indexnetwork/protocol').QuestionPoolSnapshot | undefined,
       currentIntentFingerprint: string,
@@ -1191,6 +1240,11 @@ export class QuestionerAdapter {
           )`,
         ));
       if (Number(pendingBudget?.value ?? 0) >= maxPendingForIntent) return null;
+
+      const [dailyBudget] = await tx.select({ value: count() })
+        .from(questions)
+        .where(intentQuestionBudgetWhere(userId, intentId));
+      if (Number(dailyBudget?.value ?? 0) >= intentQuestionDailyCap) return null;
 
       const incomingLabel = pool.discriminator.label.toLowerCase().replace(/\s+/g, ' ').trim();
       const [askedAxis] = await tx.select({ id: questions.id })

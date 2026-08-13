@@ -7,7 +7,7 @@
  * the mined pool snapshot (assignments + remaining alternates) rides along
  * in `detection.pool`, which the client read paths strip.
  */
-import { POOL_QUESTION_MAX_PENDING_PER_INTENT, poolQuestionsMode, synthesizePoolQuestion } from '@indexnetwork/protocol';
+import { POOL_QUESTION_MAX_PENDING_PER_INTENT, intentQuestionDailyCap, poolQuestionsMode, synthesizePoolQuestion } from '@indexnetwork/protocol';
 import type { QuestionPoolDiscriminator } from '@indexnetwork/protocol';
 
 import type { AdapterPersistableQuestion, QuestionerAdapter } from '../../adapters/questioner.adapter';
@@ -99,6 +99,7 @@ export async function persistPoolQuestion(
     userId,
     () => poolQuestionsMode() === 'on',
     POOL_QUESTION_MAX_PENDING_PER_INTENT,
+    intentQuestionDailyCap(),
     isPoolArtifactFresh,
   );
   if (!id) return null;

@@ -218,7 +218,7 @@ export type { NegotiatorMemoryEntry } from "./capabilities/negotiation.facade.js
 export { QuestionerAgent } from "./capabilities/questions.facade.js";
 export { isValidQuestionerInputContract } from "./capabilities/questions.facade.js";
 export type { QuestionerInput, RecoveryQuestionerInput, UptakeQuestionerInput, PostStallQuestionerInput, InflightQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./capabilities/questions.facade.js";
-export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold } from "./capabilities/questions.facade.js";
+export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT, INTENT_QUESTION_DAILY_WINDOW_HOURS } from "./capabilities/questions.facade.js";
 export { PoolDiscriminatorMiner } from "./capabilities/opportunities.facade.js";
 export { PoolDiscriminatorAssigner } from "./capabilities/opportunities.facade.js";
 export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./capabilities/opportunities.facade.js";
