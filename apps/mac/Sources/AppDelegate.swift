@@ -829,11 +829,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func logout(ownerId: String?, admittedGeneration: UInt64) {
-        guard let ownerId,
-              let evidence = hermesRuntime.logoutEvidence(ownerId: ownerId),
-              currentOwnerCredential() != nil else { return }
         notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
         guard let bridge = nativeAPIBridge, let record = currentOwnerCredential() else { return }
+        let evidence = ownerId.flatMap { hermesRuntime.logoutEvidence(ownerId: $0) }
         bridge.beginQuarantine { [weak self] in
             self?.revokeAndDelete(record: record, evidence: evidence)
         }

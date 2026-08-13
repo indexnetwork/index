@@ -37,17 +37,23 @@ test('the app facade composes correlated Hermes and credential-free native API b
   expect(apiBridge).not.toContain('console.log');
 });
 
-test('native logout revocation is gated behind the serialized runtime safety barrier', () => {
+test('native logout always completes even when Hermes was never configured', () => {
   expect(apiBridge).toContain('setLogoutSafetyHandler');
-  expect(apiBridge).toMatch(/\.then\(\(\) => logoutSafetyHandler\(\)\)[\s\S]*?\.then\(\(result\) => post\("completeLogout", \{ ownerId:result\.ownerId \}\)\)/);
+  expect(apiBridge).not.toContain('if (!hasBridge() || !logoutSafetyHandler) return false');
+  expect(apiBridge).not.toContain('.catch(() => { logoutInFlight = false; })');
+  expect(apiBridge).toContain('post("completeLogout"');
   expect(apiBridge).not.toContain('post("logout")');
   expect(agents).toContain('coordinator.prepareLogout()');
   const native = readFileSync(new URL('../Sources/HermesRuntime.swift', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../Sources/AppDelegate.swift', import.meta.url), 'utf8');
   expect(native).toContain('func logoutEvidence(ownerId: String)');
   expect(native).toContain('evidence.stage == "server-complete"');
-  expect(native).toContain('try verifyLogoutPostconditions');
-  expect(shell.indexOf('hermesRuntime.logoutEvidence')).toBeLessThan(shell.indexOf('revokeAndDelete(record: record'));
+  expect(shell).not.toMatch(
+    /guard let ownerId,\s*let evidence = hermesRuntime\.logoutEvidence\(ownerId: ownerId\),\s*currentOwnerCredential\(\) != nil else \{ return \}/,
+  );
+  expect(shell.indexOf('notifyAuthChanged(authenticated: false')).toBeLessThan(
+    shell.indexOf('revokeAndDelete(record: record'),
+  );
   expect(shell).toContain('/auth/cli-credential/revoke');
   expect(shell.indexOf('verifyCredentialDenied')).toBeLessThan(shell.indexOf('store.deleteAndVerify()'));
 });

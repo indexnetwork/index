@@ -1564,9 +1564,9 @@ final class HermesRuntimeManager {
         )
     }
 
-    /// Native half of the logout barrier. A page message alone can never revoke
-    /// the owner key: the same owner must have durable disconnect evidence, and
-    /// native independently reproves both schedule quarantine and secret scrub.
+    /// Optional proof that this owner already completed a Hermes disconnect.
+    /// Owner-key logout does not require it: a first-run Mac that never selected
+    /// Hermes still has to be able to sign out.
     func logoutEvidence(ownerId: String) -> HermesSagaOperationRecord? {
         guard validValue(ownerId) != nil else { return nil }
         do {

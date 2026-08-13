@@ -78,15 +78,15 @@ window.IndexApp = (function () {
     return () => { if (logoutSafetyHandler === handler) logoutSafetyHandler = null; };
   }
   function logout() {
-    if (!hasBridge() || !logoutSafetyHandler) return false;
+    if (!hasBridge()) return false;
     if (logoutInFlight) return true;
     logoutInFlight = true;
+    const complete = (result) => post("completeLogout", {
+      ownerId: result && result.ownerId,
+    });
     Promise.resolve()
-      .then(() => logoutSafetyHandler())
-      // Native key deletion/revocation is unreachable until the coordinator has
-      // persisted select-Index recovery and proven local scheduling paused.
-      .then((result) => post("completeLogout", { ownerId:result.ownerId }))
-      .catch(() => { logoutInFlight = false; });
+      .then(() => logoutSafetyHandler ? logoutSafetyHandler() : null)
+      .then(complete, complete);
     return true;
   }
 
