@@ -1199,7 +1199,13 @@ export class QuestionerAdapter {
           sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId, role: 'subject' }])}::jsonb`,
           sql`${questions.detection}->>'mode' = 'pool_discovery'`,
           sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
-          sql`${questions.detection}->>'voidedReason' IS NULL`,
+          // An `intent_edit` void still counts as having asked the axis. Answering a
+          // refinement question rewrites the intent, which voids every outstanding pool
+          // question; treating those as unasked let the identical discriminator be
+          // re-asked once per answer, so a user could be asked the same axis repeatedly.
+          // `pool_drift` and other reasons stay re-askable: there the candidate pool, not
+          // the question, is what went stale.
+          sql`COALESCE(${questions.detection}->>'voidedReason', '') IN ('', 'intent_edit')`,
           sql`lower(regexp_replace(btrim(${questions.detection}->'pool'->'discriminator'->>'label'), '[[:space:]]+', ' ', 'g')) = ${incomingLabel}`,
           or(
             and(
