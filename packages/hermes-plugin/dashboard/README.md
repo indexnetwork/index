@@ -4,7 +4,7 @@ The dashboard is the optional full-mode UI for the Index Hermes plugin. It is no
 
 ## Connection and status
 
-In full mode the tab displays connection status. When no `INDEX_API_KEY` is configured, the login screen explains how to create an agent API key in Index web settings and set it in the Hermes environment. Revoke the key from web settings to disconnect permanently.
+In full mode the tab displays connection status. When no `INDEX_API_KEY` is configured, the login screen offers **log in with browser**: `POST /auth/login/start` binds a loopback callback and opens the web `/cli-auth` handshake (returning the URL as a manual link for headless hosts), and the UI polls `GET /auth/login/status` until the minted key is persisted to `~/.hermes/.env`. **Sign out** (`POST /auth/logout`) best-effort revokes the key and clears it. Setting `INDEX_API_KEY` manually still works as an override.
 
 ## Scope
 

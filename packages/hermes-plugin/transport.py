@@ -98,6 +98,13 @@ def get_transport() -> IndexTransport:
         return _transport
 
 
+def reset_transport() -> None:
+    """Drop the cached transport so the next call re-reads INDEX_API_KEY."""
+    global _transport
+    with _transport_lock:
+        _transport = None
+
+
 def set_transport_for_tests(transport: IndexTransport | None) -> None:
     """Inject a fake transport. Never registered as a Hermes tool."""
     global _transport

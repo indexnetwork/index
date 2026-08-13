@@ -22,7 +22,7 @@ from collections import OrderedDict
 from typing import Any
 
 from .env_transport import TransportError
-from .transport import get_transport, set_transport_for_tests
+from .transport import get_transport, reset_transport, set_transport_for_tests
 
 # Universal-link host for Index deep links. The macOS app claims /c/*, /o/* and
 # /u/* through its apple-app-site-association file, so the same https URL opens

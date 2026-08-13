@@ -3767,7 +3767,7 @@ Native clients authenticate with ordinary Better Auth API keys.
 
 ### Credentials
 
-- The **Hermes plugin** uses an agent-bound API key supplied through the `INDEX_API_KEY` environment variable, sent as `x-api-key`. Keys are minted, listed, and revoked from web settings; revocation, expiry, and per-agent scoping come from the `apikeys` table.
+- The **Hermes plugin** uses an API key supplied through the `INDEX_API_KEY` environment variable, sent as `x-api-key`. The dashboard's "log in with browser" runs the same web `/cli-auth` state-bound handshake as the CLI and Mac app, then persists the minted 90-day key to `~/.hermes/.env`; sign-out best-effort revokes it via `POST /api/auth/cli-credential/revoke`. Setting `INDEX_API_KEY` manually remains a supported override; revocation, expiry, and scoping come from the `apikeys` table.
 - The **Index macOS app** signs in through the web `/cli-auth` page (the same state-bound handshake the CLI uses) and stores the resulting 90-day API key in the Keychain. Logout revokes the exact key via `POST /api/auth/cli-credential/revoke`.
 - `hermes-negotiator` is a scheduled-negotiation API-key audience: it has only `GET /agents/me` plus exact pickup/respond/consult routes and is represented in Hermes by four handlers (`index_agent_me`, `index_pickup_negotiation`, `index_respond_negotiation`, `index_consult_owner`). Its hidden run ID/capability are never browser or model arguments. Expired or stale negotiation authority falls back to Index.
 

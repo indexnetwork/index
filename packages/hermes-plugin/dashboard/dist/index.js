@@ -2450,29 +2450,66 @@
     );
   }
 
-  // API-key sign-in gate: the plugin authenticates with the INDEX_API_KEY
-  // environment variable; this screen explains that and re-checks status.
+  // Browser sign-in gate: runs the same /cli-auth loopback handshake as the
+  // Index Mac app and CLI, persisting the minted key into the Hermes env.
   function LoginScreen(props) {
     const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
     const waitingState = useState(false);
     const waiting = waitingState[0];
     const setWaiting = waitingState[1];
     const errorState = useState(null);
     const loginError = errorState[0];
     const setLoginError = errorState[1];
+    const linkState = useState(null);
+    const manualLink = linkState[0];
+    const setManualLink = linkState[1];
+    const pollRef = useRef(null);
 
-    function check() {
-      setLoginError(null);
-      setWaiting(true);
-      fetchPluginJSON(API + "/auth/status")
+    function stopPolling() {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+
+    useEffect(function () { return stopPolling; }, []);
+
+    function poll() {
+      fetchPluginJSON(API + "/auth/login/status")
         .then(function (payload) {
-          setWaiting(false);
-          if (payload && payload.authenticated) {
+          const status = payload && payload.status;
+          if (status === "success") {
+            stopPolling();
+            setWaiting(false);
             if (props.onAuthed) props.onAuthed();
-            return;
+          } else if (status === "failed") {
+            stopPolling();
+            setWaiting(false);
+            setLoginError((payload && payload.error) || "Login failed. Please try again.");
+          } else if (status === "idle") {
+            stopPolling();
+            setWaiting(false);
           }
-          setLoginError((payload && payload.error)
-            || "Not connected. Set INDEX_API_KEY in the Hermes environment (create an agent API key in Index web settings), then restart Hermes.");
+        })
+        .catch(function () { /* keep polling; transient host hiccup */ });
+    }
+
+    function start() {
+      setLoginError(null);
+      setManualLink(null);
+      setWaiting(true);
+      fetchPluginJSON(API + "/auth/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not start login.");
+          }
+          // Headless/remote agent host: no browser to open, so surface the link.
+          if (!payload.opened && payload.authUrl) setManualLink(payload.authUrl);
+          stopPolling();
+          pollRef.current = setInterval(poll, 1500);
         })
         .catch(function (err) {
           setWaiting(false);
@@ -2488,14 +2525,18 @@
         }),
         React.createElement("p", { className: "index-dashboard__login-copy" },
           "index finds the right people for you, before you even think to look."),
-        React.createElement("p", { className: "index-dashboard__login-copy" },
-          "To connect, create an agent API key in Index web settings and set INDEX_API_KEY in the Hermes environment, then restart Hermes."),
         React.createElement(Button, {
           type: "button",
           className: "index-dashboard__login-btn",
           disabled: waiting,
-          onClick: check,
-        }, waiting ? "checking connection…" : "check connection"),
+          onClick: start,
+        }, waiting ? "waiting for browser…" : "log in with browser"),
+        manualLink
+          ? React.createElement("p", { className: "index-dashboard__login-manual" },
+            "No browser opened here — ",
+            React.createElement("a", { href: manualLink, target: "_blank", rel: "noopener noreferrer" }, "open this link to continue"),
+            ".")
+          : null,
         loginError
           ? React.createElement("p", { className: "index-dashboard__login-error" }, loginError)
           : null,

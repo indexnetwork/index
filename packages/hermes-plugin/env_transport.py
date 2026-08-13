@@ -14,8 +14,8 @@ _DEFAULT_API = "https://protocol.index.network/api"
 _DEFAULT_MCP = "https://protocol.index.network/mcp"
 
 _API_KEY_HELP = (
-    "Set INDEX_API_KEY in the Hermes environment (create an agent API key in "
-    "Index web settings), then restart Hermes."
+    "Sign in from the Hermes dashboard (log in with browser), or set "
+    "INDEX_API_KEY in the Hermes environment as a manual override."
 )
 
 
