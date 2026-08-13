@@ -756,8 +756,15 @@ final class NativeAPIRequestBridge {
         case "/networks/discovery/public": allowed = ["page", "limit"]
         case let value where value.range(of: #"^/users/[^/?]+/negotiations$"#, options: .regularExpression) != nil:
             allowed = ["status", "limit", "offset"]
-        case "/opportunities", "/opportunities/radar":
+        // The list and the radar do not take the same filter: the list reads a
+        // single `status`, the radar reads a comma-joined `statuses` plus the
+        // two-phase `presentation` mode. Sharing one set silently denied every
+        // radar call the app actually makes, so they are spelled out separately
+        // and each mirrors what its own handler reads.
+        case "/opportunities":
             allowed = ["status", "limit", "offset", "scopeType", "scopeId", "noCache"]
+        case "/opportunities/radar":
+            allowed = ["statuses", "presentation", "limit", "offset", "scopeType", "scopeId", "noCache"]
         case "/opportunities/chat-context": allowed = ["peerUserId"]
         case "/questions": allowed = ["status", "sourceId", "scopeType", "scopeId", "limit", "offset"]
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:

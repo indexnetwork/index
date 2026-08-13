@@ -129,6 +129,10 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('opportunities.radar', (client) => client.opportunities.radar({ noCache: true }), { path: '/opportunities/radar?noCache=true' });
     await expectCall('opportunities.radar scoped intent', (client) => client.opportunities.radar({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID, noCache: true }), { path: `/opportunities/radar?scopeType=intent&scopeId=${SELECTED_INTENT_ID}&noCache=true` });
     await expectCall('opportunities.radarForIntent', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { noCache: true }), { path: `/opportunities/radar?noCache=true&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    // What the radar column actually calls on every poll, both phases of it.
+    const RADAR_STATUSES = 'latent,pending,negotiating,stalled,accepted,expired';
+    await expectCall('opportunities.radarForIntent lifecycle', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { statuses: RADAR_STATUSES }), { path: `/opportunities/radar?statuses=${encodeURIComponent(RADAR_STATUSES)}&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    await expectCall('opportunities.radarForIntent skeleton', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { statuses: RADAR_STATUSES, presentation: 'skeleton' }), { path: `/opportunities/radar?statuses=${encodeURIComponent(RADAR_STATUSES)}&presentation=skeleton&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('opportunities.chatContext', (client) => client.opportunities.chatContext('user/1'), { path: '/opportunities/chat-context?peerUserId=user%2F1' });
     await expectCall('opportunities.get', (client) => client.opportunities.get('opp/1'), { path: '/opportunities/opp%2F1' });
     await expectCall('opportunities.inviteMessage', (client) => client.opportunities.inviteMessage('opp/1'), { path: '/opportunities/opp%2F1/invite-message' });

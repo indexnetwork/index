@@ -58,6 +58,19 @@ enum NativeAPIBodyValidationFixture {
         try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public", body: nil), "public network discovery rejected")
         try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public?page=1&limit=50", body: nil), "paged public network discovery rejected")
         try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public?cursor=1", body: nil), "unknown discovery query accepted")
+        // The intent radar is the app's only radar caller and it always sends the
+        // lifecycle filter, plus `presentation=skeleton` on the first of its two
+        // phases. Denying either leaves the radar stuck on "looking for your people".
+        let radarStatuses = "latent,pending,negotiating,stalled,accepted,expired"
+        let intentId = "00000000-0000-4000-8000-000000000001"
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?statuses=\(radarStatuses)&scopeType=intent&scopeId=\(intentId)", body: nil), "intent radar lifecycle query rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?statuses=\(radarStatuses)&presentation=skeleton&scopeType=intent&scopeId=\(intentId)", body: nil), "intent radar skeleton query rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?noCache=true", body: nil), "radar noCache query rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?networkId=n1", body: nil), "unrequested radar query accepted")
+        // `statuses` belongs to the radar, `status` to the list; neither route takes the other's.
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities?status=pending&limit=10", body: nil), "opportunity list status query rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities?statuses=\(radarStatuses)", body: nil), "opportunity list plural statuses accepted")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?status=pending", body: nil), "radar singular status accepted")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "GET", path: "/notifications/stream", body: nil), "valid notification stream rejected")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("negotiator")])), "valid chat stream rejected")
         try require(NativeAPIRequestBridge.validateMCPForFixture(arguments: object(["description": string("Meet founders"), "autoApprove": .bool(true)])), "valid create_intent rejected")
