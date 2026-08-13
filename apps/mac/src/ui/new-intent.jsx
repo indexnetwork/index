@@ -241,6 +241,30 @@ function NewIntent({ onDone, onBack }) {
   // Clarification comes from the deterministic intake funnel below; without it
   // the flow finishes from the answers already collected.
 
+  // Close out the flow: create the signal from the composed answers when the
+  // intake funnel has not already produced one, then hand back to the caller.
+  const finish = (ans) => {
+    setCalibrating(true);
+    (async () => {
+      let created = createdRef.current;
+      if (client && !created) {
+        // No signal was created upstream (the guided beat was cut short), so
+        // create it from the composed answers.
+        try {
+          const description = composeDescription(ans);
+          const result = await window.IndexApp.createIntent(description);
+          intentIdRef.current = result && (result.intentId || result.id) || intentIdRef.current;
+          createdDescriptionRef.current = description;
+          created = true;
+        } catch (_e) { /* fall through to the calibrating transition */ }
+      }
+      const completedAnswers = createdDescriptionRef.current
+        ? { ...ans, intent: createdDescriptionRef.current }
+        : ans;
+      onDone(completedAnswers, created, intentIdRef.current);
+    })();
+  };
+
   const submit = (val) => {
     const raw = val ?? draft;
     const v = String(raw).trim();

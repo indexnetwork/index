@@ -61,8 +61,15 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // intent-pinned chats (the Radar beside this pane owns opportunity listing).
   // It is named explicitly and unconditionally: api-key callers have no default
   // persona to fall back on, so an unnamed persona is refused by the server.
-  const { patchIntentStatus, refreshIntents } = useIndexEnv();
+  //
+  // The negotiator is also the ONLY persona this app can start — signal and
+  // reporter are web-only — so when the backend has it switched off there is
+  // nothing to fall back to and the server answers 404. Detect that from the
+  // same /auth/me flag the server gates on and say so, rather than firing a
+  // request that cannot succeed.
+  const { features, patchIntentStatus, refreshIntents } = useIndexEnv();
   const chatPersona = "negotiator";
+  const agentChatAvailable = !!(features && features.negotiatorChat);
   // Agent-chat session id per intent, persisted across signal switches. Keyed
   // by persona too: a session created under one persona cannot be continued
   // as another (the server rejects the mismatch).
@@ -400,6 +407,16 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       ...prev,
       { kind:"user", id: Math.random().toString(36).slice(2), text, t: now() },
     ]);
+
+    if (live && !agentChatAvailable) {
+      setConversation(prev => [...prev, {
+        kind: "agent",
+        id: rid(),
+        text: "agent chat is switched off on the server right now. your signals and radar are unaffected.",
+        t: now(),
+      }]);
+      return;
+    }
 
     if (live && window.IndexApp) {
       const agentMsgId = rid();

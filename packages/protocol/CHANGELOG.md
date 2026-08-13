@@ -20,6 +20,19 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## [Unreleased]
+
+### Removed
+
+- **Breaking (13.0.0):** remove the `orchestrator` chat persona. `ORCHESTRATOR_PERSONA_ID` and `ORCHESTRATOR_PERSONA` are gone from the public API, and the orchestrator system prompt (`buildSystemContent`) and its conditional prompt-module registry are deleted. `ChatPersonaLoopBehaviors.hallucinationRecovery` is retained — it is opted into by the onboarding, signal and negotiator personas, not just the removed one.
+- **Breaking:** remove the inline discovery-question generator, which had no caller: the `QuestionGeneratorReader` port, `DiscoveryQuestionInput`, `question.discovery.prompt.ts`, the `discovery` questioner preset, the `QUESTIONER_DISCOVERY_*` env accessors, and the `questionGenerator` tool dependency. The `discovery` `QuestionMode` and its read paths are retained for existing rows.
+- Remove the never-emitted `question_generator_start` / `question_generator_end` stream events and the `DebugMetaDiscoveryQuestions` debug payload, which had no producer.
+
+### Changed
+
+- **Breaking:** `ChatGraphFactory` and `ChatAgent.create()` now require a `ChatPersonaConfig`. There is no default persona; callers name the persona they drive.
+- `DebugMetaOrchestratorNegotiations` keeps its name and wire key deliberately. It is read back out of persisted message debug metadata, so renaming it would drop the negotiation pointer for every historical message. It is populated for every persona whose tools can start a negotiation, not only the persona it is named after.
+
 ## 11.2.1 - 2026-08-11
 
 ### Added
