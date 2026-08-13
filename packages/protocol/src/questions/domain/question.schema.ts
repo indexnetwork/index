@@ -258,9 +258,17 @@ export const QuestionPoolPushSchema = z.object({
   intentId: z.string().min(1),
   cycleKey: z.string().min(1),
   messageId: z.string().min(1),
+  /**
+   * Where a claimed push is delivered. The second slot names the negotiator
+   * surface: new claims write `negotiator_intent_chat` (the intent-pinned
+   * session). `negotiator_dm` is the legacy literal for rows persisted before
+   * the unscoped DM was removed — this schema is validated on read, so the
+   * union keeps those rows parsing instead of rejecting them. Read-compat
+   * only; nothing writes it.
+   */
   surfaces: z.tuple([
     z.literal("personal_agent_badge"),
-    z.literal("negotiator_dm"),
+    z.union([z.literal("negotiator_intent_chat"), z.literal("negotiator_dm")]),
   ]),
   claimedAt: z.string().min(1),
   deliveryStatus: z.enum(["claimed", "delivered", "suppressed", "failed"]),

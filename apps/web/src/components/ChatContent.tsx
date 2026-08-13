@@ -270,10 +270,10 @@ export default function ChatContent({
 
   // Fetch conversation-linked questions on session load. In intent-scoped
   // sessions, also include pending questions derived from that selected intent,
-  // its opportunities, and their negotiations. In the negotiator DM (persona
-  // 'negotiator', no intent pin), include the client's full question inbox —
-  // the same noConversation set the /questions page shows (P4.3/IND-404).
-  const isNegotiatorDm = sessionPersona === "negotiator" && chatScope?.type !== "intent";
+  // its opportunities, and their negotiations. The unscoped negotiator DM used
+  // to inject the client's full question inbox here (P4.3/IND-404); that
+  // surface is gone — every negotiator session is intent-pinned — and the full
+  // inbox lives on /questions.
   useEffect(() => {
     if (!sessionId) {
       setInjectedQuestions([]);
@@ -282,9 +282,7 @@ export default function ChatContent({
     let active = true;
     const scopeQuestionPromise = chatScope?.type === "intent"
       ? questionsService.getPending({ scopeType: "intent", scopeId: chatScope.id })
-      : isNegotiatorDm
-        ? questionsService.getPending({ noConversation: true, excludeModes: ['pool_discovery'] })
-        : Promise.resolve([] as PendingQuestion[]);
+      : Promise.resolve([] as PendingQuestion[]);
     Promise.all([
       questionsService.getByConversation(sessionId),
       scopeQuestionPromise,
@@ -297,7 +295,7 @@ export default function ChatContent({
       setInjectedQuestions([...deduped.values()]);
     }).catch(() => {});
     return () => { active = false; };
-  }, [sessionId, questionsService, chatScope, isNegotiatorDm]);
+  }, [sessionId, questionsService, chatScope]);
 
   // Merge live ask_user_question cards (streamed via the user_question SSE
   // event) into the inline injected-questions list at render time. The
@@ -1587,18 +1585,11 @@ export default function ChatContent({
               </div>
             ))}
             {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && injectedByMessageId.has(null) && (
-              <div data-testid={isNegotiatorDm ? "negotiator-question-inbox" : undefined}>
-                {isNegotiatorDm && (
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mt-4 mb-2">
-                    Open questions for you
-                  </p>
-                )}
-                <InjectedQuestions
-                  questions={injectedByMessageId.get(null)!}
-                  onAnswer={handleInjectedAnswer}
-                  onDismiss={handleInjectedDismiss}
-                />
-              </div>
+              <InjectedQuestions
+                questions={injectedByMessageId.get(null)!}
+                onAnswer={handleInjectedAnswer}
+                onDismiss={handleInjectedDismiss}
+              />
             )}
             <div ref={scrollRef} />
           </div>

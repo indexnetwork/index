@@ -1869,7 +1869,7 @@ export class QuestionerAdapter {
           intentId,
           cycleKey,
           messageId: questionId,
-          surfaces: ['personal_agent_badge', 'negotiator_dm'],
+          surfaces: ['personal_agent_badge', 'negotiator_intent_chat'],
           claimedAt: transactionNow.toISOString(),
           deliveryStatus: 'claimed',
         } satisfies import('@indexnetwork/protocol').QuestionPoolPush;
@@ -1923,6 +1923,47 @@ export class QuestionerAdapter {
               ...detection.push,
               deliveryStatus: 'failed',
               failure: failure.slice(0, 500),
+            },
+          } satisfies QuestionDetection,
+        })
+        .where(eq(questions.id, questionId));
+    });
+  }
+
+  /**
+   * Terminalize a claimed push whose delivery target can never resolve.
+   *
+   * Delivery pins the push to the recipient's intent-scoped negotiator
+   * session, so an archived, deleted, or disowned intent is permanent: no
+   * number of retries produces a session. Suppressing (rather than failing)
+   * keeps the claim out of the recovery sweep and matches how the delivery
+   * transaction already handles the same intent-lifecycle conditions.
+   *
+   * @param questionId - Claimed question whose target intent is gone.
+   * @param userId - Expected claim recipient.
+   */
+  async markPoolQuestionPushSuppressed(questionId: string, userId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select({ detection: questions.detection })
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .limit(1)
+        .for('update');
+      const detection = row?.detection as AdapterQuestionDetection | undefined;
+      if (
+        !detection?.push
+        || detection.push.recipientId !== userId
+        || detection.push.deliveryStatus !== 'claimed'
+        || detection.pushedAt
+      ) return;
+      await tx.update(questions)
+        .set({
+          detection: {
+            ...detection,
+            push: {
+              ...detection.push,
+              deliveryStatus: 'suppressed',
+              suppressedAt: new Date().toISOString(),
             },
           } satisfies QuestionDetection,
         })

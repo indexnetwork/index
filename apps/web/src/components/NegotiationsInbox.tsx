@@ -7,7 +7,6 @@ import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { deriveNegotiationInbox, flattenNegotiationInbox, type NegotiationInboxItem, type NegotiationInboxStatus } from '@/lib/negotiation-inbox';
-import { getNegotiatorDmSessionId } from '@/lib/negotiator-dm';
 
 const CHIP_CLASS: Record<NegotiationInboxStatus, string> = {
   answer: 'border-[#041729] bg-[#041729] text-white',
@@ -152,7 +151,7 @@ function InboxGroup({ label, items, flashes, onOpen }: {
 
 export default function NegotiationsInbox() {
   const navigate = useNavigate();
-  const { user, features } = useAuthContext();
+  const { user } = useAuthContext();
   const { negotiations, refreshNegotiations, isConnected } = useConversation();
   const [refreshing, setRefreshing] = useState(negotiations.length === 0);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
@@ -186,22 +185,17 @@ export default function NegotiationsInbox() {
   const flatItems = useMemo(() => flattenNegotiationInbox(groups), [groups]);
   const totalCount = groups.yourMove.length + groups.inProgress.length + groups.resolved.length;
 
-  // "Answer your agent" rows deep-link to the negotiator DM — the transcript
-  // is read-only and can't take an answer. /questions is the fallback when
-  // the negotiator surface is unavailable (IND-558).
+  // "Answer your agent" rows go to /questions — the transcript is read-only
+  // and can't take an answer. These rows used to deep-link the negotiator DM;
+  // that surface is gone, and /questions was already this path's fallback
+  // (IND-558).
   const openNegotiation = useCallback((item: NegotiationInboxItem) => {
     if (item.status !== 'answer') {
       navigate(`/chat/${item.conversationId}`);
       return;
     }
-    if (!features?.negotiatorChat) {
-      navigate('/questions');
-      return;
-    }
-    void getNegotiatorDmSessionId().then((sessionId) => {
-      navigate(sessionId ? `/d/${sessionId}` : '/questions');
-    });
-  }, [navigate, features]);
+    navigate('/questions');
+  }, [navigate]);
 
   // Diff each refetch against the previous rows and flash what changed
   // (design §3 R2): posture moves (group/status) in steel, content updates

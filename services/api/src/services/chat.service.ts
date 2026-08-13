@@ -501,36 +501,6 @@ export class ChatSessionService {
   }
 
   /**
-   * Resolve or create the user's stable negotiator DM session (P4.1).
-   * Idempotent: repeat calls return the same session. Race-safe via the
-   * chat_session_scopes unique index (concurrent creates re-read on 23505).
-   *
-   * @param userId - The client user
-   * @param title - Session title used on first creation (the negotiator agent's name)
-   */
-  async resolveNegotiatorSession(
-    userId: string,
-    title?: string,
-  ): Promise<{ session: NonNullable<Awaited<ReturnType<ChatSessionService['getSession']>>>; created: boolean } | { error: string; status: 500 }> {
-    const existing = await this.db.getNegotiatorChatSession(userId);
-    if (existing) return { session: existing, created: false };
-
-    try {
-      const id = crypto.randomUUID();
-      await this.db.createNegotiatorChatSession({ id, userId, title });
-      const session = await this.getSession(id, userId);
-      if (!session) return { error: 'Failed to create negotiator session', status: 500 as const };
-      return { session, created: true };
-    } catch (err) {
-      if (this.isUniqueViolation(err)) {
-        const raced = await this.db.getNegotiatorChatSession(userId);
-        if (raced) return { session: raced, created: false };
-      }
-      throw err;
-    }
-  }
-
-  /**
    * Resolve or create the user's negotiator session pinned to one of their
    * intents (P4.2/IND-403). One session per (user, intent, negotiator
    * persona): keyed in `chat_session_scopes` as ('negotiator-intent',

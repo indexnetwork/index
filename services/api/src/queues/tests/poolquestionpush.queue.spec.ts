@@ -22,11 +22,13 @@ function harness(overrides?: {
   claim?: PoolPushClaimResult;
   deliveryError?: Error;
   recoverable?: RecoverablePoolPushRequest[];
+  resolveError?: { error: string; status: 400 | 403 | 404 | 500 };
 }) {
   const claims: Array<{ questionId: string; allowNewClaim: boolean }> = [];
   const delivered: Array<Record<string, unknown>> = [];
   const enqueued: Array<{ questionId: string; userId: string }> = [];
-  const sessionTitles: string[] = [];
+  const resolvedIntentIds: string[] = [];
+  const suppressed: Array<{ questionId: string; userId: string }> = [];
   const queue = new PoolQuestionPushQueue({
     pushEnabled: () => overrides?.enabled ?? true,
     negotiatorAvailable: async () => overrides?.available ?? true,
@@ -36,15 +38,19 @@ function harness(overrides?: {
         return overrides?.claim ?? claim();
       },
       markPoolQuestionPushFailed: async () => {},
+      markPoolQuestionPushSuppressed: async (questionId, userId) => {
+        suppressed.push({ questionId, userId });
+      },
       markPoolQuestionPushRequested: async () => true,
       listRecoverablePoolQuestionPushRequests: async () => overrides?.recoverable ?? [],
     },
     enqueuePush: async (data) => {
       enqueued.push(data);
     },
-    resolveSession: (async (_userId: string, title?: string) => {
-      sessionTitles.push(title ?? '');
-      return { session: { id: 'stable-unscoped-dm' }, created: false };
+    resolveSession: (async (_userId: string, intentId: string) => {
+      resolvedIntentIds.push(intentId);
+      if (overrides?.resolveError) return overrides.resolveError;
+      return { session: { id: `negotiator-${intentId}` }, created: false, intentTitle: 'Find [AI] partners' };
     }) as never,
     deliver: (async (input: Record<string, unknown>) => {
       if (overrides?.deliveryError) throw overrides.deliveryError;
@@ -52,7 +58,7 @@ function harness(overrides?: {
       return { status: 'delivered', inserted: delivered.length === 1 };
     }) as never,
   });
-  return { queue, claims, delivered, enqueued, sessionTitles };
+  return { queue, claims, delivered, enqueued, resolvedIntentIds, suppressed };
 }
 
 describe('PoolQuestionPushQueue', () => {
@@ -81,20 +87,20 @@ describe('PoolQuestionPushQueue', () => {
     expect(h.delivered).toHaveLength(1);
   });
 
-  it('delivers exactly one deterministic public template to the stable unscoped DM', async () => {
+  it('delivers exactly one deterministic public template to the claim\'s intent-pinned session', async () => {
     const h = harness();
     const job = { questionId: 'question-1', userId: 'user-1' };
     await h.queue.processJob(job);
     await h.queue.processJob(job);
 
-    expect(h.sessionTitles).toEqual(['Personal Agent', 'Personal Agent']);
+    expect(h.resolvedIntentIds).toEqual(['intent-1', 'intent-1']);
     expect(h.delivered).toHaveLength(1);
     expect(h.delivered[0]).toMatchObject({
       questionId: 'question-1',
       recipientId: 'user-1',
       intentId: 'intent-1',
       cycleKey: 'run:run-1',
-      conversationId: 'stable-unscoped-dm',
+      conversationId: 'negotiator-intent-1',
       messageText: 'Quick one about [Find \\[AI\\] partners](/i/intent-1): Which side matters?',
     });
     const serialized = JSON.stringify(h.delivered);
@@ -110,9 +116,31 @@ describe('PoolQuestionPushQueue', () => {
     ]) {
       const h = harness({ claim: result });
       await h.queue.processJob({ questionId: 'question-1', userId: 'user-1' });
-      expect(h.sessionTitles).toEqual([]);
+      expect(h.resolvedIntentIds).toEqual([]);
       expect(h.delivered).toEqual([]);
     }
+  });
+
+  // The intent pin is the only negotiator surface, so resolution can now fail
+  // where the unscoped DM never could. A gone/disowned intent is permanent and
+  // must terminalize the claim instead of burning retries; everything else
+  // stays retryable.
+  it('suppresses the claim when the pinned intent is gone or not the recipient\'s', async () => {
+    for (const status of [403, 404] as const) {
+      const h = harness({ resolveError: { error: 'Intent not found', status } });
+      await h.queue.processJob({ questionId: 'question-1', userId: 'user-1' });
+      expect(h.suppressed).toEqual([{ questionId: 'question-1', userId: 'user-1' }]);
+      expect(h.delivered).toEqual([]);
+    }
+  });
+
+  it('throws for a retryable session-resolution failure instead of suppressing', async () => {
+    const h = harness({ resolveError: { error: 'Failed to create negotiator session', status: 500 } });
+    await expect(
+      h.queue.processJob({ questionId: 'question-1', userId: 'user-1' }),
+    ).rejects.toThrow('Failed to create negotiator session');
+    expect(h.suppressed).toEqual([]);
+    expect(h.delivered).toEqual([]);
   });
 
   it('retains the durable request marker when Redis enqueue fails', async () => {

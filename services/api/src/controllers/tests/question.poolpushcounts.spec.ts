@@ -63,6 +63,9 @@ describe('pool push count and read isolation', () => {
               intentId,
               cycleKey: `run:${intentId}`,
               messageId: intentId,
+              // Deliberately the legacy literal: this fixture doubles as the
+              // read-compat guard that push rows persisted before the unscoped
+              // DM was removed still parse through the counting path.
               surfaces: ['personal_agent_badge', 'negotiator_dm'],
               claimedAt: new Date().toISOString(),
               deliveryStatus: 'delivered',

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
-import { apiClient } from '@/lib/api';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
@@ -164,15 +163,11 @@ export default function NegotiationDetailPage() {
     [turns.length, outcomeReason, lifecycle?.screenDecision],
   );
 
-  // Revival CTA routes through the user's own agent (the negotiator DM), with
-  // the questions inbox as fallback when no negotiator session exists yet.
-  const handleRevive = useCallback(async () => {
-    try {
-      const { sessions } = await apiClient.get<{ sessions: { id: string }[] }>('/chat/sessions?persona=negotiator');
-      navigate(sessions[0]?.id ? `/d/${sessions[0].id}` : '/questions');
-    } catch {
-      navigate('/questions');
-    }
+  // Revival CTA routes to the questions inbox. It used to route through the
+  // negotiator DM, falling back here when no such session existed; with the
+  // DM removed the fallback is the only path.
+  const handleRevive = useCallback(() => {
+    navigate('/questions');
   }, [navigate]);
 
   return (

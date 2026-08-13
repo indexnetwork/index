@@ -21,6 +21,19 @@ An **agent** is an autonomous actor that represents a user within the system. Ag
 
 An agent always has exactly one owner (`ownerId → users.id`). System agents are owned by the platform user.
 
+### Where the negotiator is reachable
+
+The user's personal negotiator ("Personal Agent") has one chat surface: a session pinned
+to one of the user's own intents, opened from that intent. There is no unscoped
+negotiator DM — the general personal-agent thread that once sat alongside it was removed,
+and every negotiator session now carries an intent. See
+[Chat sessions](./chat-sessions.md) for the scope keys.
+
+Work that has no intent to pin to does not open a chat. Pending consultations
+(`negotiation_inflight` questions) and other answerable prompts are surfaced and answered
+on the questions inbox instead, which is where the answer pipeline runs regardless of
+which surface displays the card.
+
 ---
 
 ## Agent Status

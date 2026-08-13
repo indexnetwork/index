@@ -32,7 +32,7 @@ function poolQuestion(): AdapterPersistedQuestion {
         intentId: 'intent-1',
         cycleKey: 'run:private-run',
         messageId: 'q-1',
-        surfaces: ['personal_agent_badge', 'negotiator_dm'],
+        surfaces: ['personal_agent_badge', 'negotiator_intent_chat'],
         claimedAt: '2026-07-16T11:59:00.000Z',
         deliveryStatus: 'delivered',
       },
