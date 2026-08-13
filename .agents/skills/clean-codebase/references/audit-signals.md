@@ -134,7 +134,8 @@ coupling; cycles are always a T4 finding. Cross-feature reach-ins (feature A imp
 internals of feature B instead of its public surface) are coupling debt even when no lint
 rule fires.
 
-Macro checks: does the directory layout still match `.rpiv/guidance/**/architecture.md`?
+Macro checks: does the directory layout still match what `AGENTS.md` and the Development
+Reference describe?
 Overlapping-responsibility modules? Stale config (CI `allow_failure`, disabled lint rules,
 dead tools in `package.json`)?
 
