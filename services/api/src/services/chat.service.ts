@@ -1,26 +1,24 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA, REPORTER_PERSONA_ID, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, REPORTER_PERSONA, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
-import { isWebSignalAgentEnabled } from '../lib/signal-feature';
 import { getReporterBriefingTtlMs, isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
-import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
 const logger = log.service.from("ChatSessionService");
 
-export type ChatStreamSurface = 'web' | 'non_web' | 'onboarding';
+export type ChatStreamSurface = 'web' | 'agent' | 'onboarding';
 
 export type ChatPersonaPolicyCode =
   | 'WEB_SIGNAL_PERSONA_REQUIRED'
   | 'WEB_SIGNAL_SESSION_REQUIRED'
+  | 'CHAT_PERSONA_REQUIRED'
   | 'CHAT_PERSONA_MISMATCH'
   | 'CHAT_PERSONA_UNSUPPORTED'
-  | 'WEB_SIGNAL_AGENT_DISABLED'
   | 'WEB_SIGNAL_PERSONA_FORBIDDEN'
   | 'WEB_AGENT_SURFACE_DISABLED'
   | 'WEB_AGENT_PERSONA_FORBIDDEN'
@@ -36,8 +34,28 @@ export type ChatPersonaPolicyResult =
       action?: { type: 'start_signal_session' | 'start_reporter_session'; href: string };
     };
 
+/**
+ * The retired pre-personafication default. Kept as a literal (not a protocol
+ * import) because the persona no longer exists in the runtime — only its rows
+ * do, and history has to stay listable and readable.
+ */
+export const RETIRED_ORCHESTRATOR_PERSONA_ID = 'orchestrator';
+
+/** Telegram notification transcript. Not a chat persona — nothing drives a turn in it. */
+export const TELEGRAM_TRANSCRIPT_PERSONA_ID = 'telegram';
+
+/**
+ * Persona values whose stored sessions stay readable but can never drive a
+ * turn: the retired orchestrator, and the Telegram notification transcript.
+ * The policy answers these with a read-only nudge rather than a generic
+ * "unsupported" error so the product can keep showing the history.
+ */
+const READ_ONLY_CHAT_PERSONAS: ReadonlySet<string> = new Set([
+  RETIRED_ORCHESTRATOR_PERSONA_ID,
+  TELEGRAM_TRANSCRIPT_PERSONA_ID,
+]);
+
 const KNOWN_CHAT_PERSONAS: ReadonlySet<string> = new Set([
-  ORCHESTRATOR_PERSONA_ID,
   SIGNAL_PERSONA_ID,
   NEGOTIATOR_PERSONA_ID,
   REPORTER_PERSONA_ID,
@@ -93,7 +111,7 @@ export class ChatSessionService {
 
   /**
    * Inject the ChatGraphFactory after construction.
-   * Must be called before any method that uses the factory (processMessage, getGraphFactory, etc.).
+   * Must be called before any method that uses the factory (the persona graph accessors, session streaming, etc.).
    * Called by the composition root (mcp.controller.ts) during module initialization.
    *
    * @param factory - The ChatGraphFactory instance to use
@@ -110,9 +128,12 @@ export class ChatSessionService {
   /**
    * Resolve the persona allowed to create or continue a streamed chat.
    *
-   * Web-surface routes participate in the Signal cutover; non-web routes
-   * retain the orchestrator default. A persisted persona is
-   * authoritative and unknown values always fail closed.
+   * There is no default persona: every turn is driven by a named one. Web
+   * routes must name Signal (or Reporter, or the negotiator DM); agent
+   * routes — API-key principals such as the macOS app — must name a
+   * surface-independent persona explicitly. A persisted persona is
+   * authoritative, retired personas are readable but not continuable, and
+   * unknown values always fail closed.
    *
    * @param input - Server-selected route surface plus requested/persisted persona
    * @returns The allowed persona or a typed product-safe denial
@@ -122,11 +143,20 @@ export class ChatSessionService {
     requestedPersona?: string;
     storedPersona?: string;
   }): ChatPersonaPolicyResult {
-    const webSignalEnabled = isWebSignalAgentEnabled();
     const agentSurfaceEnabled = isAgentSurfaceEnabled();
     const requestedPersona = input.requestedPersona?.trim() || undefined;
     const storedPersona = input.storedPersona?.trim() || undefined;
 
+    // These sessions stay readable; they just cannot drive a turn.
+    if (storedPersona && READ_ONLY_CHAT_PERSONAS.has(storedPersona)) {
+      return {
+        ok: false,
+        status: 409,
+        code: 'WEB_SIGNAL_SESSION_REQUIRED',
+        error: 'This earlier chat is read-only. Start a new Signal Agent chat to continue.',
+        action: { type: 'start_signal_session', href: '/' },
+      };
+    }
     if (storedPersona && !KNOWN_CHAT_PERSONAS.has(storedPersona)) {
       return {
         ok: false,
@@ -145,12 +175,9 @@ export class ChatSessionService {
     }
 
     if (input.surface === 'onboarding') {
-      const onboardingPersona = webSignalEnabled
-        ? ONBOARDING_PERSONA_ID
-        : ORCHESTRATOR_PERSONA_ID;
       if (
-        (storedPersona && storedPersona !== onboardingPersona)
-        || (requestedPersona && requestedPersona !== onboardingPersona)
+        (storedPersona && storedPersona !== ONBOARDING_PERSONA_ID)
+        || (requestedPersona && requestedPersona !== ONBOARDING_PERSONA_ID)
       ) {
         return {
           ok: false,
@@ -159,7 +186,7 @@ export class ChatSessionService {
           error: 'This request does not match the onboarding chat.',
         };
       }
-      return { ok: true, persona: onboardingPersona };
+      return { ok: true, persona: ONBOARDING_PERSONA_ID };
     }
 
     if (storedPersona) {
@@ -202,14 +229,6 @@ export class ChatSessionService {
       }
 
       if (storedPersona === SIGNAL_PERSONA_ID) {
-        if (!webSignalEnabled) {
-          return {
-            ok: false,
-            status: 409,
-            code: 'WEB_SIGNAL_AGENT_DISABLED',
-            error: 'Signal Agent is not available right now. Your chat history is still saved.',
-          };
-        }
         if (input.surface !== 'web') {
           return {
             ok: false,
@@ -219,20 +238,6 @@ export class ChatSessionService {
           };
         }
         return { ok: true, persona: SIGNAL_PERSONA_ID };
-      }
-
-      if (
-        storedPersona === ORCHESTRATOR_PERSONA_ID
-        && webSignalEnabled
-        && input.surface === 'web'
-      ) {
-        return {
-          ok: false,
-          status: 409,
-          code: 'WEB_SIGNAL_SESSION_REQUIRED',
-          error: 'This earlier chat is read-only. Start a new Signal Agent chat to continue.',
-          action: { type: 'start_signal_session', href: '/' },
-        };
       }
 
       return { ok: true, persona: storedPersona as ChatPersonaId };
@@ -268,14 +273,6 @@ export class ChatSessionService {
     }
 
     if (requestedPersona === SIGNAL_PERSONA_ID) {
-      if (!webSignalEnabled) {
-        return {
-          ok: false,
-          status: 409,
-          code: 'WEB_SIGNAL_AGENT_DISABLED',
-          error: 'Signal Agent is not available right now.',
-        };
-      }
       if (input.surface !== 'web') {
         return {
           ok: false,
@@ -291,7 +288,7 @@ export class ChatSessionService {
       return { ok: true, persona: NEGOTIATOR_PERSONA_ID };
     }
 
-    if (webSignalEnabled && input.surface === 'web') {
+    if (input.surface === 'web') {
       return {
         ok: false,
         status: 409,
@@ -301,7 +298,13 @@ export class ChatSessionService {
       };
     }
 
-    return { ok: true, persona: ORCHESTRATOR_PERSONA_ID };
+    // Agent surface with no persona named. There is no default to fall back on.
+    return {
+      ok: false,
+      status: 409,
+      code: 'CHAT_PERSONA_REQUIRED',
+      error: 'This request must name the chat persona to start.',
+    };
   }
 
   /**
@@ -311,15 +314,15 @@ export class ChatSessionService {
    * @param title - Optional title for the session
    * @param networkId - Optional index (community) ID to scope the conversation
    * @param scope - Optional canonical network or intent scope
-   * @param persona - Persisted persona, defaulting to orchestrator
+   * @param persona - Persisted persona driving the session (required)
    * @returns The created session ID
    */
   async createSession(
     userId: string,
-    title?: string,
-    networkId?: string,
-    scope?: { scopeType: ChatScopeType; scopeId: string },
-    persona: ChatPersonaId = ORCHESTRATOR_PERSONA_ID,
+    title: string | undefined,
+    networkId: string | undefined,
+    scope: { scopeType: ChatScopeType; scopeId: string } | undefined,
+    persona: ChatPersonaId,
   ): Promise<string> {
     logger.verbose('Creating new session', {
       userId,
@@ -460,7 +463,7 @@ export class ChatSessionService {
   async resolveSessionForScope(
     userId: string,
     scope: { scopeType: ChatScopeType; scopeId: string },
-    persona: ChatPersonaId = ORCHESTRATOR_PERSONA_ID,
+    persona: ChatPersonaId,
   ) {
     const normalizedScopeId = scope.scopeId.trim();
     if (!normalizedScopeId) {
@@ -620,21 +623,23 @@ export class ChatSessionService {
    *
    * @param userId - The user's UUID
    * @param limit - Maximum number of sessions to return (default: 10)
-   * @param persona - Exact persona to list (defaults to orchestrator)
+   * @param persona - Exact persona to list (required)
    * @returns List of sessions
    */
   async getUserSessions(
     userId: string,
-    limit = 10,
-    persona: string = ORCHESTRATOR_PERSONA_ID,
+    limit: number,
+    persona: string,
   ) {
     logger.verbose('Getting user sessions', { userId, limit, persona });
     return this.db.getUserChatSessions(userId, limit, persona);
   }
 
   /**
-   * Get ordinary main-web history across the legacy orchestrator and Signal
-   * personas while excluding the pinned negotiator surface.
+   * Get ordinary main-web history across the Signal and Reporter personas plus
+   * the read-only rows (retired orchestrator, Telegram transcripts), while
+   * excluding the pinned negotiator surface. The read-only rows are listed so
+   * existing history stays visible (see resolveStreamPersonaPolicy).
    *
    * @param userId - The user's UUID
    * @param limit - Maximum number of sessions to return
@@ -645,7 +650,7 @@ export class ChatSessionService {
     return this.db.getUserChatSessions(
       userId,
       limit,
-      [ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID],
+      [RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID],
     );
   }
 
@@ -787,31 +792,6 @@ export class ChatSessionService {
   }
 
   /**
-   * Process a message through the chat graph (non-streaming).
-   *
-   * @param userId - The user ID
-   * @param messageContent - The message content
-   * @returns Graph execution result with response text
-   */
-  async processMessage(userId: string, messageContent: string): Promise<{
-    responseText: string;
-    error?: string;
-  }> {
-    logger.verbose('Processing message', { userId });
-
-    const graph = this.factory.createGraph();
-    const result = await graph.invoke({
-      userId,
-      messages: [new HumanMessage(messageContent)]
-    });
-
-    return {
-      responseText: result.responseText || '',
-      error: result.error
-    };
-  }
-
-  /**
    * Get checkpointer for streaming (if needed).
    *
    * @returns PostgresSaver checkpointer or undefined
@@ -828,23 +808,14 @@ export class ChatSessionService {
   }
 
   /**
-   * Get the chat graph factory for streaming operations.
-   * This is used by controllers that need to stream chat events.
+   * The Signal Agent graph factory. Signal is the composition root's persona,
+   * so this is the injected factory itself; every other persona derives from
+   * it via `withPersona`, sharing the persona-neutral runtime and all deps.
    *
-   * @returns The ChatGraphFactory instance
-   */
-  getGraphFactory(): ChatGraphFactory {
-    return this.factory;
-  }
-
-  /**
-   * Derive the restricted Signal Agent graph factory while sharing the
-   * persona-neutral runtime and all injected dependencies.
-   *
-   * @returns A Signal-persona sibling factory
+   * @returns The Signal-persona factory
    */
   getSignalGraphFactory(): ChatGraphFactory {
-    return this.factory.withPersona(SIGNAL_PERSONA);
+    return this.factory;
   }
 
   /** Derive the restricted onboarding graph factory from the shared runtime. */
@@ -863,8 +834,8 @@ export class ChatSessionService {
 
   /**
    * Derive a negotiator-persona graph factory bound to the client's personal
-   * negotiator agent identity. Shares all dependencies with the orchestrator
-   * factory; only prompt/toolset/loop behaviors differ.
+   * negotiator agent identity. Shares all dependencies with the composition
+   * root's factory; only prompt/toolset/loop behaviors differ.
    *
    * @param agent - Identity from the user's `type='personal'` agent row
    * @param pinnedIntent - Optional pinned-signal label for intent-scoped

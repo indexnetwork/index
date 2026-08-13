@@ -2,9 +2,8 @@
  * Tests for ChatAgent.normalizeToolResult — decision-question harvest.
  *
  * Verifies that tool-result envelopes are correctly parsed:
- *   - `questions` is extracted as decisionQuestions and PRESERVED in the LLM-facing string.
- *   - `_discoveryQuestionsDebug` is extracted as discoveryQuestionsDebug and STRIPPED
- *     from the LLM-facing string (internal trace data only).
+ *   - `questions` is extracted as decisionQuestions and PRESERVED in the LLM-facing
+ *     string, from any tool that carries them (the extraction is shape-based).
  */
 
 // Env must be set before any imports that transitively call createModel
@@ -36,8 +35,8 @@ mock.module("../../shared/agent/tool.helpers", () => ({
 afterAll(() => mock.restore());
 
 import { ChatAgent } from "../chat.agent.js";
+import { FULL_TOOLSET_TEST_PERSONA } from "./full-toolset.persona.js";
 import type { Question, QuestionStrategy } from "../../questions/domain/question.schema.js";
-import type { DebugMetaDiscoveryQuestions } from "../chat-streaming.types.js";
 
 // ─── Test fixtures ────────────────────────────────────────────────────────────
 
@@ -51,13 +50,6 @@ const sampleQuestion: Question = {
   multiSelect: false,
 };
 
-const sampleDebug: DebugMetaDiscoveryQuestions = {
-  inputMode: "transcripts",
-  finalCount: 1,
-  strategies: ["refine_intent" as QuestionStrategy],
-  durationMs: 100,
-};
-
 // ─── Type for the private method we're testing ────────────────────────────────
 
 type NormalizeToolResultFn = (
@@ -68,7 +60,6 @@ type NormalizeToolResultFn = (
   resultStr: string;
   summary: string;
   decisionQuestions?: Question[];
-  discoveryQuestionsDebug?: DebugMetaDiscoveryQuestions;
 }>;
 
 async function makeAgent(): Promise<ChatAgent> {
@@ -93,13 +84,13 @@ async function makeAgent(): Promise<ChatAgent> {
     integrationImporter: {} as never,
     createUserDatabase: () => ({} as never),
     createSystemDatabase: () => ({} as never),
-  });
+  }, FULL_TOOLSET_TEST_PERSONA);
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
-  it("extracts questions + discoveryQuestionsDebug from a wrapped tool envelope", async () => {
+  it("extracts questions from a wrapped tool envelope", async () => {
     const agent = await makeAgent();
     const normalizeToolResult = (agent as unknown as { normalizeToolResult: NormalizeToolResultFn }).normalizeToolResult.bind(agent);
 
@@ -110,7 +101,6 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
         count: 1,
         summary: "Found 1 match",
         questions: [sampleQuestion],
-        _discoveryQuestionsDebug: sampleDebug,
         debugSteps: [],
       },
     });
@@ -119,12 +109,9 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
 
     // Metadata correctly extracted
     expect(result.decisionQuestions).toEqual([sampleQuestion]);
-    expect(result.discoveryQuestionsDebug).toEqual(sampleDebug);
 
-    // _discoveryQuestionsDebug stripped from the LLM-facing string
     const parsed = JSON.parse(result.resultStr) as { data?: Record<string, unknown> } & Record<string, unknown>;
     const payload = (parsed.data ?? parsed) as Record<string, unknown>;
-    expect(payload._discoveryQuestionsDebug).toBeUndefined();
 
     // questions PRESERVED in the LLM-facing string (per the prompt addendum)
     expect(payload.questions).toEqual([sampleQuestion]);
@@ -140,16 +127,13 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
       count: 1,
       summary: "Found 1 match",
       questions: [sampleQuestion],
-      _discoveryQuestionsDebug: sampleDebug,
     });
 
     const result = await normalizeToolResult("read_intents", envelope, {});
 
     expect(result.decisionQuestions).toEqual([sampleQuestion]);
-    expect(result.discoveryQuestionsDebug).toEqual(sampleDebug);
 
     const parsed = JSON.parse(result.resultStr) as Record<string, unknown>;
-    expect(parsed._discoveryQuestionsDebug).toBeUndefined();
     expect(parsed.questions).toEqual([sampleQuestion]);
   });
 
@@ -165,7 +149,6 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
     const result = await normalizeToolResult("read_intents", envelope, {});
 
     expect(result.decisionQuestions).toBeUndefined();
-    expect(result.discoveryQuestionsDebug).toBeUndefined();
   });
 
   it("harvests questions by JSON envelope shape regardless of tool name", async () => {
@@ -178,7 +161,6 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
       data: {
         summary: "ok",
         questions: [sampleQuestion],
-        _discoveryQuestionsDebug: sampleDebug,
       },
     });
 
@@ -186,8 +168,7 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
     // because the extraction is shape-based.
     const result = await normalizeToolResult("read_intents", envelope, {});
 
-    // questions and debug are extracted regardless of tool name
+    // questions are extracted regardless of tool name
     expect(result.decisionQuestions).toEqual([sampleQuestion]);
-    expect(result.discoveryQuestionsDebug).toEqual(sampleDebug);
   });
 });

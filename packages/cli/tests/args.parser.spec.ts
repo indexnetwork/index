@@ -361,36 +361,28 @@ describe("parseArgs", () => {
   // ── Conversation commands ──────────────────────────────────────────
 
   describe("conversation", () => {
-    it("parses conversation with no args as REPL mode", () => {
+    it("parses conversation with no args as an unset subcommand", () => {
       const result = parseArgs(["conversation"]);
       expect(result.command).toBe("conversation");
-      expect(result.message).toBeUndefined();
       expect(result.subcommand).toBeUndefined();
     });
 
-    it("parses conversation with message as one-shot mode", () => {
+    it("leaves the subcommand unset for retired agent-chat forms", () => {
       const result = parseArgs(["conversation", "hello", "world"]);
       expect(result.command).toBe("conversation");
-      expect(result.message).toBe("hello world");
+      expect(result.subcommand).toBeUndefined();
     });
 
-    it("parses conversation sessions", () => {
+    it("no longer recognises the retired 'sessions' subcommand", () => {
       const result = parseArgs(["conversation", "sessions"]);
       expect(result.command).toBe("conversation");
-      expect(result.subcommand).toBe("sessions");
+      expect(result.subcommand).toBeUndefined();
     });
 
-    it("parses conversation --session <id>", () => {
-      const result = parseArgs(["conversation", "--session", "abc-123"]);
+    it("consumes the retired --session flag without leaking its value", () => {
+      const result = parseArgs(["conversation", "--session", "abc-123", "list"]);
       expect(result.command).toBe("conversation");
-      expect(result.sessionId).toBe("abc-123");
-    });
-
-    it("parses conversation --session <id> with message", () => {
-      const result = parseArgs(["conversation", "--session", "abc-123", "hello"]);
-      expect(result.command).toBe("conversation");
-      expect(result.sessionId).toBe("abc-123");
-      expect(result.message).toBe("hello");
+      expect(result.subcommand).toBe("list");
     });
 
     it("parses conversation --api-url", () => {

@@ -22,7 +22,7 @@ The `index` CLI is a standalone Bun-based binary in `packages/cli/`. It communic
 2. Opens the user's default browser to that URL.
 3. Starts a temporary local HTTP server (ephemeral port), generates a 32-byte one-time state, and includes the strict loopback callback, exact `version=2`, and state in the browser URL.
 4. The web bridge validates and preserves the exact v2 request through authentication, then calls the project-JWT-authenticated `POST /api/auth/cli-credential` endpoint with only `{protocolVersion:2}`. The session-only endpoint fixes the name, 90-day expiry, and `{client:'cli', protocolVersion:2}` metadata, and returns the secret and exact key ID for the restricted loopback callback.
-5. After exact state validation, stores the credential, key ID, API-key auth kind, and API base URL in `~/.index/credentials.json`. Requests send the key through `x-api-key`, so CLI chat remains on the non-web orchestrator compatibility surface without creating a session-authenticated browser bypass. On re-login, the replacement is stored first and calls the constrained CLI revocation endpoint as the active caller while supplying the captured prior raw secret and exact prior row ID; failure keeps the replacement valid and prints a truthful cleanup warning.
+5. After exact state validation, stores the credential, key ID, API-key auth kind, and API base URL in `~/.index/credentials.json`. Requests send the key through `x-api-key`, which classifies them as the agent surface rather than creating a session-authenticated browser bypass. On re-login, the replacement is stored first and calls the constrained CLI revocation endpoint as the active caller while supplying the captured prior raw secret and exact prior row ID; failure keeps the replacement valid and prints a truthful cleanup warning.
 6. **No version downgrade:** the web bridge fails every non-v2 request shape closed. There is no `session_token` callback field and no Bearer API-key fallback on the server; released v1 CLI binaries must upgrade and run `index login` again.
 7. Prints confirmation with the authenticated user's name and email.
 8. The local server shuts down after receiving the callback (or after a 120-second timeout).
@@ -35,38 +35,15 @@ Calls `POST /api/auth/cli-credential/revoke` with strict `{keyId,targetKey}` pro
 
 ## Conversation
 
-The `index conversation` command is the unified entry point for the conversation surface. It serves both:
+The `index conversation` command is the entry point for **Human-to-Human (H2H)
+direct messaging** — the `list`/`with`/`show`/`send`/`stream` subcommands backed
+by `/api/conversations/*`.
 
-- **Human-to-Agent (H2A) chat** — the default mode: an SSE-streaming REPL against the Index chat orchestrator (`/api/chat/stream`), plus session listing and one-shot messages via positional args.
-- **Human-to-Human (H2H) direct messaging** — via the `list`/`with`/`show`/`send`/`stream` subcommands backed by `/api/conversations/*`.
-
-### `index conversation [message]`
-
-**One-shot mode** (message provided as positional argument):
-
-1. Reads credentials from `~/.index/credentials.json`. Exits with error if not logged in.
-2. Sends `POST /api/chat/stream` with `{ message }` and the stored API key as `x-api-key`.
-3. Reads the SSE stream, printing assistant text tokens to stdout as they arrive.
-4. On `done` event, prints the session ID for future reference and exits 0.
-5. On `error` event, prints the error to stderr and exits 1.
-
-**Interactive REPL mode** (no subcommand, no message argument):
-
-1. Reads credentials. Exits with error if not logged in.
-2. Enters a read-eval-print loop with a `>` prompt.
-3. Each user input is sent to `POST /api/chat/stream` with the current `sessionId`.
-4. Streamed tokens are printed. After `done`, the loop resumes.
-5. The user exits with Ctrl+C or typing `exit`/`quit`.
-
-### `index conversation --session <id>`
-
-Resumes a specific AI chat session. Works in both one-shot and REPL modes. The session ID is passed as `sessionId` in the stream request body.
-
-### `index conversation sessions`
-
-1. Calls `GET /api/chat/sessions` with auth header.
-2. Prints a table of AI chat sessions: ID, title, created date.
-3. Exits 0.
+Human-to-Agent chat from the CLI has been removed. It ran on the retired
+`orchestrator` persona, and API-key callers can no longer start a chat without
+naming one; the personas that remain (`signal`, `reporter`) are web-only.
+Invoking `index conversation` with no subcommand — or with a bare message —
+prints an error pointing at the app and exits 1.
 
 ### `index conversation list`
 
@@ -360,11 +337,8 @@ Marks the user's onboarding as complete.
 2. `index login` fails gracefully if the browser cannot be opened (prints URL for manual copy).
 
 ### Conversation
-4. `index conversation "hello"` sends a message and prints the streamed response.
-5. `index conversation` (no args) enters REPL mode and supports multi-turn conversation.
-6. `index conversation --session <id>` resumes an existing AI chat session.
-7. `index conversation sessions` prints a formatted table of AI chat sessions.
-8. `index conversation list` displays a formatted table of conversations.
+4. `index conversation` (no subcommand) prints the agent-chat retirement error and exits 1.
+5. `index conversation list` displays a formatted table of conversations.
 9. `index conversation with <user-id>` gets or creates a DM and prints the conversation summary.
 10. `index conversation show <id>` displays messages in chronological order.
 11. `index conversation send <id> <message>` sends a message and prints confirmation.

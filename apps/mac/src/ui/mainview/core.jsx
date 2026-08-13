@@ -57,17 +57,17 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
-  // Agent chat runs the negotiator persona when the backend enables it: the
-  // negotiator drops list_opportunities in intent-pinned chats (the Radar
-  // beside this pane owns opportunity listing), while api-key callers without
-  // a persona fall back to the orchestrator's unrestricted toolset.
-  const { features, patchIntentStatus, refreshIntents } = useIndexEnv();
-  const chatPersona = features && features.negotiatorChat ? "negotiator" : null;
+  // Agent chat runs the negotiator persona, which drops list_opportunities in
+  // intent-pinned chats (the Radar beside this pane owns opportunity listing).
+  // It is named explicitly and unconditionally: api-key callers have no default
+  // persona to fall back on, so an unnamed persona is refused by the server.
+  const { patchIntentStatus, refreshIntents } = useIndexEnv();
+  const chatPersona = "negotiator";
   // Agent-chat session id per intent, persisted across signal switches. Keyed
   // by persona too: a session created under one persona cannot be continued
   // as another (the server rejects the mismatch).
   const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
-  const chatKey = chatPersona ? `${chatPersona}:${intentId}` : intentId;
+  const chatKey = `${chatPersona}:${intentId}`;
   const chatSessionRef = useRef(chatSessions[chatKey] || null);
   const seenQuestionIds = useRef(new Set());   // question ids already in the feed
   const radarSeqRef = useRef(0);               // drops stale radar responses
@@ -412,7 +412,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         sessionId: chatSessionRef.current,
         scopeType: intentId ? "intent" : undefined,
         scopeId: intentId || undefined,
-        persona: chatPersona || undefined,
+        persona: chatPersona,
         onEvent: (e) => {
           if (!e || !e.type) return;
           if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }

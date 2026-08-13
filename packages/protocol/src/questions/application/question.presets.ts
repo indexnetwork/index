@@ -8,7 +8,6 @@
  * Legacy path is a thin compatibility shim pointing here.
  */
 import type { QuestionMode, QuestionPurpose } from "../domain/question.schema.js";
-import { DISCOVERY_SYSTEM_PROMPT, buildDiscoveryQuestionPrompt } from "./question.discovery.prompt.js";
 import { QUD_UNDERSPECIFICATION_RULES } from "./question.qud.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, ProfileContext, RecoveryIntentContext, UptakeNegotiationContext } from "./question.input.js";
 import { consultationPromptFor } from "../../capabilities/negotiation.questions.facade.js";
@@ -450,11 +449,6 @@ function withQudMetadataRules(systemPrompt: string): string {
 }
 
 const presets: Partial<Record<QuestionMode, QuestionerPreset>> = {
-  discovery: {
-    systemPrompt: withQudMetadataRules(DISCOVERY_SYSTEM_PROMPT),
-    buildPrompt: (context: unknown) =>
-      buildDiscoveryQuestionPrompt(context as Parameters<typeof buildDiscoveryQuestionPrompt>[0]),
-  },
   intent: {
     systemPrompt: withQudMetadataRules(INTENT_SYSTEM_PROMPT),
     buildPrompt: (context: unknown) => buildIntentPrompt(context as IntentContext),

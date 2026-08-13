@@ -135,17 +135,17 @@ describe("Negotiator chat persona (IND-402)", () => {
     const offRes = await authController.me(meReq(), mockUser());
     expect(offRes.status).toBe(200);
     const offData = (await offRes.json()) as {
-      features: { negotiatorChat: boolean; signalAgent: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
+      features: { negotiatorChat: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
     };
-    expect(offData.features).toEqual({ negotiatorChat: false, signalAgent: false, agentSurface: false, agentActions: false, fastSignalIntake: false });
+    expect(offData.features).toEqual({ negotiatorChat: false, agentSurface: false, agentActions: false, fastSignalIntake: false });
 
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
     const onRes = await authController.me(meReq(), mockUser());
     const onData = (await onRes.json()) as {
-      features: { negotiatorChat: boolean; signalAgent: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
+      features: { negotiatorChat: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
     };
-    expect(onData.features).toEqual({ negotiatorChat: true, signalAgent: true, agentSurface: false, agentActions: false, fastSignalIntake: false });
+    expect(onData.features).toEqual({ negotiatorChat: true, agentSurface: false, agentActions: false, fastSignalIntake: false });
     process.env.WEB_SIGNAL_AGENT_ENABLED = 'false';
   }, 60000);
 
@@ -204,8 +204,10 @@ describe("Negotiator chat persona (IND-402)", () => {
   test("negotiator DM is excluded from default /chat/sessions and visible with ?persona=negotiator", async () => {
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
 
-    // A regular orchestrator session shows up in history.
-    const orchestratorSessionId = await chatSessionService.createSession(testUserId, "Regular chat");
+    // Retained read-only orchestrator history still shows up.
+    const orchestratorSessionId = await chatSessionService.createSession(
+      testUserId, "Regular chat", undefined, undefined, "orchestrator",
+    );
     createdSessionIds.push(orchestratorSessionId);
 
     const negotiatorSessionId = (await conversationDatabaseAdapter.getNegotiatorChatSession(testUserId))!.id;
@@ -252,9 +254,8 @@ describe("Negotiator chat persona (IND-402)", () => {
     // The negotiator persona (not the orchestrator default) drove the run.
     expect(capturedPersonas.length).toBe(1);
     expect(capturedPersonas[0].id).toBe("negotiator");
-    // P4.5 (IND-413): discovery-coupled callback stays off; hallucination
-    // recovery is on now that create_intent makes proposal blocks legitimate.
-    expect(capturedPersonas[0].loopBehaviors.createIntentCallback).toBe(false);
+    // P4.5 (IND-413): hallucination recovery is on now that create_intent
+    // makes proposal blocks legitimate.
     expect(capturedPersonas[0].loopBehaviors.hallucinationRecovery).toBe(true);
 
     expect(capturedStreamInputs.length).toBe(1);
@@ -315,7 +316,7 @@ describe("Negotiator chat persona (IND-402)", () => {
 
   // ── Intent-pinned sessions (P4.2 / IND-403) ───────────────────────────
 
-  test("intent-pinned get-or-create is idempotent and distinct from the DM and the orchestrator intent session", async () => {
+  test("intent-pinned get-or-create is idempotent and distinct from the DM and another persona's intent session", async () => {
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
 
     const first = await controller.negotiatorSession(negotiatorSessionReq({ intentId: testIntentId }), mockUser());
@@ -344,17 +345,17 @@ describe("Negotiator chat persona (IND-402)", () => {
     const dm = await conversationDatabaseAdapter.getNegotiatorChatSession(testUserId);
     expect(dm?.id).not.toBe(firstData.session.id);
 
-    // Keying spec: the orchestrator's session for the SAME (user, intent) is a
+    // Keying spec: another persona's session for the SAME (user, intent) is a
     // different conversation — persona is part of the key.
-    const orchestrator = await chatSessionService.resolveSessionForScope(testUserId, {
+    const reporter = await chatSessionService.resolveSessionForScope(testUserId, {
       scopeType: "intent",
       scopeId: testIntentId,
-    });
-    if ('error' in orchestrator) throw new Error(orchestrator.error);
-    createdSessionIds.push(orchestrator.session.id);
-    expect(orchestrator.session.id).not.toBe(firstData.session.id);
-    expect(orchestrator.session.persona).toBe("orchestrator");
-    expect(orchestrator.session.scopeType).toBe("intent");
+    }, "reporter");
+    if ('error' in reporter) throw new Error(reporter.error);
+    createdSessionIds.push(reporter.session.id);
+    expect(reporter.session.id).not.toBe(firstData.session.id);
+    expect(reporter.session.persona).toBe("reporter");
+    expect(reporter.session.scopeType).toBe("intent");
   }, 120_000);
 
   test("streaming persona=negotiator with intent scope resolves the pinned session and seeds the scope + prompt pin", async () => {
@@ -465,7 +466,9 @@ describe("Negotiator chat persona (IND-402)", () => {
 
   test("persona=negotiator with an orchestrator session is a 409 mismatch", async () => {
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
-    const orchestratorSessionId = await chatSessionService.createSession(testUserId, "Mismatch test");
+    const orchestratorSessionId = await chatSessionService.createSession(
+      testUserId, "Mismatch test", undefined, undefined, "orchestrator",
+    );
     createdSessionIds.push(orchestratorSessionId);
 
     const res = await controller.messageStream(
@@ -475,19 +478,21 @@ describe("Negotiator chat persona (IND-402)", () => {
     expect(res.status).toBe(409);
   }, 60000);
 
-  test("orchestrator streaming path never derives a persona factory", async () => {
+  test("a retired orchestrator session is read-only and derives no persona factory", async () => {
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     capturedPersonas.length = 0;
 
-    const orchestratorSessionId = await chatSessionService.createSession(testUserId, "Plain chat");
+    const orchestratorSessionId = await chatSessionService.createSession(
+      testUserId, "Plain chat", undefined, undefined, "orchestrator",
+    );
     createdSessionIds.push(orchestratorSessionId);
 
     const res = await controller.messageStream(
       streamReq({ message: "hello", sessionId: orchestratorSessionId }),
       mockUser(),
     );
-    expect(res.status).toBe(200);
-    await res.text();
+    expect(res.status).toBe(409);
+    expect((await res.json() as { code: string }).code).toBe('WEB_SIGNAL_SESSION_REQUIRED');
 
     expect(capturedPersonas.length).toBe(0);
   }, 60000);

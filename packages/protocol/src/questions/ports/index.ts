@@ -15,9 +15,6 @@
  * - ChatQuestionsHost — blocking inline ask_user_question host bridge.
  * - ChatQuestionAnswerOutcome — resolution shape for awaited answers.
  *
- * ### Generator port (deprecated)
- * - QuestionGeneratorReader — legacy inline discovery question generator.
- *
  * ### Tool host ports
  * - QuestionerToolDeps — host capabilities for async question delivery tools.
  * - AskUserQuestionToolDeps — host capabilities for the chat ask_user_question tool.
@@ -34,9 +31,6 @@ export type {
   ChatQuestionsHost,
   QuestionerDatabase,
 } from "./question.persistence.port.js";
-
-// ── Generator (deprecated) ────────────────────────────────────────────────────
-export type { QuestionGeneratorReader } from "./question.generator.port.js";
 
 // ── Tool host ports ───────────────────────────────────────────────────────────
 export type { QuestionerToolDeps, AskUserQuestionToolDeps } from "./question.tools.port.js";

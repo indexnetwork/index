@@ -89,8 +89,7 @@ function renderHelp(): void {
   const gsLW = Math.max(...gsLefts.map((s) => s.length));
 
   const formsLefts = [
-    'index conversation "message"',
-    "index conversation --session <id>",
+    "index conversation list",
     "index sync --json",
     "index profile create",
     "index profile update",
@@ -119,7 +118,6 @@ function renderHelp(): void {
   const optLefts = [
     "--api-url <url>",
     "--app-url <url>",
-    "--session <id>",
     "--archived",
     "--status <status>",
     "--limit <n>",
@@ -153,8 +151,7 @@ function renderHelp(): void {
   ]);
 
   panel("common forms", [
-    helpRowCmd(formsLW, 'index conversation "message"', "send a one-shot agent message"),
-    helpRowCmd(formsLW, "index conversation --session <id>", "resume an agent chat session"),
+    helpRowCmd(formsLW, "index conversation list", "list your conversations"),
     helpRowCmd(formsLW, "index sync --json", "print synced context as JSON"),
     "",
     helpRowCmd(formsLW, "index profile create", "use social URL flags"),
@@ -173,7 +170,7 @@ function renderHelp(): void {
     helpRowCmd(cmdLW, "negotiation", "list · show"),
     "",
     helpRowCmd(cmdLW, "profile", "show · sync · search · create · update"),
-    helpRowCmd(cmdLW, "conversation", "sessions · list · with · show · send · stream"),
+    helpRowCmd(cmdLW, "conversation", "list · with · show · send · stream"),
     helpRowCmd(cmdLW, "network", "list · create · show · update · delete"),
     helpRowCont(cmdLW, "join · leave · invite"),
     helpRowCmd(cmdLW, "contact", "list · add · remove · import"),
@@ -186,7 +183,6 @@ function renderHelp(): void {
   panel("options", [
     helpRowDim(optLW, "--api-url <url>", "override API server URL"),
     helpRowDim(optLW, "--app-url <url>", "override app URL for login"),
-    helpRowDim(optLW, "--session <id>", "resume a chat session"),
     helpRowDim(optLW, "--archived", "include archived signals"),
     helpRowDim(optLW, "--status <status>", "filter opportunities by status"),
     helpRowDim(optLW, "--limit <n>", "limit number of results"),
@@ -389,8 +385,6 @@ async function main(): Promise<void> {
     case "conversation":
       await handleConversation(client, args.subcommand, args.positionals ?? [], {
         limit: args.limit,
-        sessionId: args.sessionId,
-        message: args.message,
         json: args.json,
       });
       return;

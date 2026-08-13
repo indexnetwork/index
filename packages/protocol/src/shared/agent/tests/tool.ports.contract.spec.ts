@@ -25,7 +25,7 @@ type _NetworkPortIsExact = Expect<Equal<keyof NetworkToolDeps,
 >>;
 type _OpportunityPortIsExact = Expect<Equal<keyof OpportunityToolDeps,
   | "database" | "userDb" | "systemDb" | "graphs" | "cache" | "chatSummary"
-  | "opportunityDiscovery" | "opportunityPresentation" | "questionGenerator"
+  | "opportunityDiscovery" | "opportunityPresentation"
   | "questionerEnqueue" | "findPendingQuestions" | "negotiationSummary"
   | "negotiationDatabase" | "deliveryLedger"
   | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"

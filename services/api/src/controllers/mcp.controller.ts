@@ -34,7 +34,6 @@ import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
-import { QuestionGeneratorService } from '../services/question-generator.service';
 import { NegotiationSummaryService } from '../services/negotiation-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
@@ -50,7 +49,7 @@ import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -75,7 +74,6 @@ type McpToolDeps = ToolDeps & {
 const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
-const questionGeneratorService = new QuestionGeneratorService();
 const questionerAdapter = new QuestionerAdapter(db);
 const negotiationSummaryService = new NegotiationSummaryService();
 const integrationImporter = new IntegrationService(integration, contactService);
@@ -155,7 +153,6 @@ const protocolDeps = {
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
   negotiationSummary: negotiationSummaryService,
-  questionGenerator: questionGeneratorService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
   integrationImporter,
@@ -206,14 +203,23 @@ const protocolDeps = {
   }),
 };
 
+// The generic protocol-facing session reader is scoped to Signal, the primary
+// chat persona. It previously read the orchestrator's sessions.
 const chatSessionReader = {
   getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
-  listSessions: (userId: string, limit?: number) =>
-    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit, 'orchestrator'),
-  getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
+  listSessions: (userId: string, limit = 25) =>
+    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit, SIGNAL_PERSONA_ID),
+  getSession: (userId: string, sessionId: string, messageLimit = 50) =>
+    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit, SIGNAL_PERSONA_ID),
 };
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps);
+/**
+ * Composition-root chat factory. Signal is the product's primary chat persona,
+ * so it is the one this factory carries; every other persona (onboarding,
+ * reporter, negotiator) is derived from it via `withPersona`, sharing the
+ * persona-neutral runtime and all injected deps. There is no default persona —
+ * the retired orchestrator used to be it.
+ */
+export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, SIGNAL_PERSONA);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)
@@ -728,7 +734,6 @@ function createMcpServerInstance(): McpServer {
     chatSession: protocolDeps.chatSession,
     chatSummary: protocolDeps.chatSummary,
     negotiationSummary: protocolDeps.negotiationSummary,
-    questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
     opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,

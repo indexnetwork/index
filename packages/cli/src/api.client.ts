@@ -5,10 +5,10 @@
  * common error patterns (401, network errors).
  */
 
-import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
+import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
+export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
 export interface UptakeQuestion {
   id: string;
@@ -62,18 +62,6 @@ export class ApiClient {
 
   private authHeaders(): Record<string, string> {
     return { "x-api-key": this.token };
-  }
-
-  /**
-   * List all chat sessions for the authenticated user.
-   *
-   * @returns Array of session objects.
-   * @throws Error on auth failure or network error.
-   */
-  async listSessions(): Promise<ChatSession[]> {
-    const res = await this.get("/api/chat/sessions");
-    const body = (await res.json()) as { sessions: ChatSession[] };
-    return body.sessions;
   }
 
   /**
@@ -159,36 +147,6 @@ export class ApiClient {
         : {}),
     });
     return await res.json() as Record<string, unknown>;
-  }
-
-  /**
-   * Open an SSE stream to the chat endpoint.
-   *
-   * Returns the raw Response so the caller can read the body
-   * as a stream and parse SSE events incrementally.
-   *
-   * @param params - Stream parameters (message, optional sessionId).
-   * @returns The raw fetch Response with SSE body.
-   * @throws Error on auth failure or network error.
-   */
-  async streamChat(params: StreamChatParams): Promise<Response> {
-    const res = await fetch(`${this.baseUrl}/api/chat/stream`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...this.authHeaders(),
-      },
-      body: JSON.stringify({
-        message: params.message,
-        ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-      }),
-    });
-
-    if (!res.ok) {
-      await this.handleError(res);
-    }
-
-    return res;
   }
 
   /**

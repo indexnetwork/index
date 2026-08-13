@@ -67,6 +67,7 @@ mock.module("../../shared/agent/tool.factory", () => ({
 
 import { AIMessageChunk, HumanMessage } from "@langchain/core/messages";
 import { ChatAgent, type AgentStreamEvent } from "../chat.agent.js";
+import { FULL_TOOLSET_TEST_PERSONA } from "./full-toolset.persona.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ function createTestAgent() {
     integrationImporter: {} as any,
     createUserDatabase: () => ({}) as any,
     createSystemDatabase: () => ({}) as any,
-  });
+  }, FULL_TOOLSET_TEST_PERSONA);
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────

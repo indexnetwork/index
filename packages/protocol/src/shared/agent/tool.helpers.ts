@@ -13,7 +13,6 @@ import type { IntentGraphQueue } from "../interfaces/queue.interface.js";
 import type { ChatSessionReader } from "../interfaces/chat-session.interface.js";
 import type { ChatSummaryReader } from "../interfaces/chat-summary.interface.js";
 import type { ChatMessageWriter } from "../interfaces/chat-message-writer.interface.js";
-import type { QuestionGeneratorReader } from "../../questions/ports/question.generator.port.js";
 import type { NegotiationSummaryReader } from "../interfaces/negotiation-summary.interface.js";
 import type { Embedder } from "../interfaces/embedder.interface.js";
 import type { AgentDatabase } from "../../participant-agents/ports/index.js";
@@ -179,8 +178,6 @@ interface ToolContextBindings {
   chatSummary?: ChatSummaryReader;
   /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
   chatMessageWriter?: ChatMessageWriter;
-  /** Decision-question generator. Optional; consumers fall back to no `questions`. */
-  questionGenerator?: QuestionGeneratorReader;
   /**
    * Optional async question enqueue callback. When provided, question generation
    * is dispatched asynchronously to the QuestionerQueue instead of running inline.
@@ -559,13 +556,10 @@ interface ToolDepsBindings {
   };
   /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
   chatMessageWriter?: ChatMessageWriter;
-  /** Decision-question generator. Optional; consumers fall back to no `questions`. */
-  questionGenerator?: QuestionGeneratorReader;
   /**
    * Optional async question enqueue callback. When provided, question generation
-   * is dispatched asynchronously to the QuestionerQueue instead of running inline
-   * via the `questionGenerator`. Injected by the composition root when
-   * QUESTIONER_ENABLED=true.
+   * is dispatched asynchronously to the QuestionerQueue. Injected by the
+   * composition root when QUESTIONER_ENABLED=true.
    */
   questionerEnqueue?: QuestionerEnqueueFn;
   /**

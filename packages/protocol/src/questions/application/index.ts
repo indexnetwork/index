@@ -38,7 +38,6 @@ export type {
   QuestionerContext,
   QuestionerEnqueuePayload,
   QuestionerEnqueueFn,
-  DiscoveryContext,
   IntentContext,
   RecoveryIntentContext,
   ProfileContext,
@@ -61,13 +60,9 @@ export type { QuestionerAgentConfig } from "./question.agent.js";
 // ── Env ───────────────────────────────────────────────────────────────────────
 export {
   isQuestionerEnabled,
-  isDiscoveryQuestionsEnabled,
   isUptakeGuardEnabled,
   uptakeAuthorityThreshold,
-  discoveryQuestionsInputMode,
-  discoveryQuestionsTimeoutMs,
   chatQuestionWaitTimeoutMs,
-  DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT,
   CHAT_QUESTION_WAIT_TIMEOUT_MS_DEFAULT,
   UPTAKE_AUTHORITY_THRESHOLD_DEFAULT,
 } from "./question.env.js";

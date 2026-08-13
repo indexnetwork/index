@@ -321,24 +321,23 @@ describe("ChatSessionService.createSession", () => {
 describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
   const svc = new ChatSessionService(createMockDb() as unknown as ConversationDatabaseAdapter);
 
-  it("restores the orchestrator default while the cutover flag is off", () => {
-    expect(svc.resolveStreamPersonaPolicy({ surface: "web" })).toEqual({
-      ok: true,
-      persona: "orchestrator",
+  it("has no default persona: a web turn must name one", () => {
+    expect(svc.resolveStreamPersonaPolicy({ surface: "web" })).toMatchObject({
+      ok: false,
+      status: 409,
+      code: "WEB_SIGNAL_PERSONA_REQUIRED",
     });
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      storedPersona: "orchestrator",
-    })).toEqual({ ok: true, persona: "orchestrator" });
   });
 
-  it("selects onboarding authoritatively from the existing web cutover flag", () => {
-    expect(svc.resolveStreamPersonaPolicy({ surface: "onboarding" })).toEqual({
-      ok: true,
-      persona: "orchestrator",
+  it("has no default persona: an agent turn must name one", () => {
+    expect(svc.resolveStreamPersonaPolicy({ surface: "agent" })).toMatchObject({
+      ok: false,
+      status: 409,
+      code: "CHAT_PERSONA_REQUIRED",
     });
+  });
 
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+  it("selects onboarding authoritatively and unconditionally", () => {
     expect(svc.resolveStreamPersonaPolicy({ surface: "onboarding" })).toEqual({
       ok: true,
       persona: "onboarding",
@@ -357,7 +356,7 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
     });
   });
 
-  it("never permits the onboarding persona on web or non-web compatibility routes", () => {
+  it("rejects a requested persona that contradicts the persisted one", () => {
     process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
     for (const surface of ["web", "non_web"] as const) {
       expect(svc.resolveStreamPersonaPolicy({
@@ -412,9 +411,7 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
     expect(mismatch.code).toBe("CHAT_PERSONA_MISMATCH");
   });
 
-  it("makes legacy orchestrator web history read-only when enabled", () => {
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
-
+  it("makes retired orchestrator history read-only", () => {
     const result = svc.resolveStreamPersonaPolicy({
       surface: "web",
       storedPersona: "orchestrator",
@@ -427,8 +424,6 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
   });
 
   it("fails closed for unknown persisted personas", () => {
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
-
     const result = svc.resolveStreamPersonaPolicy({
       surface: "web",
       storedPersona: "unexpected",
@@ -438,15 +433,9 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
     expect(result.code).toBe("CHAT_PERSONA_UNSUPPORTED");
   });
 
-  it("preserves non-web orchestrator behavior and rejects Signal spoofing", () => {
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
-
-    expect(svc.resolveStreamPersonaPolicy({ surface: "non_web" })).toEqual({
-      ok: true,
-      persona: "orchestrator",
-    });
+  it("keeps Signal web-only for agent-surface callers", () => {
     const spoofed = svc.resolveStreamPersonaPolicy({
-      surface: "non_web",
+      surface: "agent",
       requestedPersona: "signal",
     });
     expect(spoofed.ok).toBe(false);
@@ -455,14 +444,21 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
     expect(spoofed.status).toBe(403);
   });
 
-  it("never downgrades a persisted Signal session when the flag is off", () => {
-    const result = svc.resolveStreamPersonaPolicy({
+  it("continues a persisted Signal session on the web surface", () => {
+    expect(svc.resolveStreamPersonaPolicy({
       surface: "web",
+      storedPersona: "signal",
+    })).toEqual({ ok: true, persona: "signal" });
+  });
+
+  it("keeps a persisted Signal session off the agent surface", () => {
+    const result = svc.resolveStreamPersonaPolicy({
+      surface: "agent",
       storedPersona: "signal",
     });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected policy denial");
-    expect(result.code).toBe("WEB_SIGNAL_AGENT_DISABLED");
+    expect(result.code).toBe("WEB_SIGNAL_PERSONA_FORBIDDEN");
   });
 
   it("denies a new reporter session when the Agent surface flag is off", () => {
@@ -560,14 +556,14 @@ describe("ChatSessionService.getSession", () => {
 // ─── getUserSessions ──────────────────────────────────────────────────────────
 
 describe("ChatSessionService.getUserSessions", () => {
-  it("delegates to orchestrator history by default", async () => {
+  it("requires an explicit persona and passes it straight through", async () => {
     const sessions = [makeSession(), makeSession({ id: "session-002" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
     });
     const svc = createService(db as unknown as ConversationDatabaseAdapter);
 
-    const result = await svc.getUserSessions(USER_ID, 10);
+    const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
 
     expect(result).toEqual(sessions);
     expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator");
@@ -586,7 +582,7 @@ describe("ChatSessionService.getUserSessions", () => {
     expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator");
   });
 
-  it("lists orchestrator, Signal, and reporter sessions for web history", async () => {
+  it("lists read-only, Signal, and reporter sessions for web history", async () => {
     const sessions = [makeSession(), makeSession({ id: "signal-session", persona: "signal" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
@@ -599,7 +595,7 @@ describe("ChatSessionService.getUserSessions", () => {
     expect(db.getUserChatSessions).toHaveBeenCalledWith(
       USER_ID,
       10,
-      ["orchestrator", "signal", "reporter"],
+      ["orchestrator", "telegram", "signal", "reporter"],
     );
   });
 });
@@ -795,24 +791,6 @@ describe("ChatSessionService.getSharedSession", () => {
     expect(result).not.toBeNull();
     expect(result!.session).toEqual(session);
     expect(result!.messages).toEqual(messages);
-  });
-});
-
-// ─── processMessage ───────────────────────────────────────────────────────────
-
-describe("ChatSessionService.processMessage", () => {
-  it("invokes the graph and returns responseText", async () => {
-    const db = createMockDb();
-    const svc = createService(db as unknown as ConversationDatabaseAdapter);
-    svc.setFactory(graphFactory as never);
-
-    const result = await svc.processMessage(USER_ID, "What can you do?");
-
-    expect(result.responseText).toBe("agent reply");
-    expect(result.error).toBeUndefined();
-    expect(mockGraphInvoke).toHaveBeenCalledTimes(1);
-    const [invokeArg] = mockGraphInvoke.mock.calls[0] as [Record<string, unknown>];
-    expect(invokeArg.userId).toBe(USER_ID);
   });
 });
 

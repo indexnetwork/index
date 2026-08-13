@@ -48,12 +48,8 @@ export type { QuestionerAgentConfig } from "../application/index.js";
 // ── Application: env accessors ────────────────────────────────────────────────
 export {
   isQuestionerEnabled,
-  isDiscoveryQuestionsEnabled,
   isUptakeGuardEnabled,
   uptakeAuthorityThreshold,
-  discoveryQuestionsInputMode,
-  discoveryQuestionsTimeoutMs,
-  DISCOVERY_QUESTIONS_TIMEOUT_MS_DEFAULT,
   UPTAKE_AUTHORITY_THRESHOLD_DEFAULT,
 } from "../application/index.js";
 
@@ -83,7 +79,6 @@ export type {
   PersistableQuestion,
   PersistedQuestion,
   QuestionFilters,
-  QuestionGeneratorReader,
   QuestionerDatabase,
   QuestionerToolDeps,
 } from "../ports/index.js";

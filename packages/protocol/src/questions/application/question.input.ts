@@ -17,19 +17,12 @@
  * IND-547: canonical home — previously questioner/questioner.types.ts.
  * Legacy path is a thin compatibility shim pointing here.
  */
-import type { DiscoveryQuestionInput } from "../../shared/schemas/discovery-question.schema.js";
 import type { ToolScopeType } from "../../shared/agent/tool.scope.js";
 import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "../domain/question.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../../capabilities/negotiation.questions.facade.js";
 import type { NegotiationConsultationReason } from "../../capabilities/negotiation.questions.facade.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
-
-/**
- * Discovery context — wraps the existing DiscoveryQuestionInput wholesale.
- * The discovery preset's buildPrompt delegates to `question.discovery.prompt.ts`.
- */
-export type DiscoveryContext = DiscoveryQuestionInput;
 
 /** Intent context — data needed to generate questions about an intent. */
 export interface IntentContext {
@@ -150,7 +143,6 @@ export interface PoolDiscoveryContext {
 
 /** Discriminated union: mode selects the context shape. */
 export type QuestionerContext =
-  | DiscoveryContext
   | IntentContext
   | RecoveryIntentContext
   | ProfileContext

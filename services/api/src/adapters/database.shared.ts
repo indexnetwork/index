@@ -363,13 +363,28 @@ export function ownIntentsListWhere(
  * Database adapter for intent CRUD (Intent Graph).
  */
 export type ChatScopeType = 'network' | 'intent';
-export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator' | 'reporter' | 'onboarding';
+/**
+ * Value of `conversations.persona`.
+ *
+ * - `signal` | `negotiator` | `reporter` | `onboarding` — live chat personas.
+ * - `telegram` — Telegram notification transcript. Not a chat persona: nothing
+ *   drives a turn in it, it only collects delivered notifications.
+ * - `orchestrator` — retired pre-personafication default. No new rows are
+ *   written with it; existing ones stay readable.
+ */
+export type ChatPersonaId =
+  | 'signal'
+  | 'negotiator'
+  | 'reporter'
+  | 'onboarding'
+  | 'telegram'
+  | 'orchestrator';
 
 export interface ChatSession {
   id: string;
   userId: string;
   title: string | null;
-  /** Chat persona driving this session's agent loop (e.g. 'orchestrator'). */
+  /** Persona this session is persisted under (e.g. 'signal'). */
   persona: string;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId: string | null;
@@ -431,8 +446,8 @@ export interface CreateSessionInput {
   id: string;
   userId: string;
   title?: string;
-  /** Chat persona for this session. Omit for the default ('orchestrator'). */
-  persona?: ChatPersonaId;
+  /** Persona this session is persisted under. Required — there is no default. */
+  persona: ChatPersonaId;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId?: string;
   scopeType?: ChatScopeType;

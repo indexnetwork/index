@@ -315,7 +315,7 @@ A typical user request flows through the following layers.
 ```
 User (Browser/Client)
   |
-  |  HTTP request (POST /api/chat/message)
+  |  HTTP request (POST /api/chat/web/stream)
   v
 Bun.serve (main.ts, port 3001)
   |
