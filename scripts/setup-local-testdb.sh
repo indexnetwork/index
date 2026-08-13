@@ -39,10 +39,19 @@ fi
 PG_BIN="$(brew --prefix)/opt/${PG_FORMULA}/bin"
 
 if [ ! -x "$PG_BIN/psql" ]; then
-  echo "Installing ${PG_FORMULA} and pgvector..."
-  brew install "$PG_FORMULA" pgvector
+  echo "Installing ${PG_FORMULA}..."
+  brew install "$PG_FORMULA"
 else
   echo "  [postgres] ${PG_FORMULA} already installed"
+fi
+
+# Check pgvector independently: PostgreSQL may already be installed while the
+# extension is absent. `CREATE EXTENSION` below cannot install the extension.
+if ! brew list --formula pgvector >/dev/null 2>&1; then
+  echo "Installing pgvector..."
+  brew install pgvector
+else
+  echo "  [pgvector] already installed"
 fi
 
 export PATH="$PG_BIN:$PATH"
