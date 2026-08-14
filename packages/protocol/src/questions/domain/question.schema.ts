@@ -298,6 +298,10 @@ export const QuestionVoidedReasonSchema = z.enum([
   "intent_edit",
   "recovery_drift",
   "negotiation_stale",
+  // The generator that produced the row was retired, so the question can no
+  // longer lead anywhere. Written once by a one-time migration, never by
+  // runtime code — nothing produces a retired mode by definition.
+  "retired_mode",
 ]);
 
 /** Permanent reasons that terminalize an unclaimed proactive push request. */
