@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import threading
 import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -175,6 +176,22 @@ def _load_tools_module():
 
 tools = _load_tools_module()
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
+
+
+def _load_negotiation_wake():
+    """Load negotiation_wake once under the dashboard runtime package."""
+    package_name = "index_network_hermes_dashboard_runtime"
+    module_name = f"{package_name}.negotiation_wake"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    package = sys.modules.get(package_name)
+    if package is None:
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(_PLUGIN_ROOT)]
+        package.__package__ = package_name
+        sys.modules[package_name] = package
+    return _load_module(module_name, _PLUGIN_ROOT / "negotiation_wake.py")
 
 
 def _call_read_intents() -> dict[str, Any]:
@@ -2213,6 +2230,18 @@ def _normalize_conversation(conversation: dict[str, Any], current_user_id: str) 
 @full_router.get("/conversations")
 def list_conversations() -> dict[str, Any]:
     """List the caller's conversations (participant-gated) as counterpart summaries."""
+    # Desktop polls this every 15s because the REST bridge buffers SSE. Reuse
+    # that tick as the negotiation heartbeat instead of a second scheduler.
+    # Run off-thread so a slow/failed pickup never stalls or starves the inbox
+    # list (and so hermetic tests' FakeResponse queues stay ordered).
+    try:
+        threading.Thread(
+            target=lambda: _load_negotiation_wake().tick(),
+            name="index-negotiation-wake-tick",
+            daemon=True,
+        ).start()
+    except Exception:  # noqa: BLE001 - wake must never break the inbox list
+        pass
     current_user_id = _resolve_user_id()
     if not current_user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}

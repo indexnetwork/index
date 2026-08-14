@@ -509,7 +509,7 @@ function App() {
 
   return (
     <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus }}>
-      <AgentRuntimeProvider>      <div style={{
+      <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
       }} className="mac-desktop">
@@ -562,7 +562,6 @@ function App() {
           />
         )}
       </div>
-      </AgentRuntimeProvider>
     </IndexDataContext.Provider>
   );
 }

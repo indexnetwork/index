@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.22.1",
+  "version": "0.23.0",
   "description": "Hermes-native Index Network plugin with MCP and personal-agent tools",
   "license": "MIT",
   "type": "module",
@@ -17,6 +17,7 @@
     "tools.py",
     "transport.py",
     "env_transport.py",
+    "negotiation_wake.py",
     "skills/",
     "dashboard/",
     "desktop/dist/",

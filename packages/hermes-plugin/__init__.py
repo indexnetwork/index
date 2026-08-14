@@ -5,12 +5,19 @@ capabilities, schemas.py defines what the LLM sees, tools.py implements handlers
 that always return JSON strings, and register(ctx) wires everything into Hermes.
 """
 
+from __future__ import annotations
+
 import shutil
 from pathlib import Path
 from typing import Any
 
 from . import schemas, tools, transport
 from ._mode import resolve_plugin_mode
+
+try:
+    from . import negotiation_wake as negotiation_wake
+except Exception:  # noqa: BLE001 - optional at import time for incomplete installs
+    negotiation_wake = None  # type: ignore[assignment]
 
 _INDEX_HINT = (
     'For Index Network signals/intents/opportunities/discovery requests, load '
@@ -169,3 +176,11 @@ def register(ctx):
             description="Load Index Network orchestrator guidance",
         )
     _register_skills(ctx)
+    # Ordinary agent keys: keep lastNegotiationPickupAt fresh via conversation
+    # SSE keepalive (~15s) so Index parks turns for Hermes instead of taking
+    # them inline. Best-effort — missing API key must not break register().
+    if negotiation_wake is not None:
+        try:
+            negotiation_wake.start_listener()
+        except Exception:  # noqa: BLE001
+            pass

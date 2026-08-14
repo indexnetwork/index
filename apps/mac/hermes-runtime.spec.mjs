@@ -402,8 +402,9 @@ test('defines the request-correlated runtime bridge contract', () => {
   expect(main).toContain('name: "hermesRuntime"');
   expect(main).toContain('window.__indexHermesRuntimeProgress');
   expect(main).toContain('window.__indexHermesRuntimeResult');
-  expect(main).not.toContain('window.__indexHermesSetup');
-  expect(main).not.toContain('setupHermes(apiKey:');
+  expect(main).toContain('window.__indexHermesSetup');
+  expect(main).toContain('setupHermes(apiKey:');
+  expect(main).toContain('teardownHermes(admittedGeneration:');
 });
 
 test('fails closed on navigation and externalizes only user-activated web or mail links', () => {

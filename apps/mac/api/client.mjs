@@ -43,6 +43,29 @@ export class IndexApiError extends Error {
 }
 
 /**
+ * Prefer API body.error / body.detail over opaque native errorCode (e.g. http_error).
+ * @param {{ status?: unknown, body?: unknown, errorCode?: unknown }} result
+ * @returns {string}
+ */
+export function messageFromNativeFailure(result) {
+  const body = result && result.body;
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const error = 'error' in body && body.error != null && String(body.error).trim()
+      ? String(body.error).trim()
+      : '';
+    const detail = 'detail' in body && body.detail != null && String(body.detail).trim()
+      ? String(body.detail).trim()
+      : '';
+    if (error && detail) return `${error}: ${detail}`;
+    if (error) return error;
+    if (detail) return detail;
+  }
+  const status = Number(result && result.status) || 0;
+  if (status > 0) return `HTTP ${status}`;
+  return String((result && result.errorCode) || 'native_request_failed');
+}
+
+/**
  * Normalize an API base URL so endpoint construction is stable.
  * @param {string | undefined} value
  * @returns {string}
@@ -130,7 +153,7 @@ export function createNativeAPIRequestBridge(options) {
     });
     else {
       const error = new IndexApiError(
-        String(result.errorCode || 'native_request_failed'),
+        messageFromNativeFailure(result),
         Number(result.status) || 0,
         result.body ?? null,
       );
@@ -378,6 +401,10 @@ export function createIndexApiClient(options = {}) {
 
     agents: {
       list: (options = {}) => request('/agents', options),
+      update: (agentId, body, options = {}) => request(
+        `/agents/${encodeURIComponent(agentId)}`,
+        { ...options, method: 'PATCH', body },
+      ),
       createToken: (agentId, name, options = {}) => request(
         `/agents/${encodeURIComponent(agentId)}/tokens`,
         { ...options, method: 'POST', body: name ? { name } : {} },
