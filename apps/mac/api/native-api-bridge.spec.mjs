@@ -45,6 +45,26 @@ describe('credential-free native API JavaScript boundary', () => {
     await expect(pending).resolves.toEqual({ status: 200, body: { user: { id: 'u1' } }, headers: {} });
   });
 
+  it('surfaces body.error and detail instead of opaque http_error', async () => {
+    const { bridge } = createBridgeHarness();
+    const pending = bridge.request({ kind: 'http', method: 'PATCH', path: '/agents/a1', body: { handleNegotiations: true } });
+    expect(bridge.receive({
+      requestId: 'opaque-1',
+      ok: false,
+      status: 403,
+      errorCode: 'http_error',
+      body: {
+        error: 'forbidden',
+        detail: 'This endpoint requires a session token; API keys are not accepted',
+      },
+    })).toBe(true);
+    await expect(pending).rejects.toMatchObject({
+      name: 'IndexApiError',
+      status: 403,
+      message: 'forbidden: This endpoint requires a session token; API keys are not accepted',
+    });
+  });
+
   it('delivers bounded events and sends correlated cancellation on abort', async () => {
     const { bridge, posted } = createBridgeHarness();
     const controller = new AbortController();
@@ -265,6 +285,15 @@ describe('native owner credential and transport source contracts', () => {
     expect(nativeBridge).toContain('validDraft');
     expect(nativeBridge).toContain('hasAllowedQuery');
     expect(nativeBridge).toContain('create_intent');
+    expect(nativeBridge).toContain('register_agent');
+    expect(nativeBridge).toContain('^/agents/[^/?]+/tokens$');
+    expect(nativeBridge).toContain('PATCH');
+    expect(nativeBridge).toContain('handleNegotiations');
+    expect(nativeBridge).toContain('validAgentPermissions');
+    expect(bodyFixture).toContain('valid register_agent rejected');
+    expect(bodyFixture).toContain('empty createToken body rejected');
+    expect(bodyFixture).toContain('handleNegotiations patch rejected');
+    expect(bodyFixture).toContain('agent delete rejected');
     expect(mcpTransportSource).toContain('Client must accept both application/json and text/event-stream');
     expect(nativeBridge).toContain('application/json, text/event-stream');
     expect(nativeBridge).toContain('URLSessionDataDelegate');

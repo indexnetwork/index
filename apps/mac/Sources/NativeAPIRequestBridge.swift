@@ -258,7 +258,11 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
         ("GET", #"^/network-requests$"#), ("POST", #"^/network-requests$"#),
         ("PATCH", #"^/network-requests/[^/?]+$"#), ("DELETE", #"^/network-requests/[^/?]+$"#),
-        ("GET", #"^/agents$"#), ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
+        ("GET", #"^/agents$"#),
+        ("POST", #"^/agents/[^/?]+/tokens$"#),
+        ("PATCH", #"^/agents/[^/?]+$"#),
+        ("DELETE", #"^/agents/[^/?]+$"#),
+        ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
         ("POST", #"^/intents/(?:list|confirm|reject|intake/(?:start|question|prepare|proposal|revise))$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
         ("GET", #"^/opportunities(?:\?.*)?$"#),
@@ -286,7 +290,11 @@ final class NativeAPIRequestBridge {
     static let allowedSSERoutes: Set<String> = [
         "GET /notifications/stream", "GET /conversations/stream", "POST /chat/stream",
     ]
-    static let allowedMCPTools: Set<String> = ["create_intent"]
+    static let allowedMCPTools: Set<String> = ["create_intent", "register_agent"]
+    static let allowedAgentPermissionActions: Set<String> = [
+        "manage:identity", "manage:premises", "manage:intents",
+        "manage:networks", "manage:opportunities", "manage:negotiations",
+    ]
 
     private let apiBaseURL: URL
     private let mcpURL: URL
@@ -387,7 +395,7 @@ final class NativeAPIRequestBridge {
                 throw NativeAPIRequestFailure.deniedOperation
             }
         case .mcp:
-            guard let tool = operation.tool, tool == "create_intent", Self.allowedMCPTools.contains(tool),
+            guard let tool = operation.tool, Self.allowedMCPTools.contains(tool),
                   Self.isGloballyBoundedJSON(operation.arguments),
                   Self.isAllowedMCPArguments(tool: tool, arguments: operation.arguments) else {
                 throw NativeAPIRequestFailure.deniedOperation
@@ -701,6 +709,24 @@ final class NativeAPIRequestBridge {
         case "/tools/confirm_user_context":
             return exactTypedObject(body, required: ["query"]) { item in exactTypedObject(item["query"], required: ["draft"]) { validDraft($0["draft"]) } }
         case "/enrichment/enrich": return keysAllowed(body, allowed: [])
+        case let value where value.range(of: #"^/agents/[^/?]+/tokens$"#, options: .regularExpression) != nil:
+            // Empty object or omitted name: createToken defaults the label server-side.
+            if body == nil { return true }
+            return exactTypedObject(body, optional: ["name"]) { optionalString($0, "name", maximum: 256) }
+        case let value where value.range(of: #"^/agents/[^/?]+$"#, options: .regularExpression) != nil:
+            guard method == "PATCH" else { return false }
+            return exactTypedObject(
+                body,
+                optional: ["name", "description", "status", "notifyOnOpportunity", "dailySummaryEnabled", "handleNegotiations"]
+            ) { item in
+                !item.keys.isEmpty
+                    && optionalString(item, "name", maximum: 256)
+                    && optionalString(item, "description", maximum: 8_192)
+                    && (item["status"] == nil || enumString(item["status"], ["active", "inactive"]))
+                    && optionalBool(item, "notifyOnOpportunity")
+                    && optionalBool(item, "dailySummaryEnabled")
+                    && optionalBool(item, "handleNegotiations")
+            }
         case "/conversations/dm":
             return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
@@ -733,10 +759,31 @@ final class NativeAPIRequestBridge {
     }
 
     private static func isAllowedMCPArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
-        tool == "create_intent"
-            && exactTypedObject(arguments, required: ["description"], optional: ["autoApprove"]) { item in
+        switch tool {
+        case "create_intent":
+            return exactTypedObject(arguments, required: ["description"], optional: ["autoApprove"]) { item in
                 boundedString(item["description"], maximum: 65_536) && optionalBool(item, "autoApprove")
             }
+        case "register_agent":
+            return exactTypedObject(arguments, required: ["name"], optional: ["description", "permissions"]) { item in
+                boundedString(item["name"], maximum: 256)
+                    && optionalString(item, "description", maximum: 8_192)
+                    && (item["permissions"] == nil || validAgentPermissions(item["permissions"]))
+            }
+        default:
+            return false
+        }
+    }
+
+    private static func validAgentPermissions(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, values.count <= allowedAgentPermissionActions.count else { return false }
+        var seen = Set<String>()
+        for entry in values {
+            guard case .string(let action) = entry,
+                  allowedAgentPermissionActions.contains(action),
+                  seen.insert(action).inserted else { return false }
+        }
+        return true
     }
 
     private static func hasAllowedQuery(_ path: String) -> Bool {

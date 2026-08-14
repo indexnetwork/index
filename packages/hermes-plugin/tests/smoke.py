@@ -27,6 +27,7 @@ PYTHON_FILES = [
     "env_transport.py",
     "schemas.py",
     "tools.py",
+    "negotiation_wake.py",
     "dashboard/plugin_api.py",
     "dashboard/auth_login.py",
 ]
@@ -444,6 +445,109 @@ def main() -> None:
     assert "SDK.fetchJSON" in dashboard_js
     assert "index_pickup_negotiation" not in dashboard_js
     assert "index_respond_negotiation" not in dashboard_js
+    assert "_load_negotiation_wake().tick()" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "index-negotiation-wake-tick" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "negotiation_wake.start_listener()" in (ROOT / "__init__.py").read_text()
+
+    # Conversation SSE wake: keepalive + non-own negotiation messages run one
+    # pickup; own agent turns do not; empty pickup stays silent.
+    assert plugin.negotiation_wake is not None
+    wake = plugin.negotiation_wake
+    wake.reset_for_tests()
+    assert wake.should_wake_on_event(
+        {
+            "type": "message",
+            "message": {
+                "senderId": "agent:other-user",
+                "parts": [{"kind": "data", "data": {"action": "propose"}}],
+            },
+        },
+        owner_user_id="me",
+    )
+    assert not wake.should_wake_on_event(
+        {
+            "type": "message",
+            "message": {
+                "senderId": "agent:me",
+                "parts": [{"kind": "data", "data": {"action": "propose"}}],
+            },
+        },
+        owner_user_id="me",
+    )
+    assert not wake.should_wake_on_event(
+        {"type": "message", "message": {"senderId": "user-1", "parts": [{"type": "text", "text": "hi"}]}},
+        owner_user_id="me",
+    )
+
+    class _WakeTransport:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, dict | None]] = []
+
+        def request_rest(self, method, path, body=None, *, hermes_run=None):
+            del hermes_run
+            self.calls.append((method, path, body))
+            if path == "/agents/me":
+                return {"success": True, "agent": {"id": "agent-wake", "ownerId": "me"}}
+            if path.endswith("/negotiations/pickup"):
+                return {"success": True, "no_content": True}
+            return {"success": True}
+
+    empty_transport = _WakeTransport()
+    empty_result = wake.run_pickup_pass(empty_transport)
+    assert empty_result == {"ok": True, "pending": False}
+    assert empty_transport.calls[-1][1] == "/agents/agent-wake/negotiations/pickup"
+    assert len([c for c in empty_transport.calls if "/respond" in c[1] or "/consult" in c[1]]) == 0
+
+    class _PendingTransport(_WakeTransport):
+        def request_rest(self, method, path, body=None, *, hermes_run=None):
+            del hermes_run
+            self.calls.append((method, path, body))
+            if path == "/agents/me":
+                return {"success": True, "agent": {"id": "agent-wake", "ownerId": "me"}}
+            if path.endswith("/negotiations/pickup"):
+                return {
+                    "success": True,
+                    "pending": True,
+                    "negotiationId": "neg-wake",
+                    "allowedActions": ["question", "outreach", "propose"],
+                }
+            if path.endswith("/consult"):
+                return {"success": True, "status": "input_required", "settlementId": "s1"}
+            return {"success": True}
+
+    pending_transport = _PendingTransport()
+    pending_result = wake.run_pickup_pass(pending_transport)
+    assert pending_result["ok"] is True and pending_result["pending"] is True
+    assert any(c[1].endswith("/consult") for c in pending_transport.calls)
+    assert not any("/respond" in c[1] for c in pending_transport.calls)
+
+    stream_lines = [
+        b": keepalive\n",
+        b'data: {"type":"message","message":{"senderId":"agent:other","parts":[{"kind":"data","data":{"action":"propose"}}]}}\n',
+        b'data: {"type":"message","message":{"senderId":"agent:me","parts":[{"kind":"data","data":{"action":"continue"}}]}}\n',
+    ]
+    wake.reset_for_tests()
+    seen: list[str] = []
+
+    class _StreamTransport(_WakeTransport):
+        def request_rest(self, method, path, body=None, *, hermes_run=None):
+            result = super().request_rest(method, path, body, hermes_run=hermes_run)
+            if path.endswith("/negotiations/pickup"):
+                seen.append("pickup")
+            return result
+
+    stream_transport = _StreamTransport()
+    for line in stream_lines:
+        if wake._is_keepalive(line):
+            wake.run_pickup_pass(stream_transport)
+            continue
+        event = wake._parse_data_line(line)
+        if event is None:
+            continue
+        if wake.should_wake_on_event(event, owner_user_id="me"):
+            wake.run_pickup_pass(stream_transport)
+    assert seen == ["pickup", "pickup"]
+
     assert "index-dashboard__hdr-account" in dashboard_js
     assert "ProfilePanel" in dashboard_js
     assert "Notification Settings" in dashboard_js

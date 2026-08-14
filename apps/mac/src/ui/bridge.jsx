@@ -71,21 +71,17 @@ window.IndexApp = (function () {
     return true;
   }
   function login() { return post("login"); }
-  let logoutSafetyHandler = null;
   let logoutInFlight = false;
-  function setLogoutSafetyHandler(handler) {
-    logoutSafetyHandler = typeof handler === "function" ? handler : null;
-    return () => { if (logoutSafetyHandler === handler) logoutSafetyHandler = null; };
-  }
   function logout() {
-    if (!hasBridge() || !logoutSafetyHandler) return false;
+    if (!hasBridge()) return false;
     if (logoutInFlight) return true;
     logoutInFlight = true;
-    Promise.resolve()
-      .then(() => logoutSafetyHandler())
-      // Native key deletion/revocation is unreachable until the coordinator has
-      // persisted select-Index recovery and proven local scheduling paused.
-      .then((result) => post("completeLogout", { ownerId:result.ownerId }))
+    const api = getClient();
+    Promise.resolve(api ? api.auth.me() : null)
+      .then((response) => {
+        const user = response && (response.user || response);
+        return post("completeLogout", { ownerId: user && user.id ? user.id : null });
+      })
       .catch(() => { logoutInFlight = false; });
     return true;
   }
@@ -105,7 +101,29 @@ window.IndexApp = (function () {
     });
   }
 
-  // ---- generation-fenced Hermes runtime bridge ----------------------------
+  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
+  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
+  const hermesWaiters = [];
+  window.__indexHermesSetup = function (result) {
+    while (hermesWaiters.length) hermesWaiters.shift()(result || {});
+  };
+  function setupHermes(apiKey) {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
+    });
+  }
+  // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
+  function teardownHermes() {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      post("teardownHermes");
+    });
+  }
+
+  // ---- generation-fenced Hermes runtime bridge (kept for native recovery) ---
 
   function hasHermesRuntimeBridge() {
     return !!(window.webkit && window.webkit.messageHandlers
@@ -518,19 +536,36 @@ window.IndexApp = (function () {
 
   // ---- MCP tools/call -----------------------------------------------------
 
-  // Single structured tools/call through native /mcp. Used for intent creation,
-  // which has no plain REST POST.
-  // create_intent is the only MCP operation exposed to the page.
-  async function createIntent(description) {
+  // Single structured tools/call through native /mcp. Used for intent creation
+  // and agent registration (SessionOnly REST create rejects owner API keys).
+  async function mcpCall(tool, args) {
     const response = await nativeAPIBridge.request({
-      kind:"mcp", tool:"create_intent", arguments:{ description, autoApprove:true },
+      kind:"mcp", tool, arguments: args || {},
     });
     const rpc = response.body;
-    if (!rpc) throw new Error("MCP create_intent returned no response");
-    if (rpc.error) throw new Error(rpc.error.message || "MCP create_intent failed");
+    if (!rpc) throw new Error(`MCP ${tool} returned no response`);
+    if (rpc.error) throw new Error(rpc.error.message || `MCP ${tool} failed`);
     const result = rpc.result || {};
-    if (result.isError) throw new Error(extractMcpText(result) || "MCP create_intent reported an error");
+    if (result.isError) throw new Error(extractMcpText(result) || `MCP ${tool} reported an error`);
     return parseMcpResult(result);
+  }
+
+  async function createIntent(description) {
+    return mcpCall("create_intent", { description, autoApprove: true });
+  }
+
+  async function registerAgent(input) {
+    const payload = await mcpCall("register_agent", {
+      name: input.name,
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.permissions ? { permissions: input.permissions } : {}),
+    });
+    // tool results arrive wrapped: { success, data: { message, agent } } or flat
+    const agent = (payload && payload.data && payload.data.agent)
+      || (payload && payload.agent)
+      || null;
+    if (!agent) throw new Error((payload && payload.error) || "registration failed");
+    return agent;
   }
 
   // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
@@ -579,12 +614,14 @@ window.IndexApp = (function () {
     mapDiscoverNetworks,
     login,
     logout,
-    setLogoutSafetyHandler,
     detectHarnesses,
+    setupHermes,
+    teardownHermes,
     hermesRuntime,
     onAuthChanged,
     onDeepLink,
     createIntent,
+    registerAgent,
     parseIntentProposals,
     streamChat,
     streamInbox,

@@ -74,6 +74,45 @@ enum NativeAPIBodyValidationFixture {
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "GET", path: "/notifications/stream", body: nil), "valid notification stream rejected")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("negotiator")])), "valid chat stream rejected")
         try require(NativeAPIRequestBridge.validateMCPForFixture(arguments: object(["description": string("Meet founders"), "autoApprove": .bool(true)])), "valid create_intent rejected")
+        let agentId = "00000000-0000-4000-8000-000000000001"
+        try require(NativeAPIRequestBridge.validateMCPForFixture(
+            tool: "register_agent",
+            arguments: object([
+                "name": string("Hermes"),
+                "description": string("Hermes on this mac"),
+                "permissions": array([
+                    string("manage:negotiations"),
+                    string("manage:intents"),
+                    string("manage:opportunities"),
+                ]),
+            ])
+        ), "valid register_agent rejected")
+        try require(NativeAPIRequestBridge.validateMCPForFixture(
+            tool: "register_agent",
+            arguments: object(["name": string("Codex")])
+        ), "minimal register_agent rejected")
+        try require(!NativeAPIRequestBridge.validateMCPForFixture(
+            tool: "register_agent",
+            arguments: object(["name": string("X"), "permissions": array([string("manage:contacts")])])
+        ), "retired register_agent permission accepted")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "POST", path: "/agents/\(agentId)/tokens", body: empty
+        ), "empty createToken body rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "POST", path: "/agents/\(agentId)/tokens", body: object(["name": string("hermes")])
+        ), "named createToken body rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "PATCH", path: "/agents/\(agentId)", body: object(["handleNegotiations": .bool(true)])
+        ), "handleNegotiations patch rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "DELETE", path: "/agents/\(agentId)", body: nil
+        ), "agent delete rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "PATCH", path: "/agents/\(agentId)", body: empty
+        ), "empty agent patch accepted")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "POST", path: "/agents/\(agentId)", body: object(["name": string("X")])
+        ), "agent create POST accepted")
 
         for runtime in ["index", "hermes"] {
             let body = runtime == "index" ? object(["runtime": string(runtime)]) : object(["runtime": string(runtime), "installationId": id, "executorId": id, "setupAttemptId": id])

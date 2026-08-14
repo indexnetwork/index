@@ -260,8 +260,6 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return (
       <Agents
         onClose={() => setShowAgents(false)}
-        onOpenMemory={() => { setShowAgents(false); setSettingsTab("profile"); }}
-        onOpenHistory={() => { setShowAgents(false); setShowHistory(true); }}
       />
     );
   }

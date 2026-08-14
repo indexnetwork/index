@@ -7,6 +7,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-08-14
+### Added
+- Conversation SSE wake for ordinary agent keys: `negotiation_wake` listens to `GET /conversations/stream`, stamps negotiation pickup on keepalive (~15s) and non-own negotiation messages, and runs one conservative consult/respond pass when a turn is pending. Desktop reuses the existing 15s inbox poll tick (no second scheduler).
+
 ## [0.22.1] - 2026-08-13
 ### Changed
 - Rename the Hermes sidebar entry from Index to Discover.

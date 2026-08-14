@@ -13,6 +13,7 @@ import { opportunityDeliveryService } from '../services/opportunity-delivery.ser
 import { parseFiniteLimit, pickupNegotiationAtControllerBoundary, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
 import { readHermesRunHeaders } from '../lib/agent/hermes-negotiation-run';
 import { isDedicatedHermesNegotiationAudience } from '../lib/agent/hermes-credential';
+import { RuntimeDomainError } from '../lib/agent/runtime-errors';
 
 const agentTestMessageService = new AgentTestMessageService();
 
@@ -105,6 +106,7 @@ function errorStatus(err: unknown, fallback = 400): number {
   if (err instanceof UnauthorizedError) return 403;
   if (err instanceof NotFoundError) return 404;
   if (err instanceof ConflictError) return 409;
+  if (err instanceof RuntimeDomainError) return err.status;
   const message = parseErrorMessage(err);
   if (message === 'Agent not found' || message === 'Transport not found' || message === 'Permission not found' || message === 'Token not found') {
     return 404;
@@ -275,7 +277,7 @@ export class AgentController {
   }
 
   @Patch('/:id')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(RateLimit('write'), OwnerControlGuard)
   async update(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
