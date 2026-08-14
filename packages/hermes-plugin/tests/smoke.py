@@ -413,7 +413,7 @@ def main() -> None:
     )
     assert dashboard_manifest["version"] == package_json["version"] == plugin_yaml_version
     assert dashboard_manifest["name"] == "index-network"
-    assert dashboard_manifest["label"] == "Index"
+    assert dashboard_manifest["label"] == "Discover"
     assert dashboard_manifest["entry"] == "dist/index.js"
     assert dashboard_manifest["css"] == "dist/style.css"
     assert dashboard_manifest["api"] == "plugin_api.py"
@@ -532,6 +532,7 @@ def main() -> None:
     # on the source fragment because the shared dashboard bundle has its own
     # browser transport implementation in the same generated module.
     desktop_tail = (ROOT / "desktop" / "tail.js").read_text()
+    assert "label: 'Discover'" in desktop_tail
     assert "ctx.socket" in desktop_tail
     assert "ctx.rest" in desktop_tail
     assert "window.fetch" not in desktop_tail

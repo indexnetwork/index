@@ -7,6 +7,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-08-13
+### Changed
+- Rename the Hermes sidebar entry from Index to Discover.
+
 ## [0.22.0] - 2026-08-13
 ### Added
 - Restore the browser login gate in the dashboard: **log in with browser** runs the same web `/cli-auth` v2 loopback handshake as the Index CLI and Mac app, persists the minted key to `~/.hermes/.env` (`INDEX_API_KEY`/`INDEX_API_KEY_ID`), and takes effect in-process without a restart. Sign out best-effort revokes the key via `/auth/cli-credential/revoke` and clears it. `INDEX_API_KEY` remains a manual override.

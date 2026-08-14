@@ -4765,14 +4765,14 @@ export default {
       {
         id: 'page',
         area: ROUTES_AREA,
-        title: 'Index',
+        title: 'Discover',
         data: { path: '/index-network' },
         render: function () { return React.createElement(DesktopPage) }
       },
       {
         id: 'nav',
         area: SIDEBAR_NAV_AREA,
-        data: { path: '/index-network', label: 'Index', codicon: 'sparkle' }
+        data: { path: '/index-network', label: 'Discover', codicon: 'sparkle' }
       },
       {
         id: 'open',
