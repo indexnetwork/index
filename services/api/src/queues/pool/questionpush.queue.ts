@@ -33,6 +33,7 @@ type PoolQuestioner = Pick<
   QuestionerAdapter,
   | 'claimPoolQuestionPush'
   | 'markPoolQuestionPushFailed'
+  | 'markPoolQuestionPushSuppressed'
   | 'markPoolQuestionPushRequested'
   | 'listRecoverablePoolQuestionPushRequests'
 >;
@@ -40,7 +41,7 @@ type PoolQuestioner = Pick<
 export interface PoolQuestionPushQueueDeps {
   questioner?: PoolQuestioner;
   negotiatorAvailable?: (userId: string) => Promise<boolean>;
-  resolveSession?: typeof chatSessionService.resolveNegotiatorSession;
+  resolveSession?: typeof chatSessionService.resolveNegotiatorIntentSession;
   deliver?: typeof conversationDatabaseAdapter.deliverClaimedPoolQuestionPush;
   pushEnabled?: () => boolean;
   enqueuePush?: (data: PoolQuestionPushJobData) => Promise<unknown>;
@@ -90,14 +91,14 @@ export async function recordTerminalPoolQuestionPushFailure(
   );
 }
 
-/** Retryable worker for claim + deterministic stable-DM delivery and recovery. */
+/** Retryable worker for claim + deterministic intent-pinned delivery and recovery. */
 export class PoolQuestionPushQueue {
   readonly queue = QueueFactory.createQueue<PoolQuestionPushQueueData>(POOL_QUESTION_PUSH_QUEUE_NAME);
 
   private readonly logger = log.queue.from('PoolQuestionPushQueue');
   private readonly questioner: PoolQuestioner;
   private readonly negotiatorAvailable: (userId: string) => Promise<boolean>;
-  private readonly resolveSession: typeof chatSessionService.resolveNegotiatorSession;
+  private readonly resolveSession: typeof chatSessionService.resolveNegotiatorIntentSession;
   private readonly deliver: typeof conversationDatabaseAdapter.deliverClaimedPoolQuestionPush;
   private readonly pushEnabled: () => boolean;
   private readonly enqueuePush: (data: PoolQuestionPushJobData) => Promise<unknown>;
@@ -109,7 +110,7 @@ export class PoolQuestionPushQueue {
       if (!isNegotiatorChatEnabled()) return false;
       return Boolean(await agentService.getNegotiatorAgent(userId));
     });
-    this.resolveSession = deps?.resolveSession ?? chatSessionService.resolveNegotiatorSession.bind(chatSessionService);
+    this.resolveSession = deps?.resolveSession ?? chatSessionService.resolveNegotiatorIntentSession.bind(chatSessionService);
     this.deliver = deps?.deliver ?? conversationDatabaseAdapter.deliverClaimedPoolQuestionPush.bind(conversationDatabaseAdapter);
     this.pushEnabled = deps?.pushEnabled ?? poolQuestionPushEnabled;
     this.enqueuePush = deps?.enqueuePush ?? ((data) => this.addPushJob(data));
@@ -158,8 +159,29 @@ export class PoolQuestionPushQueue {
     });
     if (claim.kind !== 'claimed') return;
 
-    const resolved = await this.resolveSession(data.userId, 'Personal Agent');
-    if ('error' in resolved) throw new Error(resolved.error);
+    // Delivery lands in the negotiator session pinned to the claim's own
+    // intent. Unlike the removed unscoped DM this can legitimately fail to
+    // resolve, and the two failure classes are not the same job outcome:
+    // 403/404 mean the intent is archived, deleted, or no longer the
+    // recipient's, which no retry can fix, so the claim is suppressed and the
+    // job succeeds. Anything else (400 from an empty id, 500 from a failed
+    // create) throws into the normal retry/terminal-failure path.
+    const resolved = await this.resolveSession(data.userId, claim.intentId);
+    if ('error' in resolved) {
+      if (resolved.status === 403 || resolved.status === 404) {
+        await this.questioner.markPoolQuestionPushSuppressed(claim.questionId, claim.recipientId);
+        this.logger.info('Pool question push suppressed; intent-pinned session unavailable', {
+          event: 'pool_question_push_suppressed',
+          questionId: data.questionId,
+          userId: data.userId,
+          intentId: claim.intentId,
+          reason: 'intent_lifecycle',
+          status: resolved.status,
+        });
+        return;
+      }
+      throw new Error(resolved.error);
+    }
 
     const messageText = buildPoolQuestionPushMessage({
       intentId: claim.intentId,

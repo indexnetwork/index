@@ -98,8 +98,9 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
     await users.deleteById(userId).catch(() => {});
   });
 
-  async function stableDm(): Promise<string> {
-    const resolved = await chatSessionService.resolveNegotiatorSession(userId, 'Personal Agent');
+  /** The claim's intent-pinned negotiator session — the only push target. */
+  async function pinnedSession(): Promise<string> {
+    const resolved = await chatSessionService.resolveNegotiatorIntentSession(userId, intentId);
     if ('error' in resolved) throw new Error(resolved.error);
     sessionIds.add(resolved.session.id);
     return resolved.session.id;
@@ -107,7 +108,7 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
 
   test('inserts or verifies one deterministic message and stamps pushedAt atomically', async () => {
     const claim = await createClaim();
-    const conversationId = await stableDm();
+    const conversationId = await pinnedSession();
     const input = {
       questionId: claim.questionId,
       recipientId: claim.recipientId,
@@ -167,7 +168,7 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
 
   test('suppresses a question resolved before delivery without a message or pushedAt', async () => {
     const claim = await createClaim();
-    const conversationId = await stableDm();
+    const conversationId = await pinnedSession();
     await db.update(questions).set({ status: 'dismissed' }).where(eq(questions.id, claim.questionId));
 
     const result = await conversationDatabaseAdapter.deliverClaimedPoolQuestionPush({
@@ -188,7 +189,7 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
   test('suppresses when the intent becomes paused or is visited after question creation', async () => {
     for (const invalidation of ['paused', 'visited'] as const) {
       const claim = await createClaim();
-      const conversationId = await stableDm();
+      const conversationId = await pinnedSession();
       if (invalidation === 'paused') {
         await db.update(intents).set({ status: 'PAUSED' }).where(eq(intents.id, intentId));
       } else {
@@ -212,7 +213,7 @@ describe('ConversationDatabaseAdapter pool push delivery transaction', () => {
 
   test('fails loudly when the deterministic message id belongs to another session/source', async () => {
     const claim = await createClaim();
-    const conversationId = await stableDm();
+    const conversationId = await pinnedSession();
     const conflictSessionId = await chatSessionService.createSession(userId, 'Conflict');
     sessionIds.add(conflictSessionId);
     await db.insert(messages).values({

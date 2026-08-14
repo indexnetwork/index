@@ -28,7 +28,7 @@ function claimedDetection(): AdapterQuestionDetection {
       intentId: 'intent-1',
       cycleKey: 'run:run-1',
       messageId: 'question-1',
-      surfaces: ['personal_agent_badge', 'negotiator_dm'],
+      surfaces: ['personal_agent_badge', 'negotiator_intent_chat'],
       claimedAt: NOW,
       deliveryStatus: 'claimed',
     },

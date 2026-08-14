@@ -257,31 +257,17 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     expect(screen.queryByText('Delete')).not.toBeInTheDocument();
   });
 
-  it('routes answer rows to the transcript when the negotiator chat is unavailable', async () => {
+  // Answer rows used to get-or-create the negotiator DM; that surface is gone
+  // and the questions inbox is where the answer is actually given.
+  it('routes answer rows to /questions without resolving a session', async () => {
     mocks.conversations = [];
     mocks.negotiations = [answerNegotiation];
-    mocks.features = undefined;
     renderSidebar();
     await openNegotiationsTab();
 
     fireEvent.click(screen.getByText('Mira Chen'));
-    await waitFor(() => expect(currentPath.value).toBe('/chat/question'));
+    await waitFor(() => expect(currentPath.value).toBe('/questions'));
     expect(mocks.apiGet).not.toHaveBeenCalled();
-  });
-
-  it('routes answer rows to the negotiator DM when the session exists', async () => {
-    mocks.conversations = [];
-    mocks.negotiations = [answerNegotiation];
-    mocks.features = { negotiatorChat: true };
-    mocks.apiGet.mockResolvedValue({ sessions: [{ id: 'negotiator-session' }] });
-    renderSidebar();
-    await openNegotiationsTab();
-
-    fireEvent.click(screen.getByText('Mira Chen'));
-    await waitFor(() => expect(currentPath.value).toBe('/d/negotiator-session'));
-    expect(mocks.apiGet).toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
-    mocks.features = undefined;
-    mocks.apiGet.mockReset();
   });
 
   it('routes live rows to the transcript', async () => {

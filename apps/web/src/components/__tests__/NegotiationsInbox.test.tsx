@@ -102,31 +102,12 @@ describe('NegotiationsInbox answer-row deep links (IND-558)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     currentPath.value = '/negotiations';
-    mocks.features = { negotiatorChat: true };
-    mocks.apiGet.mockResolvedValue({ sessions: [{ id: 'negotiator-session' }] });
   });
 
-  it('routes answer rows to the negotiator DM when the session exists', async () => {
+  // The negotiator DM these rows used to deep-link is gone; /questions was
+  // already this path's fallback and is now the only destination.
+  it('routes answer rows to /questions without resolving a session', async () => {
     mocks.negotiations = [answerNegotiation];
-    renderInbox();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Mira Chen' }));
-    await waitFor(() => expect(currentPath.value).toBe('/d/negotiator-session'));
-    expect(mocks.apiGet).toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
-  });
-
-  it('falls back to /questions when no negotiator session exists', async () => {
-    mocks.negotiations = [answerNegotiation];
-    mocks.apiGet.mockResolvedValue({ sessions: [] });
-    renderInbox();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Mira Chen' }));
-    await waitFor(() => expect(currentPath.value).toBe('/questions'));
-  });
-
-  it('falls back to /questions when the negotiator chat flag is off', async () => {
-    mocks.negotiations = [answerNegotiation];
-    mocks.features = { negotiatorChat: false };
     renderInbox();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Mira Chen' }));

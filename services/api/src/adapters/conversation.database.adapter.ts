@@ -208,21 +208,13 @@ function intentRegistryScopeType(persona?: string): string {
 }
 
 /**
- * Stable-session registry key for the negotiator DM in `chat_session_scopes`.
- * The table's `(user_id, scope_type, scope_id)` unique index is what makes
- * get-or-create race-safe. `scope_type='persona'` is deliberately outside the
- * `ChatScopeType` ('network' | 'intent') envelope: `_normalizeScopeType`
- * ignores it, so the negotiator session presents as an unscoped chat session.
- */
-const NEGOTIATOR_SCOPE = { scopeType: 'persona', scopeId: NEGOTIATOR_PERSONA } as const;
-
-/**
  * Registry scope_type for intent-pinned negotiator sessions (P4.2/IND-403).
  * Keying the `chat_session_scopes` unique index as ('negotiator-intent',
  * intentId) makes the negotiator's per-intent session distinct from the
  * orchestrator's ('intent', intentId) session for the same user — persona is
- * part of the key without a migration. Like 'persona', this value never
- * appears in the `ChatScopeType` envelope: conversation_metadata still says
+ * part of the key without a migration. This value is deliberately outside
+ * the `ChatScopeType` ('network' | 'intent') envelope and never appears in
+ * it — `_normalizeScopeType` ignores it, and conversation_metadata still says
  * scopeType 'intent' so scope-driven behavior (graph seeding, session load)
  * is identical to any intent-scoped session.
  */
@@ -1249,11 +1241,11 @@ export class ConversationDatabaseAdapter {
       if (
         !session
         || session.userId !== input.recipientId
-        || session.scopeType !== NEGOTIATOR_SCOPE.scopeType
-        || session.scopeId !== NEGOTIATOR_SCOPE.scopeId
+        || session.scopeType !== NEGOTIATOR_INTENT_SCOPE_TYPE
+        || session.scopeId !== input.intentId
         || session.persona !== NEGOTIATOR_PERSONA
       ) {
-        throw new Error(`Pool push requires the recipient's stable unscoped negotiator DM`);
+        throw new Error(`Pool push requires the recipient's negotiator session pinned to intent ${input.intentId}`);
       }
 
       const [existing] = await tx
@@ -5049,66 +5041,6 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Find the user's stable negotiator DM session, if provisioned.
-   */
-  async getNegotiatorChatSession(userId: string): Promise<ChatSession | null> {
-    const [row] = await db
-      .select({ conversationId: schema.chatSessionScopes.conversationId })
-      .from(schema.chatSessionScopes)
-      .where(
-        and(
-          eq(schema.chatSessionScopes.userId, userId),
-          eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_SCOPE.scopeType),
-          eq(schema.chatSessionScopes.scopeId, NEGOTIATOR_SCOPE.scopeId),
-        ),
-      )
-      .limit(1);
-    return row ? this.getChatSession(row.conversationId) : null;
-  }
-
-  /**
-   * Create the user's stable negotiator DM session (one per user).
-   *
-   * Same transaction shape as {@link createChatSession} (conversation +
-   * user/system-agent participants + title metadata) plus the
-   * `chat_session_scopes` registry row whose unique index guarantees at most
-   * one negotiator session per user — concurrent creates lose with a 23505
-   * unique violation the caller resolves by re-reading.
-   */
-  async createNegotiatorChatSession(data: { id: string; userId: string; title?: string }): Promise<void> {
-    const now = new Date();
-    await db.transaction(async (tx) => {
-      await tx.insert(schema.conversations).values({
-        id: data.id,
-        persona: NEGOTIATOR_PERSONA,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      await tx.insert(schema.conversationParticipants).values([
-        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
-        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
-      ]);
-
-      if (data.title) {
-        await tx.insert(schema.conversationMetadata).values({
-          conversationId: data.id,
-          metadata: { title: data.title } satisfies ChatConversationMeta,
-        });
-      }
-
-      await tx.insert(schema.chatSessionScopes).values({
-        conversationId: data.id,
-        userId: data.userId,
-        scopeType: NEGOTIATOR_SCOPE.scopeType,
-        scopeId: NEGOTIATOR_SCOPE.scopeId,
-        createdAt: now,
-        updatedAt: now,
-      });
-    });
-  }
-
-  /**
    * Find the user's negotiator session pinned to a specific intent, if any
    * (P4.2/IND-403).
    */
@@ -5133,7 +5065,7 @@ export class ConversationDatabaseAdapter {
    * Create a negotiator session pinned to one of the user's intents
    * (one per user+intent, P4.2/IND-403).
    *
-   * Same transaction shape as {@link createNegotiatorChatSession}, but the
+   * Same transaction shape as {@link createChatSession}, but the
    * registry row is keyed ('negotiator-intent', intentId) and the
    * conversation metadata carries the canonical intent scope so the session
    * behaves like any intent-scoped chat (graph seeding, scope echo on load)

@@ -376,9 +376,20 @@ window.IndexApp = (function () {
   // onSession fires as soon as headers arrive, so mid-stream events (e.g.
   // user_question) can be resolved against the conversation right away.
   async function streamChat({ message, sessionId, scopeType, scopeId, persona, onEvent, onSession, signal }) {
+    // A half-supplied scope is a caller bug, not a request to drop the scope.
+    // This used to send `if (scopeType && scopeId)`, so a null scopeId silently
+    // downgraded the turn to unscoped — which the negotiator persona no longer
+    // has a surface for (the API answers a scopeless negotiator turn with 400).
+    // Fail here, where the caller is named, rather than at the server.
+    if (Boolean(scopeType) !== Boolean(scopeId)) {
+      throw new Error(
+        `streamChat needs scopeType and scopeId together (got scopeType=${JSON.stringify(scopeType)}, scopeId=${JSON.stringify(scopeId)})`,
+      );
+    }
+
     const body = { message };
     if (sessionId) body.sessionId = sessionId;
-    if (scopeType && scopeId) { body.scopeType = scopeType; body.scopeId = scopeId; }
+    if (scopeType) { body.scopeType = scopeType; body.scopeId = scopeId; }
     if (persona) body.persona = persona;
 
     let immediateSession = sessionId || null;

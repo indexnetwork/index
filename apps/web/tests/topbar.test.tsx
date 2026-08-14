@@ -126,8 +126,6 @@ describe('TopBar Personal Agent badge', () => {
     vi.clearAllMocks();
     mocks.questionsState.personalAgentPending = 0;
     mocks.questionsState.questions = [];
-    mocks.features = { negotiatorChat: true };
-    mocks.apiGet.mockResolvedValue({ sessions: [{ id: 'negotiator-session' }] });
     mocks.conversations = [];
     mocks.negotiations = [];
   });
@@ -222,30 +220,14 @@ describe('TopBar Personal Agent badge', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/agent');
   });
 
-  test('Agent click deep-links to the negotiator DM when a consultation is pending', async () => {
+  // A pending consultation used to deep-link the negotiator DM; that surface
+  // is gone, so the questions inbox is the sole destination.
+  test('Agent click routes to /questions when a consultation is pending', () => {
     mocks.questionsState.personalAgentPending = 1;
     mocks.questionsState.questions = [consultationQuestion()];
-    renderTopBar();
-    screen.getByRole('button', { name: /Agent/ }).click();
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/d/negotiator-session'));
-    expect(mocks.apiGet).toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
-  });
-
-  test('Agent click falls back to /questions when no negotiator session exists', async () => {
-    mocks.questionsState.personalAgentPending = 1;
-    mocks.questionsState.questions = [consultationQuestion()];
-    mocks.apiGet.mockResolvedValue({ sessions: [] });
-    renderTopBar();
-    screen.getByRole('button', { name: /Agent/ }).click();
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/questions'));
-  });
-
-  test('Agent click falls back to /questions when the negotiator chat flag is off', () => {
-    mocks.questionsState.personalAgentPending = 1;
-    mocks.questionsState.questions = [consultationQuestion()];
-    mocks.features = { negotiatorChat: false };
     renderTopBar();
     screen.getByRole('button', { name: /Agent/ }).click();
     expect(mocks.navigate).toHaveBeenCalledWith('/questions');
+    expect(mocks.apiGet).not.toHaveBeenCalled();
   });
 });

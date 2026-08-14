@@ -5,7 +5,6 @@ import UserAvatar from '@/components/UserAvatar';
 import ConversationPreviewLine from '@/components/ConversationPreviewLine';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-import { apiClient } from '@/lib/api';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
 import { countNegotiationsRequiringAction, deriveNegotiationInbox, type NegotiationInboxItem } from '@/lib/negotiation-inbox';
@@ -49,7 +48,7 @@ const formatConversationTime = (timestamp: number) => {
 export default function ChatSidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, features } = useAuthContext();
+  const { user } = useAuthContext();
   const { conversations, negotiations, isConnected, refreshConversations, refreshNegotiations, hideConversation } = useConversation();
 
   // Background revalidation flag. The ConversationProvider prefetches both
@@ -131,31 +130,12 @@ export default function ChatSidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [chatMenuOpen]);
 
-  // Answer rows go to the negotiator DM — the transcript is read-only and
-  // can't take an answer. Falls back to the transcript when the negotiator
-  // surface is unavailable (flag off, session bootstrap failed).
-  const openNegotiatorDm = async (fallbackConversationId: string) => {
-    if (!features?.negotiatorChat) {
-      navigate(`/chat/${fallbackConversationId}`);
-      return;
-    }
-    try {
-      const existing = await apiClient.get<{ sessions: { id: string }[] }>('/chat/sessions?persona=negotiator');
-      const session = existing.sessions?.[0];
-      if (session) {
-        navigate(`/d/${session.id}`);
-        return;
-      }
-      const created = await apiClient.post<{ session: { id: string } }>('/chat/negotiator/session');
-      navigate(`/d/${created.session.id}`);
-    } catch {
-      navigate(`/chat/${fallbackConversationId}`);
-    }
-  };
-
   const openNegotiation = (item: NegotiationInboxItem) => {
+    // Answer rows go to /questions — the transcript is read-only and can't
+    // take an answer. These used to get-or-create the negotiator DM; that
+    // surface is gone, and the questions inbox is where the answer lands.
     if (item.status === 'answer') {
-      void openNegotiatorDm(item.conversationId);
+      navigate('/questions');
       return;
     }
     // Agreed rows land on the transcript's review affordance; live, waiting,

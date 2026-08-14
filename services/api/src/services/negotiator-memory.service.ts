@@ -259,7 +259,7 @@ export class NegotiatorMemoryWriteService {
       content,
       confidence: REMEMBER_CONFIDENCE,
       ...(embedding && { embedding }),
-      sourceRefs: [{ type: 'chat', id: input.sessionId ?? 'negotiator-dm' }],
+      sourceRefs: [{ type: 'chat', id: input.sessionId ?? 'negotiator-chat' }],
     });
     logger.info('Negotiator memory remembered from chat', { userId: input.userId, agentId, kind: input.kind, id: row.id });
     return toToolView(row);

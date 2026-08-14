@@ -407,11 +407,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       const setAgentText = (t) => setConversation(prev =>
         prev.map(it => it.id === agentMsgId ? { ...it, text: t } : it));
       let acc = "";
+      // Always intent-scoped: `live` (see its definition above) is only true
+      // with a truthy intentId, and this pane is per-signal. Passed straight
+      // through rather than as `intentId ? "intent" : undefined`, whose false
+      // branch is unreachable and reads as if unscoped were a supported mode
+      // for this persona — it is not. streamChat rejects a half-supplied
+      // scope, so loosening `live` surfaces as an error instead of a
+      // silently-unscoped turn.
       window.IndexApp.streamChat({
         message: text,
         sessionId: chatSessionRef.current,
-        scopeType: intentId ? "intent" : undefined,
-        scopeId: intentId || undefined,
+        scopeType: "intent",
+        scopeId: intentId,
         persona: chatPersona || undefined,
         onEvent: (e) => {
           if (!e || !e.type) return;
@@ -423,7 +430,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         },
       }).then((sid) => {
         if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[chatKey] = sid; }
-      }).catch(() => {});
+      }).catch((err) => {
+        // A rejected turn (transport failure, or a 4xx such as the API
+        // refusing a scopeless negotiator stream) used to be swallowed here,
+        // leaving an empty agent bubble and no signal that anything broke.
+        setAgentText(acc || `· ${(err && err.message) || "something went wrong"}`);
+      });
       return;
     }
 

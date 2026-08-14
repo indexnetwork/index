@@ -521,11 +521,13 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     await controller.getSessions(new Request('http://localhost/chat/sessions'), USER);
     expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, undefined, 'orchestrator');
 
+    // The negotiator filter is gone with the unscoped DM it served: every
+    // persona now collapses to the orchestrator compatibility history.
     await controller.getSessions(
       new Request('http://localhost/chat/sessions?persona=negotiator'),
       USER,
     );
-    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, undefined, 'negotiator');
+    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, undefined, 'orchestrator');
 
     await controller.getSessions(
       new Request('http://localhost/chat/sessions?persona=signal'),

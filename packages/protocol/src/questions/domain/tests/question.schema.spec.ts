@@ -371,7 +371,7 @@ describe("QuestionDetection", () => {
       intentId: "intent-1",
       cycleKey: "run:run-1",
       messageId: "question-1",
-      surfaces: ["personal_agent_badge", "negotiator_dm"],
+      surfaces: ["personal_agent_badge", "negotiator_intent_chat"],
       claimedAt: "2026-07-16T12:00:00.000Z",
       deliveryStatus: "claimed",
     };
@@ -388,6 +388,40 @@ describe("QuestionDetection", () => {
       push,
       pushedAt: "2026-07-16T12:00:01.000Z",
     }).success).toBe(true);
+  });
+
+  // The ledger is validated on read, so rows written before the unscoped
+  // negotiator DM was removed must keep parsing. Nothing writes this literal.
+  it("still accepts the legacy negotiator_dm surface on persisted rows", () => {
+    const legacy = {
+      version: 1,
+      source: "pool_discovery",
+      recipientId: "user-1",
+      intentId: "intent-1",
+      cycleKey: "run:run-1",
+      messageId: "question-1",
+      surfaces: ["personal_agent_badge", "negotiator_dm"],
+      claimedAt: "2026-07-16T12:00:00.000Z",
+      deliveryStatus: "delivered",
+      conversationId: "conversation-1",
+      deliveredAt: "2026-07-16T12:00:01.000Z",
+    };
+    expect(QuestionPoolPushSchema.safeParse(legacy).success).toBe(true);
+  });
+
+  it("rejects an unknown negotiator surface", () => {
+    const push = {
+      version: 1,
+      source: "pool_discovery",
+      recipientId: "user-1",
+      intentId: "intent-1",
+      cycleKey: "run:run-1",
+      messageId: "question-1",
+      surfaces: ["personal_agent_badge", "negotiator_smoke_signal"],
+      claimedAt: "2026-07-16T12:00:00.000Z",
+      deliveryStatus: "claimed",
+    };
+    expect(QuestionPoolPushSchema.safeParse(push).success).toBe(false);
   });
 
   it("requires pool intent identity to be explicit and exact", () => {
