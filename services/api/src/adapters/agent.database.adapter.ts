@@ -395,9 +395,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     userId: string;
     actions: string[];
   }): Promise<AgentPermissionRow> {
+    // id has no DB default; Postgres checks NOT NULL before ON CONFLICT.
+    const permissionId = crypto.randomUUID();
     const result = await db.execute(sql`
-      INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)
-      VALUES (${input.agentId}, ${input.userId}, 'global', NULL, ${input.actions})
+      INSERT INTO agent_permissions (id, agent_id, user_id, scope, scope_id, actions)
+      VALUES (${permissionId}, ${input.agentId}, ${input.userId}, 'global', NULL, ${input.actions})
       ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
       DO UPDATE SET actions = EXCLUDED.actions
       RETURNING id,
@@ -777,9 +779,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           actions: [...exactTargetActions],
         });
       } else {
+        // id has no DB default; Postgres checks NOT NULL before ON CONFLICT.
+        const permissionId = crypto.randomUUID();
         await tx.execute(sql`
-          INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)
-          VALUES (${target.id}, ${input.ownerId}, 'global', NULL, ARRAY['manage:negotiations']::text[])
+          INSERT INTO agent_permissions (id, agent_id, user_id, scope, scope_id, actions)
+          VALUES (${permissionId}, ${target.id}, ${input.ownerId}, 'global', NULL, ARRAY['manage:negotiations']::text[])
           ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
           DO UPDATE SET actions = CASE
             WHEN 'manage:negotiations' = ANY(agent_permissions.actions)

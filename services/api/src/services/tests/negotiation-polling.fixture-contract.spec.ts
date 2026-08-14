@@ -126,4 +126,10 @@ describe('registered negotiation-polling isolated fixture contract', () => {
     expect(source).not.toContain('authorizePickup: async () => true');
     expect(source).not.toContain('authorizeRespond: async () => true');
   });
+
+  it('raw agent_permissions upserts supply id before ON CONFLICT', () => {
+    const source = readFileSync(path.join(apiRoot, 'src/adapters/agent.database.adapter.ts'), 'utf8');
+    expect(source).toContain('INSERT INTO agent_permissions (id, agent_id, user_id, scope, scope_id, actions)');
+    expect(source).not.toContain('INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)');
+  });
 });
