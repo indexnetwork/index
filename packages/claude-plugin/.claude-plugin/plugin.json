@@ -1,7 +1,7 @@
 {
   "name": "index-network",
   "description": "Index Network — find the right people and let them find you.",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "userConfig": {
     "apiKey": {
       "type": "string",

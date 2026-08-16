@@ -1,6 +1,6 @@
 ---
 name: index-negotiator
-description: Use when the user asks about negotiations, pending turns, reviewing what their agent sent, accepting or rejecting a proposal, or countering an offer on Index Network.
+description: Use when the user asks about negotiations, pending turns, reviewing what their agent sent, accepting or declining a proposal, or countering an offer on Index Network.
 ---
 
 # Index Network — Negotiator
@@ -50,78 +50,45 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 
 ## Scope
 
-This skill covers **human review and action** on negotiations. Silent autonomous negotiation turns (background agent responses) are handled by the user's personal agent, not this skill.
+This skill covers human review and influence over agent-to-agent (A2A) negotiations. A2A acceptance is not owner approval: an agent-side accept can create a pending opportunity, but does not approve a connection or start human-to-human messaging. Owner approval happens through native opportunity-review surfaces, not this MCP workflow.
 
 ## Setup
 
-On activation, verify MCP tools are available by checking `list_negotiations` is callable.
+On activation, verify that `list_negotiations` is callable.
 
 If tools are unavailable:
-- **OAuth (default):** call any Index tool — it challenges with OAuth on first use.
-- **API key:** add `"headers": {"x-api-key": "<key>"}` to the `index-network` MCP server config and reload.
+- **OAuth (default):** call an Index tool. It challenges with OAuth on first use.
+- **API key:** add `x-api-key` to the `index-network` MCP server config and reload.
 
 ---
 
-## Pattern 1: List pending negotiations
+## Pattern 1: List negotiations that need attention
 
-When the user asks "what negotiations do I have?", "show my pending turns", "what's waiting for me?":
+When the user asks what needs review, call `list_negotiations` with `status: waiting_for_agent` and `detail: narrative`. For history, use `status: all` instead.
 
-```
-1. list_negotiations() → returns all negotiations
-2. Filter for status "pending" (turns awaiting the user's action)
-3. For each: show who proposed, what they proposed, and what your agent countered (if anything)
-4. Ask: "Which one would you like to review in detail?"
-```
+Present only returned facts: the negotiation ID, role, status, latest action/message preview, recent turns, and lifecycle. Do not invent a counterparty name from the ID or claim an opportunity or owner approval exists.
 
-Present each negotiation naturally — do not dump raw JSON. Include the other party's name, a brief summary of what's on the table, and the current status.
+Ask which negotiation the user wants to review in detail.
 
-## Pattern 2: Review a specific negotiation
+## Pattern 2: Review a negotiation
 
-When the user names or picks a negotiation to review:
+When the user selects a negotiation, call `get_negotiation` with its negotiation ID. Explain the returned turn history, lifecycle, `seat`, `protocolVersion`, and `allowedActions`.
 
-```
-1. get_negotiation(negotiationId=...) → full turn history
-2. Show:
-   - What the other party proposed (latest turn from them)
-   - What your agent responded (your latest turn, if any)
-   - Current status
-3. Ask: "Would you like to accept, reject, or counter?"
-```
-
-If the user doesn't know the negotiation ID: call `list_negotiations()` first and ask them to pick.
+Offer response actions only when `status` is `waiting_for_agent`, `isUsersTurn` is `true`, and the action is listed in `allowedActions`. Treat every other state as review-only, even when `allowedActions` is non-empty.
 
 ## Pattern 3: Respond to a negotiation
 
-**Always confirm before sending.**
+**Always obtain explicit user confirmation before sending an A2A turn.**
 
-### Accept
-
-```
-1. get_negotiation(negotiationId=...) if not already loaded → confirm details
-2. Tell the user: "I'll accept [brief summary of what's being accepted]. Confirm?"
-3. On confirmation: respond_to_negotiation(negotiationId=..., action="accept", reasoning="why you're accepting", suggestedRoles={ownUser: "peer", otherUser: "peer"})
-4. Report outcome
-```
-
-### Reject
-
-```
-1. Confirm: "I'll reject this proposal. Confirm?"
-2. On confirmation: respond_to_negotiation(negotiationId=..., action="reject", reasoning="why you're rejecting", suggestedRoles={ownUser: "peer", otherUser: "peer"})
-3. Report outcome
-```
-
-### Counter
-
-```
-1. Ask the user what they'd like to counter with (if not already stated)
-2. Tell the user: "I'll send: '[their message]'. Confirm?"
-3. On confirmation: respond_to_negotiation(negotiationId=..., action="counter", reasoning="why you're countering", suggestedRoles={ownUser: "peer", otherUser: "peer"}, message="user's message")
-4. Report outcome
-```
+1. Call `get_negotiation` immediately before acting. Continue only when `status` is `waiting_for_agent`, `isUsersTurn` is `true`, and the proposed action is in `allowedActions`.
+2. Explain the proposed action and its effect. Make clear that an agent-side accept only recommends a potential match and leaves any resulting opportunity pending owner review.
+3. On confirmation, call `respond_to_negotiation` with an action included in `allowedActions`, factual reasoning, and appropriate `suggestedRoles`.
+4. Include `message` when the chosen action is `counter` or `question`.
+5. Report only the returned outcome.
 
 ## Notes
 
-- Do NOT take action (accept/reject/counter) without explicit user confirmation
-- Do NOT fabricate negotiation content — only describe what `get_negotiation` returns
-- If a negotiation is already accepted or closed, tell the user its status and do not offer action options
+- Do not fabricate negotiation content, available actions, or approval state.
+- Never send a turn without explicit user confirmation.
+- If the negotiation is completed or `allowedActions` is empty, explain its returned status and do not offer a response.
+- Use the exact action vocabulary returned by `get_negotiation`; legacy and v2 negotiations have different allowed actions.
