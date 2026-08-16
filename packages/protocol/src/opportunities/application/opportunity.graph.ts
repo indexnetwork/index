@@ -20,8 +20,8 @@ import { OpportunityEvaluator, type CandidateProfile, type EvaluatedOpportunityW
 import type { OpportunityGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import { IntentIndexer } from '../../intents/index.js';
 import { getModelName } from '../../shared/agent/model.config.js';
-import { selectHydeDocumentsForGeneration } from '../../shared/hyde/hyde.documents.js';
-import { getHydeGenerationMode } from '../../shared/hyde/hyde.env.js';
+import { selectHydeDocumentsForGeneration } from '../../discovery/index.js';
+import { getHydeGenerationMode } from '../../discovery/index.js';
 import { validateOpportunityActors } from '../domain/opportunity.utils.js';
 import { safeFallbackSummary } from '../domain/opportunity.safe-presentation.js';
 import { hasUnsupportedOpportunityClaim } from '../../shared/utils/claim-safety.js';

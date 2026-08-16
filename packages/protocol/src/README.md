@@ -10,6 +10,7 @@ packages/protocol/src/
   chat/             Chat graph, agent, prompt modules, streaming, suggestions, title, summarizer, interrupt classifier
   contacts/         Contact domain, tools, and ports
   contexts/         User Context generator (premise -> network-scoped context paragraphs)
+  discovery/        HyDE pipeline: lens inference, hypothetical-document generation, validation
   enrichment/       Enrichment graph, identity generation, and enrichment tools
   integrations/     Integration domain, tools, and ports
   intents/          Intent domain and application workflows
@@ -26,7 +27,6 @@ packages/protocol/src/
   shared/
     agent/          Model config/signal, response streamer, tool factory/helpers/registry/runtime
     assignment/     Network-assignment policy (threshold scoring, scope resolution)
-    hyde/           HyDE graph, generator, lens inferrer, and validation
     interfaces/     Adapter contracts (database, embedder, cache, queue, scraper, agent, runs, etc.)
     network/        Network metadata renderer
     observability/  Logger, request context, performance, trace, debug-meta sanitizer
@@ -48,7 +48,7 @@ from anywhere.
 | Enrichment | `enrichment/enrichment.graph.ts` | Generate/update user identity with scraping and embedding (decomposes into premises) |
 | Premise | `premises/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `opportunities/application/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
-| HyDE | `shared/hyde/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
+| HyDE | `discovery/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
 | Network | `networks/application/network.graph.ts` | Manage network CRUD |
 | Network Membership | `networks/application/membership.graph.ts` | Manage network member join/leave |
 | Intent Indexer | `networks/application/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
@@ -80,9 +80,9 @@ from anywhere.
 | User Context Generator | `contexts/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
 | Questioner Agent | `questions/application/question.agent.ts` | Questioner queue — mode-driven structured decision-question generation (enrichment/intent/negotiation/discovery) |
 | Network Recommender | `networks/application/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
-| HyDE Generator | `shared/hyde/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
-| HyDE Strategies | `shared/hyde/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
-| Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
+| HyDE Generator | `discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
+| HyDE Strategies | `discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
+| Lens Inferrer | `discovery/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
 | Opportunity Evaluator | `opportunities/application/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `opportunities/application/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Opportunity Introducer | `opportunities/application/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |

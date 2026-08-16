@@ -477,7 +477,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "HYDE_FRAME_CONSTRAINTS_ENABLED",
     label: "Frame-constrained HyDE",
     description:
-      "Switches hypothetical-document generation from `legacy` to the frame-constrained `frame-v1` mode. Read as a strict equality against `true`, so any other value keeps legacy generation (src/shared/hyde/hyde.env.ts).",
+      "Switches hypothetical-document generation from `legacy` to the frame-constrained `frame-v1` mode. Read as a strict equality against `true`, so any other value keeps legacy generation (src/discovery/hyde.env.ts).",
     kind: "boolean",
     values: ["true", "false"],
     defaultDescription: "false (legacy generation)",

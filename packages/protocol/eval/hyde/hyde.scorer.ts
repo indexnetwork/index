@@ -1,4 +1,4 @@
-import type { HydeGenerationMode } from '../../src/shared/hyde/hyde.env.js';
+import type { HydeGenerationMode } from '../../src/discovery/hyde.env.js';
 
 import { HYDE_LENS_BONUS, HYDE_METRIC_K, HYDE_MIN_SCORE } from './hyde.policy.js';
 import type { CandidateScore, EmbeddedCandidate, HydeEvalRunResult, HydeModeSummary, HydeRunRetrievalMetrics, LensQueryEmbedding, RankedCandidate, RelevanceGrade, ResolvedRelevanceGrades } from './hyde.types.js';

@@ -20,6 +20,50 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 14.3.0 - 2026-08-16
+
+No public API change: all 443 exported symbols are byte-identical to 14.2.2.
+
+### Changed
+
+- Promoted `shared/hyde/` to a `discovery/` capability — 9 source files and 7
+  specs. HyDE owns a graph, a generator, a lens inferrer, and a validator; that
+  is discovery machinery, not shared infrastructure. It lived under `shared/`
+  because two capabilities needed it, which had made `shared/` the default home
+  for anything with more than one consumer.
+
+  `discovery/index.ts` is its sole cross-capability surface, carrying the 41
+  symbols that actually cross the boundary. `contexts` and `opportunities` now
+  reach it through that barrel; the tool composition root keeps its direct leaf
+  imports, as it is exempt by design and as a barrel import there is what caused
+  the runtime cycle in 14.2.0.
+
+- `HydeGraphFactory`, `HydeGenerator`, and `LensInferrer` are re-exported from
+  the root barrel via `discovery/index.js` rather than `contexts/index.js`, and
+  the `contexts` barrel no longer carries them. The exported names are
+  unchanged; only the internal path moved.
+
+- Declared the directions this makes explicit: `contexts → discovery`,
+  `opportunities → discovery`, and `discovery → agents` (HyDE stamps a
+  debug-metadata type onto its graph state). 25 named directions became 29.
+
+### Note
+
+The rest of the `shared/` rehoming was considered and rejected on evidence.
+`shared/assignment/` is used by `networks` *and* `premises`, and
+`shared/network/metadata.renderer` by `networks` *and* `opportunities` — so
+moving either into `networks/` would create `contexts → networks` and
+`opportunities → networks`, neither of which is an allowed direction. They are
+in `shared/` precisely because two capabilities need them and neither owns them;
+moving them would add edges to the capability graph rather than remove them.
+
+`shared/agent/` mixes the composition root with model primitives and is a
+genuine split candidate, but it has 140 importers across 15 capabilities and
+`tool.factory` is the module that produced the 14.2.0 cycle. Left alone
+deliberately. What remains under `shared/` — `interfaces/`, `observability/`,
+`schemas/`, `utils/`, and `agent/` — spans 5 to 15 capabilities each and is
+correctly neutral.
+
 ## 14.2.2 - 2026-08-16
 
 No public API change: all 443 exported symbols are byte-identical to 14.2.1.

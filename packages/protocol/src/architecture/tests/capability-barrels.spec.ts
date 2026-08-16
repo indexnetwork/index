@@ -22,6 +22,7 @@ const capabilities = [
   "agents",
   "contacts",
   "integrations",
+  "discovery",
 ] as const;
 
 describe("capability barrels", () => {

@@ -2,8 +2,8 @@ import type { BaseLanguageModelInput } from '@langchain/core/language_models/bas
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 
-import { createStructuredModel } from '../agent/model.config.js';
-import { invokeWithAbortSignal } from '../agent/model-signal.js';
+import { createStructuredModel } from '../shared/agent/model.config.js';
+import { invokeWithAbortSignal } from '../shared/agent/model-signal.js';
 import type { HydeSourceFrame } from './hyde.frame.js';
 import type { HydeTargetCorpus } from './lens.inferrer.js';
 

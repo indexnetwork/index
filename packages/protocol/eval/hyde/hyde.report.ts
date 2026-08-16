@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 import { getModelName } from '../../src/shared/agent/model.config.js';
-import { HYDE_FRAME_GENERATION_VERSION } from '../../src/shared/hyde/hyde.env.js';
+import { HYDE_FRAME_GENERATION_VERSION } from '../../src/discovery/hyde.env.js';
 
 import { parseHydeAnalysisArtifact } from './hyde.artifacts.js';
 import { HYDE_CANONICAL_PROVENANCE_PINS } from './hyde.policy.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { HydeGenerateInput } from '../../../src/shared/hyde/hyde.generator.js';
+import type { HydeGenerateInput } from '../../../src/discovery/hyde.generator.js';
 import type { EmbeddingGenerator } from '../../../src/shared/interfaces/embedder.interface.js';
 
 import { HYDE_CASES } from '../hyde.cases.js';

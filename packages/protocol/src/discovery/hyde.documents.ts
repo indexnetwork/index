@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 
-import type { HydeDocument } from '../interfaces/database.interface.js';
+import type { HydeDocument } from '../shared/interfaces/database.interface.js';
 import { HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.env.js';
 
 /** Hash source text without persisting the source itself in frame metadata. */

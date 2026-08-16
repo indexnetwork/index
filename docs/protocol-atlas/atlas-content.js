@@ -69,7 +69,7 @@
       conceptIds: ["premise", "context", "radar"],
       nodeIds: ["component.hyde-graph-factory", "component.maintenance-graph-factory", "host-requirement.hyde-cache"],
       invariantIds: ["context-freshness", "host-boundary"],
-      sourcePaths: ["packages/protocol/src/shared/hyde/hyde.graph.ts", "packages/protocol/src/maintenance/maintenance.graph.ts", "packages/protocol/src/shared/interfaces/cache.interface.ts"],
+      sourcePaths: ["packages/protocol/src/discovery/hyde.graph.ts", "packages/protocol/src/maintenance/maintenance.graph.ts", "packages/protocol/src/shared/interfaces/cache.interface.ts"],
       notes: {
         protocol: "A stale derivative cannot be treated as current evidence about a participant.",
         implementation: "HyDE and maintenance graphs expose refresh behavior and cache requirements within the package.",
@@ -410,7 +410,7 @@
     DISCOVERY_SOURCE_PREMISE_LIMIT: setting("DISCOVERY_SOURCE_PREMISE_LIMIT", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "getSourcePremiseDiscoveryLimit"]], "getSourcePremiseDiscoveryLimit", ["0", "40", "100"], "40"),
     DISCOVERY_REJECTION_COOLDOWN_DAYS: setting("DISCOVERY_REJECTION_COOLDOWN_DAYS", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "getRejectionCooldownMs"]], "getRejectionCooldownMs", ["1", "7", "30"], "7"),
     RUN_OPPORTUNITY_EVAL_IN_PARALLEL: setting("RUN_OPPORTUNITY_EVAL_IN_PARALLEL", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["false", "true"], "false"),
-    HYDE_FRAME_CONSTRAINTS_ENABLED: setting("HYDE_FRAME_CONSTRAINTS_ENABLED", [["packages/protocol/src/shared/hyde/hyde.env.ts", "getHydeGenerationMode"]], "getHydeGenerationMode", ["false", "true"], "false"),
+    HYDE_FRAME_CONSTRAINTS_ENABLED: setting("HYDE_FRAME_CONSTRAINTS_ENABLED", [["packages/protocol/src/discovery/hyde.env.ts", "getHydeGenerationMode"]], "getHydeGenerationMode", ["false", "true"], "false"),
     PREMISE_DEDUP_SIMILARITY: setting("PREMISE_DEDUP_SIMILARITY", [["packages/protocol/src/premises/premise.graph.ts", "DEDUP_SIMILARITY_THRESHOLD"]], "DEDUP_SIMILARITY_THRESHOLD", ["0.85", "0.93", "0.98"], "0.93", "module-load"),
     INTRODUCER_DISCOVERY_ENABLED: setting("INTRODUCER_DISCOVERY_ENABLED", [["packages/protocol/src/opportunities/application/opportunity.introducer-feature.ts", "isIntroducerDiscoveryEnabled"]], "isIntroducerDiscoveryEnabled", ["false", "true"], "false"),
     NEGOTIATION_INCLUDE_OTHER_INTENTS: setting("NEGOTIATION_INCLUDE_OTHER_INTENTS", [["packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts", "negotiationIncludesOtherIntents"]], "negotiationIncludesOtherIntents", ["false", "true"], "true"),
@@ -483,9 +483,9 @@
         ["packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory"],
       ]),
     ],
-    hyde: evidence("HYDE_FRAME_CONSTRAINTS_ENABLED", "component.hyde-graph-factory", "packages/protocol/src/shared/hyde/hyde.graph.ts", "HydeGraphFactory", "packages/protocol/src/shared/hyde/tests/hyde.frame.spec.ts", "enables frame-v1 only for the strict literal true", [
-      ["packages/protocol/src/shared/hyde/hyde.env.ts", "getHydeGenerationMode"],
-      ["packages/protocol/src/shared/hyde/hyde.graph.ts", "HydeGraphFactory"],
+    hyde: evidence("HYDE_FRAME_CONSTRAINTS_ENABLED", "component.hyde-graph-factory", "packages/protocol/src/discovery/hyde.graph.ts", "HydeGraphFactory", "packages/protocol/src/discovery/tests/hyde.frame.spec.ts", "enables frame-v1 only for the strict literal true", [
+      ["packages/protocol/src/discovery/hyde.env.ts", "getHydeGenerationMode"],
+      ["packages/protocol/src/discovery/hyde.graph.ts", "HydeGraphFactory"],
     ]),
     premise: evidence("PREMISE_DEDUP_SIMILARITY", "component.premise-graph-factory", "packages/protocol/src/premises/premise.graph.ts", "PremiseGraphFactory", "packages/protocol/src/premises/tests/premise.graph.spec.ts", "skips persisting a near-duplicate premise on create", [
       ["packages/protocol/src/premises/premise.graph.ts", "DEDUP_SIMILARITY_THRESHOLD"],

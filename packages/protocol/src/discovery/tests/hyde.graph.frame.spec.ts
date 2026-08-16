@@ -2,10 +2,10 @@ import { describe, expect, it } from 'bun:test';
 
 import { computeHydeSourceTextHash, selectHydeDocumentsForGeneration } from '../hyde.documents.js';
 import { HydeGraphFactory, type HydeGeneratorLike, type HydeLensInferrerLike, type HydeValidatorLike } from '../hyde.graph.js';
-import type { HydeCache } from '../../interfaces/cache.interface.js';
-import type { CreateHydeDocumentData, HydeDocument, HydeGraphDatabase } from '../../interfaces/database.interface.js';
-import type { EmbeddingGenerator } from '../../interfaces/embedder.interface.js';
-import { requestContext } from '../../observability/request-context.js';
+import type { HydeCache } from '../../shared/interfaces/cache.interface.js';
+import type { CreateHydeDocumentData, HydeDocument, HydeGraphDatabase } from '../../shared/interfaces/database.interface.js';
+import type { EmbeddingGenerator } from '../../shared/interfaces/embedder.interface.js';
+import { requestContext } from '../../shared/observability/request-context.js';
 
 const sourceFrame = {
   sourceRoles: [{ role: 'founder', evidence: 'founder' }],

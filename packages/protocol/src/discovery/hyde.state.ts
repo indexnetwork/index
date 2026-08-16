@@ -4,10 +4,10 @@
  */
 
 import { Annotation } from '@langchain/langgraph';
-import type { Id } from '../interfaces/database.interface.js';
+import type { Id } from '../shared/interfaces/database.interface.js';
 import type { Lens, HydeTargetCorpus } from './lens.inferrer.js';
 import type { HydeSourceFrame } from './hyde.frame.js';
-import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
+import type { DebugMetaAgent } from '../agents/index.js';
 
 export type HydeDocumentOrigin = 'cache' | 'db' | 'generated';
 export type HydeValidationStatus = 'valid' | 'invalid' | 'failed_open';

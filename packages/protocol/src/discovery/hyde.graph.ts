@@ -7,14 +7,14 @@
 import { createHash } from 'crypto';
 import { END, START, StateGraph } from '@langchain/langgraph';
 
-import type { DebugMetaAgent } from '../../chat/chat-streaming.types.js';
-import { getAbortSignalConfig } from '../agent/model-signal.js';
-import type { HydeCache } from '../interfaces/cache.interface.js';
-import type { HydeGraphDatabase } from '../interfaces/database.interface.js';
-import type { EmbeddingGenerator } from '../interfaces/embedder.interface.js';
-import { protocolLogger } from '../observability/protocol.logger.js';
-import { timed } from '../observability/performance.js';
-import { requestContext } from "../observability/request-context.js";
+import type { DebugMetaAgent } from '../agents/index.js';
+import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
+import type { HydeCache } from '../shared/interfaces/cache.interface.js';
+import type { HydeGraphDatabase } from '../shared/interfaces/database.interface.js';
+import type { EmbeddingGenerator } from '../shared/interfaces/embedder.interface.js';
+import { protocolLogger } from '../shared/observability/protocol.logger.js';
+import { timed } from '../shared/observability/performance.js';
+import { requestContext } from "../shared/observability/request-context.js";
 import { computeHydeSourceTextHash } from './hyde.documents.js';
 import { getHydeGenerationMode, HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.env.js';
 import { sanitizeHydeSourceFrame, type HydeSourceFrame } from './hyde.frame.js';

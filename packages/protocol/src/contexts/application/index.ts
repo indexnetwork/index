@@ -51,7 +51,7 @@
  *   prompt-injection and out-of-scope risks.
  *
  * IND-545: canonical application home for participant-context orchestrators
- * previously spread across premises/, contexts/, enrichment/, and shared/hyde/.
+ * previously spread across premises/, contexts/, enrichment/, and discovery/.
  */
 
 // ── Premise graph ─────────────────────────────────────────────────────────────
@@ -105,13 +105,13 @@ export {
   type HydeGeneratorLike,
   type HydeValidatorLike,
   type HydeGraphOptions,
-} from "../../shared/hyde/hyde.graph.js";
+} from "../../discovery/index.js";
 
 export {
   HydeGenerator,
   type HydeGeneratorOutput,
   type HydeGenerateInput,
-} from "../../shared/hyde/hyde.generator.js";
+} from "../../discovery/index.js";
 
 export {
   LensInferrer,
@@ -119,7 +119,7 @@ export {
   type LensInferenceOutput,
   FRAME_SYSTEM_PROMPT,
   FrameResponseSchema,
-} from "../../shared/hyde/lens.inferrer.js";
+} from "../../discovery/index.js";
 
 export {
   HydeValidator,
@@ -129,21 +129,21 @@ export {
   type HydeValidationOutput,
   HydeValidationResponseSchema,
   buildHydeValidationPrompt,
-} from "../../shared/hyde/hyde.validator.js";
+} from "../../discovery/index.js";
 
 // ── HyDE utilities ────────────────────────────────────────────────────────────
-export { computeHydeSourceTextHash, selectHydeDocumentsForGeneration } from "../../shared/hyde/hyde.documents.js";
+export { computeHydeSourceTextHash, selectHydeDocumentsForGeneration } from "../../discovery/index.js";
 
 export {
   getHydeGenerationMode,
   type HydeGenerationMode,
   HYDE_FRAME_GENERATION_VERSION,
-} from "../../shared/hyde/hyde.env.js";
+} from "../../discovery/index.js";
 
 export {
   HYDE_DEFAULT_CACHE_TTL,
   HYDE_CORPUS_PROMPTS,
-} from "../../shared/hyde/hyde.strategies.js";
+} from "../../discovery/index.js";
 
 export {
   type HydeSourceFrame,
@@ -154,4 +154,4 @@ export {
   type HydeFrameVocabulary,
   HYDE_HARD_CONSTRAINT_TYPES,
   HYDE_NAMED_ENTITY_TYPES,
-} from "../../shared/hyde/hyde.frame.js";
+} from "../../discovery/index.js";

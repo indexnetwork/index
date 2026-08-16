@@ -70,8 +70,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.hyde-graph-factory",
       "label": "Hyde Graph Factory",
       "kind": "graph-factory",
-      "capability": "contexts",
-      "sourcePath": "packages/protocol/src/shared/hyde/hyde.graph.ts",
+      "capability": "discovery",
+      "sourcePath": "packages/protocol/src/discovery/hyde.graph.ts",
       "symbol": "HydeGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -161,8 +161,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.lens-inferrer",
       "label": "Lens Inferrer",
       "kind": "agent",
-      "capability": "contexts",
-      "sourcePath": "packages/protocol/src/shared/hyde/lens.inferrer.ts",
+      "capability": "discovery",
+      "sourcePath": "packages/protocol/src/discovery/lens.inferrer.ts",
       "symbol": "LensInferrer",
       "chapterIds": [],
       "flowIds": [],
@@ -448,6 +448,17 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "chapterIds": [],
       "flowIds": [],
       "summary": "The reviewed public boundary for the contexts capability — its sole cross-capability surface.",
+      "layer": "implementation"
+    },
+    {
+      "id": "facade.discovery",
+      "label": "Discovery facade",
+      "kind": "facade",
+      "capability": "discovery",
+      "sourcePath": "packages/protocol/src/discovery/index.ts",
+      "chapterIds": [],
+      "flowIds": [],
+      "summary": "The reviewed public boundary for the discovery capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -953,6 +964,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts"
     },
     {
+      "id": "static.component.opportunity-graph-factory.facade.discovery",
+      "sourceId": "component.opportunity-graph-factory",
+      "targetId": "facade.discovery",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts"
+    },
+    {
       "id": "static.component.opportunity-graph-factory.facade.intents",
       "sourceId": "component.opportunity-graph-factory",
       "targetId": "facade.intents",
@@ -1095,6 +1114,22 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/agents/index.ts"
+    },
+    {
+      "id": "static.facade.discovery.component.hyde-graph-factory",
+      "sourceId": "facade.discovery",
+      "targetId": "component.hyde-graph-factory",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/discovery/index.ts"
+    },
+    {
+      "id": "static.facade.discovery.component.lens-inferrer",
+      "sourceId": "facade.discovery",
+      "targetId": "component.lens-inferrer",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/discovery/index.ts"
     },
     {
       "id": "static.facade.intents.component.intent-graph-factory",
@@ -1332,6 +1367,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "static.runtime-shell.root.facade.contexts",
       "sourceId": "runtime-shell.root",
       "targetId": "facade.contexts",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/index.ts"
+    },
+    {
+      "id": "static.runtime-shell.root.facade.discovery",
+      "sourceId": "runtime-shell.root",
+      "targetId": "facade.discovery",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"
@@ -2164,7 +2207,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "HYDE_FRAME_CONSTRAINTS_ENABLED",
           "readSites": [
             {
-              "path": "packages/protocol/src/shared/hyde/hyde.env.ts",
+              "path": "packages/protocol/src/discovery/hyde.env.ts",
               "symbol": "getHydeGenerationMode"
             }
           ],
@@ -2203,20 +2246,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "HYDE_FRAME_CONSTRAINTS_ENABLED"
               ],
-              "consumerPath": "packages/protocol/src/shared/hyde/hyde.graph.ts",
+              "consumerPath": "packages/protocol/src/discovery/hyde.graph.ts",
               "consumerSymbol": "HydeGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/shared/hyde/hyde.env.ts",
+                  "path": "packages/protocol/src/discovery/hyde.env.ts",
                   "symbol": "getHydeGenerationMode"
                 },
                 {
-                  "path": "packages/protocol/src/shared/hyde/hyde.graph.ts",
+                  "path": "packages/protocol/src/discovery/hyde.graph.ts",
                   "symbol": "HydeGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/shared/hyde/tests/hyde.frame.spec.ts",
+                "path": "packages/protocol/src/discovery/tests/hyde.frame.spec.ts",
                 "testName": "enables frame-v1 only for the strict literal true"
               }
             }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { HydeDocument } from '../../interfaces/database.interface.js';
+import type { HydeDocument } from '../../shared/interfaces/database.interface.js';
 import { computeHydeSourceTextHash, selectHydeDocumentsForGeneration } from '../hyde.documents.js';
 
 function document(
