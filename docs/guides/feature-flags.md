@@ -59,8 +59,12 @@ site — and the default is always the "off" behavior.
 bun run check:flags FLAG_NAME
 ```
 
-This reports the flag's state on every tracked surface (`startup.env.ts`,
-`.env.example`, `.env.development`, `.env.test`) and flags the common drift patterns.
+This reports where the flag is registered — `startup.env.ts` for api-side flags, or a
+`packages/protocol/src/**/*.env.ts` accessor for protocol-side ones — plus its value on
+`.env.example`, `.env.development`, and `.env.test`, and it flags the common drift
+patterns. Values that are not flag-shaped are redacted rather than printed, so running it
+on a non-flag key like `DATABASE_URL` cannot leak a credential into a log or transcript.
+
 It cannot read Railway — pair it with
 `railway_list_variables({ service_id: "protocol", environment_id: "dev" })`.
 

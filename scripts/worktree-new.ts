@@ -2,12 +2,16 @@
 /**
  * worktree-new — create or reuse a linked worktree for branch work, collision-safe.
  *
- *   bun run worktree:new <type>/<description> [--base <ref>] [--dry-run] [--json]
+ *   bun run worktree:new <type>/<description> [--base <ref>] [--no-fetch] [--dry-run] [--json]
  *
  * Enforces the branch/folder policy from CLAUDE.md, refuses path and branch
  * collisions rather than mutating them, and always runs the mandatory
  * `worktree:setup` (dependency install + root env symlinks) for new *and* reused
  * worktrees.
+ *
+ * Defaults to basing on `origin/dev` and fetching first, because the canonical root is
+ * routinely behind the remote. A branch that already exists only on the remote is
+ * tracked rather than recreated at base.
  */
 import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -18,6 +22,7 @@ const OPAQUE_ISSUE_PATTERN = /^[a-z]+-\d+$/;
 type WorktreeOptions = {
   branch: string;
   base: string;
+  fetch: boolean;
   dryRun: boolean;
   json: boolean;
 };
@@ -31,15 +36,19 @@ type WorktreeRecord = {
 };
 
 export type WorktreePlan = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   branch: string;
   base: string;
   folder: string;
   worktreePath: string;
   existingWorktree: boolean;
+  /** "local" | "remote" | "new" — where the branch came from. */
+  branchSource: BranchSource;
   dryRun: boolean;
   commands: CommandFact[];
 };
+
+export type BranchSource = 'local' | 'remote' | 'new';
 
 type CommandResult = { code: number; stdout: string; stderr: string };
 type CommandRunner = (argv: string[], cwd: string) => CommandResult;
@@ -56,7 +65,10 @@ export function parseWorktreeArgs(rawArgs: string[]): WorktreeOptions {
   const branch = args.shift();
   if (!branch || branch.startsWith("--")) throw new UsageError("missing branch");
 
-  const options: WorktreeOptions = { branch, base: "dev", dryRun: false, json: false };
+  // origin/dev, not dev: the canonical root is frequently behind the remote, and a
+  // branch silently cut from a stale local dev is the exact failure this script exists
+  // to prevent.
+  const options: WorktreeOptions = { branch, base: "origin/dev", fetch: true, dryRun: false, json: false };
 
   while (args.length > 0) {
     const flag = args.shift();
@@ -67,6 +79,7 @@ export function parseWorktreeArgs(rawArgs: string[]): WorktreeOptions {
         options.base = value;
         break;
       }
+      case "--no-fetch": options.fetch = false; break;
       case "--dry-run": options.dryRun = true; break;
       case "--json": options.json = true; break;
       default: throw new UsageError(`unknown argument: ${flag ?? ""}`);
@@ -143,30 +156,45 @@ export function buildWorktreePlan(options: WorktreeOptions, runner: CommandRunne
     throw new OperationalError(`path collision: ${expectedPath} exists but is not a registered worktree`);
   }
 
+  // Refresh remote-tracking refs before resolving anything against them. This only
+  // touches refs/remotes, never the working tree or a local branch, so it is safe to
+  // run during a dry run — and skipping it would make the dry run lie.
+  const remote = options.base.includes("/") ? options.base.slice(0, options.base.indexOf("/")) : null;
+  if (options.fetch && remote) {
+    checked(runner, ["git", "fetch", remote], canonicalRoot, `cannot fetch ${remote}`);
+  }
+
   const baseResult = runner(["git", "rev-parse", "--verify", `${options.base}^{commit}`], canonicalRoot);
   if (baseResult.code !== 0) throw new OperationalError(`base ref does not resolve to a commit: ${options.base}`);
 
-  const branchExists = runner(["git", "show-ref", "--verify", "--quiet", `refs/heads/${options.branch}`], canonicalRoot).code === 0;
+  const hasLocal = runner(["git", "show-ref", "--verify", "--quiet", `refs/heads/${options.branch}`], canonicalRoot).code === 0;
+  // A branch that exists only on the remote must be tracked, not recreated at base —
+  // recreating it produces an empty divergent branch whose first push is rejected.
+  const remoteBranch = remote ? `${remote}/${options.branch}` : null;
+  const hasRemoteOnly = !hasLocal && remoteBranch !== null
+    && runner(["git", "show-ref", "--verify", "--quiet", `refs/remotes/${remoteBranch}`], canonicalRoot).code === 0;
+  const branchSource: BranchSource = hasLocal ? "local" : hasRemoteOnly ? "remote" : "new";
 
   const commands: CommandFact[] = [];
   if (!expectedRecord) {
-    commands.push(command(
-      branchExists
-        ? ["git", "worktree", "add", expectedPath, options.branch]
-        : ["git", "worktree", "add", "-b", options.branch, expectedPath, options.base],
-      canonicalRoot,
-    ));
+    const add: Record<BranchSource, string[]> = {
+      local: ["git", "worktree", "add", expectedPath, options.branch],
+      remote: ["git", "worktree", "add", "--track", "-b", options.branch, expectedPath, remoteBranch ?? ""],
+      new: ["git", "worktree", "add", "-b", options.branch, expectedPath, options.base],
+    };
+    commands.push(command(add[branchSource], canonicalRoot));
   }
   // Mandatory for new AND reused worktrees: installs deps and links root env files.
   commands.push(command(["bun", "run", "worktree:setup", folder], canonicalRoot));
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     branch: options.branch,
     base: options.base,
     folder,
     worktreePath: existsSync(expectedPath) ? realpathSync(expectedPath) : expectedPath,
     existingWorktree: Boolean(expectedRecord),
+    branchSource,
     dryRun: options.dryRun,
     commands,
   };
@@ -192,7 +220,7 @@ function executePlan(plan: WorktreePlan): void {
 }
 
 function usage(): string {
-  return "usage: bun run worktree:new -- <type>/<description> [--base <ref>] [--dry-run] [--json]";
+  return "usage: bun run worktree:new -- <type>/<description> [--base <ref>] [--no-fetch] [--dry-run] [--json]";
 }
 
 export function main(argv = process.argv.slice(2)): void {
@@ -204,7 +232,10 @@ export function main(argv = process.argv.slice(2)): void {
     if (options.json) {
       console.log(JSON.stringify(plan));
     } else {
-      console.log(`${options.dryRun ? "Dry run" : "Ready"}: ${plan.branch}${plan.existingWorktree ? " (reused)" : ""}`);
+      const origin = plan.existingWorktree
+        ? " (reused worktree)"
+        : { local: " (existing local branch)", remote: ` (tracking ${plan.base.split("/")[0]}/${plan.branch})`, new: ` (new branch from ${plan.base})` }[plan.branchSource];
+      console.log(`${options.dryRun ? "Dry run" : "Ready"}: ${plan.branch}${origin}`);
       console.log(`Worktree: ${plan.worktreePath}`);
       if (options.dryRun) {
         for (const fact of plan.commands) console.log(`- [${fact.cwd}] ${JSON.stringify(fact.argv)}`);

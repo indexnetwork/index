@@ -791,7 +791,7 @@ bun run worktree:setup <name>               # Install node_modules & symlink .en
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run worktree:new <type>/<description>    # Create/reuse a worktree, collision-safe, then setup
-bun run check:flags <FLAG_NAME>              # Report a feature flag's state on every local env surface
+bun run check:flags <FLAG_NAME>              # Report a feature flag's registration and every local env surface
 bun run test:scripts                         # Run focused deterministic script tests
 bun run dev:eval-ops                         # Eval ops UI on 127.0.0.1:5174 (see ### Eval Ops Site)
 bun run build:eval-ops                       # Build the eval ops UI (excluded from root build)
@@ -1127,9 +1127,11 @@ use semantic `<type>/<description>` names and the only valid folder is the dashe
 `<type>-<description>`; never accept a separate folder name.
 
 Use `bun run worktree:new <type>/<description>` to create or reuse one semantic branch.
-It validates the branch name, refuses path and branch collisions rather than mutating
-them, and always runs the mandatory `bun run worktree:setup <dashed-folder>` — for reused
-worktrees as well as new ones.
+It fetches and bases on `origin/dev` (not the local `dev`, which is routinely behind),
+validates the branch name, refuses path and branch collisions rather than mutating them,
+checks out a remote-only branch with `--track` instead of recreating it at base, and
+always runs the mandatory `bun run worktree:setup <dashed-folder>` — for reused worktrees
+as well as new ones. `--no-fetch` for offline; `--base <ref>` to cut from anything else.
 
 Keep one writer per worktree, reuse the same worktree for review and PR-closeout fixes,
 and independently verify every completion claim. Never wait, poll, sleep, create

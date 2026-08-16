@@ -61,6 +61,13 @@ optional and is not just an install: it installs the workspace dependencies *and
 symlinks the root env files into the worktree, for reused worktrees as well as new ones.
 Skipping it leaves the tree unable to build or resolve `.env` at all.
 
+It fetches before resolving anything, and bases on **`origin/dev`** rather than the local
+`dev` — root is routinely behind the remote, and a branch cut from a stale local `dev` is
+the failure this exists to prevent. A branch that already exists only on the remote is
+checked out with `--track` rather than recreated at base, so its first push is not a
+non-fast-forward. Use `--no-fetch` offline, and `--base <ref>` for anything other than
+`origin/dev`.
+
 Once created, work inside that directory — use absolute paths or `git -C <worktree> ...`
 rather than `cd`-ing around, since the shell's working directory doesn't persist between
 tool calls. One writer per worktree; reuse the same worktree for review and PR-closeout

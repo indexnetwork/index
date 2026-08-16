@@ -412,9 +412,10 @@ All feature and fix work happens in Git worktrees, keeping the canonical working
 on `dev` and read-only for source changes. Worktrees use semantic slash branches such
 as `feat/my-feature`; the folder is the dashed form `feat-my-feature`.
 
-Use `bun run worktree:new <type>/<description>`, which enforces the branch and folder
-policy, refuses path/branch collisions, reuses an exact match, and always runs the
-mandatory setup. The equivalent manual sequence is:
+Use `bun run worktree:new <type>/<description>`, which fetches, bases on `origin/dev`,
+enforces the branch and folder policy, refuses path/branch collisions, reuses an exact
+match, tracks a remote-only branch rather than recreating it, and always runs the
+mandatory setup. The equivalent manual sequence for a brand-new branch is:
 
 ```bash
 git fetch origin dev
