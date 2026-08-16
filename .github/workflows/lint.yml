@@ -68,6 +68,13 @@ jobs:
       - name: Check subtree mirror dependency parity
         run: bun run check:subtree-parity
 
+      # Bun refreshes the workspace `version` fields in bun.lock only unreliably —
+      # a version-only bump, where node_modules is already in sync, leaves them
+      # stale — and `--frozen-lockfile` passes while they are, so a bump can land
+      # with a lockfile that still names the old version.
+      - name: Check lockfile workspace versions
+        run: bun run check:lockfile-versions
+
   typecheck:
     # Keep this required correctness gate on GitHub-hosted capacity. A
     # Blacksmith allocation can remain queued indefinitely with runner_id=0,

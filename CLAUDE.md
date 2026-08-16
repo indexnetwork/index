@@ -111,8 +111,12 @@ Branch**. The parts that are easy to miss:
 - Update the docs the change affects — `AGENTS.md`, this file, the Development Reference,
   package `README.md`s, and the relevant `docs/` subdirectory.
 - **Bump the version of every package the branch touched** (`packages/protocol/`,
-  `packages/cli/`, `services/api/`, `apps/web/`) per semver, and regenerate and commit
-  the root `bun.lock` when a version changes.
+  `packages/cli/`, `services/api/`, `apps/web/`) per semver, then run
+  `bun run sync:lockfile-versions` and commit the root `bun.lock`. Bun refreshes the
+  lockfile's workspace `version` fields only unreliably — for a version-only bump,
+  where `node_modules` is already in sync, `bun install` leaves them stale — and
+  `--frozen-lockfile` passes while they are. Do not assume an install fixed it.
+  `bun run check:lockfile-versions` reports drift; CI enforces it.
 - Merge approval is always explicit and separate — never infer it from green checks.
   Merge server-side from a non-canonical checkout; never check out or merge `dev` inside
   a feature worktree.

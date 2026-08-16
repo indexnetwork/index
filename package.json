@@ -38,6 +38,8 @@
     "lint:mac-universal-links": "eslint --config apps/mac/eslint.config.mjs apps/mac/eslint.config.mjs apps/mac/api/deeplink.mjs apps/mac/api/deeplink.spec.mjs apps/mac/scripts/deep-link-host.spec.mjs apps/mac/scripts/link-host.spec.mjs apps/mac/scripts/notarize.spec.mjs apps/mac/scripts/provisioning-profile.spec.mjs apps/mac/src/ui/app.jsx",
     "check:subtree-parity": "bun scripts/check-subtree-package-parity.ts",
     "db:setup:local": "bash scripts/setup-local-testdb.sh",
+    "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",
+    "check:lockfile-versions": "bun scripts/sync-lockfile-versions.ts --check",
     "skills:validate": "bun .agents/skills/learn-skill/scripts/skillctl.ts validate all && bun scripts/validate-codex-skills.ts",
     "pr:snapshot": "bun scripts/pr-snapshot.ts",
     "test:scripts": "bun test scripts/tests",
