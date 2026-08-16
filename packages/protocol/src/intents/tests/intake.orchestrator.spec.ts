@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { answerLabel, FALLBACK_BRING_QUESTION, FALLBACK_WHO_QUESTION, SignalIntakeOrchestrator } from "../intake.orchestrator.js";
+import { answerLabel, FALLBACK_BRING_QUESTION, FALLBACK_WHO_QUESTION, SignalIntakeOrchestrator } from "../application/intake.orchestrator.js";
 
 interface Capture {
   prompt?: string;

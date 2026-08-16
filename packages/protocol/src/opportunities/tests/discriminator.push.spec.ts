@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { buildPoolQuestionPushMessage, poolQuestionCycleKey } from "../discriminator.push.js";
+import { buildPoolQuestionPushMessage, poolQuestionCycleKey } from "../discriminator/discriminator.push.js";
 
 describe("poolQuestionCycleKey", () => {
   it("prefers run identity and falls back to mining time", () => {

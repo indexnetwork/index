@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 
-import { cosineSimilarity, computeNovelty, scoreDiscriminator } from "../discriminator.scorer.js";
-import type { MinedDiscriminator, PoolCandidate, VerifiedAssignment } from "../discriminator.types.js";
+import { cosineSimilarity, computeNovelty, scoreDiscriminator } from "../discriminator/discriminator.scorer.js";
+import type { MinedDiscriminator, PoolCandidate, VerifiedAssignment } from "../discriminator/discriminator.types.js";
 
 function pool(n: number, score = 0.8): PoolCandidate[] {
   return Array.from({ length: n }, (_, i) => ({

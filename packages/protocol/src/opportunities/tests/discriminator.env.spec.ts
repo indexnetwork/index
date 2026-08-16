@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
-import { POOL_VISIT_MINING_DEBOUNCE_MS, poolQuestionsPushMode, poolQuestionsStampNewborn, poolQuestionsVisitTrigger } from "../discriminator.env.js";
+import { POOL_VISIT_MINING_DEBOUNCE_MS, poolQuestionsPushMode, poolQuestionsStampNewborn, poolQuestionsVisitTrigger } from "../discriminator/discriminator.env.js";
 
 const savedStamp = process.env.POOL_QUESTIONS_STAMP_NEWBORN;
 const savedPush = process.env.POOL_QUESTIONS_PUSH;

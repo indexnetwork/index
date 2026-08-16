@@ -4,8 +4,8 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key-for
 
 import { describe, it, expect } from "bun:test";
 
-import { PoolDiscriminatorMiner, buildMiningPrompt, verifyAxis } from "../discriminator.miner.js";
-import type { PoolCandidate } from "../discriminator.types.js";
+import { PoolDiscriminatorMiner, buildMiningPrompt, verifyAxis } from "../discriminator/discriminator.miner.js";
+import type { PoolCandidate } from "../discriminator/discriminator.types.js";
 
 const candidates: PoolCandidate[] = [
   { id: "opp-1", publicContext: "Name: Ada. Bio: Hands-on Rust engineer shipping embedded firmware.", score: 0.9 },

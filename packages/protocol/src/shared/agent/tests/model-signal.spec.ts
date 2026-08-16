@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { invokeWithAbortSignal } from './model-signal';
+import { invokeWithAbortSignal } from '../model-signal';
 
 describe('invokeWithAbortSignal deterministic invocation metadata', () => {
   it('forwards a durable timeout execution key without placing it in model input', async () => {

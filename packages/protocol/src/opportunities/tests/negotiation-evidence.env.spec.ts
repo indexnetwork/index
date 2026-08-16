@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
-import { NEGOTIATION_EVIDENCE_MIN_DISTINCT_OPPORTUNITIES, NEGOTIATION_EVIDENCE_QUESTIONS_MODES, negotiationEvidenceQuestionsMode } from "../negotiation-evidence.env.js";
+import { NEGOTIATION_EVIDENCE_MIN_DISTINCT_OPPORTUNITIES, NEGOTIATION_EVIDENCE_QUESTIONS_MODES, negotiationEvidenceQuestionsMode } from "../negotiation-evidence/negotiation-evidence.env.js";
 
 const saved = process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE;
 
