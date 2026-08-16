@@ -20,6 +20,16 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 13.2.0 - 2026-08-16
+
+### Added
+
+- `retired_mode` to `QuestionVoidedReasonSchema`, marking rows whose generating
+  mode was removed. Written only by the one-time
+  `0127_dismiss_retired_discovery_questions` migration — no runtime path emits
+  it, since a retired mode produces nothing by definition. The marker makes the
+  cleanup auditable and exactly reversible.
+
 ## 13.0.0 - 2026-08-13
 
 ### Removed
