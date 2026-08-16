@@ -790,7 +790,8 @@ bun run worktree:list                       # List worktrees and their setup sta
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
-bun run skills:validate                      # Validate every project-local Pi and Codex skill
+bun run worktree:new <type>/<description>    # Create/reuse a worktree, collision-safe, then setup
+bun run check:flags <FLAG_NAME>              # Report a feature flag's registration and every local env surface
 bun run test:scripts                         # Run focused deterministic script tests
 bun run dev:eval-ops                         # Eval ops UI on 127.0.0.1:5174 (see ### Eval Ops Site)
 bun run build:eval-ops                       # Build the eval ops UI (excluded from root build)
@@ -832,7 +833,7 @@ index/
 - `docs/design/` — Architecture and deep-dive docs. Describes how the system is built: layering, data flow, agent graphs, key subsystems. Update when architecture changes. See `docs/design/opportunity-status-lifecycle.md` for the opportunity status lifecycle (state machine, flows, transition table).
 - `docs/domain/` — Domain concept docs. Explains the business model: what intents, indexes, opportunities, identity and context, contacts are and how they relate. Update when domain model changes.
 - `docs/specs/` — API and CLI specs. Describes external interfaces: endpoints, CLI commands, input/output contracts. Update when public interfaces change.
-- `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes.
+- `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes. Beyond this reference and `getting-started.md`: [`feature-flags.md`](./feature-flags.md) (the four env surfaces and ship-dark→flip order), [`routing-and-surfaces.md`](./routing-and-surfaces.md) (deep links, universal links, web persona cutovers), [`ci-troubleshooting.md`](./ci-troubleshooting.md) (toolchain failures that look like test failures), [`railway-auth.md`](./railway-auth.md) (headless Railway tokens), and [`squash-release-reconciliation.md`](./squash-release-reconciliation.md).
 - `docs/research/` — Research reports and historical analysis that inform design but are not normative runtime documentation. Link to current design/spec docs when applying their conclusions.
 
 ### Protocol Key Directories
@@ -1125,8 +1126,12 @@ read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Br
 use semantic `<type>/<description>` names and the only valid folder is the dashed form
 `<type>-<description>`; never accept a separate folder name.
 
-Follow `create-worktree` and `run-worktree-session` to create or reuse one semantic
-branch and run mandatory setup with `bun run worktree:setup <dashed-folder>`.
+Use `bun run worktree:new <type>/<description>` to create or reuse one semantic branch.
+It fetches and bases on `origin/dev` (not the local `dev`, which is routinely behind),
+validates the branch name, refuses path and branch collisions rather than mutating them,
+checks out a remote-only branch with `--track` instead of recreating it at base, and
+always runs the mandatory `bun run worktree:setup <dashed-folder>` — for reused worktrees
+as well as new ones. `--no-fetch` for offline; `--base <ref>` to cut from anything else.
 
 Keep one writer per worktree, reuse the same worktree for review and PR-closeout fixes,
 and independently verify every completion claim. Never wait, poll, sleep, create
@@ -1178,7 +1183,7 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
    - Resolve every blocking review thread, run targeted checks for changed surfaces, and require all required GitHub checks/reviews to be green. For environment changes, explain every variable and verify its committed schema/example, local development state, and applicable Railway service state before any mutation.
    - Obtain a separate, explicit merge authorization only after every gate passes. Merge server-side from a non-canonical coordinator checkout; never check out or merge `dev` in a feature worktree, and never mutate source from the canonical root.
    - Confirm the forge merge, wait for required post-merge checks and terminal Railway deployment success before claiming release health or closing related issues, then update issues and clean up the finished worktree only after preservation checks.
-   - For a squash-merged `dev`→`main` release, after main-branch checks pass, follow [squash-release reconciliation](../../.agents/skills/_shared/squash-release-reconciliation.md): prove the `main` and `dev` trees match and the merge simulation is clean, then have the root coordinator create and push the sanctioned no-content merge from `main` back into `dev` and wait for its `dev` workflows. Stop rather than force it when either check fails.
+   - For a squash-merged `dev`→`main` release, after main-branch checks pass, follow [squash-release reconciliation](./squash-release-reconciliation.md): prove the `main` and `dev` trees match and the merge simulation is clean, then have the root coordinator create and push the sanctioned no-content merge from `main` back into `dev` and wait for its `dev` workflows. Stop rather than force it when either check fails.
 5. If the canonical `dev` checkout is clean, synchronize it only with `git pull --ff-only origin dev`; otherwise preserve its work and report pending reconciliation.
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
 7. Clean up only after merge and preservation checks. Remove the Git worktree and branch from another checkout.
@@ -1187,10 +1192,9 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 
 ### Implementation in Git Worktrees
 
-Execute implementation and fix plans in isolated Git worktrees, following
-`create-worktree` and `run-worktree-session`.
-Keep `dev` stable, never use hidden implementation subagents, and preserve one writer
-per checkout.
+Execute implementation and fix plans in isolated Git worktrees created with
+`bun run worktree:new`. Keep `dev` stable, never use hidden implementation subagents,
+and preserve one writer per checkout.
 
 ### Receiving Code Review
 
@@ -1231,15 +1235,23 @@ gh pr edit PR-NUMBER --add-reviewer USERNAME
 
 ## Session Learning Capture
 
-When wrapping up a session that uncovered something **reusable and non-obvious** — a
-workflow, a fix for a recurring failure, an exact command sequence, an environment
-gotcha, or a convention — run the `learn-skill` skill to persist it before ending.
+When a session uncovers something **reusable and non-obvious** — a workflow, a fix for a
+recurring failure, an exact command sequence, an environment gotcha, or a convention —
+write it down before ending. Where it goes depends on what kind of thing it is:
 
-- `learn-skill` writes to the project-local `.agents/skills/` and **never edits
-  protected/home skills in place** (it migrates them local first, then updates the copy).
-- It is configurable via `.agents/skills/learn-skill/config.json` (target, protected
-  locations, dedup/cross-link features, and rpiv integrations: todo,
-  ask-user-question, args, advisor).
-- Use `.agents/skills/create-skill` for the mechanics of writing a correct `SKILL.md`.
-- Skip silently when nothing meets the "reusable and non-obvious" bar — never capture
-  one-off facts.
+| Kind of learning | Home |
+|---|---|
+| A deterministic, repeatable procedure | a script in `scripts/`, wired to a `bun run` name |
+| Judgment that applies to specific files | the nearest `AGENTS.md` (create one; it loads by location) |
+| A rare diagnostic — "when X breaks, read Y" | a page under `docs/guides/`, linked from here |
+| A long, rare, high-stakes procedure | a skill under `.claude/skills/` |
+| Anything short and always relevant | the root `AGENTS.md` or `CLAUDE.md` |
+
+Prefer the earlier rows. A script cannot be half-followed; a nested `AGENTS.md` loads
+whenever the relevant files are open, without depending on a description matching the
+prompt. Reach for a new skill only when the content is genuinely long, genuinely rare,
+and would bloat always-on context if it lived anywhere else.
+
+Skip silently when nothing meets the "reusable and non-obvious" bar — never capture
+one-off facts, and never duplicate something the code, tests, or git history already
+record.

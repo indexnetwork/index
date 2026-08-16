@@ -14,9 +14,28 @@ for their directory tree.
 The runtime is **bun** (`bun@1.3.6`), not npm or node. Scripts are `bun run <script>`;
 workspaces install with `bun install`.
 
+## Where guidance lives
+
+Four homes, in order of preference. Put a new learning in the earliest one that fits.
+
+| Kind | Home | Why it beats the next row |
+|---|---|---|
+| A deterministic, repeatable procedure | a script in `scripts/`, named in `package.json` | cannot be half-followed |
+| Judgment about specific code | the nearest `AGENTS.md` | loads by location, not by trigger-word matching |
+| A rare diagnostic — "when X breaks, read Y" | `docs/guides/` | costs nothing until someone needs it |
+| Long, rare, high-stakes procedure | `.claude/skills/` | progressive disclosure earns its always-on description |
+
+Skills are the last resort, not the first: every skill's `description` is loaded into
+context on every turn whether or not it triggers. Five exist today
+(`backfill-production-data`, `verify-production-release`, `open-release-pr`,
+`run-protocol-evals`, `clean-codebase`), and adding a sixth should feel like a decision.
+
+One fact, one home. If something already lives in the Development Reference, link it
+rather than restating it — a second copy is a copy that will go stale.
+
 ## The root checkout stays on `dev`
 
-`/Users/yanek/Projects/index` is the main worktree and it stays on `dev`. Do not
+The repository root checkout is the main worktree and it stays on `dev`. Do not
 `git checkout` or `git switch` to another branch there. Real branch work belongs in a
 worktree; a one-line edit or a doc tweak can just be made in root.
 
@@ -32,25 +51,22 @@ folder name is the branch with `/` replaced by `-`, so `fix/mac-owner-sign-in` l
 `.worktrees/fix-mac-owner-sign-in`.
 
 ```bash
-ROOT=/Users/yanek/Projects/index
-BRANCH=feat/some-thing
-FOLDER=${BRANCH/\//-}
-
-git -C "$ROOT" fetch origin dev
-
-# new branch, based on origin/dev
-git -C "$ROOT" worktree add -b "$BRANCH" ".worktrees/$FOLDER" origin/dev
-
-# existing branch
-git -C "$ROOT" worktree add ".worktrees/$FOLDER" "$BRANCH"
-
-# mandatory for new AND reused worktrees
-bun run worktree:setup "$FOLDER"
+bun run worktree:new feat/some-thing            # new or existing branch, based on origin/dev
+bun run worktree:new feat/some-thing --dry-run  # print the exact git commands, run nothing
 ```
 
-`bun run worktree:setup` is not optional and is not just an install: it installs the
-workspace dependencies *and* symlinks the root env files into the worktree. Skipping it
-leaves the tree unable to build or resolve `.env` at all.
+`worktree:new` validates the branch name, derives the folder, refuses path and branch
+collisions rather than mutating them, and always runs `worktree:setup`. Setup is not
+optional and is not just an install: it installs the workspace dependencies *and*
+symlinks the root env files into the worktree, for reused worktrees as well as new ones.
+Skipping it leaves the tree unable to build or resolve `.env` at all.
+
+It fetches before resolving anything, and bases on **`origin/dev`** rather than the local
+`dev` — root is routinely behind the remote, and a branch cut from a stale local `dev` is
+the failure this exists to prevent. A branch that already exists only on the remote is
+checked out with `--track` rather than recreated at base, so its first push is not a
+non-fast-forward. Use `--no-fetch` offline, and `--base <ref>` for anything other than
+`origin/dev`.
 
 Once created, work inside that directory — use absolute paths or `git -C <worktree> ...`
 rather than `cd`-ing around, since the shell's working directory doesn't persist between
@@ -71,10 +87,6 @@ worktree. If you see it fire, that's the rule working — create a worktree rath
 than looking for a way around it. The hook deliberately leaves alone anything
 that doesn't move HEAD: `git checkout -- <path>`, `git restore`, and any
 checkout run inside a linked worktree.
-
-`.pi/` holds a parallel guard for the pi agent (`.pi/extensions/root-dev-guard.ts`) that
-warns instead of blocking. It is not Claude Code's tooling — don't edit it to work around
-the hook above.
 
 ## Testing and validation
 

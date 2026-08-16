@@ -16,8 +16,8 @@
  * Surfaces choose *policy* (send a sanitized fallback vs skip entirely) via
  * `allowFallback`; they no longer choose (or forget) sanitization steps.
  *
- * See `.agents/skills/review-opportunity-presentation/SKILL.md` for the review
- * checklist this module exists to satisfy.
+ * See `packages/protocol/src/opportunity/AGENTS.md` for the review checklist this
+ * module exists to satisfy.
  */
 
 import { truncateAtBoundary, viewerCentricCardSummary } from "./opportunity.presentation.js";

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Run Worktree Session"
-  short_description: "Index project workflow: verified isolated-worktree implementation"
-  default_prompt: "Use $run-worktree-session to implement in a verified isolated Git worktree."

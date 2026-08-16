@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Worktree"
-  short_description: "Create a verified Index Git worktree"
-  default_prompt: "Use $create-worktree to create or safely reuse an isolated Index worktree for this task."
