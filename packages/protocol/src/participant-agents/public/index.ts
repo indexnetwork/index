@@ -9,7 +9,7 @@
  * ## Boundary
  *
  * References only participant-agents/domain, participant-agents/application,
- * and participant-agents/ports.  Never imports from runtime/foreground, host
+ * and participant-agents/ports.  Never imports from the tool composition root (shared/agent), host
  * implementations, or other capability internals.
  *
  * ## Intentionally excluded from public surface

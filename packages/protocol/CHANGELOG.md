@@ -20,6 +20,45 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 13.2.1 - 2026-08-16
+
+No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
+`src/index.ts` is untouched. This is internal structure only.
+
+### Removed
+
+- Removed the IND-543 outer shells — `src/public/`, `src/platform/`,
+  `src/runtime/foreground/`, and `src/runtime/background/`. All four were
+  declaration-only placeholders with zero inbound imports; `runtime/background`
+  and `public` consisted of nothing but a header comment. The only thing
+  referencing them was a spec asserting that they existed.
+- Removed eight unused capability barrels (`signals/index.ts`,
+  `communities/index.ts`, `contacts/index.ts`, `questions/index.ts`,
+  `opportunity/index.ts`, `negotiation/index.ts`, `integrations/index.ts`,
+  `participant-agents/index.ts`). Each was `export * from "./public/index.js"`
+  with no importers — every real consumer already went to `public/` directly.
+- Removed `src/shared/ui/`, which contained no source, only a `tests/tsconfig.json`.
+- Removed the `ambient-background`, `neutral-platform`, and
+  `public-compatibility` capability classifications, which existed solely to
+  describe the deleted shells.
+
+### Changed
+
+- Resolved the tool-composition shim inversion. `tool.registry.ts` and
+  `tool.factory.ts` were implemented in `runtime/foreground/composition/` and
+  re-exported from `shared/agent/` through modules marked `@deprecated` — but
+  all 25 importers used the deprecated path. The implementations now live at
+  `shared/agent/tool.registry.ts` and `shared/agent/tool.factory.ts`, and the
+  indirection is gone. `mcp.server.ts` was the one direct consumer of the old
+  location and now resolves to the same single home.
+- `signals/application/intent.tools.ts` is imported directly by the tool
+  factory; the `runtime/foreground/signals/intent.tools.ts` pass-through
+  re-export that sat between them is removed.
+- Replaced `architecture/tests/runtime-shells.spec.ts` with
+  `architecture/tests/package-entry.spec.ts`, which asserts the invariants that
+  outlived the shells: `src/index.ts` is the sole `package.json` export, and the
+  tool composition root has exactly one implementation.
+
 ## 13.2.0 - 2026-08-16
 
 ### Added
