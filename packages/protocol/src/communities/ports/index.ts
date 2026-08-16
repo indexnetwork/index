@@ -32,5 +32,5 @@ export type {
 // Re-exported from the signals capability facade so that application-layer code
 // (indexer.graph.ts, indexer.state.ts) imports from the communities port, not
 // directly from the signals facade or its implementation.
-export { IntentIndexer } from "../../capabilities/signals.facade.js";
-export type { IntentIndexerOutput } from "../../capabilities/signals.facade.js";
+export { IntentIndexer } from "../../signals/index.js";
+export type { IntentIndexerOutput } from "../../signals/index.js";

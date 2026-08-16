@@ -14,7 +14,7 @@ import { configuredScreenMode } from "../domain/negotiation.screen.contracts.js"
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "../domain/negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import type { QuestionerEnqueueFn } from "../../capabilities/questions.enqueue.facade.js";
+import type { QuestionerEnqueueFn } from "../../questions/index.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "../domain/negotiation.memory.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from '../domain/negotiation.question-safety.js';

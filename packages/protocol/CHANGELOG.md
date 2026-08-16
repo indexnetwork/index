@@ -20,6 +20,61 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 14.2.0 - 2026-08-16
+
+No public API change: all 443 exported symbols are byte-identical to 14.1.0.
+This is internal structure only.
+
+### Removed
+
+- Removed `src/capabilities/` — 24 files. Twenty-one were `*.facade.ts`
+  re-export shims (several two lines long, one with a single caller) and three
+  were `*.tools.port.ts` port definitions misfiled into a facade directory. The
+  ports moved into their capability's `ports/`.
+- Removed the nine per-capability `public/index.ts` barrels. Three of them
+  (`signals`, `communities`, `opportunity`) already had zero importers.
+
+### Changed
+
+- **Each capability's `index.ts` is now its sole cross-capability surface.**
+  What used to be three hops — `capabilities/X.facade.ts` → `X/public/index.ts`
+  → `X/{domain,application,ports}` — is now one. The barrels carry the union of
+  the facades they replace, so the contract is unchanged.
+- The boundary rule collapses to one sentence: *a capability may reach another
+  capability only through that capability's `index.ts`*. `capability-boundaries.ts`
+  checks it from the import path alone; `barrelCapabilityForSourcePath` replaces
+  `facadeCapabilityForSourcePath`, and `CAPABILITY_BARREL_DIRECTORIES` names the
+  one directory that owns each capability's barrel.
+- Replaced `architecture/tests/capability-facades.spec.ts` with
+  `capability-barrels.spec.ts`, which asserts one barrel per capability, no
+  `export *`, and that the facade layer does not return.
+
+### Fixed
+
+- Broke a runtime import cycle the barrels would otherwise have introduced.
+  `shared/agent/tool.factory.ts` reached `createAgentTools` through
+  `participant-agents/index.ts`, which re-exports the chat personas, which
+  import the tool factory back. The composition root is exempt from the barrel
+  rule precisely because it must reach everything, so it now imports the leaf
+  directly. Verified: zero runtime cycles, matching `dev`.
+- Moved two leaf contracts out of the capabilities that happened to host them,
+  into the neutral layer both sides already depend on:
+  - `opportunity/domain/opportunity.claim-safety.ts` → `shared/utils/claim-safety.ts`
+    (three pure text predicates, no imports of its own). `negotiation` and
+    `contacts` needed it and were pulling the whole opportunity capability.
+  - `UnderspecificationTypeSchema` → `shared/schemas/underspecification.schema.ts`.
+    The signals clarifier was importing the entire questions capability — LLM
+    agents and tools included — to reach a three-value enum.
+
+- `CAPABILITY_DIRECTORIES` mapped `questioner` but not `questions`, so every
+  file under `src/questions/` was skipped by the capability boundary checker
+  entirely. Adding the mapping surfaced six real violations that had been
+  invisible: five imports reaching `questions/domain/question.schema.js`
+  directly, and an undeclared `participant-agents → questions` dependency
+  (`chat/` uses the question schemas). The imports now go through
+  `questions/index.ts` and the direction is declared — 24 named directions
+  became 25.
+
 ## 14.1.0 - 2026-08-16
 
 ### Added

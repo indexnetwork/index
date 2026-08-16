@@ -5,7 +5,7 @@
 
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.labels.js";
-import { stripUnsupportedOpportunityClaims } from "./opportunity.claim-safety.js";
+import { stripUnsupportedOpportunityClaims } from "../../shared/utils/claim-safety.js";
 
 export interface OpportunityPresentation {
   title: string;

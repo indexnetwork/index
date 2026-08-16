@@ -6,10 +6,10 @@ import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.
 import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./enrichment.enricher.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { QuestionerEnqueueFn } from "../capabilities/questions.enqueue.facade.js";
+import type { QuestionerEnqueueFn } from "../questions/index.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../capabilities/participant-agents.debug.facade.js";
+import type { DebugMetaAgent } from "../participant-agents/index.js";
 import { PremiseDecomposer } from "../premise/premise.decomposer.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 

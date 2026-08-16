@@ -1,4 +1,4 @@
-import type { ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.js";
+import type { ToolRegistryCompositionDeps } from "../../shared/agent/tool.helpers.js";
 
 /** Host capabilities consumed by signal and intent tools. */
 export type IntentToolDeps = Pick<ToolRegistryCompositionDeps, "userDb" | "systemDb">

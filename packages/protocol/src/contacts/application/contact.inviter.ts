@@ -13,7 +13,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { stripUnsupportedOpportunityClaims } from "../../capabilities/opportunities.safety.facade.js";
+import { stripUnsupportedOpportunityClaims } from "../../shared/utils/claim-safety.js";
 
 const InviteInputSchema = z.object({
   recipientName: z.string(),

@@ -82,7 +82,8 @@ describe("tool composition root", () => {
 describe("capability-boundaries script", () => {
   test("retains actionable boundary violation messages", async () => {
     const script = await readFile(boundaryScript, "utf8");
-    expect(script).toContain("direct implementation imports");
-    expect(script).toContain("root exports must use a capability facade");
+    expect(script).toContain("import it via");
+    expect(script).toContain("root exports must use the capability barrel");
+    expect(script).toContain("uses forbidden");
   });
 });

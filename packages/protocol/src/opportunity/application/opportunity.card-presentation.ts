@@ -1,4 +1,4 @@
-import { stripUnsupportedOpportunityClaims } from '../domain/opportunity.claim-safety.js';
+import { stripUnsupportedOpportunityClaims } from '../../shared/utils/claim-safety.js';
 import { stripUuids } from '../domain/opportunity.presentation.js';
 
 const CODE_FENCE = String.fromCharCode(96, 96, 96);

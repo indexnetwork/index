@@ -1,4 +1,4 @@
-import type { QuestionPoolSnapshot } from "../../questions/domain/question.schema.js";
+import type { QuestionPoolSnapshot } from "../../questions/index.js";
 
 /** Maximum raw intent-title characters included in a proactive DM line. */
 export const POOL_QUESTION_PUSH_TITLE_MAX_CHARS = 80;

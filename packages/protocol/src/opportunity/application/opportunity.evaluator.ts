@@ -11,7 +11,7 @@ import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';
 import { renderOpportunityEvidenceForPrompt } from '../domain/opportunity.evidence.js';
-import { hasUnsupportedOpportunityClaim } from '../domain/opportunity.claim-safety.js';
+import { hasUnsupportedOpportunityClaim } from '../../shared/utils/claim-safety.js';
 import { normalizeOpportunityActorIntent } from '../domain/opportunity.actor.js';
 
 const logger = protocolLogger("OpportunityEvaluator");

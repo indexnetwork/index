@@ -16,7 +16,7 @@
  *   reasoning (review-opportunity-presentation).
  */
 import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
-import type { QuestionPoolDiscriminator } from "../../questions/domain/question.schema.js";
+import type { QuestionPoolDiscriminator } from "../../questions/index.js";
 
 /** Recipient and intent provenance that scopes one pool preference. */
 export interface PoolAdjustmentProvenance {

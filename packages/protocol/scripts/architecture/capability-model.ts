@@ -23,6 +23,7 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   network: "communities",
   opportunity: "opportunities",
   negotiation: "negotiation",
+  questions: "questions",
   questioner: "questions",
   "participant-agents": "participant-agents",
   chat: "participant-agents",
@@ -32,6 +33,28 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   integrations: "integrations",
   integration: "integrations",
   maintenance: "interaction-composition",
+};
+
+/**
+ * The capability directory that owns each capability's barrel.
+ *
+ * A capability can span several top-level directories (participant-context
+ * covers enrichment/, premise/, and context/), but exactly one of them holds
+ * the `index.ts` that other capabilities are allowed to import.
+ */
+export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string | undefined>> = {
+  signals: "signals",
+  "participant-context": "participant-context",
+  communities: "communities",
+  opportunities: "opportunity",
+  negotiation: "negotiation",
+  questions: "questions",
+  "participant-agents": "participant-agents",
+  contacts: "contacts",
+  integrations: "integrations",
+  // The composition root is the one all-capability point; it has no barrel of
+  // its own and is reached through the package entry point instead.
+  "interaction-composition": undefined,
 };
 
 /** Every permitted direction is deliberately named and reviewed here. */
@@ -44,7 +67,7 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   opportunities: ["participant-agents", "signals", "negotiation", "questions"],
   negotiation: ["opportunities", "questions"],
   questions: ["negotiation"],
-  "participant-agents": ["negotiation"],
+  "participant-agents": ["negotiation", "questions"],
   contacts: ["opportunities"],
   integrations: [],
   "interaction-composition": [
@@ -67,7 +90,6 @@ export const DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES: ReadonlySet<Capability> 
 export function capabilityForSourcePath(pathFromSource: string): Capability | undefined {
   const normalized = pathFromSource.replace(/\\/g, "/");
   const [topLevel] = normalized.split("/");
-  if (topLevel === "capabilities") return facadeCapabilityForSourcePath(normalized);
   if (topLevel === "shared" && /^shared\/agent\/tool\.(?:factory|registry|helpers)\.ts$/.test(normalized)) {
     return "interaction-composition";
   }
@@ -82,10 +104,21 @@ export function implementationCapabilityForSourcePath(
   return CAPABILITY_DIRECTORIES[topLevel];
 }
 
-export function facadeCapabilityForSourcePath(
+/**
+ * The capability a path is the public barrel *of*, if any.
+ *
+ * This is the single seam a cross-capability import may target. It replaces the
+ * capabilities/*.facade.ts layer: the barrel now lives inside the capability it
+ * describes rather than in a separate directory of re-export files.
+ */
+export function barrelCapabilityForSourcePath(
   pathFromSource: string,
 ): Capability | undefined {
   const normalized = pathFromSource.replace(/\\/g, "/");
-  const match = /^capabilities\/([a-z-]+)(?:\.[a-z-]+)?\.facade\.ts$/.exec(normalized);
-  return match?.[1] as Capability | undefined;
+  const match = /^([a-z-]+)\/index\.ts$/.exec(normalized);
+  if (!match) return undefined;
+  const directory = match[1];
+  const capability = CAPABILITY_DIRECTORIES[directory];
+  if (!capability) return undefined;
+  return CAPABILITY_BARREL_DIRECTORIES[capability] === directory ? capability : undefined;
 }

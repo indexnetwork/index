@@ -3,32 +3,35 @@ import { z } from "zod";
 import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
 import { IntentGraphFactory } from "../../signals/application/intent.graph.js";
 import { EnrichmentGraphFactory } from "../../enrichment/enrichment.graph.js";
-import { OpportunityGraphFactory } from "../../capabilities/opportunities.facade.js";
+import { OpportunityGraphFactory } from "../../opportunity/index.js";
 import { HydeGraphFactory } from "../hyde/hyde.graph.js";
 import { HydeGenerator } from "../hyde/hyde.generator.js";
 import { LensInferrer } from "../hyde/lens.inferrer.js";
-import { NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory } from "../../capabilities/communities.facade.js";
+import { NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory } from "../../communities/index.js";
 import { IntentIndexer } from "../../signals/application/intent.indexer.js";
-import { NegotiationGraphFactory } from "../../capabilities/negotiation.facade.js";
+import { NegotiationGraphFactory } from "../../negotiation/index.js";
 import { PremiseGraphFactory } from "../../premise/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 
-import type { QuestionerEnqueueFn } from "../../capabilities/questions.facade.js";
+import type { QuestionerEnqueueFn } from "../../questions/index.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
 import { deriveAllowedNetworkIds, focusedIntentId, scopeFromNetworkId } from "./tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
 import { createIntentTools } from "../../signals/application/intent.tools.js";
-import { createNetworkTools } from "../../capabilities/communities.facade.js";
-import { createOpportunityTools } from "../../capabilities/opportunities.facade.js";
+import { createNetworkTools } from "../../communities/index.js";
+import { createOpportunityTools } from "../../opportunity/index.js";
 import { createUtilityTools } from "./utility.tools.js";
-import { createIntegrationTools } from "../../capabilities/integrations.facade.js";
-import { createContactTools } from "../../capabilities/contacts.facade.js";
-import { createAgentTools } from "../../capabilities/participant-agents.tools.facade.js";
-import { createNegotiationTools } from "../../capabilities/negotiation.facade.js";
+import { createIntegrationTools } from "../../integrations/index.js";
+import { createContactTools } from "../../contacts/index.js";
+// The composition root reaches the leaf directly (it is exempt from the barrel
+// rule by design): importing participant-agents/index.js here would pull in the
+// chat personas, which import this module back -- a runtime cycle.
+import { createAgentTools } from "../../participant-agents/application/agent.tools.js";
+import { createNegotiationTools } from "../../negotiation/index.js";
 import { createPremiseTools } from "../../premise/premise.tools.js";
-import { createQuestionerTools, createAskUserQuestionTools } from "../../capabilities/questions.facade.js";
+import { createQuestionerTools, createAskUserQuestionTools } from "../../questions/index.js";
 import type { OpportunityOwnerApprovalDeps } from "../../opportunity/ports/opportunity.tools.port.js";
 import { bindOwnerApprovalProvenance } from "../../opportunity/application/opportunity.owner-provenance.js";
 

@@ -422,10 +422,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Communities facade",
       "kind": "facade",
       "capability": "communities",
-      "sourcePath": "packages/protocol/src/capabilities/communities.facade.ts",
+      "sourcePath": "packages/protocol/src/communities/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the communities capability.",
+      "summary": "The reviewed public boundary for the communities capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -433,10 +433,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Contacts facade",
       "kind": "facade",
       "capability": "contacts",
-      "sourcePath": "packages/protocol/src/capabilities/contacts.facade.ts",
+      "sourcePath": "packages/protocol/src/contacts/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the contacts capability.",
+      "summary": "The reviewed public boundary for the contacts capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -444,21 +444,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Integrations facade",
       "kind": "facade",
       "capability": "integrations",
-      "sourcePath": "packages/protocol/src/capabilities/integrations.facade.ts",
+      "sourcePath": "packages/protocol/src/integrations/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the integrations capability.",
-      "layer": "implementation"
-    },
-    {
-      "id": "facade.interaction-composition",
-      "label": "Interaction Composition facade",
-      "kind": "facade",
-      "capability": "interaction-composition",
-      "sourcePath": "packages/protocol/src/capabilities/interaction-composition.facade.ts",
-      "chapterIds": [],
-      "flowIds": [],
-      "summary": "The reviewed public boundary for the interaction-composition capability.",
+      "summary": "The reviewed public boundary for the integrations capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -466,10 +455,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Negotiation facade",
       "kind": "facade",
       "capability": "negotiation",
-      "sourcePath": "packages/protocol/src/capabilities/negotiation.facade.ts",
+      "sourcePath": "packages/protocol/src/negotiation/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the negotiation capability.",
+      "summary": "The reviewed public boundary for the negotiation capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -477,10 +466,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Opportunities facade",
       "kind": "facade",
       "capability": "opportunities",
-      "sourcePath": "packages/protocol/src/capabilities/opportunities.facade.ts",
+      "sourcePath": "packages/protocol/src/opportunity/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the opportunities capability.",
+      "summary": "The reviewed public boundary for the opportunities capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -488,10 +477,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Participant Agents facade",
       "kind": "facade",
       "capability": "participant-agents",
-      "sourcePath": "packages/protocol/src/capabilities/participant-agents.facade.ts",
+      "sourcePath": "packages/protocol/src/participant-agents/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the participant-agents capability.",
+      "summary": "The reviewed public boundary for the participant-agents capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -499,10 +488,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Participant Context facade",
       "kind": "facade",
       "capability": "participant-context",
-      "sourcePath": "packages/protocol/src/capabilities/participant-context.facade.ts",
+      "sourcePath": "packages/protocol/src/participant-context/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the participant-context capability.",
+      "summary": "The reviewed public boundary for the participant-context capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -510,10 +499,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Questions facade",
       "kind": "facade",
       "capability": "questions",
-      "sourcePath": "packages/protocol/src/capabilities/questions.facade.ts",
+      "sourcePath": "packages/protocol/src/questions/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the questions capability.",
+      "summary": "The reviewed public boundary for the questions capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -521,10 +510,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Signals facade",
       "kind": "facade",
       "capability": "signals",
-      "sourcePath": "packages/protocol/src/capabilities/signals.facade.ts",
+      "sourcePath": "packages/protocol/src/signals/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the signals capability.",
+      "summary": "The reviewed public boundary for the signals capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -964,9 +953,33 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts"
     },
     {
+      "id": "static.component.opportunity-graph-factory.facade.negotiation",
+      "sourceId": "component.opportunity-graph-factory",
+      "targetId": "facade.negotiation",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts"
+    },
+    {
+      "id": "static.component.opportunity-graph-factory.facade.signals",
+      "sourceId": "component.opportunity-graph-factory",
+      "targetId": "facade.signals",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts"
+    },
+    {
       "id": "static.component.opportunity-tools.component.opportunity-presenter",
       "sourceId": "component.opportunity-tools",
       "targetId": "component.opportunity-presenter",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.tools.ts"
+    },
+    {
+      "id": "static.component.opportunity-tools.facade.questions",
+      "sourceId": "component.opportunity-tools",
+      "targetId": "facade.questions",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/opportunity/application/opportunity.tools.ts"
@@ -1052,6 +1065,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
+      "id": "static.component.tool-registry.facade.participant-agents",
+      "sourceId": "component.tool-registry",
+      "targetId": "facade.participant-agents",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
       "id": "static.component.tool-registry.facade.questions",
       "sourceId": "component.tool-registry",
       "targetId": "facade.questions",
@@ -1060,20 +1081,12 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
-      "id": "static.facade.interaction-composition.component.maintenance-graph-factory",
-      "sourceId": "facade.interaction-composition",
-      "targetId": "component.maintenance-graph-factory",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/interaction-composition.facade.ts"
-    },
-    {
       "id": "static.facade.opportunities.component.opportunity-evaluator",
       "sourceId": "facade.opportunities",
       "targetId": "component.opportunity-evaluator",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/opportunities.facade.ts"
+      "evidencePath": "packages/protocol/src/opportunity/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.opportunity-graph-factory",
@@ -1081,7 +1094,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-graph-factory",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/opportunities.facade.ts"
+      "evidencePath": "packages/protocol/src/opportunity/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.opportunity-presenter",
@@ -1089,7 +1102,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-presenter",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/opportunities.facade.ts"
+      "evidencePath": "packages/protocol/src/opportunity/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.opportunity-tools",
@@ -1097,7 +1110,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/opportunities.facade.ts"
+      "evidencePath": "packages/protocol/src/opportunity/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.radar-graph-factory",
@@ -1105,7 +1118,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.radar-graph-factory",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/opportunities.facade.ts"
+      "evidencePath": "packages/protocol/src/opportunity/index.ts"
     },
     {
       "id": "static.facade.participant-agents.component.chat-graph-factory",
@@ -1113,7 +1126,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.chat-graph-factory",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/participant-agents.facade.ts"
+      "evidencePath": "packages/protocol/src/participant-agents/index.ts"
     },
     {
       "id": "static.facade.participant-agents.component.chat-tools",
@@ -1121,7 +1134,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.chat-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/participant-agents.facade.ts"
+      "evidencePath": "packages/protocol/src/participant-agents/index.ts"
     },
     {
       "id": "static.facade.signals.component.intent-graph-factory",
@@ -1129,7 +1142,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.intent-graph-factory",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/signals.facade.ts"
+      "evidencePath": "packages/protocol/src/signals/index.ts"
     },
     {
       "id": "static.facade.signals.component.intent-indexer",
@@ -1137,7 +1150,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.intent-indexer",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/signals.facade.ts"
+      "evidencePath": "packages/protocol/src/signals/index.ts"
     },
     {
       "id": "static.facade.signals.component.intent-tools",
@@ -1145,7 +1158,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.intent-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/signals.facade.ts"
+      "evidencePath": "packages/protocol/src/signals/index.ts"
     },
     {
       "id": "static.facade.signals.component.semantic-verifier",
@@ -1153,7 +1166,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.semantic-verifier",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/capabilities/signals.facade.ts"
+      "evidencePath": "packages/protocol/src/signals/index.ts"
     },
     {
       "id": "static.runtime-shell.composition.component.chat-tools",
@@ -1228,6 +1241,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
+      "id": "static.runtime-shell.composition.facade.participant-agents",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.participant-agents",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
       "id": "static.runtime-shell.composition.facade.questions",
       "sourceId": "runtime-shell.composition",
       "targetId": "facade.questions",
@@ -1268,6 +1289,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/index.ts"
     },
     {
+      "id": "static.runtime-shell.root.component.maintenance-graph-factory",
+      "sourceId": "runtime-shell.root",
+      "targetId": "component.maintenance-graph-factory",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/index.ts"
+    },
+    {
       "id": "static.runtime-shell.root.component.mcp-server",
       "sourceId": "runtime-shell.root",
       "targetId": "component.mcp-server",
@@ -1303,14 +1332,6 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "static.runtime-shell.root.facade.integrations",
       "sourceId": "runtime-shell.root",
       "targetId": "facade.integrations",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/index.ts"
-    },
-    {
-      "id": "static.runtime-shell.root.facade.interaction-composition",
-      "sourceId": "runtime-shell.root",
-      "targetId": "facade.interaction-composition",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"
@@ -4860,7 +4881,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/capabilities/questions.runtime.facade.ts",
+                  "path": "packages/protocol/src/questions/index.ts",
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {
@@ -4935,7 +4956,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/capabilities/questions.runtime.facade.ts",
+                  "path": "packages/protocol/src/questions/index.ts",
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {

@@ -8,7 +8,7 @@ import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { traceGraph } from "../../shared/observability/trace.js";
 
 import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { IntentToolDeps } from "../../capabilities/signals.tools.port.js";
+import type { IntentToolDeps } from "../ports/signals.tools.port.js";
 import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
 import type { UserRecord } from "../../shared/interfaces/database.interface.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";

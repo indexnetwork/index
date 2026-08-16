@@ -5,7 +5,7 @@ import { dirname, posix, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
-import { facadeCapabilityForSourcePath, type Capability } from "../packages/protocol/scripts/architecture/capability-model.ts";
+import { barrelCapabilityForSourcePath, CAPABILITY_BARREL_DIRECTORIES, type Capability } from "../packages/protocol/scripts/architecture/capability-model.ts";
 import { parseSourceFile, runtimeModuleSpecifiers } from "../packages/protocol/scripts/architecture/module-graph.ts";
 
 export type AtlasNodeKind =
@@ -168,9 +168,12 @@ const IMPLEMENTATION_PATH_BY_SYMBOL: Readonly<Record<SelectedRootExport, string>
   NegotiationGraphDatabase: "packages/protocol/src/shared/interfaces/database.interface.ts",
 };
 
+// Each capability is represented by its own barrel (src/<dir>/index.ts). The
+// capabilities/*.facade.ts layer it replaced is gone; interaction-composition is
+// a composition root with no barrel and is modelled by runtime-shell.composition.
 const CAPABILITY_FACADES = [
   "signals", "participant-context", "communities", "opportunities", "negotiation",
-  "questions", "participant-agents", "contacts", "integrations", "interaction-composition",
+  "questions", "participant-agents", "contacts", "integrations",
 ] as const;
 
 const RUNTIME_SHELLS: ReadonlyArray<{
@@ -190,6 +193,8 @@ const CAPABILITY_OVERRIDES: Partial<Record<SelectedRootExport, Capability>> = {
   LensInferrer: "participant-context",
   createToolRegistry: "interaction-composition",
   invokeToolRuntime: "interaction-composition",
+  // The composition root has no capability barrel to classify it by.
+  MaintenanceGraphFactory: "interaction-composition",
   createMcpServer: "participant-agents",
   McpAuthResolver: "participant-agents",
   Embedder: "participant-context",
@@ -258,7 +263,7 @@ function sourcePathForRootExport(exportEntry: RootExport): string {
 
 function capabilityForRootExport(symbol: SelectedRootExport, exportEntry: RootExport): Capability {
   const sourcePath = sourcePathForRootExport(exportEntry).slice("packages/protocol/src/".length);
-  const classified = facadeCapabilityForSourcePath(sourcePath);
+  const classified = barrelCapabilityForSourcePath(sourcePath);
   const capability = classified ?? CAPABILITY_OVERRIDES[symbol];
   if (!capability) throw new Error(`Selected root export ${symbol} has no reviewed capability.`);
   return capability;
@@ -290,9 +295,11 @@ function componentForRootExport(symbol: SelectedRootExport, exportEntry: RootExp
 
 function facadeComponents(): ComponentInput[] {
   return CAPABILITY_FACADES.map((name) => {
-    const relativePath = `capabilities/${name}.facade.ts`;
-    const capability = facadeCapabilityForSourcePath(relativePath);
-    if (!capability) throw new Error(`Cannot classify selected capability facade ${relativePath}.`);
+    const directory = CAPABILITY_BARREL_DIRECTORIES[name];
+    if (!directory) throw new Error(`Capability ${name} has no barrel directory.`);
+    const relativePath = `${directory}/index.ts`;
+    const capability = barrelCapabilityForSourcePath(relativePath);
+    if (!capability) throw new Error(`Cannot classify capability barrel ${relativePath}.`);
     return {
       id: `facade.${name}`,
       label: `${humanize(name)} facade`,
@@ -301,7 +308,7 @@ function facadeComponents(): ComponentInput[] {
       sourcePath: `packages/protocol/src/${relativePath}`,
       chapterIds: [],
       flowIds: [],
-      summary: `The reviewed public boundary for the ${name} capability.`,
+      summary: `The reviewed public boundary for the ${name} capability — its sole cross-capability surface.`,
     };
   });
 }

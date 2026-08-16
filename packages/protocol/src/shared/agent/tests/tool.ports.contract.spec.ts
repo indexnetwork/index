@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import type { AskUserQuestionToolDeps, QuestionerToolDeps } from "../../../capabilities/questions.facade.js";
-import type { EnrichmentToolDeps } from "../../../capabilities/participant-context.facade.js";
-import type { NetworkToolDeps } from "../../../capabilities/communities.facade.js";
-import type { OpportunityToolDeps } from "../../../capabilities/opportunities.facade.js";
+import type { AskUserQuestionToolDeps, QuestionerToolDeps } from "../../../questions/index.js";
+import type { EnrichmentToolDeps } from "../../../participant-context/index.js";
+import type { NetworkToolDeps } from "../../../communities/index.js";
+import type { OpportunityToolDeps } from "../../../opportunity/index.js";
 import type { ToolDeps } from "../tool.helpers.js";
 
 type Equal<Left, Right> =
