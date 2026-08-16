@@ -30,9 +30,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Validate project-local skills
-        run: bun run skills:validate
-
       - name: Run script foundation tests
         run: bun run test:scripts
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Open Release Pr"
-  short_description: "Index project workflow: Open Release Pr"
-  default_prompt: "Use $open-release-pr to follow the repository-specific Open Release Pr workflow."

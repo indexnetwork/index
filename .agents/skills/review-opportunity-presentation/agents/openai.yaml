@@ -1,4 +1,0 @@
-interface:
-  display_name: "Review Opportunity Presentation"
-  short_description: "Index project workflow: Review Opportunity Presentation"
-  default_prompt: "Use $review-opportunity-presentation to follow the repository-specific Review Opportunity Presentation workflow."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Direct Agent Orchestration"
-  short_description: "Direct the installed Herdr orchestrator extension"
-  default_prompt: "Use $run-agent-orchestration to apply Index policy through the installed pi-herdr-orchestrator tools without recreating their mechanics."

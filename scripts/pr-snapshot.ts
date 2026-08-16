@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, realpathSync } from "node:fs";
 
-import { parseWorktreePorcelain } from "./worktree-session";
+import { parseWorktreePorcelain } from "./worktree-new";
 
 type CommandResult = { code: number; stdout: string; stderr: string };
 export type CommandExecutor = (argv: string[], cwd?: string) => CommandResult;

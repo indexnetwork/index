@@ -288,6 +288,9 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 
 ## [Unreleased]
 
+### Changed
+- Move the opportunity-presentation review checklist into `src/opportunity/AGENTS.md` and repoint the `opportunity.safe-presentation.ts` and `discriminator.adjustments.ts` comments at it. Comment-only; no runtime change.
+
 ### Removed
 
 - **Breaking (14.0.0):** remove the `orchestrator` chat persona. `ORCHESTRATOR_PERSONA_ID` and `ORCHESTRATOR_PERSONA` are gone from the public API, and the orchestrator system prompt (`buildSystemContent`) and its conditional prompt-module registry are deleted. `ChatPersonaLoopBehaviors.hallucinationRecovery` is retained — it is opted into by the onboarding, signal and negotiator personas, not just the removed one.
