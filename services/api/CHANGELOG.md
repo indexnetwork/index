@@ -9,6 +9,9 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- Drop the retired `non_web` surface and `WEB_SIGNAL_AGENT_ENABLED` literals from `chat.service.isolated.ts`. The tests passed either way — `"non_web"` fell through to the same branch as `"agent"` — but the strings named a surface that no longer exists, and `tsconfig.json` excludes `src/**/*.isolated.ts`, so nothing would ever have caught the drift.
+
 ### Removed
 - **Breaking (API 0.88.0):** retire the pre-personafication `orchestrator` chat persona. There is no default chat persona: every H2A turn names one, and unknown values fail closed. `POST /api/chat/message` is deleted (it was orchestrator-only), `ChatSessionService.processMessage()` and `getGraphFactory()` are gone, and the `non_web` stream surface is replaced by `agent`, which requires an explicit persona (`CHAT_PERSONA_REQUIRED` when omitted). `signal` and `reporter` remain web-only, so `negotiator` is the persona an API-key client can start.
 - **Breaking:** delete `WEB_SIGNAL_AGENT_ENABLED`. Signal is the permanent web chat persona — with the orchestrator gone, flag-off had no persona to fall back to and left web chat with nothing startable. `features.signalAgent` is removed from `GET /auth/me`; startup warns while the variable is still set.
