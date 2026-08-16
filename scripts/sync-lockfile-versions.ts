@@ -2,20 +2,19 @@
 /**
  * Syncs workspace `version` fields from each package.json into the root `bun.lock`.
  *
- * `bun.lock` records a `version` for every workspace member, but Bun never
- * refreshes it from package.json on install. Verified against bun 1.3.14 in a
- * clean checkout, with the package.json bumped and every one of these run:
+ * `bun.lock` records a `version` for every workspace member, and Bun refreshes it
+ * from package.json only unreliably. Verified against bun 1.3.14:
  *
- *   bun install
- *   bun install --force
- *   bun install --lockfile-only
- *   bun install --save-text-lockfile
- *   bun install --force --lockfile-only
- *   bun update --lockfile-only
- *   rm bun.lock && bun install
+ *   - When node_modules is already in sync with the lockfile — the normal case
+ *     for a version-only bump, where nothing about the dependency graph changed —
+ *     `bun install` leaves the recorded version stale. It will even rewrite other
+ *     parts of bun.lock in the same run and still not correct it.
+ *   - When the install has other work to do, the version usually is refreshed.
  *
- * All seven left the stale version in place, and `bun install --frozen-lockfile`
- * still passes afterwards — so nothing in the normal workflow catches the drift.
+ * So the outcome depends on unrelated local state, which makes it useless to rely
+ * on either way: the same command updates the version on one machine and not on
+ * the next. `bun install --frozen-lockfile` passes while the version is stale, so
+ * nothing in the normal workflow catches the drift.
  *
  * The branch checklist requires bumping the version of every package a branch
  * touches and committing the regenerated lockfile. Without this script that step

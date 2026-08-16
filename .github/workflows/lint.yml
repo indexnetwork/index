@@ -68,9 +68,10 @@ jobs:
       - name: Check subtree mirror dependency parity
         run: bun run check:subtree-parity
 
-      # Bun never refreshes the workspace `version` fields in bun.lock from
-      # package.json, and `--frozen-lockfile` passes while they are stale, so a
-      # version bump silently lands with a lockfile that still names the old one.
+      # Bun refreshes the workspace `version` fields in bun.lock only unreliably —
+      # a version-only bump, where node_modules is already in sync, leaves them
+      # stale — and `--frozen-lockfile` passes while they are, so a bump can land
+      # with a lockfile that still names the old version.
       - name: Check lockfile workspace versions
         run: bun run check:lockfile-versions
 
