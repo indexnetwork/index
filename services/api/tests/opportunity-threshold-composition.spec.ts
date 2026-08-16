@@ -7,7 +7,7 @@ const productionCompositions = [
   'services/api/src/queues/negotiations/run-existing.queue.ts',
   'services/api/src/controllers/mcp.controller.ts',
   'services/api/src/services/tool.service.ts',
-  'packages/protocol/src/runtime/foreground/composition/tool.factory.ts',
+  'packages/protocol/src/shared/agent/tool.factory.ts',
 ] as const;
 
 describe('production opportunity threshold composition', () => {

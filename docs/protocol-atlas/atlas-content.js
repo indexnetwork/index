@@ -380,7 +380,7 @@
       conceptIds: ["software-agent", "agent-permission", "effective-scope"],
       nodeIds: ["component.invoke-tool-runtime", "component.tool-registry"],
       invariantIds: ["scope-intersection", "action-attribution", "host-boundary"],
-      sourcePaths: ["packages/protocol/src/shared/agent/tool.runtime.ts", "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"],
+      sourcePaths: ["packages/protocol/src/shared/agent/tool.runtime.ts", "packages/protocol/src/shared/agent/tool.registry.ts"],
       notes: {
         protocol: "Invocation does not widen the authorization determined for the caller and action.",
         implementation: "The shared tool runtime executes registered package tools; required callbacks remain declared ports.",
