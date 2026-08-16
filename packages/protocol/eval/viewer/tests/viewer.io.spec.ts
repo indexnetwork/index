@@ -245,7 +245,7 @@ describe("read-only provider-free viewer generation", () => {
     const input = join(realDirectory, "artifact.json");
     const aliasedOutput = join(aliasDirectory, "artifact.json");
     const source = await readFile(
-      fileURLToPath(new URL("../../premises/baselines/premise.baseline.json", import.meta.url)),
+      fileURLToPath(new URL("../../premise/baselines/premise.baseline.json", import.meta.url)),
     );
     await writeFile(input, source);
     const before = await readFile(input);

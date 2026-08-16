@@ -208,7 +208,7 @@ describe("ENV_FLAG_METADATA", () => {
     // AbortSignal.timeout(N), which throws above Number.MAX_SAFE_INTEGER, so a
     // value like 1e30 passes Number.isFinite and then crashes the turn.
     const agent = readFileSync(
-      path.join(import.meta.dir, "..", "..", "..", "src", "negotiation", "application", "negotiation.agent.ts"),
+      path.join(import.meta.dir, "..", "..", "..", "src", "negotiations", "application", "negotiation.agent.ts"),
       "utf8",
     );
     expect(agent, "turn timeout no longer bounded by MAX_SAFE_INTEGER").toContain("n <= Number.MAX_SAFE_INTEGER");
@@ -259,7 +259,7 @@ describe("ENV_FLAG_METADATA", () => {
     // the default, chosen by a fallback the operator never asked for. The bound
     // is derived from that read, so a read site that stops falling back fails here.
     const graph = readFileSync(
-      path.join(import.meta.dir, "..", "..", "..", "src", "opportunity", "application", "opportunity.graph.ts"),
+      path.join(import.meta.dir, "..", "..", "..", "src", "opportunities", "application", "opportunity.graph.ts"),
       "utf8",
     );
     const byKey = new Map(ENV_FLAG_METADATA.map((m) => [m.key, m]));
