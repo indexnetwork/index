@@ -481,7 +481,7 @@ Session-only onboarding exception using the same SSE request/response shape. The
 
 ### GET /api/chat/sessions
 
-Compatibility history for the authenticated user. The default and all unrecognized persona filters are clamped to the retired `orchestrator` persona, whose sessions stay readable; the explicit `persona=negotiator` lookup remains for the pinned Personal Agent surface. Signal sessions are never returned here.
+Compatibility history for the authenticated user. Every request is clamped to the retired `orchestrator` persona, whose sessions stay readable; the `persona` query parameter is inert, since the `persona=negotiator` lookup it once served existed only for the removed unscoped Personal Agent DM. Negotiator sessions are reached through their pinned intent, and Signal sessions are never returned here.
 
 **Auth**: AuthGuard
 
