@@ -3,8 +3,8 @@
  * is importable and that a mock implementation satisfies the contract.
  */
 import { describe, it, expect } from "bun:test";
-import type { QuestionerDatabase, PersistableQuestion, PersistedQuestion } from "../question.persistence.port.js";
-import type { QuestionAnswer } from "../../domain/question.schema.js";
+import type { QuestionerDatabase, PersistableQuestion, PersistedQuestion } from "../ports/question.persistence.port.js";
+import type { QuestionAnswer } from "../domain/question.schema.js";
 
 describe("QuestionerDatabase interface", () => {
   it("is satisfiable by a mock implementation", () => {

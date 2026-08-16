@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import { deduplicateOutcomeExamples, runOutcomeShadow } from "../outcome.shadow.js";
-import type { OutcomeExample } from "../outcome.types.js";
-import type { DiscriminatorMiningInput, MinedDiscriminator } from "../../discriminator/discriminator.types.js";
+import { deduplicateOutcomeExamples, runOutcomeShadow } from "../outcome/outcome.shadow.js";
+import type { OutcomeExample } from "../outcome/outcome.types.js";
+import type { DiscriminatorMiningInput, MinedDiscriminator } from "../discriminator/discriminator.types.js";
 
 function example(
   id: string,

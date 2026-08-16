@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
-import { extractAllowlistedEvidence } from "../negotiation-evidence.extractor.js";
-import type { EvidenceMiningScope, RawEvidenceSegment } from "../negotiation-evidence.types.js";
+import { extractAllowlistedEvidence } from "../negotiation-evidence/negotiation-evidence.extractor.js";
+import type { EvidenceMiningScope, RawEvidenceSegment } from "../negotiation-evidence/negotiation-evidence.types.js";
 
 const SCOPE: EvidenceMiningScope = {
   recipientUserId: "owner-1",

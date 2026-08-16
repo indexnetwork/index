@@ -4,8 +4,8 @@ process.env.OPENROUTER_API_KEY ??= "test";
 
 import { describe, expect, it } from "bun:test";
 
-import { PoolDiscriminatorAssigner, buildAssignmentPrompt } from "../discriminator.assigner.js";
-import type { PoolDiscriminatorAssignmentInput } from "../discriminator.assigner.js";
+import { PoolDiscriminatorAssigner, buildAssignmentPrompt } from "../discriminator/discriminator.assigner.js";
+import type { PoolDiscriminatorAssignmentInput } from "../discriminator/discriminator.assigner.js";
 
 const input: PoolDiscriminatorAssignmentInput = {
   axes: [

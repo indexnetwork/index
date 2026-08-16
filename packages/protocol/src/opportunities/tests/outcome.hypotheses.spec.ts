@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import { joinOutcomeHypotheses } from "../outcome.hypotheses.js";
-import type { OutcomeLabel } from "../outcome.types.js";
-import type { MinedDiscriminator, VerifiedAssignment } from "../../discriminator/discriminator.types.js";
+import { joinOutcomeHypotheses } from "../outcome/outcome.hypotheses.js";
+import type { OutcomeLabel } from "../outcome/outcome.types.js";
+import type { MinedDiscriminator, VerifiedAssignment } from "../discriminator/discriminator.types.js";
 
 /** Build a two-sided discriminator: `sideA` ids on "A", `sideB` on "B". */
 function discriminator(

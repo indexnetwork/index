@@ -20,6 +20,51 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 14.2.2 - 2026-08-16
+
+No public API change: all 443 exported symbols are byte-identical to 14.2.1.
+Test layout only; no test changed meaning.
+
+### Changed
+
+- One `tests/` directory per capability. Six directories nested a level deeper
+  (`intents/application/tests`, `opportunities/{discriminator,outcome,negotiation-evidence}/tests`,
+  `questions/{domain,ports}/tests`) merged into their capability's own, taking
+  the nested count from 13 to 7 and the total from 27 to 21.
+
+  The seven that remain are all under `shared/`, which has no capability root —
+  merging them would produce a single 40-file directory mixing model config,
+  HyDE, schemas, and observability. One `tests/` per shared module is the
+  consistent reading of the same rule there.
+
+- Moved the two specs that sat outside any `tests/` directory
+  (`opportunities/delivery-card.cache.spec.ts`, `shared/agent/model-signal.spec.ts`)
+  into their module's `tests/`.
+
+- Renamed the four `.test.ts` files to `.spec.ts`, against 211 already using
+  that suffix. The runner still discovers both, so this is convention only.
+
+### Removed
+
+- All 12 test `tsconfig.json` files. They were **not** load-bearing: 9 of the 21
+  `tests/` directories never had one, and the build, the isolated test runner,
+  and `tsc` all pass without them — the build excludes tests by both
+  `**/tests/**` and `**/*.spec.ts`, and Bun does not read them.
+
+  `networks/tests/tsconfig.json` had been extending `../../tsconfig.json`, which
+  resolves to `src/tsconfig.json` and does not exist — `tsc` reports TS5083 and
+  silently falls back to defaults, dropping `esModuleInterop`. It had been
+  broken with nothing to notice.
+
+### Note
+
+Colocating every spec beside its subject was considered and rejected on
+evidence: only 155 of 215 specs (72%) name a single source module. The other 60
+are cross-module behaviour tests — `negotiation.continuation.spec.ts`,
+`introducer-gating-lifecycle.spec.ts`, `negotiation.seat-rules.spec.ts` — and
+filing those next to one arbitrary module they partly exercise would be worse
+than leaving them grouped.
+
 ## 14.2.1 - 2026-08-16
 
 No public API change: all 443 exported symbols are byte-identical to 14.2.0.

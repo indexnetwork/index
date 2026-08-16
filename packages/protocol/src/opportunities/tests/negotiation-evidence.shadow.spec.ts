@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import { runNegotiationEvidenceShadow } from "../negotiation-evidence.shadow.js";
-import type { NegotiationEvidenceMiner } from "../negotiation-evidence.miner.js";
-import type { AllowlistedEvidence, EvidenceMiningScope, MinedEvidenceHypothesis, RawEvidenceSegment } from "../negotiation-evidence.types.js";
+import { runNegotiationEvidenceShadow } from "../negotiation-evidence/negotiation-evidence.shadow.js";
+import type { NegotiationEvidenceMiner } from "../negotiation-evidence/negotiation-evidence.miner.js";
+import type { AllowlistedEvidence, EvidenceMiningScope, MinedEvidenceHypothesis, RawEvidenceSegment } from "../negotiation-evidence/negotiation-evidence.types.js";
 
 const SCOPE: EvidenceMiningScope = {
   recipientUserId: "owner-1",

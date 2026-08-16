@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
-import { evidenceSpanMatches, verifyHypotheses } from "../negotiation-evidence.verifier.js";
-import type { AllowlistedEvidence, MinedEvidenceHypothesis } from "../negotiation-evidence.types.js";
+import { evidenceSpanMatches, verifyHypotheses } from "../negotiation-evidence/negotiation-evidence.verifier.js";
+import type { AllowlistedEvidence, MinedEvidenceHypothesis } from "../negotiation-evidence/negotiation-evidence.types.js";
 
 /** Build one allowlisted evidence unit tied to a given opportunities/speaker. */
 function ev(

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
-import { OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MIN_COMPARED_SIDES, OUTCOME_MIN_INDEPENDENT_SUPPORT, isOutcomeQuestionsActivated, outcomeQuestionsMode } from "../outcome.env.js";
+import { OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MIN_COMPARED_SIDES, OUTCOME_MIN_INDEPENDENT_SUPPORT, isOutcomeQuestionsActivated, outcomeQuestionsMode } from "../outcome/outcome.env.js";
 
 const saved = process.env.OUTCOME_QUESTIONS_MODE;
 
