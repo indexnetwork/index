@@ -113,44 +113,6 @@ export function contactTable(
   }
 }
 
-// ── Session table ───────────────────────────────────────────────────
-
-/**
- * Print a table of sessions.
- */
-export function sessionTable(
-  sessions: Array<{ id: string; title: string | null; createdAt: string }>,
-): void {
-  if (sessions.length === 0) {
-    dim("  No chat sessions found.");
-    return;
-  }
-
-  const idWidth = 36;
-  const titleWidth = 40;
-  const dateWidth = 20;
-
-  console.log(
-    `  ${BOLD}${"ID".padEnd(idWidth)}  ${"Title".padEnd(titleWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
-  );
-  console.log(`  ${GRAY}${"-".repeat(idWidth)}  ${"-".repeat(titleWidth)}  ${"-".repeat(dateWidth)}${RESET}`);
-
-  for (const s of sessions) {
-    const title = (s.title ?? "(untitled)").slice(0, titleWidth);
-    const date = new Date(s.createdAt).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    console.log(
-      `  ${GRAY}${s.id.padEnd(idWidth)}${RESET}  ${title.padEnd(titleWidth)}  ${GRAY}${date}${RESET}`,
-    );
-  }
-}
-
 // ── Intent output ──────────────────────────────────────────────────
 
 /**

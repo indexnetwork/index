@@ -49,7 +49,7 @@ import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -206,11 +206,18 @@ const protocolDeps = {
 const chatSessionReader = {
   getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
   listSessions: (userId: string, limit?: number) =>
-    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit, 'orchestrator'),
+    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, SIGNAL_PERSONA_ID),
   getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
+    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, SIGNAL_PERSONA_ID),
 };
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps);
+/**
+ * Composition-root chat factory. Signal is the product's primary chat persona,
+ * so it is the one this factory carries; every other persona (onboarding,
+ * reporter, negotiator) is derived from it via `withPersona`, sharing the
+ * persona-neutral runtime and all injected deps. There is no default persona —
+ * the retired orchestrator used to be it.
+ */
+export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, SIGNAL_PERSONA);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)

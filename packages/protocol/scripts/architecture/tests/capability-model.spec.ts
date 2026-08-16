@@ -14,11 +14,10 @@ describe("protocol capability model", () => {
     expect(capabilityForSourcePath("chat/chat.graph.ts")).toBe("participant-agents");
   });
 
-  test("classifies protocol runtime shells without inventing host components", () => {
-    expect(capabilityForSourcePath("runtime/foreground/composition/tool.registry.ts")).toBe("interaction-composition");
-    expect(capabilityForSourcePath("runtime/background/index.ts")).toBe("ambient-background");
-    expect(capabilityForSourcePath("platform/index.ts")).toBe("neutral-platform");
-    expect(capabilityForSourcePath("public/index.ts")).toBe("public-compatibility");
+  test("classifies the tool composition root as interaction-composition", () => {
+    expect(capabilityForSourcePath("shared/agent/tool.registry.ts")).toBe("interaction-composition");
+    expect(capabilityForSourcePath("shared/agent/tool.factory.ts")).toBe("interaction-composition");
+    expect(capabilityForSourcePath("maintenance/maintenance.graph.ts")).toBe("interaction-composition");
   });
 
   test("recognizes capability facades and leaves neutral shared code unclassified", () => {

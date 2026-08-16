@@ -16,8 +16,8 @@ import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.j
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
-import { createToolRegistry } from '../runtime/foreground/composition/tool.registry.js';
-import type { ToolRegistryDeps } from '../runtime/foreground/composition/tool.registry.js';
+import { createToolRegistry } from '../shared/agent/tool.registry.js';
+import type { ToolRegistryDeps } from '../shared/agent/tool.registry.js';
 import { bindOwnerApprovalProvenance } from '../opportunity/application/opportunity.owner-provenance.js';
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';

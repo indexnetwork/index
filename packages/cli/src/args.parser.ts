@@ -6,11 +6,7 @@
  */
 export interface ParsedCommand {
   command: "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "contact" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
-  /** One-shot message for conversation command (H2A agent chat). */
-  message?: string;
-  /** Resume a specific chat session (--session flag). */
-  sessionId?: string;
-  /** @deprecated Unused — sessions are listed via 'conversation sessions' subcommand. */
+  /** @deprecated Unused. */
   list: boolean;
   /** Override the API base URL. */
   apiUrl?: string;
@@ -19,7 +15,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "sessions" | "help" | "update" | "delete" | "link" | "unlink" | "links" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "help" | "update" | "delete" | "link" | "unlink" | "links" | "search" | "add" | "remove" | "import" | "complete";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -70,7 +66,7 @@ const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete"]);
 
-const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream", "sessions", "help"]);
+const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream", "help"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -138,7 +134,8 @@ export function parseArgs(args: string[]): ParsedCommand {
       result.list = true;
       i++;
     } else if (arg === "--session" || arg === "-s") {
-      result.sessionId = args[i + 1];
+      // Retired with the CLI agent-chat surface; consume the value so the
+      // flag does not leak into positionals for older scripts.
       i += 2;
     } else if (arg === "--api-url") {
       result.apiUrl = args[i + 1];
@@ -293,15 +290,12 @@ export function parseArgs(args: string[]): ParsedCommand {
   }
 
   // Conversation command: first positional is subcommand, rest are args.
-  // If the first positional is not a known subcommand, treat all positionals
-  // as a one-shot message to the AI agent.
+  // Anything else leaves the subcommand unset, which the handler reports as
+  // the retired agent-chat surface.
   if (result.command === "conversation") {
     if (positionals.length > 0 && CONVERSATION_SUBCOMMANDS.has(positionals[0])) {
       result.subcommand = positionals[0] as ParsedCommand["subcommand"];
       result.positionals = positionals.slice(1);
-    } else if (positionals.length > 0) {
-      // Not a known subcommand — treat as one-shot agent message
-      result.message = positionals.join(" ");
     }
   }
 

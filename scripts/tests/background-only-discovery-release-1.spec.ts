@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dir, '../..');
 const publicRuntimeFiles = [
   'packages/protocol/src/opportunity/application/opportunity.tools.ts',
-  'packages/protocol/src/runtime/foreground/composition/tool.factory.ts',
+  'packages/protocol/src/shared/agent/tool.factory.ts',
   'packages/protocol/src/mcp/mcp.authorization-policy.ts',
   'services/api/src/controllers/mcp.controller.ts',
   'services/api/src/controllers/opportunity.controller.ts',

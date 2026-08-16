@@ -4,10 +4,10 @@
  * Re-exports the stable contracts from domain, application, and ports.
  * Runtime adapter creation (createIntentTools) is NOT exported here; it is
  * accessible via capabilities/signals.facade for package consumers and via
- * the foreground shell (runtime/foreground/signals) for internal registries.
+ * the tool composition root (shared/agent) for internal registries.
  *
  * Boundary: public-compatibility.  References only signals/domain,
- * signals/application, and signals/ports — never runtime/foreground or
+ * signals/application, and signals/ports — never the tool composition root (shared/agent) or
  * host implementations.
  */
 

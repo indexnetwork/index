@@ -9,7 +9,7 @@
  * ## Boundary
  *
  * References only participant-agents/domain, participant-agents/application,
- * and participant-agents/ports.  Never imports from runtime/foreground, host
+ * and participant-agents/ports.  Never imports from the tool composition root (shared/agent), host
  * implementations, or other capability internals.
  *
  * ## Intentionally excluded from public surface
@@ -17,7 +17,7 @@
  * The following are application-internal or runtime-owned:
  * - ChatGraphFactory, ChatPersonaConfig, ChatPersona — runtime graph wiring;
  *   consumers should import via capabilities/participant-agents.facade.ts.
- * - Persona constants (ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA, etc.) — chat
+ * - Persona constants (SIGNAL_PERSONA, REPORTER_PERSONA, etc.) — chat
  *   runtime internals; import from capabilities/participant-agents.facade.ts.
  * - ChatTitleGenerator, ChatSummarizer, etc. — runtime tool composition; import
  *   via capabilities/participant-agents.facade.ts.

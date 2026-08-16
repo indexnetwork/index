@@ -8,7 +8,7 @@
  * ## Boundary
  *
  * References only integrations/domain, integrations/application, and
- * integrations/ports. Never imports from runtime/foreground, host
+ * integrations/ports. Never imports from the tool composition root (shared/agent), host
  * implementations, or other capability internals.
  *
  * ## Intentionally excluded from public surface

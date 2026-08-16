@@ -8,6 +8,7 @@ import { chatFactory } from "../mcp.controller";
 import db from "../../lib/drizzle/drizzle";
 import { networkMembers, personalNetworks } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
+import { recordRequestAuthContext } from "../../lib/request-auth-context";
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
@@ -248,159 +249,6 @@ describe("ChatController Integration", () => {
     });
   });
 
-  describe("ChatController.message endpoint", () => {
-    test("should return error for missing message", async () => {
-      const mockRequest = {
-        json: async () => ({})
-      } as unknown as Request;
-
-      const mockUser: AuthenticatedUser = {
-        id: testUserId,
-        email: "test-chat-controller@example.com",
-        name: "Test Chat User"
-      };
-
-      const response = await controller.message(mockRequest, mockUser);
-      const data = await response.json() as ChatResponse;
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('Message content is required');
-    });
-
-    test("should return error for invalid JSON body", async () => {
-      const mockRequest = {
-        json: async () => { throw new Error('Invalid JSON'); }
-      } as unknown as Request;
-
-      const mockUser: AuthenticatedUser = {
-        id: testUserId,
-        email: "test-chat-controller@example.com",
-        name: "Test Chat User"
-      };
-
-      const response = await controller.message(mockRequest, mockUser);
-      const data = await response.json() as ChatResponse;
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('Invalid request body. Expected { message: string }');
-    });
-
-    test("should process a simple greeting message", async () => {
-      const mockRequest = {
-        json: async () => ({ message: "Hello, how are you?" })
-      } as unknown as Request;
-
-      const mockUser: AuthenticatedUser = {
-        id: testUserId,
-        email: "test-chat-controller@example.com",
-        name: "Test Chat User"
-      };
-
-      console.log("Starting chat message processing...");
-      const response = await controller.message(mockRequest, mockUser);
-      const data = await response.json() as ChatResponse;
-      console.log("Chat response:", data);
-
-      expect(response.status).toBe(200);
-      expect(data.response).toBeDefined();
-      expect(typeof data.response).toBe('string');
-      expect(data.response!.length).toBeGreaterThan(0);
-      // Non-streaming /message returns only { response, error }; routingDecision is only in the streaming endpoint.
-    }, 120000); // Long timeout for LLM calls
-
-    test("should process an intent-related message", async () => {
-      const mockRequest = {
-        json: async () => ({ message: "I'm looking for people who are interested in building AI agents" })
-      } as unknown as Request;
-
-      const mockUser: AuthenticatedUser = {
-        id: testUserId,
-        email: "test-chat-controller@example.com",
-        name: "Test Chat User"
-      };
-
-      console.log("Starting intent-related message processing...");
-      const response = await controller.message(mockRequest, mockUser);
-      const data = await response.json() as ChatResponse;
-      console.log("Chat response for intent message:", data);
-
-      expect(response.status).toBe(200);
-      expect(data.response).toBeDefined();
-      expect(typeof data.response).toBe('string');
-      // Non-streaming /message returns only { response, error }; routingDecision is only in the streaming endpoint.
-    }, 120000); // Long timeout for LLM calls
-
-    test("should process a profile-related message", async () => {
-      const mockRequest = {
-        json: async () => ({ message: "Update my profile to include that I'm now focused on LLM applications" })
-      } as unknown as Request;
-
-      const mockUser: AuthenticatedUser = {
-        id: testUserId,
-        email: "test-chat-controller@example.com",
-        name: "Test Chat User"
-      };
-
-      console.log("Starting profile-related message processing...");
-      const response = await controller.message(mockRequest, mockUser);
-      const data = await response.json() as ChatResponse;
-      console.log("Chat response for profile message:", data);
-
-      expect(response.status).toBe(200);
-      expect(data.response).toBeDefined();
-      expect(typeof data.response).toBe('string');
-    }, 120000); // Long timeout for LLM calls
-
-    test("should create intent from hiring message with URL without leaking internal JSON or URLs in intent", async () => {
-      // Scenario: User wants to hire developers and provides a GitHub URL for context.
-      // The response must NOT contain internal pipeline JSON (classification, felicity_scores,
-      // actions, indexScore, etc.). Created intents must NOT contain "More details at [url]"
-      // or raw URLs in the description.
-      const mockRequest = {
-        json: async () => ({
-          message: "I want to hire developers who would be interested in the following project: https://github.com/indexnetwork/index"
-        })
-      } as unknown as Request;
-
-      const mockUser: AuthenticatedUser = {
-        id: testUserId,
-        email: "test-chat-controller@example.com",
-        name: "Test Chat User"
-      };
-
-      const response = await controller.message(mockRequest, mockUser);
-      const data = await response.json() as ChatResponse;
-
-      expect(response.status).toBe(200);
-      expect(data.response).toBeDefined();
-      expect(typeof data.response).toBe("string");
-
-      // Must NOT contain internal pipeline JSON (streamEvents was emitting nested model output)
-      const internalJsonMarkers = [
-        '"classification"',
-        '"felicity_scores"',
-        '"actions"',
-        '"indexScore"',
-        '"memberScore"',
-        '"semantic_entropy"',
-        '"referential_anchor"',
-        '"intentMode"',
-        '"referentialAnchor"',
-      ];
-      for (const marker of internalJsonMarkers) {
-        expect(data.response).not.toContain(marker);
-      }
-
-      // Created intents must NOT contain URLs or "More details at" in payload
-      const adapter = new ChatDatabaseAdapter();
-      const intents = await adapter.getActiveIntents(testUserId);
-      for (const intent of intents) {
-        expect(intent.payload).not.toMatch(/https?:\/\//);
-        expect(intent.payload.toLowerCase()).not.toContain("more details at");
-      }
-    }, 120000); // Long timeout for LLM + scraping
-  });
-
   describe("ChatController other endpoints", () => {
     const mockUser = (): AuthenticatedUser => ({
       id: testUserId,
@@ -428,15 +276,19 @@ describe("ChatController Integration", () => {
       });
       unauthorizedStreamIndexId = index.id;
 
+      // Names a persona: without one the policy refuses before scope
+      // validation, so the membership check would never be reached.
       const req = new Request("http://localhost/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "hello",
+          persona: "signal",
           networkId: unauthorizedStreamIndexId,
           useCheckpointer: false,
         }),
       });
+      recordRequestAuthContext(req, { kind: "session" });
 
       const res = await controller.messageStream(req, mockUser());
       const data = (await res.json()) as { error?: string };
@@ -481,7 +333,10 @@ describe("ChatController Integration", () => {
     });
 
     test("getSession should return 200 with session and messages when found", async () => {
-      const sessionId = await chatSessionService.createSession(testUserId, "Session for get test");
+      // /chat/session is the retained read-only history route.
+      const sessionId = await chatSessionService.createSession(
+        testUserId, "Session for get test", undefined, undefined, "orchestrator",
+      );
       const req = new Request("http://localhost/chat/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -520,12 +375,15 @@ describe("ChatController Integration", () => {
     });
 
     test("deleteSession should return 200 when session deleted", async () => {
-      const sessionId = await chatSessionService.createSession(testUserId, "Session to delete");
+      const sessionId = await chatSessionService.createSession(
+        testUserId, "Session to delete", undefined, undefined, "signal",
+      );
       const req = new Request("http://localhost/chat/session/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
+      recordRequestAuthContext(req, { kind: "session" });
       const res = await controller.deleteSession(req, mockUser());
       const data = (await res.json()) as { success?: boolean };
 
@@ -557,12 +415,15 @@ describe("ChatController Integration", () => {
     });
 
     test("updateSessionTitle should return 200 when updated", async () => {
-      const sessionId = await chatSessionService.createSession(testUserId, "Original Title");
+      const sessionId = await chatSessionService.createSession(
+        testUserId, "Original Title", undefined, undefined, "signal",
+      );
       const req = new Request("http://localhost/chat/session/title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, title: "Updated Title" }),
       });
+      recordRequestAuthContext(req, { kind: "session" });
       const res = await controller.updateSessionTitle(req, mockUser());
       const data = (await res.json()) as { success?: boolean; title?: string };
 

@@ -8,7 +8,7 @@
  * ## Boundary
  *
  * References only contacts/domain, contacts/application, and contacts/ports.
- * Never imports from runtime/foreground, host implementations, or other
+ * Never imports from the tool composition root (shared/agent), host implementations, or other
  * capability internals.
  *
  * ## Intentionally excluded from public surface

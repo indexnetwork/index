@@ -396,7 +396,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Tool Registry",
       "kind": "public-symbol",
       "capability": "interaction-composition",
-      "sourcePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "sourcePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "symbol": "createToolRegistry",
       "chapterIds": [],
       "flowIds": [],
@@ -684,22 +684,11 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "stability": "stable"
     },
     {
-      "id": "runtime-shell.background",
-      "label": "Background runtime",
-      "capability": "ambient-background",
-      "sourcePath": "packages/protocol/src/runtime/background/index.ts",
-      "summary": "Exposes ambient background protocol behavior.",
-      "kind": "runtime-shell",
-      "chapterIds": [],
-      "flowIds": [],
-      "layer": "implementation"
-    },
-    {
-      "id": "runtime-shell.foreground",
-      "label": "Foreground runtime",
+      "id": "runtime-shell.composition",
+      "label": "Tool composition root",
       "capability": "interaction-composition",
-      "sourcePath": "packages/protocol/src/runtime/foreground/index.ts",
-      "summary": "Composes request-driven protocol behavior.",
+      "sourcePath": "packages/protocol/src/shared/agent/tool.registry.ts",
+      "summary": "Composes request-driven protocol behavior into an authorized tool registry.",
       "kind": "runtime-shell",
       "chapterIds": [],
       "flowIds": [],
@@ -717,31 +706,9 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "layer": "implementation"
     },
     {
-      "id": "runtime-shell.platform",
-      "label": "Neutral platform shell",
-      "capability": "neutral-platform",
-      "sourcePath": "packages/protocol/src/platform/index.ts",
-      "summary": "Exposes platform-neutral protocol contracts.",
-      "kind": "runtime-shell",
-      "chapterIds": [],
-      "flowIds": [],
-      "layer": "implementation"
-    },
-    {
-      "id": "runtime-shell.public",
-      "label": "Public compatibility shell",
-      "capability": "public-compatibility",
-      "sourcePath": "packages/protocol/src/public/index.ts",
-      "summary": "Preserves the public compatibility surface.",
-      "kind": "runtime-shell",
-      "chapterIds": [],
-      "flowIds": [],
-      "layer": "implementation"
-    },
-    {
       "id": "runtime-shell.root",
       "label": "Protocol root",
-      "capability": "public-compatibility",
+      "capability": "interaction-composition",
       "sourcePath": "packages/protocol/src/index.ts",
       "summary": "The supported protocol package entry point.",
       "kind": "runtime-shell",
@@ -865,7 +832,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.agent-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -874,7 +841,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.chat-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -883,7 +850,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.enrichment-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -892,7 +859,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.intent-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -901,7 +868,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.negotiation-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -910,7 +877,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.network-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -919,7 +886,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -928,7 +895,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.premise-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -937,7 +904,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.questioner-tools",
       "kind": "runtime",
       "label": "registers capability tools",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts",
       "evidenceSymbol": "createToolRegistry"
     },
     {
@@ -960,6 +927,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "static.component.mcp-server.component.tool-registry",
       "sourceId": "component.mcp-server",
       "targetId": "component.tool-registry",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/mcp/mcp.server.ts"
+    },
+    {
+      "id": "static.component.mcp-server.runtime-shell.composition",
+      "sourceId": "component.mcp-server",
+      "targetId": "runtime-shell.composition",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/mcp/mcp.server.ts"
@@ -1010,7 +985,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.chat-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.component.enrichment-tools",
@@ -1018,7 +993,15 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.enrichment-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.component.tool-registry.component.intent-tools",
+      "sourceId": "component.tool-registry",
+      "targetId": "component.intent-tools",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.component.premise-tools",
@@ -1026,7 +1009,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.premise-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.facade.communities",
@@ -1034,7 +1017,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "facade.communities",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.facade.contacts",
@@ -1042,7 +1025,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "facade.contacts",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.facade.integrations",
@@ -1050,7 +1033,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "facade.integrations",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.facade.negotiation",
@@ -1058,7 +1041,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "facade.negotiation",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.facade.opportunities",
@@ -1066,7 +1049,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "facade.opportunities",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.component.tool-registry.facade.questions",
@@ -1074,7 +1057,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "facade.questions",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/composition/tool.registry.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.facade.interaction-composition.component.maintenance-graph-factory",
@@ -1173,12 +1156,84 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/capabilities/signals.facade.ts"
     },
     {
-      "id": "static.runtime-shell.foreground.component.tool-registry",
-      "sourceId": "runtime-shell.foreground",
-      "targetId": "component.tool-registry",
+      "id": "static.runtime-shell.composition.component.chat-tools",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "component.chat-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/runtime/foreground/index.ts"
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.component.enrichment-tools",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "component.enrichment-tools",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.component.intent-tools",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "component.intent-tools",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.component.premise-tools",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "component.premise-tools",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.facade.communities",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.communities",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.facade.contacts",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.contacts",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.facade.integrations",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.integrations",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.facade.negotiation",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.negotiation",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.facade.opportunities",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.opportunities",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.facade.questions",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.questions",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
       "id": "static.runtime-shell.mcp.component.invoke-tool-runtime",
@@ -1197,12 +1252,12 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/mcp/mcp.server.ts"
     },
     {
-      "id": "static.runtime-shell.platform.component.invoke-tool-runtime",
-      "sourceId": "runtime-shell.platform",
-      "targetId": "component.invoke-tool-runtime",
+      "id": "static.runtime-shell.mcp.runtime-shell.composition",
+      "sourceId": "runtime-shell.mcp",
+      "targetId": "runtime-shell.composition",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/platform/index.ts"
+      "evidencePath": "packages/protocol/src/mcp/mcp.server.ts"
     },
     {
       "id": "static.runtime-shell.root.component.invoke-tool-runtime",
@@ -1216,6 +1271,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "static.runtime-shell.root.component.mcp-server",
       "sourceId": "runtime-shell.root",
       "targetId": "component.mcp-server",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/index.ts"
+    },
+    {
+      "id": "static.runtime-shell.root.component.tool-registry",
+      "sourceId": "runtime-shell.root",
+      "targetId": "component.tool-registry",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"
@@ -1296,6 +1359,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "static.runtime-shell.root.facade.signals",
       "sourceId": "runtime-shell.root",
       "targetId": "facade.signals",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/index.ts"
+    },
+    {
+      "id": "static.runtime-shell.root.runtime-shell.composition",
+      "sourceId": "runtime-shell.root",
+      "targetId": "runtime-shell.composition",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"

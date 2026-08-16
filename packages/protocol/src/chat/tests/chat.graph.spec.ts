@@ -15,6 +15,7 @@ import type { Scraper } from "../../shared/interfaces/scraper.interface.js";
 import type { ChatSessionReader } from "../../shared/interfaces/chat-session.interface.js";
 import type { ChatStreamEvent } from "../chat-streaming.types.js";
 import { mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks.js";
+import { FULL_TOOLSET_TEST_PERSONA } from "./full-toolset.persona.js";
 
 const testUserId = "test-chat-graph-user";
 
@@ -99,7 +100,7 @@ describe("ChatGraphFactory", () => {
 
   beforeAll(() => {
     mockDatabase = createMockDatabase();
-    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
+    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps(), FULL_TOOLSET_TEST_PERSONA);
   });
 
   describe("Graph Creation", () => {
@@ -213,7 +214,7 @@ describe("ChatGraphFactory", () => {
 
   beforeAll(() => {
     mockDatabase = createFactoryMockDatabase();
-    factory = new ChatGraphFactory(mockDatabase, factoryMockEmbedder, factoryMockScraper, localChatSessionReader, createMockProtocolDeps());
+    factory = new ChatGraphFactory(mockDatabase, factoryMockEmbedder, factoryMockScraper, localChatSessionReader, createMockProtocolDeps(), FULL_TOOLSET_TEST_PERSONA);
   });
 
   describe("Graph creation", () => {
@@ -395,7 +396,7 @@ describe("Chat Graph streaming", () => {
   };
 
   beforeAll(() => {
-    factory = new ChatGraphFactory(createStreamMockDatabase(), streamMockEmbedder, streamMockScraper, localChatSessionReader, createMockProtocolDeps());
+    factory = new ChatGraphFactory(createStreamMockDatabase(), streamMockEmbedder, streamMockScraper, localChatSessionReader, createMockProtocolDeps(), FULL_TOOLSET_TEST_PERSONA);
   });
 
   describe("streamChatEvents", () => {

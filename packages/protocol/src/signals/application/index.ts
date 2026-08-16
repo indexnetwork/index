@@ -4,7 +4,7 @@
  * Houses the LangGraph factory, model-binding adapters (inferrer, clarifier,
  * verifier, reconciler, indexer), and the tool-definition factory.
  * Participant-facing runtime tool registration lives in the foreground shell
- * (runtime/foreground/signals/intent.tools).
+ * (shared/agent/tool.factory).
  *
  * Boundary: may import from signals/domain and signals/ports, plus
  * only-when-needed LangGraph / model-binding seams inside this directory.

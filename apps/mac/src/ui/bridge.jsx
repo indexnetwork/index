@@ -370,8 +370,9 @@ window.IndexApp = (function () {
 
   // ---- bounded native SSE -------------------------------------------------
 
-  // POST /chat/stream. `persona` selects the server persona (e.g. "negotiator");
-  // api-key callers fall back to the orchestrator when omitted. Resolves with
+  // POST /chat/stream. `persona` names the server persona and is required:
+  // api-key callers have no default and the server refuses an unnamed persona
+  // with CHAT_PERSONA_REQUIRED. Resolves with
   // the session id (from the X-Session-Id response header) once the stream ends.
   // onSession fires as soon as headers arrive, so mid-stream events (e.g.
   // user_question) can be resolved against the conversation right away.

@@ -1,6 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
 
-import { ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import { REPORTER_BRIEFING_KICKOFF, REPORTER_PERSONA, REPORTER_PERSONA_ID, REPORTER_TOOL_NAMES, filterReporterTools, narrowReporterTools } from "../reporter.persona.js";
 import { buildReporterSystemContent, isReporterActionConfirmation, isReporterBriefingKickoff, resolveReporterDeterministicResponse } from "../reporter.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
@@ -80,7 +79,6 @@ describe("REPORTER_PERSONA", () => {
   it("uses the canonical read-only persona and disables loop side effects", () => {
     expect(REPORTER_PERSONA_ID).toBe("reporter");
     expect(REPORTER_PERSONA.id).toBe(REPORTER_PERSONA_ID);
-    expect(REPORTER_PERSONA_ID).not.toBe(ORCHESTRATOR_PERSONA_ID);
     expect(REPORTER_PERSONA.loopBehaviors).toEqual({
       hallucinationRecovery: false,
     });

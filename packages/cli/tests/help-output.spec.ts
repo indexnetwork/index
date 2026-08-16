@@ -28,11 +28,9 @@ describe("main help output", () => {
     for (const expected of [
       "index login",
       "index logout",
-      'index conversation "message"',
-      "index conversation --session <id>",
+      "index conversation list",
       "index sync --json",
       "--app-url <url>",
-      "--session <id>",
       "--archived",
       "--status <status>",
       "--since <date>",

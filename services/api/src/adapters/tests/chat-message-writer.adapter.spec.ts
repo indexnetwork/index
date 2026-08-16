@@ -25,7 +25,7 @@ describe("ChatMessageWriterAdapter", () => {
     expect(chatSessionService.getUserSessions).toHaveBeenCalledWith(
       "user-1",
       1,
-      "orchestrator",
+      "signal",
     );
     expect(chatSessionService.addMessage).toHaveBeenCalledWith({
       sessionId: "session-recent",
@@ -37,10 +37,10 @@ describe("ChatMessageWriterAdapter", () => {
   it("never selects a more-recent Signal session", async () => {
     const chatSessionService = {
       getUserSessions: mock(async (_userId: string, _limit: number, persona: string) => {
-        expect(persona).toBe("orchestrator");
-        return [{ id: "orchestrator-session" }];
+        expect(persona).toBe("signal");
+        return [{ id: "signal-session" }];
       }),
-      addMessage: mock(async () => "msg-orchestrator"),
+      addMessage: mock(async () => "msg-signal"),
     };
     const adapter = new ChatMessageWriterAdapter(
       chatSessionService as unknown as ConstructorParameters<
@@ -50,9 +50,9 @@ describe("ChatMessageWriterAdapter", () => {
 
     const result = await adapter.addUserMessage("user-1", "tool message");
 
-    expect(result).toEqual({ sessionId: "orchestrator-session" });
+    expect(result).toEqual({ sessionId: "signal-session" });
     expect(chatSessionService.addMessage).toHaveBeenCalledWith({
-      sessionId: "orchestrator-session",
+      sessionId: "signal-session",
       role: "user",
       content: "tool message",
     });
