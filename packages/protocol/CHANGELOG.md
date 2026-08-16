@@ -44,6 +44,17 @@ No source change. Tooling and release record only.
   must not match, and the marker scopes to its own section rather than to the
   rest of the file.
 
+  Anything the inventory cannot describe — a bare `export *`, a locally
+  declared export, a re-export with no module specifier — raises rather than
+  being skipped. Silently dropping one means `check:exports` reports "matches"
+  while the public surface has grown unrecorded, which is the failure the
+  inventory exists to prevent. `export * as ns from` is representable and is
+  recorded as the single name it introduces.
+
+  Drift is compared positionally, not by set membership: the inventory mirrors
+  declaration order, so reordering or duplicating an entry is real drift that a
+  set comparison reports as an empty diff above a "stale" error.
+
   Verified by reproducing the committed inventory byte-for-byte, all 443
   entries.
 

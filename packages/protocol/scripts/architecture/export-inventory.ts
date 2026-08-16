@@ -22,7 +22,7 @@
  *   bun scripts/architecture/export-inventory.ts --check    # report drift, exit 1
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 
@@ -90,13 +90,55 @@ export function collectExports(sourceText: string, fileName: string): ExportEntr
   const ranges = experimentalRanges(sourceText);
   const entries: ExportEntry[] = [];
 
+  const lineOf = (node: ts.Node) =>
+    sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+
   for (const statement of sourceFile.statements) {
-    if (!ts.isExportDeclaration(statement)) continue;
+    // A local declaration (`export const x = 1`) has no source module, so the
+    // inventory cannot describe it. Refuse rather than skip: a silently dropped
+    // export means `--check` reports "matches" while the surface has grown.
+    if (!ts.isExportDeclaration(statement)) {
+      const exported = ts.canHaveModifiers(statement)
+        && ts.getModifiers(statement)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+      if (exported) {
+        throw new Error(
+          `${fileName}:${lineOf(statement)} exports a local declaration. The inventory records `
+            + "re-exports only; move the symbol into a module and re-export it from the entry point.",
+        );
+      }
+      continue;
+    }
+
     const { moduleSpecifier, exportClause, isTypeOnly } = statement;
-    if (!moduleSpecifier || !ts.isStringLiteral(moduleSpecifier)) continue;
-    if (!exportClause || !ts.isNamedExports(exportClause)) continue;
+
+    if (!moduleSpecifier || !ts.isStringLiteral(moduleSpecifier)) {
+      throw new Error(
+        `${fileName}:${lineOf(statement)} re-exports without a module specifier. The inventory `
+          + "records a source for every symbol; re-export from the owning module instead.",
+      );
+    }
 
     const stability = stabilityAt(statement.getStart(sourceFile), ranges);
+
+    // `export * as ns from "./m.js"` introduces exactly one name and is
+    // representable; a bare `export * from "./m.js"` is not — enumerating it
+    // needs a type checker, and guessing would understate the surface.
+    if (!exportClause) {
+      throw new Error(
+        `${fileName}:${lineOf(statement)} uses \`export *\`, whose members cannot be enumerated `
+          + "without type resolution. List the symbols explicitly so the surface stays reviewable.",
+      );
+    }
+
+    if (ts.isNamespaceExport(exportClause)) {
+      entries.push({
+        name: exportClause.name.text,
+        kind: isTypeOnly ? "type" : "value",
+        stability,
+        source: moduleSpecifier.text,
+      });
+      continue;
+    }
 
     for (const element of exportClause.elements) {
       entries.push({
@@ -123,29 +165,51 @@ function serialize(inventory: ExportInventory): string {
   return `${JSON.stringify(inventory, null, 2)}\n`;
 }
 
+const entryKey = (entry: ExportEntry) =>
+  `${entry.name}|${entry.kind}|${entry.stability}|${entry.source}`;
+
+/**
+ * Lines describing how the committed inventory differs from the generated one.
+ *
+ * Compares positionally rather than by set membership: the inventory is
+ * order-significant (it mirrors declaration order in the entry point), so
+ * reordering two exports is real drift. A set difference reports nothing for
+ * that case, which would print an empty diff above a "stale" error.
+ */
+export function describeDrift(before: ExportEntry[], after: ExportEntry[]): string[] {
+  const lines: string[] = [];
+  for (let i = 0; i < Math.max(before.length, after.length); i++) {
+    const a = before[i];
+    const b = after[i];
+    if (a && b && entryKey(a) === entryKey(b)) continue;
+    if (a) lines.push(`  - [${i}] ${entryKey(a)}`);
+    if (b) lines.push(`  + [${i}] ${entryKey(b)}`);
+  }
+  return lines;
+}
+
 function main(): void {
   const checkOnly = process.argv.includes("--check");
-  const generated = serialize(buildInventory());
-  const committed = readFileSync(snapshotPath, "utf8");
+  const inventory = buildInventory();
+  const generated = serialize(inventory);
+  // Generate mode must work when the snapshot is absent — that is how it is
+  // recreated after a deletion, and reading first turned that into an ENOENT.
+  const committed = existsSync(snapshotPath) ? readFileSync(snapshotPath, "utf8") : undefined;
 
   if (generated === committed) {
-    const count = buildInventory().exports.length;
-    console.log(`exports.snapshot.json matches src/index.ts (${count} exports).`);
+    console.log(`exports.snapshot.json matches src/index.ts (${inventory.exports.length} exports).`);
     return;
   }
 
   if (checkOnly) {
-    const before = JSON.parse(committed) as ExportInventory;
-    const after = JSON.parse(generated) as ExportInventory;
-    const key = (entry: ExportEntry) => `${entry.name}|${entry.kind}|${entry.stability}|${entry.source}`;
-    const beforeKeys = new Set(before.exports.map(key));
-    const afterKeys = new Set(after.exports.map(key));
-    for (const entry of after.exports) {
-      if (!beforeKeys.has(key(entry))) console.log(`  + ${key(entry)}`);
+    if (committed === undefined) {
+      console.error(
+        'architecture/exports.snapshot.json is missing. Run "bun run architecture:exports" and commit the result.',
+      );
+      process.exit(1);
     }
-    for (const entry of before.exports) {
-      if (!afterKeys.has(key(entry))) console.log(`  - ${key(entry)}`);
-    }
+    const before = (JSON.parse(committed) as ExportInventory).exports;
+    for (const line of describeDrift(before, inventory.exports)) console.log(line);
     console.error(
       '\nexports.snapshot.json is stale. Run "bun run architecture:exports" and commit the result.',
     );
@@ -153,7 +217,7 @@ function main(): void {
   }
 
   writeFileSync(snapshotPath, generated);
-  console.log(`Regenerated exports.snapshot.json (${buildInventory().exports.length} exports).`);
+  console.log(`Regenerated exports.snapshot.json (${inventory.exports.length} exports).`);
 }
 
 if (import.meta.main) main();

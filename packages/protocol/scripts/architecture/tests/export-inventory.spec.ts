@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { collectExports, experimentalRanges } from "../export-inventory.ts";
+import { collectExports, describeDrift, experimentalRanges } from "../export-inventory.ts";
 
 const banner = (title: string) => `// ─── ${title} ─────────────────────────────`;
 
@@ -62,14 +62,54 @@ describe("collectExports", () => {
     ]);
   });
 
-  test("ignores local declarations and bare re-exports", () => {
-    // Only re-exports carry a source path, which is what the inventory records.
-    const source = [
-      banner("Public API"),
-      "export const local = 1;",
-      'export * from "./wildcard.js";',
-      'export { kept } from "./kept.js";',
-    ].join("\n");
-    expect(collectExports(source, "index.ts").map((entry) => entry.name)).toEqual(["kept"]);
+  test("records a namespace re-export as the single name it introduces", () => {
+    const source = `${banner("Public API")}\nexport * as helpers from "./helpers.js";`;
+    expect(collectExports(source, "index.ts")).toEqual([
+      { name: "helpers", kind: "value", stability: "stable", source: "./helpers.js" },
+    ]);
+  });
+
+  // Anything the inventory cannot describe must fail loudly. Skipping it means
+  // `--check` reports "matches" while the public surface has grown unrecorded,
+  // which is the exact failure the inventory exists to prevent.
+  test("refuses a bare `export *`, whose members it cannot enumerate", () => {
+    const source = `${banner("Public API")}\nexport * from "./wildcard.js";`;
+    expect(() => collectExports(source, "index.ts")).toThrow(/export \*/);
+  });
+
+  test("refuses a locally declared export, which has no source module", () => {
+    const source = `${banner("Public API")}\nexport const local = 1;`;
+    expect(() => collectExports(source, "index.ts")).toThrow(/local declaration/);
+  });
+
+  test("refuses a re-export with no module specifier", () => {
+    const source = `${banner("Public API")}\nconst a = 1;\nexport { a };`;
+    expect(() => collectExports(source, "index.ts")).toThrow(/module specifier/);
+  });
+});
+
+describe("describeDrift", () => {
+  const entry = (name: string) =>
+    ({ name, kind: "value", stability: "stable", source: "./a.js" }) as const;
+
+  test("reports reordering, which a set comparison would call identical", () => {
+    const before = [entry("a"), entry("b")];
+    const after = [entry("b"), entry("a")];
+    expect(describeDrift(before, after)).toEqual([
+      "  - [0] a|value|stable|./a.js",
+      "  + [0] b|value|stable|./a.js",
+      "  - [1] b|value|stable|./a.js",
+      "  + [1] a|value|stable|./a.js",
+    ]);
+  });
+
+  test("reports a duplicated entry, which set membership also hides", () => {
+    expect(describeDrift([entry("a")], [entry("a"), entry("a")])).toEqual([
+      "  + [1] a|value|stable|./a.js",
+    ]);
+  });
+
+  test("is empty for identical inventories", () => {
+    expect(describeDrift([entry("a")], [entry("a")])).toEqual([]);
   });
 });
