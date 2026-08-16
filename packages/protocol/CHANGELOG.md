@@ -20,6 +20,39 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 14.3.1 - 2026-08-16
+
+No source change. Tooling and release record only.
+
+### Added
+
+- `bun run architecture:exports` generates `architecture/exports.snapshot.json`
+  from `src/index.ts`, and `bun run check:exports` reports drift and exits
+  non-zero. `check:exports` is now part of `architecture:check`, which CI runs.
+
+  The inventory is read by `scripts/build-protocol-atlas.ts` as the export
+  inventory, but that only validates the subset in `ROOT_EXPORT_COMPONENTS` —
+  the other ~380 entries were hand-maintained, which is how 300 of them came to
+  point at directories renamed in 14.2.1. The generator derives `name`, `kind`,
+  and `source` from the entry point, so that class of drift cannot recur.
+
+  `stability` is the one field that is not mechanical: `src/index.ts` groups its
+  re-exports under banner comments, and a section carrying a standalone
+  `@experimental` line is experimental until the next banner. Two traps that
+  cost a wrong first implementation each are covered by tests — the file header
+  explains the tiering in prose ("Sections marked `@experimental` below"), which
+  must not match, and the marker scopes to its own section rather than to the
+  rest of the file.
+
+  Verified by reproducing the committed inventory byte-for-byte, all 443
+  entries.
+
+### Fixed
+
+- Backfilled the missing `14.0.0` CHANGELOG section. That release shipped in
+  #1402 and bumped `package.json` without a changelog entry, so the record
+  jumped 13.2.1 → 14.1.0 with a breaking change unrecorded in between.
+
 ## 14.3.0 - 2026-08-16
 
 No public API change: all 443 exported symbols are byte-identical to 14.2.2.
@@ -219,6 +252,24 @@ This is internal structure only.
   Zero is a meaningful setting — it disables background refinement without
   touching `QUESTIONER_ENABLED` — so the accessor deliberately does not reuse
   `positiveIntEnv`. Configured by `QUESTIONER_INTENT_DAILY_CAP`.
+
+## 14.0.0 - 2026-08-15
+
+Backfilled. This release shipped in #1402 and bumped `package.json` without a
+CHANGELOG section, so the record jumped 13.2.1 → 14.1.0. Reconstructed from the
+commit (`225425371d`) rather than from memory.
+
+### Removed
+
+- **BREAKING**: retired the pre-personafication `orchestrator` chat persona.
+  `ORCHESTRATOR_PERSONA_ID` and `ORCHESTRATOR_PERSONA` are gone from the package
+  surface, and `ChatGraphFactory` and `ChatAgent.create()` now require a persona
+  — there is no default to fall back on, and unknown values fail closed.
+
+  Production evidence at the time: the orchestrator had written no new session
+  since 2026-08-04, and the presence of `onboarding`-persona rows showed the
+  Signal cutover flag was already on. The 9,464 historical orchestrator
+  conversations remain readable.
 
 ## 13.2.1 - 2026-08-16
 
