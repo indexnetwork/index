@@ -42,7 +42,7 @@ export const conversations = pgTable('conversations', {
    * the rows where the column is meaningless (DMs, negotiation conversations)
    * and is the neutral sentinel 'none'. It used to be 'orchestrator', which
    * doubled as the default chat persona; that persona is retired and its rows
-   * are retained read-only (migration 0127).
+   * are retained read-only (migration 0128).
    */
   persona: text('persona').notNull().default('none'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),

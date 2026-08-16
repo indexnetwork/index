@@ -206,7 +206,7 @@ const logger = log.lib.from('conversation-database');
  * for the same signal distinct without a schema change.
  *
  * The bare `'intent'` key is retired: it belonged to the removed orchestrator
- * persona. Those rows are retained read-only, and migration 0127 relabels the
+ * persona. Those rows are retained read-only, and migration 0128 relabels the
  * reporter rows that shared the key so no existing session is orphaned.
  */
 
