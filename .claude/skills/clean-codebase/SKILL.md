@@ -20,7 +20,7 @@ at *applying* known patterns but bad at *deciding* what is dead; let determinist
 
 ## Repo guardrails (read first)
 
-- **Branch guard:** the canonical root `/Users/yanek/Projects/index` must stay on `dev`
+- **Branch guard:** the canonical root checkout must stay on `dev`
   and is read-only for the assistant. Do all mutating work in a worktree. Create one with
   `bun run worktree:new <type>/<description>`.
 - **Layer architecture is enforced** by `eslint-plugin-boundaries`. `packages/protocol`

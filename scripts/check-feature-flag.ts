@@ -27,12 +27,31 @@ type Surface = {
   find: (text: string, flag: string) => string | null;
 };
 
+/** A flag name is a literal, never a pattern — `check:flags 'FOO_.*'` must not glob. */
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Feature-flag values are short enums (`on`, `off`, `shadow`, `2`). Anything else is
+ * almost certainly not a flag — most importantly a `DATABASE_URL`-style connection
+ * string carrying a live password. This output is read by agents and lands in
+ * transcripts, PR bodies, and CI logs, so print only what is provably safe.
+ */
+export function maskValue(raw: string): string {
+  const value = raw.trim();
+  if (value === '') return '<empty>';
+  if (/^[A-Za-z0-9_-]{1,24}$/.test(value)) return value;
+  return `<redacted: ${value.length} chars — not a flag-shaped value>`;
+}
+
 /** Matches `FLAG=value`, with or without a leading comment marker. */
-function envEntry(text: string, flag: string): string | null {
-  const active = new RegExp(`^\\s*${flag}=(.*)$`, 'm').exec(text);
-  if (active) return `${active[1].trim() || '<empty>'}`;
-  const commented = new RegExp(`^\\s*#\\s*${flag}=(.*)$`, 'm').exec(text);
-  if (commented) return `commented: ${commented[1].trim() || '<empty>'}`;
+export function envEntry(text: string, flag: string): string | null {
+  const name = escapeForRegExp(flag);
+  const active = new RegExp(`^[ \\t]*${name}=(.*)$`, 'm').exec(text);
+  if (active) return maskValue(active[1]);
+  const commented = new RegExp(`^[ \\t]*#[ \\t]*${name}=(.*)$`, 'm').exec(text);
+  if (commented) return `commented: ${maskValue(commented[1])}`;
   return null;
 }
 
@@ -42,7 +61,8 @@ const SURFACES: Surface[] = [
     path: join(ROOT, 'services/api/src/startup.env.ts'),
     required: true,
     find: (text, flag) => {
-      const match = new RegExp(`^\\s*${flag}:\\s*(.+?),?\\s*$`, 'm').exec(text);
+      // A zod schema, not a value — safe to print verbatim.
+      const match = new RegExp(`^[ \\t]*${escapeForRegExp(flag)}:\\s*(.+?),?\\s*$`, 'm').exec(text);
       return match ? match[1].replace(/,$/, '') : null;
     },
   },
@@ -90,12 +110,16 @@ function report(flag: string): boolean {
   return problems.length === 0;
 }
 
-const flags = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
-if (flags.length === 0) {
-  console.error('usage: bun run check:flags FLAG_NAME [FLAG_NAME...]');
-  process.exit(2);
+export function main(argv = process.argv.slice(2)): void {
+  const flags = argv.filter((arg) => !arg.startsWith('-'));
+  if (flags.length === 0) {
+    console.error('usage: bun run check:flags FLAG_NAME [FLAG_NAME...]');
+    process.exit(2);
+  }
+
+  const allClean = flags.map(report).every(Boolean);
+  console.log('');
+  process.exit(allClean ? 0 : 1);
 }
 
-const allClean = flags.map(report).every(Boolean);
-console.log('');
-process.exit(allClean ? 0 : 1);
+if (import.meta.main) main();
