@@ -22,7 +22,7 @@ import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } fro
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../domain/opportunity.labels.js';
 import { safeFallbackSummary } from '../domain/opportunity.safe-presentation.js';
 import { buildRadarCardPresentationCacheKey } from '../domain/opportunity.presentation-cache.js';
-import type { DebugMetaAgent } from '../../capabilities/participant-agents.debug.facade.js';
+import type { DebugMetaAgent } from '../../participant-agents/index.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";

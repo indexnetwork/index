@@ -1,4 +1,4 @@
-import type { ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.js";
+import type { ToolRegistryCompositionDeps } from "../../shared/agent/tool.helpers.js";
 
 /** Host capabilities consumed by community discovery and membership tools. */
 export type NetworkToolDeps = Pick<ToolRegistryCompositionDeps,

@@ -1,4 +1,4 @@
-import { hasUnsupportedOpportunityClaim } from '../../capabilities/opportunities.safety.facade.js';
+import { hasUnsupportedOpportunityClaim } from '../../opportunity/index.js';
 
 /** Fixed prompt-safe labels; producers must not replace them with raw network/counterparty text. */
 export const NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY = 'the other participant';

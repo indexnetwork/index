@@ -5,7 +5,7 @@ import { log } from "../../shared/observability/log.js";
 import { renderNetworkContext } from "../../shared/network/metadata.renderer.js";
 
 import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { NetworkToolDeps } from "../../capabilities/communities.tools.port.js";
+import type { NetworkToolDeps } from "../ports/communities.tools.port.js";
 import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
 import { focusedNetworkId } from "../../shared/agent/tool.scope.js";
 import { NetworkRecommender } from "./network.recommender.js";

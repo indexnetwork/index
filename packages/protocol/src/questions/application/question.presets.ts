@@ -10,7 +10,7 @@
 import type { QuestionMode, QuestionPurpose } from "../domain/question.schema.js";
 import { QUD_UNDERSPECIFICATION_RULES } from "./question.qud.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, RecoveryIntentContext, UptakeNegotiationContext } from "./question.input.js";
-import { consultationPromptFor } from "../../capabilities/negotiation.questions.facade.js";
+import { consultationPromptFor } from "../../negotiation/index.js";
 
 /**
  * Shared rule block appended to every questioner system prompt. Enforces that

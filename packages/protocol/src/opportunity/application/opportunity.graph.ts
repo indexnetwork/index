@@ -14,11 +14,11 @@
 
 import { StateGraph, START, END } from '@langchain/langgraph';
 import type { Id, NegotiationContinuationReceipt } from '../../shared/interfaces/database.interface.js';
-import type { DebugMetaAgent } from '../../capabilities/participant-agents.debug.facade.js';
+import type { DebugMetaAgent } from '../../participant-agents/index.js';
 import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type TargetNetwork, type CandidateMatch, type EvaluatedOpportunity, type EvaluatedOpportunityActor } from '../domain/opportunity.state.js';
 import { OpportunityEvaluator, type CandidateProfile, type EvaluatedOpportunityWithActors, type EvaluatorEntity, type EvaluatorInput } from './opportunity.evaluator.js';
 import type { OpportunityGraphDatabase } from '../../shared/interfaces/database.interface.js';
-import { IntentIndexer } from '../../capabilities/signals.indexing.facade.js';
+import { IntentIndexer } from '../../signals/index.js';
 import { getModelName } from '../../shared/agent/model.config.js';
 import { selectHydeDocumentsForGeneration } from '../../shared/hyde/hyde.documents.js';
 import { getHydeGenerationMode } from '../../shared/hyde/hyde.env.js';
@@ -49,9 +49,9 @@ import type { Embedder, LensEmbedding } from '../../shared/interfaces/embedder.i
 import type { ActiveIntent, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
 import { persistOpportunities } from './opportunity.persist.js';
 import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
-import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved, ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs, AMBIENT_PARK_WINDOW_MS } from "../../capabilities/negotiation.discovery.facade.js";
+import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved, ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs, AMBIENT_PARK_WINDOW_MS } from "../../negotiation/index.js";
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from "../domain/negotiation-summary.builder.js";
-import type { NegotiationGraphLike } from "../../capabilities/negotiation.discovery.facade.js";
+import type { NegotiationGraphLike } from "../../negotiation/index.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
 import { protocolLogger, withCallLogging } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';

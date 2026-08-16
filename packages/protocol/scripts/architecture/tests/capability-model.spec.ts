@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { capabilityForSourcePath, facadeCapabilityForSourcePath, implementationCapabilityForSourcePath } from "../capability-model.ts";
+import { barrelCapabilityForSourcePath, capabilityForSourcePath, implementationCapabilityForSourcePath } from "../capability-model.ts";
 
 describe("protocol capability model", () => {
   test("normalizes canonical and compatibility directories", () => {
@@ -20,9 +20,10 @@ describe("protocol capability model", () => {
     expect(capabilityForSourcePath("maintenance/maintenance.graph.ts")).toBe("interaction-composition");
   });
 
-  test("recognizes capability facades and leaves neutral shared code unclassified", () => {
-    expect(facadeCapabilityForSourcePath("capabilities/opportunities.facade.ts")).toBe("opportunities");
-    expect(facadeCapabilityForSourcePath("capabilities/negotiation.discovery.facade.ts")).toBe("negotiation");
+  test("recognizes capability barrels and leaves neutral shared code unclassified", () => {
+    expect(barrelCapabilityForSourcePath("opportunity/index.ts")).toBe("opportunities");
+    expect(barrelCapabilityForSourcePath("negotiation/index.ts")).toBe("negotiation");
+    expect(barrelCapabilityForSourcePath("negotiation/application/index.ts")).toBeUndefined();
     expect(implementationCapabilityForSourcePath("shared/hyde/hyde.graph.ts")).toBeUndefined();
   });
 });

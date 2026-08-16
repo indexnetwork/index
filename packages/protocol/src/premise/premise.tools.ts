@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { DefineTool } from "../shared/agent/tool.helpers.js";
-import type { PremiseToolDeps } from "../capabilities/participant-context.tools.port.js";
+import type { PremiseToolDeps } from "../participant-context/ports/participant-context.tools.port.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { PremiseRecord, PremiseValidity } from "../shared/interfaces/database.interface.js";

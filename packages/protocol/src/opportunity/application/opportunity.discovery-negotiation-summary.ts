@@ -1,7 +1,7 @@
 import type { NegotiationSummaryReader } from '../../shared/interfaces/negotiation-summary.interface.js';
 import type { DiscoveryNegotiationDigest } from '../../shared/schemas/negotiation-digest.schema.js';
 import type { DiscoveryNegotiation } from '../../shared/schemas/discovery-question.schema.js';
-import { buildFallbackDigest } from '../../capabilities/negotiation.summary.facade.js';
+import { buildFallbackDigest } from '../../negotiation/index.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { traceAgent } from '../../shared/observability/trace.js';
 

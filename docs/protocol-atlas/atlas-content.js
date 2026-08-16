@@ -521,7 +521,7 @@
     ]),
     uptake: evidence("QUESTIONER_UPTAKE_ENABLED", "component.opportunity-tools", "packages/protocol/src/opportunity/application/opportunity.tools.ts", "createOpportunityTools", "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts", "returns a structured advisory with public questions and no graph mutation", [
       ["packages/protocol/src/questions/application/question.env.ts", "isUptakeGuardEnabled"],
-      ["packages/protocol/src/capabilities/questions.runtime.facade.ts", "isUptakeGuardEnabled"],
+      ["packages/protocol/src/questions/index.ts", "isUptakeGuardEnabled"],
       ["packages/protocol/src/opportunity/application/opportunity.tools.ts", "createOpportunityTools"],
     ]),
     ranking: evidence("POOL_QUESTIONS_RANKING", "component.radar-graph-factory", "packages/protocol/src/opportunity/radar/radar.graph.ts", "RadarGraphFactory", "packages/protocol/src/opportunity/tests/radar.graph.status-filter.spec.ts", "lifecycle order is unchanged while ranking is off and adjusted when on", [

@@ -1,16 +1,26 @@
 /**
- * participant-context — domain-first module root.
+ * participant-context — the capability's sole cross-capability surface.
  *
- * Re-exports the curated public surface.  Other modules inside the
- * participant-context capability import directly from
- * participant-context/domain, participant-context/application, or
- * participant-context/ports; this barrel is for cross-capability consumers
- * that must go through the participant-context public surface.
+ * Enrichment, premises, generated participant context, and HyDE representations
+ * are one capability; only orchestration entry points and the read-model
+ * generator cross its edge.
  *
- * IND-545: canonical home for premise/context/enrichment/HyDE behaviour that
- * was previously spread across premise/, context/, enrichment/, and
- * shared/hyde/.  Legacy paths in capabilities/participant-context.facade and
- * direct shared/hyde imports from root index.ts remain as compatibility
- * re-exports pointing here.
+ * Anything outside this capability imports from here and nowhere else.
+ * Supersedes the capabilities/participant-context.facade.ts + public/ pair; the
+ * export list is the union of the facades it replaces, so the contract is unchanged.
  */
-export * from "./public/index.js";
+export {
+  createEnrichmentTools,
+  createPremiseTools,
+  EnrichmentGraphFactory,
+  PremiseGraphFactory,
+  UserContextGenerator,
+  // HyDE — participant-context technology binding
+  HydeGraphFactory,
+  HydeGenerator,
+  LensInferrer,
+} from "./application/index.js";
+export type {
+  EnrichmentToolDeps,
+  PremiseToolDeps,
+} from "./ports/participant-context.tools.port.js";
