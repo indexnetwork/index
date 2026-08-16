@@ -97,7 +97,11 @@ function getSuggestionGenerator(): SuggestionGenerator {
   return suggestionGeneratorInstance;
 }
 
-/** Optional body for POST /chat/negotiator/session (P4.2 intent pinning). */
+/**
+ * Required body for POST /chat/negotiator/session (P4.2 intent pinning). The
+ * intent pin is the only negotiator surface, so a missing, unparseable, or
+ * blank `intentId` is a 400 rather than a fallback to the removed DM.
+ */
 const negotiatorSessionBodySchema = z.object({
   intentId: z.string().min(1),
 });

@@ -1937,7 +1937,10 @@ export class QuestionerAdapter {
    * session, so an archived, deleted, or disowned intent is permanent: no
    * number of retries produces a session. Suppressing (rather than failing)
    * keeps the claim out of the recovery sweep and matches how the delivery
-   * transaction already handles the same intent-lifecycle conditions.
+   * transaction already handles the same intent-lifecycle conditions — which
+   * is why the state transition itself reuses the shared
+   * {@link terminalizePoolPushRequestDetection} helper rather than restating
+   * it, so both paths can never write divergent suppression shapes.
    *
    * @param questionId - Claimed question whose target intent is gone.
    * @param userId - Expected claim recipient.
@@ -1958,14 +1961,11 @@ export class QuestionerAdapter {
       ) return;
       await tx.update(questions)
         .set({
-          detection: {
-            ...detection,
-            push: {
-              ...detection.push,
-              deliveryStatus: 'suppressed',
-              suppressedAt: new Date().toISOString(),
-            },
-          } satisfies QuestionDetection,
+          detection: terminalizePoolPushRequestDetection(
+            detection,
+            'intent_lifecycle',
+            new Date().toISOString(),
+          ) satisfies QuestionDetection,
         })
         .where(eq(questions.id, questionId));
     });
