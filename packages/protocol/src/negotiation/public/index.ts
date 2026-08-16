@@ -6,7 +6,7 @@
  * ## Boundary
  *
  * References only negotiation/domain, negotiation/application, and
- * negotiation/ports. Never imports from runtime/foreground, host
+ * negotiation/ports. Never imports from the tool composition root (shared/agent), host
  * implementations, or other capability internals.
  *
  * ## Intentionally excluded from public surface

@@ -4,11 +4,11 @@
  * Re-exports the stable contracts from domain, application, and ports.
  * Runtime adapter creation (graph factories, tool factories) is accessible via
  * capabilities/participant-context.facade for package consumers and via
- * the foreground shell (runtime/foreground) for internal registries.
+ * the tool composition root (shared/agent) for internal registries.
  *
  * Boundary: public-compatibility.  References only participant-context/domain,
  * participant-context/application, and participant-context/ports — never
- * runtime/foreground or host implementations.
+ * the tool composition root (shared/agent) or host implementations.
  *
  * ## Intentionally excluded from public surface
  *

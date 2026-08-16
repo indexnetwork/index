@@ -53,7 +53,7 @@ describe("foreground and ambient execution matrix", () => {
   });
 
   test("keeps foreground composition on injected protocol factories rather than host adapters", async () => {
-    const toolFactory = await readFile(resolve(sourceRoot, "runtime/foreground/composition/tool.factory.ts"), "utf8");
+    const toolFactory = await readFile(resolve(sourceRoot, "shared/agent/tool.factory.ts"), "utf8");
     for (const row of matrix) expect(toolFactory).toContain(`new ${row.sharedFactory}`);
     expect(toolFactory).not.toMatch(/services\/api|apps\/web|drizzle-orm|bullmq/);
   });
