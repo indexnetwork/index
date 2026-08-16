@@ -13,23 +13,23 @@ type ExecutionMatrixRow = {
 const matrix: ExecutionMatrixRow[] = [
   {
     useCase: "signals",
-    foreground: { entry: "createIntentTools", source: "signals/application/intent.tools.ts", transport: "participant tool" },
-    ambient: { entry: "IntentGraphFactory", source: "signals/application/intent.graph.ts", transport: "injected queue callback" },
+    foreground: { entry: "createIntentTools", source: "intents/application/intent.tools.ts", transport: "participant tool" },
+    ambient: { entry: "IntentGraphFactory", source: "intents/application/intent.graph.ts", transport: "injected queue callback" },
     sharedFactory: "IntentGraphFactory",
     invariant: "admission, verification, reconciliation, lifecycle, and repository ports are shared",
   },
   {
     useCase: "opportunities",
     // IND-551: canonical paths moved to application/ layer; shims remain at flat paths.
-    foreground: { entry: "createOpportunityTools", source: "opportunity/application/opportunity.tools.ts", transport: "participant tool" },
-    ambient: { entry: "OpportunityGraphFactory", source: "opportunity/application/opportunity.graph.ts", transport: "injected queue callback" },
+    foreground: { entry: "createOpportunityTools", source: "opportunities/application/opportunity.tools.ts", transport: "participant tool" },
+    ambient: { entry: "OpportunityGraphFactory", source: "opportunities/application/opportunity.graph.ts", transport: "injected queue callback" },
     sharedFactory: "OpportunityGraphFactory",
     invariant: "candidate evaluation, deduplication, lifecycle, visibility, and safe presentation are shared",
   },
   {
     useCase: "negotiation",
-    foreground: { entry: "createNegotiationTools", source: "negotiation/application/negotiation.tools.ts", transport: "participant tool" },
-    ambient: { entry: "NegotiationGraphFactory", source: "negotiation/application/negotiation.graph.ts", transport: "injected dispatcher and timeout queue" },
+    foreground: { entry: "createNegotiationTools", source: "negotiations/application/negotiation.tools.ts", transport: "participant tool" },
+    ambient: { entry: "NegotiationGraphFactory", source: "negotiations/application/negotiation.graph.ts", transport: "injected dispatcher and timeout queue" },
     sharedFactory: "NegotiationGraphFactory",
     invariant: "turn schema, seat rules, deadlock policy, finalization, and message/task ports are shared",
   },

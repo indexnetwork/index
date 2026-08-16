@@ -9,8 +9,8 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questions/index.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../participant-agents/index.js";
-import { PremiseDecomposer } from "../premise/premise.decomposer.js";
+import type { DebugMetaAgent } from "../agents/index.js";
+import { PremiseDecomposer } from "../premises/premise.decomposer.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 /**

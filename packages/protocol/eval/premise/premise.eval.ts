@@ -23,8 +23,8 @@
  */
 import path from "path";
 
-import { PremiseAnalyzer } from "../../src/premise/premise.analyzer.js";
-import { PremiseDecomposer } from "../../src/premise/premise.decomposer.js";
+import { PremiseAnalyzer } from "../../src/premises/premise.analyzer.js";
+import { PremiseDecomposer } from "../../src/premises/premise.decomposer.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { arg, assertEvalWritePlan, attachScoredRunProvenance, baselineUpdateSummaryPath, buildEvalScoringConfigFingerprint, buildExecutionEvidence, buildScorecard, compareAgainstGovernedBaseline, emptyGovernedComparison, fingerprintEvalCorpus, flagValue, formatBaselineUpdateSummary, formatConsole, formatGovernedComparison, governedComparisonExitStatus, governedRegressionCount, has, installEvalProcessCancellation, performGovernedBaselineUpdate, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta, type GovernedComparison } from "../shared/index.js";

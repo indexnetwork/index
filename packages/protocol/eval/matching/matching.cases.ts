@@ -1,4 +1,4 @@
-import type { EvaluatorEntity } from "../../src/opportunity/application/opportunity.evaluator.js";
+import type { EvaluatorEntity } from "../../src/opportunities/application/opportunity.evaluator.js";
 import type { MatchingCase } from "./matching.types.js";
 import { POOL } from "./matching.personas.js";
 import { HISTORICAL_CASES } from "./matching.historical.js";

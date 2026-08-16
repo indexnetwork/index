@@ -180,7 +180,7 @@
       "name": "NegotiationSummarizer",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "ContactServiceAdapter",
@@ -450,7 +450,7 @@
       "name": "SYSTEM_AGENT_IDS",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ChatContextDigestSchema",
@@ -654,199 +654,199 @@
       "name": "buildCandidateEvidence",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "ChatGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ChatPersonaConfig",
       "kind": "type",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "NEGOTIATOR_PERSONA_ID",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "createNegotiatorPersona",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "SIGNAL_PERSONA_ID",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "SIGNAL_PERSONA",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "SIGNAL_NEW_SIGNAL_KICKOFF",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "SIGNAL_TOOL_NAMES",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "createSignalTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "filterSignalTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "narrowSignalTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "REPORTER_PERSONA_ID",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "REPORTER_PERSONA",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "REPORTER_BRIEFING_KICKOFF",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "REPORTER_TOOL_NAMES",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "createReporterTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "filterReporterTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "narrowReporterTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ONBOARDING_PERSONA_ID",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ONBOARDING_PERSONA",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ONBOARDING_PROFILE_KICKOFF",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ONBOARDING_TOOL_NAMES",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "createOnboardingTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "filterOnboardingTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "narrowOnboardingTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "RadarGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "HydeGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "NetworkGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./communities/index.js"
+      "source": "./networks/index.js"
     },
     {
       "name": "NetworkMembershipGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./communities/index.js"
+      "source": "./networks/index.js"
     },
     {
       "name": "IntentGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "SemanticVerifier",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntentNetworkGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./communities/index.js"
+      "source": "./networks/index.js"
     },
     {
       "name": "MaintenanceGraphFactory",
@@ -876,151 +876,151 @@
       "name": "NegotiationGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "negotiateCandidates",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "OpportunityGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityGraphThresholdOverrides",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "hasUnsupportedOpportunityClaim",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "StampNewbornOpportunitiesFn",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "opportunityOwnerActionForStatus",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "bindOwnerApprovalProvenance",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerAction",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerApprovalAttestation",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerApprovalAuthority",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerApprovalBinding",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerApprovalChallenge",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerApprovalDenialReason",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerApprovalVerdict",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerInteractionProvenance",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityOwnerInteractionSurface",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "EnrichmentGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "PremiseGraphFactory",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "UserContextGenerator",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "ChatTitleGenerator",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ChatInterruptClassifier",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "ChatSummarizer",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "HydeGenerator",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "SuggestionGenerator",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "generateInviteMessage",
@@ -1032,193 +1032,193 @@
       "name": "IntentIndexer",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntentIndexerOutput",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "SignalIntakePackGenerator",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "normalizeIntakePack",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntakePack",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntakePackInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntakePackQuestion",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntakePackQuestionOption",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "SignalIntakeOrchestrator",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "answerLabel",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "FALLBACK_WHO_QUESTION",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "FALLBACK_BRING_QUESTION",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntakeAnswer",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntakeRound",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "FollowUpPlan",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "FollowUpPlanInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "SynthesisInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "SynthesisResult",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "normalizeIntentDescription",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "LensInferrer",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "NegotiationInsightsGenerator",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationDigest",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "IndexNegotiator",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationScreener",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationReflector",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "DistilledMemory",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "ReflectionTranscriptEntry",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationReflectionInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "ChatReflectionInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationReflectJobData",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "ReflectEnqueueFn",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiatorMemoryEntry",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "QuestionerAgent",
@@ -1320,253 +1320,253 @@
       "name": "PoolDiscriminatorMiner",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "PoolDiscriminatorAssigner",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "PoolDiscriminatorAssignmentInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "PoolDiscriminatorAssignedAxis",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "runPoolDiscriminatorShadow",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "poolQuestionsMiningMode",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "poolQuestionsMode",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "poolQuestionsPushMode",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "poolQuestionsStampNewborn",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "POOL_DISCRIMINATOR_MIN_POOL_SIZE",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "POOL_DISCRIMINATOR_MAX_CANDIDATES",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "POOL_QUESTION_MIN_VOI",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "POOL_QUESTION_MAX_PENDING_PER_INTENT",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "poolQuestionsRanking",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "POOL_RERUN_DEBOUNCE_MS",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "DISCOVERY_MIN_SIMILARITY_DEFAULT",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "discoveryAllowedTypes",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "discoveryEvaluatorMinScore",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "discoveryIntentMatchingEnabled",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "discoveryMinSimilarity",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "discoveryProfileMatchingEnabled",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "discoveryProfileSource",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "resetDiscoveryEnvWarningsForTests",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "validateDiscoveryEvaluatorMinScore",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "validateDiscoveryMinSimilarity",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "DiscoveryMatchType",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "DiscoveryProfileSource",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "poolQuestionsVisitTrigger",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "POOL_VISIT_MINING_DEBOUNCE_MS",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "buildPoolAdjustment",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "planPoolAdjustments",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "mergePoolAdjustment",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "PoolAdjustment",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "PoolAdjustmentSignal",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "synthesizePoolQuestion",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "selectQuestionDiscriminators",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "toQuestionDiscriminator",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "BOTH_MATTER_LABEL",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "poolQuestionCycleKey",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "buildPoolQuestionPushMessage",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "QuestionPoolDiscriminator",
@@ -1584,331 +1584,331 @@
       "name": "PoolCandidate",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "DiscriminatorMiningInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "MinedDiscriminator",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "negotiationEvidenceQuestionsMode",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "NegotiationEvidenceMiner",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "runNegotiationEvidenceShadow",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "RawEvidenceTurn",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "RawEvidenceOutcome",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "RawEvidenceOwnerAnswer",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "RawEvidenceSegment",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "isOutcomeQuestionsActivated",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OUTCOME_MIN_INDEPENDENT_EXAMPLES",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OUTCOME_MAX_CANDIDATES",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OUTCOME_MAX_PUBLIC_CONTEXT_CHARS",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "runOutcomeShadow",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OutcomeLabel",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OutcomeExample",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OutcomeShadowResult",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityEvaluator",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "EvaluatorInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityPresenter",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "gatherPresenterContext",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "PresenterDatabase",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "canUserSeeOpportunity",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "isActionableForViewer",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "validateOpportunityActors",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "classifyOpportunity",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "selectByComposition",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "RADAR_SOFT_TARGETS",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "getPrimaryActionLabel",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "computeRadarHealth",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "RadarHealthInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "isIntroducerDiscoveryEnabled",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "selectContactsForDiscovery",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "shouldRunIntroducerDiscovery",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "runIntroducerDiscovery",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "MAX_CONTACTS_PER_CYCLE",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "MAX_CANDIDATES_PER_CONTACT",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "INTRODUCER_DISCOVERY_SOURCE",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "IntroducerDiscoveryDatabase",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "IntroducerDiscoveryQueue",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "ContactWithIntents",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "persistOpportunities",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "presentOpportunity",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "UserInfo",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "stripUuids",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "truncateAtBoundary",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "stripUnsupportedOpportunityClaims",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "safeFallbackSummary",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "DEFAULT_FALLBACK_HEADLINE",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "buildApiChatCardPresentationCacheKey",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "buildDeliveryCardPresentationCacheKey",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "buildRadarCardPresentationCacheKey",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "getOrCreateDeliveryCardBatch",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "createToolRegistry",
@@ -1920,73 +1920,73 @@
       "name": "createIntentTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "IntentToolDeps",
       "kind": "type",
       "stability": "stable",
-      "source": "./signals/index.js"
+      "source": "./intents/index.js"
     },
     {
       "name": "createEnrichmentTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "createPremiseTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "EnrichmentToolDeps",
       "kind": "type",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "PremiseToolDeps",
       "kind": "type",
       "stability": "stable",
-      "source": "./participant-context/index.js"
+      "source": "./contexts/index.js"
     },
     {
       "name": "createNetworkTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./communities/index.js"
+      "source": "./networks/index.js"
     },
     {
       "name": "NetworkToolDeps",
       "kind": "type",
       "stability": "stable",
-      "source": "./communities/index.js"
+      "source": "./networks/index.js"
     },
     {
       "name": "createOpportunityTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "OpportunityToolDeps",
       "kind": "type",
       "stability": "stable",
-      "source": "./opportunity/index.js"
+      "source": "./opportunities/index.js"
     },
     {
       "name": "createNegotiationTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationToolDeps",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "createQuestionerTools",
@@ -2016,19 +2016,19 @@
       "name": "createChatTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "createAgentTools",
       "kind": "value",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "AgentToolDeps",
       "kind": "type",
       "stability": "stable",
-      "source": "./participant-agents/index.js"
+      "source": "./agents/index.js"
     },
     {
       "name": "createContactTools",
@@ -2058,7 +2058,7 @@
       "name": "AMBIENT_PARK_WINDOW_MS",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "normalizeTelegramHandle",
@@ -2436,229 +2436,229 @@
       "name": "NegotiationGraphLike",
       "kind": "type",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HERMES_OWNER_DIRECTIVE",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HERMES_SHARED_MESSAGE_TEMPLATES",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesNegotiationActionSchema",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesNegotiationResponseSchema",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesOwnerDirectiveSchema",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesRoleAlignmentSchema",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "allowedHermesActionsFor",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "buildHermesNegotiationTurn",
       "kind": "value",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesNegotiationAction",
       "kind": "type",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesNegotiationResponse",
       "kind": "type",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesOwnerDirective",
       "kind": "type",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "HermesRoleAlignment",
       "kind": "type",
       "stability": "experimental",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "DEFAULT_NEGOTIATION_MAX_TURNS",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "isNegotiationTurnCapReached",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "expectedNegotiationSpeaker",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "allowedActionsFor",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "askUserAnswerWindowMs",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "configuredAskUserEnabled",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "isTerminalAction",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "isRejectLikeAction",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "readProtocolVersion",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "resolveSeat",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "seatViolationMessage",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationSpeakerParticipants",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationSpeakerMessage",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "assessConsultationEligibility",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "consultationPromptFor",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "negotiationConsultationPolicyMode",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "ConsultationEligibility",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "ConsultationEligibilityInput",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NegotiationConsultationPolicyMode",
       "kind": "type",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NEGOTIATION_QUESTION_GENERIC_NETWORK",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "isSafeNegotiationQuestionText",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "negotiationQuestionSettlementId",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     },
     {
       "name": "validateInflightAskUserFields",
       "kind": "value",
       "stability": "stable",
-      "source": "./negotiation/index.js"
+      "source": "./negotiations/index.js"
     }
   ]
 }

@@ -22,7 +22,7 @@
  */
 import path from "path";
 
-import { OpportunityPresenter } from "../../src/opportunity/application/opportunity.presenter.js";
+import { OpportunityPresenter } from "../../src/opportunities/application/opportunity.presenter.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { arg, assertEvalWritePlan, attachScoredRunProvenance, baselineUpdateSummaryPath, buildEvalScoringConfigFingerprint, buildExecutionEvidence, buildScorecard, compareAgainstGovernedBaseline, emptyGovernedComparison, fingerprintEvalCorpus, flagValue, formatBaselineUpdateSummary, formatConsole, formatGovernedComparison, governedComparisonExitStatus, governedRegressionCount, has, installEvalProcessCancellation, performGovernedBaselineUpdate, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta, type GovernedComparison } from "../shared/index.js";

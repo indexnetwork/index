@@ -23,7 +23,7 @@
  * Exits non-zero when a regression vs the committed baseline is detected.
  */
 import path from "path";
-import { OpportunityEvaluator } from "../../src/opportunity/application/opportunity.evaluator.js";
+import { OpportunityEvaluator } from "../../src/opportunities/application/opportunity.evaluator.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { CASES } from "./matching.cases.js";

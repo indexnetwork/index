@@ -13,13 +13,13 @@ import { ALLOWED_CAPABILITY_DIRECTIONS, barrelCapabilityForSourcePath, CAPABILIT
 
 const sourceRoot = resolve(import.meta.dir, "../..");
 const capabilities = [
-  "signals",
-  "participant-context",
-  "communities",
+  "intents",
+  "contexts",
+  "networks",
   "opportunities",
-  "negotiation",
+  "negotiations",
   "questions",
-  "participant-agents",
+  "agents",
   "contacts",
   "integrations",
 ] as const;
@@ -39,14 +39,14 @@ describe("capability barrels", () => {
   });
 
   test("the barrel is recognised only at the capability's own directory root", () => {
-    expect(barrelCapabilityForSourcePath("signals/index.ts")).toBe("signals");
-    expect(barrelCapabilityForSourcePath("opportunity/index.ts")).toBe("opportunities");
+    expect(barrelCapabilityForSourcePath("intents/index.ts")).toBe("intents");
+    expect(barrelCapabilityForSourcePath("opportunities/index.ts")).toBe("opportunities");
     // Inner barrels are implementation, not the capability surface.
-    expect(barrelCapabilityForSourcePath("signals/application/index.ts")).toBeUndefined();
-    expect(barrelCapabilityForSourcePath("signals/domain/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("intents/application/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("intents/domain/index.ts")).toBeUndefined();
     // Directories that share a capability but do not own its barrel.
     expect(barrelCapabilityForSourcePath("enrichment/index.ts")).toBeUndefined();
-    expect(barrelCapabilityForSourcePath("premise/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("premises/index.ts")).toBeUndefined();
   });
 
   test("the removed facade layer does not come back", async () => {

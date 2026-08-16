@@ -8,7 +8,7 @@ config({ path: '.env.test', override: true });
 import { mock, afterAll } from "bun:test";
 // Route to canonical application path so the mock intercepts the import used
 // by tool.factory.ts after the IND-544 signals domain-first migration.
-mock.module("../../../signals/application/intent.graph.js", () => ({
+mock.module("../../../intents/application/intent.graph.js", () => ({
   IntentGraphFactory: class {
     private database: ChatGraphCompositeDatabase;
     constructor(database: ChatGraphCompositeDatabase) {
@@ -200,7 +200,7 @@ let mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-mock.module("../../../opportunity/opportunity.presenter.js", () => ({
+mock.module("../../../opportunities/opportunity.presenter.js", () => ({
   OpportunityPresenter: class {
     async presentCard() {
       return {
@@ -1520,7 +1520,7 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     // by temporarily adding getOpportunitiesForUser and using createChatTools' underlying factory.
     // Instead, we import createOpportunityTools and wire a minimal defineTool.
     const { tool: lcTool } = await import("@langchain/core/tools");
-    const { createOpportunityTools } = await import("../../../opportunity/application/opportunity.tools.js");
+    const { createOpportunityTools } = await import("../../../opportunities/application/opportunity.tools.js");
     const { z } = await import("zod");
 
     const resolvedContext = {

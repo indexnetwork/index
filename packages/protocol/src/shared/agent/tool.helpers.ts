@@ -15,7 +15,7 @@ import type { ChatSummaryReader } from "../interfaces/chat-summary.interface.js"
 import type { ChatMessageWriter } from "../interfaces/chat-message-writer.interface.js";
 import type { NegotiationSummaryReader } from "../interfaces/negotiation-summary.interface.js";
 import type { Embedder } from "../interfaces/embedder.interface.js";
-import type { AgentDatabase } from "../../participant-agents/ports/index.js";
+import type { AgentDatabase } from "../../agents/ports/index.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
@@ -224,7 +224,7 @@ interface ToolContextBindings {
   /** Optional durable persistence for reporter cleanup-action proposals. */
   actionProposalStore?: import('../../chat/reporter.action.contracts.js').AgentActionProposalStore;
   /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../signals/domain/intent.proposal.js').IntentProposalStore;
+  intentProposalStore?: import('../../intents/domain/intent.proposal.js').IntentProposalStore;
   /**
    * Host bridge for the negotiator persona's `remember`/`forget` memory
    * tools (P5.4). Injected by the composition root only when negotiator
@@ -241,7 +241,7 @@ interface ToolContextBindings {
   getUserContextText?: (userId: string) => Promise<string>;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
-  /** Database adapter for negotiation/conversation operations. */
+  /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;
   /** Integration importer for bulk contact import from toolkits. */
   integrationImporter: {
@@ -518,7 +518,7 @@ interface ToolDepsBindings {
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
   /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../signals/domain/intent.proposal.js').IntentProposalStore;
+  intentProposalStore?: import('../../intents/domain/intent.proposal.js').IntentProposalStore;
   scraper: Scraper;
   embedder: import('../interfaces/embedder.interface.js').Embedder;
   cache: Cache;
@@ -540,7 +540,7 @@ interface ToolDepsBindings {
     }>;
   };
   enricher: ProfileEnricher;
-  /** Database adapter for negotiation/conversation operations. */
+  /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;
   /** Chat session reader for exposing the caller's past conversations as MCP tools. */
   chatSession?: ChatSessionReader;

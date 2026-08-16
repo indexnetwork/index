@@ -21,17 +21,17 @@ const modelConfigSpecs = [
 const localModelMockSpecs = [
   "/chat/tests/chat.agent.persona.spec.ts",
   "/chat/tests/chat.agent.spec.ts",
-  "/contact/tests/contact.inviter.claim-safety.spec.ts",
+  "/contacts/tests/contact.inviter.claim-safety.spec.ts",
   "/enrichment/tests/enrichment.graph.spec.ts",
-  "/intent/tests/intent.clarifier.spec.ts",
-  "/intent/tests/intent.graph.spec.ts",
-  "/intent/tests/intent.inferrer.spec.ts",
-  "/intent/tests/intent.reconciler.spec.ts",
-  "/intent/tests/intent.verifier.spec.ts",
-  "/negotiation/tests/negotiation.agent.spec.ts",
-  "/negotiation/tests/negotiation.summarizer.spec.ts",
-  "/negotiation/tests/negotiator-timeout.spec.ts",
-  "/premise/tests/premise.analyzer.spec.ts",
+  "/intents/tests/intent.clarifier.spec.ts",
+  "/intents/tests/intent.graph.spec.ts",
+  "/intents/tests/intent.inferrer.spec.ts",
+  "/intents/tests/intent.reconciler.spec.ts",
+  "/intents/tests/intent.verifier.spec.ts",
+  "/negotiations/tests/negotiation.agent.spec.ts",
+  "/negotiations/tests/negotiation.summarizer.spec.ts",
+  "/negotiations/tests/negotiator-timeout.spec.ts",
+  "/premises/tests/premise.analyzer.spec.ts",
 ];
 const runsSpec = (spec: string) => process.argv.some((arg) => arg.endsWith(spec));
 const runsModelConfigSpec = modelConfigSpecs.some(runsSpec);

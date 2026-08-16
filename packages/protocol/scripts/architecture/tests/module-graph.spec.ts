@@ -25,7 +25,7 @@ describe("runtimeModuleSpecifiers", () => {
   });
 
   test("drops every erased form", () => {
-    // These are the edges that made the negotiation/questions SCC appear: a
+    // These are the edges that made the negotiations/questions SCC appear: a
     // module depending on a port *type* has no runtime dependency at all.
     expect(specifiersOf(`
       import type { Declared } from "./import-type.js";

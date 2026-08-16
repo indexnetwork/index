@@ -22,7 +22,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { NEGOTIATOR_STANCES, type NegotiatorStance } from "../../src/negotiation/domain/negotiation.stance.contracts.js";
+import { NEGOTIATOR_STANCES, type NegotiatorStance } from "../../src/negotiations/domain/negotiation.stance.contracts.js";
 import { CASES } from "./stance.cases.js";
 import { DEFAULT_MAX_TURNS, runNegotiation } from "./stance.runner.js";
 import { compareToBaseline, renderScoreTable, scoreStance } from "./stance.scorer.js";

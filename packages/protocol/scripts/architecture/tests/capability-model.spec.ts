@@ -4,14 +4,14 @@ import { barrelCapabilityForSourcePath, capabilityForSourcePath, implementationC
 
 describe("protocol capability model", () => {
   test("normalizes canonical and compatibility directories", () => {
-    expect(capabilityForSourcePath("signals/application/intent.graph.ts")).toBe("signals");
-    expect(capabilityForSourcePath("intent/intent.graph.ts")).toBe("signals");
-    expect(capabilityForSourcePath("participant-context/domain/index.ts")).toBe("participant-context");
-    expect(capabilityForSourcePath("enrichment/enrichment.graph.ts")).toBe("participant-context");
-    expect(capabilityForSourcePath("communities/application/network.graph.ts")).toBe("communities");
-    expect(capabilityForSourcePath("network/network.graph.ts")).toBe("communities");
-    expect(capabilityForSourcePath("participant-agents/application/agent.tools.ts")).toBe("participant-agents");
-    expect(capabilityForSourcePath("chat/chat.graph.ts")).toBe("participant-agents");
+    expect(capabilityForSourcePath("intents/application/intent.graph.ts")).toBe("intents");
+    expect(capabilityForSourcePath("intents/application/intent.graph.ts")).toBe("intents");
+    expect(capabilityForSourcePath("contexts/domain/index.ts")).toBe("contexts");
+    expect(capabilityForSourcePath("enrichment/enrichment.graph.ts")).toBe("contexts");
+    expect(capabilityForSourcePath("networks/application/network.graph.ts")).toBe("networks");
+    expect(capabilityForSourcePath("networks/application/network.graph.ts")).toBe("networks");
+    expect(capabilityForSourcePath("agents/application/agent.tools.ts")).toBe("agents");
+    expect(capabilityForSourcePath("chat/chat.graph.ts")).toBe("agents");
   });
 
   test("classifies the tool composition root as interaction-composition", () => {
@@ -21,9 +21,9 @@ describe("protocol capability model", () => {
   });
 
   test("recognizes capability barrels and leaves neutral shared code unclassified", () => {
-    expect(barrelCapabilityForSourcePath("opportunity/index.ts")).toBe("opportunities");
-    expect(barrelCapabilityForSourcePath("negotiation/index.ts")).toBe("negotiation");
-    expect(barrelCapabilityForSourcePath("negotiation/application/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("opportunities/index.ts")).toBe("opportunities");
+    expect(barrelCapabilityForSourcePath("negotiations/index.ts")).toBe("negotiations");
+    expect(barrelCapabilityForSourcePath("negotiations/application/index.ts")).toBeUndefined();
     expect(implementationCapabilityForSourcePath("shared/hyde/hyde.graph.ts")).toBeUndefined();
   });
 });

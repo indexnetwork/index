@@ -1,5 +1,5 @@
-import type { PremiseAnalyzerOutput } from "../../src/premise/premise.analyzer.js";
-import type { PremiseDecomposerOutput } from "../../src/premise/premise.decomposer.js";
+import type { PremiseAnalyzerOutput } from "../../src/premises/premise.analyzer.js";
+import type { PremiseDecomposerOutput } from "../../src/premises/premise.decomposer.js";
 
 import { executeRuns, type EvalEvidencePolicy, type EvalRunBatch } from "../shared/index.js";
 import { PREMISE_EVAL_ATTEMPT_TIMEOUT_MS, PREMISE_EVAL_MAX_ATTEMPTS, PREMISE_EVAL_RETRY_DELAY_MS } from "./premise.constants.js";

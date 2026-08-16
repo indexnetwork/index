@@ -4,7 +4,7 @@
  * matrix and print it as JSON.
  *
  * Used to generate (and, from an older revision, to independently re-verify)
- * `src/negotiation/tests/fixtures/negotiator-advocate-prompts.golden.json` —
+ * `src/negotiations/tests/fixtures/negotiator-advocate-prompts.golden.json` —
  * the byte-identical guard for `NEGOTIATOR_STANCE=advocate` (IND-611).
  *
  *   bun scripts/capture-negotiator-prompts.ts > /tmp/prompts.json
@@ -13,8 +13,8 @@
  * prompt specs, so no OPENROUTER_API_KEY round-trip happens. A dummy key is
  * still required because `createStructuredModel` is constructed eagerly.
  */
-import { IndexNegotiator, type NegotiationAgentInput } from "../src/negotiation/application/negotiation.agent.js";
-import { PROMPT_MATRIX } from "../src/negotiation/tests/fixtures/negotiator-prompt-matrix.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../src/negotiations/application/negotiation.agent.js";
+import { PROMPT_MATRIX } from "../src/negotiations/tests/fixtures/negotiator-prompt-matrix.js";
 
 class Capturing extends IndexNegotiator {
   prompt = "";

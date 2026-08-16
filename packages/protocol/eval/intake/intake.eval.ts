@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { SignalIntakeOrchestrator } from "../../src/signals/application/intake.orchestrator.js";
+import { SignalIntakeOrchestrator } from "../../src/intents/application/intake.orchestrator.js";
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { CASES } from "./intake.cases.js";

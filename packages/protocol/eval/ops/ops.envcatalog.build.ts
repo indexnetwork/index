@@ -46,7 +46,7 @@ export const HARNESS_ENTRY_POINTS: Readonly<Record<OpsHarness, string>> = Object
   profile: "eval/profile/profile.eval.ts",
   premise: "eval/premise/premise.eval.ts",
   opportunity: "eval/opportunity/opportunity.eval.ts",
-  discovery: "src/opportunity/application/opportunity.graph.ts",
+  discovery: "src/opportunities/application/opportunity.graph.ts",
 });
 
 /** Roots searched for candidate keys. A superset costs nothing; a subset caps the answer. */

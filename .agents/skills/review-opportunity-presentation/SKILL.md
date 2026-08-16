@@ -18,16 +18,16 @@ or use reasoning-derived fallback copy, but only through
 
 ## Surfaces to inspect
 
-- `packages/protocol/src/opportunity/domain/opportunity.safe-presentation.ts`
+- `packages/protocol/src/opportunities/domain/opportunity.safe-presentation.ts`
   - the single sanitization primitive and each surface's `allowFallback` policy
-- `packages/protocol/src/opportunity/application/opportunity.tools.ts`
+- `packages/protocol/src/opportunities/application/opportunity.tools.ts`
   - persisted `list_opportunities` card building
   - MCP prose via `buildOpportunityPresentation`
-- `packages/protocol/src/opportunity/application/opportunity.enricher.ts`
+- `packages/protocol/src/opportunities/application/opportunity.enricher.ts`
   - background-enrichment fallback paths where `homeCardPresentation` can be missing
-- `packages/protocol/src/opportunity/feed/feed.graph.ts`
+- `packages/protocol/src/opportunities/feed/feed.graph.ts`
   - persisted home-feed fallback cards and cache writes
-- `packages/protocol/src/opportunity/application/delivery-card.cache.ts`
+- `packages/protocol/src/opportunities/application/delivery-card.cache.ts`
   - cached persisted delivery cards
 - `services/api/src/services/opportunity.service.ts`
   - `getOpportunityWithPresentation()` and `getChatContext()` for persisted records

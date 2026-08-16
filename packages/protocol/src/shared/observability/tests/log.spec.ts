@@ -80,7 +80,7 @@ describe("setLoggerFactory()", () => {
     const b = log.agent.from("AnotherAgent");
     // Late-bound: the factory has not run yet at .from() time…
     expect(calls).toHaveLength(0);
-    // …it runs on first emit, with the right context/source, and is cached.
+    // …it runs on first emit, with the right contexts/source, and is cached.
     a.info("x");
     b.info("y");
     a.info("z");

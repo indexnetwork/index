@@ -208,7 +208,7 @@ describe("ENV_FLAG_METADATA", () => {
     // AbortSignal.timeout(N), which throws above Number.MAX_SAFE_INTEGER, so a
     // value like 1e30 passes Number.isFinite and then crashes the turn.
     const agent = readFileSync(
-      path.join(import.meta.dir, "..", "..", "..", "src", "negotiation", "application", "negotiation.agent.ts"),
+      path.join(import.meta.dir, "..", "..", "..", "src", "negotiations", "application", "negotiation.agent.ts"),
       "utf8",
     );
     expect(agent, "turn timeout no longer bounded by MAX_SAFE_INTEGER").toContain("n <= Number.MAX_SAFE_INTEGER");
@@ -259,7 +259,7 @@ describe("ENV_FLAG_METADATA", () => {
     // the default, chosen by a fallback the operator never asked for. The bound
     // is derived from that read, so a read site that stops falling back fails here.
     const graph = readFileSync(
-      path.join(import.meta.dir, "..", "..", "..", "src", "opportunity", "application", "opportunity.graph.ts"),
+      path.join(import.meta.dir, "..", "..", "..", "src", "opportunities", "application", "opportunity.graph.ts"),
       "utf8",
     );
     const byKey = new Map(ENV_FLAG_METADATA.map((m) => [m.key, m]));
@@ -275,7 +275,7 @@ describe("ENV_FLAG_METADATA", () => {
   const USE_SITE_ONLY_FLAGS: Record<string, { kind: EnvFlagMeta["kind"]; useSite: string }> = {
     DISCOVERY_REJECTION_COOLDOWN_DAYS: {
       kind: "number",
-      useSite: "../../../src/opportunity/application/opportunity.graph.ts",
+      useSite: "../../../src/opportunities/application/opportunity.graph.ts",
     },
   };
 
@@ -293,12 +293,12 @@ describe("ENV_FLAG_METADATA", () => {
   }> = {
     DISCOVERY_ALLOWED_TYPES: {
       kind: "csv-enum",
-      useSite: "../../../src/opportunity/discovery.env.ts",
+      useSite: "../../../src/opportunities/discovery.env.ts",
       valuesFrom: /const VALID_TOKENS: [^=]+= new Set\(\[([^\]]+)\]\)/,
     },
     DISCOVERY_PROFILE_SOURCE: {
       kind: "enum",
-      useSite: "../../../src/opportunity/discovery.env.ts",
+      useSite: "../../../src/opportunities/discovery.env.ts",
       valuesFrom: /export type DiscoveryProfileSource = ([^;]+);/,
     },
   };

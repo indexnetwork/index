@@ -12,7 +12,7 @@
  */
 
 import type { MatchingCase } from "./matching.types.js";
-import type { EvaluatorEntity } from "../../src/opportunity/application/opportunity.evaluator.js";
+import type { EvaluatorEntity } from "../../src/opportunities/application/opportunity.evaluator.js";
 import { POOL } from "./matching.personas.js";
 
 const NETWORK = "idx-commons";

@@ -3,12 +3,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { createMcpServer, clearMcpToolMetadataCacheForTests } from '../../../packages/protocol/src/mcp/mcp.server';
-import { setIntentClarifierForTesting } from '../../../packages/protocol/src/signals/application/intent.tools';
+import { setIntentClarifierForTesting } from '../../../packages/protocol/src/intents/application/intent.tools';
 import type { ScopedDepsFactory } from '../../../packages/protocol/src/mcp/mcp.server';
 import type { McpAuthorizationDenialEvent, McpAuthorizationObserver } from '../../../packages/protocol/src/mcp/mcp.authorization-policy';
 import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';
 import type { McpAuthResolver } from '../../../packages/protocol/src/shared/interfaces/auth.interface';
-import type { AgentDatabase } from '../../../packages/protocol/src/participant-agents/ports/agent.repository.port';
+import type { AgentDatabase } from '../../../packages/protocol/src/agents/ports/agent.repository.port';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // IND-581: fresh authorization on reconnect/refresh, cross-principal cache

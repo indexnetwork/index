@@ -20,12 +20,12 @@ const ROOT = new URL("../src", import.meta.url).pathname;
  * credential-free source-test gate.
  */
 export const LIVE_MODEL_SPECS = new Set([
-  "contact/tests/contact.inviter.spec.ts",
+  "contacts/tests/contact.inviter.spec.ts",
   "enrichment/tests/enrichment.generator.spec.ts",
-  "negotiation/tests/insight.generator.spec.ts",
-  "negotiation/tests/negotiator-discovery-query.spec.ts",
-  "opportunity/tests/opportunity.graph.spec.ts",
-  "premise/tests/premise.decomposer.spec.ts",
+  "negotiations/tests/insight.generator.spec.ts",
+  "negotiations/tests/negotiator-discovery-query.spec.ts",
+  "opportunities/tests/opportunity.graph.spec.ts",
+  "premises/tests/premise.decomposer.spec.ts",
 ]);
 
 type ChildTestInput = Pick<ChildTestResult, "file" | "exitCode" | "durationMs" | "output">;

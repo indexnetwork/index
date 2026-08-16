@@ -18,7 +18,7 @@ import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
 import type { ToolRegistryDeps } from '../shared/agent/tool.registry.js';
-import { bindOwnerApprovalProvenance } from '../opportunity/application/opportunity.owner-provenance.js';
+import { bindOwnerApprovalProvenance } from '../opportunities/application/opportunity.owner-provenance.js';
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -488,7 +488,7 @@ export function createMcpServer(
       // identity — never a caller-supplied field — marks a direct MCP owner
       // interaction for the opportunity owner-approval boundary. The
       // capability-local extension deliberately keeps this field out of the
-      // shared helper's negotiation/question cycle.
+      // shared helper's negotiations/question cycle.
       bindOwnerApprovalProvenance(context, {
         surface: 'mcp',
         sessionAuthenticated: authenticated.identity.isSessionAuth === true,

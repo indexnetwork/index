@@ -38,7 +38,7 @@ export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interfa
 export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./questions/index.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
-export { NegotiationSummarizer } from "./negotiation/index.js";
+export { NegotiationSummarizer } from "./negotiations/index.js";
 export type { ContactServiceAdapter } from "./contacts/index.js";
 export type {
   ChatGraphCompositeDatabase,
@@ -75,7 +75,7 @@ export type {
   NegotiationContinuationTimeoutIdentity,
 } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
-export { SYSTEM_AGENT_IDS } from './participant-agents/index.js';
+export { SYSTEM_AGENT_IDS } from './agents/index.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
@@ -111,13 +111,13 @@ export type {
 export type { DiscoverySummary, DiscoveryNegotiation, DiscoveryTurn, DiscoveryOutcome, NegotiationRole } from "./shared/schemas/discovery-question.schema.js";
 export type { NetworkAssignmentMetadata } from "./shared/schemas/network-assignment.schema.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
-export { buildCandidateEvidence } from "./opportunity/index.js";
+export { buildCandidateEvidence } from "./opportunities/index.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
-export { ChatGraphFactory } from "./participant-agents/index.js";
-export { type ChatPersonaConfig } from "./participant-agents/index.js";
-export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./participant-agents/index.js";
+export { ChatGraphFactory } from "./agents/index.js";
+export { type ChatPersonaConfig } from "./agents/index.js";
+export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./agents/index.js";
 export {
   SIGNAL_PERSONA_ID,
   SIGNAL_PERSONA,
@@ -126,7 +126,7 @@ export {
   createSignalTools,
   filterSignalTools,
   narrowSignalTools,
-} from "./participant-agents/index.js";
+} from "./agents/index.js";
 export {
   REPORTER_PERSONA_ID,
   REPORTER_PERSONA,
@@ -135,7 +135,7 @@ export {
   createReporterTools,
   filterReporterTools,
   narrowReporterTools,
-} from "./participant-agents/index.js";
+} from "./agents/index.js";
 export {
   ONBOARDING_PERSONA_ID,
   ONBOARDING_PERSONA,
@@ -144,22 +144,22 @@ export {
   createOnboardingTools,
   filterOnboardingTools,
   narrowOnboardingTools,
-} from "./participant-agents/index.js";
-export { RadarGraphFactory } from "./opportunity/index.js";
-export { HydeGraphFactory } from "./participant-context/index.js";
-export { NetworkGraphFactory } from "./communities/index.js";
-export { NetworkMembershipGraphFactory } from "./communities/index.js";
-export { IntentGraphFactory } from "./signals/index.js";
-export { SemanticVerifier } from "./signals/index.js";
-export { IntentNetworkGraphFactory } from "./communities/index.js";
+} from "./agents/index.js";
+export { RadarGraphFactory } from "./opportunities/index.js";
+export { HydeGraphFactory } from "./contexts/index.js";
+export { NetworkGraphFactory } from "./networks/index.js";
+export { NetworkMembershipGraphFactory } from "./networks/index.js";
+export { IntentGraphFactory } from "./intents/index.js";
+export { SemanticVerifier } from "./intents/index.js";
+export { IntentNetworkGraphFactory } from "./networks/index.js";
 export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
-export { NegotiationGraphFactory, negotiateCandidates } from "./negotiation/index.js";
-export { OpportunityGraphFactory } from "./opportunity/index.js";
-export type { OpportunityGraphThresholdOverrides } from "./opportunity/index.js";
-export { hasUnsupportedOpportunityClaim } from "./opportunity/index.js";
-export type { StampNewbornOpportunitiesFn } from "./opportunity/index.js";
-export { opportunityOwnerActionForStatus, bindOwnerApprovalProvenance } from "./opportunity/index.js";
+export { NegotiationGraphFactory, negotiateCandidates } from "./negotiations/index.js";
+export { OpportunityGraphFactory } from "./opportunities/index.js";
+export type { OpportunityGraphThresholdOverrides } from "./opportunities/index.js";
+export { hasUnsupportedOpportunityClaim } from "./opportunities/index.js";
+export type { StampNewbornOpportunitiesFn } from "./opportunities/index.js";
+export { opportunityOwnerActionForStatus, bindOwnerApprovalProvenance } from "./opportunities/index.js";
 export type {
   OpportunityOwnerAction,
   OpportunityOwnerApprovalAttestation,
@@ -170,34 +170,34 @@ export type {
   OpportunityOwnerApprovalVerdict,
   OpportunityOwnerInteractionProvenance,
   OpportunityOwnerInteractionSurface,
-} from "./opportunity/index.js";
-export { EnrichmentGraphFactory } from "./participant-context/index.js";
-export { PremiseGraphFactory } from "./participant-context/index.js";
+} from "./opportunities/index.js";
+export { EnrichmentGraphFactory } from "./contexts/index.js";
+export { PremiseGraphFactory } from "./contexts/index.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
-export { UserContextGenerator } from "./participant-context/index.js";
-export { ChatTitleGenerator } from "./participant-agents/index.js";
-export { ChatInterruptClassifier } from "./participant-agents/index.js";
-export { ChatSummarizer } from "./participant-agents/index.js";
-export { HydeGenerator } from "./participant-context/index.js";
-export { SuggestionGenerator } from "./participant-agents/index.js";
+export { UserContextGenerator } from "./contexts/index.js";
+export { ChatTitleGenerator } from "./agents/index.js";
+export { ChatInterruptClassifier } from "./agents/index.js";
+export { ChatSummarizer } from "./agents/index.js";
+export { HydeGenerator } from "./contexts/index.js";
+export { SuggestionGenerator } from "./agents/index.js";
 export { generateInviteMessage } from "./contacts/index.js";
-export { IntentIndexer } from "./signals/index.js";
-export type { IntentIndexerOutput } from "./signals/index.js";
-export { SignalIntakePackGenerator, normalizeIntakePack } from "./signals/index.js";
+export { IntentIndexer } from "./intents/index.js";
+export type { IntentIndexerOutput } from "./intents/index.js";
+export { SignalIntakePackGenerator, normalizeIntakePack } from "./intents/index.js";
 export type {
   IntakePack,
   IntakePackInput,
   IntakePackQuestion,
   IntakePackQuestionOption,
-} from "./signals/index.js";
+} from "./intents/index.js";
 export {
   SignalIntakeOrchestrator,
   answerLabel,
   FALLBACK_WHO_QUESTION,
   FALLBACK_BRING_QUESTION,
-} from "./signals/index.js";
+} from "./intents/index.js";
 export type {
   IntakeAnswer,
   IntakeRound,
@@ -205,24 +205,24 @@ export type {
   FollowUpPlanInput,
   SynthesisInput,
   SynthesisResult,
-} from "./signals/index.js";
-export { normalizeIntentDescription } from "./signals/index.js";
-export { LensInferrer } from "./participant-context/index.js";
-export { NegotiationInsightsGenerator } from "./negotiation/index.js";
-export type { NegotiationDigest } from "./negotiation/index.js";
-export { IndexNegotiator } from "./negotiation/index.js";
-export { NegotiationScreener } from "./negotiation/index.js";
-export { NegotiationReflector } from "./negotiation/index.js";
-export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiation/index.js";
-export type { NegotiatorMemoryEntry } from "./negotiation/index.js";
+} from "./intents/index.js";
+export { normalizeIntentDescription } from "./intents/index.js";
+export { LensInferrer } from "./contexts/index.js";
+export { NegotiationInsightsGenerator } from "./negotiations/index.js";
+export type { NegotiationDigest } from "./negotiations/index.js";
+export { IndexNegotiator } from "./negotiations/index.js";
+export { NegotiationScreener } from "./negotiations/index.js";
+export { NegotiationReflector } from "./negotiations/index.js";
+export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiations/index.js";
+export type { NegotiatorMemoryEntry } from "./negotiations/index.js";
 export { QuestionerAgent } from "./questions/index.js";
 export { isValidQuestionerInputContract } from "./questions/index.js";
 export type { QuestionerInput, RecoveryQuestionerInput, UptakeQuestionerInput, PostStallQuestionerInput, InflightQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questions/index.js";
 export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT, INTENT_QUESTION_DAILY_WINDOW_HOURS } from "./questions/index.js";
-export { PoolDiscriminatorMiner } from "./opportunity/index.js";
-export { PoolDiscriminatorAssigner } from "./opportunity/index.js";
-export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunity/index.js";
-export { runPoolDiscriminatorShadow } from "./opportunity/index.js";
+export { PoolDiscriminatorMiner } from "./opportunities/index.js";
+export { PoolDiscriminatorAssigner } from "./opportunities/index.js";
+export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunities/index.js";
+export { runPoolDiscriminatorShadow } from "./opportunities/index.js";
 export {
   poolQuestionsMiningMode,
   poolQuestionsMode,
@@ -233,8 +233,8 @@ export {
   POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS,
   POOL_QUESTION_MIN_VOI,
   POOL_QUESTION_MAX_PENDING_PER_INTENT,
-} from "./opportunity/index.js";
-export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./opportunity/index.js";
+} from "./opportunities/index.js";
+export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./opportunities/index.js";
 
 // Discovery env accessors (IND-XXX)
 export {
@@ -249,73 +249,73 @@ export {
   resetDiscoveryEnvWarningsForTests,
   validateDiscoveryEvaluatorMinScore,
   validateDiscoveryMinSimilarity,
-} from "./opportunity/index.js";
-export type { DiscoveryMatchType, DiscoveryProfileSource } from "./opportunity/index.js";
-export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./opportunity/index.js";
-export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./opportunity/index.js";
-export type { PoolAdjustment, PoolAdjustmentSignal } from "./opportunity/index.js";
-export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunity/index.js";
-export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./opportunity/index.js";
+} from "./opportunities/index.js";
+export type { DiscoveryMatchType, DiscoveryProfileSource } from "./opportunities/index.js";
+export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./opportunities/index.js";
+export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./opportunities/index.js";
+export type { PoolAdjustment, PoolAdjustmentSignal } from "./opportunities/index.js";
+export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunities/index.js";
+export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./opportunities/index.js";
 export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./questions/index.js";
-export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./opportunity/index.js";
+export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./opportunities/index.js";
 
 // Lens C — negotiation-evidence questions (IND-433, shadow).
-export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./opportunity/index.js";
-export { NegotiationEvidenceMiner } from "./opportunity/index.js";
-export { runNegotiationEvidenceShadow } from "./opportunity/index.js";
-export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment } from "./opportunity/index.js";
+export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./opportunities/index.js";
+export { NegotiationEvidenceMiner } from "./opportunities/index.js";
+export { runNegotiationEvidenceShadow } from "./opportunities/index.js";
+export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment } from "./opportunities/index.js";
 
 // Lens B — outcome-question shadow (IND-434)
-export { isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunity/index.js";
-export { runOutcomeShadow } from "./opportunity/index.js";
-export type { OutcomeLabel, OutcomeExample, OutcomeShadowResult } from "./opportunity/index.js";
-export { OpportunityEvaluator } from "./opportunity/index.js";
-export type { EvaluatorInput } from "./opportunity/index.js";
-export { OpportunityPresenter, gatherPresenterContext } from "./opportunity/index.js";
-export type { PresenterDatabase } from "./opportunity/index.js";
+export { isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunities/index.js";
+export { runOutcomeShadow } from "./opportunities/index.js";
+export type { OutcomeLabel, OutcomeExample, OutcomeShadowResult } from "./opportunities/index.js";
+export { OpportunityEvaluator } from "./opportunities/index.js";
+export type { EvaluatorInput } from "./opportunities/index.js";
+export { OpportunityPresenter, gatherPresenterContext } from "./opportunities/index.js";
+export type { PresenterDatabase } from "./opportunities/index.js";
 
 // ─── Support utilities ────────────────────────────────────────────────────────
 
-export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, RADAR_SOFT_TARGETS } from "./opportunity/index.js";
-export { getPrimaryActionLabel } from "./opportunity/index.js";
-export { computeRadarHealth } from "./opportunity/index.js";
-export type { RadarHealthInput } from "./opportunity/index.js";
-export { isIntroducerDiscoveryEnabled } from "./opportunity/index.js";
-export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./opportunity/index.js";
-export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./opportunity/index.js";
-export { persistOpportunities } from "./opportunity/index.js";
-export { presentOpportunity } from "./opportunity/index.js";
-export type { UserInfo } from "./opportunity/index.js";
-export { stripUuids, truncateAtBoundary } from "./opportunity/index.js";
-export { stripUnsupportedOpportunityClaims } from "./opportunity/index.js";
-export { safeFallbackSummary, DEFAULT_FALLBACK_HEADLINE } from "./opportunity/index.js";
-export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "./opportunity/index.js";
-export { getOrCreateDeliveryCardBatch } from "./opportunity/index.js";
+export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, RADAR_SOFT_TARGETS } from "./opportunities/index.js";
+export { getPrimaryActionLabel } from "./opportunities/index.js";
+export { computeRadarHealth } from "./opportunities/index.js";
+export type { RadarHealthInput } from "./opportunities/index.js";
+export { isIntroducerDiscoveryEnabled } from "./opportunities/index.js";
+export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./opportunities/index.js";
+export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./opportunities/index.js";
+export { persistOpportunities } from "./opportunities/index.js";
+export { presentOpportunity } from "./opportunities/index.js";
+export type { UserInfo } from "./opportunities/index.js";
+export { stripUuids, truncateAtBoundary } from "./opportunities/index.js";
+export { stripUnsupportedOpportunityClaims } from "./opportunities/index.js";
+export { safeFallbackSummary, DEFAULT_FALLBACK_HEADLINE } from "./opportunities/index.js";
+export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "./opportunities/index.js";
+export { getOrCreateDeliveryCardBatch } from "./opportunities/index.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
 
 export { createToolRegistry } from "./shared/agent/tool.registry.js";
 // Capability-owned tool entry points. These are explicit, narrow contracts;
 // capability implementation directories remain private to the package.
-export { createIntentTools } from "./signals/index.js";
-export type { IntentToolDeps } from "./signals/index.js";
-export { createEnrichmentTools, createPremiseTools } from "./participant-context/index.js";
-export type { EnrichmentToolDeps, PremiseToolDeps } from "./participant-context/index.js";
-export { createNetworkTools } from "./communities/index.js";
-export type { NetworkToolDeps } from "./communities/index.js";
-export { createOpportunityTools } from "./opportunity/index.js";
-export type { OpportunityToolDeps } from "./opportunity/index.js";
-export { createNegotiationTools } from "./negotiation/index.js";
-export type { NegotiationToolDeps } from "./negotiation/index.js";
+export { createIntentTools } from "./intents/index.js";
+export type { IntentToolDeps } from "./intents/index.js";
+export { createEnrichmentTools, createPremiseTools } from "./contexts/index.js";
+export type { EnrichmentToolDeps, PremiseToolDeps } from "./contexts/index.js";
+export { createNetworkTools } from "./networks/index.js";
+export type { NetworkToolDeps } from "./networks/index.js";
+export { createOpportunityTools } from "./opportunities/index.js";
+export type { OpportunityToolDeps } from "./opportunities/index.js";
+export { createNegotiationTools } from "./negotiations/index.js";
+export type { NegotiationToolDeps } from "./negotiations/index.js";
 export { createQuestionerTools, createAskUserQuestionTools } from "./questions/index.js";
 export type { AskUserQuestionToolDeps, QuestionerToolDeps } from "./questions/index.js";
-export { createChatTools, createAgentTools } from "./participant-agents/index.js";
-export type { AgentToolDeps } from "./participant-agents/index.js";
+export { createChatTools, createAgentTools } from "./agents/index.js";
+export type { AgentToolDeps } from "./agents/index.js";
 export { createContactTools } from "./contacts/index.js";
 export type { ContactToolDeps } from "./contacts/index.js";
 export { createIntegrationTools } from "./integrations/index.js";
 export type { IntegrationToolDeps } from "./integrations/index.js";
-export { AMBIENT_PARK_WINDOW_MS } from './negotiation/index.js';
+export { AMBIENT_PARK_WINDOW_MS } from './negotiations/index.js';
 export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 // ─── MCP ──────────────────────────────────────────────────────────────────────
@@ -387,7 +387,7 @@ export {
 } from "./shared/schemas/negotiation-state.schema.js";
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat, NegotiationProtocolVersion } from "./shared/schemas/negotiation-state.schema.js";
-export type { NegotiationGraphLike } from "./negotiation/index.js";
+export type { NegotiationGraphLike } from "./negotiations/index.js";
 export {
   HERMES_OWNER_DIRECTIVE,
   HERMES_SHARED_MESSAGE_TEMPLATES,
@@ -397,20 +397,20 @@ export {
   HermesRoleAlignmentSchema,
   allowedHermesActionsFor,
   buildHermesNegotiationTurn,
-} from "./negotiation/index.js";
+} from "./negotiations/index.js";
 export type {
   HermesNegotiationAction,
   HermesNegotiationResponse,
   HermesOwnerDirective,
   HermesRoleAlignment,
-} from "./negotiation/index.js";
+} from "./negotiations/index.js";
 
 // ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
 
-export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached, expectedNegotiationSpeaker, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./negotiation/index.js";
-export type { NegotiationSpeakerParticipants, NegotiationSpeakerMessage } from "./negotiation/index.js";
-export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "./negotiation/index.js";
-export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode } from "./negotiation/index.js";
+export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached, expectedNegotiationSpeaker, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./negotiations/index.js";
+export type { NegotiationSpeakerParticipants, NegotiationSpeakerMessage } from "./negotiations/index.js";
+export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "./negotiations/index.js";
+export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode } from "./negotiations/index.js";
 export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,
@@ -418,4 +418,4 @@ export {
   isSafeNegotiationQuestionText,
   negotiationQuestionSettlementId,
   validateInflightAskUserFields,
-} from "./negotiation/index.js";
+} from "./negotiations/index.js";

@@ -17,7 +17,7 @@
       conceptIds: ["participant", "premise", "context"],
       nodeIds: ["component.enrichment-graph-factory", "component.premise-graph-factory"],
       invariantIds: ["participant-consent", "no-fabrication"],
-      sourcePaths: ["packages/protocol/src/enrichment/enrichment.graph.ts", "packages/protocol/src/premise/premise.graph.ts"],
+      sourcePaths: ["packages/protocol/src/enrichment/enrichment.graph.ts", "packages/protocol/src/premises/premise.graph.ts"],
       notes: {
         protocol: "Approval is the trust boundary: supplied or inferred material is not durable context until the participant accepts it, and contact-data minimization keeps unrelated imported details out.",
         implementation: "The enrichment and premise graphs expose the package-level review and premise-processing behavior.",
@@ -30,7 +30,7 @@
       conceptIds: ["participant", "premise"],
       nodeIds: ["component.premise-graph-factory", "component.premise-tools"],
       invariantIds: ["action-attribution", "no-fabrication"],
-      sourcePaths: ["packages/protocol/src/premise/premise.graph.ts", "packages/protocol/src/premise/premise.tools.ts"],
+      sourcePaths: ["packages/protocol/src/premises/premise.graph.ts", "packages/protocol/src/premises/premise.tools.ts"],
       notes: {
         protocol: "A premise carries provenance and remains distinct from a synthesized context description.",
         implementation: "Premise graph and tool surfaces manipulate premise records without defining any host persistence architecture.",
@@ -43,7 +43,7 @@
       conceptIds: ["premise", "community", "membership", "effective-scope"],
       nodeIds: ["component.intent-network-graph-factory", "host-requirement.embedder"],
       invariantIds: ["scope-intersection", "host-boundary"],
-      sourcePaths: ["packages/protocol/src/communities/application/indexer.graph.ts", "packages/protocol/src/shared/interfaces/embedder.interface.ts"],
+      sourcePaths: ["packages/protocol/src/networks/application/indexer.graph.ts", "packages/protocol/src/shared/interfaces/embedder.interface.ts"],
       notes: {
         protocol: "Assignment is constrained by membership and permission; a representation does not broaden scope.",
         implementation: "The package declares the embedder operation and community indexer; vector infrastructure belongs to the host.",
@@ -56,7 +56,7 @@
       conceptIds: ["participant", "premise", "context", "effective-scope"],
       nodeIds: ["component.user-context-generator", "host-requirement.user-database"],
       invariantIds: ["scope-intersection", "context-freshness", "no-fabrication", "host-boundary"],
-      sourcePaths: ["packages/protocol/src/context/context.generator.ts", "packages/protocol/src/shared/interfaces/database.interface.ts"],
+      sourcePaths: ["packages/protocol/src/contexts/context.generator.ts", "packages/protocol/src/shared/interfaces/database.interface.ts"],
       notes: {
         protocol: "Synthesis may summarize approved premises but may not invent facts or combine material from outside effective scope.",
         implementation: "UserContextGenerator requests the package database port; storage details are deliberately not described here.",
@@ -85,7 +85,7 @@
       conceptIds: ["participant", "signal"],
       nodeIds: ["component.chat-graph-factory", "component.intent-tools"],
       invariantIds: ["participant-consent", "action-attribution"],
-      sourcePaths: ["packages/protocol/src/chat/chat.graph.ts", "packages/protocol/src/signals/application/intent.tools.ts"],
+      sourcePaths: ["packages/protocol/src/chat/chat.graph.ts", "packages/protocol/src/intents/application/intent.tools.ts"],
       notes: {
         protocol: "Input is evidence of an expression, not automatic permission to publish, match, or contact.",
         implementation: "Chat and signal tool surfaces receive the expression through protocol-owned capabilities.",
@@ -98,7 +98,7 @@
       conceptIds: ["signal", "premise", "context"],
       nodeIds: ["component.intent-graph-factory"],
       invariantIds: ["no-fabrication", "action-attribution"],
-      sourcePaths: ["packages/protocol/src/signals/application/intent.graph.ts"],
+      sourcePaths: ["packages/protocol/src/intents/application/intent.graph.ts"],
       notes: {
         protocol: "Inference produces a proposal for participant review; uncertainty remains explicit.",
         implementation: "IntentGraphFactory composes the package's signal interpretation path.",
@@ -111,7 +111,7 @@
       conceptIds: ["participant", "signal", "premise"],
       nodeIds: ["component.semantic-verifier", "component.questioner-agent"],
       invariantIds: ["no-fabrication", "participant-consent"],
-      sourcePaths: ["packages/protocol/src/signals/application/intent.verifier.ts", "packages/protocol/src/questions/application/question.agent.ts"],
+      sourcePaths: ["packages/protocol/src/intents/application/intent.verifier.ts", "packages/protocol/src/questions/application/question.agent.ts"],
       notes: {
         protocol: "Verification protects fidelity to the participant's words rather than optimizing for a match.",
         implementation: "The semantic verifier and questioner are structured package decisions, not normative primitives themselves.",
@@ -124,7 +124,7 @@
       conceptIds: ["participant", "signal"],
       nodeIds: ["component.intent-graph-factory", "component.intent-tools"],
       invariantIds: ["participant-consent", "no-fabrication", "terminality"],
-      sourcePaths: ["packages/protocol/src/signals/application/intent.graph.ts", "packages/protocol/src/signals/application/intent.tools.ts"],
+      sourcePaths: ["packages/protocol/src/intents/application/intent.graph.ts", "packages/protocol/src/intents/application/intent.tools.ts"],
       notes: {
         protocol: "Reconciliation preserves participant meaning and does not revive terminal lifecycle records by implication.",
         implementation: "The intent graph coordinates reconciliation through protocol signal operations.",
@@ -137,7 +137,7 @@
       conceptIds: ["signal", "community", "membership", "effective-scope"],
       nodeIds: ["component.intent-indexer", "component.intent-network-graph-factory"],
       invariantIds: ["scope-intersection", "participant-consent"],
-      sourcePaths: ["packages/protocol/src/signals/application/intent.indexer.ts", "packages/protocol/src/communities/application/indexer.graph.ts"],
+      sourcePaths: ["packages/protocol/src/intents/application/intent.indexer.ts", "packages/protocol/src/networks/application/indexer.graph.ts"],
       notes: {
         protocol: "Community assignment determines eligible discovery scope; it does not expose a Signal outside that scope.",
         implementation: "IntentIndexer and the community indexer implement package-level classification and assignment.",
@@ -150,7 +150,7 @@
       conceptIds: ["signal", "opportunity"],
       nodeIds: ["component.intent-graph-factory", "host-requirement.intent-graph-queue"],
       invariantIds: ["participant-consent", "action-attribution", "host-boundary"],
-      sourcePaths: ["packages/protocol/src/signals/application/intent.graph.ts", "packages/protocol/src/shared/interfaces/queue.interface.ts"],
+      sourcePaths: ["packages/protocol/src/intents/application/intent.graph.ts", "packages/protocol/src/shared/interfaces/queue.interface.ts"],
       notes: {
         protocol: "Current protocol behavior creates opportunities through background processing; synchronous examples are stale references, not an alternate normative path.",
         implementation: "The package declares a queue port; scheduling infrastructure is a host boundary.",
@@ -166,7 +166,7 @@
       conceptIds: ["participant", "signal", "context"],
       nodeIds: ["component.opportunity-graph-factory"],
       invariantIds: ["action-attribution", "context-freshness"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.graph.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.graph.ts"],
       notes: {
         protocol: "A trigger identifies the Signal being served; it is not permission to search every community.",
         implementation: "Host-scheduled background work invokes the opportunity graph; the package owns no scheduler.",
@@ -179,7 +179,7 @@
       conceptIds: ["signal", "community", "membership", "agent-permission", "effective-scope"],
       nodeIds: ["component.network-membership-graph-factory", "component.agent-tools"],
       invariantIds: ["scope-intersection", "participant-consent"],
-      sourcePaths: ["packages/protocol/src/communities/application/membership.graph.ts", "packages/protocol/src/participant-agents/application/agent.tools.ts"],
+      sourcePaths: ["packages/protocol/src/networks/application/membership.graph.ts", "packages/protocol/src/agents/application/agent.tools.ts"],
       notes: {
         protocol: "No single assignment or credential can enlarge scope beyond the other active constraints.",
         implementation: "Membership and participant-agent capabilities supply package-level checks.",
@@ -192,7 +192,7 @@
       conceptIds: ["effective-scope", "candidate", "radar"],
       nodeIds: ["component.radar-graph-factory", "host-requirement.embedder"],
       invariantIds: ["scope-intersection", "candidate-private", "host-boundary"],
-      sourcePaths: ["packages/protocol/src/opportunity/radar/radar.graph.ts", "packages/protocol/src/shared/interfaces/embedder.interface.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/radar/radar.graph.ts", "packages/protocol/src/shared/interfaces/embedder.interface.ts"],
       notes: {
         protocol: "A Candidate is internal evaluation material, not an Opportunity and not a disclosure to either participant.",
         implementation: "Radar and the embedder port are reference-implementation machinery for retrieval, not normative protocol primitives.",
@@ -205,7 +205,7 @@
       conceptIds: ["participant", "signal", "context", "candidate"],
       nodeIds: ["component.opportunity-evaluator"],
       invariantIds: ["scope-intersection", "candidate-private", "no-fabrication"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.evaluator.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.evaluator.ts"],
       notes: {
         protocol: "Fit evaluation may reject a candidate, but a positive assessment still does not grant consent or create a Connection.",
         implementation: "OpportunityEvaluator performs the package's structured fit decision.",
@@ -218,7 +218,7 @@
       conceptIds: ["membership", "agent-permission", "effective-scope", "candidate"],
       nodeIds: ["component.opportunity-graph-factory", "component.network-membership-graph-factory"],
       invariantIds: ["scope-intersection", "context-freshness", "terminality", "candidate-private"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "packages/protocol/src/communities/application/membership.graph.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "packages/protocol/src/networks/application/membership.graph.ts"],
       notes: {
         protocol: "Admission is checked at the point of action because discovery inputs can change after retrieval.",
         implementation: "The opportunity and membership graphs expose these package-level checks.",
@@ -231,7 +231,7 @@
       conceptIds: ["candidate", "negotiation", "provider-helper-role", "opportunity"],
       nodeIds: ["component.negotiation-graph-factory", "component.index-negotiator", "host-requirement.agent-dispatcher"],
       invariantIds: ["action-attribution", "no-fabrication", "negotiation-not-consent", "host-boundary"],
-      sourcePaths: ["packages/protocol/src/negotiation/application/negotiation.graph.ts", "packages/protocol/src/negotiation/application/negotiation.agent.ts", "packages/protocol/src/shared/interfaces/agent-dispatcher.interface.ts"],
+      sourcePaths: ["packages/protocol/src/negotiations/application/negotiation.graph.ts", "packages/protocol/src/negotiations/application/negotiation.agent.ts", "packages/protocol/src/shared/interfaces/agent-dispatcher.interface.ts"],
       notes: {
         protocol: "Normative negotiation is bounded and produces an assessment; even agreement between agents is not human consent to connect.",
         implementation: "The current graph uses maxTurns=0 when both participants have external agents, an uncapped exception recorded as a visible discrepancy below.",
@@ -244,7 +244,7 @@
       conceptIds: ["candidate", "opportunity", "participant"],
       nodeIds: ["component.opportunity-presenter", "component.opportunity-graph-factory"],
       invariantIds: ["candidate-private", "opportunity-legibility", "negotiation-not-consent"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.presenter.ts", "packages/protocol/src/opportunity/application/opportunity.graph.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.presenter.ts", "packages/protocol/src/opportunities/application/opportunity.graph.ts"],
       notes: {
         protocol: "Presentation crosses from private Candidate evaluation to participant-visible Opportunity; it does not reveal the raw candidate record.",
         implementation: "OpportunityPresenter constructs safe package-level presentation after graph evaluation.",
@@ -260,7 +260,7 @@
       conceptIds: ["participant", "opportunity", "candidate"],
       nodeIds: ["component.opportunity-presenter", "component.opportunity-tools"],
       invariantIds: ["candidate-private", "opportunity-legibility", "participant-consent"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.presenter.ts", "packages/protocol/src/opportunity/application/opportunity.tools.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.presenter.ts", "packages/protocol/src/opportunities/application/opportunity.tools.ts"],
       notes: {
         protocol: "The Opportunity is participant-facing; the Candidate remains private evaluation material behind it.",
         implementation: "Presenter and opportunity tools expose the safe presentation and available protocol actions.",
@@ -273,7 +273,7 @@
       conceptIds: ["participant", "opportunity"],
       nodeIds: ["component.opportunity-tools"],
       invariantIds: ["participant-consent", "action-attribution", "negotiation-not-consent"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.tools.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.tools.ts"],
       notes: {
         protocol: "Sending records one participant's choice; agent negotiation or a fit score cannot make this choice for them.",
         implementation: "The package opportunity tool surface records the action in its internal lifecycle vocabulary.",
@@ -286,7 +286,7 @@
       conceptIds: ["participant", "opportunity", "candidate"],
       nodeIds: ["component.opportunity-presenter", "component.opportunity-tools"],
       invariantIds: ["candidate-private", "opportunity-legibility", "participant-consent"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.presenter.ts", "packages/protocol/src/opportunity/application/opportunity.tools.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.presenter.ts", "packages/protocol/src/opportunities/application/opportunity.tools.ts"],
       notes: {
         protocol: "Consent is bilateral and sequential: the second participant is not committed by the first participant's send action.",
         implementation: "The package separates recipient-safe presentation from its private evaluation inputs.",
@@ -299,7 +299,7 @@
       conceptIds: ["participant", "opportunity", "connection"],
       nodeIds: ["component.opportunity-tools"],
       invariantIds: ["participant-consent", "action-attribution", "terminality", "negotiation-not-consent"],
-      sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.tools.ts"],
+      sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.tools.ts"],
       notes: {
         protocol: "Only explicit acceptance completes consent. Decline and expiry remain terminal; no merged lifecycle is invented to reconcile naming differences.",
         implementation: "Internal opportunity lifecycle states differ from the product Draft/Sent/Connected/Declined/Expired vocabulary; the discrepancy remains visible below.",
@@ -352,9 +352,9 @@
       title: "Apply protocol capability policy",
       summary: "The resolved principal is intersected with participant delegation, community scope, and the requested action.",
       conceptIds: ["software-agent", "agent-permission", "membership", "effective-scope"],
-      nodeIds: ["component.agent-tools", "facade.participant-agents"],
+      nodeIds: ["component.agent-tools", "facade.agents"],
       invariantIds: ["scope-intersection", "participant-consent", "action-attribution"],
-      sourcePaths: ["packages/protocol/src/participant-agents/application/agent.tools.ts", "packages/protocol/src/capabilities/participant-agents.facade.ts"],
+      sourcePaths: ["packages/protocol/src/agents/application/agent.tools.ts", "packages/protocol/src/capabilities/participant-agents.facade.ts"],
       notes: {
         protocol: "Effective permission is narrower than registry presence and is recalculated for each scoped action.",
         implementation: "Participant-agent capability surfaces expose policy-aware operations within the package.",
@@ -404,39 +404,39 @@
   const CONFIGURATION_DISCLAIMER = "This compares documented `packages/protocol` behavior against package fallbacks. It does not show any deployed environment and is not evidence that a capability is unused or removable.";
 
   const configurationSettings = Object.freeze({
-    DISCOVERY_ALLOWED_TYPES: setting("DISCOVERY_ALLOWED_TYPES", [["packages/protocol/src/opportunity/discovery.env.ts", "discoveryAllowedTypes"]], "discoveryAllowedTypes", ["intent,profile", "intent", "profile"], "intent,profile"),
-    DISCOVERY_PROFILE_SOURCE: setting("DISCOVERY_PROFILE_SOURCE", [["packages/protocol/src/opportunity/discovery.env.ts", "discoveryProfileSource"]], "discoveryProfileSource", ["premise", "user_context"], "premise"),
-    DISCOVERY_CONTEXT_TO_INTENT: setting("DISCOVERY_CONTEXT_TO_INTENT", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["0", "1"], "1"),
-    DISCOVERY_SOURCE_PREMISE_LIMIT: setting("DISCOVERY_SOURCE_PREMISE_LIMIT", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "getSourcePremiseDiscoveryLimit"]], "getSourcePremiseDiscoveryLimit", ["0", "40", "100"], "40"),
-    DISCOVERY_REJECTION_COOLDOWN_DAYS: setting("DISCOVERY_REJECTION_COOLDOWN_DAYS", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "getRejectionCooldownMs"]], "getRejectionCooldownMs", ["1", "7", "30"], "7"),
-    RUN_OPPORTUNITY_EVAL_IN_PARALLEL: setting("RUN_OPPORTUNITY_EVAL_IN_PARALLEL", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["false", "true"], "false"),
+    DISCOVERY_ALLOWED_TYPES: setting("DISCOVERY_ALLOWED_TYPES", [["packages/protocol/src/opportunities/discovery.env.ts", "discoveryAllowedTypes"]], "discoveryAllowedTypes", ["intent,profile", "intent", "profile"], "intent,profile"),
+    DISCOVERY_PROFILE_SOURCE: setting("DISCOVERY_PROFILE_SOURCE", [["packages/protocol/src/opportunities/discovery.env.ts", "discoveryProfileSource"]], "discoveryProfileSource", ["premise", "user_context"], "premise"),
+    DISCOVERY_CONTEXT_TO_INTENT: setting("DISCOVERY_CONTEXT_TO_INTENT", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["0", "1"], "1"),
+    DISCOVERY_SOURCE_PREMISE_LIMIT: setting("DISCOVERY_SOURCE_PREMISE_LIMIT", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "getSourcePremiseDiscoveryLimit"]], "getSourcePremiseDiscoveryLimit", ["0", "40", "100"], "40"),
+    DISCOVERY_REJECTION_COOLDOWN_DAYS: setting("DISCOVERY_REJECTION_COOLDOWN_DAYS", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "getRejectionCooldownMs"]], "getRejectionCooldownMs", ["1", "7", "30"], "7"),
+    RUN_OPPORTUNITY_EVAL_IN_PARALLEL: setting("RUN_OPPORTUNITY_EVAL_IN_PARALLEL", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["false", "true"], "false"),
     HYDE_FRAME_CONSTRAINTS_ENABLED: setting("HYDE_FRAME_CONSTRAINTS_ENABLED", [["packages/protocol/src/shared/hyde/hyde.env.ts", "getHydeGenerationMode"]], "getHydeGenerationMode", ["false", "true"], "false"),
-    PREMISE_DEDUP_SIMILARITY: setting("PREMISE_DEDUP_SIMILARITY", [["packages/protocol/src/premise/premise.graph.ts", "DEDUP_SIMILARITY_THRESHOLD"]], "DEDUP_SIMILARITY_THRESHOLD", ["0.85", "0.93", "0.98"], "0.93", "module-load"),
-    INTRODUCER_DISCOVERY_ENABLED: setting("INTRODUCER_DISCOVERY_ENABLED", [["packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts", "isIntroducerDiscoveryEnabled"]], "isIntroducerDiscoveryEnabled", ["false", "true"], "false"),
-    NEGOTIATION_INCLUDE_OTHER_INTENTS: setting("NEGOTIATION_INCLUDE_OTHER_INTENTS", [["packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts", "negotiationIncludesOtherIntents"]], "negotiationIncludesOtherIntents", ["false", "true"], "true"),
-    NEGOTIATION_MAX_TURNS_CHAT: setting("NEGOTIATION_MAX_TURNS_CHAT", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["2", "4", "8"], "4"),
-    NEGOTIATION_MAX_TURNS_AMBIENT: setting("NEGOTIATION_MAX_TURNS_AMBIENT", [["packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory"], ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "NegotiationGraphFactory", ["3", "6", "12"], "6"),
-    NEGOTIATION_PROTOCOL_VERSION: setting("NEGOTIATION_PROTOCOL_VERSION", [["packages/protocol/src/negotiation/domain/negotiation.protocol.ts", "configuredProtocolVersion"]], "configuredProtocolVersion", ["v1", "v2"], "v1"),
-    NEGOTIATION_SCREEN_MODE: setting("NEGOTIATION_SCREEN_MODE", [["packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", "configuredScreenMode"]], "configuredScreenMode", ["off", "shadow", "enforce"], "off"),
-    NEGOTIATOR_STANCE: setting("NEGOTIATOR_STANCE", [["packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts", "configuredNegotiatorStance"]], "configuredNegotiatorStance", ["advocate", "evaluator", "skeptic"], "advocate"),
-    NEGOTIATION_ASK_USER_ENABLED: setting("NEGOTIATION_ASK_USER_ENABLED", [["packages/protocol/src/negotiation/domain/negotiation.protocol.ts", "configuredAskUserEnabled"]], "configuredAskUserEnabled", ["false", "true"], "false"),
-    NEGOTIATION_ASK_USER_WINDOW_MS: setting("NEGOTIATION_ASK_USER_WINDOW_MS", [["packages/protocol/src/negotiation/domain/negotiation.protocol.ts", "askUserAnswerWindowMs"]], "askUserAnswerWindowMs", ["60000", "86400000"], "86400000"),
-    NEGOTIATION_CONSULTATION_POLICY_MODE: setting("NEGOTIATION_CONSULTATION_POLICY_MODE", [["packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts", "negotiationConsultationPolicyMode"]], "negotiationConsultationPolicyMode", ["off", "shadow", "on"], "off"),
-    NEGOTIATION_DEADLOCK_SHIFT_ENABLED: setting("NEGOTIATION_DEADLOCK_SHIFT_ENABLED", [["packages/protocol/src/negotiation/domain/negotiation.deadlock.ts", "configuredDeadlockShiftEnabled"]], "configuredDeadlockShiftEnabled", ["false", "true"], "false"),
-    NEGOTIATION_DEADLOCK_THRESHOLD: setting("NEGOTIATION_DEADLOCK_THRESHOLD", [["packages/protocol/src/negotiation/domain/negotiation.deadlock.ts", "configuredDeadlockThreshold"]], "configuredDeadlockThreshold", ["2", "4"], "4"),
+    PREMISE_DEDUP_SIMILARITY: setting("PREMISE_DEDUP_SIMILARITY", [["packages/protocol/src/premises/premise.graph.ts", "DEDUP_SIMILARITY_THRESHOLD"]], "DEDUP_SIMILARITY_THRESHOLD", ["0.85", "0.93", "0.98"], "0.93", "module-load"),
+    INTRODUCER_DISCOVERY_ENABLED: setting("INTRODUCER_DISCOVERY_ENABLED", [["packages/protocol/src/opportunities/application/opportunity.introducer-feature.ts", "isIntroducerDiscoveryEnabled"]], "isIntroducerDiscoveryEnabled", ["false", "true"], "false"),
+    NEGOTIATION_INCLUDE_OTHER_INTENTS: setting("NEGOTIATION_INCLUDE_OTHER_INTENTS", [["packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts", "negotiationIncludesOtherIntents"]], "negotiationIncludesOtherIntents", ["false", "true"], "true"),
+    NEGOTIATION_MAX_TURNS_CHAT: setting("NEGOTIATION_MAX_TURNS_CHAT", [["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["2", "4", "8"], "4"),
+    NEGOTIATION_MAX_TURNS_AMBIENT: setting("NEGOTIATION_MAX_TURNS_AMBIENT", [["packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory"], ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "NegotiationGraphFactory", ["3", "6", "12"], "6"),
+    NEGOTIATION_PROTOCOL_VERSION: setting("NEGOTIATION_PROTOCOL_VERSION", [["packages/protocol/src/negotiations/domain/negotiation.protocol.ts", "configuredProtocolVersion"]], "configuredProtocolVersion", ["v1", "v2"], "v1"),
+    NEGOTIATION_SCREEN_MODE: setting("NEGOTIATION_SCREEN_MODE", [["packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts", "configuredScreenMode"]], "configuredScreenMode", ["off", "shadow", "enforce"], "off"),
+    NEGOTIATOR_STANCE: setting("NEGOTIATOR_STANCE", [["packages/protocol/src/negotiations/domain/negotiation.stance.contracts.ts", "configuredNegotiatorStance"]], "configuredNegotiatorStance", ["advocate", "evaluator", "skeptic"], "advocate"),
+    NEGOTIATION_ASK_USER_ENABLED: setting("NEGOTIATION_ASK_USER_ENABLED", [["packages/protocol/src/negotiations/domain/negotiation.protocol.ts", "configuredAskUserEnabled"]], "configuredAskUserEnabled", ["false", "true"], "false"),
+    NEGOTIATION_ASK_USER_WINDOW_MS: setting("NEGOTIATION_ASK_USER_WINDOW_MS", [["packages/protocol/src/negotiations/domain/negotiation.protocol.ts", "askUserAnswerWindowMs"]], "askUserAnswerWindowMs", ["60000", "86400000"], "86400000"),
+    NEGOTIATION_CONSULTATION_POLICY_MODE: setting("NEGOTIATION_CONSULTATION_POLICY_MODE", [["packages/protocol/src/negotiations/domain/negotiation.consultation-policy.ts", "negotiationConsultationPolicyMode"]], "negotiationConsultationPolicyMode", ["off", "shadow", "on"], "off"),
+    NEGOTIATION_DEADLOCK_SHIFT_ENABLED: setting("NEGOTIATION_DEADLOCK_SHIFT_ENABLED", [["packages/protocol/src/negotiations/domain/negotiation.deadlock.ts", "configuredDeadlockShiftEnabled"]], "configuredDeadlockShiftEnabled", ["false", "true"], "false"),
+    NEGOTIATION_DEADLOCK_THRESHOLD: setting("NEGOTIATION_DEADLOCK_THRESHOLD", [["packages/protocol/src/negotiations/domain/negotiation.deadlock.ts", "configuredDeadlockThreshold"]], "configuredDeadlockThreshold", ["2", "4"], "4"),
     QUESTIONER_ENABLED: setting("QUESTIONER_ENABLED", [["packages/protocol/src/questions/application/question.env.ts", "isQuestionerEnabled"]], "isQuestionerEnabled", ["false", "true"], "false"),
     QUESTIONER_UPTAKE_ENABLED: setting("QUESTIONER_UPTAKE_ENABLED", [["packages/protocol/src/questions/application/question.env.ts", "isUptakeGuardEnabled"]], "isUptakeGuardEnabled", ["false", "true"], "false", "invocation", [["packages/protocol/src/questions/application/question.env.ts", "isQuestionerEnabled"]]),
     QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: setting("QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD", [["packages/protocol/src/questions/application/question.env.ts", "uptakeAuthorityThreshold"]], "uptakeAuthorityThreshold", ["70", "90"], "70"),
     QUESTIONER_DISCOVERY_ENABLED: setting("QUESTIONER_DISCOVERY_ENABLED", [["packages/protocol/src/questions/application/question.env.ts", "isDiscoveryQuestionsEnabled"]], "isDiscoveryQuestionsEnabled", ["false", "true"], "false"),
     QUESTIONER_DISCOVERY_INPUT_MODE: setting("QUESTIONER_DISCOVERY_INPUT_MODE", [["packages/protocol/src/questions/application/question.env.ts", "discoveryQuestionsInputMode"]], "discoveryQuestionsInputMode", ["transcripts", "insights"], "transcripts"),
-    POOL_QUESTIONS_MINING: setting("POOL_QUESTIONS_MINING", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsMiningMode"]], "poolQuestionsMiningMode", ["off", "shadow"], "off"),
-    POOL_QUESTIONS_MODE: setting("POOL_QUESTIONS_MODE", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsMode"]], "poolQuestionsMode", ["off", "on"], "off"),
-    POOL_QUESTIONS_PUSH: setting("POOL_QUESTIONS_PUSH", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsPushMode"]], "poolQuestionsPushMode", ["off", "on"], "off"),
-    POOL_QUESTIONS_VISIT_TRIGGER: setting("POOL_QUESTIONS_VISIT_TRIGGER", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsVisitTrigger"]], "poolQuestionsVisitTrigger", ["off", "on"], "off"),
-    POOL_QUESTIONS_STAMP_NEWBORN: setting("POOL_QUESTIONS_STAMP_NEWBORN", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsStampNewborn"]], "poolQuestionsStampNewborn", ["off", "on"], "off"),
-    POOL_QUESTIONS_RANKING: setting("POOL_QUESTIONS_RANKING", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsRanking"]], "poolQuestionsRanking", ["off", "on"], "off"),
-    NEGOTIATION_EVIDENCE_QUESTIONS_MODE: setting("NEGOTIATION_EVIDENCE_QUESTIONS_MODE", [["packages/protocol/src/opportunity/negotiation-evidence/negotiation-evidence.env.ts", "negotiationEvidenceQuestionsMode"]], "negotiationEvidenceQuestionsMode", ["off", "shadow", "on"], "off"),
-    OUTCOME_QUESTIONS_MODE: setting("OUTCOME_QUESTIONS_MODE", [["packages/protocol/src/opportunity/outcome/outcome.env.ts", "outcomeQuestionsMode"]], "outcomeQuestionsMode", ["off", "shadow", "on"], "off", "invocation", [["packages/protocol/src/opportunity/outcome/outcome.env.ts", "isOutcomeQuestionsActivated"]]),
+    POOL_QUESTIONS_MINING: setting("POOL_QUESTIONS_MINING", [["packages/protocol/src/opportunities/discriminator/discriminator.env.ts", "poolQuestionsMiningMode"]], "poolQuestionsMiningMode", ["off", "shadow"], "off"),
+    POOL_QUESTIONS_MODE: setting("POOL_QUESTIONS_MODE", [["packages/protocol/src/opportunities/discriminator/discriminator.env.ts", "poolQuestionsMode"]], "poolQuestionsMode", ["off", "on"], "off"),
+    POOL_QUESTIONS_PUSH: setting("POOL_QUESTIONS_PUSH", [["packages/protocol/src/opportunities/discriminator/discriminator.env.ts", "poolQuestionsPushMode"]], "poolQuestionsPushMode", ["off", "on"], "off"),
+    POOL_QUESTIONS_VISIT_TRIGGER: setting("POOL_QUESTIONS_VISIT_TRIGGER", [["packages/protocol/src/opportunities/discriminator/discriminator.env.ts", "poolQuestionsVisitTrigger"]], "poolQuestionsVisitTrigger", ["off", "on"], "off"),
+    POOL_QUESTIONS_STAMP_NEWBORN: setting("POOL_QUESTIONS_STAMP_NEWBORN", [["packages/protocol/src/opportunities/discriminator/discriminator.env.ts", "poolQuestionsStampNewborn"]], "poolQuestionsStampNewborn", ["off", "on"], "off"),
+    POOL_QUESTIONS_RANKING: setting("POOL_QUESTIONS_RANKING", [["packages/protocol/src/opportunities/discriminator/discriminator.env.ts", "poolQuestionsRanking"]], "poolQuestionsRanking", ["off", "on"], "off"),
+    NEGOTIATION_EVIDENCE_QUESTIONS_MODE: setting("NEGOTIATION_EVIDENCE_QUESTIONS_MODE", [["packages/protocol/src/opportunities/negotiation-evidence/negotiation-evidence.env.ts", "negotiationEvidenceQuestionsMode"]], "negotiationEvidenceQuestionsMode", ["off", "shadow", "on"], "off"),
+    OUTCOME_QUESTIONS_MODE: setting("OUTCOME_QUESTIONS_MODE", [["packages/protocol/src/opportunities/outcome/outcome.env.ts", "outcomeQuestionsMode"]], "outcomeQuestionsMode", ["off", "shadow", "on"], "off", "invocation", [["packages/protocol/src/opportunities/outcome/outcome.env.ts", "isOutcomeQuestionsActivated"]]),
   });
 
   function setting(key, sites, entryAccessorSymbol, acceptedValues, fallback, readTiming = "invocation", accessorClosure = []) {
@@ -452,82 +452,82 @@
   }
 
   const definitiveEvidence = Object.freeze({
-    discovery: evidence("DISCOVERY_ALLOWED_TYPES", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches", [
-      ["packages/protocol/src/opportunity/discovery.env.ts", "discoveryAllowedTypes"],
-      ["packages/protocol/src/opportunity/discovery.env.ts", "discoveryIntentMatchingEnabled"],
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    discovery: evidence("DISCOVERY_ALLOWED_TYPES", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts", "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches", [
+      ["packages/protocol/src/opportunities/discovery.env.ts", "discoveryAllowedTypes"],
+      ["packages/protocol/src/opportunities/discovery.env.ts", "discoveryIntentMatchingEnabled"],
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
-    profileSource: evidence("DISCOVERY_PROFILE_SOURCE", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "DISCOVERY_PROFILE_SOURCE=user_context: premise strategy off, premise HyDE results dropped", [
-      ["packages/protocol/src/opportunity/discovery.env.ts", "discoveryProfileSource"],
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    profileSource: evidence("DISCOVERY_PROFILE_SOURCE", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts", "DISCOVERY_PROFILE_SOURCE=user_context: premise strategy off, premise HyDE results dropped", [
+      ["packages/protocol/src/opportunities/discovery.env.ts", "discoveryProfileSource"],
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
-    contextToIntent: evidence("DISCOVERY_CONTEXT_TO_INTENT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence", [
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    contextToIntent: evidence("DISCOVERY_CONTEXT_TO_INTENT", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts", "DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence", [
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
-    sourcePremise: evidence("DISCOVERY_SOURCE_PREMISE_LIMIT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "premise discovery uses scoped capped source premises and one batched DB search", [
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "getSourcePremiseDiscoveryLimit"],
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    sourcePremise: evidence("DISCOVERY_SOURCE_PREMISE_LIMIT", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts", "premise discovery uses scoped capped source premises and one batched DB search", [
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "getSourcePremiseDiscoveryLimit"],
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
-    cooldown: evidence("DISCOVERY_REJECTION_COOLDOWN_DAYS", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates", [
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "getRejectionCooldownMs"],
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    cooldown: evidence("DISCOVERY_REJECTION_COOLDOWN_DAYS", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts", "applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates", [
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "getRejectionCooldownMs"],
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
-    evaluation: evidence("RUN_OPPORTUNITY_EVAL_IN_PARALLEL", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "when evaluator returns 3 actors, splits into pairwise opportunities (viewer + each non-viewer)", [
-      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    evaluation: evidence("RUN_OPPORTUNITY_EVAL_IN_PARALLEL", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts", "when evaluator returns 3 actors, splits into pairwise opportunities (viewer + each non-viewer)", [
+      ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
     turnCaps: [
-      evidence("NEGOTIATION_MAX_TURNS_CHAT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts", "emits outcome='turn_cap' when maxTurns is reached without accept/reject", [
-        ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+      evidence("NEGOTIATION_MAX_TURNS_CHAT", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/negotiations/tests/negotiation.graph.spec.ts", "emits outcome='turn_cap' when maxTurns is reached without accept/reject", [
+        ["packages/protocol/src/opportunities/application/opportunity.graph.ts", "OpportunityGraphFactory"],
       ]),
-      evidence("NEGOTIATION_MAX_TURNS_AMBIENT", "component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts", "emits outcome='turn_cap' when maxTurns is reached without accept/reject", [
-        ["packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory"],
+      evidence("NEGOTIATION_MAX_TURNS_AMBIENT", "component.negotiation-graph-factory", "packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiations/tests/negotiation.graph.spec.ts", "emits outcome='turn_cap' when maxTurns is reached without accept/reject", [
+        ["packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory"],
       ]),
     ],
     hyde: evidence("HYDE_FRAME_CONSTRAINTS_ENABLED", "component.hyde-graph-factory", "packages/protocol/src/shared/hyde/hyde.graph.ts", "HydeGraphFactory", "packages/protocol/src/shared/hyde/tests/hyde.frame.spec.ts", "enables frame-v1 only for the strict literal true", [
       ["packages/protocol/src/shared/hyde/hyde.env.ts", "getHydeGenerationMode"],
       ["packages/protocol/src/shared/hyde/hyde.graph.ts", "HydeGraphFactory"],
     ]),
-    premise: evidence("PREMISE_DEDUP_SIMILARITY", "component.premise-graph-factory", "packages/protocol/src/premise/premise.graph.ts", "PremiseGraphFactory", "packages/protocol/src/premise/tests/premise.graph.spec.ts", "skips persisting a near-duplicate premise on create", [
-      ["packages/protocol/src/premise/premise.graph.ts", "DEDUP_SIMILARITY_THRESHOLD"],
-      ["packages/protocol/src/premise/premise.graph.ts", "PremiseGraphFactory"],
+    premise: evidence("PREMISE_DEDUP_SIMILARITY", "component.premise-graph-factory", "packages/protocol/src/premises/premise.graph.ts", "PremiseGraphFactory", "packages/protocol/src/premises/tests/premise.graph.spec.ts", "skips persisting a near-duplicate premise on create", [
+      ["packages/protocol/src/premises/premise.graph.ts", "DEDUP_SIMILARITY_THRESHOLD"],
+      ["packages/protocol/src/premises/premise.graph.ts", "PremiseGraphFactory"],
     ]),
-    introducer: evidence("INTRODUCER_DISCOVERY_ENABLED", "component.maintenance-graph-factory", "packages/protocol/src/maintenance/maintenance.graph.ts", "MaintenanceGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.introducer-feature.spec.ts", "enables only for true", [
-      ["packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts", "isIntroducerDiscoveryEnabled"],
+    introducer: evidence("INTRODUCER_DISCOVERY_ENABLED", "component.maintenance-graph-factory", "packages/protocol/src/maintenance/maintenance.graph.ts", "MaintenanceGraphFactory", "packages/protocol/src/opportunities/tests/opportunity.introducer-feature.spec.ts", "enables only for true", [
+      ["packages/protocol/src/opportunities/application/opportunity.introducer-feature.ts", "isIntroducerDiscoveryEnabled"],
       ["packages/protocol/src/maintenance/maintenance.graph.ts", "MaintenanceGraphFactory"],
     ]),
-    negotiationContext: evidence("NEGOTIATION_INCLUDE_OTHER_INTENTS", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts", "negotiateExistingOpportunity", "packages/protocol/src/opportunity/tests/opportunity.existing-negotiation.spec.ts", "false flag isolates both sides on an exact continuation and skips unrelated active-intent reads", [
-      ["packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts", "negotiationIncludesOtherIntents"],
-      ["packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts", "negotiateExistingOpportunity"],
+    negotiationContext: evidence("NEGOTIATION_INCLUDE_OTHER_INTENTS", "component.opportunity-graph-factory", "packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts", "negotiateExistingOpportunity", "packages/protocol/src/opportunities/tests/opportunity.existing-negotiation.spec.ts", "false flag isolates both sides on an exact continuation and skips unrelated active-intent reads", [
+      ["packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts", "negotiationIncludesOtherIntents"],
+      ["packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts", "negotiateExistingOpportunity"],
     ]),
-    protocol: evidence("NEGOTIATION_PROTOCOL_VERSION", "component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.protocol.spec.ts", "configuredProtocolVersion: env switch, defaults v1", [
-      ["packages/protocol/src/negotiation/domain/negotiation.protocol.ts", "configuredProtocolVersion"],
-      ["packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory"],
+    protocol: evidence("NEGOTIATION_PROTOCOL_VERSION", "component.negotiation-graph-factory", "packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiations/tests/negotiation.protocol.spec.ts", "configuredProtocolVersion: env switch, defaults v1", [
+      ["packages/protocol/src/negotiations/domain/negotiation.protocol.ts", "configuredProtocolVersion"],
+      ["packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory"],
     ]),
-    screen: evidence("NEGOTIATION_SCREEN_MODE", "component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts", "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected", [
-      ["packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", "configuredScreenMode"],
-      ["packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory"],
+    screen: evidence("NEGOTIATION_SCREEN_MODE", "component.negotiation-graph-factory", "packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiations/tests/negotiation.screen-routing.spec.ts", "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected", [
+      ["packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts", "configuredScreenMode"],
+      ["packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory"],
     ]),
-    stance: evidence("NEGOTIATOR_STANCE", "component.index-negotiator", "packages/protocol/src/negotiation/application/negotiation.agent.ts", "IndexNegotiator", "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts", "resolves every declared stance verbatim", [
-      ["packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts", "configuredNegotiatorStance"],
-      ["packages/protocol/src/negotiation/application/negotiation.agent.ts", "IndexNegotiator"],
+    stance: evidence("NEGOTIATOR_STANCE", "component.index-negotiator", "packages/protocol/src/negotiations/application/negotiation.agent.ts", "IndexNegotiator", "packages/protocol/src/negotiations/tests/negotiation.stance.spec.ts", "resolves every declared stance verbatim", [
+      ["packages/protocol/src/negotiations/domain/negotiation.stance.contracts.ts", "configuredNegotiatorStance"],
+      ["packages/protocol/src/negotiations/application/negotiation.agent.ts", "IndexNegotiator"],
     ]),
-    consultation: evidence("NEGOTIATION_CONSULTATION_POLICY_MODE", "component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts", "policy on excludes a pre-screened path before consultation effects", [
-      ["packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts", "negotiationConsultationPolicyMode"],
-      ["packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory"],
+    consultation: evidence("NEGOTIATION_CONSULTATION_POLICY_MODE", "component.negotiation-graph-factory", "packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiations/tests/negotiation.ask-user.spec.ts", "policy on excludes a pre-screened path before consultation effects", [
+      ["packages/protocol/src/negotiations/domain/negotiation.consultation-policy.ts", "negotiationConsultationPolicyMode"],
+      ["packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory"],
     ]),
-    deadlock: evidence("NEGOTIATION_DEADLOCK_SHIFT_ENABLED", "component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts", "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once", [
-      ["packages/protocol/src/negotiation/domain/negotiation.deadlock.ts", "configuredDeadlockShiftEnabled"],
-      ["packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory"],
+    deadlock: evidence("NEGOTIATION_DEADLOCK_SHIFT_ENABLED", "component.negotiation-graph-factory", "packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiations/tests/negotiation.deadlock-shift.spec.ts", "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once", [
+      ["packages/protocol/src/negotiations/domain/negotiation.deadlock.ts", "configuredDeadlockShiftEnabled"],
+      ["packages/protocol/src/negotiations/application/negotiation.graph.ts", "NegotiationGraphFactory"],
     ]),
-    uptake: evidence("QUESTIONER_UPTAKE_ENABLED", "component.opportunity-tools", "packages/protocol/src/opportunity/application/opportunity.tools.ts", "createOpportunityTools", "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts", "returns a structured advisory with public questions and no graph mutation", [
+    uptake: evidence("QUESTIONER_UPTAKE_ENABLED", "component.opportunity-tools", "packages/protocol/src/opportunities/application/opportunity.tools.ts", "createOpportunityTools", "packages/protocol/src/opportunities/tests/update-opportunity.spec.ts", "returns a structured advisory with public questions and no graph mutation", [
       ["packages/protocol/src/questions/application/question.env.ts", "isUptakeGuardEnabled"],
       ["packages/protocol/src/questions/index.ts", "isUptakeGuardEnabled"],
-      ["packages/protocol/src/opportunity/application/opportunity.tools.ts", "createOpportunityTools"],
+      ["packages/protocol/src/opportunities/application/opportunity.tools.ts", "createOpportunityTools"],
     ]),
-    ranking: evidence("POOL_QUESTIONS_RANKING", "component.radar-graph-factory", "packages/protocol/src/opportunity/radar/radar.graph.ts", "RadarGraphFactory", "packages/protocol/src/opportunity/tests/radar.graph.status-filter.spec.ts", "lifecycle order is unchanged while ranking is off and adjusted when on", [
-      ["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsRanking"],
-      ["packages/protocol/src/opportunity/radar/radar.graph.ts", "getPoolRankingProvenance"],
-      ["packages/protocol/src/opportunity/radar/radar.graph.ts", "RadarGraphFactory"],
+    ranking: evidence("POOL_QUESTIONS_RANKING", "component.radar-graph-factory", "packages/protocol/src/opportunities/radar/radar.graph.ts", "RadarGraphFactory", "packages/protocol/src/opportunities/tests/radar.graph.status-filter.spec.ts", "lifecycle order is unchanged while ranking is off and adjusted when on", [
+      ["packages/protocol/src/opportunities/discriminator/discriminator.env.ts", "poolQuestionsRanking"],
+      ["packages/protocol/src/opportunities/radar/radar.graph.ts", "getPoolRankingProvenance"],
+      ["packages/protocol/src/opportunities/radar/radar.graph.ts", "RadarGraphFactory"],
     ]),
   });
 
@@ -849,11 +849,11 @@
       { id: "scope-guards-candidate", kind: "conceptual", sourceConceptId: "effective-scope", targetConceptId: "candidate", label: "bounds retrieval of" },
       { id: "candidate-may-become-opportunity", kind: "conceptual", sourceConceptId: "candidate", targetConceptId: "opportunity", label: "may be safely presented as" },
       { id: "opportunity-may-become-connection", kind: "conceptual", sourceConceptId: "opportunity", targetConceptId: "connection", label: "may become after bilateral consent" },
-      { id: "gap-bounded-negotiation", kind: "discrepancy", title: "Bounded negotiation versus external-agent exception", summary: "Normative negotiation is bounded. The current package graph treats maxTurns=0 as uncapped when both participants have external agents; this is an implementation discrepancy, not a new rule.", sourcePaths: ["packages/protocol/src/negotiation/application/negotiation.graph.ts"] },
-      { id: "gap-lifecycle-vocabulary", kind: "discrepancy", title: "Product and internal lifecycle vocabularies", summary: "Draft/Sent/Connected/Declined/Expired are product states, while the package uses internal lifecycle states. The atlas maps both and does not invent a merged lifecycle.", sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.tools.ts"] },
-      { id: "gap-community-network", kind: "discrepancy", title: "Community versus Network/index", summary: "Community is the normative protocol concept; Network is product language and network/index is current implementation vocabulary.", sourcePaths: ["packages/protocol/src/communities/application/network.graph.ts", "packages/protocol/src/communities/application/indexer.graph.ts"] },
-      { id: "gap-background-discovery", kind: "discrepancy", title: "Background discovery versus stale synchronous examples", summary: "Current opportunity creation is background-only. Synchronous examples are stale explanatory material and do not define an alternate protocol flow.", sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.graph.ts"] },
-      { id: "gap-candidate-presentation", kind: "discrepancy", title: "Private Candidate versus surfaced Opportunity", summary: "Candidate identity and evaluation stay private; only a recipient-safe Opportunity presentation is surfaced. The two are not interchangeable records.", sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.presenter.ts"] },
+      { id: "gap-bounded-negotiation", kind: "discrepancy", title: "Bounded negotiation versus external-agent exception", summary: "Normative negotiation is bounded. The current package graph treats maxTurns=0 as uncapped when both participants have external agents; this is an implementation discrepancy, not a new rule.", sourcePaths: ["packages/protocol/src/negotiations/application/negotiation.graph.ts"] },
+      { id: "gap-lifecycle-vocabulary", kind: "discrepancy", title: "Product and internal lifecycle vocabularies", summary: "Draft/Sent/Connected/Declined/Expired are product states, while the package uses internal lifecycle states. The atlas maps both and does not invent a merged lifecycle.", sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.tools.ts"] },
+      { id: "gap-community-network", kind: "discrepancy", title: "Community versus Network/index", summary: "Community is the normative protocol concept; Network is product language and network/index is current implementation vocabulary.", sourcePaths: ["packages/protocol/src/networks/application/network.graph.ts", "packages/protocol/src/networks/application/indexer.graph.ts"] },
+      { id: "gap-background-discovery", kind: "discrepancy", title: "Background discovery versus stale synchronous examples", summary: "Current opportunity creation is background-only. Synchronous examples are stale explanatory material and do not define an alternate protocol flow.", sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.graph.ts"] },
+      { id: "gap-candidate-presentation", kind: "discrepancy", title: "Private Candidate versus surfaced Opportunity", summary: "Candidate identity and evaluation stay private; only a recipient-safe Opportunity presentation is surfaced. The two are not interchangeable records.", sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.presenter.ts"] },
       { id: "reference-radar", kind: "reference-concept", title: "Radar", summary: "Product/reference-implementation retrieval concept; not a normative primitive." },
       { id: "reference-semantic-entropy", kind: "reference-concept", title: "Semantic entropy", summary: "Product/reference-implementation uncertainty technique; not a normative primitive." },
       { id: "reference-felicity-conditions", kind: "reference-concept", title: "Felicity conditions", summary: "Product/reference-implementation speech-act framing; not a normative primitive." },

@@ -1,4 +1,4 @@
-import type { NegotiatorStance } from "../../src/negotiation/domain/negotiation.stance.contracts.js";
+import type { NegotiatorStance } from "../../src/negotiations/domain/negotiation.stance.contracts.js";
 import type { BucketScore, FixtureValue, StanceRunResult, StanceScore } from "./stance.types.js";
 
 /**

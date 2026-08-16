@@ -29,7 +29,7 @@ export interface EnvFlagMeta {
    * which is a measurement of nothing dressed up as a difference.
    *
    * `csv-enum` is a comma-separated list drawn from `values`, mirroring
-   * DISCOVERY_ALLOWED_TYPES (src/opportunity/discovery.env.ts).
+   * DISCOVERY_ALLOWED_TYPES (src/opportunities/discovery.env.ts).
    *
    * `json-model-map` is a JSON object of agent id -> model id, mirroring
    * EVAL_MODEL_OVERRIDES (src/shared/agent/model.resolver.ts, consumed by
@@ -49,7 +49,7 @@ export interface EnvFlagMeta {
    * Largest value the read site honours. Only set where the read site really
    * has a ceiling — NEGOTIATOR_TURN_TIMEOUT_MS rejects anything above
    * Number.MAX_SAFE_INTEGER because AbortSignal.timeout() throws on it
-   * (src/negotiation/application/negotiation.agent.ts).
+   * (src/negotiations/application/negotiation.agent.ts).
    */
   max?: number;
   /** Human-readable default, e.g. "off" or "7 days". */
@@ -287,7 +287,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_ALLOWED_TYPES",
     label: "Discovery allowed types",
     description:
-      "Comma-separated list (`intent`, `profile`) gating which data types may participate in opportunity matching. Unknown tokens are ignored with a warning; if nothing valid remains, both stay allowed so a typo never disables discovery (src/opportunity/discovery.env.ts).",
+      "Comma-separated list (`intent`, `profile`) gating which data types may participate in opportunity matching. Unknown tokens are ignored with a warning; if nothing valid remains, both stay allowed so a typo never disables discovery (src/opportunities/discovery.env.ts).",
     kind: "csv-enum",
     values: ["intent", "profile"],
     defaultDescription: "both intent and profile",
@@ -296,7 +296,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_MIN_SIMILARITY",
     label: "Discovery minimum similarity",
     description:
-      "Inclusive minimum similarity for discovery retrieval across intent, premise, and user-context paths. Accepts a non-negative decimal from 0 through 1, with no exponent notation (src/opportunity/discovery.env.ts).",
+      "Inclusive minimum similarity for discovery retrieval across intent, premise, and user-context paths. Accepts a non-negative decimal from 0 through 1, with no exponent notation (src/opportunities/discovery.env.ts).",
     kind: "decimal-range",
     min: 0,
     max: 1,
@@ -306,7 +306,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_EVALUATOR_MIN_SCORE",
     label: "Discovery evaluator minimum score",
     description:
-      "Inclusive minimum evaluator score required for a retrieved candidate to remain in discovery results. Accepts a non-negative decimal from 0 through 100, with no exponent notation (src/opportunity/discovery.env.ts).",
+      "Inclusive minimum evaluator score required for a retrieved candidate to remain in discovery results. Accepts a non-negative decimal from 0 through 100, with no exponent notation (src/opportunities/discovery.env.ts).",
     kind: "decimal-range",
     min: 0,
     max: 100,
@@ -316,7 +316,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_PROFILE_SOURCE",
     label: "Discovery profile source",
     description:
-      "Selects how profiles participate in matching: `premise` (atomic premises as the profile corpus) or `user_context` (synthesized context paragraphs). Unknown values warn once and fall back so discovery keeps running (src/opportunity/discovery.env.ts).",
+      "Selects how profiles participate in matching: `premise` (atomic premises as the profile corpus) or `user_context` (synthesized context paragraphs). Unknown values warn once and fall back so discovery keeps running (src/opportunities/discovery.env.ts).",
     kind: "enum",
     values: ["premise", "user_context"],
     defaultDescription: "premise",
@@ -325,7 +325,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_CONTEXT_TO_INTENT",
     label: "Context-to-intent discovery",
     description:
-      "Only relevant when DISCOVERY_PROFILE_SOURCE is `user_context`: `1` also matches contexts against intents, `0` restricts discovery to context-to-context evidence (src/opportunity/application/opportunity.graph.ts).",
+      "Only relevant when DISCOVERY_PROFILE_SOURCE is `user_context`: `1` also matches contexts against intents, `0` restricts discovery to context-to-context evidence (src/opportunities/application/opportunity.graph.ts).",
     kind: "enum",
     values: ["0", "1"],
     defaultDescription: "1 (enabled when the user-context profile source is active)",
@@ -334,7 +334,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_REJECTION_COOLDOWN_DAYS",
     label: "Rejection cooldown (days)",
     description:
-      "Days during which a recently rejected or stalled candidate receives a ×0.5 ranking penalty in discovery — a soft pushdown, not removal. Positive float in days (src/opportunity/application/opportunity.graph.ts).",
+      "Days during which a recently rejected or stalled candidate receives a ×0.5 ranking penalty in discovery — a soft pushdown, not removal. Positive float in days (src/opportunities/application/opportunity.graph.ts).",
     kind: "number",
     defaultDescription: "7 days",
   },
@@ -342,7 +342,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_SOURCE_PREMISE_LIMIT",
     label: "Source premise discovery limit",
     description:
-      "Per-source cap on candidate premise matches in one discovery run. `0` explicitly disables source-premise discovery (src/opportunity/application/opportunity.graph.ts).",
+      "Per-source cap on candidate premise matches in one discovery run. `0` explicitly disables source-premise discovery (src/opportunities/application/opportunity.graph.ts).",
     kind: "integer",
     defaultDescription: "40",
   },
@@ -350,7 +350,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
     label: "Parallel opportunity evaluation",
     description:
-      "When `true`, the live discovery graph evaluates candidate opportunities in parallel instead of sequentially (src/opportunity/application/opportunity.graph.ts).",
+      "When `true`, the live discovery graph evaluates candidate opportunities in parallel instead of sequentially (src/opportunities/application/opportunity.graph.ts).",
     kind: "boolean",
     values: ["true", "false"],
     defaultDescription: "false",
@@ -359,7 +359,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "INTRODUCER_DISCOVERY_ENABLED",
     label: "Introducer discovery",
     description:
-      "Strict, default-off gate for finding opportunities on behalf of another user (src/opportunity/application/opportunity.introducer-feature.ts).",
+      "Strict, default-off gate for finding opportunities on behalf of another user (src/opportunities/application/opportunity.introducer-feature.ts).",
     kind: "boolean",
     values: ["true", "false"],
     defaultDescription: "false",
@@ -368,7 +368,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_INCLUDE_OTHER_INTENTS",
     label: "Negotiation includes other intents",
     description:
-      "Default-compatible deployment policy: whether an autonomous opportunity negotiation may reference the parties' other intents (src/opportunity/application/opportunity.existing-negotiation.ts).",
+      "Default-compatible deployment policy: whether an autonomous opportunity negotiation may reference the parties' other intents (src/opportunities/application/opportunity.existing-negotiation.ts).",
     kind: "enum",
     values: ["true", "false"],
     defaultDescription: "true",
@@ -377,7 +377,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_MAX_TURNS_CHAT",
     label: "Max negotiation turns (chat)",
     description:
-      "Turn cap for negotiations started from a chat conversation. Read as `Number(...) || 4`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunity/application/opportunity.graph.ts).",
+      "Turn cap for negotiations started from a chat conversation. Read as `Number(...) || 4`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunities/application/opportunity.graph.ts).",
     kind: "integer",
     min: 1,
     defaultDescription: "4",
@@ -386,7 +386,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_MAX_TURNS_AMBIENT",
     label: "Max negotiation turns (ambient)",
     description:
-      "Turn cap for negotiations without a chat conversation. Read as `Number(...) || 6`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunity/application/opportunity.graph.ts).",
+      "Turn cap for negotiations without a chat conversation. Read as `Number(...) || 6`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunities/application/opportunity.graph.ts).",
     kind: "integer",
     min: 1,
     defaultDescription: "6",
@@ -395,7 +395,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_PROTOCOL_VERSION",
     label: "Negotiation protocol version",
     description:
-      "Protocol version for negotiations with no prior task for the same opportunity. Read as a strict equality against `v2`, so every other value — including a typo — is `v1`. In-flight negotiations stay pinned to the version they were stamped with (src/negotiation/domain/negotiation.protocol.ts).",
+      "Protocol version for negotiations with no prior task for the same opportunity. Read as a strict equality against `v2`, so every other value — including a typo — is `v1`. In-flight negotiations stay pinned to the version they were stamped with (src/negotiations/domain/negotiation.protocol.ts).",
     kind: "enum",
     values: ["v1", "v2"],
     defaultDescription: "v1",
@@ -404,7 +404,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_SCREEN_MODE",
     label: "Outreach screen mode",
     description:
-      "The pre-turn outreach gate: `off` never screens; `shadow` screens and records the verdict without acting on it; `enforce` lets a `pass` verdict stop the negotiation before any turn is exchanged. Unset or unrecognised is `off` (src/negotiation/domain/negotiation.screen.contracts.ts).",
+      "The pre-turn outreach gate: `off` never screens; `shadow` screens and records the verdict without acting on it; `enforce` lets a `pass` verdict stop the negotiation before any turn is exchanged. Unset or unrecognised is `off` (src/negotiations/domain/negotiation.screen.contracts.ts).",
     kind: "enum",
     values: ["off", "shadow", "enforce"],
     defaultDescription: "off",
@@ -413,7 +413,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_ASK_USER_ENABLED",
     label: "Ask-user consult pause",
     description:
-      "Whether a negotiation may pause to consult its principal (`ask_user`). Read as a strict equality against `true`, so any other value is off (src/negotiation/domain/negotiation.protocol.ts).",
+      "Whether a negotiation may pause to consult its principal (`ask_user`). Read as a strict equality against `true`, so any other value is off (src/negotiations/domain/negotiation.protocol.ts).",
     kind: "boolean",
     values: ["true", "false"],
     defaultDescription: "false",
@@ -422,7 +422,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_ASK_USER_WINDOW_MS",
     label: "Ask-user answer window (ms)",
     description:
-      "How long a paused negotiation waits for its principal's answer before expiring. Non-numeric or non-positive values fall back to 24 hours rather than failing (src/negotiation/domain/negotiation.protocol.ts). Declared `integer` though the read site parses with Number() and would honour a fraction of a millisecond: refusing one costs nothing an operator wants, and \"whole milliseconds\" is the honest offer.",
+      "How long a paused negotiation waits for its principal's answer before expiring. Non-numeric or non-positive values fall back to 24 hours rather than failing (src/negotiations/domain/negotiation.protocol.ts). Declared `integer` though the read site parses with Number() and would honour a fraction of a millisecond: refusing one costs nothing an operator wants, and \"whole milliseconds\" is the honest offer.",
     kind: "integer",
     min: 1,
     defaultDescription: "86400000 (24 hours)",
@@ -431,7 +431,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_CONSULTATION_POLICY_MODE",
     label: "Consultation policy",
     description:
-      "Centralised switch for the consultation policy: `off` never consults; `shadow` evaluates eligibility and records it without pausing; `on` allows the pause. Invalid, absent and empty values all roll back to `off` (src/negotiation/domain/negotiation.consultation-policy.ts).",
+      "Centralised switch for the consultation policy: `off` never consults; `shadow` evaluates eligibility and records it without pausing; `on` allows the pause. Invalid, absent and empty values all roll back to `off` (src/negotiations/domain/negotiation.consultation-policy.ts).",
     kind: "enum",
     values: ["off", "shadow", "on"],
     defaultDescription: "off",
@@ -440,7 +440,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
     label: "Deadlock bargaining shift",
     description:
-      "Whether a stalemated negotiation shifts into a bargaining stance. Read as a strict equality against `true`, so any other value is off (src/negotiation/domain/negotiation.deadlock.ts).",
+      "Whether a stalemated negotiation shifts into a bargaining stance. Read as a strict equality against `true`, so any other value is off (src/negotiations/domain/negotiation.deadlock.ts).",
     kind: "boolean",
     values: ["true", "false"],
     defaultDescription: "false",
@@ -449,7 +449,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_DEADLOCK_THRESHOLD",
     label: "Deadlock threshold (turns)",
     description:
-      "Consecutive non-convergent turns (counters and questions) that constitute a deadlock. Must be an integer of at least 2 — below that a single counter would read as a stalemate — and anything else falls back to 4 (src/negotiation/domain/negotiation.deadlock.ts).",
+      "Consecutive non-convergent turns (counters and questions) that constitute a deadlock. Must be an integer of at least 2 — below that a single counter would read as a stalemate — and anything else falls back to 4 (src/negotiations/domain/negotiation.deadlock.ts).",
     kind: "integer",
     min: 2,
     defaultDescription: "4 turns",
@@ -458,7 +458,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATOR_STANCE",
     label: "Negotiator stance",
     description:
-      "The stance the negotiator argues from: `advocate` presses its own user's case; `evaluator` and `skeptic` additionally apply an opportunity-cost value bar and treat a discovery-query match as necessary rather than sufficient. Unset or unrecognised is `advocate` (src/negotiation/domain/negotiation.stance.contracts.ts).",
+      "The stance the negotiator argues from: `advocate` presses its own user's case; `evaluator` and `skeptic` additionally apply an opportunity-cost value bar and treat a discovery-query match as necessary rather than sufficient. Unset or unrecognised is `advocate` (src/negotiations/domain/negotiation.stance.contracts.ts).",
     kind: "enum",
     values: ["advocate", "evaluator", "skeptic"],
     defaultDescription: "advocate",
@@ -467,7 +467,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATOR_TURN_TIMEOUT_MS",
     label: "Negotiator turn timeout (ms)",
     description:
-      "Hard limit on one negotiation turn's LLM call. Must be above 0 and at most Number.MAX_SAFE_INTEGER: 0 would abort every turn before a response arrived, and a larger value throws inside AbortSignal.timeout(). Invalid values fall back to 15000 (src/negotiation/application/negotiation.agent.ts).",
+      "Hard limit on one negotiation turn's LLM call. Must be above 0 and at most Number.MAX_SAFE_INTEGER: 0 would abort every turn before a response arrived, and a larger value throws inside AbortSignal.timeout(). Invalid values fall back to 15000 (src/negotiations/application/negotiation.agent.ts).",
     kind: "integer",
     min: 1,
     max: Number.MAX_SAFE_INTEGER,
@@ -486,7 +486,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
     label: "Negotiation-evidence questions",
     description:
-      "Lens C question producer: `off` never runs; `shadow` mines and verifies neutral hypotheses over allowlisted negotiation evidence with aggregate telemetry only — no questions persisted, no behavior change; `on` is reserved for a later phase (src/opportunity/negotiation-evidence/negotiation-evidence.env.ts).",
+      "Lens C question producer: `off` never runs; `shadow` mines and verifies neutral hypotheses over allowlisted negotiation evidence with aggregate telemetry only — no questions persisted, no behavior change; `on` is reserved for a later phase (src/opportunities/negotiation-evidence/negotiation-evidence.env.ts).",
     kind: "enum",
     values: ["off", "shadow", "on"],
     defaultDescription: "off",
@@ -495,7 +495,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "OUTCOME_QUESTIONS_MODE",
     label: "Outcome questions",
     description:
-      "Lens B outcome-question pipeline: `off` captures nothing; `shadow` captures an append-only feedback event per explicit owner action and mines neutral trade-off hypotheses with aggregate telemetry only; `on` currently behaves like `shadow` (src/opportunity/outcome/outcome.env.ts).",
+      "Lens B outcome-question pipeline: `off` captures nothing; `shadow` captures an append-only feedback event per explicit owner action and mines neutral trade-off hypotheses with aggregate telemetry only; `on` currently behaves like `shadow` (src/opportunities/outcome/outcome.env.ts).",
     kind: "enum",
     values: ["off", "shadow", "on"],
     defaultDescription: "off",
@@ -504,7 +504,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "POOL_QUESTIONS_MINING",
     label: "Pool question mining",
     description:
-      "P1 shadow axis mining on discovery-run completion: `shadow` mines and scores axes and logs them — no questions are generated and nothing user-facing changes. Any other value (including unset) means off (src/opportunity/discriminator/discriminator.env.ts).",
+      "P1 shadow axis mining on discovery-run completion: `shadow` mines and scores axes and logs them — no questions are generated and nothing user-facing changes. Any other value (including unset) means off (src/opportunities/discriminator/discriminator.env.ts).",
     kind: "enum",
     values: ["off", "shadow"],
     defaultDescription: "off",
@@ -513,7 +513,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "POOL_QUESTIONS_MODE",
     label: "Pool questions",
     description:
-      "When `on`, the mining hook also enqueues a pool_discovery question for the top eligible discriminator (still subject to the questioner master gate and per-intent budget). `on` implies mining runs even when POOL_QUESTIONS_MINING is off (src/opportunity/discriminator/discriminator.env.ts).",
+      "When `on`, the mining hook also enqueues a pool_discovery question for the top eligible discriminator (still subject to the questioner master gate and per-intent budget). `on` implies mining runs even when POOL_QUESTIONS_MINING is off (src/opportunities/discriminator/discriminator.env.ts).",
     kind: "enum",
     values: ["off", "on"],
     defaultDescription: "off",
@@ -522,7 +522,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "POOL_QUESTIONS_PUSH",
     label: "Pool question push",
     description:
-      "Push delivery mode for high-value-of-information pool questions. Callers additionally require pool-question mode and negotiator availability before anything is delivered (src/opportunity/discriminator/discriminator.env.ts).",
+      "Push delivery mode for high-value-of-information pool questions. Callers additionally require pool-question mode and negotiator availability before anything is delivered (src/opportunities/discriminator/discriminator.env.ts).",
     kind: "enum",
     values: ["off", "on"],
     defaultDescription: "off",
@@ -531,7 +531,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "POOL_QUESTIONS_RANKING",
     label: "Pool question ranking",
     description:
-      "Ranking mode for pool questions (src/opportunity/discriminator/discriminator.env.ts).",
+      "Ranking mode for pool questions (src/opportunities/discriminator/discriminator.env.ts).",
     kind: "enum",
     values: ["off", "on"],
     defaultDescription: "off",
@@ -631,14 +631,14 @@ export const HARNESS_AGENT_METADATA: Readonly<Record<OpsHarness, readonly AgentM
     {
       id: "opportunityEvaluator",
       label: "Evaluator",
-      role: "Decides accept or reject for each candidate pair, with a score and reasoning — the case score is this model's judgment (src/opportunity/application/opportunity.evaluator.ts).",
+      role: "Decides accept or reject for each candidate pair, with a score and reasoning — the case score is this model's judgment (src/opportunities/application/opportunity.evaluator.ts).",
     },
   ],
   opportunity: [
     {
       id: "opportunityPresenter",
       label: "Card writer",
-      role: "Writes the personalized, second-person card a user sees about an opportunity: headline, summary, and suggested action (src/opportunity/application/opportunity.presenter.ts).",
+      role: "Writes the personalized, second-person card a user sees about an opportunity: headline, summary, and suggested action (src/opportunities/application/opportunity.presenter.ts).",
     },
   ],
   profile: [
@@ -660,12 +660,12 @@ export const HARNESS_AGENT_METADATA: Readonly<Record<OpsHarness, readonly AgentM
     {
       id: "premiseDecomposer",
       label: "Premise decomposer",
-      role: "Breaks free-text input about a person into atomic, first-person, self-descriptive premises — one fact per premise (src/premise/premise.decomposer.ts).",
+      role: "Breaks free-text input about a person into atomic, first-person, self-descriptive premises — one fact per premise (src/premises/premise.decomposer.ts).",
     },
     {
       id: "premiseAnalyzer",
       label: "Premise analyzer",
-      role: "Classifies each premise by speech act and scores its felicity conditions — whether it is a well-formed ground for discovery (src/premise/premise.analyzer.ts).",
+      role: "Classifies each premise by speech act and scores its felicity conditions — whether it is a well-formed ground for discovery (src/premises/premise.analyzer.ts).",
     },
   ],
 });

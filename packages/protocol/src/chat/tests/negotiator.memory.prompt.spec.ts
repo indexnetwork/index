@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 
 import { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "../negotiator.prompt.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
-import type { NegotiatorMemoryEntry } from "../../negotiation/domain/negotiation.memory.js";
+import type { NegotiatorMemoryEntry } from "../../negotiations/domain/negotiation.memory.js";
 
 /**
  * IND-407 (P5.3) — negotiator chat persona memory injection.

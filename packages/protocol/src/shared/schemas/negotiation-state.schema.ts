@@ -1,5 +1,5 @@
 /**
- * Negotiation state DTOs extracted from negotiation/negotiation.state.ts for
+ * Negotiation state DTOs extracted from negotiations/negotiation.state.ts for
  * consumption by shared interfaces. This shared module owns the DTO schemas;
  * LangGraph Annotation.Root stays in the domain file.
  */
@@ -15,7 +15,7 @@ import { z } from "zod";
  * `reject` into `withdraw` (initiator seat) / `decline` (counterparty seat).
  * Which subset is valid for a given turn depends on the task's
  * `protocolVersion` and the acting user's seat — see
- * `negotiation/negotiation.protocol.ts` for the seat-scoped schemas.
+ * `negotiations/negotiation.protocol.ts` for the seat-scoped schemas.
  */
 export const NEGOTIATION_ACTIONS = [
   "propose", "accept", "reject", "counter", "question",

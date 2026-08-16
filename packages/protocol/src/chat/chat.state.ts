@@ -170,7 +170,7 @@ export const ChatGraphState = Annotation.Root({
     reducer: (curr, next) => next,
     default: () => undefined,
   }),
-  /** Results from intent/profile/opportunity/scrape subgraphs. */
+  /** Results from intent/profile/opportunities/scrape subgraphs. */
   subgraphResults: Annotation<SubgraphResults | undefined>({
     reducer: (curr, next) => next,
     default: () => undefined,
