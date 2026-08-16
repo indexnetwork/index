@@ -24,7 +24,7 @@ import { selectHydeDocumentsForGeneration } from '../../shared/hyde/hyde.documen
 import { getHydeGenerationMode } from '../../shared/hyde/hyde.env.js';
 import { validateOpportunityActors } from '../domain/opportunity.utils.js';
 import { safeFallbackSummary } from '../domain/opportunity.safe-presentation.js';
-import { hasUnsupportedOpportunityClaim } from '../domain/opportunity.claim-safety.js';
+import { hasUnsupportedOpportunityClaim } from '../../shared/utils/claim-safety.js';
 
 /** Optional evaluator for testing (avoids LLM calls). */
 export type OpportunityEvaluatorLike = {

@@ -8,6 +8,9 @@
  * IND-547: canonical question schema in the questions domain layer.
  */
 import { z } from "zod";
+import { UnderspecificationTypeSchema, type UnderspecificationType } from "../../shared/schemas/underspecification.schema.js";
+
+export { UnderspecificationTypeSchema };
 
 export const QuestionOptionSchema = z.object({
   /** Display text. Suffix " (Recommended)" on the safest path; list it first. */
@@ -43,12 +46,6 @@ export const QuestionSchema = z.object({
   evidence: z.string().min(1).max(160).nullable().optional().transform((value) => value ?? undefined),
 });
 
-/** Canonical QUD repair categories for underspecified intents/questions. */
-export const UnderspecificationTypeSchema = z.enum([
-  "missing_constituent",
-  "missing_constraint",
-  "open_alternative_set",
-]);
 
 export const QuestionStrategySchema = z.enum([
   "refine_intent",
@@ -70,7 +67,7 @@ export const QuestionGeneratorResponseSchema = z.object({
 
 export type QuestionOption = z.infer<typeof QuestionOptionSchema>;
 export type Question = z.infer<typeof QuestionSchema>;
-export type UnderspecificationType = z.infer<typeof UnderspecificationTypeSchema>;
+export type { UnderspecificationType };
 export type QuestionStrategy = z.infer<typeof QuestionStrategySchema>;
 export type QuestionWithStrategy = z.infer<typeof QuestionWithStrategySchema>;
 export type QuestionGeneratorResponse = z.infer<typeof QuestionGeneratorResponseSchema>;

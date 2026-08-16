@@ -51,6 +51,21 @@ This is internal structure only.
 
 ### Fixed
 
+- Broke a runtime import cycle the barrels would otherwise have introduced.
+  `shared/agent/tool.factory.ts` reached `createAgentTools` through
+  `participant-agents/index.ts`, which re-exports the chat personas, which
+  import the tool factory back. The composition root is exempt from the barrel
+  rule precisely because it must reach everything, so it now imports the leaf
+  directly. Verified: zero runtime cycles, matching `dev`.
+- Moved two leaf contracts out of the capabilities that happened to host them,
+  into the neutral layer both sides already depend on:
+  - `opportunity/domain/opportunity.claim-safety.ts` → `shared/utils/claim-safety.ts`
+    (three pure text predicates, no imports of its own). `negotiation` and
+    `contacts` needed it and were pulling the whole opportunity capability.
+  - `UnderspecificationTypeSchema` → `shared/schemas/underspecification.schema.ts`.
+    The signals clarifier was importing the entire questions capability — LLM
+    agents and tools included — to reach a three-value enum.
+
 - `CAPABILITY_DIRECTORIES` mapped `questioner` but not `questions`, so every
   file under `src/questions/` was skipped by the capability boundary checker
   entirely. Adding the mapping surfaced six real violations that had been

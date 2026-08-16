@@ -30,7 +30,7 @@ export * from "./opportunity.labels.js";
 export * from "./opportunity.utils.js";
 export * from "./opportunity.actor.js";
 export * from "./opportunity.evidence.js";
-export * from "./opportunity.claim-safety.js";
+export * from "../../shared/utils/claim-safety.js";
 export * from "./opportunity.presentation.js";
 export * from "./opportunity.safe-presentation.js";
 export * from "./opportunity.presentation-cache.js";

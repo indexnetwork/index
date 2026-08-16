@@ -25,7 +25,10 @@ import { createOpportunityTools } from "../../opportunity/index.js";
 import { createUtilityTools } from "./utility.tools.js";
 import { createIntegrationTools } from "../../integrations/index.js";
 import { createContactTools } from "../../contacts/index.js";
-import { createAgentTools } from "../../participant-agents/index.js";
+// The composition root reaches the leaf directly (it is exempt from the barrel
+// rule by design): importing participant-agents/index.js here would pull in the
+// chat personas, which import this module back -- a runtime cycle.
+import { createAgentTools } from "../../participant-agents/application/agent.tools.js";
 import { createNegotiationTools } from "../../negotiation/index.js";
 import { createPremiseTools } from "../../premise/premise.tools.js";
 import { createQuestionerTools, createAskUserQuestionTools } from "../../questions/index.js";

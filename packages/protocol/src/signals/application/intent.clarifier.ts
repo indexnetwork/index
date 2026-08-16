@@ -5,7 +5,7 @@ import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { Timed } from "../../shared/observability/performance.js";
-import { UnderspecificationTypeSchema, type UnderspecificationType } from "../../questions/index.js";
+import { UnderspecificationTypeSchema, type UnderspecificationType } from "../../shared/schemas/underspecification.schema.js";
 
 const logger = protocolLogger("IntentClarifier");
 

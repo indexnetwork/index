@@ -20,7 +20,7 @@ import type { Opportunity } from "../../shared/interfaces/database.interface.js"
 import type { ChatGraphCompositeDatabase } from "../../shared/interfaces/database.interface.js";
 import type { NegotiationContext } from "./negotiation-context.loader.js";
 import { stripUuids, stripIntroducerMentions } from "../domain/opportunity.presentation.js";
-import { stripUnsupportedOpportunityClaims } from "../domain/opportunity.claim-safety.js";
+import { stripUnsupportedOpportunityClaims } from "../../shared/utils/claim-safety.js";
 import { DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_ACTION, DEFAULT_FALLBACK_HEADLINE, safeFallbackSummary } from "../domain/opportunity.safe-presentation.js";
 
 /**

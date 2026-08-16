@@ -143,7 +143,7 @@ export {
   hasUnsupportedOpportunityClaim,
   stripUnsupportedOpportunityClaims,
   stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText,
-} from "./domain/opportunity.claim-safety.js";
+} from "../shared/utils/claim-safety.js";
 export {
   buildCandidateEvidence,
 } from "./domain/opportunity.evidence.js";

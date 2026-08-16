@@ -21,7 +21,7 @@
  */
 
 import { truncateAtBoundary, viewerCentricCardSummary } from "./opportunity.presentation.js";
-import { stripUnsupportedOpportunityClaims } from "./opportunity.claim-safety.js";
+import { stripUnsupportedOpportunityClaims } from "../../shared/utils/claim-safety.js";
 
 /** Default max length for fallback summaries (matches presenter internal fallback). */
 export const SAFE_FALLBACK_MAX_CHARS = 300;
