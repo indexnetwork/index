@@ -663,12 +663,6 @@
       "source": "./capabilities/participant-agents.facade.js"
     },
     {
-      "name": "ORCHESTRATOR_PERSONA_ID",
-      "kind": "value",
-      "stability": "stable",
-      "source": "./capabilities/participant-agents.facade.js"
-    },
-    {
       "name": "ChatPersonaConfig",
       "kind": "type",
       "stability": "stable",

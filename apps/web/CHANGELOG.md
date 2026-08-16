@@ -8,6 +8,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- **Breaking (web 0.54.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Retired `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
+- **Breaking (web 0.53.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Legacy `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
 - **Breaking (web 0.52.0):** delete the `/hermes-authorize` and `/index-app-authorize` PKCE consent pages; the dedicated `idxh_`/`idxo_` credential layer was removed from the API. Hermes uses an ordinary agent API key and the Mac app signs in through `/cli-auth`.
 - Remove the cli-auth v1 contract: the `session_token` callback field, `buildLegacyCliCallbackUrl`, and the version-less request shape are gone; `/cli-auth` accepts only the state-bound v2 request (`callback`, `version=2`, `state`).
 - Remove the "Automatic Member Enrichment" policy section from network Access

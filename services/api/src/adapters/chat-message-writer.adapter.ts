@@ -1,3 +1,6 @@
+/** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
+const SIGNAL_PERSONA = 'signal';
+
 /**
  * Local structural type matching ChatMessageWriter from @indexnetwork/protocol.
  * Defined here to keep adapters free of cross-layer imports.
@@ -38,10 +41,14 @@ export class ChatMessageWriterAdapter implements ChatMessageWriter {
     userId: string,
     content: string,
   ): Promise<{ sessionId: string } | null> {
+    // Signal is the live primary chat persona. This used to target the
+    // orchestrator's sessions, which are now retained read-only history —
+    // writing an elicited user message into one would resurrect a chat the
+    // server refuses to continue.
     const sessions = await this.chatSessionService.getUserSessions(
       userId,
       1,
-      'orchestrator',
+      SIGNAL_PERSONA,
     );
     const mostRecent = sessions[0];
     if (!mostRecent) return null;

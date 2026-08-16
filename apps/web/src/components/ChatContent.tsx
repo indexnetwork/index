@@ -5,7 +5,6 @@ import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, Chevro
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
-import { useAuthContext } from "@/contexts/AuthContext";
 import { useUploadServiceV2 } from "@/services/v2/upload.service";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunities, useQuestionsService } from "@/contexts/APIContext";
@@ -96,8 +95,6 @@ export default function ChatContent({
     submitMidStreamMessage,
     liveQuestions,
   } = useAIChat();
-  const { features } = useAuthContext();
-  const signalAgentEnabled = features?.signalAgent === true;
   const reporterSurface = persona === "reporter" || sessionPersona === "reporter";
   const effectiveReadOnlySurface = readOnlySurface || sessionPersona === "reporter";
   const routedSessionReady = !sessionIdFromUrl
@@ -108,8 +105,9 @@ export default function ChatContent({
     && sessionLoadState.targetSessionId === sessionIdFromUrl
       ? sessionLoadState.error
       : null;
-  const legacyOrchestratorReadOnly = signalAgentEnabled
-    && sessionPersona === "orchestrator"
+  // The orchestrator persona is retired: its sessions render but cannot be
+  // continued (the server answers WEB_SIGNAL_SESSION_REQUIRED).
+  const legacyOrchestratorReadOnly = sessionPersona === "orchestrator"
     && sessionId === sessionIdFromUrl
     && routedSessionReady;
   const routeSessionMismatch = sessionId !== sessionIdFromUrl
@@ -760,7 +758,7 @@ export default function ChatContent({
         nameArg,
         !sessionId && persona
           ? { persona }
-          : !sessionId && signalAgentEnabled
+          : !sessionId
             ? { persona: "signal" as const }
             : undefined,
       );
@@ -1209,7 +1207,7 @@ export default function ChatContent({
             </form>
             )}
           </div>
-          {signalAgentEnabled && !reporterSurface && (
+          {!reporterSurface && (
             <button
               type="button"
               onClick={() => navigate("/i/new")}

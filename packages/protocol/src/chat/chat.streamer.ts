@@ -2,8 +2,8 @@ import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { BaseCheckpointSaver } from "@langchain/langgraph";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
-import type { ChatStreamEvent, DebugMetaDiscoveryQuestions, DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
-import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent, createQuestionGeneratorStartEvent, createQuestionGeneratorEndEvent, createUserQuestionEvent } from "./chat-streaming.types.js";
+import type { ChatStreamEvent, DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
+import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent, createUserQuestionEvent } from "./chat-streaming.types.js";
 import type { AgentStreamEvent } from "./chat.agent.js";
 
 const logger = protocolLogger("ChatStreamer");
@@ -289,14 +289,6 @@ export class ChatStreamer {
           if (event.type === "chat_summarizer_end") {
             yield createChatSummarizerEndEvent(sessionId, event.payload);
           }
-
-          if (event.type === "question_generator_start") {
-            yield createQuestionGeneratorStartEvent(sessionId, event.payload);
-          }
-
-          if (event.type === "question_generator_end") {
-            yield createQuestionGeneratorEndEvent(sessionId, event.payload);
-          }
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -326,7 +318,7 @@ export class ChatStreamer {
           yield createResponseCompleteEvent(sessionId, responseText);
 
           const debugMeta = agentOutput?.debugMeta as
-            | { graph: string; iterations: number; tools?: DebugMetaToolCall[]; llm?: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations; discoveryQuestions?: DebugMetaDiscoveryQuestions }
+            | { graph: string; iterations: number; tools?: DebugMetaToolCall[]; llm?: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations}
             | undefined;
           if (
             debugMeta?.graph != null &&
@@ -340,7 +332,6 @@ export class ChatStreamer {
               Array.isArray(debugMeta.tools) ? debugMeta.tools : [],
               debugMeta.llm ?? llmFallback,
               debugMeta.orchestratorNegotiations,
-              debugMeta.discoveryQuestions,
             );
           }
 

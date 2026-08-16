@@ -4,13 +4,13 @@ import type { ChatTools, ToolContext, ResolvedToolContext } from "../shared/agen
 import { resolveChatContext } from "../shared/agent/tool.helpers.js";
 import { scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import { ITERATION_NUDGE } from "./chat.prompt.js";
-import { ORCHESTRATOR_PERSONA, type ChatPersonaConfig } from "./chat.persona.js";
+import type { ChatPersonaConfig } from "./chat.persona.js";
 import { extractRecentToolCalls, type IterationContext } from "./chat.prompt.modules.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createModel, type ModelConfig } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
-import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations, DebugMetaDiscoveryQuestions } from "./chat-streaming.types.js";
+import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
 import type { Question, QuestionStrategy } from "../questions/domain/question.schema.js";
 import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
@@ -162,9 +162,7 @@ export type AgentStreamEvent =
   | { type: "status"; message: string }
   | { type: "decision_questions"; questions: Question[] }
   | { type: "chat_summarizer_start"; payload: { sessionId: string } }
-  | { type: "chat_summarizer_end"; payload: { durationMs: number } }
-  | { type: "question_generator_start"; payload: { inputMode: "transcripts" | "insights"; negotiationCount: number; hasChatContext: boolean; truncated?: { originalCount: number; keptCount: number } } }
-  | { type: "question_generator_end"; payload: { finalCount: number; strategies: QuestionStrategy[]; durationMs: number; inputMode: "transcripts" | "insights" } };
+  | { type: "chat_summarizer_end"; payload: { durationMs: number } };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -326,11 +324,11 @@ export class ChatAgent {
    *
    * @param context - Tool context (database, userId, scope, deps)
    * @param persona - Persona config (prompt builder, toolset, loop behaviors).
-   *                  Defaults to the orchestrator persona.
+   *                  Required — there is no default persona.
    */
   static async create(
     context: ToolContext,
-    persona: ChatPersonaConfig = ORCHESTRATOR_PERSONA,
+    persona: ChatPersonaConfig,
   ): Promise<ChatAgent> {
     const { networkId: legacyNetworkId } = context;
     const explicitScope = context.scopeType && context.scopeId
@@ -669,7 +667,6 @@ export class ChatAgent {
     debugSteps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
     graphTimings?: Array<{ name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> }>;
     decisionQuestions?: Question[];
-    discoveryQuestionsDebug?: DebugMetaDiscoveryQuestions;
   }> {
     let normalized = resultStr;
 
@@ -682,7 +679,6 @@ export class ChatAgent {
     let debugSteps: DebugStep[] | undefined;
     let graphTimings: GraphTiming[] | undefined;
     let decisionQuestions: Question[] | undefined;
-    let discoveryQuestionsDebug: DebugMetaDiscoveryQuestions | undefined;
 
     try {
       const parsed = JSON.parse(normalized) as {
@@ -726,29 +722,8 @@ export class ChatAgent {
       }
 
       const rawQuestions = (payload as { questions?: unknown }).questions ?? (parsed as { questions?: unknown }).questions;
-      const rawQuestionDebug = (payload as { _discoveryQuestionsDebug?: unknown })._discoveryQuestionsDebug
-        ?? (parsed as { _discoveryQuestionsDebug?: unknown })._discoveryQuestionsDebug;
       if (Array.isArray(rawQuestions)) {
         decisionQuestions = rawQuestions as Question[];
-      }
-      if (rawQuestionDebug && typeof rawQuestionDebug === "object") {
-        discoveryQuestionsDebug = rawQuestionDebug as DebugMetaDiscoveryQuestions;
-      }
-      // `_discoveryQuestionsDebug` is internal trace data — strip from the LLM-facing
-      // tool result. `questions` is intentionally kept visible so the agent can
-      // follow the prompt addendum and reference the decision prompts in its reply.
-      if (discoveryQuestionsDebug !== undefined) {
-        try {
-          const cleaned = JSON.parse(normalized) as Record<string, unknown>;
-          const stripFrom = (obj: Record<string, unknown>) => {
-            delete obj._discoveryQuestionsDebug;
-          };
-          stripFrom(cleaned);
-          if (cleaned.data && typeof cleaned.data === "object") {
-            stripFrom(cleaned.data as Record<string, unknown>);
-          }
-          normalized = JSON.stringify(cleaned);
-        } catch { /* keep original */ }
       }
     } catch {
       /* not JSON, keep default */
@@ -760,7 +735,6 @@ export class ChatAgent {
       debugSteps,
       graphTimings,
       ...(decisionQuestions !== undefined ? { decisionQuestions } : {}),
-      ...(discoveryQuestionsDebug !== undefined ? { discoveryQuestionsDebug } : {}),
     };
   }
 
@@ -845,12 +819,11 @@ export class ChatAgent {
     responseText: string;
     messages: BaseMessage[];
     iterationCount: number;
-    debugMeta: { graph: string; iterations: number; tools: DebugMetaToolCall[]; llm: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations; discoveryQuestions?: DebugMetaDiscoveryQuestions };
+    debugMeta: { graph: string; iterations: number; tools: DebugMetaToolCall[]; llm: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations};
   }> {
     const llm: DebugMetaLlm = { calls: 0, totalDurationMs: 0, resets: [], hallucinations: [] };
-    const orchestratorNegotiationIds = new Set<string>();
+    const negotiationIds = new Set<string>();
     let lastLlmStart = 0;
-    let latestDiscoveryQuestionsDebug: DebugMetaDiscoveryQuestions | undefined;
 
     const emit = (event: AgentStreamEvent) => {
       if (event.type === "llm_start") {
@@ -866,7 +839,7 @@ export class ChatAgent {
       } else if (event.type === "hallucination_detected") {
         llm.hallucinations.push({ blockType: event.blockType, tool: event.tool, at: Date.now() });
       } else if (event.type === "negotiation_session_start") {
-        orchestratorNegotiationIds.add(event.opportunityId);
+        negotiationIds.add(event.opportunityId);
       }
       try {
         writer?.(event);
@@ -1048,7 +1021,6 @@ export class ChatAgent {
               typeof result === "string" ? result : JSON.stringify(result);
 
             const normalized = await this.normalizeToolResult(tc.name, resultStr, tc.args);
-            if (normalized.discoveryQuestionsDebug) latestDiscoveryQuestionsDebug = normalized.discoveryQuestionsDebug;
             resultStr = normalized.resultStr;
             result = resultStr;
 
@@ -1148,8 +1120,8 @@ export class ChatAgent {
       // directly instead of calling the corresponding tool. These blocks
       // lack valid proposalIds / data and won't work in the frontend.
       // Auto-invoke the correct tool directly instead of re-asking the LLM.
-      // Persona-gated: only personas with hallucinationRecovery enabled (orchestrator)
-      // run detection/auto-invoke — other personas never trigger this branch.
+      // Persona-gated: only personas with hallucinationRecovery enabled run
+      // detection/auto-invoke — other personas never trigger this branch.
       const hallucinatedBlock = this.persona.loopBehaviors.hallucinationRecovery
         ? this.detectHallucinatedBlock(iterationText, toolsDebug, iterCtx.currentMessage)
         : null;
@@ -1207,9 +1179,6 @@ export class ChatAgent {
             // Mirror the main tool loop's handling: forward decision questions
             // and capture debug metadata even when the discovery tool was invoked
             // via the hallucination-recovery path.
-            if (normalized.discoveryQuestionsDebug) {
-              latestDiscoveryQuestionsDebug = normalized.discoveryQuestionsDebug;
-            }
             if (normalized.decisionQuestions && normalized.decisionQuestions.length > 0) {
               const { fresh: freshHallucination, newIds: newIdsHallucination } = deduplicateQuestions(normalized.decisionQuestions, surfacedQuestionIds);
               if (freshHallucination.length > 0) {
@@ -1381,10 +1350,9 @@ export class ChatAgent {
           iterations: iterationCount,
           tools: toolsDebug,
           llm,
-          ...(orchestratorNegotiationIds.size > 0 && {
-            orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
+          ...(negotiationIds.size > 0 && {
+            orchestratorNegotiations: { opportunityIds: [...negotiationIds] },
           }),
-          ...(latestDiscoveryQuestionsDebug && { discoveryQuestions: latestDiscoveryQuestionsDebug }),
         },
       };
     }
@@ -1400,10 +1368,9 @@ export class ChatAgent {
           iterations: iterationCount,
           tools: toolsDebug,
           llm,
-          ...(orchestratorNegotiationIds.size > 0 && {
-            orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
+          ...(negotiationIds.size > 0 && {
+            orchestratorNegotiations: { opportunityIds: [...negotiationIds] },
           }),
-          ...(latestDiscoveryQuestionsDebug && { discoveryQuestions: latestDiscoveryQuestionsDebug }),
         },
       };
     }
@@ -1444,10 +1411,9 @@ export class ChatAgent {
         iterations: iterationCount,
         tools: toolsDebug,
         llm,
-        ...(orchestratorNegotiationIds.size > 0 && {
-          orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
+        ...(negotiationIds.size > 0 && {
+          orchestratorNegotiations: { opportunityIds: [...negotiationIds] },
         }),
-        ...(latestDiscoveryQuestionsDebug && { discoveryQuestions: latestDiscoveryQuestionsDebug }),
       },
     };
   }

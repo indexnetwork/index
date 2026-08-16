@@ -137,7 +137,6 @@ const envSchema = z.object({
   NEGOTIATION_INCLUDE_OTHER_INTENTS: z.enum(['true', 'false']).optional(),
   NEGOTIATION_PROTOCOL_VERSION: z.union([z.literal(''), z.enum(['v1', 'v2'])]).optional(),
   NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
-  WEB_SIGNAL_AGENT_ENABLED: optionalBoolean,
   WEB_AGENT_SURFACE_ENABLED: optionalBoolean,
   REPORTER_BRIEFING_TTL_MS: optionalPositiveInt,
   CHAT_SESSION_GAP_MS: optionalPositiveInt,
@@ -291,6 +290,13 @@ function collectEnvWarnings(): string[] {
     if (hasValue(oldName)) {
       warnings.push(`${oldName}: renamed to ${newName} — the old name is ignored; update the environment.`);
     }
+  }
+
+  // Retired with the orchestrator persona: Signal is the permanent web chat
+  // persona, so this flag has nothing to gate. It is read by nothing now —
+  // warn so it gets cleared from the environment.
+  if (hasValue('WEB_SIGNAL_AGENT_ENABLED')) {
+    warnings.push('WEB_SIGNAL_AGENT_ENABLED: retired — the Signal Agent is always on and there is no orchestrator to fall back to. The value is ignored; remove it from the environment.');
   }
 
   // URL env vars were renamed for clarity (clean cutover — old names are

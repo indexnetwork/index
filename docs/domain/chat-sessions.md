@@ -49,3 +49,26 @@ row. It was removed. Opening a negotiator session now requires an intent, and
 falling back to an unscoped thread. Conversations created under the old key are left
 in place — their history is preserved and readable by id; only the entry points are
 gone.
+
+## Personas
+
+Every H2A chat session is driven by a named **persona**, recorded on
+`conversations.persona`. There is no default: each surface names the persona it
+starts, and unknown values fail closed.
+
+| Persona | Surface |
+| --- | --- |
+| `signal` | Main web chat — the primary product persona |
+| `reporter` | Read-only agent-reporting surface (web only) |
+| `onboarding` | Session-only onboarding route, while onboarding is incomplete |
+| `negotiator` | Intent-pinned agent chat, including the macOS pane |
+
+Two values are not chat personas. `telegram` marks a Telegram notification
+transcript — nothing drives a turn in it. `orchestrator` is the retired
+pre-personafication default: those sessions stay readable and listable, but a new
+turn is refused with `WEB_SIGNAL_SESSION_REQUIRED` and the product offers a fresh
+Signal chat instead of rewriting history.
+
+Intent-scoped sessions are keyed per persona in `chat_session_scopes` as
+`<persona>-intent`, so two personas can hold distinct sessions for the same
+signal. The bare `intent` key is retired and belongs to orchestrator rows.

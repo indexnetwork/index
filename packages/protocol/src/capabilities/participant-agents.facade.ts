@@ -10,7 +10,7 @@
  *
  * 2. **Runtime personas, chat graph, and tool-composition seams** — sourced
  *    from chat/ (runtime foreground; not owned by participant-agents module):
- *    - `ChatGraphFactory`, `ORCHESTRATOR_PERSONA_ID`, persona factories, etc.
+ *    - `ChatGraphFactory`, persona ids and factories, etc.
  *    - `ChatTitleGenerator`, `ChatInterruptClassifier`, `ChatSummarizer`, etc.
  *
  * Runtime personas, chat/MCP transport, authentication, and all-capability
@@ -26,7 +26,6 @@ export type { AgentToolDeps } from "../participant-agents/public/index.js";
 
 // ── Runtime chat graph ────────────────────────────────────────────────────────
 export { ChatGraphFactory } from "../chat/chat.graph.js";
-export { ORCHESTRATOR_PERSONA_ID } from "../chat/chat.persona.js";
 export type { ChatPersonaConfig } from "../chat/chat.persona.js";
 export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "../chat/negotiator.persona.js";
 export { SIGNAL_PERSONA_ID, SIGNAL_PERSONA, SIGNAL_NEW_SIGNAL_KICKOFF, SIGNAL_TOOL_NAMES, createSignalTools, filterSignalTools, narrowSignalTools } from "../chat/signal.persona.js";

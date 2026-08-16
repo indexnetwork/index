@@ -2,7 +2,7 @@ import { StateGraph, START, END, BaseCheckpointSaver, type LangGraphRunnableConf
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatGraphState } from "./chat.state.js";
 import { ChatAgent } from "./chat.agent.js";
-import { ORCHESTRATOR_PERSONA, type ChatPersonaConfig } from "./chat.persona.js";
+import type { ChatPersonaConfig } from "./chat.persona.js";
 import type { ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
 import type { Embedder } from "../shared/interfaces/embedder.interface.js";
 import type { Scraper } from "../shared/interfaces/scraper.interface.js";
@@ -59,8 +59,8 @@ export class ChatGraphFactory {
     private scraper: Scraper,
     private chatSession: ChatSessionReader,
     private protocolDeps: ProtocolDeps,
-    /** Persona driving this graph's agent loop. Defaults to the orchestrator. */
-    private persona: ChatPersonaConfig = ORCHESTRATOR_PERSONA,
+    /** Persona driving this graph's agent loop. Required — there is no default. */
+    private persona: ChatPersonaConfig,
   ) {
     this.streamingService = new ChatStreamer(
       (sessionId, maxMessages) => this.loadSessionContext(sessionId, maxMessages),

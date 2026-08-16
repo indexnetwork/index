@@ -3,7 +3,6 @@ config({ path: '.env.test', override: true });
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import type { TelegramPrefs } from '../../schemas/database.schema';
-import type { GatewayStreamEvent } from '../telegram.gateway';
 
 // ── Fakes ────────────────────────────────────────────────────────────────────
 
@@ -35,24 +34,14 @@ function defaultDeps() {
     findByTelegramChatId: async (chatId: string) => chatIdIndex.get(chatId) ?? null,
     getUserSocials: async (userId: string) => userSocials.get(userId) ?? [],
     setUserSocials: mock(async (userId: string, socials: { label: string; value: string }[]) => { userSocials.set(userId, socials); }),
-    createChatSession: async (data: { id: string; userId: string; title?: string }) => { sessions.set(data.id, data); },
+    createChatSession: async (data: { id: string; userId: string; title?: string; persona: 'telegram' }) => { sessions.set(data.id, data); },
     createChatMessage: async (data: { id: string; sessionId: string; role: string; content: string }) => { messages.push(data); },
-    streamMessage: async function* (_userId: string, _text: string, _sessionId: string): AsyncGenerator<GatewayStreamEvent> {
-      yield { type: 'response_complete', response: 'Hello from Index!' };
-    },
     sendTelegramMessage: async (chatId: string, text: string, keyboard?: unknown, parseMode?: string) => { sent.push({ chatId, text, keyboard, parseMode }); },
     sendChatAction: async (chatId: string) => { chatActions.push(chatId); },
     seedTelegramUser: (userId: string, prefs: TelegramPrefs) => {
       telegramPrefs.set(userId, prefs);
       chatIdIndex.set(prefs.chatId, { userId, sessionId: prefs.sessionId });
     },
-  };
-}
-
-/** Helper: create a fake stream that yields the given events. */
-function fakeStream(...events: GatewayStreamEvent[]): () => AsyncGenerator<GatewayStreamEvent> {
-  return async function* () {
-    for (const e of events) yield e;
   };
 }
 
@@ -151,7 +140,7 @@ describe('handleInbound (routing)', () => {
     expect(deps.sent[0].keyboard).toBeDefined();
   });
 
-  it('routes a known user message to the chat graph and writes to conversation', async () => {
+  it('points a known user at the app instead of chatting', async () => {
     const prefs: TelegramPrefs = {
       chatId: 'chat-known',
       sessionId: 'sess-1',
@@ -162,33 +151,27 @@ describe('handleInbound (routing)', () => {
 
     await callInbound('chat-known', 'What are my intents?');
 
-    // Final message is the response
     const responseMsgs = deps.sent.filter((m) => m.chatId === 'chat-known');
-    expect(responseMsgs[responseMsgs.length - 1].text).toBe('Hello from Index!');
-    // Writes user + assistant messages to conversation
-    const userMsg = deps.messages.find((m) => m.role === 'user');
-    const assistantMsg = deps.messages.find((m) => m.role === 'assistant');
-    expect(userMsg?.content).toBe('What are my intents?');
-    expect(assistantMsg?.content).toBe('Hello from Index!');
+    expect(responseMsgs).toHaveLength(1);
+    expect(responseMsgs[0].text).toContain("can't chat on Telegram");
+    expect(responseMsgs[0].keyboard).toBeDefined();
   });
 
-  it('sends typing indicator while processing', async () => {
+  it('does not write inbound chat turns to a conversation', async () => {
     const prefs: TelegramPrefs = {
-      chatId: 'chat-typing',
-      sessionId: 'sess-typing',
+      chatId: 'chat-nowrite',
+      sessionId: 'sess-nowrite',
       connectedAt: '2026-04-14T00:00:00Z',
       notifications: { opportunityAccepted: true },
     };
-    deps.seedTelegramUser('user-typing', prefs);
+    deps.seedTelegramUser('user-nowrite', prefs);
 
-    await callInbound('chat-typing', 'hello');
+    await callInbound('chat-nowrite', 'hello');
 
-    // At least one typing action should have been sent
-    expect(deps.chatActions.length).toBeGreaterThanOrEqual(1);
-    expect(deps.chatActions[0]).toBe('chat-typing');
+    expect(deps.messages).toHaveLength(0);
   });
 
-  it('creates a session when user has none', async () => {
+  it('does not create a session for an inbound message', async () => {
     const prefs: TelegramPrefs = {
       chatId: 'chat-nosess',
       connectedAt: '2026-04-14T00:00:00Z',
@@ -198,10 +181,8 @@ describe('handleInbound (routing)', () => {
 
     await callInbound('chat-nosess', 'hi');
 
-    // A session should have been created
-    expect(deps.sessions.size).toBe(1);
-    // Prefs should be updated with the session ID
-    expect(deps.telegramPrefs.get('user-nosess')?.sessionId).toBeDefined();
+    expect(deps.sessions.size).toBe(0);
+    expect(deps.telegramPrefs.get('user-nosess')?.sessionId).toBeUndefined();
   });
 
   it('completes /start <token> flow: stores chatId and confirms', async () => {
@@ -266,312 +247,5 @@ describe('handleInbound (routing)', () => {
   it('replies with expired-token message for unknown token', async () => {
     await callInbound('chat-x', '/start bad-token');
     expect(deps.sent[0].text).toContain('expired');
-  });
-});
-
-// ── Tests: handleInbound (streaming) ────────────────────────────────────────
-
-describe('handleInbound (streaming)', () => {
-  let deps: ReturnType<typeof makeDeps>;
-  let redisFake: Map<string, string>;
-
-  beforeEach(() => {
-    deps = makeDeps();
-    redisFake = new Map();
-  });
-
-  function seedUser(userId: string, chatId: string, sessionId?: string) {
-    const prefs: TelegramPrefs = {
-      chatId,
-      sessionId,
-      connectedAt: '2026-04-14T00:00:00Z',
-      notifications: { opportunityAccepted: true },
-    };
-    deps.seedTelegramUser(userId, prefs);
-  }
-
-  async function callInbound(chatId: string, text: string, streamFn: ReturnType<typeof fakeStream>) {
-    const d = { ...deps, streamMessage: streamFn };
-    const { handleInbound } = await import('../telegram.gateway');
-    await handleInbound(chatId, text, d, {
-      get: async (key: string) => redisFake.get(key) ?? null,
-      del: async (key: string) => { redisFake.delete(key); },
-    });
-  }
-
-  it('sends final response from response_complete event', async () => {
-    seedUser('user-s1', 'chat-s1', 'sess-s1');
-
-    const stream = fakeStream(
-      { type: 'status' },
-      { type: 'response_complete', response: 'Here are your signals.' },
-    );
-
-    await callInbound('chat-s1', 'Show my signals', stream);
-
-    const responseMsgs = deps.sent.filter((m) => m.chatId === 'chat-s1');
-    expect(responseMsgs[responseMsgs.length - 1].text).toBe('Here are your signals.');
-  });
-
-  it('sends typing indicator during streaming', async () => {
-    seedUser('user-s2', 'chat-s2', 'sess-s2');
-
-    const stream = fakeStream(
-      { type: 'response_complete', response: 'Done.' },
-    );
-
-    await callInbound('chat-s2', 'hi', stream);
-
-    expect(deps.chatActions.length).toBeGreaterThanOrEqual(1);
-    expect(deps.chatActions[0]).toBe('chat-s2');
-  });
-
-  it('sends tool-activity status messages', async () => {
-    seedUser('user-s3', 'chat-s3', 'sess-s3');
-
-    const stream = fakeStream(
-      { type: 'tool_activity', toolName: 'search_intents', phase: 'start' },
-      { type: 'tool_activity', toolName: 'search_intents', phase: 'end' },
-      { type: 'response_complete', response: 'Found 3 signals.' },
-    );
-
-    await callInbound('chat-s3', 'What are my signals?', stream);
-
-    // Should have sent a status message for the tool activity
-    const statusMsg = deps.sent.find((m) => m.text.includes('signals'));
-    expect(statusMsg).toBeDefined();
-
-    // Final message should be the response
-    expect(deps.sent[deps.sent.length - 1].text).toBe('Found 3 signals.');
-  });
-
-  it('deduplicates consecutive identical status messages', async () => {
-    seedUser('user-s4', 'chat-s4', 'sess-s4');
-
-    const stream = fakeStream(
-      { type: 'tool_activity', toolName: 'search_intents', phase: 'start' },
-      { type: 'tool_activity', toolName: 'search_intents', phase: 'start' }, // duplicate
-      { type: 'response_complete', response: 'Done.' },
-    );
-
-    await callInbound('chat-s4', 'test', stream);
-
-    // Only one status message (plus the final response)
-    const statusMsgs = deps.sent.filter((m) => m.text.includes('signals'));
-    expect(statusMsgs).toHaveLength(1);
-  });
-
-  it('falls back to error message when stream yields no response_complete', async () => {
-    seedUser('user-s5', 'chat-s5', 'sess-s5');
-
-    const stream = fakeStream(
-      { type: 'status' },
-      // No response_complete event
-    );
-
-    await callInbound('chat-s5', 'hello', stream);
-
-    expect(deps.sent[deps.sent.length - 1].text).toContain('could not process');
-  });
-
-  it('writes user and assistant messages to conversation', async () => {
-    seedUser('user-s6', 'chat-s6', 'sess-s6');
-
-    const stream = fakeStream(
-      { type: 'response_complete', response: 'Streamed response!' },
-    );
-
-    await callInbound('chat-s6', 'hi there', stream);
-
-    const userMsg = deps.messages.find((m) => m.role === 'user');
-    const assistantMsg = deps.messages.find((m) => m.role === 'assistant');
-    expect(userMsg?.content).toBe('hi there');
-    expect(assistantMsg?.content).toBe('Streamed response!');
-  });
-
-  it('sends agent-start status for negotiator', async () => {
-    seedUser('user-s7', 'chat-s7', 'sess-s7');
-
-    const stream = fakeStream(
-      { type: 'agent_start', name: 'negotiation-agent' },
-      { type: 'response_complete', response: 'Connection found.' },
-    );
-
-    await callInbound('chat-s7', 'find connections', stream);
-
-    const statusMsg = deps.sent.find((m) => m.text.includes('connection'));
-    expect(statusMsg).toBeDefined();
-  });
-
-  it('sends LLM response with special chars as-is (no HTML parse mode)', async () => {
-    seedUser('user-html', 'chat-html', 'sess-html');
-
-    const stream = fakeStream(
-      { type: 'response_complete', response: 'Use <code>x & y</code> to compare' },
-    );
-
-    await callInbound('chat-html', 'test', stream);
-
-    // sendMessage defaults to plain text — no escaping, chars sent verbatim
-    const finalMsg = deps.sent[deps.sent.length - 1];
-    expect(finalMsg.text).toBe('Use <code>x & y</code> to compare');
-
-    // Conversation record matches
-    const assistantMsg = deps.messages.find((m) => m.role === 'assistant');
-    expect(assistantMsg?.content).toBe('Use <code>x & y</code> to compare');
-  });
-
-  it('continues streaming when a status send fails', async () => {
-    seedUser('user-sfail', 'chat-sfail', 'sess-sfail');
-
-    const deliveredMsgs: SentMessage[] = [];
-    const streamFn = fakeStream(
-      { type: 'tool_activity', toolName: 'search_intents', phase: 'start' },
-      { type: 'response_complete', response: 'Here are results.' },
-    );
-
-    const d = {
-      ...deps,
-      sendTelegramMessage: async (chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>, parseMode?: string) => {
-        if (text.includes('signals')) throw new Error('Telegram 429');
-        deliveredMsgs.push({ chatId, text, keyboard, parseMode });
-      },
-      streamMessage: streamFn,
-    };
-
-    const { handleInbound } = await import('../telegram.gateway');
-    await handleInbound('chat-sfail', 'test', d, {
-      get: async () => null,
-      del: async () => {},
-    });
-
-    // Final response delivered despite status send failure
-    expect(deliveredMsgs.some((m) => m.text === 'Here are results.')).toBe(true);
-  });
-
-  it('delivers fallback when final send throws', async () => {
-    seedUser('user-fallback', 'chat-fallback', 'sess-fallback');
-
-    const deliveredMsgs: SentMessage[] = [];
-    let finalSendAttempted = false;
-    const streamFn = fakeStream(
-      { type: 'response_complete', response: 'Normal response text' },
-    );
-
-    const d = {
-      ...deps,
-      sendTelegramMessage: async (chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>, parseMode?: string) => {
-        // Simulate Telegram network error on the first final-send attempt
-        if (text === 'Normal response text' && !finalSendAttempted) {
-          finalSendAttempted = true;
-          throw new Error('Telegram network error');
-        }
-        deliveredMsgs.push({ chatId, text, keyboard, parseMode });
-      },
-      streamMessage: streamFn,
-    };
-
-    const { handleInbound } = await import('../telegram.gateway');
-    await handleInbound('chat-fallback', 'test', d, {
-      get: async () => null,
-      del: async () => {},
-    });
-
-    // Fallback message was delivered
-    expect(deliveredMsgs.some((m) => m.text.includes('couldn\'t deliver'))).toBe(true);
-  });
-
-  it('renders opportunity blocks as formatted HTML cards', async () => {
-    seedUser('user-opp', 'chat-opp', 'sess-opp');
-
-    const responseWithBlocks = [
-      'I found some connections for you.',
-      '',
-      '```opportunity',
-      JSON.stringify({
-        opportunityId: 'opp-1',
-        name: 'Alice',
-        headline: 'Potential collaborator',
-        mainText: 'Alice works in AI research.',
-        mutualIntentsLabel: 'Aligned goals',
-        narratorChip: { name: 'Index', text: 'Strong overlap in interests' },
-        primaryActionLabel: 'Start Chat',
-      }),
-      '```',
-      '',
-      'Want to see more?',
-    ].join('\n');
-
-    const stream = fakeStream(
-      { type: 'response_complete', response: responseWithBlocks },
-    );
-
-    await callInbound('chat-opp', 'find me connections', stream);
-
-    // Filter to messages sent to this chat (excludes typing actions)
-    const oppMsgs = deps.sent.filter((m) => m.chatId === 'chat-opp');
-
-    // First: framing text (plain, no parseMode)
-    expect(oppMsgs[0].text).toContain('I found some connections');
-    expect(oppMsgs[0].parseMode).toBeUndefined();
-
-    // Second: HTML card with inline keyboard
-    expect(oppMsgs[1].text).toContain('<b>Alice</b>');
-    expect(oppMsgs[1].text).toContain('AI research');
-    expect(oppMsgs[1].text).toContain('💡');
-    expect(oppMsgs[1].parseMode).toBe('HTML');
-    expect(oppMsgs[1].keyboard).toBeDefined();
-
-    // Third: trailing text (plain)
-    expect(oppMsgs[2].text).toContain('Want to see more');
-    expect(oppMsgs[2].parseMode).toBeUndefined();
-
-    // Conversation record stores the original response with JSON blocks intact
-    const assistantMsg = deps.messages.find((m) => m.role === 'assistant');
-    expect(assistantMsg?.content).toContain('```opportunity');
-  });
-
-  it('falls back to plain text when HTML card send fails', async () => {
-    seedUser('user-oppfail', 'chat-oppfail', 'sess-oppfail');
-
-    const responseWithBlock = [
-      'Found a connection.',
-      '',
-      '```opportunity',
-      JSON.stringify({
-        opportunityId: 'opp-fail',
-        name: 'Bob',
-        headline: 'Developer',
-        mainText: 'Bob builds apps.',
-      }),
-      '```',
-    ].join('\n');
-
-    const deliveredMsgs: SentMessage[] = [];
-    const streamFn = fakeStream(
-      { type: 'response_complete', response: responseWithBlock },
-    );
-
-    const d = {
-      ...deps,
-      sendTelegramMessage: async (chatId: string, text: string, keyboard?: unknown, parseMode?: string) => {
-        if (parseMode === 'HTML') throw new Error('Telegram HTML parse error');
-        deliveredMsgs.push({ chatId, text, keyboard, parseMode });
-      },
-      streamMessage: streamFn,
-    };
-
-    const { handleInbound } = await import('../telegram.gateway');
-    await handleInbound('chat-oppfail', 'test', d, {
-      get: async () => null,
-      del: async () => {},
-    });
-
-    // Plain-text fallback should have been sent (no HTML tags)
-    const cardMsg = deliveredMsgs.find((m) => m.text.includes('Bob'));
-    expect(cardMsg).toBeDefined();
-    expect(cardMsg!.text).toContain('Developer');
-    expect(cardMsg!.text).not.toContain('<b>');
-    expect(cardMsg!.text).not.toContain('<i>');
   });
 });

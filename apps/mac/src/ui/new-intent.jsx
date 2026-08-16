@@ -40,12 +40,8 @@ function NewIntent({ onDone, onBack }) {
   const intentIdRef = useRef(null);       // set once the live signal exists
   const createdRef = useRef(false);
   const createdDescriptionRef = useRef(null);
-  const sessionRef = useRef(null);        // chat conversation id
   const answersRef = useRef({});          // mirror of `answers` for async handlers
   const flowStartRef = useRef(Date.now());
-  const seenQ = useRef(new Set());
-  const awaitingRef = useRef(false);      // a chat turn owes us the next step
-  const dynAsked = useRef(0);
   const cancelledRef = useRef(false);
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
@@ -239,69 +235,21 @@ function NewIntent({ onDone, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- chat-driven clarification (same machinery as the web app) ----------
-  //
-  // The first answer opens a /chat/stream turn. The agent asks clarifying
-  // questions via ask_user_question, each arrives as a `user_question` SSE
-  // event and becomes the next question step; answering it resumes the same
-  // blocked turn. The turn ends in an ```intent_proposal``` block, which we
-  // confirm through POST /intents/confirm.
+  // Signal intake no longer opens a chat turn. The macOS app authenticates
+  // with an API key, and API-key callers cannot start a Signal chat — that
+  // persona is web-only, and there is no default persona to fall back on.
+  // Clarification comes from the deterministic intake funnel below; without it
+  // the flow finishes from the answers already collected.
 
-  // Resolve a user_question event id into the persisted chat question row.
-  // One conversation-scoped read, like web — SSE only carries opaque ids.
-  const fetchQuestion = async (id) => {
-    if (!sessionRef.current) return null;
-    const res = await client.questions.pending(
-      { mode: "chat", conversationId: sessionRef.current },
-    ).catch(() => null);
-    return window.IndexApp.normalizeList(res, "questions").find((r) => r && r.id === id) || null;
-  };
-
-  const showQuestion = (q) => {
-    seenQ.current.add(q.id);
-    dynAsked.current += 1;
-    const c = window.IndexApi.mapClarifier(q);
-    awaitingRef.current = false;
-    setThinking(false);
-    setStep({
-      id: `q-${q.id}`,
-      question: q,
-      prompt: c.text || "tell me more?",
-      hint: c.triggersHint || "",
-      placeholder: "type your answer…",
-      examples: c.chips && c.chips.length ? c.chips : undefined,
-    });
-  };
-
-  const confirmProposal = async (p) => {
-    try {
-      const res = await client.intents.confirm({
-        proposalId: p.proposalId,
-        description: p.description,
-      });
-      if (res && res.intentId) intentIdRef.current = res.intentId;
-      createdDescriptionRef.current = p.description;
-      createdRef.current = true;
-    } catch (e) { /* finish() falls back to a direct create */ }
-  };
-
-  // The agent may have created the signal directly (no proposal block), so
-  // detect it so the flow still closes out as "created".
-  const newestIntentSinceStart = async () => {
-    const res = await client.intents.list({}).catch(() => null);
-    const rows = window.IndexApp.normalizeList(res, "intents")
-      .filter((r) => r && r.createdAt && Date.parse(r.createdAt) >= flowStartRef.current - 60000)
-      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-    return rows[0] || null;
-  };
-
+  // Close out the flow: create the signal from the composed answers when the
+  // intake funnel has not already produced one, then hand back to the caller.
   const finish = (ans) => {
     setCalibrating(true);
     (async () => {
       let created = createdRef.current;
       if (client && !created) {
-        // The agent never created the signal (no proposal, or the guided beat
-        // was cut short), so create it from the composed answers.
+        // No signal was created upstream (the guided beat was cut short), so
+        // create it from the composed answers.
         try {
           const description = composeDescription(ans);
           const result = await window.IndexApp.createIntent(description);
@@ -317,67 +265,6 @@ function NewIntent({ onDone, onBack }) {
     })();
   };
 
-  const endFlow = () => {
-    if (cancelledRef.current) return;
-    awaitingRef.current = false;
-    setThinking(false);
-    finish(answersRef.current);
-  };
-
-  const handleDone = async (response) => {
-    // Only act when the flow is waiting on this turn, a late `done` (e.g. the
-    // question wait timed out while the user idles) must not clobber the step.
-    if (cancelledRef.current || !awaitingRef.current) return;
-    const proposal = (window.IndexApp.parseIntentProposals(response) || [])[0];
-    if (proposal) { await confirmProposal(proposal); endFlow(); return; }
-    const fresh = await newestIntentSinceStart();
-    if (fresh) { intentIdRef.current = fresh.id; createdRef.current = true; endFlow(); return; }
-    // The agent answered in prose. A short question becomes the next step;
-    // anything else means the guided beat is over.
-    const text = String(response || "").replace(/```[\s\S]*?```/g, "").trim();
-    if (text && text.length <= 300 && dynAsked.current < DYN_MAX + 1) {
-      dynAsked.current += 1;
-      awaitingRef.current = false;
-      setThinking(false);
-      setStep({
-        id: `chat-${dynAsked.current}`,
-        chatTurn: true,
-        prompt: text,
-        placeholder: "type your answer…",
-      });
-      return;
-    }
-    endFlow();
-  };
-
-  // Open one chat turn and route its events back into the step machine.
-  const startTurn = (message) => {
-    awaitingRef.current = true;
-    setThinking(true);
-    window.IndexApp.streamChat({
-      message,
-      sessionId: sessionRef.current,
-      persona: "signal",
-      onSession: (sid) => { sessionRef.current = sid; },
-      onEvent: (ev) => {
-        if (cancelledRef.current || !ev) return;
-        if (ev.type === "user_question" && Array.isArray(ev.questions)) {
-          const next = ev.questions.find((q) => q && q.id && !seenQ.current.has(q.id));
-          if (next) {
-            (async () => {
-              const q = await fetchQuestion(next.id);
-              if (q && !cancelledRef.current) showQuestion(q);
-            })();
-          }
-        } else if (ev.type === "done") {
-          handleDone(ev.response || ev.fullResponse || "");
-        } else if (ev.type === "error") {
-          if (awaitingRef.current) endFlow();
-        }
-      },
-    }).catch(() => { if (awaitingRef.current) endFlow(); });
-  };
-
   const submit = (val) => {
     const raw = val ?? draft;
     const v = String(raw).trim();
@@ -390,10 +277,6 @@ function NewIntent({ onDone, onBack }) {
     const newAns = { ...answers, [step.id]: raw };
     // Alias dynamic answers onto the prototype's edges/off-limits slots so the
     // field preview and the main view header keep reading naturally.
-    if (step.question || step.chatTurn) {
-      if (dynAsked.current === 1) newAns.edges = v;
-      else if (!newAns["off-limits"]) newAns["off-limits"] = v;
-    }
     if (step.fast === "question" || step.fast === "clarify") {
       if (!newAns.intent) newAns.intent = v;
       else if (!newAns.edges) newAns.edges = v;
@@ -429,35 +312,6 @@ function NewIntent({ onDone, onBack }) {
       } else if (step.fast === "start-retry") {
         loadFastStart();
       }
-      return;
-    }
-
-    // A structured chat question, answering it resumes the blocked turn, and
-    // the same stream carries the next question or the final proposal.
-    if (step.question && client) {
-      const isChip = (step.examples || []).includes(raw);
-      const body = isChip ? { selectedOptions: [raw] } : { selectedOptions: [], freeText: v };
-      awaitingRef.current = true;
-      setThinking(true);
-      client.questions.answer(step.question.id, body)
-        .then((res) => {
-          // Turn already ended (timeout), carry the answer as a follow-up.
-          if (!res || !res.resumed) startTurn(`Re: "${step.prompt}": ${v}`);
-        })
-        .catch(() => startTurn(`Re: "${step.prompt}": ${v}`));
-      return;
-    }
-
-    // A prose question from the agent, the answer is the next chat message.
-    if (step.chatTurn && client) { startTurn(v); return; }
-
-    // The first answer IS the signal, hand it to the agent when fast intake
-    // is off. When fast intake is on, /start owns round 1 — never chat here.
-    if (step.id === "intent" && client && !fastEnabled) {
-      startTurn(
-        `I'm setting up my first signal. Here's what I'm looking for: ${v}. `
-        + "Ask me clarifying questions if anything important is missing, then create the signal.",
-      );
       return;
     }
 

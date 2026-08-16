@@ -116,7 +116,7 @@ export { buildCandidateEvidence } from "./capabilities/opportunities.facade.js";
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
 export { ChatGraphFactory } from "./capabilities/participant-agents.facade.js";
-export { ORCHESTRATOR_PERSONA_ID, type ChatPersonaConfig } from "./capabilities/participant-agents.facade.js";
+export { type ChatPersonaConfig } from "./capabilities/participant-agents.facade.js";
 export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./capabilities/participant-agents.facade.js";
 export {
   SIGNAL_PERSONA_ID,
