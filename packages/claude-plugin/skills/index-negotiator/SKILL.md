@@ -74,13 +74,13 @@ Ask which negotiation the user wants to review in detail.
 
 When the user selects a negotiation, call `get_negotiation` with its negotiation ID. Explain the returned turn history, lifecycle, `seat`, `protocolVersion`, and `allowedActions`.
 
-Only offer actions listed in `allowedActions`. Do not infer that `accept`, `reject`, `decline`, or any other action is available from the status alone.
+Offer response actions only when `status` is `waiting_for_agent`, `isUsersTurn` is `true`, and the action is listed in `allowedActions`. Treat every other state as review-only, even when `allowedActions` is non-empty.
 
 ## Pattern 3: Respond to a negotiation
 
 **Always obtain explicit user confirmation before sending an A2A turn.**
 
-1. Call `get_negotiation` immediately before acting to refresh `allowedActions`.
+1. Call `get_negotiation` immediately before acting. Continue only when `status` is `waiting_for_agent`, `isUsersTurn` is `true`, and the proposed action is in `allowedActions`.
 2. Explain the proposed action and its effect. Make clear that an agent-side accept only recommends a potential match and leaves any resulting opportunity pending owner review.
 3. On confirmation, call `respond_to_negotiation` with an action included in `allowedActions`, factual reasoning, and appropriate `suggestedRoles`.
 4. Include `message` when the chosen action is `counter` or `question`.
