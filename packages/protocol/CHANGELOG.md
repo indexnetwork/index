@@ -20,6 +20,20 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 14.1.0 - 2026-08-16
+
+### Added
+
+- `intentQuestionDailyCap()` env accessor plus the `INTENT_QUESTION_DAILY_CAP_DEFAULT`
+  (2) and `INTENT_QUESTION_DAILY_WINDOW_HOURS` (24) constants, exported from the
+  questions capability. These express a per-intent budget for background
+  refinement questions over a rolling 24 hours, spanning the recovery and
+  pool-discovery families combined.
+
+  Zero is a meaningful setting — it disables background refinement without
+  touching `QUESTIONER_ENABLED` — so the accessor deliberately does not reuse
+  `positiveIntEnv`. Configured by `QUESTIONER_INTENT_DAILY_CAP`.
+
 ## 13.2.1 - 2026-08-16
 
 No public API change: all 441 exported symbols are byte-identical to 13.2.0, and

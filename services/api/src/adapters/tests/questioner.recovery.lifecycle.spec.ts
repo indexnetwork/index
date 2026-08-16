@@ -12,6 +12,14 @@ import { intents, opportunities, questions } from '../../schemas/database.schema
 import { UserDatabaseAdapter } from '../database.adapter';
 import { QuestionerAdapter, type AdapterPersistableQuestion } from '../questioner.adapter';
 
+/**
+ * These tests exercise cadence, drift and reconciliation, not the per-intent
+ * refinement budget, and they deliberately share one intent across the file.
+ * Passing an effectively unlimited cap keeps that budget out of the way; the
+ * cap itself is covered by questioner.dailycap.spec.ts.
+ */
+const UNCAPPED = Number.MAX_SAFE_INTEGER;
+
 const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
@@ -65,12 +73,12 @@ describe('QuestionerAdapter recovery lifecycle', () => {
   });
 
   test('prepares only an exact recipient-owned active intent and exact-trigger opportunities', async () => {
-    expect(await adapter.prepareRecoveryRefinement(userId, crypto.randomUUID())).toBeNull();
-    expect(await adapter.prepareRecoveryRefinement(crypto.randomUUID(), intentId)).toBeNull();
+    expect(await adapter.prepareRecoveryRefinement(userId, crypto.randomUUID(), UNCAPPED)).toBeNull();
+    expect(await adapter.prepareRecoveryRefinement(crypto.randomUUID(), intentId, UNCAPPED)).toBeNull();
     await db.update(intents).set({ status: 'PAUSED' }).where(eq(intents.id, intentId));
-    expect(await adapter.prepareRecoveryRefinement(userId, intentId)).toBeNull();
+    expect(await adapter.prepareRecoveryRefinement(userId, intentId, UNCAPPED)).toBeNull();
     await db.update(intents).set({ status: 'ACTIVE', archivedAt: new Date() }).where(eq(intents.id, intentId));
-    expect(await adapter.prepareRecoveryRefinement(userId, intentId)).toBeNull();
+    expect(await adapter.prepareRecoveryRefinement(userId, intentId, UNCAPPED)).toBeNull();
     await db.update(intents).set({ archivedAt: null }).where(eq(intents.id, intentId));
 
     const exactId = crypto.randomUUID();
@@ -95,7 +103,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
         detection: { source: 'opportunity_graph', triggeredBy: crypto.randomUUID(), timestamp: new Date().toISOString() },
       },
     ]);
-    const prepared = await adapter.prepareRecoveryRefinement(userId, intentId);
+    const prepared = await adapter.prepareRecoveryRefinement(userId, intentId, UNCAPPED);
     expect(prepared?.opportunities.map((opportunity) => opportunity.id)).toEqual([exactId]);
   }, 30_000);
 
@@ -103,8 +111,8 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     const fingerprint = computeIntentFingerprint(payload, summary);
     const question = recoveryQuestion(userId, intentId, fingerprint);
     const concurrent = await Promise.all([
-      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint),
-      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint),
+      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, UNCAPPED),
+      adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, UNCAPPED),
     ]);
     const winner = concurrent.find((id): id is string => typeof id === 'string');
     expect(winner).toBeDefined();
@@ -118,9 +126,9 @@ describe('QuestionerAdapter recovery lifecycle', () => {
       { status: 'dismissed' as const, expiresAt: null },
     ]) {
       await db.update(questions).set(state).where(eq(questions.id, winner!));
-      expect((await adapter.prepareRecoveryRefinement(userId, intentId))?.hasCadenceAnchor).toBe(true);
+      expect((await adapter.prepareRecoveryRefinement(userId, intentId, UNCAPPED))?.hasCadenceAnchor).toBe(true);
       expect(await adapter.persistFreshRecoveryQuestion(
-        question, userId, fingerprint,
+        question, userId, fingerprint, UNCAPPED,
       )).toBeNull();
     }
 
@@ -131,6 +139,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
       recoveryQuestion(userId, intentId, changedFingerprint),
       userId,
       changedFingerprint,
+      UNCAPPED,
     );
     expect(changedId).toBeString();
     questionIds.push(changedId!);
@@ -143,9 +152,9 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     const question = recoveryQuestion(userId, intentId, fingerprint);
 
     await db.update(intents).set({ status: 'PAUSED' }).where(eq(intents.id, intentId));
-    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint)).toBeNull();
+    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, UNCAPPED)).toBeNull();
     await db.update(intents).set({ status: 'ACTIVE', payload: `${payload} in Europe` }).where(eq(intents.id, intentId));
-    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint)).toBeNull();
+    expect(await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, UNCAPPED)).toBeNull();
 
     await db.update(intents).set({ payload }).where(eq(intents.id, intentId));
     const opportunityId = crypto.randomUUID();
@@ -161,7 +170,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
       interpretation: { category: 'test', reasoning: 'unsafe raw reasoning', confidence: 0.8 },
       context: {}, confidence: '0.8', status: 'latent',
     });
-    const inserted = await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint);
+    const inserted = await adapter.persistFreshRecoveryQuestion(question, userId, fingerprint, UNCAPPED);
     expect(inserted).toBeString();
     questionIds.push(inserted!);
   }, 30_000);
@@ -171,7 +180,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
     const oldFingerprint = computeIntentFingerprint(payload, summary);
     const staleId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint,
+      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint, UNCAPPED,
     );
     expect(staleId).toBeString();
     questionIds.push(staleId!);
@@ -195,7 +204,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
     const oldFingerprint = computeIntentFingerprint(payload, summary);
     const questionId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint,
+      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint, UNCAPPED,
     );
     expect(questionId).toBeString();
     questionIds.push(questionId!);
@@ -226,7 +235,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
     await db.update(intents).set({ payload, status: 'ACTIVE' }).where(eq(intents.id, intentId));
     const oldFingerprint = computeIntentFingerprint(payload, summary);
     const oldId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint,
+      recoveryQuestion(userId, intentId, oldFingerprint), userId, oldFingerprint, UNCAPPED,
     );
     expect(oldId).toBeString();
     questionIds.push(oldId!);
@@ -246,7 +255,7 @@ describe('QuestionerAdapter recovery lifecycle', () => {
 
     const currentFingerprint = computeIntentFingerprint(payload, summary);
     const currentId = await adapter.persistFreshRecoveryQuestion(
-      recoveryQuestion(userId, intentId, currentFingerprint), userId, currentFingerprint,
+      recoveryQuestion(userId, intentId, currentFingerprint), userId, currentFingerprint, UNCAPPED,
     );
     expect(currentId).toBeString();
     questionIds.push(currentId!);

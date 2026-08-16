@@ -50,7 +50,10 @@ export {
   isQuestionerEnabled,
   isUptakeGuardEnabled,
   uptakeAuthorityThreshold,
+  intentQuestionDailyCap,
   UPTAKE_AUTHORITY_THRESHOLD_DEFAULT,
+  INTENT_QUESTION_DAILY_CAP_DEFAULT,
+  INTENT_QUESTION_DAILY_WINDOW_HOURS,
 } from "../application/index.js";
 
 // ── Application: input types and validation ───────────────────────────────────

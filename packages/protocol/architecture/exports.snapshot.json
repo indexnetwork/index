@@ -1299,6 +1299,24 @@
       "source": "./capabilities/questions.facade.js"
     },
     {
+      "name": "intentQuestionDailyCap",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/questions.facade.js"
+    },
+    {
+      "name": "INTENT_QUESTION_DAILY_CAP_DEFAULT",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/questions.facade.js"
+    },
+    {
+      "name": "INTENT_QUESTION_DAILY_WINDOW_HOURS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/questions.facade.js"
+    },
+    {
       "name": "PoolDiscriminatorMiner",
       "kind": "value",
       "stability": "stable",

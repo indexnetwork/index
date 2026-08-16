@@ -1,4 +1,4 @@
-import { QuestionerAgent, type QuestionGenerationResult, type QuestionerInput } from '@indexnetwork/protocol';
+import { QuestionerAgent, intentQuestionDailyCap, type QuestionGenerationResult, type QuestionerInput } from '@indexnetwork/protocol';
 
 import { QuestionerAdapter, type AdapterPersistableQuestion, type RecoveryOpportunitySnapshot } from '../adapters/questioner.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
@@ -105,6 +105,7 @@ export class IntentRecoveryRefinementService {
     const prepared = await this.adapter.prepareRecoveryRefinement(
       completion.recipientUserId,
       completion.intentId,
+      intentQuestionDailyCap(),
     );
     if (!prepared || prepared.hasCadenceAnchor) return null;
 
@@ -185,6 +186,7 @@ export class IntentRecoveryRefinementService {
         question,
         completion.recipientUserId,
         prepared.intent.intentFingerprint,
+        intentQuestionDailyCap(),
       );
     } catch (error) {
       if (isRecoveryQuestionUniqueViolation(error)) return null;

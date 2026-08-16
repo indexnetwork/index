@@ -62,8 +62,11 @@ export {
   isUptakeGuardEnabled,
   uptakeAuthorityThreshold,
   chatQuestionWaitTimeoutMs,
+  intentQuestionDailyCap,
   CHAT_QUESTION_WAIT_TIMEOUT_MS_DEFAULT,
   UPTAKE_AUTHORITY_THRESHOLD_DEFAULT,
+  INTENT_QUESTION_DAILY_CAP_DEFAULT,
+  INTENT_QUESTION_DAILY_WINDOW_HOURS,
 } from "./question.env.js";
 
 // ── Presets ───────────────────────────────────────────────────────────────────

@@ -9,6 +9,9 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Budget refinement questions per intent to 2 per rolling 24 hours (`QUESTIONER_INTENT_DAILY_CAP`), counted across the recovery and pool-discovery families combined. Both families re-arm whenever the intent text changes, and answering a refinement question is what changes it — so without a budget each answer bought another question and the loop only ended when the user stopped replying. Chat intake is not counted, and `0` disables background refinement without touching `QUESTIONER_ENABLED`.
+
 ### Changed
 - Drop the retired `non_web` surface and `WEB_SIGNAL_AGENT_ENABLED` literals from `chat.service.isolated.ts`. The tests passed either way — `"non_web"` fell through to the same branch as `"agent"` — but the strings named a surface that no longer exists, and `tsconfig.json` excludes `src/**/*.isolated.ts`, so nothing would ever have caught the drift.
 
