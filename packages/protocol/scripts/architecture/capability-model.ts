@@ -1,55 +1,48 @@
 export type Capability =
-  | "signals"
-  | "participant-context"
-  | "communities"
+  | "intents"
+  | "contexts"
+  | "networks"
   | "opportunities"
-  | "negotiation"
+  | "negotiations"
   | "questions"
-  | "participant-agents"
+  | "agents"
   | "contacts"
   | "integrations"
   | "interaction-composition";
 
 /** Single-segment top-level directories with a fixed capability assignment. */
 export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
-  // Canonical capability directories and their legacy compatibility paths.
-  signals: "signals",
-  intent: "signals",
-  "participant-context": "participant-context",
-  enrichment: "participant-context",
-  premise: "participant-context",
-  context: "participant-context",
-  communities: "communities",
-  network: "communities",
-  opportunity: "opportunities",
-  negotiation: "negotiation",
+  // Every top-level directory maps to exactly one capability.
+  intents: "intents",
+  contexts: "contexts",
+  enrichment: "contexts",
+  premises: "contexts",
+  networks: "networks",
+  opportunities: "opportunities",
+  negotiations: "negotiations",
   questions: "questions",
-  questioner: "questions",
-  "participant-agents": "participant-agents",
-  chat: "participant-agents",
-  agent: "participant-agents",
+  agents: "agents",
+  chat: "agents",
   contacts: "contacts",
-  contact: "contacts",
   integrations: "integrations",
-  integration: "integrations",
   maintenance: "interaction-composition",
 };
 
 /**
  * The capability directory that owns each capability's barrel.
  *
- * A capability can span several top-level directories (participant-context
- * covers enrichment/, premise/, and context/), but exactly one of them holds
+ * A capability can span several top-level directories (contexts
+ * covers enrichment/ and premises/ as well as contexts/), but exactly one of them holds
  * the `index.ts` that other capabilities are allowed to import.
  */
 export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string | undefined>> = {
-  signals: "signals",
-  "participant-context": "participant-context",
-  communities: "communities",
-  opportunities: "opportunity",
-  negotiation: "negotiation",
+  intents: "intents",
+  contexts: "contexts",
+  networks: "networks",
+  opportunities: "opportunities",
+  negotiations: "negotiations",
   questions: "questions",
-  "participant-agents": "participant-agents",
+  agents: "agents",
   contacts: "contacts",
   integrations: "integrations",
   // The composition root is the one all-capability point; it has no barrel of
@@ -61,23 +54,23 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
 export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   Record<Capability, readonly Capability[]>
 > = {
-  signals: ["participant-agents", "questions"],
-  "participant-context": ["participant-agents", "questions"],
-  communities: ["participant-agents", "signals"],
-  opportunities: ["participant-agents", "signals", "negotiation", "questions"],
-  negotiation: ["opportunities", "questions"],
-  questions: ["negotiation"],
-  "participant-agents": ["negotiation", "questions"],
+  intents: ["agents", "questions"],
+  contexts: ["agents", "questions"],
+  networks: ["agents", "intents"],
+  opportunities: ["agents", "intents", "negotiations", "questions"],
+  negotiations: ["opportunities", "questions"],
+  questions: ["negotiations"],
+  agents: ["negotiations", "questions"],
   contacts: ["opportunities"],
   integrations: [],
   "interaction-composition": [
-    "signals",
-    "participant-context",
-    "communities",
+    "intents",
+    "contexts",
+    "networks",
     "opportunities",
-    "negotiation",
+    "negotiations",
     "questions",
-    "participant-agents",
+    "agents",
     "contacts",
     "integrations",
   ],

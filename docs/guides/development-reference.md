@@ -308,7 +308,7 @@ mean "neutral" — it means the graph's own default, and that default can coinci
 with the other side's explicit value. `{}` against
 `{ DISCOVERY_ALLOWED_TYPES: 'intent,profile' }` is the worst case: the default
 *is* `intent,profile`
-(`packages/protocol/src/opportunity/discovery.env.ts`), so both sides behave
+(`packages/protocol/src/opportunities/discovery.env.ts`), so both sides behave
 identically, the run measures nothing but noise, and the artifact attributes
 that noise to the flag. Identical configurations are refused for the same
 reason.

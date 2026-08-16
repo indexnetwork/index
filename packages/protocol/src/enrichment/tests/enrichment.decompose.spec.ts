@@ -54,7 +54,7 @@ const mockDecomposeOutput = {
 let currentDecomposeOutput: typeof mockDecomposeOutput = mockDecomposeOutput;
 let decomposerInvocations: Array<{ input: string; existingPremises?: Array<{ id: string; text: string }>; currentBio?: string }> = [];
 
-mock.module("../../premise/premise.decomposer.js", () => ({
+mock.module("../../premises/premise.decomposer.js", () => ({
   PremiseDecomposer: class MockPremiseDecomposer {
     async invoke(input: string, existingPremises?: Array<{ id: string; text: string }>, currentBio?: string) {
       decomposerInvocations.push({

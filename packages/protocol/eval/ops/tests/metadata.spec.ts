@@ -275,7 +275,7 @@ describe("ENV_FLAG_METADATA", () => {
   const USE_SITE_ONLY_FLAGS: Record<string, { kind: EnvFlagMeta["kind"]; useSite: string }> = {
     DISCOVERY_REJECTION_COOLDOWN_DAYS: {
       kind: "number",
-      useSite: "../../../src/opportunity/application/opportunity.graph.ts",
+      useSite: "../../../src/opportunities/application/opportunity.graph.ts",
     },
   };
 
@@ -293,12 +293,12 @@ describe("ENV_FLAG_METADATA", () => {
   }> = {
     DISCOVERY_ALLOWED_TYPES: {
       kind: "csv-enum",
-      useSite: "../../../src/opportunity/discovery.env.ts",
+      useSite: "../../../src/opportunities/discovery.env.ts",
       valuesFrom: /const VALID_TOKENS: [^=]+= new Set\(\[([^\]]+)\]\)/,
     },
     DISCOVERY_PROFILE_SOURCE: {
       kind: "enum",
-      useSite: "../../../src/opportunity/discovery.env.ts",
+      useSite: "../../../src/opportunities/discovery.env.ts",
       valuesFrom: /export type DiscoveryProfileSource = ([^;]+);/,
     },
   };

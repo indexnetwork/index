@@ -1,4 +1,4 @@
-import type { EvaluatedOpportunityWithActors } from "../../src/opportunity/application/opportunity.evaluator.js";
+import type { EvaluatedOpportunityWithActors } from "../../src/opportunities/application/opportunity.evaluator.js";
 
 import { MATCHING_MIN_SCORE } from "./matching.constants.js";
 import type { MatchingCase, CandidateExpectation, AssertionResult, CandidateOutcome, RunResult, CaseResult } from "./matching.types.js";

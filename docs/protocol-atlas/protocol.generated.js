@@ -5,8 +5,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.agent-tools",
       "label": "Agent Tools",
       "kind": "tool-family",
-      "capability": "participant-agents",
-      "sourcePath": "packages/protocol/src/participant-agents/application/agent.tools.ts",
+      "capability": "agents",
+      "sourcePath": "packages/protocol/src/agents/application/agent.tools.ts",
       "symbol": "createAgentTools",
       "chapterIds": [],
       "flowIds": [],
@@ -18,7 +18,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.chat-graph-factory",
       "label": "Chat Graph Factory",
       "kind": "graph-factory",
-      "capability": "participant-agents",
+      "capability": "agents",
       "sourcePath": "packages/protocol/src/chat/chat.graph.ts",
       "symbol": "ChatGraphFactory",
       "chapterIds": [],
@@ -31,7 +31,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.chat-tools",
       "label": "Chat Tools",
       "kind": "tool-family",
-      "capability": "participant-agents",
+      "capability": "agents",
       "sourcePath": "packages/protocol/src/chat/chat.tools.ts",
       "symbol": "createChatTools",
       "chapterIds": [],
@@ -44,7 +44,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.enrichment-graph-factory",
       "label": "Enrichment Graph Factory",
       "kind": "graph-factory",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/enrichment/enrichment.graph.ts",
       "symbol": "EnrichmentGraphFactory",
       "chapterIds": [],
@@ -57,7 +57,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.enrichment-tools",
       "label": "Enrichment Tools",
       "kind": "tool-family",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/enrichment/enrichment.tools.ts",
       "symbol": "createEnrichmentTools",
       "chapterIds": [],
@@ -70,7 +70,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.hyde-graph-factory",
       "label": "Hyde Graph Factory",
       "kind": "graph-factory",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/shared/hyde/hyde.graph.ts",
       "symbol": "HydeGraphFactory",
       "chapterIds": [],
@@ -83,8 +83,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.index-negotiator",
       "label": "Index Negotiator",
       "kind": "agent",
-      "capability": "negotiation",
-      "sourcePath": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+      "capability": "negotiations",
+      "sourcePath": "packages/protocol/src/negotiations/application/negotiation.agent.ts",
       "symbol": "IndexNegotiator",
       "chapterIds": [],
       "flowIds": [],
@@ -96,8 +96,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.intent-graph-factory",
       "label": "Intent Graph Factory",
       "kind": "graph-factory",
-      "capability": "signals",
-      "sourcePath": "packages/protocol/src/signals/application/intent.graph.ts",
+      "capability": "intents",
+      "sourcePath": "packages/protocol/src/intents/application/intent.graph.ts",
       "symbol": "IntentGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -109,8 +109,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.intent-indexer",
       "label": "Intent Indexer",
       "kind": "agent",
-      "capability": "signals",
-      "sourcePath": "packages/protocol/src/signals/application/intent.indexer.ts",
+      "capability": "intents",
+      "sourcePath": "packages/protocol/src/intents/application/intent.indexer.ts",
       "symbol": "IntentIndexer",
       "chapterIds": [],
       "flowIds": [],
@@ -122,8 +122,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.intent-network-graph-factory",
       "label": "Intent Network Graph Factory",
       "kind": "graph-factory",
-      "capability": "communities",
-      "sourcePath": "packages/protocol/src/communities/application/indexer.graph.ts",
+      "capability": "networks",
+      "sourcePath": "packages/protocol/src/networks/application/indexer.graph.ts",
       "symbol": "IntentNetworkGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -135,8 +135,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.intent-tools",
       "label": "Intent Tools",
       "kind": "tool-family",
-      "capability": "signals",
-      "sourcePath": "packages/protocol/src/signals/application/intent.tools.ts",
+      "capability": "intents",
+      "sourcePath": "packages/protocol/src/intents/application/intent.tools.ts",
       "symbol": "createIntentTools",
       "chapterIds": [],
       "flowIds": [],
@@ -161,7 +161,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.lens-inferrer",
       "label": "Lens Inferrer",
       "kind": "agent",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/shared/hyde/lens.inferrer.ts",
       "symbol": "LensInferrer",
       "chapterIds": [],
@@ -187,7 +187,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.mcp-server",
       "label": "MCP Server",
       "kind": "public-symbol",
-      "capability": "participant-agents",
+      "capability": "agents",
       "sourcePath": "packages/protocol/src/mcp/mcp.server.ts",
       "symbol": "createMcpServer",
       "chapterIds": [],
@@ -200,8 +200,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.negotiation-graph-factory",
       "label": "Negotiation Graph Factory",
       "kind": "graph-factory",
-      "capability": "negotiation",
-      "sourcePath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+      "capability": "negotiations",
+      "sourcePath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
       "symbol": "NegotiationGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -213,8 +213,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.negotiation-tools",
       "label": "Negotiation Tools",
       "kind": "tool-family",
-      "capability": "negotiation",
-      "sourcePath": "packages/protocol/src/negotiation/application/negotiation.tools.ts",
+      "capability": "negotiations",
+      "sourcePath": "packages/protocol/src/negotiations/application/negotiation.tools.ts",
       "symbol": "createNegotiationTools",
       "chapterIds": [],
       "flowIds": [],
@@ -226,8 +226,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.network-graph-factory",
       "label": "Network Graph Factory",
       "kind": "graph-factory",
-      "capability": "communities",
-      "sourcePath": "packages/protocol/src/communities/application/network.graph.ts",
+      "capability": "networks",
+      "sourcePath": "packages/protocol/src/networks/application/network.graph.ts",
       "symbol": "NetworkGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -239,8 +239,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.network-membership-graph-factory",
       "label": "Network Membership Graph Factory",
       "kind": "graph-factory",
-      "capability": "communities",
-      "sourcePath": "packages/protocol/src/communities/application/membership.graph.ts",
+      "capability": "networks",
+      "sourcePath": "packages/protocol/src/networks/application/membership.graph.ts",
       "symbol": "NetworkMembershipGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -252,8 +252,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.network-tools",
       "label": "Network Tools",
       "kind": "tool-family",
-      "capability": "communities",
-      "sourcePath": "packages/protocol/src/communities/application/network.tools.ts",
+      "capability": "networks",
+      "sourcePath": "packages/protocol/src/networks/application/network.tools.ts",
       "symbol": "createNetworkTools",
       "chapterIds": [],
       "flowIds": [],
@@ -266,7 +266,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Opportunity Evaluator",
       "kind": "agent",
       "capability": "opportunities",
-      "sourcePath": "packages/protocol/src/opportunity/application/opportunity.evaluator.ts",
+      "sourcePath": "packages/protocol/src/opportunities/application/opportunity.evaluator.ts",
       "symbol": "OpportunityEvaluator",
       "chapterIds": [],
       "flowIds": [],
@@ -279,7 +279,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Opportunity Graph Factory",
       "kind": "graph-factory",
       "capability": "opportunities",
-      "sourcePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+      "sourcePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
       "symbol": "OpportunityGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -292,7 +292,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Opportunity Presenter",
       "kind": "agent",
       "capability": "opportunities",
-      "sourcePath": "packages/protocol/src/opportunity/application/opportunity.presenter.ts",
+      "sourcePath": "packages/protocol/src/opportunities/application/opportunity.presenter.ts",
       "symbol": "OpportunityPresenter",
       "chapterIds": [],
       "flowIds": [],
@@ -305,7 +305,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Opportunity Tools",
       "kind": "tool-family",
       "capability": "opportunities",
-      "sourcePath": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+      "sourcePath": "packages/protocol/src/opportunities/application/opportunity.tools.ts",
       "symbol": "createOpportunityTools",
       "chapterIds": [],
       "flowIds": [],
@@ -317,8 +317,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.premise-graph-factory",
       "label": "Premise Graph Factory",
       "kind": "graph-factory",
-      "capability": "participant-context",
-      "sourcePath": "packages/protocol/src/premise/premise.graph.ts",
+      "capability": "contexts",
+      "sourcePath": "packages/protocol/src/premises/premise.graph.ts",
       "symbol": "PremiseGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -330,8 +330,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.premise-tools",
       "label": "Premise Tools",
       "kind": "tool-family",
-      "capability": "participant-context",
-      "sourcePath": "packages/protocol/src/premise/premise.tools.ts",
+      "capability": "contexts",
+      "sourcePath": "packages/protocol/src/premises/premise.tools.ts",
       "symbol": "createPremiseTools",
       "chapterIds": [],
       "flowIds": [],
@@ -370,7 +370,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Radar Graph Factory",
       "kind": "graph-factory",
       "capability": "opportunities",
-      "sourcePath": "packages/protocol/src/opportunity/radar/radar.graph.ts",
+      "sourcePath": "packages/protocol/src/opportunities/radar/radar.graph.ts",
       "symbol": "RadarGraphFactory",
       "chapterIds": [],
       "flowIds": [],
@@ -382,8 +382,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.semantic-verifier",
       "label": "Semantic Verifier",
       "kind": "agent",
-      "capability": "signals",
-      "sourcePath": "packages/protocol/src/signals/application/intent.verifier.ts",
+      "capability": "intents",
+      "sourcePath": "packages/protocol/src/intents/application/intent.verifier.ts",
       "symbol": "SemanticVerifier",
       "chapterIds": [],
       "flowIds": [],
@@ -408,8 +408,8 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "component.user-context-generator",
       "label": "User Context Generator",
       "kind": "agent",
-      "capability": "participant-context",
-      "sourcePath": "packages/protocol/src/context/context.generator.ts",
+      "capability": "contexts",
+      "sourcePath": "packages/protocol/src/contexts/context.generator.ts",
       "symbol": "UserContextGenerator",
       "chapterIds": [],
       "flowIds": [],
@@ -418,14 +418,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "stability": "stable"
     },
     {
-      "id": "facade.communities",
-      "label": "Communities facade",
+      "id": "facade.agents",
+      "label": "Agents facade",
       "kind": "facade",
-      "capability": "communities",
-      "sourcePath": "packages/protocol/src/communities/index.ts",
+      "capability": "agents",
+      "sourcePath": "packages/protocol/src/agents/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the communities capability — its sole cross-capability surface.",
+      "summary": "The reviewed public boundary for the agents capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -440,6 +440,17 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "layer": "implementation"
     },
     {
+      "id": "facade.contexts",
+      "label": "Contexts facade",
+      "kind": "facade",
+      "capability": "contexts",
+      "sourcePath": "packages/protocol/src/contexts/index.ts",
+      "chapterIds": [],
+      "flowIds": [],
+      "summary": "The reviewed public boundary for the contexts capability — its sole cross-capability surface.",
+      "layer": "implementation"
+    },
+    {
       "id": "facade.integrations",
       "label": "Integrations facade",
       "kind": "facade",
@@ -451,14 +462,36 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "layer": "implementation"
     },
     {
-      "id": "facade.negotiation",
-      "label": "Negotiation facade",
+      "id": "facade.intents",
+      "label": "Intents facade",
       "kind": "facade",
-      "capability": "negotiation",
-      "sourcePath": "packages/protocol/src/negotiation/index.ts",
+      "capability": "intents",
+      "sourcePath": "packages/protocol/src/intents/index.ts",
       "chapterIds": [],
       "flowIds": [],
-      "summary": "The reviewed public boundary for the negotiation capability — its sole cross-capability surface.",
+      "summary": "The reviewed public boundary for the intents capability — its sole cross-capability surface.",
+      "layer": "implementation"
+    },
+    {
+      "id": "facade.negotiations",
+      "label": "Negotiations facade",
+      "kind": "facade",
+      "capability": "negotiations",
+      "sourcePath": "packages/protocol/src/negotiations/index.ts",
+      "chapterIds": [],
+      "flowIds": [],
+      "summary": "The reviewed public boundary for the negotiations capability — its sole cross-capability surface.",
+      "layer": "implementation"
+    },
+    {
+      "id": "facade.networks",
+      "label": "Networks facade",
+      "kind": "facade",
+      "capability": "networks",
+      "sourcePath": "packages/protocol/src/networks/index.ts",
+      "chapterIds": [],
+      "flowIds": [],
+      "summary": "The reviewed public boundary for the networks capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -466,32 +499,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "label": "Opportunities facade",
       "kind": "facade",
       "capability": "opportunities",
-      "sourcePath": "packages/protocol/src/opportunity/index.ts",
+      "sourcePath": "packages/protocol/src/opportunities/index.ts",
       "chapterIds": [],
       "flowIds": [],
       "summary": "The reviewed public boundary for the opportunities capability — its sole cross-capability surface.",
-      "layer": "implementation"
-    },
-    {
-      "id": "facade.participant-agents",
-      "label": "Participant Agents facade",
-      "kind": "facade",
-      "capability": "participant-agents",
-      "sourcePath": "packages/protocol/src/participant-agents/index.ts",
-      "chapterIds": [],
-      "flowIds": [],
-      "summary": "The reviewed public boundary for the participant-agents capability — its sole cross-capability surface.",
-      "layer": "implementation"
-    },
-    {
-      "id": "facade.participant-context",
-      "label": "Participant Context facade",
-      "kind": "facade",
-      "capability": "participant-context",
-      "sourcePath": "packages/protocol/src/participant-context/index.ts",
-      "chapterIds": [],
-      "flowIds": [],
-      "summary": "The reviewed public boundary for the participant-context capability — its sole cross-capability surface.",
       "layer": "implementation"
     },
     {
@@ -506,21 +517,10 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "layer": "implementation"
     },
     {
-      "id": "facade.signals",
-      "label": "Signals facade",
-      "kind": "facade",
-      "capability": "signals",
-      "sourcePath": "packages/protocol/src/signals/index.ts",
-      "chapterIds": [],
-      "flowIds": [],
-      "summary": "The reviewed public boundary for the signals capability — its sole cross-capability surface.",
-      "layer": "implementation"
-    },
-    {
       "id": "host-requirement.agent-dispatcher",
       "label": "Dispatch participant agents",
       "kind": "host-requirement",
-      "capability": "participant-agents",
+      "capability": "agents",
       "sourcePath": "packages/protocol/src/shared/interfaces/agent-dispatcher.interface.ts",
       "symbol": "AgentDispatcher",
       "chapterIds": [],
@@ -533,7 +533,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.cache",
       "label": "Cache protocol data",
       "kind": "host-requirement",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/shared/interfaces/cache.interface.ts",
       "symbol": "Cache",
       "chapterIds": [],
@@ -546,7 +546,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.chat-graph-composite-database",
       "label": "Persist chat graph state",
       "kind": "host-requirement",
-      "capability": "participant-agents",
+      "capability": "agents",
       "sourcePath": "packages/protocol/src/shared/interfaces/database.interface.ts",
       "symbol": "ChatGraphCompositeDatabase",
       "chapterIds": [],
@@ -559,7 +559,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.embedder",
       "label": "Embed and search vectors",
       "kind": "host-requirement",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/shared/interfaces/embedder.interface.ts",
       "symbol": "Embedder",
       "chapterIds": [],
@@ -572,7 +572,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.hyde-cache",
       "label": "Cache HyDE documents",
       "kind": "host-requirement",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/shared/interfaces/cache.interface.ts",
       "symbol": "HydeCache",
       "chapterIds": [],
@@ -585,7 +585,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.intent-graph-queue",
       "label": "Queue signal processing",
       "kind": "host-requirement",
-      "capability": "signals",
+      "capability": "intents",
       "sourcePath": "packages/protocol/src/shared/interfaces/queue.interface.ts",
       "symbol": "IntentGraphQueue",
       "chapterIds": [],
@@ -598,7 +598,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.mcp-auth-resolver",
       "label": "Resolve authenticated principal",
       "kind": "host-requirement",
-      "capability": "participant-agents",
+      "capability": "agents",
       "sourcePath": "packages/protocol/src/shared/interfaces/auth.interface.ts",
       "symbol": "McpAuthResolver",
       "chapterIds": [],
@@ -611,7 +611,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.negotiation-graph-database",
       "label": "Persist negotiations",
       "kind": "host-requirement",
-      "capability": "negotiation",
+      "capability": "negotiations",
       "sourcePath": "packages/protocol/src/shared/interfaces/database.interface.ts",
       "symbol": "NegotiationGraphDatabase",
       "chapterIds": [],
@@ -624,7 +624,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.negotiation-timeout-queue",
       "label": "Schedule negotiation timeouts",
       "kind": "host-requirement",
-      "capability": "negotiation",
+      "capability": "negotiations",
       "sourcePath": "packages/protocol/src/shared/interfaces/negotiation-events.interface.ts",
       "symbol": "NegotiationTimeoutQueue",
       "chapterIds": [],
@@ -663,7 +663,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "host-requirement.user-database",
       "label": "Persist participant context",
       "kind": "host-requirement",
-      "capability": "participant-context",
+      "capability": "contexts",
       "sourcePath": "packages/protocol/src/shared/interfaces/database.interface.ts",
       "symbol": "UserDatabase",
       "chapterIds": [],
@@ -686,7 +686,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
     {
       "id": "runtime-shell.mcp",
       "label": "MCP server shell",
-      "capability": "participant-agents",
+      "capability": "agents",
       "sourcePath": "packages/protocol/src/mcp/mcp.server.ts",
       "summary": "Adapts MCP requests to protocol-owned tools.",
       "kind": "runtime-shell",
@@ -713,7 +713,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "host-requirement.intent-graph-queue",
       "kind": "injected",
       "label": "accepts deferred graph scheduling",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts",
+      "evidencePath": "packages/protocol/src/intents/application/intent.graph.ts",
       "evidenceSymbol": "IntentGraphFactory"
     },
     {
@@ -731,7 +731,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "host-requirement.agent-dispatcher",
       "kind": "injected",
       "label": "requires participant dispatch",
-      "evidencePath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+      "evidencePath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
       "evidenceSymbol": "NegotiationGraphFactory"
     },
     {
@@ -740,7 +740,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "host-requirement.negotiation-timeout-queue",
       "kind": "injected",
       "label": "requires timeout scheduling",
-      "evidencePath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+      "evidencePath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
       "evidenceSymbol": "NegotiationGraphFactory"
     },
     {
@@ -749,7 +749,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "host-requirement.opportunity-graph-database",
       "kind": "injected",
       "label": "requires opportunity persistence",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
       "evidenceSymbol": "OpportunityGraphFactory"
     },
     {
@@ -767,7 +767,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.semantic-verifier",
       "kind": "runtime",
       "label": "runs semantic verification",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts",
+      "evidencePath": "packages/protocol/src/intents/application/intent.graph.ts",
       "evidenceSymbol": "IntentGraphFactory"
     },
     {
@@ -785,7 +785,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.index-negotiator",
       "kind": "runtime",
       "label": "runs negotiation turns",
-      "evidencePath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+      "evidencePath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
       "evidenceSymbol": "NegotiationGraphFactory"
     },
     {
@@ -794,7 +794,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.hyde-graph-factory",
       "kind": "runtime",
       "label": "uses generated participant context",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
       "evidenceSymbol": "OpportunityGraphFactory"
     },
     {
@@ -803,7 +803,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.negotiation-graph-factory",
       "kind": "runtime",
       "label": "starts negotiation",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
       "evidenceSymbol": "OpportunityGraphFactory"
     },
     {
@@ -812,7 +812,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-evaluator",
       "kind": "runtime",
       "label": "evaluates candidates",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
       "evidenceSymbol": "OpportunityGraphFactory"
     },
     {
@@ -902,7 +902,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.semantic-verifier",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts"
+      "evidencePath": "packages/protocol/src/intents/application/intent.graph.ts"
     },
     {
       "id": "static.component.mcp-server.component.invoke-tool-runtime",
@@ -934,7 +934,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.index-negotiator",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/negotiation/application/negotiation.graph.ts"
+      "evidencePath": "packages/protocol/src/negotiations/application/negotiation.graph.ts"
     },
     {
       "id": "static.component.negotiation-tools.component.index-negotiator",
@@ -942,7 +942,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.index-negotiator",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/negotiation/application/negotiation.tools.ts"
+      "evidencePath": "packages/protocol/src/negotiations/application/negotiation.tools.ts"
     },
     {
       "id": "static.component.opportunity-graph-factory.component.opportunity-evaluator",
@@ -950,23 +950,23 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-evaluator",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts"
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts"
     },
     {
-      "id": "static.component.opportunity-graph-factory.facade.negotiation",
+      "id": "static.component.opportunity-graph-factory.facade.intents",
       "sourceId": "component.opportunity-graph-factory",
-      "targetId": "facade.negotiation",
+      "targetId": "facade.intents",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts"
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts"
     },
     {
-      "id": "static.component.opportunity-graph-factory.facade.signals",
+      "id": "static.component.opportunity-graph-factory.facade.negotiations",
       "sourceId": "component.opportunity-graph-factory",
-      "targetId": "facade.signals",
+      "targetId": "facade.negotiations",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.graph.ts"
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.graph.ts"
     },
     {
       "id": "static.component.opportunity-tools.component.opportunity-presenter",
@@ -974,7 +974,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-presenter",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.tools.ts"
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.tools.ts"
     },
     {
       "id": "static.component.opportunity-tools.facade.questions",
@@ -982,7 +982,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "facade.questions",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/application/opportunity.tools.ts"
+      "evidencePath": "packages/protocol/src/opportunities/application/opportunity.tools.ts"
     },
     {
       "id": "static.component.radar-graph-factory.component.opportunity-presenter",
@@ -990,7 +990,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-presenter",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/radar/radar.graph.ts"
+      "evidencePath": "packages/protocol/src/opportunities/radar/radar.graph.ts"
     },
     {
       "id": "static.component.tool-registry.component.chat-tools",
@@ -1025,9 +1025,9 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
-      "id": "static.component.tool-registry.facade.communities",
+      "id": "static.component.tool-registry.facade.agents",
       "sourceId": "component.tool-registry",
-      "targetId": "facade.communities",
+      "targetId": "facade.agents",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
@@ -1049,9 +1049,17 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
-      "id": "static.component.tool-registry.facade.negotiation",
+      "id": "static.component.tool-registry.facade.negotiations",
       "sourceId": "component.tool-registry",
-      "targetId": "facade.negotiation",
+      "targetId": "facade.negotiations",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.component.tool-registry.facade.networks",
+      "sourceId": "component.tool-registry",
+      "targetId": "facade.networks",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
@@ -1065,14 +1073,6 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
-      "id": "static.component.tool-registry.facade.participant-agents",
-      "sourceId": "component.tool-registry",
-      "targetId": "facade.participant-agents",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
-    },
-    {
       "id": "static.component.tool-registry.facade.questions",
       "sourceId": "component.tool-registry",
       "targetId": "facade.questions",
@@ -1081,12 +1081,60 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
+      "id": "static.facade.agents.component.chat-graph-factory",
+      "sourceId": "facade.agents",
+      "targetId": "component.chat-graph-factory",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/agents/index.ts"
+    },
+    {
+      "id": "static.facade.agents.component.chat-tools",
+      "sourceId": "facade.agents",
+      "targetId": "component.chat-tools",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/agents/index.ts"
+    },
+    {
+      "id": "static.facade.intents.component.intent-graph-factory",
+      "sourceId": "facade.intents",
+      "targetId": "component.intent-graph-factory",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/intents/index.ts"
+    },
+    {
+      "id": "static.facade.intents.component.intent-indexer",
+      "sourceId": "facade.intents",
+      "targetId": "component.intent-indexer",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/intents/index.ts"
+    },
+    {
+      "id": "static.facade.intents.component.intent-tools",
+      "sourceId": "facade.intents",
+      "targetId": "component.intent-tools",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/intents/index.ts"
+    },
+    {
+      "id": "static.facade.intents.component.semantic-verifier",
+      "sourceId": "facade.intents",
+      "targetId": "component.semantic-verifier",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/intents/index.ts"
+    },
+    {
       "id": "static.facade.opportunities.component.opportunity-evaluator",
       "sourceId": "facade.opportunities",
       "targetId": "component.opportunity-evaluator",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/index.ts"
+      "evidencePath": "packages/protocol/src/opportunities/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.opportunity-graph-factory",
@@ -1094,7 +1142,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-graph-factory",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/index.ts"
+      "evidencePath": "packages/protocol/src/opportunities/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.opportunity-presenter",
@@ -1102,7 +1150,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-presenter",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/index.ts"
+      "evidencePath": "packages/protocol/src/opportunities/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.opportunity-tools",
@@ -1110,7 +1158,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.opportunity-tools",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/index.ts"
+      "evidencePath": "packages/protocol/src/opportunities/index.ts"
     },
     {
       "id": "static.facade.opportunities.component.radar-graph-factory",
@@ -1118,55 +1166,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "targetId": "component.radar-graph-factory",
       "kind": "static",
       "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/opportunity/index.ts"
-    },
-    {
-      "id": "static.facade.participant-agents.component.chat-graph-factory",
-      "sourceId": "facade.participant-agents",
-      "targetId": "component.chat-graph-factory",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/participant-agents/index.ts"
-    },
-    {
-      "id": "static.facade.participant-agents.component.chat-tools",
-      "sourceId": "facade.participant-agents",
-      "targetId": "component.chat-tools",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/participant-agents/index.ts"
-    },
-    {
-      "id": "static.facade.signals.component.intent-graph-factory",
-      "sourceId": "facade.signals",
-      "targetId": "component.intent-graph-factory",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/index.ts"
-    },
-    {
-      "id": "static.facade.signals.component.intent-indexer",
-      "sourceId": "facade.signals",
-      "targetId": "component.intent-indexer",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/index.ts"
-    },
-    {
-      "id": "static.facade.signals.component.intent-tools",
-      "sourceId": "facade.signals",
-      "targetId": "component.intent-tools",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/index.ts"
-    },
-    {
-      "id": "static.facade.signals.component.semantic-verifier",
-      "sourceId": "facade.signals",
-      "targetId": "component.semantic-verifier",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/index.ts"
+      "evidencePath": "packages/protocol/src/opportunities/index.ts"
     },
     {
       "id": "static.runtime-shell.composition.component.chat-tools",
@@ -1201,9 +1201,9 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
-      "id": "static.runtime-shell.composition.facade.communities",
+      "id": "static.runtime-shell.composition.facade.agents",
       "sourceId": "runtime-shell.composition",
-      "targetId": "facade.communities",
+      "targetId": "facade.agents",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
@@ -1225,9 +1225,17 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
     },
     {
-      "id": "static.runtime-shell.composition.facade.negotiation",
+      "id": "static.runtime-shell.composition.facade.negotiations",
       "sourceId": "runtime-shell.composition",
-      "targetId": "facade.negotiation",
+      "targetId": "facade.negotiations",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
+    },
+    {
+      "id": "static.runtime-shell.composition.facade.networks",
+      "sourceId": "runtime-shell.composition",
+      "targetId": "facade.networks",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
@@ -1236,14 +1244,6 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "id": "static.runtime-shell.composition.facade.opportunities",
       "sourceId": "runtime-shell.composition",
       "targetId": "facade.opportunities",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
-    },
-    {
-      "id": "static.runtime-shell.composition.facade.participant-agents",
-      "sourceId": "runtime-shell.composition",
-      "targetId": "facade.participant-agents",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/shared/agent/tool.registry.ts"
@@ -1313,9 +1313,9 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/index.ts"
     },
     {
-      "id": "static.runtime-shell.root.facade.communities",
+      "id": "static.runtime-shell.root.facade.agents",
       "sourceId": "runtime-shell.root",
-      "targetId": "facade.communities",
+      "targetId": "facade.agents",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"
@@ -1329,6 +1329,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/index.ts"
     },
     {
+      "id": "static.runtime-shell.root.facade.contexts",
+      "sourceId": "runtime-shell.root",
+      "targetId": "facade.contexts",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/index.ts"
+    },
+    {
       "id": "static.runtime-shell.root.facade.integrations",
       "sourceId": "runtime-shell.root",
       "targetId": "facade.integrations",
@@ -1337,9 +1345,25 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/index.ts"
     },
     {
-      "id": "static.runtime-shell.root.facade.negotiation",
+      "id": "static.runtime-shell.root.facade.intents",
       "sourceId": "runtime-shell.root",
-      "targetId": "facade.negotiation",
+      "targetId": "facade.intents",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/index.ts"
+    },
+    {
+      "id": "static.runtime-shell.root.facade.negotiations",
+      "sourceId": "runtime-shell.root",
+      "targetId": "facade.negotiations",
+      "kind": "static",
+      "label": "imports at runtime",
+      "evidencePath": "packages/protocol/src/index.ts"
+    },
+    {
+      "id": "static.runtime-shell.root.facade.networks",
+      "sourceId": "runtime-shell.root",
+      "targetId": "facade.networks",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"
@@ -1353,33 +1377,9 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidencePath": "packages/protocol/src/index.ts"
     },
     {
-      "id": "static.runtime-shell.root.facade.participant-agents",
-      "sourceId": "runtime-shell.root",
-      "targetId": "facade.participant-agents",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/index.ts"
-    },
-    {
-      "id": "static.runtime-shell.root.facade.participant-context",
-      "sourceId": "runtime-shell.root",
-      "targetId": "facade.participant-context",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/index.ts"
-    },
-    {
       "id": "static.runtime-shell.root.facade.questions",
       "sourceId": "runtime-shell.root",
       "targetId": "facade.questions",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/index.ts"
-    },
-    {
-      "id": "static.runtime-shell.root.facade.signals",
-      "sourceId": "runtime-shell.root",
-      "targetId": "facade.signals",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"
@@ -1421,7 +1421,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "DISCOVERY_ALLOWED_TYPES",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discovery.env.ts",
+              "path": "packages/protocol/src/opportunities/discovery.env.ts",
               "symbol": "discoveryAllowedTypes"
             }
           ],
@@ -1439,7 +1439,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "DISCOVERY_CONTEXT_TO_INTENT",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "symbol": "OpportunityGraphFactory"
             }
           ],
@@ -1456,7 +1456,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "DISCOVERY_PROFILE_SOURCE",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discovery.env.ts",
+              "path": "packages/protocol/src/opportunities/discovery.env.ts",
               "symbol": "discoveryProfileSource"
             }
           ],
@@ -1511,16 +1511,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_CONTEXT_TO_INTENT"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence"
               }
             }
@@ -1568,20 +1568,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_PROFILE_SOURCE"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "path": "packages/protocol/src/opportunities/discovery.env.ts",
                   "symbol": "discoveryProfileSource"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "DISCOVERY_PROFILE_SOURCE=user_context: premise strategy off, premise HyDE results dropped"
               }
             }
@@ -1664,24 +1664,24 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_ALLOWED_TYPES"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "path": "packages/protocol/src/opportunities/discovery.env.ts",
                   "symbol": "discoveryAllowedTypes"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "path": "packages/protocol/src/opportunities/discovery.env.ts",
                   "symbol": "discoveryIntentMatchingEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
               }
             }
@@ -1729,24 +1729,24 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_ALLOWED_TYPES"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "path": "packages/protocol/src/opportunities/discovery.env.ts",
                   "symbol": "discoveryAllowedTypes"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "path": "packages/protocol/src/opportunities/discovery.env.ts",
                   "symbol": "discoveryIntentMatchingEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
               }
             }
@@ -1775,7 +1775,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "symbol": "OpportunityGraphFactory"
             }
           ],
@@ -1833,16 +1833,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "RUN_OPPORTUNITY_EVAL_IN_PARALLEL"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "when evaluator returns 3 actors, splits into pairwise opportunities (viewer + each non-viewer)"
               }
             }
@@ -1871,7 +1871,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "symbol": "getSourcePremiseDiscoveryLimit"
             }
           ],
@@ -1911,20 +1911,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_SOURCE_PREMISE_LIMIT"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "getSourcePremiseDiscoveryLimit"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "premise discovery uses scoped capped source premises and one batched DB search"
               }
             }
@@ -1956,20 +1956,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_SOURCE_PREMISE_LIMIT"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "getSourcePremiseDiscoveryLimit"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "premise discovery uses scoped capped source premises and one batched DB search"
               }
             }
@@ -2017,7 +2017,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "symbol": "getRejectionCooldownMs"
             }
           ],
@@ -2076,20 +2076,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_REJECTION_COOLDOWN_DAYS"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "getRejectionCooldownMs"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates"
               }
             }
@@ -2121,20 +2121,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "DISCOVERY_REJECTION_COOLDOWN_DAYS"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "getRejectionCooldownMs"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.graph.spec.ts",
                 "testName": "applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates"
               }
             }
@@ -2264,7 +2264,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "INTRODUCER_DISCOVERY_ENABLED",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.introducer-feature.ts",
               "symbol": "isIntroducerDiscoveryEnabled"
             }
           ],
@@ -2326,7 +2326,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "consumerSymbol": "MaintenanceGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.introducer-feature.ts",
                   "symbol": "isIntroducerDiscoveryEnabled"
                 },
                 {
@@ -2335,7 +2335,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.introducer-feature.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.introducer-feature.spec.ts",
                 "testName": "enables only for true"
               }
             }
@@ -2364,7 +2364,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_ASK_USER_ENABLED",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.protocol.ts",
               "symbol": "configuredAskUserEnabled"
             }
           ],
@@ -2381,7 +2381,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.protocol.ts",
               "symbol": "askUserAnswerWindowMs"
             }
           ],
@@ -2398,7 +2398,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.consultation-policy.ts",
               "symbol": "negotiationConsultationPolicyMode"
             }
           ],
@@ -2416,7 +2416,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_PROTOCOL_VERSION",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.protocol.ts",
               "symbol": "configuredProtocolVersion"
             }
           ],
@@ -2522,20 +2522,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_CONSULTATION_POLICY_MODE"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.consultation-policy.ts",
                   "symbol": "negotiationConsultationPolicyMode"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.ask-user.spec.ts",
                 "testName": "policy on excludes a pre-screened path before consultation effects"
               }
             }
@@ -2597,20 +2597,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_CONSULTATION_POLICY_MODE"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.consultation-policy.ts",
                   "symbol": "negotiationConsultationPolicyMode"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.ask-user.spec.ts",
                 "testName": "policy on excludes a pre-screened path before consultation effects"
               }
             }
@@ -2672,20 +2672,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_CONSULTATION_POLICY_MODE"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.consultation-policy.ts",
                   "symbol": "negotiationConsultationPolicyMode"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.ask-user.spec.ts",
                 "testName": "policy on excludes a pre-screened path before consultation effects"
               }
             }
@@ -2714,7 +2714,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_INCLUDE_OTHER_INTENTS",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts",
               "symbol": "negotiationIncludesOtherIntents"
             }
           ],
@@ -2753,20 +2753,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_INCLUDE_OTHER_INTENTS"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts",
               "consumerSymbol": "negotiateExistingOpportunity",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts",
                   "symbol": "negotiationIncludesOtherIntents"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.existing-negotiation.ts",
                   "symbol": "negotiateExistingOpportunity"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/opportunity.existing-negotiation.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/opportunity.existing-negotiation.spec.ts",
                 "testName": "false flag isolates both sides on an exact continuation and skips unrelated active-intent reads"
               }
             }
@@ -2814,7 +2814,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.deadlock.ts",
               "symbol": "configuredDeadlockShiftEnabled"
             }
           ],
@@ -2831,7 +2831,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.deadlock.ts",
               "symbol": "configuredDeadlockThreshold"
             }
           ],
@@ -2848,7 +2848,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_PROTOCOL_VERSION",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.protocol.ts",
               "symbol": "configuredProtocolVersion"
             }
           ],
@@ -2865,7 +2865,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATOR_STANCE",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.stance.contracts.ts",
               "symbol": "configuredNegotiatorStance"
             }
           ],
@@ -2972,20 +2972,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_DEADLOCK_SHIFT_ENABLED"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.deadlock.ts",
                   "symbol": "configuredDeadlockShiftEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.deadlock-shift.spec.ts",
                 "testName": "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once"
               }
             }
@@ -3041,20 +3041,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_DEADLOCK_SHIFT_ENABLED"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.deadlock.ts",
                   "symbol": "configuredDeadlockShiftEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.deadlock-shift.spec.ts",
                 "testName": "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once"
               }
             }
@@ -3110,20 +3110,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_DEADLOCK_SHIFT_ENABLED"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.deadlock.ts",
                   "symbol": "configuredDeadlockShiftEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.deadlock-shift.spec.ts",
                 "testName": "flag ON: bargaining stance from the threshold turn, record persisted once, trace event once"
               }
             }
@@ -3152,7 +3152,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/negotiation-evidence/negotiation-evidence.env.ts",
+              "path": "packages/protocol/src/opportunities/negotiation-evidence/negotiation-evidence.env.ts",
               "symbol": "negotiationEvidenceQuestionsMode"
             }
           ],
@@ -3268,7 +3268,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_PROTOCOL_VERSION",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.protocol.ts",
               "symbol": "configuredProtocolVersion"
             }
           ],
@@ -3326,20 +3326,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_PROTOCOL_VERSION"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.protocol.ts",
                   "symbol": "configuredProtocolVersion"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.protocol.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.protocol.spec.ts",
                 "testName": "configuredProtocolVersion: env switch, defaults v1"
               }
             }
@@ -3370,7 +3370,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_SCREEN_MODE",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts",
               "symbol": "configuredScreenMode"
             }
           ],
@@ -3410,20 +3410,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_SCREEN_MODE"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts",
                   "symbol": "configuredScreenMode"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.screen-routing.spec.ts",
                 "testName": "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected"
               }
             }
@@ -3474,20 +3474,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_SCREEN_MODE"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts",
                   "symbol": "configuredScreenMode"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.screen-routing.spec.ts",
                 "testName": "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected"
               }
             }
@@ -3516,7 +3516,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATOR_STANCE",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+              "path": "packages/protocol/src/negotiations/domain/negotiation.stance.contracts.ts",
               "symbol": "configuredNegotiatorStance"
             }
           ],
@@ -3575,20 +3575,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATOR_STANCE"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.agent.ts",
               "consumerSymbol": "IndexNegotiator",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.stance.contracts.ts",
                   "symbol": "configuredNegotiatorStance"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.agent.ts",
                   "symbol": "IndexNegotiator"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.stance.spec.ts",
                 "testName": "resolves every declared stance verbatim"
               }
             }
@@ -3620,20 +3620,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATOR_STANCE"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.agent.ts",
               "consumerSymbol": "IndexNegotiator",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+                  "path": "packages/protocol/src/negotiations/domain/negotiation.stance.contracts.ts",
                   "symbol": "configuredNegotiatorStance"
                 },
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.agent.ts",
                   "symbol": "IndexNegotiator"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.stance.spec.ts",
                 "testName": "resolves every declared stance verbatim"
               }
             }
@@ -3662,11 +3662,11 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
           "readSites": [
             {
-              "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "symbol": "NegotiationGraphFactory"
             },
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "symbol": "OpportunityGraphFactory"
             }
           ],
@@ -3684,7 +3684,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "NEGOTIATION_MAX_TURNS_CHAT",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "symbol": "OpportunityGraphFactory"
             }
           ],
@@ -3732,16 +3732,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_MAX_TURNS_AMBIENT"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.graph.spec.ts",
                 "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
               }
             },
@@ -3753,16 +3753,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_MAX_TURNS_CHAT"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.graph.spec.ts",
                 "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
               }
             }
@@ -3829,16 +3829,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_MAX_TURNS_AMBIENT"
               ],
-              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerPath": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
               "consumerSymbol": "NegotiationGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "path": "packages/protocol/src/negotiations/application/negotiation.graph.ts",
                   "symbol": "NegotiationGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.graph.spec.ts",
                 "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
               }
             },
@@ -3850,16 +3850,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "NEGOTIATION_MAX_TURNS_CHAT"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "path": "packages/protocol/src/negotiations/tests/negotiation.graph.spec.ts",
                 "testName": "emits outcome='turn_cap' when maxTurns is reached without accept/reject"
               }
             }
@@ -3888,14 +3888,14 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "OUTCOME_QUESTIONS_MODE",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/outcome/outcome.env.ts",
+              "path": "packages/protocol/src/opportunities/outcome/outcome.env.ts",
               "symbol": "outcomeQuestionsMode"
             }
           ],
           "entryAccessorSymbol": "outcomeQuestionsMode",
           "accessorClosure": [
             {
-              "path": "packages/protocol/src/opportunity/outcome/outcome.env.ts",
+              "path": "packages/protocol/src/opportunities/outcome/outcome.env.ts",
               "symbol": "isOutcomeQuestionsActivated"
             }
           ],
@@ -4009,7 +4009,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "POOL_QUESTIONS_MINING",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "path": "packages/protocol/src/opportunities/discriminator/discriminator.env.ts",
               "symbol": "poolQuestionsMiningMode"
             }
           ],
@@ -4026,7 +4026,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "POOL_QUESTIONS_MODE",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "path": "packages/protocol/src/opportunities/discriminator/discriminator.env.ts",
               "symbol": "poolQuestionsMode"
             }
           ],
@@ -4043,7 +4043,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "POOL_QUESTIONS_PUSH",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "path": "packages/protocol/src/opportunities/discriminator/discriminator.env.ts",
               "symbol": "poolQuestionsPushMode"
             }
           ],
@@ -4060,7 +4060,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "POOL_QUESTIONS_STAMP_NEWBORN",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "path": "packages/protocol/src/opportunities/discriminator/discriminator.env.ts",
               "symbol": "poolQuestionsStampNewborn"
             }
           ],
@@ -4077,7 +4077,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "POOL_QUESTIONS_VISIT_TRIGGER",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "path": "packages/protocol/src/opportunities/discriminator/discriminator.env.ts",
               "symbol": "poolQuestionsVisitTrigger"
             }
           ],
@@ -4494,7 +4494,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "POOL_QUESTIONS_RANKING",
           "readSites": [
             {
-              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "path": "packages/protocol/src/opportunities/discriminator/discriminator.env.ts",
               "symbol": "poolQuestionsRanking"
             }
           ],
@@ -4552,24 +4552,24 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "POOL_QUESTIONS_RANKING"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/radar/radar.graph.ts",
+              "consumerPath": "packages/protocol/src/opportunities/radar/radar.graph.ts",
               "consumerSymbol": "RadarGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+                  "path": "packages/protocol/src/opportunities/discriminator/discriminator.env.ts",
                   "symbol": "poolQuestionsRanking"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/radar/radar.graph.ts",
+                  "path": "packages/protocol/src/opportunities/radar/radar.graph.ts",
                   "symbol": "getPoolRankingProvenance"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/radar/radar.graph.ts",
+                  "path": "packages/protocol/src/opportunities/radar/radar.graph.ts",
                   "symbol": "RadarGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/radar.graph.status-filter.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/radar.graph.status-filter.spec.ts",
                 "testName": "lifecycle order is unchanged while ranking is off and adjusted when on"
               }
             }
@@ -4598,7 +4598,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "key": "PREMISE_DEDUP_SIMILARITY",
           "readSites": [
             {
-              "path": "packages/protocol/src/premise/premise.graph.ts",
+              "path": "packages/protocol/src/premises/premise.graph.ts",
               "symbol": "DEDUP_SIMILARITY_THRESHOLD"
             }
           ],
@@ -4638,20 +4638,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "PREMISE_DEDUP_SIMILARITY"
               ],
-              "consumerPath": "packages/protocol/src/premise/premise.graph.ts",
+              "consumerPath": "packages/protocol/src/premises/premise.graph.ts",
               "consumerSymbol": "PremiseGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "path": "packages/protocol/src/premises/premise.graph.ts",
                   "symbol": "DEDUP_SIMILARITY_THRESHOLD"
                 },
                 {
-                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "path": "packages/protocol/src/premises/premise.graph.ts",
                   "symbol": "PremiseGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/premise/tests/premise.graph.spec.ts",
+                "path": "packages/protocol/src/premises/tests/premise.graph.spec.ts",
                 "testName": "skips persisting a near-duplicate premise on create"
               }
             }
@@ -4702,20 +4702,20 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "PREMISE_DEDUP_SIMILARITY"
               ],
-              "consumerPath": "packages/protocol/src/premise/premise.graph.ts",
+              "consumerPath": "packages/protocol/src/premises/premise.graph.ts",
               "consumerSymbol": "PremiseGraphFactory",
               "referenceChain": [
                 {
-                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "path": "packages/protocol/src/premises/premise.graph.ts",
                   "symbol": "DEDUP_SIMILARITY_THRESHOLD"
                 },
                 {
-                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "path": "packages/protocol/src/premises/premise.graph.ts",
                   "symbol": "PremiseGraphFactory"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/premise/tests/premise.graph.spec.ts",
+                "path": "packages/protocol/src/premises/tests/premise.graph.spec.ts",
                 "testName": "skips persisting a near-duplicate premise on create"
               }
             }
@@ -4873,7 +4873,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "QUESTIONER_UPTAKE_ENABLED"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.tools.ts",
               "consumerSymbol": "createOpportunityTools",
               "referenceChain": [
                 {
@@ -4885,12 +4885,12 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.tools.ts",
                   "symbol": "createOpportunityTools"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/update-opportunity.spec.ts",
                 "testName": "returns a structured advisory with public questions and no graph mutation"
               }
             }
@@ -4948,7 +4948,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               "settingKeys": [
                 "QUESTIONER_UPTAKE_ENABLED"
               ],
-              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+              "consumerPath": "packages/protocol/src/opportunities/application/opportunity.tools.ts",
               "consumerSymbol": "createOpportunityTools",
               "referenceChain": [
                 {
@@ -4960,12 +4960,12 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
                   "symbol": "isUptakeGuardEnabled"
                 },
                 {
-                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "path": "packages/protocol/src/opportunities/application/opportunity.tools.ts",
                   "symbol": "createOpportunityTools"
                 }
               ],
               "behaviorTest": {
-                "path": "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts",
+                "path": "packages/protocol/src/opportunities/tests/update-opportunity.spec.ts",
                 "testName": "returns a structured advisory with public questions and no graph mutation"
               }
             }

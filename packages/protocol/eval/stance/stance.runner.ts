@@ -1,6 +1,6 @@
-import { IndexNegotiator } from "../../src/negotiation/application/negotiation.agent.js";
-import type { NegotiationTurn } from "../../src/negotiation/domain/negotiation.state.js";
-import type { NegotiatorStance } from "../../src/negotiation/domain/negotiation.stance.contracts.js";
+import { IndexNegotiator } from "../../src/negotiations/application/negotiation.agent.js";
+import type { NegotiationTurn } from "../../src/negotiations/domain/negotiation.state.js";
+import type { NegotiatorStance } from "../../src/negotiations/domain/negotiation.stance.contracts.js";
 import type { StanceCase, StanceRunResult, NegotiationVerdict } from "./stance.types.js";
 
 /** Actions that end a negotiation, across both v2 seats. */

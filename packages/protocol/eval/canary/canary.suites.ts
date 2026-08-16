@@ -10,10 +10,10 @@
 import type { ModelAgent } from "../../src/shared/agent/model.config.js";
 import { CASES as MATCHING_CASES } from "../matching/matching.cases.js";
 import { MATCHING_EVAL_ATTEMPT_TIMEOUT_MS } from "../matching/matching.constants.js";
-import { CASES as OPPORTUNITY_CASES } from "../opportunity/opportunity.cases.js";
-import { OPPORTUNITY_EVAL_ATTEMPT_TIMEOUT_MS } from "../opportunity/opportunity.constants.js";
-import { CASES as PREMISE_CASES } from "../premise/premise.cases.js";
-import { PREMISE_EVAL_ATTEMPT_TIMEOUT_MS } from "../premise/premise.constants.js";
+import { CASES as OPPORTUNITY_CASES } from "../opportunities/opportunity.cases.js";
+import { OPPORTUNITY_EVAL_ATTEMPT_TIMEOUT_MS } from "../opportunities/opportunity.constants.js";
+import { CASES as PREMISE_CASES } from "../premises/premise.cases.js";
+import { PREMISE_EVAL_ATTEMPT_TIMEOUT_MS } from "../premises/premise.constants.js";
 import { CASES as PROFILE_CASES } from "../profile/profile.cases.js";
 import { PROFILE_EVAL_ATTEMPT_TIMEOUT_MS } from "../profile/profile.constants.js";
 import type { CanarySuiteCorpus, CanarySuiteName } from "./canary.manifest.js";

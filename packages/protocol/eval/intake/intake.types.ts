@@ -1,4 +1,4 @@
-import type { FollowUpPlan, FollowUpPlanInput } from "../../src/signals/application/intake.orchestrator.js";
+import type { FollowUpPlan, FollowUpPlanInput } from "../../src/intents/application/intake.orchestrator.js";
 
 /** One live semantic fixture for answer-first signal-intake follow-ups. */
 export interface IntakeEvalCase {

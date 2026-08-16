@@ -5,14 +5,14 @@
  * It never knows about webhooks, MCP, transports, or agent resolution.
  * The concrete implementation lives in the host application.
  *
- * IND-548: these types are also accessible via participant-agents/ports, which
+ * IND-548: these types are also accessible via agents/ports, which
  * re-exports from here. This file remains the authoritative source to avoid a
  * module cycle through the negotiation capability facade.
  */
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
-import type { NegotiatorMemoryEntry } from '../../negotiation/domain/negotiation.memory.js';
-import type { AttributedPriorDialogue } from '../../negotiation/negotiation.attribution.js';
+import type { NegotiatorMemoryEntry } from '../../negotiations/domain/negotiation.memory.js';
+import type { AttributedPriorDialogue } from '../../negotiations/negotiation.attribution.js';
 import type { NegotiationPrivateConsultation } from './database.interface.js';
 import type { NegotiationContinuationTimeoutIdentity } from './negotiation-events.interface.js';
 

@@ -1,4 +1,4 @@
-import { FALLBACK_BRING_QUESTION, type FollowUpPlan } from "../../src/signals/application/intake.orchestrator.js";
+import { FALLBACK_BRING_QUESTION, type FollowUpPlan } from "../../src/intents/application/intake.orchestrator.js";
 
 import type { IntakeEvalCase, IntakeEvalResult } from "./intake.types.js";
 

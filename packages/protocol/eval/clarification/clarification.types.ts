@@ -1,4 +1,4 @@
-import type { IntentClarifierOutput } from "../../src/signals/application/intent.clarifier.js";
+import type { IntentClarifierOutput } from "../../src/intents/application/intent.clarifier.js";
 import type { UnderspecificationType } from "../../src/questions/domain/question.schema.js";
 
 /** One exact-match QUD classification fixture. */

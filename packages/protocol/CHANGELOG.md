@@ -20,6 +20,48 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 14.2.1 - 2026-08-16
+
+No public API change: all 443 exported symbols are byte-identical to 14.2.0.
+Directory names only.
+
+### Changed
+
+- Renamed capability directories so each one is named for what the code inside
+  it actually says. `Intent*` appears 2,624 times in `src/` against 494 for
+  `Signal*` — and roughly half of those are `AbortSignal` — while `Network*`
+  appears 1,988 times against 23 for `Communit*`. Every load-bearing surface
+  already used intent/network: MCP tool names (`create_intent`, `read_networks`),
+  database tables (`intents`, `networks`, `intent_networks`), and exported
+  symbols (`IntentGraphFactory`, `NetworkGraphDatabase`). The folders were the
+  outlier.
+
+  | before | after |
+  |---|---|
+  | `signals/` | `intents/` |
+  | `communities/` | `networks/` |
+  | `opportunity/` | `opportunities/` |
+  | `negotiation/` | `negotiations/` |
+  | `premise/` | `premises/` |
+  | `participant-agents/` | `agents/` |
+  | `participant-context/` + `context/` | `contexts/` |
+
+  Capability directories are now uniformly plural, and each one's file prefix
+  matches its folder (`intents/application/intent.graph.ts`).
+
+- The capability identifiers in `scripts/architecture/capability-model.ts`
+  follow: the 25 named directions now read `intents → questions`,
+  `opportunities → negotiations`, and so on. Dead alias entries for directories
+  that no longer exist were removed.
+
+### Removed
+
+- The six orphaned test directories, which held tests whose subjects had moved
+  away in earlier phases: `intent/` (13 files), `questioner/` (6), `network/`
+  (6), `contact/` (4), `agent/` (2), `integration/` (1). Each is absorbed into
+  its capability's own `tests/`, along with the redundant per-directory
+  `tsconfig.json` files that duplicated one already present.
+
 ## 14.2.0 - 2026-08-16
 
 No public API change: all 443 exported symbols are byte-identical to 14.1.0.

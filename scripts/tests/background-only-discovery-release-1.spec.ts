@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dir, '../..');
 const publicRuntimeFiles = [
-  'packages/protocol/src/opportunity/application/opportunity.tools.ts',
+  'packages/protocol/src/opportunities/application/opportunity.tools.ts',
   'packages/protocol/src/shared/agent/tool.factory.ts',
   'packages/protocol/src/mcp/mcp.authorization-policy.ts',
   'services/api/src/controllers/mcp.controller.ts',
@@ -16,12 +16,12 @@ const publicRuntimeFiles = [
   'packages/protocol/src/README.md',
   'docs/specs/api-reference.md',
   'packages/cli/cli-output-reference.html',
-  'packages/protocol/src/opportunity/application/opportunity.graph.ts',
+  'packages/protocol/src/opportunities/application/opportunity.graph.ts',
   'docs/design/protocol-package-audit.html',
 ];
 
 const runtimeAndCurrentDocFiles = [
-  'packages/protocol/src/opportunity/application/opportunity.graph.ts',
+  'packages/protocol/src/opportunities/application/opportunity.graph.ts',
   'packages/protocol/src/chat/chat.prompt.ts',
   'docs/design/protocol-deep-dive.md',
   'docs/design/opportunity-status-lifecycle.md',

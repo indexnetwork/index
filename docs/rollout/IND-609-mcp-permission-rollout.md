@@ -22,9 +22,9 @@ protocol package, the API deployment, and the generated plugins.
 | Transport `tools/call` authz matrix | `services/api/tests/mcp.spec.ts` |
 | Central policy matrix | `packages/protocol/src/mcp/tests/mcp.authorization-policy.spec.ts` |
 | Question provenance / exact-domain / clamps | `packages/protocol/src/questions/tests/question.tools.authz.spec.ts` |
-| Discovery-run ownership | `packages/protocol/src/opportunity/tests/discovery-run-ownership.spec.ts` |
-| Opportunity approval forgery/replay | `packages/protocol/src/opportunity/tests/opportunity.lifecycle.spec.ts` |
-| Negotiation participant-only A2A | `packages/protocol/src/negotiation/tests/negotiation.tools.spec.ts` |
+| Discovery-run ownership | `packages/protocol/src/opportunities/tests/discovery-run-ownership.spec.ts` |
+| Opportunity approval forgery/replay | `packages/protocol/src/opportunities/tests/opportunity.lifecycle.spec.ts` |
+| Negotiation participant-only A2A | `packages/protocol/src/negotiations/tests/negotiation.tools.spec.ts` |
 
 ## 1. Release & versioning
 

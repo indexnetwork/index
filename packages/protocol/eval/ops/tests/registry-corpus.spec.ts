@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 
 import { HISTORICAL_MATRIX_CASES } from "../../discovery-env-matrix/historical-matrix.cases.js";
 import { CASES as MATCHING_CASES } from "../../matching/matching.cases.js";
-import { CASES as OPPORTUNITY_CASES } from "../../opportunity/opportunity.cases.js";
-import { CASES as PREMISE_CASES } from "../../premise/premise.cases.js";
+import { CASES as OPPORTUNITY_CASES } from "../../opportunities/opportunity.cases.js";
+import { CASES as PREMISE_CASES } from "../../premises/premise.cases.js";
 import { CASES as PROFILE_CASES } from "../../profile/profile.cases.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 import type { OpsHarness } from "../ops.types.js";

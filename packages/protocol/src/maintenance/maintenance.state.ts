@@ -1,6 +1,6 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Opportunity } from '../shared/interfaces/database.interface.js';
-import type { RadarHealthResult } from '../opportunity/radar/radar.health.js';
+import type { RadarHealthResult } from '../opportunities/radar/radar.health.js';
 
 /**
  * Maintenance Graph State (Annotation-based).

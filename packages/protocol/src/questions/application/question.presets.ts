@@ -10,7 +10,7 @@
 import type { QuestionMode, QuestionPurpose } from "../domain/question.schema.js";
 import { QUD_UNDERSPECIFICATION_RULES } from "./question.qud.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, RecoveryIntentContext, UptakeNegotiationContext } from "./question.input.js";
-import { consultationPromptFor } from "../../negotiation/index.js";
+import { consultationPromptFor } from "../../negotiations/index.js";
 
 /**
  * Shared rule block appended to every questioner system prompt. Enforces that
@@ -376,7 +376,7 @@ function buildChatPrompt(ctx: ChatContext): string {
 /**
  * pool_discovery has NO preset by design: those questions are synthesized
  * deterministically from mined discriminators (see
- * `opportunity/discriminator/discriminator.question.ts`) and never reach the
+ * `opportunities/discriminator/discriminator.question.ts`) and never reach the
  * QuestionerAgent. `getPreset("pool_discovery")` therefore throws — the
  * QuestionerQueue branches on the mode before invoking the agent.
  */

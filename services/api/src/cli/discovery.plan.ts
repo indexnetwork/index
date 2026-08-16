@@ -88,7 +88,7 @@ function assertOrderedDistinctSides(sides: readonly [AbSide, AbSide]): void {
  * "unset" — which means the graph applies its *own* default, a default that can
  * equal the other side's explicit value. `{}` against
  * `{ DISCOVERY_ALLOWED_TYPES: 'intent,profile' }` is the worst case: the default
- * *is* `intent,profile` (packages/protocol/src/opportunity/discovery.env.ts:46),
+ * *is* `intent,profile` (packages/protocol/src/opportunities/discovery.env.ts:46),
  * so both sides behave identically, yet the run is accepted and whatever noise
  * it measures is attributed to that flag. That is exactly what the
  * identical-configuration guard exists to prevent, arriving through the side

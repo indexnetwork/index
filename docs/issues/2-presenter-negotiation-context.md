@@ -17,10 +17,10 @@ Today the presenter renders opportunities without visibility into the negotiatio
 ## Scope
 
 ### In
-- New loader `packages/protocol/src/opportunity/negotiation-context.loader.ts` exporting `loadNegotiationContext(db, opportunityId): Promise<NegotiationContext | null>`.
+- New loader `packages/protocol/src/opportunities/negotiation-context.loader.ts` exporting `loadNegotiationContext(db, opportunityId): Promise<NegotiationContext | null>`.
 - New type `NegotiationContext` exported from a well-placed location (loader module or a shared types file — see plan).
-- `HomeCardPresenterInput` in `packages/protocol/src/opportunity/opportunity.presenter.ts` gains optional `negotiationContext?: NegotiationContext`.
-- `gatherPresenterContext()` in `packages/protocol/src/opportunity/feed/feed.graph.ts` invokes the loader when status ∈ `{pending, stalled, accepted, rejected, negotiating}`.
+- `HomeCardPresenterInput` in `packages/protocol/src/opportunities/opportunity.presenter.ts` gains optional `negotiationContext?: NegotiationContext`.
+- `gatherPresenterContext()` in `packages/protocol/src/opportunities/feed/feed.graph.ts` invokes the loader when status ∈ `{pending, stalled, accepted, rejected, negotiating}`.
 - Presenter prompt revisions: Branch A (negotiating → templated chip + non-transcript-grounded LLM render for the rest); Branch B (post-negotiation → full transcript injected with explicit framing and, for stalled, the `outcome.reason`).
 - Snapshot tests for the prompt assembly across five branches: `negotiating`, `pending`, `stalled`, `accepted`, `rejected`.
 - Unit tests for `loadNegotiationContext` returning `null` for `draft`/`latent` and populated data for the other statuses.

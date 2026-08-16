@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { IntentClarifier } from "../../src/signals/application/intent.clarifier.js";
+import { IntentClarifier } from "../../src/intents/application/intent.clarifier.js";
 import { CASES } from "./clarification.cases.js";
 import { runCase } from "./clarification.runner.js";
 import { scoreCase } from "./clarification.scorer.js";

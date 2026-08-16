@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { OpportunityGraphFactory } from '../../../opportunity/application/opportunity.graph.js';
-import type { StampNewbornOpportunitiesFn } from '../../../opportunity/application/opportunity.graph.js';
+import { OpportunityGraphFactory } from '../../../opportunities/application/opportunity.graph.js';
+import type { StampNewbornOpportunitiesFn } from '../../../opportunities/application/opportunity.graph.js';
 import { createChatTools } from '../tool.factory.js';
 import type { ToolContext } from '../tool.helpers.js';
 

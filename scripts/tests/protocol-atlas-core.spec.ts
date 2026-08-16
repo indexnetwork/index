@@ -33,19 +33,19 @@ const fixtureContent = () => ({
       {
         id: "resolve-effective-scope", title: "Resolve scope", summary: "Resolve eligible scope.",
         conceptIds: ["opportunity"], nodeIds: ["component.opportunity-graph-factory"],
-        sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.graph.ts"],
+        sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.graph.ts"],
         previous: null, next: "retrieve-candidates",
       },
       {
         id: "retrieve-candidates", title: "Retrieve candidates", summary: "Retrieve private candidates.",
         conceptIds: ["opportunity"], nodeIds: ["component.opportunity-graph-factory"],
-        sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.graph.ts"],
+        sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.graph.ts"],
         previous: "resolve-effective-scope", next: "evaluate-fit",
       },
       {
         id: "evaluate-fit", title: "Evaluate fit", summary: "Evaluate candidate fit.",
         conceptIds: ["opportunity"], nodeIds: ["component.opportunity-evaluator"],
-        sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.evaluator.ts"],
+        sourcePaths: ["packages/protocol/src/opportunities/application/opportunity.evaluator.ts"],
         previous: "retrieve-candidates", next: null,
       },
     ],
@@ -69,24 +69,24 @@ const fixtureGenerated = () => ({
     {
       id: "component.opportunity-graph-factory", label: "OpportunityGraphFactory", symbol: "OpportunityGraphFactory",
       capability: "opportunities", kind: "graph-factory", layer: "implementation", summary: "Runs discovery.",
-      sourcePath: "packages/protocol/src/opportunity/application/opportunity.graph.ts", chapterIds: ["discovery"], flowIds: ["discover-opportunity"],
+      sourcePath: "packages/protocol/src/opportunities/application/opportunity.graph.ts", chapterIds: ["discovery"], flowIds: ["discover-opportunity"],
     },
     {
       id: "component.opportunity-evaluator", label: "Opportunity Evaluator", symbol: "OpportunityEvaluator",
       capability: "opportunities", kind: "agent", layer: "implementation", summary: "Evaluates candidate fit.",
-      sourcePath: "packages/protocol/src/opportunity/application/opportunity.evaluator.ts", chapterIds: ["discovery"], flowIds: ["discover-opportunity"],
+      sourcePath: "packages/protocol/src/opportunities/application/opportunity.evaluator.ts", chapterIds: ["discovery"], flowIds: ["discover-opportunity"],
     },
   ],
-  edges: [{ id: "runtime.evaluate", sourceId: "component.opportunity-graph-factory", targetId: "component.opportunity-evaluator", kind: "runtime", label: "evaluates", evidencePath: "packages/protocol/src/opportunity/application/opportunity.graph.ts", evidenceSymbol: "OpportunityGraphFactory" }],
+  edges: [{ id: "runtime.evaluate", sourceId: "component.opportunity-graph-factory", targetId: "component.opportunity-evaluator", kind: "runtime", label: "evaluates", evidencePath: "packages/protocol/src/opportunities/application/opportunity.graph.ts", evidenceSymbol: "OpportunityGraphFactory" }],
   configurationExperiments: [
     {
       id: "negotiation-screen", title: "Negotiation screen", summary: "Controls first-turn screening.", capability: "negotiation",
       fallbackModeId: "off", coverage: "definitive", affectedChapterIds: ["consent", "explore"], affectedStepIds: ["evaluate-fit"],
-      settings: [{ key: "NEGOTIATION_SCREEN_MODE", acceptedValues: ["off", "shadow", "enforce"], readSites: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }], entryAccessorSymbol: "configuredScreenMode", accessorClosure: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "normalizeScreenMode" }], readTiming: "invocation" }],
+      settings: [{ key: "NEGOTIATION_SCREEN_MODE", acceptedValues: ["off", "shadow", "enforce"], readSites: [{ path: "packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }], entryAccessorSymbol: "configuredScreenMode", accessorClosure: [{ path: "packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts", symbol: "normalizeScreenMode" }], readTiming: "invocation" }],
       modes: [
         { id: "off", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: null }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "off" }], prerequisites: [], deltas: [], explanation: "Fallback bypasses screening.", caveats: [] },
         { id: "shadow", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "shadow" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "shadow" }], prerequisites: [], deltas: [], explanation: "No reviewed topology delta.", caveats: [] },
-        { id: "enforce", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], prerequisites: [], deltas: [{ id: "screen-enforce", effect: "activated", targetKind: "node", targetId: "component.opportunity-graph-factory", settingKeys: ["NEGOTIATION_SCREEN_MODE"], consumerPath: "packages/protocol/src/negotiation/application/negotiation.graph.ts", consumerSymbol: "NegotiationGraphFactory", referenceChain: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }, { path: "packages/protocol/src/negotiation/application/negotiation.graph.ts", symbol: "NegotiationGraphFactory" }], behaviorTest: { path: "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts", testName: "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected" } }], explanation: "Enforces screening.", caveats: [] },
+        { id: "enforce", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], prerequisites: [], deltas: [{ id: "screen-enforce", effect: "activated", targetKind: "node", targetId: "component.opportunity-graph-factory", settingKeys: ["NEGOTIATION_SCREEN_MODE"], consumerPath: "packages/protocol/src/negotiations/application/negotiation.graph.ts", consumerSymbol: "NegotiationGraphFactory", referenceChain: [{ path: "packages/protocol/src/negotiations/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }, { path: "packages/protocol/src/negotiations/application/negotiation.graph.ts", symbol: "NegotiationGraphFactory" }], behaviorTest: { path: "packages/protocol/src/negotiations/tests/negotiation.screen-routing.spec.ts", testName: "enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected" } }], explanation: "Enforces screening.", caveats: [] },
       ],
     },
     {
@@ -892,7 +892,7 @@ describe("Protocol Atlas history, search, filters, and recovery", () => {
     const generated = fixtureGenerated();
     generated.nodes.push({
       id: "component.signal-tool", label: "Signal Tool", symbol: "SignalTool", capability: "signals",
-      kind: "tool-family", layer: "implementation", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+      kind: "tool-family", layer: "implementation", summary: "Handles signals.", sourcePath: "packages/protocol/src/intents/tool.ts",
       chapterIds: ["explore"], flowIds: [],
     });
     const harness = await rendererHarness({ generated });
@@ -916,7 +916,7 @@ describe("Protocol Atlas history, search, filters, and recovery", () => {
     const generated = fixtureGenerated();
     generated.nodes.push({
       id: "component.signal-tool", label: "Signal Tool", symbol: "SignalTool", capability: "signals",
-      kind: "tool-family", layer: "implementation", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+      kind: "tool-family", layer: "implementation", summary: "Handles signals.", sourcePath: "packages/protocol/src/intents/tool.ts",
       chapterIds: ["explore"], flowIds: [],
     });
     const harness = await rendererHarness({ generated });

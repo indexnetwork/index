@@ -64,13 +64,13 @@ describe("tool composition root", () => {
 
   test("the composition root may reach every capability", () => {
     expect(ALLOWED_CAPABILITY_DIRECTIONS["interaction-composition"]).toEqual([
-      "signals",
-      "participant-context",
-      "communities",
+      "intents",
+      "contexts",
+      "networks",
       "opportunities",
-      "negotiation",
+      "negotiations",
       "questions",
-      "participant-agents",
+      "agents",
       "contacts",
       "integrations",
     ]);

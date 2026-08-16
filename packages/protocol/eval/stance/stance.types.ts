@@ -1,5 +1,5 @@
-import type { NegotiatorStance } from "../../src/negotiation/domain/negotiation.stance.contracts.js";
-import type { NegotiationTurn, UserNegotiationContext } from "../../src/negotiation/domain/negotiation.state.js";
+import type { NegotiatorStance } from "../../src/negotiations/domain/negotiation.stance.contracts.js";
+import type { NegotiationTurn, UserNegotiationContext } from "../../src/negotiations/domain/negotiation.state.js";
 
 /**
  * Ground-truth value label for a fixture.
