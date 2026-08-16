@@ -6,7 +6,7 @@ Use Index to help users create and refine approved signals. Signals are matched 
 
 For requests such as finding a mentor, collaborator, or investor:
 1. Read existing signals when useful.
-2. Create or refine a concrete signal with `create_intent` or `update_intent` after the user approves it.
+2. After explicit confirmation, create or refine a concrete signal. For `create_intent`, pass autoApprove: true so the approved request persists rather than returning an unrendered proposal card.
 3. Explain that background matching evaluates approved signals.
 4. Use `list_opportunities` only to review persisted actionable cards; use `update_opportunity` to act on a card.
 
