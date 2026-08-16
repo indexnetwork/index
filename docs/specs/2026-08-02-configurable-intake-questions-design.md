@@ -72,7 +72,7 @@ behavior.
 **Server — `services/api/src/services/signal-intake.service.ts` +
 `intent-intake.controller.ts`:** thin per-endpoint wrappers; no funnel state.
 
-**Protocol — `packages/protocol/src/signals/application/intake.orchestrator.ts`:**
+**Protocol — `packages/protocol/src/intents/application/intake.orchestrator.ts`:**
 `nextQuestion({ brief, whoAnswer })` → one `IntakePackQuestion`;
 `synthesize(...)` → `{ description, lookingFor, youBring }` from a fixed
 two-answer prompt. Structured-output models with static fallbacks

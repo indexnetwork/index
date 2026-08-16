@@ -32,7 +32,7 @@ The misnamed tool reads as "make me some opportunities," when the actual semanti
 ### What is renamed
 
 - `"create_opportunities"` (snake_case string literal) → `"discover_opportunities"` everywhere it appears as:
-  - MCP tool `name` field (canonical definition in `packages/protocol/src/opportunity/opportunity.tools.ts`)
+  - MCP tool `name` field (canonical definition in `packages/protocol/src/opportunities/application/opportunity.tools.ts`)
   - Tool-call assertions in tests (`hasToolCall(..., "create_opportunities")`, `t.name === "create_opportunities"`)
   - Prompt module triggers (`triggers: ["create_opportunities", ...]`)
   - Cross-tool references in description strings (`contact.tools.ts`, `intent.tools.ts`, `network.tools.ts`, `utility.tools.ts`)
@@ -62,7 +62,7 @@ See IND-270 for the full inventory. High-level groups:
 
 - **Protocol tool layer**: `opportunity/opportunity.tools.ts`, `chat/chat.agent.ts`, `chat/chat.prompt.ts`, `chat/chat.prompt.modules.ts`, `contact/contact.tools.ts`, `intent/intent.tools.ts`, `network/network.tools.ts`, `shared/agent/utility.tools.ts`, `opportunity/opportunity.discover.ts`, `opportunity/opportunity.graph.ts`, `opportunity/opportunity.state.ts`
 - **Protocol tests**: `chat/tests/chat.prompt.modules.spec.ts`, `chat/tests/chat.prompt.spec.ts`, `chat/tests/chat.agent.spec.ts`, `chat/tests/chat.graph.mocks.ts`, `opportunity/tests/opportunity.state.dedupAlreadyAccepted.spec.ts`, `shared/agent/tests/tool.factory.spec.ts`
-- **Backend tests**: `services/api/src/controllers/tests/tool.controller.spec.ts`, `services/api/tests/mcp.spec.ts`
+- **Backend tests**: `services/api/src/controllers/tests/tool.controller.contract.spec.ts`, `services/api/tests/mcp.spec.ts`
 - **CLI**: `packages/cli/src/opportunity.command.ts`, `packages/cli/src/output/base.ts`, `packages/cli/tests/opportunity.command.spec.ts`, `packages/cli/tests/tool-calls.spec.ts`
 - **Frontend**: `apps/web/src/components/chat/ToolCallsDisplay.tsx`
 - **Plugins**: `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
@@ -83,7 +83,7 @@ See IND-270 for the full inventory. High-level groups:
   - `bun test src/chat/tests/chat.prompt.modules.spec.ts`
   - `bun test src/chat/tests/chat.prompt.spec.ts`
   - `bun test src/chat/tests/chat.agent.spec.ts`
-  - `bun test src/controllers/tests/tool.controller.spec.ts` (in backend)
+  - `bun test src/controllers/tests/tool.controller.contract.spec.ts` (in backend)
   - `bun test tests/mcp.spec.ts` (in backend)
   - `bun test tests/opportunity.command.spec.ts` (in packages/cli)
   - `bun test tests/tool-calls.spec.ts` (in packages/cli)
