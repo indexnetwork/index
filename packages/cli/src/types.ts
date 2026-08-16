@@ -6,27 +6,11 @@
  * focused on rendering.
  */
 
-// ── Chat types ──────────────────────────────────────────────────────
-
-/** A chat session as returned by the API. */
-export interface ChatSession {
-  id: string;
-  title: string | null;
-  createdAt: string;
-  updatedAt?: string;
-}
-
 /** User profile from GET /api/auth/me. */
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
-}
-
-/** Parameters for POST /api/chat/stream. */
-export interface StreamChatParams {
-  message: string;
-  sessionId?: string;
 }
 
 // ── User types ──────────────────────────────────────────────────────

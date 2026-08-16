@@ -15,7 +15,6 @@ export default function NewSignalPage() {
   const { isAuthenticated, features, openLoginModal, signOut } = useAuthContext();
   const { addNotification, error: showError } = useNotifications();
   const { startSignalSession, sendWebMessage, clearChat } = useAIChat();
-  const signalAgentEnabled = features?.signalAgent === true;
   const fastSignalIntakeEnabled = features?.fastSignalIntake === true;
 
   const sendKickoff = useCallback(async () => {
@@ -73,7 +72,7 @@ export default function NewSignalPage() {
     navigate(`/i/${intentId}`);
   }, [addNotification, clearChat, navigate]);
 
-  if (!isAuthenticated || !signalAgentEnabled) return <Navigate to="/" replace />;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] px-5 py-6 sm:px-8 sm:py-10">

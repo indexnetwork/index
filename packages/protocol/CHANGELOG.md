@@ -83,6 +83,16 @@ pin a supported release, use `latest`.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking (14.0.0):** remove the `orchestrator` chat persona. `ORCHESTRATOR_PERSONA_ID` and `ORCHESTRATOR_PERSONA` are gone from the public API, and the orchestrator system prompt (`buildSystemContent`) and its conditional prompt-module registry are deleted. `ChatPersonaLoopBehaviors.hallucinationRecovery` is retained — it is opted into by the onboarding, signal and negotiator personas, not just the removed one.
+- Remove the never-emitted `question_generator_start` / `question_generator_end` stream events and the `DebugMetaDiscoveryQuestions` debug payload, which had no producer.
+
+### Changed
+
+- **Breaking:** `ChatGraphFactory` and `ChatAgent.create()` now require a `ChatPersonaConfig`. There is no default persona; callers name the persona they drive.
+- `DebugMetaOrchestratorNegotiations` keeps its name and wire key deliberately. It is read back out of persisted message debug metadata, so renaming it would drop the negotiation pointer for every historical message. It is populated for every persona whose tools can start a negotiation, not only the persona it is named after.
+
 ### Changed
 
 - The eval ops sign-in callback accepts only the `api_key` field (protocol

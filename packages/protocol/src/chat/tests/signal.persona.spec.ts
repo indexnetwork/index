@@ -3,7 +3,6 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it, mock } from "bun:test";
 
-import { ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import { SIGNAL_PERSONA, SIGNAL_PERSONA_ID, SIGNAL_TOOL_NAMES, filterSignalTools, narrowSignalTools } from "../signal.persona.js";
 import { buildSignalSystemContent, getSignalIntakeStage, isSignalNewSignalFeedback, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
@@ -206,7 +205,6 @@ describe("SIGNAL_PERSONA", () => {
   it("uses the canonical persisted persona id", () => {
     expect(SIGNAL_PERSONA_ID).toBe("signal");
     expect(SIGNAL_PERSONA.id).toBe(SIGNAL_PERSONA_ID);
-    expect(SIGNAL_PERSONA_ID).not.toBe(ORCHESTRATOR_PERSONA_ID);
   });
 
   it("retains proposal recovery", () => {

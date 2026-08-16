@@ -20,7 +20,6 @@ import { describe, expect, it } from "bun:test";
 
 import { NEGOTIATOR_PERSONA_ID, NEGOTIATOR_TOOL_NAMES, createNegotiatorPersona, filterNegotiatorTools, filterNegotiatorToolsForContext } from "../negotiator.persona.js";
 import { buildNegotiatorSystemContent } from "../negotiator.prompt.js";
-import { ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -54,7 +53,6 @@ describe("createNegotiatorPersona", () => {
     const persona = createNegotiatorPersona(AGENT_OPTS);
     expect(persona.id).toBe(NEGOTIATOR_PERSONA_ID);
     expect(persona.id).toBe("negotiator");
-    expect(persona.id).not.toBe(ORCHESTRATOR_PERSONA_ID);
   });
 
   it("keeps hallucination recovery ON for unbacked proposal blocks (P4.5)", () => {
@@ -85,7 +83,7 @@ describe("buildNegotiatorSystemContent", () => {
     expect(prompt).toContain(AGENT_OPTS.agentDescription);
   });
 
-  it("is not the orchestrator identity", () => {
+  it("is not the generic Index identity", () => {
     expect(prompt).not.toContain("You are Index.");
     // Retired/excluded capabilities never appear in the tool table.
     expect(prompt).not.toContain("discover_opportunities");
@@ -201,8 +199,8 @@ describe("buildNegotiatorSystemContent — client question inbox (DM)", () => {
 
 // ─── Tool scoping ────────────────────────────────────────────────────────────
 
-/** Representative orchestrator registry (superset of the negotiator allowlist). */
-const ORCHESTRATOR_REGISTRY_NAMES = [
+/** Representative full chat registry (superset of the negotiator allowlist). */
+const FULL_REGISTRY_NAMES = [
   // enrichment / profile
   "read_user_contexts",
   "create_user_context",
@@ -301,7 +299,7 @@ describe("filterNegotiatorToolsForContext", () => {
 });
 
 describe("filterNegotiatorTools", () => {
-  const registry = ORCHESTRATOR_REGISTRY_NAMES.map((name) => ({ name }));
+  const registry = FULL_REGISTRY_NAMES.map((name) => ({ name }));
   const filtered = filterNegotiatorTools(registry);
   const filteredNames = filtered.map((t) => t.name);
 

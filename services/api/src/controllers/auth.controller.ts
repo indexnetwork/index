@@ -7,7 +7,6 @@ import type { AuthenticatedUser } from '../guards/auth.guard';
 import { cliCredentialService, type CliCredentialService } from '../services/clicredential.service';
 import { userService } from '../services/user.service';
 import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
-import { isWebSignalAgentEnabled } from '../lib/signal-feature';
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { isAgentActionsEnabled, isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { log } from '../lib/log';
@@ -80,10 +79,9 @@ export class AuthController {
         notificationPreferences,
       },
       // Feature flags the web app reads off the session bootstrap (no separate
-      // config channel). These gate the negotiator entry and Signal web cutover.
+      // config channel). These gate the negotiator entry and agent surfaces.
       features: {
         negotiatorChat: isNegotiatorChatEnabled(),
-        signalAgent: isWebSignalAgentEnabled(),
         agentSurface: isAgentSurfaceEnabled(),
         agentActions: isAgentActionsEnabled(),
         fastSignalIntake: isFastSignalIntakeEnabled(),

@@ -194,17 +194,24 @@ function consumeHermesRunCapabilityMetadata(input: {
 }
 
 /** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
-const ORCHESTRATOR_PERSONA = 'orchestrator';
-const SIGNAL_PERSONA = 'signal';
 const NEGOTIATOR_PERSONA = 'negotiator';
 const REPORTER_PERSONA = 'reporter';
 const logger = log.lib.from('conversation-database');
 
-/** Persona-specific registry key for Signal Agent's canonical intent scope. */
-const SIGNAL_INTENT_SCOPE_TYPE = 'signal-intent';
+/**
+ * Persona-specific registry key for a canonical intent scope.
+ *
+ * Every persona gets its own `<persona>-intent` key, so the
+ * `(user_id, scope_type, scope_id)` unique index keeps per-persona sessions
+ * for the same signal distinct without a schema change.
+ *
+ * The bare `'intent'` key is retired: it belonged to the removed orchestrator
+ * persona. Those rows are retained read-only, and migration 0127 relabels the
+ * reporter rows that shared the key so no existing session is orphaned.
+ */
 
-function intentRegistryScopeType(persona?: string): string {
-  return persona === SIGNAL_PERSONA ? SIGNAL_INTENT_SCOPE_TYPE : 'intent';
+function intentRegistryScopeType(persona: string): string {
+  return `${persona}-intent`;
 }
 
 /**
@@ -472,7 +479,7 @@ export class ConversationDatabaseAdapter {
       }
     });
 
-    return { id, dmPair: null, persona: 'orchestrator', lastMessageAt: null, createdAt: now, updatedAt: now };
+    return { id, dmPair: null, persona: 'none', lastMessageAt: null, createdAt: now, updatedAt: now };
   }
 
   /**
@@ -948,7 +955,7 @@ export class ConversationDatabaseAdapter {
       }
     });
 
-    return { id, dmPair, persona: 'orchestrator', lastMessageAt: null, createdAt: now, updatedAt: now };
+    return { id, dmPair, persona: 'none', lastMessageAt: null, createdAt: now, updatedAt: now };
   }
 
   /**
@@ -4640,7 +4647,7 @@ export class ConversationDatabaseAdapter {
     await db.transaction(async (tx) => {
       await tx.insert(schema.conversations).values({
         id: data.id,
-        ...(data.persona ? { persona: data.persona } : {}),
+        persona: data.persona,
         createdAt: now,
         updatedAt: now,
       });
@@ -4787,13 +4794,13 @@ export class ConversationDatabaseAdapter {
    *
    * @param userId - The user whose sessions to list
    * @param limit - Maximum number of sessions to return
-   * @param persona - Allowed persona or personas; defaults to orchestrator
+   * @param persona - Allowed persona or personas (required)
    * @returns Matching chat sessions ordered by recency
    */
   async getUserChatSessions(
     userId: string,
     limit: number,
-    persona: string | readonly string[] = ORCHESTRATOR_PERSONA,
+    persona: string | readonly string[],
   ): Promise<ChatSession[]> {
     const personas = typeof persona === 'string' ? [persona] : [...persona];
     if (personas.length === 0) return [];
@@ -4859,7 +4866,7 @@ export class ConversationDatabaseAdapter {
   async listChatSessionSummaries(
     userId: string,
     limit = 25,
-    persona = ORCHESTRATOR_PERSONA,
+    persona: string,
   ): Promise<Array<{ sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date }>> {
     // Subquery: conversation IDs that include the system agent
     const chatSessionIds = db
@@ -4947,7 +4954,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     sessionId: string,
     messageLimit = 50,
-    persona: string = ORCHESTRATOR_PERSONA,
+    persona: string,
   ): Promise<{
     sessionId: string;
     title: string | null;
@@ -5118,7 +5125,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     scopeType: ChatScopeType,
     scopeId: string,
-    persona = ORCHESTRATOR_PERSONA,
+    persona: string,
   ): Promise<ChatSession | null> {
     const normalizedScopeId = scopeId.trim();
     if (!normalizedScopeId) return null;
@@ -5165,7 +5172,7 @@ export class ConversationDatabaseAdapter {
     userId: string,
     scopeType: ChatScopeType | null,
     scopeId: string | null,
-    persona = ORCHESTRATOR_PERSONA,
+    persona: string,
   ): Promise<void> {
     const normalizedScopeId = scopeId?.trim() || null;
     const networkId = scopeType === 'network' ? normalizedScopeId : null;

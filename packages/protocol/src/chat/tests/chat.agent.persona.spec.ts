@@ -1,10 +1,10 @@
 /**
  * P4.0 personafication — persona-gated loop behavior tests.
  *
- * ChatAgent accepts an injected ChatPersonaConfig. The orchestrator persona
- * keeps hallucination recovery ON (covered by chat.agent.spec.ts via the
- * default persona); these tests prove that a stub persona with recovery OFF
- * never triggers it, and that the injected prompt builder / toolset are used.
+ * ChatAgent requires an injected ChatPersonaConfig — there is no default.
+ * These tests prove that a stub persona with hallucination recovery OFF never
+ * triggers it, that a stub with it ON does, and that the injected prompt
+ * builder / toolset are the ones actually used.
  */
 
 import { mock, describe, expect, it, afterAll } from "bun:test";
@@ -275,7 +275,7 @@ Done!`;
     expect(mockModelInstance.stream).toHaveBeenCalledTimes(1);
   }, 15000);
 
-  it("hallucinationRecovery ON: hallucinated block triggers auto-invoke (orchestrator behavior preserved)", async () => {
+  it("hallucinationRecovery ON: hallucinated block triggers auto-invoke", async () => {
     const tools = makeMockTools();
     const agent = await createTestAgent(
       makePersona(tools, { hallucinationRecovery: true }),

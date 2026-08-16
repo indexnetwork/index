@@ -5,9 +5,8 @@ import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
 import { getRequestAuthContext } from '../lib/request-auth-context';
 import { log } from "../lib/log";
-import { deprecatedRoute } from "../lib/router/deprecated-route";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
-import { chatSessionService, type ChatStreamSurface } from "../services/chat.service";
+import { chatSessionService, RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, type ChatStreamSurface } from "../services/chat.service";
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
@@ -15,8 +14,8 @@ import { questionService } from "../services/question.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
-import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
+import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
+import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;
@@ -139,9 +138,13 @@ function getInterruptClassifier(): ChatInterruptClassifier {
 
 @Controller("/chat")
 export class ChatController {
-  /** Map compatibility routes onto their authenticated product surface. */
-  private compatibilitySurface(req: Request): ChatStreamSurface {
-    return getRequestAuthContext(req)?.kind === 'session' ? 'web' : 'non_web';
+  /**
+   * Map dual-auth routes onto their authenticated product surface. Session
+   * principals are the web app; API-key principals are agent clients, which
+   * must name a surface-independent persona (there is no default).
+   */
+  private streamSurface(req: Request): ChatStreamSurface {
+    return getRequestAuthContext(req)?.kind === 'session' ? 'web' : 'agent';
   }
 
   /** Authorize an owned session mutation against its persisted persona. */
@@ -155,9 +158,11 @@ export class ChatController {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const surface = this.compatibilitySurface(req);
-    const storedPersona = session.persona ?? ORCHESTRATOR_PERSONA_ID;
-    if (surface === 'non_web' && storedPersona !== ORCHESTRATOR_PERSONA_ID) {
+    const surface = this.streamSurface(req);
+    // Sessions with no persona column value predate personafication: they are
+    // retired-orchestrator rows, readable but never continuable.
+    const storedPersona = session.persona ?? RETIRED_ORCHESTRATOR_PERSONA_ID;
+    if (surface === 'agent' && storedPersona !== NEGOTIATOR_PERSONA_ID) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
@@ -179,65 +184,6 @@ export class ChatController {
     private readonly suggestionGenerator: () => Pick<SuggestionGenerator, 'generate'> = getSuggestionGenerator,
   ) {}
   /**
-   * Send a message to the chat graph for processing.
-   * The graph routes to appropriate subgraphs based on intent analysis.
-   *
-   * @param req - The HTTP request object (body: { message: string })
-   * @param user - The authenticated user from AuthGuard
-   * @returns JSON response with graph execution result including responseText
-   */
-  @Post("/message")
-  @deprecatedRoute('chat.message')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async message(req: Request, user: AuthenticatedUser) {
-    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
-      surface: this.compatibilitySurface(req),
-    });
-    if (!personaPolicy.ok) {
-      return Response.json(
-        {
-          error: personaPolicy.error,
-          code: personaPolicy.code,
-          ...(personaPolicy.action ? { action: personaPolicy.action } : {}),
-        },
-        { status: personaPolicy.status },
-      );
-    }
-
-    // 1. Parse request body for message
-    let messageContent: string;
-    try {
-      const body = (await req.json()) as { message?: string };
-      messageContent = body.message || "";
-    } catch {
-      // No body or invalid JSON
-      return Response.json(
-        { error: "Invalid request body. Expected { message: string }" },
-        { status: 400 },
-      );
-    }
-
-    if (!messageContent.trim()) {
-      return Response.json(
-        { error: "Message content is required" },
-        { status: 400 },
-      );
-    }
-
-    // 2. Process message through service
-    const result = await chatSessionService.processMessage(
-      user.id,
-      messageContent,
-    );
-
-    // 3. Return response
-    return Response.json({
-      response: result.responseText,
-      error: result.error,
-    });
-  }
-
-  /**
    * SSE streaming endpoint for chat messages with context support.
    * Streams graph events and LLM tokens in real-time, loading previous conversation context.
    *
@@ -251,7 +197,7 @@ export class ChatController {
     req: Request,
     user: AuthenticatedUser,
   ): Promise<Response> {
-    return this.messageStreamForSurface(req, user, this.compatibilitySurface(req));
+    return this.messageStreamForSurface(req, user, this.streamSurface(req));
   }
 
   /** Main-web chat stream with server-selected Signal cutover policy. */
@@ -523,9 +469,7 @@ export class ChatController {
               ? { label: pinnedIntentLabel }
               : undefined,
           )
-        : sessionPersona === ORCHESTRATOR_PERSONA_ID
-          ? chatSessionService.getGraphFactory()
-          : null;
+        : null;
     if (!factory) {
       return Response.json(
         { error: 'This chat cannot be continued safely.', code: 'CHAT_PERSONA_UNSUPPORTED' },
@@ -598,7 +542,7 @@ export class ChatController {
           let partialResponse = "";
           let routingDecision: Record<string, unknown> | undefined;
           let subgraphResults: Record<string, unknown> | undefined;
-          let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown; discoveryQuestions?: DebugMetaDiscoveryQuestions } | undefined;
+          let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown} | undefined;
           let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
           const streamedChatQuestionIds: string[] = [];
 
@@ -650,7 +594,6 @@ export class ChatController {
                   tools: event.tools,
                   llm: event.llm,
                   ...(event.orchestratorNegotiations !== undefined && { orchestratorNegotiations: event.orchestratorNegotiations }),
-                  ...(event.discoveryQuestions !== undefined && { discoveryQuestions: event.discoveryQuestions as DebugMetaDiscoveryQuestions }),
                 };
               } else if (event.type === "decision_questions") {
                 // Event was already forwarded by the default enqueue above; just
@@ -844,20 +787,20 @@ export class ChatController {
   @Get("/sessions")
   @UseGuards(RateLimit('read'), AuthGuard)
   async getSessions(_req: Request, user: AuthenticatedUser) {
-    // Compatibility history is orchestrator-only. The negotiator filter that
-    // used to live here existed solely to look up the pinned Personal Agent
-    // DM; with that surface gone its callers are too, and negotiator sessions
-    // are reached through their intent. Signal history is reserved for the
-    // session-only web endpoint below.
+    // Retained read-only history for the retired orchestrator persona. The
+    // negotiator filter that used to live here existed solely to look up the
+    // pinned Personal Agent DM; with that surface gone its callers are too, and
+    // negotiator sessions are reached through their intent. Signal history is
+    // reserved for the session-only web endpoint below.
     const sessions = await chatSessionService.getUserSessions(
       user.id,
-      undefined,
-      ORCHESTRATOR_PERSONA_ID,
+      10,
+      RETIRED_ORCHESTRATOR_PERSONA_ID,
     );
     return Response.json({ sessions });
   }
 
-  /** Main-web history including orchestrator and Signal, but never negotiator. */
+  /** Main-web history including retired-orchestrator and Signal, never negotiator. */
   @Get("/web/sessions")
   @UseGuards(RateLimit('read'), SessionOnlyGuard)
   async getWebSessions(_req: Request, user: AuthenticatedUser) {
@@ -980,7 +923,7 @@ export class ChatController {
   @Post("/session/resolve")
   @UseGuards(RateLimit('write'), AuthGuard)
   async resolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSessionForSurface(req, user, this.compatibilitySurface(req));
+    return this.resolveSessionForSurface(req, user, this.streamSurface(req));
   }
 
   private async resolveSessionForSurface(
@@ -1043,7 +986,7 @@ export class ChatController {
   @Post("/session")
   @UseGuards(RateLimit('write'), AuthGuard)
   async getSession(req: Request, user: AuthenticatedUser) {
-    return this.getSessionForPersonas(req, user, new Set([ORCHESTRATOR_PERSONA_ID]));
+    return this.getSessionForPersonas(req, user, new Set([RETIRED_ORCHESTRATOR_PERSONA_ID]));
   }
 
   /** Session-only web detail across readable web and pinned chat personas. */
@@ -1053,7 +996,7 @@ export class ChatController {
     return this.getSessionForPersonas(
       req,
       user,
-      new Set([ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
+      new Set([RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
     );
   }
 
@@ -1080,7 +1023,7 @@ export class ChatController {
       body.sessionId,
       user.id,
     );
-    if (!session || !allowedPersonas.has(session.persona ?? ORCHESTRATOR_PERSONA_ID)) {
+    if (!session || !allowedPersonas.has(session.persona ?? RETIRED_ORCHESTRATOR_PERSONA_ID)) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 

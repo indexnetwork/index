@@ -1,6 +1,6 @@
 import { describe, it, expect, spyOn } from "bun:test";
 
-import { profileCard, sessionTable, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "../src/output/formatters";
+import { profileCard, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "../src/output/formatters";
 import { stripAnsi } from "../src/output/base";
 import type { Intent, Opportunity, Conversation, ConversationMessage } from "../src/types";
 
@@ -64,30 +64,6 @@ describe("profileCard", () => {
     });
     expect(output).toContain("(unnamed)");
     expect(output).toContain("[ghost]");
-  });
-});
-
-// ── sessionTable ────────────────────────────────────────────────────
-
-describe("sessionTable", () => {
-  it("renders sessions with headers", () => {
-    const output = captureLogs(() => {
-      sessionTable([
-        { id: "s1", title: "First chat", createdAt: "2026-01-01T00:00:00Z" },
-        { id: "s2", title: null, createdAt: "2026-01-02T00:00:00Z" },
-      ]);
-    });
-    expect(output).toContain("ID");
-    expect(output).toContain("Title");
-    expect(output).toContain("First chat");
-    expect(output).toContain("(untitled)");
-  });
-
-  it("prints empty message for no sessions", () => {
-    const output = captureLogs(() => {
-      sessionTable([]);
-    });
-    expect(output).toContain("No chat sessions found");
   });
 });
 

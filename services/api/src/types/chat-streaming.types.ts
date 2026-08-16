@@ -47,8 +47,6 @@ export type ChatStreamEventType =
   // Discovery decision-question events
   | "chat_summarizer_start"
   | "chat_summarizer_end"
-  | "question_generator_start"
-  | "question_generator_end"
   | "decision_questions"
   // Blocking mid-turn user question (ask_user_question tool)
   | "user_question"
@@ -200,7 +198,7 @@ export interface DoneEvent extends ChatStreamEventBase {
   suggestions?: ChatSuggestion[];
   /** Optional rich opportunity cards returned by tools */
   opportunityCards?: OpportunityCardPayload[];
-  /** Decision questions to render (orchestrator flow only). */
+  /** Decision questions to render, harvested from any tool result carrying `questions`. */
   decisionQuestions?: Question[];
 }
 
@@ -397,19 +395,19 @@ export interface DebugMetaLlm {
 /**
  * Negotiation sessions recorded during this turn.
  */
+/**
+ * Negotiations started during a chat turn, keyed by opportunity.
+ *
+ * Named for the retired orchestrator persona; the key is deliberately
+ * unchanged because it is read back out of persisted message debug metadata
+ * (see debug.controller's negotiation hydration). Renaming it would drop the
+ * pointer for every historical message and silently fall back to the
+ * time-window heuristic. Populated for every persona whose tools can start a
+ * negotiation, not just the persona it is named after.
+ */
 export interface DebugMetaOrchestratorNegotiations {
   /** Opportunity IDs for which a negotiation_session_start was emitted. */
   opportunityIds: string[];
-}
-
-/**
- * Decision-question generation debug data.
- */
-export interface DebugMetaDiscoveryQuestions {
-  inputMode: "transcripts" | "insights";
-  finalCount: number;
-  strategies: QuestionStrategy[];
-  durationMs: number;
 }
 
 /**
@@ -422,8 +420,6 @@ export interface DebugMetaEvent extends ChatStreamEventBase {
   tools: DebugMetaToolCall[];
   llm: DebugMetaLlm;
   orchestratorNegotiations?: DebugMetaOrchestratorNegotiations;
-  /** Decision-question generation debug data. */
-  discoveryQuestions?: DebugMetaDiscoveryQuestions;
 }
 
 /** Graph start event — emitted when a LangGraph sub-graph begins inside a tool. */
@@ -531,26 +527,6 @@ export interface ChatSummarizerEndEvent extends ChatStreamEventBase {
   };
 }
 
-export interface QuestionGeneratorStartEvent extends ChatStreamEventBase {
-  type: "question_generator_start";
-  payload: {
-    inputMode: "transcripts" | "insights";
-    negotiationCount: number;
-    hasChatContext: boolean;
-    truncated?: { originalCount: number; keptCount: number };
-  };
-}
-
-export interface QuestionGeneratorEndEvent extends ChatStreamEventBase {
-  type: "question_generator_end";
-  payload: {
-    finalCount: number;
-    strategies: QuestionStrategy[];
-    durationMs: number;
-    inputMode: "transcripts" | "insights";
-  };
-}
-
 export interface DecisionQuestionsEvent extends ChatStreamEventBase {
   type: "decision_questions";
   questions: Question[];
@@ -567,7 +543,7 @@ export interface UserQuestionPayload {
 }
 
 /**
- * User question event — the orchestrator's ask_user_question tool persisted
+ * User question event — a persona's ask_user_question tool persisted
  * chat-mode questions and is blocking the turn awaiting the user's answer.
  */
 export interface UserQuestionEvent extends ChatStreamEventBase {
@@ -625,8 +601,6 @@ export type ChatStreamEvent =
   | NegotiationOutcomeEvent
   | ChatSummarizerStartEvent
   | ChatSummarizerEndEvent
-  | QuestionGeneratorStartEvent
-  | QuestionGeneratorEndEvent
   | DecisionQuestionsEvent
   | UserQuestionEvent
   | SteerOrQueueEvent;
@@ -974,7 +948,6 @@ export function createDebugMetaEvent(
   tools: DebugMetaToolCall[],
   llm: DebugMetaLlm,
   orchestratorNegotiations?: DebugMetaOrchestratorNegotiations,
-  discoveryQuestions?: DebugMetaDiscoveryQuestions,
 ): DebugMetaEvent {
   return createStreamEvent<DebugMetaEvent>("debug_meta", sessionId, {
     graph,
@@ -982,7 +955,6 @@ export function createDebugMetaEvent(
     tools,
     llm,
     ...(orchestratorNegotiations !== undefined && { orchestratorNegotiations }),
-    ...(discoveryQuestions !== undefined && { discoveryQuestions }),
   });
 }
 
@@ -1075,20 +1047,6 @@ export function createChatSummarizerEndEvent(
   payload: ChatSummarizerEndEvent["payload"],
 ): ChatSummarizerEndEvent {
   return createStreamEvent<ChatSummarizerEndEvent>("chat_summarizer_end", sessionId, { payload });
-}
-
-export function createQuestionGeneratorStartEvent(
-  sessionId: string,
-  payload: QuestionGeneratorStartEvent["payload"],
-): QuestionGeneratorStartEvent {
-  return createStreamEvent<QuestionGeneratorStartEvent>("question_generator_start", sessionId, { payload });
-}
-
-export function createQuestionGeneratorEndEvent(
-  sessionId: string,
-  payload: QuestionGeneratorEndEvent["payload"],
-): QuestionGeneratorEndEvent {
-  return createStreamEvent<QuestionGeneratorEndEvent>("question_generator_end", sessionId, { payload });
 }
 
 export function createDecisionQuestionsEvent(
