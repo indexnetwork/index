@@ -31,7 +31,6 @@ packages/protocol/src/
     network/        Network metadata renderer
     observability/  Logger, request context, performance, trace, debug-meta sanitizer
     schemas/        Shared Zod schemas (question, identity, negotiation, network-assignment, etc.)
-    ui/             Lucide icon catalog
     utils/          Telegram-handle and social-label helpers
 ```
 

@@ -46,7 +46,7 @@
  * ## Policy separation
  *
  * - **Foreground adapters** (onboarding preview/confirm, explicit enrichment):
- *   managed by the foreground shell (runtime/foreground). They compose the
+ *   managed by the tool composition root (shared/agent). They compose the
  *   EnrichmentGraphFactory and PremiseGraphFactory and pass the compiled graphs
  *   through the tool-dependency ports.
  * - **Ambient adapters** (scrape/decompose, regeneration, indexing, representation

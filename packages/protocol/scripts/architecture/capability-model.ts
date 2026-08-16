@@ -8,10 +8,7 @@ export type Capability =
   | "participant-agents"
   | "contacts"
   | "integrations"
-  | "interaction-composition"
-  | "ambient-background"
-  | "neutral-platform"
-  | "public-compatibility";
+  | "interaction-composition";
 
 /** Single-segment top-level directories with a fixed capability assignment. */
 export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
@@ -35,8 +32,6 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   integrations: "integrations",
   integration: "integrations",
   maintenance: "interaction-composition",
-  platform: "neutral-platform",
-  public: "public-compatibility",
 };
 
 /** Every permitted direction is deliberately named and reviewed here. */
@@ -63,44 +58,15 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
     "contacts",
     "integrations",
   ],
-  "ambient-background": [
-    "signals",
-    "participant-context",
-    "communities",
-    "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-  ],
-  "neutral-platform": [],
-  "public-compatibility": [
-    "signals",
-    "participant-context",
-    "communities",
-    "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-    "interaction-composition",
-  ],
 };
 
 /** Capabilities allowed to import another capability's implementation directly. */
 export const DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES: ReadonlySet<Capability> =
-  new Set<Capability>(["interaction-composition", "ambient-background"]);
+  new Set<Capability>(["interaction-composition"]);
 
 export function capabilityForSourcePath(pathFromSource: string): Capability | undefined {
   const normalized = pathFromSource.replace(/\\/g, "/");
-  const [topLevel, second] = normalized.split("/");
-  if (topLevel === "runtime") {
-    if (second === "foreground") return "interaction-composition";
-    if (second === "background") return "ambient-background";
-    return undefined;
-  }
+  const [topLevel] = normalized.split("/");
   if (topLevel === "capabilities") return facadeCapabilityForSourcePath(normalized);
   if (topLevel === "shared" && /^shared\/agent\/tool\.(?:factory|registry|helpers)\.ts$/.test(normalized)) {
     return "interaction-composition";
@@ -112,12 +78,7 @@ export function implementationCapabilityForSourcePath(
   pathFromSource: string,
 ): Capability | undefined {
   const normalized = pathFromSource.replace(/\\/g, "/");
-  const [topLevel, second] = normalized.split("/");
-  if (topLevel === "runtime") {
-    if (second === "foreground") return "interaction-composition";
-    if (second === "background") return "ambient-background";
-    return undefined;
-  }
+  const [topLevel] = normalized.split("/");
   return CAPABILITY_DIRECTORIES[topLevel];
 }
 

@@ -1,24 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Enforces the in-place capability seams introduced by IND-528, extended in
- * IND-543 to cover the outer target shells (runtime/foreground,
- * runtime/background, platform, public).
+ * Enforces the in-place capability seams introduced by IND-528.
  *
- * The implementation directories intentionally remain where they are until
- * Phase 3. A capability may therefore depend on another capability only via a
- * narrowly named facade in src/capabilities; direct implementation imports are
- * prohibited. The interaction-composition facade is the one explicit place
- * where all capabilities meet.
+ * A capability may depend on another capability only via a narrowly named
+ * facade in src/capabilities; direct implementation imports are prohibited.
+ * interaction-composition is the one explicit place where all capabilities
+ * meet: the tool composition root (shared/agent/tool.{registry,factory,helpers})
+ * plus maintenance.
  *
- * IND-543 additions
- * ─────────────────
- * • runtime/foreground  → interaction-composition  (FG adapter + composition)
- * • runtime/background  → ambient-background        (BG ambient adapter)
- * • platform            → neutral-platform          (cross-domain primitives,
- *                                                    must NOT import any
- *                                                    capability internals)
- * • public              → public-compatibility      (curated root assembly,
- *                                                    facades only — no impls)
+ * The IND-543 outer shells (runtime/foreground, runtime/background, platform,
+ * public) were declaration-only placeholders that nothing imported. They have
+ * been removed along with their capability classifications; the composition
+ * root now lives at the path its 25 importers already used.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";

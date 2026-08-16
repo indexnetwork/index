@@ -4,10 +4,10 @@
  * Re-exports the stable contracts from domain, application, and ports.
  * Runtime adapter creation (graph factories, tool factories) is accessible
  * via capabilities/communities.facade.ts for package consumers and via the
- * foreground shell (runtime/foreground) for internal registries.
+ * tool composition root (shared/agent) for internal registries.
  *
  * Boundary: public-compatibility.  References only communities/domain,
- * communities/application, and communities/ports — never runtime/foreground
+ * communities/application, and communities/ports — never the tool composition root (shared/agent)
  * or host implementations.
  *
  * ## Intentionally excluded from public surface

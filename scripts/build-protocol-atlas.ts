@@ -151,7 +151,7 @@ const IMPLEMENTATION_PATH_BY_SYMBOL: Readonly<Record<SelectedRootExport, string>
   createNegotiationTools: "packages/protocol/src/negotiation/application/negotiation.tools.ts",
   createQuestionerTools: "packages/protocol/src/questions/application/question.tools.ts",
   createAgentTools: "packages/protocol/src/participant-agents/application/agent.tools.ts",
-  createToolRegistry: "packages/protocol/src/runtime/foreground/composition/tool.registry.ts",
+  createToolRegistry: "packages/protocol/src/shared/agent/tool.registry.ts",
   invokeToolRuntime: "packages/protocol/src/shared/agent/tool.runtime.ts",
   createMcpServer: "packages/protocol/src/mcp/mcp.server.ts",
   McpAuthResolver: "packages/protocol/src/shared/interfaces/auth.interface.ts",
@@ -180,11 +180,8 @@ const RUNTIME_SHELLS: ReadonlyArray<{
   sourcePath: string;
   summary: string;
 }> = [
-  { id: "runtime-shell.root", label: "Protocol root", capability: "public-compatibility", sourcePath: "packages/protocol/src/index.ts", summary: "The supported protocol package entry point." },
-  { id: "runtime-shell.foreground", label: "Foreground runtime", capability: "interaction-composition", sourcePath: "packages/protocol/src/runtime/foreground/index.ts", summary: "Composes request-driven protocol behavior." },
-  { id: "runtime-shell.background", label: "Background runtime", capability: "ambient-background", sourcePath: "packages/protocol/src/runtime/background/index.ts", summary: "Exposes ambient background protocol behavior." },
-  { id: "runtime-shell.public", label: "Public compatibility shell", capability: "public-compatibility", sourcePath: "packages/protocol/src/public/index.ts", summary: "Preserves the public compatibility surface." },
-  { id: "runtime-shell.platform", label: "Neutral platform shell", capability: "neutral-platform", sourcePath: "packages/protocol/src/platform/index.ts", summary: "Exposes platform-neutral protocol contracts." },
+  { id: "runtime-shell.root", label: "Protocol root", capability: "interaction-composition", sourcePath: "packages/protocol/src/index.ts", summary: "The supported protocol package entry point." },
+  { id: "runtime-shell.composition", label: "Tool composition root", capability: "interaction-composition", sourcePath: "packages/protocol/src/shared/agent/tool.registry.ts", summary: "Composes request-driven protocol behavior into an authorized tool registry." },
   { id: "runtime-shell.mcp", label: "MCP server shell", capability: "participant-agents", sourcePath: "packages/protocol/src/mcp/mcp.server.ts", summary: "Adapts MCP requests to protocol-owned tools." },
 ];
 
