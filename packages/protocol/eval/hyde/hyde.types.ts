@@ -1,6 +1,6 @@
-import type { HydeGenerationMode } from '../../src/shared/hyde/hyde.env.js';
-import type { HydeTargetCorpus } from '../../src/shared/hyde/lens.inferrer.js';
-import type { HydeValidationVerdict } from '../../src/shared/hyde/hyde.validator.js';
+import type { HydeGenerationMode } from '../../src/discovery/hyde.env.js';
+import type { HydeTargetCorpus } from '../../src/discovery/lens.inferrer.js';
+import type { HydeValidationVerdict } from '../../src/discovery/hyde.validator.js';
 
 import { HYDE_BACKGROUND_SOURCES } from './hyde.policy.js';
 

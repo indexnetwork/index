@@ -1091,7 +1091,7 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
      * hands the HyDE graph a RedisCacheAdapter, whose client falls back to
      * localhost:6379 when neither REDIS_URL nor REDIS_HOST is set
      * (services/api/src/adapters/cache.adapter.ts). The graph's cache_results node
-     * awaits `cache.set` with no catch around it (src/shared/hyde/hyde.graph.ts),
+     * awaits `cache.set` with no catch around it (src/discovery/hyde.graph.ts),
      * and the adapter's `set` has none either, so an unreachable Redis fails the
      * graph invocation rather than degrading to no cache. REDIS_URL and not
      * REDIS_HOST: this server checks the one form, so a Redis configured by host

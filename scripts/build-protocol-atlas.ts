@@ -128,7 +128,7 @@ const IMPLEMENTATION_PATH_BY_SYMBOL: Readonly<Record<SelectedRootExport, string>
   EnrichmentGraphFactory: "packages/protocol/src/enrichment/enrichment.graph.ts",
   PremiseGraphFactory: "packages/protocol/src/premises/premise.graph.ts",
   NegotiationGraphFactory: "packages/protocol/src/negotiations/application/negotiation.graph.ts",
-  HydeGraphFactory: "packages/protocol/src/shared/hyde/hyde.graph.ts",
+  HydeGraphFactory: "packages/protocol/src/discovery/hyde.graph.ts",
   NetworkGraphFactory: "packages/protocol/src/networks/application/network.graph.ts",
   NetworkMembershipGraphFactory: "packages/protocol/src/networks/application/membership.graph.ts",
   IntentNetworkGraphFactory: "packages/protocol/src/networks/application/indexer.graph.ts",
@@ -137,7 +137,7 @@ const IMPLEMENTATION_PATH_BY_SYMBOL: Readonly<Record<SelectedRootExport, string>
   SemanticVerifier: "packages/protocol/src/intents/application/intent.verifier.ts",
   IntentIndexer: "packages/protocol/src/intents/application/intent.indexer.ts",
   UserContextGenerator: "packages/protocol/src/contexts/context.generator.ts",
-  LensInferrer: "packages/protocol/src/shared/hyde/lens.inferrer.ts",
+  LensInferrer: "packages/protocol/src/discovery/lens.inferrer.ts",
   OpportunityEvaluator: "packages/protocol/src/opportunities/application/opportunity.evaluator.ts",
   OpportunityPresenter: "packages/protocol/src/opportunities/application/opportunity.presenter.ts",
   IndexNegotiator: "packages/protocol/src/negotiations/application/negotiation.agent.ts",
@@ -173,7 +173,7 @@ const IMPLEMENTATION_PATH_BY_SYMBOL: Readonly<Record<SelectedRootExport, string>
 // a composition root with no barrel and is modelled by runtime-shell.composition.
 const CAPABILITY_FACADES = [
   "intents", "contexts", "networks", "opportunities", "negotiations",
-  "questions", "agents", "contacts", "integrations",
+  "questions", "agents", "contacts", "integrations", "discovery",
 ] as const;
 
 const RUNTIME_SHELLS: ReadonlyArray<{

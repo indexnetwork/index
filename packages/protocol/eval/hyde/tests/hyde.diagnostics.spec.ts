@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { HydeDocumentState } from '../../../src/shared/hyde/hyde.state.js';
-import type { HydeValidationVerdict } from '../../../src/shared/hyde/hyde.validator.js';
+import type { HydeDocumentState } from '../../../src/discovery/hyde.state.js';
+import type { HydeValidationVerdict } from '../../../src/discovery/hyde.validator.js';
 
 import { analyzeGeneratedDocuments, evalOpaqueDocumentKey, type RecordedGeneratedDocument } from '../hyde.diagnostics.js';
 

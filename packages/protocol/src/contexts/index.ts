@@ -15,10 +15,6 @@ export {
   EnrichmentGraphFactory,
   PremiseGraphFactory,
   UserContextGenerator,
-  // HyDE — participant-context technology binding
-  HydeGraphFactory,
-  HydeGenerator,
-  LensInferrer,
 } from "./application/index.js";
 export type {
   EnrichmentToolDeps,

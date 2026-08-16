@@ -8,6 +8,7 @@ export type Capability =
   | "agents"
   | "contacts"
   | "integrations"
+  | "discovery"
   | "interaction-composition";
 
 /** Single-segment top-level directories with a fixed capability assignment. */
@@ -25,6 +26,7 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   chat: "agents",
   contacts: "contacts",
   integrations: "integrations",
+  discovery: "discovery",
   maintenance: "interaction-composition",
 };
 
@@ -45,6 +47,7 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   agents: "agents",
   contacts: "contacts",
   integrations: "integrations",
+  discovery: "discovery",
   // The composition root is the one all-capability point; it has no barrel of
   // its own and is reached through the package entry point instead.
   "interaction-composition": undefined,
@@ -55,14 +58,16 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   Record<Capability, readonly Capability[]>
 > = {
   intents: ["agents", "questions"],
-  contexts: ["agents", "questions"],
+  contexts: ["agents", "questions", "discovery"],
   networks: ["agents", "intents"],
-  opportunities: ["agents", "intents", "negotiations", "questions"],
+  opportunities: ["agents", "intents", "negotiations", "questions", "discovery"],
   negotiations: ["opportunities", "questions"],
   questions: ["negotiations"],
   agents: ["negotiations", "questions"],
   contacts: ["opportunities"],
   integrations: [],
+  // discovery needs only the debug-metadata type it stamps on graph state.
+  discovery: ["agents"],
   "interaction-composition": [
     "intents",
     "contexts",
@@ -73,6 +78,7 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
     "agents",
     "contacts",
     "integrations",
+    "discovery",
   ],
 };
 

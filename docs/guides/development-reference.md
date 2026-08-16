@@ -509,7 +509,7 @@ passes the same key to its OpenAI client
 falls back to `localhost:6379` when neither `REDIS_URL` nor `REDIS_HOST` is set
 (`services/api/src/adapters/cache.adapter.ts`), while the graph's
 `cache_results` node awaits `cache.set` with no catch
-(`cache_results`, `packages/protocol/src/shared/hyde/hyde.graph.ts`) and the adapter's `set`
+(`cache_results`, `packages/protocol/src/discovery/hyde.graph.ts`) and the adapter's `set`
 has none either (`RedisCacheAdapter.set`, `services/api/src/adapters/cache.adapter.ts`). The
 check is on `REDIS_URL` alone, so a Redis configured as `REDIS_HOST`/`REDIS_PORT`
 is refused here even though the adapter would have accepted it — a refusal an

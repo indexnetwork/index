@@ -57,7 +57,7 @@
  *   in shared/agent and shared/hyde.
  *
  * IND-545: canonical home for participant-context domain contracts previously
- * spread across premises/, contexts/, enrichment/, and shared/hyde/.
+ * spread across premises/, contexts/, enrichment/, and discovery/.
  * Legacy paths remain as compatibility re-exports pointing here.
  */
 
@@ -73,7 +73,7 @@ export {
   type HydeDocumentState,
   type HydeDocumentOrigin,
   type HydeValidationStatus,
-} from "../../shared/hyde/hyde.state.js";
+} from "../../discovery/index.js";
 
 // ── Context synthesis DTOs ────────────────────────────────────────────────────
 export type {

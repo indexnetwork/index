@@ -3,7 +3,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import type { Lens } from "../../shared/hyde/lens.inferrer.js";
+import type { Lens } from "../../discovery/index.js";
 import type { OpportunityStatus } from "../../shared/interfaces/database.interface.js";
 import { Timed } from "../../shared/observability/performance.js";
 import { stripUuids } from "../domain/opportunity.presentation.js";

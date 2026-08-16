@@ -146,7 +146,7 @@ export {
   narrowOnboardingTools,
 } from "./agents/index.js";
 export { RadarGraphFactory } from "./opportunities/index.js";
-export { HydeGraphFactory } from "./contexts/index.js";
+export { HydeGraphFactory } from "./discovery/index.js";
 export { NetworkGraphFactory } from "./networks/index.js";
 export { NetworkMembershipGraphFactory } from "./networks/index.js";
 export { IntentGraphFactory } from "./intents/index.js";
@@ -180,7 +180,7 @@ export { UserContextGenerator } from "./contexts/index.js";
 export { ChatTitleGenerator } from "./agents/index.js";
 export { ChatInterruptClassifier } from "./agents/index.js";
 export { ChatSummarizer } from "./agents/index.js";
-export { HydeGenerator } from "./contexts/index.js";
+export { HydeGenerator } from "./discovery/index.js";
 export { SuggestionGenerator } from "./agents/index.js";
 export { generateInviteMessage } from "./contacts/index.js";
 export { IntentIndexer } from "./intents/index.js";
@@ -207,7 +207,7 @@ export type {
   SynthesisResult,
 } from "./intents/index.js";
 export { normalizeIntentDescription } from "./intents/index.js";
-export { LensInferrer } from "./contexts/index.js";
+export { LensInferrer } from "./discovery/index.js";
 export { NegotiationInsightsGenerator } from "./negotiations/index.js";
 export type { NegotiationDigest } from "./negotiations/index.js";
 export { IndexNegotiator } from "./negotiations/index.js";

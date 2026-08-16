@@ -2,10 +2,10 @@
 /** Live, baseline-governed paired premise versus user-context retrieval eval. */
 import path from "path";
 
-import { HydeGenerator } from "../../src/shared/hyde/hyde.generator.js";
-import { HydeGraphFactory } from "../../src/shared/hyde/hyde.graph.js";
-import type { HydeDocumentState } from "../../src/shared/hyde/hyde.state.js";
-import { LensInferrer } from "../../src/shared/hyde/lens.inferrer.js";
+import { HydeGenerator } from "../../src/discovery/hyde.generator.js";
+import { HydeGraphFactory } from "../../src/discovery/hyde.graph.js";
+import type { HydeDocumentState } from "../../src/discovery/hyde.state.js";
+import { LensInferrer } from "../../src/discovery/lens.inferrer.js";
 import type { HydeCache } from "../../src/shared/interfaces/cache.interface.js";
 import type { CreateHydeDocumentData, HydeDocument, HydeGraphDatabase } from "../../src/shared/interfaces/database.interface.js";
 import type { EmbeddingGenerator } from "../../src/shared/interfaces/embedder.interface.js";

@@ -3,12 +3,12 @@ import path from 'node:path';
 
 import { OpenAIEmbeddings } from '@langchain/openai';
 
-import { HydeGenerator, type HydeGenerateInput, type HydeGeneratorOutput } from '../../src/shared/hyde/hyde.generator.js';
-import { HydeGraphFactory, type HydeGeneratorLike, type HydeLensInferrerLike, type HydeValidatorLike } from '../../src/shared/hyde/hyde.graph.js';
-import { HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from '../../src/shared/hyde/hyde.env.js';
-import type { HydeDocumentState } from '../../src/shared/hyde/hyde.state.js';
-import { HydeValidator, type HydeValidationInput, type HydeValidationOutput } from '../../src/shared/hyde/hyde.validator.js';
-import { LensInferrer, type LensInferenceInput, type LensInferenceOutput } from '../../src/shared/hyde/lens.inferrer.js';
+import { HydeGenerator, type HydeGenerateInput, type HydeGeneratorOutput } from '../../src/discovery/hyde.generator.js';
+import { HydeGraphFactory, type HydeGeneratorLike, type HydeLensInferrerLike, type HydeValidatorLike } from '../../src/discovery/hyde.graph.js';
+import { HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from '../../src/discovery/hyde.env.js';
+import type { HydeDocumentState } from '../../src/discovery/hyde.state.js';
+import { HydeValidator, type HydeValidationInput, type HydeValidationOutput } from '../../src/discovery/hyde.validator.js';
+import { LensInferrer, type LensInferenceInput, type LensInferenceOutput } from '../../src/discovery/lens.inferrer.js';
 import type { HydeCache } from '../../src/shared/interfaces/cache.interface.js';
 import type { CreateHydeDocumentData, HydeDocument, HydeGraphDatabase } from '../../src/shared/interfaces/database.interface.js';
 import type { EmbeddingGenerateOptions, EmbeddingGenerator } from '../../src/shared/interfaces/embedder.interface.js';

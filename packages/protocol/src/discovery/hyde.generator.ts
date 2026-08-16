@@ -6,10 +6,10 @@ import type { BaseLanguageModelInput } from '@langchain/core/language_models/bas
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 
-import { createStructuredModel } from "../agent/model.config.js";
-import { invokeWithAbortSignal } from "../agent/model-signal.js";
-import { protocolLogger } from '../observability/protocol.logger.js';
-import { Timed } from "../observability/performance.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { protocolLogger } from '../shared/observability/protocol.logger.js';
+import { Timed } from "../shared/observability/performance.js";
 import type { HydeSourceFrame } from './hyde.frame.js';
 import { HYDE_CORPUS_PROMPTS } from './hyde.strategies.js';
 import type { HydeTargetCorpus } from './lens.inferrer.js';

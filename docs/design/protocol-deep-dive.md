@@ -204,7 +204,7 @@ Premise-based candidates carry `candidatePremiseId` in the persist node for acto
 
 ### 3.5 HyDE Graph
 
-**File:** `shared/hyde/hyde.graph.ts`
+**File:** `discovery/hyde.graph.ts`
 **Purpose:** Cache-aware hypothetical document generation with dynamic lens inference and an opt-in source-grounded validation path.
 **Nodes:** legacy uses `infer_lenses`, `check_cache`, `generate_missing`, `embed`, `cache_results`; frame-v1 inserts `validate_generated` between generation and embedding.
 **State:** `HydeGraphState` (sourceType, sourceId, sourceText, profileContext, lenses, optional sourceFrame/frameFingerprint, hydeDocuments, hydeEmbeddings, etc.)
@@ -449,7 +449,7 @@ Scoring bands:
 
 Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with dynamic, LLM-inferred lenses. The `profiles` value is now a preference hint: the API remaps it to premise retrieval because profile-vector discovery was retired.
 
-**Post-generation validator:** `shared/hyde/hyde.validator.ts` performs one structured frame-v1 batch check after generation. It rejects only unsupported named entities or hard constraints; generic elaboration and reciprocal/target voice are valid. The graph owns partial/all-rejection and fail-open persistence behavior rather than the agent.
+**Post-generation validator:** `discovery/hyde.validator.ts` performs one structured frame-v1 batch check after generation. It rejects only unsupported named entities or hard constraints; generic elaboration and reciprocal/target voice are valid. The graph owns partial/all-rejection and fail-open persistence behavior rather than the agent.
 
 ### 4.13 Home Categorizer
 
