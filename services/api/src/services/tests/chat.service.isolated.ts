@@ -68,7 +68,6 @@ mock.module("../../adapters/checkpointer.adapter", () => ({
 }));
 
 afterEach(() => {
-  delete process.env.WEB_SIGNAL_AGENT_ENABLED;
   delete process.env.WEB_AGENT_SURFACE_ENABLED;
 });
 
@@ -356,8 +355,7 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
   });
 
   it("rejects a requested persona that contradicts the persisted one", () => {
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
-    for (const surface of ["web", "non_web"] as const) {
+    for (const surface of ["web", "agent"] as const) {
       expect(svc.resolveStreamPersonaPolicy({
         surface,
         storedPersona: "onboarding",
@@ -377,8 +375,7 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
     }
   });
 
-  it("requires an explicit Signal assertion for a new flag-on web chat", () => {
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
+  it("requires an explicit Signal assertion for a new web chat", () => {
 
     const missing = svc.resolveStreamPersonaPolicy({ surface: "web" });
     expect(missing.ok).toBe(false);
@@ -393,7 +390,6 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
   });
 
   it("inherits a persisted Signal persona without trusting another request assertion", () => {
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
 
     expect(svc.resolveStreamPersonaPolicy({
       surface: "web",
@@ -478,7 +474,7 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
       requestedPersona: "reporter",
     })).toEqual({ ok: true, persona: "reporter" });
     expect(svc.resolveStreamPersonaPolicy({
-      surface: "non_web",
+      surface: "agent",
       requestedPersona: "reporter",
     })).toMatchObject({
       ok: false,
@@ -507,9 +503,8 @@ describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
   });
 
   it("leaves the separate negotiator persona unchanged", () => {
-    process.env.WEB_SIGNAL_AGENT_ENABLED = "true";
     expect(svc.resolveStreamPersonaPolicy({
-      surface: "non_web",
+      surface: "agent",
       requestedPersona: "negotiator",
     })).toEqual({ ok: true, persona: "negotiator" });
   });
