@@ -37,8 +37,14 @@ The audit recorded these commands at the audited commit:
 | --- | --- | --- |
 | Package build | `cd packages/protocol && bun run build` | PASS |
 | Package lint | `bunx eslint packages/protocol/src --format stylish` | PASS with 0 errors, 251 warnings |
-| Provider-free eval gate | `cd packages/protocol && env -u OPENROUTER_API_KEY -u OPENAI_API_KEY bun run eval:verify` | PASS: 9 suite inventories, type-checks, and provider-free tests |
 | Isolated source tests | `cd packages/protocol && env -u OPENROUTER_API_KEY -u OPENAI_API_KEY TEST_CONCURRENCY=4 bun run test:isolated` | Recorded baseline: 2,150 pass, 30 fail, 0 errors across 198 files in 303.5s |
+
+The audit also recorded a provider-free eval gate (`bun run eval:verify`). That
+gate no longer exists: #1419 removed the eval system, archived at
+`archive/eval-2026-08-16`, and the follow-up review (`d51b6097d`) deliberately
+restored only `services/api`'s `typecheck:specs` and the CLI test job — not
+`eval:verify`. Nothing currently checks that protocol source-path references
+from outside `src/` still resolve.
 
 ### IND-514 branch result
 
