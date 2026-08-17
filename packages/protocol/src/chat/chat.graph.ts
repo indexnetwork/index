@@ -50,6 +50,19 @@ const RETRY_DELAY_MS = 800;
  * with a flexible, LLM-driven approach that can handle multi-step
  * reasoning and self-correction.
  */
+
+/** The graph's channel state, as the agent loop sees it. */
+export type ChatState = typeof ChatGraphState.State;
+
+/** Everything the agent loop node reaches for. */
+export interface ChatGraphNodeDeps {
+  database: ChatGraphCompositeDatabase;
+  embedder: Embedder;
+  scraper: Scraper;
+  protocolDeps: ProtocolDeps;
+  persona: ChatPersonaConfig;
+}
+
 export class ChatGraphFactory {
   private streamingService: ChatStreamer;
 
@@ -196,74 +209,115 @@ export class ChatGraphFactory {
    * @returns Uncompiled StateGraph
    */
   private buildGraph() {
-    const database = this.database;
-    const embedder = this.embedder;
-    const scraper = this.scraper;
-    const protocolDeps = this.protocolDeps;
-    const persona = this.persona;
+    const deps: ChatGraphNodeDeps = {
+      database: this.database,
+      embedder: this.embedder,
+      scraper: this.scraper,
+      protocolDeps: this.protocolDeps,
+      persona: this.persona,
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
-    // AGENT LOOP NODE
+    // GRAPH ASSEMBLY
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * The main agent loop node.
-     * Runs a ReAct-style agent that calls tools until it decides to respond.
-     *
-     * Uses `agent.streamRun()` + `config.writer` so that text tokens and
-     * tool-activity events are pushed into the graph's custom stream in
-     * real-time rather than batched at the end.
-     */
-    const agentLoopNode = async (
-      state: typeof ChatGraphState.State,
-      config: LangGraphRunnableConfig
-    ) => {
-      return timed("ChatGraph.agentLoop", async () => {
-        logger.verbose("Agent loop starting", {
-          userId: state.userId,
-          messageCount: state.messages.length,
-          currentIteration: state.iterationCount
-        });
+    const workflow = new StateGraph(ChatGraphState)
+      .addNode("agent_loop", (state: ChatState, config: LangGraphRunnableConfig) => agentLoopNode(state, config, deps))
+      .addEdge(START, "agent_loop")
+      .addEdge("agent_loop", END);
 
-        const runLoop = async () => {
-          const legacyNetworkId = state.networkId;
-          const scopeType = state.scopeType ?? (legacyNetworkId ? 'network' as const : undefined);
-          const scopeId = state.scopeId ?? legacyNetworkId;
-          const agent = await ChatAgent.create({
-            ...protocolDeps,
-            userId: state.userId,
-            database,
-            embedder,
-            scraper,
-            ...(legacyNetworkId ? { networkId: legacyNetworkId } : {}),
-            ...(scopeType && scopeId ? { scopeType, scopeId } : {}),
-            sessionId: state.sessionId,
-          } as import("../shared/agent/tool.helpers.js").ToolContext, persona);
-          // Direct streaming writer - emit events immediately instead of buffering
-          const directWriter = (data: unknown) => {
-            try {
-              config.writer?.(data);
-            } catch {
-              /* swallow if writer is gone */
-            }
+    logger.verbose("Graph built successfully (agent loop architecture)");
+    return workflow;
+  }
+}
+
+/**
+ * The main agent loop node.
+ * Runs a ReAct-style agent that calls tools until it decides to respond.
+ *
+ * Uses `agent.streamRun()` + `config.writer` so that text tokens and
+ * tool-activity events are pushed into the graph's custom stream in
+ * real-time rather than batched at the end.
+ */
+export async function agentLoopNode(
+  state: ChatState,
+  config: LangGraphRunnableConfig,
+  deps: ChatGraphNodeDeps,
+) {
+  return timed("ChatGraph.agentLoop", async () => {
+    logger.verbose("Agent loop starting", {
+      userId: state.userId,
+      messageCount: state.messages.length,
+      currentIteration: state.iterationCount
+    });
+
+    const runLoop = async () => {
+      const legacyNetworkId = state.networkId;
+      const scopeType = state.scopeType ?? (legacyNetworkId ? 'network' as const : undefined);
+      const scopeId = state.scopeId ?? legacyNetworkId;
+      const agent = await ChatAgent.create({
+        ...deps.protocolDeps,
+        userId: state.userId,
+        database: deps.database,
+        embedder: deps.embedder,
+        scraper: deps.scraper,
+        ...(legacyNetworkId ? { networkId: legacyNetworkId } : {}),
+        ...(scopeType && scopeId ? { scopeType, scopeId } : {}),
+        sessionId: state.sessionId,
+      } as import("../shared/agent/tool.helpers.js").ToolContext, deps.persona);
+      // Direct streaming writer - emit events immediately instead of buffering
+      const directWriter = (data: unknown) => {
+        try {
+          config.writer?.(data);
+        } catch {
+          /* swallow if writer is gone */
+        }
+      };
+      // Get signal from configurable (passed by streamer via graph.stream() config)
+      const signal = config.configurable?.signal as AbortSignal | undefined;
+      const result = await agent.streamRun(state.messages, directWriter, signal);
+      return result;
+    };
+
+    try {
+      const result = await runLoop();
+      logger.debug("Agent streamRun result", {
+        responseText: result.responseText,
+        iterationCount: result.iterationCount,
+        messageCount: result.messages.length,
+      });
+      logger.verbose("Agent loop complete", {
+        userId: state.userId,
+        iterations: result.iterationCount,
+        responseLength: result.responseText.length
+      });
+      return {
+        messages: result.messages,
+        responseText: result.responseText,
+        iterationCount: result.iterationCount,
+        shouldContinue: false,
+        debugMeta: result.debugMeta,
+      };
+    } catch (error) {
+      if (isRetriableError(error)) {
+        const signal = config.configurable?.signal as AbortSignal | undefined;
+        if (signal?.aborted) {
+          return {
+            error: "Request aborted",
+            responseText: "",
+            shouldContinue: false,
           };
-          // Get signal from configurable (passed by streamer via graph.stream() config)
-          const signal = config.configurable?.signal as AbortSignal | undefined;
-          const result = await agent.streamRun(state.messages, directWriter, signal);
-          return result;
-        };
-
+        }
+        logger.warn("Agent loop failed with retriable error, retrying once", {
+          userId: state.userId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
         try {
           const result = await runLoop();
-          logger.debug("Agent streamRun result", {
-            responseText: result.responseText,
-            iterationCount: result.iterationCount,
-            messageCount: result.messages.length,
-          });
-          logger.verbose("Agent loop complete", {
+          logger.verbose("Agent loop complete after retry", {
             userId: state.userId,
             iterations: result.iterationCount,
-            responseLength: result.responseText.length
           });
           return {
             messages: result.messages,
@@ -272,71 +326,30 @@ export class ChatGraphFactory {
             shouldContinue: false,
             debugMeta: result.debugMeta,
           };
-        } catch (error) {
-          if (isRetriableError(error)) {
-            const signal = config.configurable?.signal as AbortSignal | undefined;
-            if (signal?.aborted) {
-              return {
-                error: "Request aborted",
-                responseText: "",
-                shouldContinue: false,
-              };
-            }
-            logger.warn("Agent loop failed with retriable error, retrying once", {
-              userId: state.userId,
-              error: error instanceof Error ? error.message : String(error)
-            });
-            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-            try {
-              const result = await runLoop();
-              logger.verbose("Agent loop complete after retry", {
-                userId: state.userId,
-                iterations: result.iterationCount,
-              });
-              return {
-                messages: result.messages,
-                responseText: result.responseText,
-                iterationCount: result.iterationCount,
-                shouldContinue: false,
-                debugMeta: result.debugMeta,
-              };
-            } catch (retryError) {
-              logger.error("Agent loop failed on retry", {
-                userId: state.userId,
-                error: retryError instanceof Error ? retryError.message : String(retryError)
-              });
-              return {
-                error: retryError instanceof Error ? retryError.message : "Agent loop failed",
-                responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
-                shouldContinue: false
-              };
-            }
-          }
-
-          logger.error("Agent loop failed", {
+        } catch (retryError) {
+          logger.error("Agent loop failed on retry", {
             userId: state.userId,
-            error: error instanceof Error ? error.message : String(error)
+            error: retryError instanceof Error ? retryError.message : String(retryError)
           });
-
           return {
-            error: error instanceof Error ? error.message : "Agent loop failed",
+            error: retryError instanceof Error ? retryError.message : "Agent loop failed",
             responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
             shouldContinue: false
           };
         }
+      }
+
+      logger.error("Agent loop failed", {
+        userId: state.userId,
+        error: error instanceof Error ? error.message : String(error)
       });
-    };
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // GRAPH ASSEMBLY
-    // ─────────────────────────────────────────────────────────────────────────
-
-    const workflow = new StateGraph(ChatGraphState)
-      .addNode("agent_loop", agentLoopNode)
-      .addEdge(START, "agent_loop")
-      .addEdge("agent_loop", END);
-
-    logger.verbose("Graph built successfully (agent loop architecture)");
-    return workflow;
-  }
+      return {
+        error: error instanceof Error ? error.message : "Agent loop failed",
+        responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
+        shouldContinue: false
+      };
+    }
+  });
 }
+
