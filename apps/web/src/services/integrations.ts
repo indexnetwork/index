@@ -8,13 +8,6 @@ export interface ComposioConnection {
   createdAt: string;
 }
 
-export interface ImportContactsResult {
-  imported: number;
-  skipped: number;
-  newContacts: number;
-  existingContacts: number;
-}
-
 export const createIntegrationsService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   getConnections: async (networkId?: string): Promise<{ connections: ComposioConnection[] }> => {
     const qs = networkId ? `?networkId=${encodeURIComponent(networkId)}` : '';
@@ -35,10 +28,6 @@ export const createIntegrationsService = (api: ReturnType<typeof useAuthenticate
 
   disconnect: async (id: string): Promise<{ success: boolean }> => {
     return api.delete<{ success: boolean }>(`/integrations/${id}`);
-  },
-
-  importContacts: async (toolkit: string, networkId?: string): Promise<ImportContactsResult> => {
-    return api.post<ImportContactsResult>(`/integrations/${toolkit}/import`, { networkId });
   },
 });
 

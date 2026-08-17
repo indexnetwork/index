@@ -12,7 +12,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
@@ -44,16 +44,12 @@ export class ToolService {
   private cache = new RedisCacheAdapter();
   private compiledGraphs: ToolDeps['graphs'] | null = null;
   private cachedToolList: Array<{ name: string; description: string; schema: Record<string, unknown> }> | null = null;
-  private contactsEnabled: boolean;
 
   constructor(
     private contactService: ContactServiceAdapter,
-    private integrationImporter: ToolDeps['integrationImporter'],
-    private integration: IntegrationAdapter,
-    options: { graphs?: ToolDeps['graphs']; contactsEnabled?: boolean } = {},
+    options: { graphs?: ToolDeps['graphs'] } = {},
   ) {
     this.compiledGraphs = options.graphs ?? null;
-    this.contactsEnabled = options.contactsEnabled ?? process.env.CONTACTS_ENABLED === 'true';
   }
 
   /**
@@ -75,10 +71,7 @@ export class ToolService {
       scraper: this.scraper,
       embedder: this.embedder,
       cache: this.cache,
-      integration: this.integration,
       contactService: this.contactService,
-      contactsEnabled: this.contactsEnabled,
-      integrationImporter: this.integrationImporter,
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],

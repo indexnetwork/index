@@ -4,9 +4,7 @@ import { ToolService } from "../../services/tool.service";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
 import type { ToolDeps } from '@indexnetwork/protocol';
 
-import { ComposioIntegrationAdapter } from "../../adapters/integration.adapter";
 import { contactService } from "../../services/contact.service";
-import { IntegrationService } from "../../services/integration.service";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 const paidIntegrationsEnabled = process.env.RUN_PAID_INTEGRATION_TESTS === '1';
@@ -61,8 +59,6 @@ describe("ToolController Integration", () => {
     });
     testUserBId = userB.id;
 
-    const integrationAdapter = new ComposioIntegrationAdapter();
-    const integrationService = new IntegrationService(integrationAdapter, contactService);
     const noOpGraph = { invoke: async () => ({}) };
     const graphs = {
       profile: noOpGraph,
@@ -73,10 +69,7 @@ describe("ToolController Integration", () => {
       opportunity: noOpGraph,
       premise: noOpGraph,
     } as unknown as ToolDeps['graphs'];
-    const toolService = new ToolService(contactService, integrationService, integrationAdapter, {
-      graphs,
-      contactsEnabled: true,
-    });
+    const toolService = new ToolService(contactService, { graphs });
     controller = new ToolController(toolService);
     console.log(`Created test users: A=${testUserId}, B=${testUserBId}`);
   }, 60_000);

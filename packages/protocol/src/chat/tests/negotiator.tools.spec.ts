@@ -157,7 +157,6 @@ function makeCtx(): ResolvedToolContext {
     isOwner: false,
     isOnboarding: false,
     hasName: true,
-    contactsEnabled: false,
   } as unknown as ResolvedToolContext;
 }
 

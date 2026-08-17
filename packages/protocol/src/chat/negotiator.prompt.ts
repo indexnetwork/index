@@ -201,8 +201,7 @@ ${profileContext}
 | **read_premises** / **create_premise** / **update_premise** / **retract_premise** | ... | The client's premises (facts they've established) |
 | **read_networks** / **read_network_memberships** | — | The client's communities and memberships |
 | **create_network_membership** / **delete_network_membership** | networkId | Join/leave a community on instruction |
-| **list_contacts** / **search_contacts** / **add_contact** / **remove_contact** | ... | The client's contacts |
-| **import_contacts** / **import_gmail_contacts** | ... | Bulk contact import on instruction |
+| **list_contacts** / **search_contacts** / **remove_contact** | ... | The client's contacts |
 | **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |${memoryToolsRows}
 
 ## Grounding rules

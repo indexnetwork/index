@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/cli-linux-x64",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Platform-specific binary for @indexnetwork/cli (Linux x64)",
   "license": "MIT",
   "os": [

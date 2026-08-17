@@ -25,20 +25,14 @@ const context: ResolvedToolContext = {
 // ─── Mock contactService ───────────────────────────────────────────────────────
 
 function makeDeps(overrides?: {
-  importContacts?: () => unknown;
   listContacts?: () => unknown;
-  addContact?: () => unknown;
   removeContact?: () => unknown;
-  contactsEnabled?: boolean;
 }) {
   return {
-    contactsEnabled: overrides?.contactsEnabled ?? true,
     contactService: {
-      importContacts: overrides?.importContacts ?? (async () => ({ imported: 2, skipped: 0, newContacts: 1, existingContacts: 1 })),
       listContacts: overrides?.listContacts ?? (async () => ([
         { userId: 'c1', user: { name: 'Alice', email: 'alice@example.com', avatar: null, isGhost: false } },
       ])),
-      addContact: overrides?.addContact ?? (async () => ({ userId: 'c2', isNew: true })),
       removeContact: overrides?.removeContact ?? (async () => {}),
     },
   } as never;
@@ -71,56 +65,11 @@ function makeDefineTool() {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe('createContactTools - import_contacts', () => {
-  it('returns success with import statistics', async () => {
-    const { defineTool, call } = makeDefineTool();
-    createContactTools(defineTool, makeDeps());
-
-    const result = await call('import_contacts', {
-      contacts: [
-        { name: 'Alice', email: 'alice@example.com' },
-        { name: 'Bob', email: 'bob@example.com' },
-      ],
-    }) as { success: boolean; data: { imported: number } };
-
-    expect(result.success).toBe(true);
-    expect(result.data.imported).toBe(2);
-  });
-
-  it('returns error when contactService throws', async () => {
-    const { defineTool, call } = makeDefineTool();
-    createContactTools(
-      defineTool,
-      makeDeps({ importContacts: async () => { throw new Error('DB failure'); } }),
-    );
-
-    const result = await call('import_contacts', { contacts: [] }) as { success: boolean; error: string };
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Failed to import contacts. Please try again.');
-    expect(result.error).not.toContain('DB failure');
-  });
-});
-
-describe('createContactTools - CONTACTS_ENABLED gating', () => {
-  const names = (deps: ReturnType<typeof makeDeps>): string[] => {
+describe('createContactTools - registered surface', () => {
+  it('registers exactly list/remove/search — no import or manual-add path', () => {
     const { defineTool } = makeDefineTool();
-    return createContactTools(defineTool, deps).map((t: { name: string }) => t.name);
-  };
-
-  it('registers import/add only when contactsEnabled is true', () => {
-    const registered = names(makeDeps({ contactsEnabled: true }));
-    expect(registered).toContain('import_contacts');
-    expect(registered).toContain('add_contact');
-  });
-
-  it('omits import_contacts and add_contact when disabled, keeps read/remove/search', () => {
-    const registered = names(makeDeps({ contactsEnabled: false }));
-    expect(registered).not.toContain('import_contacts');
-    expect(registered).not.toContain('add_contact');
-    expect(registered).toContain('list_contacts');
-    expect(registered).toContain('remove_contact');
-    expect(registered).toContain('search_contacts');
+    const registered = createContactTools(defineTool, makeDeps()).map((t: { name: string }) => t.name);
+    expect(registered).toEqual(['list_contacts', 'remove_contact', 'search_contacts']);
   });
 });
 
@@ -158,36 +107,6 @@ describe('createContactTools - list_contacts', () => {
     };
 
     expect(result.data.count).toBe(2);
-  });
-});
-
-describe('createContactTools - add_contact', () => {
-  it('returns added=true for a new ghost contact', async () => {
-    const { defineTool, call } = makeDefineTool();
-    createContactTools(defineTool, makeDeps());
-
-    const result = await call('add_contact', { email: 'newperson@example.com' }) as {
-      success: boolean;
-      data: { added: boolean; isNewGhost: boolean };
-    };
-
-    expect(result.success).toBe(true);
-    expect(result.data.added).toBe(true);
-    expect(result.data.isNewGhost).toBe(true);
-  });
-
-  it('returns error when addContact throws', async () => {
-    const { defineTool, call } = makeDefineTool();
-    createContactTools(
-      defineTool,
-      makeDeps({ addContact: async () => { throw new Error('Already exists'); } }),
-    );
-
-    const result = await call('add_contact', { email: 'x@x.com' }) as { success: boolean; error: string };
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Failed to add contact. Please try again.');
-    expect(result.error).not.toContain('Already exists');
   });
 });
 

@@ -21,7 +21,6 @@ const capabilities = [
   "questions",
   "agents",
   "contacts",
-  "integrations",
   "discovery",
 ] as const;
 

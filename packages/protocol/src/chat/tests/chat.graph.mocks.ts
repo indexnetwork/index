@@ -291,7 +291,6 @@ export function createMockProtocolDeps(overrides?: Partial<ProtocolDeps>): Proto
     enricher: { enrichUserProfile: async () => null } as unknown as ProtocolDeps["enricher"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     negotiationDatabase: {} as any,
-    integrationImporter: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0 }) },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     createUserDatabase: (db: any, _userId: string) => {
       return new Proxy({}, {

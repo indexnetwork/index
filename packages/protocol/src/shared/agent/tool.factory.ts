@@ -23,7 +23,6 @@ import { createIntentTools } from "../../intents/application/intent.tools.js";
 import { createNetworkTools } from "../../networks/index.js";
 import { createOpportunityTools } from "../../opportunities/index.js";
 import { createUtilityTools } from "./utility.tools.js";
-import { createIntegrationTools } from "../../integrations/index.js";
 import { createContactTools } from "../../contacts/index.js";
 // The composition root reaches the leaf directly (it is exempt from the barrel
 // rule by design): importing agents/index.js here would pull in the
@@ -73,7 +72,6 @@ export async function createChatTools(
       userId: deps.userId,
       networkId: explicitScope.scopeType === 'network' ? explicitScope.scopeId : deps.networkId,
       sessionId: deps.sessionId,
-      contactsEnabled: deps.contactsEnabled,
       actionToolsEnabled: deps.actionToolsEnabled,
     }));
 
@@ -199,7 +197,6 @@ export async function createChatTools(
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = deps.cache;
-  const integration = deps.integration;
   const toolDeps: ToolDeps & OpportunityOwnerApprovalDeps = {
     database,
     userDb,
@@ -207,10 +204,7 @@ export async function createChatTools(
     scraper,
     embedder,
     cache,
-    integration,
     contactService: deps.contactService,
-    contactsEnabled: deps.contactsEnabled,
-    integrationImporter: deps.integrationImporter,
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
@@ -258,7 +252,6 @@ export async function createChatTools(
   const utilityTools = createUtilityTools(defineTool, toolDeps);
   const contactTools = createContactTools(defineTool, toolDeps);
   const agentTools = createAgentTools(defineTool, toolDeps);
-  const integrationTools = createIntegrationTools(defineTool, toolDeps);
   const negotiationTools = deps.agentDispatcher
     ? createNegotiationTools(defineTool, toolDeps)
     : [];
@@ -285,7 +278,6 @@ export async function createChatTools(
     ...networkTools,
     ...opportunityToolsForChat,
     ...utilityTools,
-    ...integrationTools,
     ...contactTools,
     ...agentTools,
     ...negotiationTools,

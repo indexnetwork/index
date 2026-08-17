@@ -47,8 +47,8 @@ const ReviseSchema = z.object({
  * Deterministic fast-intake funnel. Gated by FAST_SIGNAL_INTAKE.
  *
  * `FastSignalIntakeEnabledGuard` is the real gate: it runs before AuthGuard,
- * so a flag-off deployment 404s unauthenticated probes too (mirrors
- * ContactsEnabledGuard). The in-handler `isFastSignalIntakeEnabled()` checks
+ * so a flag-off deployment 404s unauthenticated probes too. The in-handler
+ * `isFastSignalIntakeEnabled()` checks
  * below are defense-in-depth for direct/unit-test invocations that bypass
  * the guard pipeline.
  */

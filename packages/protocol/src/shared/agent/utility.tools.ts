@@ -128,24 +128,20 @@ export function createUtilityTools(
 
 Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
 
-- **Adding contacts**: Via import_contacts (bulk), add_contact (single email), or import_gmail_contacts (Google integration).
-- **Ghost users**: When a contact email doesn't match an existing account, a ghost user is created. Ghost users are enriched with public profile data and participate in opportunity matching — they can be discovered even before joining the platform.
+- **How contacts arise**: Accepting an opportunity puts both people in each other's personal network. There is no import or manual-add path.
 - **Personal network scope**: Approved signals from personal-network contacts are matched in the background. Use list_opportunities only to review persisted results.
-- **Contact data**: Each contact has userId, name, email, avatar, and isGhost flag.
+- **Contact data**: Each contact has userId, name, email, and avatar.
 
 ### Contact Workflow
-1. import_contacts or import_gmail_contacts → bulk add to network
-2. list_contacts → view all contacts with userId
-3. create_intent or update_intent → create or refine an approved signal for background matching
-4. list_opportunities → review persisted results when background processing finds matches
-5. add_contact(email) → add individual contact
-6. remove_contact(contactUserId) → remove from network`;
+1. list_contacts → view all contacts with userId
+2. create_intent or update_intent → create or refine an approved signal for background matching
+3. list_opportunities → review persisted results when background processing finds matches
+4. remove_contact(contactUserId) → remove from network`;
 
       const managingContactsWorkflow = `### Managing Contacts
-1. import_gmail_contacts() or import_contacts([...]) → add contacts
-2. list_contacts() → view network
-3. create_intent or update_intent → create or refine an approved signal for background matching
-4. list_opportunities → review persisted results
+1. list_contacts() → view network
+2. create_intent or update_intent → create or refine an approved signal for background matching
+3. list_opportunities → review persisted results
 
 `;
 

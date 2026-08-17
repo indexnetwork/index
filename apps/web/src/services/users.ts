@@ -109,13 +109,6 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
   },
 
   /**
-   * Manually add a contact by email. Creates a ghost user if not registered.
-   */
-  addContact: async (email: string, name?: string): Promise<void> => {
-    await api.post('/users/contacts', { email, name });
-  },
-
-  /**
    * Remove a contact from the authenticated user's personal network.
    */
   removeContact: async (contactUserId: string): Promise<void> => {

@@ -9,7 +9,6 @@ import type { UserIdentity } from "../schemas/identity.schema.js";
 import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
-import type { IntegrationAdapter } from "../../integrations/ports/index.js";
 import type { ContactServiceAdapter } from "../../contacts/ports/index.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
 import type { IntentGraphQueue } from "../interfaces/queue.interface.js";
@@ -114,14 +113,6 @@ export interface ResolvedToolContext {
    * which are owner-trusted and receive the full owner view.
    */
   mcpCaller?: McpActivityCaller;
-  /**
-   * True when the CONTACTS_ENABLED feature flag is on. Carried from the
-   * composition root so prompt modules can gate contact-import guidance —
-   * when false/unset, the contacts prompt module is not injected, so the
-   * orchestrator never advertises Gmail import / add_contact (whose tools
-   * are also de-registered). Fail-closed: treat only `true` as enabled.
-   */
-  contactsEnabled?: boolean;
   /** True only when the gated reporter cleanup-action proposal tool is registered. */
   actionToolsEnabled?: boolean;
 }
@@ -160,19 +151,10 @@ interface ToolContextBindings {
   cache: Cache;
   /** Dedicated cache for HyDE graph (may be same instance as cache). */
   hydeCache: HydeCache;
-  /** External integration platform adapter (OAuth, tool actions). */
-  integration: IntegrationAdapter;
   /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
   intentQueue: IntentGraphQueue;
   /** Contact management operations. */
   contactService: ContactServiceAdapter;
-  /**
-   * When false (or unset), the contact import / manual-add tools
-   * (import_contacts, add_contact, import_gmail_contacts) are not registered.
-   * Injected by the composition root from CONTACTS_ENABLED. Read/remove/search
-   * contact tools are always registered.
-   */
-  contactsEnabled?: boolean;
   /** True only when the gated reporter cleanup-action proposal tool is registered. */
   actionToolsEnabled?: boolean;
   /** Chat session reader for loading conversation history. */
@@ -246,15 +228,6 @@ interface ToolContextBindings {
   enricher: ProfileEnricher;
   /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;
-  /** Integration importer for bulk contact import from toolkits. */
-  integrationImporter: {
-    importContacts(userId: string, toolkit: string): Promise<{
-      imported: number;
-      skipped: number;
-      newContacts: number;
-      existingContacts: number;
-    }>;
-  };
   /** Factory for user-scoped database access. */
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
@@ -354,12 +327,10 @@ export async function resolveChatContext(params: {
   networkId?: string;
   /** Chat session ID for draft opportunities (stored as context.conversationId). */
   sessionId?: string;
-  /** CONTACTS_ENABLED flag, forwarded onto the resolved context for prompt gating. */
-  contactsEnabled?: boolean;
   /** Reporter action gate forwarded into the persona prompt/context. */
   actionToolsEnabled?: boolean;
 }): Promise<ResolvedToolContext> {
-  const { database, userId, networkId, sessionId, contactsEnabled, actionToolsEnabled } = params;
+  const { database, userId, networkId, sessionId, actionToolsEnabled } = params;
 
   const [user, rawProfile, userNetworks, globalContext] = await Promise.all([
     database.getUser(userId),
@@ -460,7 +431,6 @@ export async function resolveChatContext(params: {
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     hasName,
-    contactsEnabled,
     actionToolsEnabled,
     ...(sessionId !== undefined ? { sessionId } : {}),
   };
@@ -525,23 +495,7 @@ interface ToolDepsBindings {
   scraper: Scraper;
   embedder: import('../interfaces/embedder.interface.js').Embedder;
   cache: Cache;
-  integration: IntegrationAdapter;
   contactService: ContactServiceAdapter;
-  /**
-   * When false (or unset), the contact import / manual-add tools
-   * (import_contacts, add_contact, import_gmail_contacts) are not registered.
-   * Injected by the composition root from CONTACTS_ENABLED. Read/remove/search
-   * contact tools are always registered.
-   */
-  contactsEnabled?: boolean;
-  integrationImporter: {
-    importContacts(userId: string, toolkit: string): Promise<{
-      imported: number;
-      skipped: number;
-      newContacts: number;
-      existingContacts: number;
-    }>;
-  };
   enricher: ProfileEnricher;
   /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;

@@ -43,7 +43,6 @@ describe('isolated test inventory', () => {
     const e2eFiles = inventory.files.filter((file) => file.includes('.e2e.')).sort();
 
     expect(e2eFiles).toEqual([
-      'tests/contacts-disabled.e2e.isolated.ts',
       'tests/limiter.e2e.isolated.ts',
       'tests/negotiation-polling-consultation.e2e.isolated.ts',
       'tests/negotiation.ask-user.e2e.isolated.ts',

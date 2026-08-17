@@ -347,7 +347,6 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
   negotiationDatabase: {
     getNegotiationTaskForOpportunity: async () => null,
   } as unknown as import("../../interfaces/database.interface.js").NegotiationGraphDatabase,
-  integrationImporter: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0 }) },
   createUserDatabase: (db: any, _userId: string) => ({
     getActiveIntents: db.getActiveIntents ?? (async () => []),
     getIntent: db.getIntent ?? (async () => null),

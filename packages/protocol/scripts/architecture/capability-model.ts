@@ -7,7 +7,6 @@ export type Capability =
   | "questions"
   | "agents"
   | "contacts"
-  | "integrations"
   | "discovery"
   | "interaction-composition";
 
@@ -25,7 +24,6 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   agents: "agents",
   chat: "agents",
   contacts: "contacts",
-  integrations: "integrations",
   discovery: "discovery",
   maintenance: "interaction-composition",
 };
@@ -46,7 +44,6 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   questions: "questions",
   agents: "agents",
   contacts: "contacts",
-  integrations: "integrations",
   discovery: "discovery",
   // The composition root is the one all-capability point; it has no barrel of
   // its own and is reached through the package entry point instead.
@@ -64,8 +61,7 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   negotiations: ["opportunities", "questions"],
   questions: ["negotiations"],
   agents: ["negotiations", "questions"],
-  contacts: ["opportunities"],
-  integrations: [],
+  contacts: [],
   // discovery needs only the debug-metadata type it stamps on graph state.
   discovery: ["agents"],
   "interaction-composition": [
@@ -77,7 +73,6 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
     "questions",
     "agents",
     "contacts",
-    "integrations",
     "discovery",
   ],
 };

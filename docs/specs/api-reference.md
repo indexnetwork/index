@@ -2506,26 +2506,6 @@ Unlink a toolkit from an index. Does not revoke the OAuth connection.
 { "success": true }
 ```
 
-### POST /api/integrations/:toolkit/import
-
-Import contacts from a connected toolkit into an index.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `toolkit` — `gmail` or `slack`
-
-**Request body**:
-```json
-{
-  "indexId": "string (optional — defaults to personal network)"
-}
-```
-
-**Response**: Import result with counts.
-
----
-
 ### DELETE /api/integrations/:id
 
 Disconnect (delete) a connected account.
@@ -2967,17 +2947,6 @@ Get one opportunity with presentation for the viewer. If the requested opportuni
 
 **Response**: JSON with opportunity details and presentation. When a replacement was returned, `id` is the replacement opportunity ID and `resolvedFromOpportunityId` contains the originally requested ID.
 
-### GET /api/opportunities/:id/invite-message
-
-Generate an invite message for a ghost counterpart on an opportunity.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `id` — Opportunity ID
-
-**Response**: JSON with generated invite message.
-
 ### PATCH /api/opportunities/:id/status
 
 Update opportunity status.
@@ -3372,27 +3341,6 @@ Batch-fetch users by IDs (max 100).
 }
 ```
 
-### POST /api/users/contacts
-
-Manually add a contact by email (creates ghost user if not registered).
-
-**Auth**: AuthGuard
-
-**Request body** (Zod-validated):
-```json
-{
-  "email": "string (required, valid email)",
-  "name": "string (optional)"
-}
-```
-
-**Response**:
-```json
-{
-  "result": { ... }
-}
-```
-
 ### DELETE /api/users/contacts/:contactId
 
 Remove a contact from the authenticated user's personal network (soft delete of the `'contact'` membership).
@@ -3638,10 +3586,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
 | `list_contacts` | Contact | List user's contacts |
-| `add_contact` | Contact | Add a contact by email |
 | `remove_contact` | Contact | Remove a contact |
-| `import_contacts` | Contact | Import contacts from file/integration |
-| `import_gmail_contacts` | Integration | Import contacts from Gmail via Composio |
 | `scrape_url` | Utility | Scrape and extract content from a URL |
 | `read_docs` | Utility | Read protocol documentation |
 

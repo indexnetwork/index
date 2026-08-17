@@ -135,7 +135,6 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
     cache: {} as unknown as ToolDeps["cache"],
     integration: {} as unknown as ToolDeps["integration"],
     contactService: {} as unknown as ToolDeps["contactService"],
-    integrationImporter: {} as unknown as ToolDeps["integrationImporter"],
     enricher: {} as unknown as ToolDeps["enricher"],
     frontendUrl: 'https://index.network',
     negotiationDatabase: {

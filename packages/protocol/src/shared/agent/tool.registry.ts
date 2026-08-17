@@ -8,7 +8,6 @@ import { createNetworkTools } from '../../networks/index.js';
 import { createOpportunityTools } from '../../opportunities/index.js';
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
-import { createIntegrationTools } from '../../integrations/index.js';
 import { createContactTools } from '../../contacts/index.js';
 import { createAgentTools } from '../../agents/index.js';
 import { createNegotiationTools } from '../../negotiations/index.js';
@@ -100,10 +99,9 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   // (IND-597). The retired report_agent_activity name retains no alias on
   // either surface (IND-605).
   createUtilityTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
-  // Contact/Gmail import tools are omitted from the MCP surface (IND-596). Their
+  // Contact tools are omitted from the MCP surface (IND-596). Their
   // implementations remain available to the REST Tool API and chat agent.
   if (!isMcpSurface) {
-    createIntegrationTools(dt, deps);
     createContactTools(dt, deps);
   }
   createAgentTools(dt, deps);

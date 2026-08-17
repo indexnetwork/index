@@ -92,33 +92,11 @@ describe("parseArgs", () => {
       expect(result.subcommand).toBe("list");
     });
 
-    it("parses contact add with email", () => {
-      const result = parseArgs(["contact", "add", "foo@bar.com"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("add");
-      expect(result.positionals).toEqual(["foo@bar.com"]);
-    });
-
-    it("parses contact add with --name", () => {
-      const result = parseArgs(["contact", "add", "foo@bar.com", "--name", "John"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("add");
-      expect(result.positionals).toEqual(["foo@bar.com"]);
-      expect(result.name).toBe("John");
-    });
-
     it("parses contact remove", () => {
       const result = parseArgs(["contact", "remove", "foo@bar.com"]);
       expect(result.command).toBe("contact");
       expect(result.subcommand).toBe("remove");
       expect(result.positionals).toEqual(["foo@bar.com"]);
-    });
-
-    it("parses contact import --gmail", () => {
-      const result = parseArgs(["contact", "import", "--gmail"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("import");
-      expect(result.gmail).toBe(true);
     });
   });
 

@@ -201,26 +201,6 @@ export class OpportunityController {
   }
 
   /**
-   * GET /opportunities/:id/invite-message — generate an invite message for a ghost counterpart.
-   */
-  @Get('/:id/invite-message')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getInviteMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const id = params?.id;
-    if (!id) {
-      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
-    }
-
-    const result = await opportunityService.generateInviteMessage(id, user.id);
-
-    if ('error' in result && 'status' in result && typeof result.status === 'number') {
-      return Response.json({ error: result.error }, { status: result.status });
-    }
-
-    return Response.json(result);
-  }
-
-  /**
    * GET /opportunities/:id — get one opportunity with presentation for the viewer.
    * Accepts full UUID or short ID prefix.
    */

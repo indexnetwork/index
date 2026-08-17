@@ -79,7 +79,6 @@ function makeContext(scope?: { scopeType: "network" | "intent"; scopeId: string 
     isOwner: false,
     isOnboarding: false,
     hasName: true,
-    contactsEnabled: false,
     ...scope,
   } as unknown as ResolvedToolContext;
 }

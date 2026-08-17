@@ -114,8 +114,6 @@ const envSchema = z.object({
 
   // 8. Discovery / protocol runtime
   AUTO_JOIN_INDEX_IDS: z.string().optional(),
-  CONTACTS_ENABLED: optionalBoolean,
-  CONTACT_DEDUP_STRATEGY: z.enum(['conservative', 'balanced', 'aggressive', 'off']).optional(),
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
   HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),

@@ -62,7 +62,6 @@ export type {
   CreateOpportunityData,
 } from "./shared/interfaces/database.interface.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./shared/interfaces/embedder.interface.js";
-export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./integrations/index.js";
 export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
 export type { Scraper } from "./shared/interfaces/scraper.interface.js";
 export type { EnrichmentRunInput, EnrichmentRunRecord } from "./shared/interfaces/enrichment-run.interface.js";
@@ -161,7 +160,6 @@ export { ChatInterruptClassifier } from "./agents/index.js";
 export { ChatSummarizer } from "./agents/index.js";
 export { HydeGenerator } from "./discovery/index.js";
 export { SuggestionGenerator } from "./agents/index.js";
-export { generateInviteMessage } from "./contacts/index.js";
 export { IntentIndexer } from "./intents/index.js";
 export type { IntentIndexerOutput } from "./intents/index.js";
 export { SignalIntakePackGenerator } from "./intents/index.js";

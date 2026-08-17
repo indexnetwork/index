@@ -309,12 +309,10 @@ describe('MCP Server Factory', () => {
 
   it('classifies every MCP-surface registry tool in the canonical production matrix', () => {
     // The canonical matrix must classify exactly the tools exposed on the MCP
-    // surface. Contact/Gmail tools, scrape_url, and the deprecated aliases are
-    // omitted from the MCP registry (IND-596/597/598), so contactsEnabled must
-    // not add them back even when true.
+    // surface. Contact tools, scrape_url, and the deprecated aliases are
+    // omitted from the MCP registry (IND-596/597/598).
     const mcpRegistry = createToolRegistry({
       ...mockDeps,
-      contactsEnabled: true,
       chatSession: {
         listSessions: async () => [],
         getSession: async () => null,

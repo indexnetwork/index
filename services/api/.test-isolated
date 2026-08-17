@@ -57,12 +57,10 @@ src/services/tests/chat.service.isolated.ts
 src/controllers/tests/route-deprecation.controller.isolated.ts
 src/lib/tests/log-sentry.isolated.ts
 src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts
-tests/contacts-disabled.e2e.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts
 src/controllers/tests/chat.reporter.isolated.ts
 src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/negotiation.e2e.isolated.ts
-src/guards/tests/contacts.guard.isolated.ts
 src/guards/tests/fast-intake.guard.isolated.ts
 tests/network-resend-invite.e2e.isolated.ts
 tests/limiter.e2e.isolated.ts
@@ -80,7 +78,6 @@ src/services/tests/negotiation-polling.seat.isolated.ts
 src/services/tests/uptake-question.service.isolated.ts
 src/services/tests/negotiator-memory.service.isolated.ts
 src/services/tests/opportunity.service.enrichedReplacement.isolated.ts
-src/services/tests/contact.service.flag.isolated.ts
 src/events/handlers/tests/question.answer.pool.isolated.ts
 src/events/tests/opportunity.event.lifecycle.isolated.ts
 src/controllers/tests/enrichment.controller.isolated.ts

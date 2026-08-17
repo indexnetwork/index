@@ -1183,66 +1183,6 @@ export class OpportunityService {
     return { opportunities: opportunityCards };
   }
 
-  /**
-   * Generate an invite message for a ghost user counterpart in an opportunity.
-   * @param opportunityId - The opportunity ID
-   * @param viewerId - The authenticated user requesting the invite
-   * @returns Generated invite message or error
-   */
-  async generateInviteMessage(opportunityId: string, viewerId: string) {
-    const opp = await this.db.getOpportunity(opportunityId);
-    if (!opp) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-
-    const isActor = opp.actors.some((a) => a.userId === viewerId);
-    if (!isActor) {
-      return { error: 'Not authorized', status: 403 };
-    }
-    if (!canUserSeeOpportunity(opp.actors, opp.status, viewerId)) {
-      return { error: 'Not authorized to view this opportunity', status: 403 };
-    }
-
-    const counterpart = resolveCounterpart(opp.actors, viewerId);
-
-    if (!counterpart) {
-      return { error: 'No counterpart found', status: 400 };
-    }
-
-    const [viewer, recipient] = await Promise.all([
-      this.db.getUser(viewerId),
-      this.db.getUser(counterpart.userId),
-    ]);
-
-    if (!recipient || recipient.deletedAt != null) {
-      return { error: 'Counterpart not available', status: 400 };
-    }
-    if (!recipient.isGhost) {
-      return { error: 'Counterpart is not a ghost user', status: 400 };
-    }
-
-    const introducer = opp.actors.find((a) => a.role === 'introducer');
-    const introducerUser = introducer ? await this.db.getUser(introducer.userId) : null;
-
-    // Gather intents for context
-    const [senderIntents, recipientIntents] = await Promise.all([
-      this.db.getActiveIntents(viewerId).then(intents => intents.map(i => i.payload)),
-      this.db.getActiveIntents(counterpart.userId).then(intents => intents.map(i => i.payload)),
-    ]);
-
-    const { generateInviteMessage: generate } = await import('@indexnetwork/protocol');
-
-    const result = await generate({
-      recipientName: recipient.name ?? 'there',
-      senderName: viewer?.name ?? 'Someone',
-      opportunityInterpretation: opp.interpretation.reasoning,
-      senderIntents,
-      recipientIntents,
-      referrerName: introducerUser?.name ?? undefined,
-    });
-
-    return { message: result.message };
-  }
 
   /**
    * Trigger maintenance for a specific user via the maintenance graph.

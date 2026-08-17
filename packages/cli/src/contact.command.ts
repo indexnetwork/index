@@ -1,31 +1,29 @@
 /**
  * Contact command handlers for the Index CLI.
- * Implements: list, add, remove, import subcommands.
+ * Implements: list and remove subcommands.
  */
 import type { ApiClient } from "./api.client";
 import * as output from "./output";
 
 const CONTACT_HELP = `
 Usage:
-  index contact list                       List your contacts
-  index contact add <email> [--name <n>]   Add a contact by email
-  index contact remove <email>             Remove a contact
-  index contact import --gmail             Import contacts from Gmail
+  index contact list             List your contacts
+  index contact remove <email>   Remove a contact
 `;
 
 /**
  * Route a contact subcommand to the appropriate handler.
  *
  * @param client - Authenticated API client.
- * @param subcommand - The subcommand (list, add, remove, import).
+ * @param subcommand - The subcommand (list, remove).
  * @param positionals - Positional arguments after the subcommand.
- * @param options - Additional options (json, name, gmail).
+ * @param options - Additional options (json).
  */
 export async function handleContact(
   client: ApiClient,
   subcommand: string | undefined,
   positionals: string[],
-  options: { json?: boolean; name?: string; gmail?: boolean },
+  options: { json?: boolean },
 ): Promise<void> {
   if (!subcommand) {
     if (options.json) {
@@ -48,16 +46,6 @@ export async function handleContact(
       console.log();
       return;
     }
-    case "add": {
-      const email = positionals[0];
-      if (!email) { output.error("Missing email. Usage: index contact add <email>", 1); return; }
-      const result = await client.callTool("add_contact", { email, name: options.name });
-      if (options.json) { console.log(JSON.stringify(result)); return; }
-      if (!result.success) { output.error(result.error ?? "Failed to add contact", 1); return; }
-      const data = result.data as { message: string };
-      output.success(data.message);
-      return;
-    }
     case "remove": {
       const email = positionals[0];
       if (!email) { output.error("Missing email. Usage: index contact remove <email>", 1); return; }
@@ -71,18 +59,6 @@ export async function handleContact(
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to remove contact", 1); return; }
       output.success(`Removed ${email} from contacts.`);
-      return;
-    }
-    case "import": {
-      if (options.gmail) {
-        const result = await client.callTool("import_gmail_contacts", {});
-        if (options.json) { console.log(JSON.stringify(result)); return; }
-        if (!result.success) { output.error(result.error ?? "Failed to import Gmail contacts", 1); return; }
-        const data = result.data as { message: string };
-        output.success(data.message);
-      } else {
-        output.error("Specify import source: --gmail", 1);
-      }
       return;
     }
     default: {

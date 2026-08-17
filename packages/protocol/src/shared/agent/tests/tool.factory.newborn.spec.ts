@@ -36,7 +36,6 @@ describe('createChatTools newborn callback propagation', () => {
         contactService: {},
         enricher: {},
         negotiationDatabase: {},
-        integrationImporter: {},
         createUserDatabase: () => ({}),
         createSystemDatabase: () => ({}),
         stampNewbornOpportunities,

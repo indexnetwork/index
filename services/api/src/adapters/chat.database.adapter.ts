@@ -2800,63 +2800,6 @@ export class ChatDatabaseAdapter {
   // Contact / My Network Operations
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Create a ghost user (unregistered contact) with empty profile.
-   * Uses the same ON CONFLICT DO UPDATE pattern as the auth adapter:
-   * - New email → inserts ghost row
-   * - Existing ghost → updates name, returns existing ghost ID
-   * - Existing real user → setWhere doesn't match, returns existing real user ID
-   *
-   * This ensures one consistent user-upsert mechanism across the codebase
-   * (auth adapter for real-user signup/ghost-claim, this method for ghost creation).
-   *
-   * @param data - Name and email for the ghost user
-   * @returns The created ghost user's ID (or existing user's ID if email taken)
-   */
-  async createGhostUser(data: { name: string; email: string }): Promise<{ id: string }> {
-    const id = crypto.randomUUID();
-    const email = data.email.toLowerCase().trim();
-
-    // Same onConflictDoUpdate + setWhere pattern as AuthDatabaseAdapter.createDrizzleAdapter().
-    // If a ghost already exists with this email, update its name.
-    // If a real user exists, setWhere won't match → RETURNING is empty.
-    const result = await db
-      .insert(schema.users)
-      .values({
-        id,
-        name: data.name,
-        email,
-        isGhost: true,
-      })
-      .onConflictDoUpdate({
-        target: [schema.users.email],
-        set: {
-          name: sql`EXCLUDED."name"`,
-          updatedAt: sql`now()`,
-        },
-        setWhere: sql`${schema.users.isGhost} = true`,
-      })
-      .returning({ id: schema.users.id });
-
-    if (result[0]) {
-      // New ghost created or existing ghost updated. No profile row to seed since
-      // user_profiles was dropped in WS8 (IND-365); identity lives on `users`.
-      return { id: result[0].id };
-    }
-
-    // Real user already exists with this email — return their ID (exclude soft-deleted)
-    const [existing] = await db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt)))
-      .limit(1);
-
-    if (!existing) {
-      throw new Error(`Cannot create ghost: email belongs to a deleted user (${email})`);
-    }
-
-    return { id: existing.id };
-  }
 
   /**
    * Soft-delete a ghost user by unsubscribe token.
@@ -3000,50 +2943,6 @@ export class ChatDatabaseAdapter {
     return rows;
   }
 
-  /**
-   * Bulk create ghost users.
-   * @param data - Array of {name, email} for ghost users
-   * @returns Array of created ghost users with their IDs
-   */
-  async createGhostUsersBulk(data: Array<{ name: string; email: string }>): Promise<Array<{ id: string; name: string; email: string }>> {
-    if (data.length === 0) return [];
-
-    const results: Array<{ id: string; name: string; email: string }> = [];
-
-    // Create users
-    const usersToInsert = data.map(d => ({
-      id: crypto.randomUUID(),
-      name: d.name,
-      email: d.email.toLowerCase().trim(),
-      isGhost: true,
-    }));
-
-    await db.insert(schema.users).values(usersToInsert).onConflictDoNothing();
-
-    // Re-query to find which live users actually exist (created now vs already existed)
-    // Excludes soft-deleted users so they don't flow into membership upserts or enrichment
-    const insertedEmails = new Set(usersToInsert.map(u => u.email));
-    const existingAfterInsert = await db
-      .select({ id: schema.users.id, email: schema.users.email })
-      .from(schema.users)
-      .where(and(
-        inArray(schema.users.email, [...insertedEmails]),
-        isNull(schema.users.deletedAt),
-      ));
-
-    // Map back to our generated IDs vs actual IDs
-    const emailToId = new Map(existingAfterInsert.map(u => [u.email, u.id]));
-
-    // Return results with correct IDs (actual DB IDs, not our generated ones)
-    for (const u of usersToInsert) {
-      const actualId = emailToId.get(u.email);
-      if (actualId) {
-        results.push({ id: actualId, name: u.name, email: u.email });
-      }
-    }
-
-    return results;
-  }
 
 
   /**

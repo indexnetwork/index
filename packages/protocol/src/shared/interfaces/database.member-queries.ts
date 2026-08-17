@@ -12,10 +12,7 @@ export interface DatabaseMemberQueries {
   // Contact / My Network Operations
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Create a ghost user (unregistered contact) with empty profile. */
-  createGhostUser(data: { name: string; email: string }): Promise<{ id: string }>;
-
-  /** Upsert a contact membership in the owner's personal network (index_members with permissions=['contact']). */
+  /** Upsert a contact membership in the owner's personal network (network_members with permissions=['contact']). */
   upsertContactMembership(ownerId: string, contactUserId: string, options?: { restore?: boolean }): Promise<void>;
 
   /**

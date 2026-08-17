@@ -77,13 +77,10 @@ export const NEGOTIATOR_TOOL_NAMES = [
   "read_network_memberships",
   "create_network_membership",
   "delete_network_membership",
-  // Contacts — dormant while CONTACTS_ENABLED=false (P4.5)
+  // Contacts — read/remove only; contacts arise from accepted opportunities
   "list_contacts",
   "search_contacts",
-  "add_contact",
   "remove_contact",
-  "import_contacts",
-  "import_gmail_contacts",
   // Utility — create_intent's own contract instructs scraping pasted URLs
   // before synthesizing a signal description (P4.5)
   "scrape_url",

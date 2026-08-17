@@ -227,25 +227,6 @@ export default function AccessTab({
     }
   };
 
-  const handleAddContact = async (email: string) => {
-    if (isAddingMember) return;
-    setIsAddingMember(true);
-    try {
-      await usersService.addContact(email);
-      setMemberSearchQuery('');
-      setSuggestedUsers([]);
-      setShowSuggestions(false);
-      setSearchHasQueried(false);
-      await loadMembers();
-      success('Contact added');
-    } catch (err) {
-      logger.error('Error adding contact', { error: err });
-      error('Failed to add contact');
-    } finally {
-      setIsAddingMember(false);
-    }
-  };
-
   const handleInviteMember = async (email: string) => {
     if (isAddingMember) return;
     setIsAddingMember(true);
@@ -472,17 +453,17 @@ export default function AccessTab({
             {/* No results: add by email or show empty state */}
             {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && noResults && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10">
-                {memberSearchQuery.includes('@') ? (
+                {memberSearchQuery.includes('@') && network.hasMasterKey ? (
                   <button
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
-                    onClick={() => network.hasMasterKey ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
+                    onClick={() => handleInviteMember(memberSearchQuery)}
                     disabled={isAddingMember}
                   >
                     <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                       <Plus className="h-3.5 w-3.5 text-gray-500" />
                     </div>
                     <span className="text-sm text-black flex-1 truncate">
-                      {network.hasMasterKey ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
+                      {`Invite "${memberSearchQuery}"`}
                     </span>
                   </button>
                 ) : (

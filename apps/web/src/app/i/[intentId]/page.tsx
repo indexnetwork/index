@@ -463,7 +463,7 @@ export default function IntentDetailPage() {
     opportunityStatusMap,
     opportunityActionLoading,
     handleOpportunityAction,
-    inviteModalElement,
+    opportunityModalElement,
   } = useOpportunityActions({ scope });
 
   /** Monotonic load ids guard every intent-scoped feed against stale responses. */
@@ -961,7 +961,7 @@ export default function IntentDetailPage() {
 
   return (
     <ClientLayout>
-      {inviteModalElement}
+      {opportunityModalElement}
       <div className="flex h-full min-h-0 flex-col px-10 lg:px-16 py-6">
         <ContentContainer size="xwide" className="flex min-h-0 flex-1 flex-col">
           {/* Dialog.Root provides the trigger semantics (aria-expanded /

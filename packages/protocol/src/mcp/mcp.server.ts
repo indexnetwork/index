@@ -51,9 +51,8 @@ const mcpToolMetadataCache = new Map<string, McpToolRegistrationMetadata[]>();
 export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
   'chatSession' | 'agentDatabase' | 'agentDispatcher' | 'questionerEnqueue'
 >): string {
-  // CONTACTS_ENABLED deliberately does NOT shape the MCP registry: contact and
-  // Gmail-import tools are omitted from the MCP surface entirely (IND-596), so
-  // the flag can never change the MCP tool set.
+  // Contact tools are omitted from the MCP surface entirely (IND-596), so no
+  // contacts-related input can change the MCP tool set.
   return [
     `chat:${deps.chatSession ? '1' : '0'}`,
     `agent:${deps.agentDatabase ? '1' : '0'}`,
@@ -477,8 +476,7 @@ export function createMcpServer(
       const context = await resolveChatContext({
         database: deps.database,
         userId: authenticated.identity.userId,
-        contactsEnabled: deps.contactsEnabled,
-      });
+          });
       context.isMcp = true;
       if (authenticated.identity.agentId) {
         context.agentId = authenticated.identity.agentId;

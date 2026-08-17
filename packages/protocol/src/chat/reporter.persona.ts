@@ -234,7 +234,6 @@ export async function createReporterTools(
     userId: deps.userId,
     networkId: explicitScope.scopeType === "network" ? explicitScope.scopeId : deps.networkId,
     sessionId: deps.sessionId,
-    contactsEnabled: deps.contactsEnabled,
     actionToolsEnabled: deps.actionToolsEnabled,
   });
   if (explicitScope.scopeType && explicitScope.scopeId) {

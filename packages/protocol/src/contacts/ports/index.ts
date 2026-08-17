@@ -8,7 +8,7 @@
  * ## Port groups
  *
  * ### Persistence port
- * - ContactServiceAdapter — contact CRUD: import, list, add, remove, search.
+ * - ContactServiceAdapter — contact reads and removal: list, remove, search.
  *
  * ### Tool host port
  * - ContactToolDeps — host capabilities for contact management tools.

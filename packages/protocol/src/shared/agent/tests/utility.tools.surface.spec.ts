@@ -35,12 +35,11 @@ function capture() {
 const stubDeps = { scraper: {}, userDb: {} } as unknown as Parameters<typeof createUtilityTools>[1];
 
 // Contact tool names that appear verbatim in the REST/chat read_docs prose.
+// import_contacts / add_contact / import_gmail_contacts were retired with the
+// ghost-user path; they stay in ALL_MCP_REMOVED_NAMES as regression guards.
 const CONTACT_TOOL_NAMES = [
-  "import_contacts",
-  "add_contact",
   "list_contacts",
   "remove_contact",
-  "import_gmail_contacts",
 ];
 
 // The complete set of 14 names removed from the MCP surface. NONE may appear in

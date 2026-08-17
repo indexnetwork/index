@@ -9,7 +9,6 @@ import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelconte
 import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { ComposioIntegrationAdapter } from '../adapters/integration.adapter';
 import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
@@ -37,7 +36,6 @@ import { ChatSummaryService } from '../services/chat-summary.service';
 import { NegotiationSummaryService } from '../services/negotiation-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
-import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
@@ -71,12 +69,10 @@ type McpToolDeps = ToolDeps & {
 // COMPOSITION ROOT (was protocol-init.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const questionerAdapter = new QuestionerAdapter(db);
 const negotiationSummaryService = new NegotiationSummaryService();
-const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
 const apiBaseUrl = resolveProtocolBaseUrl();
@@ -143,10 +139,8 @@ const protocolDeps = {
   scraper: scraperAdapter,
   cache: cacheAdapter,
   hydeCache: hydeCacheAdapter,
-  integration,
   intentQueue,
   contactService,
-  contactsEnabled: process.env.CONTACTS_ENABLED === 'true',
   actionToolsEnabled: isAgentActionsEnabled(),
   actionProposalStore: agentActionProposalDatabaseAdapter,
   intentProposalStore: intentProposalDatabaseAdapter,
@@ -155,7 +149,6 @@ const protocolDeps = {
   negotiationSummary: negotiationSummaryService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
-  integrationImporter,
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
@@ -718,10 +711,7 @@ function createMcpServerInstance(): McpServer {
     scraper: protocolDeps.scraper,
     embedder: protocolDeps.embedder,
     cache: protocolDeps.cache,
-    integration: protocolDeps.integration,
     contactService: protocolDeps.contactService,
-    contactsEnabled: protocolDeps.contactsEnabled,
-    integrationImporter: protocolDeps.integrationImporter,
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
     agentDispatcher: protocolDeps.agentDispatcher,

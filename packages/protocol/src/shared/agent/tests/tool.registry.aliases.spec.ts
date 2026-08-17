@@ -15,11 +15,9 @@ import type { ToolDeps } from "../tool.helpers.js";
 // create*Tools only DEFINE tools at registration time (handlers are not invoked),
 // but a few read nested deps (e.g. deps.graphs.premise) while wiring. A permissive
 // deep proxy satisfies any property access without needing a full ToolDeps fixture.
-// `contactsEnabled` is answered explicitly so the contact/Gmail import + manual-add
-// tools (which gate on that flag) can be exercised on the REST surface.
-function makeDeps(contactsEnabled: boolean): ToolDeps {
+function makeDeps(): ToolDeps {
   const deep: unknown = new Proxy(function () {} as object, {
-    get: (_target, prop) => (prop === "contactsEnabled" ? contactsEnabled : deep),
+    get: () => deep,
     apply: () => deep,
   });
   return deep as ToolDeps;
@@ -36,12 +34,9 @@ const ALIASES: ReadonlyArray<readonly [string, string]> = [
 ];
 
 const REST_ONLY_TOOLS: readonly string[] = [
-  "import_contacts",
   "list_contacts",
-  "add_contact",
   "remove_contact",
   "search_contacts",
-  "import_gmail_contacts",
   "scrape_url",
   "complete_onboarding",
 ];
@@ -59,10 +54,10 @@ const CANONICAL_PRESERVED: readonly string[] = [
 ];
 
 describe("tool registry surface profiles", () => {
-  const restRegistry = createToolRegistry(makeDeps(true));
-  const mcpRegistry = createToolRegistry(makeDeps(true), { surface: "mcp" });
+  const restRegistry = createToolRegistry(makeDeps());
+  const mcpRegistry = createToolRegistry(makeDeps(), { surface: "mcp" });
 
-  test("default (REST) profile retains contact/Gmail tools and scrape_url", () => {
+  test("default (REST) profile retains contact tools and scrape_url", () => {
     for (const name of REST_ONLY_TOOLS) {
       expect(restRegistry.get(name), `REST profile must retain ${name}`).toBeDefined();
     }
@@ -81,11 +76,14 @@ describe("tool registry surface profiles", () => {
     }
   });
 
-  test("MCP profile omits contact/Gmail tools even when CONTACTS_ENABLED is true", () => {
-    // CONTACTS_ENABLED must never shape the MCP registry.
-    const mcpWithContacts = createToolRegistry(makeDeps(true), { surface: "mcp" });
-    for (const name of ["import_contacts", "add_contact", "import_gmail_contacts", "list_contacts"]) {
-      expect(mcpWithContacts.get(name)).toBeUndefined();
+  test("MCP profile omits contact tools, and the retired import/add names never resolve", () => {
+    for (const name of ["list_contacts", "remove_contact", "search_contacts"]) {
+      expect(mcpRegistry.get(name)).toBeUndefined();
+    }
+    // Retired with the ghost-user path — must not resolve on either surface.
+    for (const name of ["import_contacts", "add_contact", "import_gmail_contacts"]) {
+      expect(restRegistry.get(name), `REST must omit ${name}`).toBeUndefined();
+      expect(mcpRegistry.get(name), `MCP must omit ${name}`).toBeUndefined();
     }
   });
 

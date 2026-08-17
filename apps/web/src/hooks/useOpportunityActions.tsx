@@ -1,10 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useOpportunities, useQuestionsService } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useConversation } from "@/contexts/ConversationContext";
-import InviteMessageModal from "@/components/InviteMessageModal";
 import UptakeQuestionsModal from "@/components/UptakeQuestionsModal";
 import { APIError } from "@/lib/api";
 import type { UptakeAcceptanceAdvisory, UptakeAcceptanceErrorBody } from "@/services/opportunities";
@@ -19,14 +18,6 @@ interface UseOpportunityActionsOptions {
   scope?: OpportunityActionScope;
   /** Called after an opportunity resolves so callers can drop it from their local list. */
   onRemove?: (opportunityId: string) => void;
-}
-
-interface InviteModalState {
-  userId: string;
-  userName: string;
-  message: string;
-  loading: boolean;
-  opportunityId: string;
 }
 
 interface UptakeModalState {
@@ -61,11 +52,7 @@ export function useOpportunityActions({
   const [opportunityActionLoading, setOpportunityActionLoading] = useState<
     Record<string, boolean>
   >({});
-  const [inviteModal, setInviteModal] = useState<InviteModalState | null>(null);
   const [uptakeModal, setUptakeModal] = useState<UptakeModalState | null>(null);
-  const inviteModalResolveRef = useRef<((msg: string | null) => void) | null>(
-    null,
-  );
 
   const runWithUptakePreflight = useCallback(async (
     action: (acknowledgedIds?: string[]) => Promise<void>,
@@ -100,55 +87,13 @@ export function useOpportunityActions({
       fallbackUserId?: string,
       viewerRole?: string,
       counterpartName?: string,
-      isGhost?: boolean,
+      _isGhost?: boolean,
     ) => {
       const isIntroducer = viewerRole === "introducer";
 
-      // Ghost + accepted + non-introducer: show modal immediately, fetch AI message in background
-      if (action === "accepted" && !isIntroducer && isGhost) {
-        const name = counterpartName ?? "them";
-        const displayUserId = fallbackUserId ?? "";
-
-        setInviteModal({ userId: displayUserId, userName: name, message: "", loading: true, opportunityId });
-
-        opportunitiesService.getInviteMessage(opportunityId)
-          .then(({ message }) => {
-            setInviteModal((prev) => prev?.opportunityId === opportunityId ? { ...prev, message, loading: false } : prev);
-          })
-          .catch(() => {
-            setInviteModal((prev) => prev?.opportunityId === opportunityId ? { ...prev, loading: false } : prev);
-          });
-
-        const finalMessage = await new Promise<string | null>((resolve) => {
-          inviteModalResolveRef.current = resolve;
-        });
-
-        if (finalMessage === null) {
-          throw new Error("user_cancelled");
-        }
-
-        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
-        try {
-          await runWithUptakePreflight(async (acknowledgedIds) => {
-            const result = await opportunitiesService.updateStatus(opportunityId, "accepted", scope, acknowledgedIds);
-            setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
-            onRemove?.(opportunityId);
-            const counterpartUserId = result.counterpartUserId ?? fallbackUserId;
-            if (counterpartUserId) {
-              navigate(`/u/${counterpartUserId}/chat`, { state: { prefill: finalMessage, autoSend: true } });
-            }
-          });
-        } catch (error) {
-          showError(error instanceof Error ? error.message : "Failed to update opportunity");
-        } finally {
-          setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
-        }
-        return;
-      }
-
-      // Non-ghost + accepted + non-introducer: atomically accept the opp and
-      // resolve the DM in one round-trip via POST /opportunities/:id/start-chat.
-      if (action === "accepted" && !isIntroducer && !isGhost) {
+      // Accepted + non-introducer: atomically accept the opp and resolve the DM
+      // in one round-trip via POST /opportunities/:id/start-chat.
+      if (action === "accepted" && !isIntroducer) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
           await runWithUptakePreflight(async (acknowledgedIds) => {
@@ -234,32 +179,7 @@ export function useOpportunityActions({
     />
   ) : null;
 
-  const inviteModalElement = (
-    <>
-      {inviteModal ? (
-        <InviteMessageModal
-          userName={inviteModal.userName}
-          message={inviteModal.message}
-          loading={inviteModal.loading}
-          onMessageChange={(msg) => setInviteModal((prev) => prev ? { ...prev, message: msg } : null)}
-          onConfirm={() => {
-            const resolve = inviteModalResolveRef.current;
-            const msg = inviteModal.message;
-            inviteModalResolveRef.current = null;
-            setInviteModal(null);
-            resolve?.(msg);
-          }}
-          onCancel={() => {
-            const resolve = inviteModalResolveRef.current;
-            inviteModalResolveRef.current = null;
-            setInviteModal(null);
-            resolve?.(null);
-          }}
-        />
-      ) : null}
-      {uptakeModalElement}
-    </>
-  );
+  const opportunityModalElement = uptakeModalElement;
 
   return {
     opportunityStatusMap,
@@ -267,6 +187,6 @@ export function useOpportunityActions({
     opportunityActionLoading,
     handleOpportunityAction,
     handleStreamingDraftStartChat,
-    inviteModalElement,
+    opportunityModalElement,
   };
 }

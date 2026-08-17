@@ -1,7 +1,7 @@
 /**
  * Unit tests for IntegrationController.
  * Tests ownership verification on disconnect, basic list/connect flows,
- * and network-scoped link/unlink/import operations.
+ * and network-scoped link/unlink operations.
  */
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
@@ -9,10 +9,9 @@ config({ path: '.env.test', override: true });
 import { describe, test, expect, beforeEach } from "bun:test";
 import { IntegrationController } from "../integration.controller";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
-import type { IntegrationAdapter, IntegrationConnection, IntegrationSession } from '@indexnetwork/protocol';
+import type { IntegrationAdapter, IntegrationConnection, IntegrationSession } from '../../adapters/integration.adapter';
 import { IntegrationService } from "../../services/integration.service";
 import type { ChatDatabaseAdapter } from "../../adapters/database.adapter";
-import type { ContactImporter, ImportResult, ResolveResult } from "../../types/integrations.types";
 
 const USER_A: AuthenticatedUser = { id: "user-a", email: "a@test.com", name: "User A" };
 const USER_B: AuthenticatedUser = { id: "user-b", email: "b@test.com", name: "User B" };
@@ -32,7 +31,6 @@ const CONNECTIONS: Record<string, IntegrationConnection[]> = {
 
 const disconnected: string[] = [];
 const linkedIntegrations: Array<{ networkId: string; toolkit: string; connectedAccountId: string }> = [];
-const bulkAdded: Array<{ networkId: string; userIds: string[] }> = [];
 
 const mockAdapter: IntegrationAdapter = {
   async createSession() {
@@ -68,28 +66,15 @@ const mockDb = {
     return networkId === INDEX_OWNED && userId === "user-a";
   },
   isPersonalNetwork: async () => false,
-  addMembersBulkToIndex: async (networkId: string, userIds: string[]) => {
-    bulkAdded.push({ networkId, userIds });
-  },
 } as unknown as ChatDatabaseAdapter;
 
-const mockContactImporter: ContactImporter = {
-  async importContacts(): Promise<ImportResult> {
-    return { imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] };
-  },
-  async resolveUsers(): Promise<ResolveResult> {
-    return { userIds: [], newGhostIds: [], skipped: 0, details: [] };
-  },
-};
-
 describe("IntegrationController", () => {
-  const service = new IntegrationService(mockAdapter, mockContactImporter, mockDb);
+  const service = new IntegrationService(mockAdapter, mockDb);
   const controller = new IntegrationController(service);
 
   beforeEach(() => {
     disconnected.length = 0;
     linkedIntegrations.length = 0;
-    bulkAdded.length = 0;
   });
 
   describe("GET / (list)", () => {
@@ -236,49 +221,6 @@ describe("IntegrationController", () => {
       expect(res.status).toBe(400);
       const body = await res.json() as { error: string };
       expect(body.error).toBe("networkId query param is required");
-    });
-  });
-
-  describe("POST /:toolkit/import", () => {
-    test("should return 400 for unsupported toolkit", async () => {
-      const req = new Request("http://test/api/integrations/evilkit/import", {
-        method: "POST",
-        body: JSON.stringify({ networkId: INDEX_OWNED }),
-        headers: { "Content-Type": "application/json" },
-      });
-      const result = await controller.importContacts(req, USER_A, { toolkit: "evilkit" });
-
-      expect(result).toBeInstanceOf(Response);
-      const res = result as Response;
-      expect(res.status).toBe(400);
-    });
-
-    test("should import contacts for an owned non-personal network", async () => {
-      const req = new Request("http://test/api/integrations/gmail/import", {
-        method: "POST",
-        body: JSON.stringify({ networkId: INDEX_OWNED }),
-        headers: { "Content-Type": "application/json" },
-      });
-      const result = await controller.importContacts(req, USER_A, { toolkit: "gmail" });
-
-      const data = result as { imported: number; skipped: number };
-      expect(data).toHaveProperty("imported");
-      expect(data).toHaveProperty("skipped");
-    });
-
-    test("should return 400 for an index the user does not own", async () => {
-      const req = new Request("http://test/api/integrations/gmail/import", {
-        method: "POST",
-        body: JSON.stringify({ networkId: INDEX_NOT_OWNED }),
-        headers: { "Content-Type": "application/json" },
-      });
-      const result = await controller.importContacts(req, USER_A, { toolkit: "gmail" });
-
-      expect(result).toBeInstanceOf(Response);
-      const res = result as Response;
-      expect(res.status).toBe(400);
-      const body = await res.json() as { error: string };
-      expect(body.error).toContain("Access denied");
     });
   });
 

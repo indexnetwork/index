@@ -274,17 +274,9 @@ Invites directly by any valid email through the server invitation flow. Calls `P
 
 Lists the authenticated user's contacts. Calls the `list_contacts` MCP tool via the Tool HTTP API. Renders a table of contacts with name, email, and added date.
 
-### `index contact add <email>`
-
-Adds a contact by email. Calls the `add_contact` MCP tool with `{ email, name? }`. Supports optional `--name <name>` flag for display name.
-
 ### `index contact remove <email>`
 
 Removes a contact by email. First calls `list_contacts` to resolve the email to a `userId`, then calls the `remove_contact` MCP tool with `{ contactUserId }`.
-
-### `index contact import --gmail`
-
-Imports contacts from the user's connected Gmail account. Calls the `import_gmail_contacts` MCP tool via the Tool HTTP API.
 
 ---
 

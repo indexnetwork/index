@@ -81,24 +81,11 @@ export default function IntegrationsTab({
     loadConnections(); // eslint-disable-line react-hooks/set-state-in-effect -- load on mount
   }, [loadConnections]);
 
-  const autoImportContacts = async (toolkit: string) => {
-    const svc = createIntegrationsService(api);
-    info(`Importing contacts from ${toolkitLabel(toolkit)}...`, undefined, 30000);
-    try {
-      const result = await svc.importContacts(toolkit, networkId);
-      const label = network.isPersonal ? 'contacts' : 'members';
-      success(`Imported ${result.imported} ${label}`, `${result.newContacts} new, ${result.existingContacts} already in your network`);
-    } catch {
-      error(`Failed to import ${toolkitLabel(toolkit)} contacts`);
-    }
-  };
-
-  const linkAndImport = async (toolkit: string) => {
+  const linkToNetwork = async (toolkit: string) => {
     const svc = createIntegrationsService(api);
     try {
       await svc.linkIntegration(toolkit, networkId);
       await loadConnections();
-      autoImportContacts(toolkit);
     } catch {
       error(`Failed to link ${toolkitLabel(toolkit)} to this network`);
     }
@@ -115,7 +102,7 @@ export default function IntegrationsTab({
       if (existingConn) {
         // Already OAuth'd -- just link to this network
         success(`${toolkitLabel(toolkit)} connected`);
-        await linkAndImport(toolkit);
+        await linkToNetwork(toolkit);
         setPendingToolkit(null);
         return;
       }
@@ -146,7 +133,7 @@ export default function IntegrationsTab({
           popup?.close();
           success(`${toolkitLabel(toolkit)} connected`);
           setPendingToolkit(null);
-          linkAndImport(toolkit);
+          linkToNetwork(toolkit);
         } else if (event.data?.type === 'oauth_callback') {
           window.removeEventListener('message', onMessage);
           popup?.close();

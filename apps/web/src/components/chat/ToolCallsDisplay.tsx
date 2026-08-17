@@ -125,21 +125,9 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Look up docs",
     running: "Looking up documentation...",
   },
-  import_gmail_contacts: {
-    action: "Import Gmail contacts",
-    running: "Importing Gmail contacts...",
-  },
-  import_contacts: {
-    action: "Import contacts",
-    running: "Importing contacts...",
-  },
   list_contacts: {
     action: "List contacts",
     running: "Listing your contacts...",
-  },
-  add_contact: {
-    action: "Add contact",
-    running: "Adding contact...",
   },
   remove_contact: {
     action: "Remove contact",

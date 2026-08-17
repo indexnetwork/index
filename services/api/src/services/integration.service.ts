@@ -1,12 +1,9 @@
 import { log } from '../lib/log';
-import type { IntegrationAdapter } from '@indexnetwork/protocol';
 import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { getRedisClient } from '../adapters/cache.adapter';
 
-import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
-import type { ContactImporter, ImportResult } from '../types/integrations.types';
 import type { TelegramPrefs } from '../schemas/database.schema';
-import type { IntegrationConnection } from '../adapters/integration.adapter';
+import type { IntegrationAdapter, IntegrationConnection } from '../adapters/integration.adapter';
 
 const logger = log.service.from('IntegrationService');
 
@@ -55,7 +52,6 @@ export class IntegrationService {
 
   constructor(
     private adapter: IntegrationAdapter,
-    private contactImporter: ContactImporter,
     db?: ChatDatabaseAdapter,
     redis?: RedisWriter,
     telegramDb?: TelegramDb,
@@ -82,73 +78,6 @@ export class IntegrationService {
     }
   }
 
-  /**
-   * Fetch contacts from the given toolkit and import them into an index.
-   * Personal networks get contacts with 'contact' permission; non-personal
-   * indexes get members with 'member' permission.
-   *
-   * @param userId - Authenticated user ID
-   * @param toolkit - Which provider to import from
-   * @param networkId - Target index (uses personal network when omitted)
-   * @returns Bulk import statistics
-   */
-  async importContacts(userId: string, toolkit: Toolkit, networkId?: string): Promise<ImportResult> {
-    if (networkId) {
-      await this.assertNetworkOwner(networkId, userId);
-    }
-    const isPersonal = !networkId || await this.db.isPersonalNetwork(networkId);
-
-    let contacts: Array<{ name: string; email: string }>;
-    if (toolkit === 'gmail') {
-      contacts = await this.fetchGmailContacts(userId);
-    } else if (toolkit === 'slack') {
-      contacts = await this.fetchSlackMembers(userId);
-    } else {
-      throw new Error(`Toolkit '${toolkit}' does not support contact import`);
-    }
-
-    logger.info('Fetched contacts from provider', { userId, toolkit, count: contacts.length });
-
-    const empty: ImportResult = { imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] };
-    if (contacts.length === 0) return empty;
-
-    if (isPersonal) {
-      return this.contactImporter.importContacts(userId, contacts);
-    }
-
-    const resolved = await this.contactImporter.resolveUsers(userId, contacts);
-    if (resolved.userIds.length === 0) {
-      return { ...empty, skipped: resolved.skipped };
-    }
-
-    const preset = getPreset(process.env.CONTACT_DEDUP_STRATEGY);
-    const dedupResult = deduplicateContacts(contacts, resolved.details, preset);
-    const dedupedUserIds = dedupResult.kept.map(d => d.userId);
-    const nameSkipped = dedupResult.removed.length;
-
-    if (dedupResult.removed.length > 0) {
-      logger.info('Dedup removed contacts', {
-        networkId,
-        removed: dedupResult.removed.map(r => ({
-          email: r.email,
-          matchedWith: r.matchedWith,
-          nameScore: r.nameScore.toFixed(3),
-          emailScore: r.emailScore.toFixed(3),
-        })),
-      });
-    }
-
-    await this.db.addMembersBulkToIndex(networkId, dedupedUserIds);
-
-    const newCount = dedupResult.kept.filter(d => d.isNew).length;
-    return {
-      imported: dedupedUserIds.length,
-      skipped: resolved.skipped + nameSkipped,
-      newContacts: newCount,
-      existingContacts: dedupedUserIds.length - newCount,
-      details: dedupResult.kept,
-    };
-  }
 
   /**
    * Link a toolkit to an index by finding the user's Composio connection
@@ -239,48 +168,6 @@ export class IntegrationService {
     logger.info('Cleaned up index links for disconnected account', { connectedAccountId });
   }
 
-  /**
-   * Paginated fetch of Gmail contacts via the GMAIL_GET_CONTACTS Composio action.
-   *
-   * @param userId - User whose Gmail account to query
-   * @returns Array of name/email pairs
-   */
-  async fetchGmailContacts(userId: string): Promise<Array<{ name: string; email: string }>> {
-    const contacts: Array<{ name: string; email: string }> = [];
-    let nextPageToken: string | undefined;
-
-    do {
-      const result = await this.adapter.executeToolAction('GMAIL_GET_CONTACTS', userId, {
-        resource_name: 'people/me',
-        person_fields: 'names,emailAddresses',
-        include_other_contacts: true,
-        ...(nextPageToken ? { pageToken: nextPageToken } : {}),
-      });
-
-      if (!result.successful) {
-        logger.error('Gmail contacts fetch failed', { userId, error: result.error });
-        throw new Error(`Failed to fetch Gmail contacts: ${result.error}`);
-      }
-
-      const data = result.data as { connections?: GmailContact[]; otherContacts?: GmailContact[]; nextPageToken?: string } | undefined;
-      const allContacts = [
-        ...(data?.connections || []),
-        ...(data?.otherContacts || []),
-      ];
-
-      for (const contact of allContacts) {
-        const email = contact.emailAddresses?.[0]?.value;
-        if (email) {
-          const name = contact.names?.[0]?.displayName || email.split('@')[0];
-          contacts.push({ name, email });
-        }
-      }
-
-      nextPageToken = data?.nextPageToken;
-    } while (nextPageToken);
-
-    return contacts;
-  }
 
   /**
    * Generate a one-time deep link for connecting a Telegram account.
@@ -306,42 +193,4 @@ export class IntegrationService {
     logger.info('Telegram disconnected', { userId });
   }
 
-  /**
-   * Paginated fetch of Slack workspace members via the SLACK_LIST_ALL_USERS Composio action.
-   * Filters out bots and deleted users; skips members without an email.
-   *
-   * @param userId - User whose Slack workspace to query
-   * @returns Array of name/email pairs
-   */
-  async fetchSlackMembers(userId: string): Promise<Array<{ name: string; email: string }>> {
-    const contacts: Array<{ name: string; email: string }> = [];
-    let cursor: string | undefined;
-
-    do {
-      const result = await this.adapter.executeToolAction('SLACK_LIST_ALL_USERS', userId, {
-        limit: 200,
-        ...(cursor ? { cursor } : {}),
-      });
-
-      if (!result.successful) {
-        logger.error('Slack members fetch failed', { userId, error: result.error });
-        throw new Error(`Failed to fetch Slack members: ${result.error}`);
-      }
-
-      const data = result.data as { members?: SlackMember[]; response_metadata?: { next_cursor?: string } } | undefined;
-      const members = data?.members || [];
-
-      for (const member of members) {
-        if (member.is_bot || member.deleted) continue;
-        const email = member.profile?.email;
-        if (!email) continue;
-        const name = member.profile?.real_name || email.split('@')[0];
-        contacts.push({ name, email });
-      }
-
-      cursor = data?.response_metadata?.next_cursor || undefined;
-    } while (cursor);
-
-    return contacts;
-  }
 }

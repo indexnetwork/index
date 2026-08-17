@@ -36,10 +36,6 @@ export interface ParsedCommand {
   prompt?: string;
   /** Output raw JSON instead of formatted text. */
   json?: boolean;
-  /** Name for --name flag (e.g. contact add). */
-  name?: string;
-  /** Gmail import flag for contact import. */
-  gmail?: boolean;
   /** Objective for --objective flag (e.g. scrape). */
   objective?: string;
   /** LinkedIn URL for profile create. */
@@ -157,12 +153,6 @@ export function parseArgs(args: string[]): ParsedCommand {
       i += 2;
     } else if (arg === "--json") {
       result.json = true;
-      i++;
-    } else if (arg === "--name") {
-      result.name = args[i + 1];
-      i += 2;
-    } else if (arg === "--gmail") {
-      result.gmail = true;
       i++;
     } else if (arg === "--objective") {
       result.objective = args[i + 1];

@@ -5,10 +5,7 @@
  * Supersedes the capabilities/contacts.facade.ts + contacts/public/ pair; the
  * export list is the union of the facades it replaces, so the contract is unchanged.
  */
-export {
-  createContactTools,
-  generateInviteMessage,
-} from "./application/index.js";
+export { createContactTools } from "./application/index.js";
 export type {
   ContactServiceAdapter,
   ContactToolDeps,

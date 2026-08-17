@@ -6,28 +6,6 @@
  * IND-549: canonical domain layer for the contacts capability.
  */
 
-/** Input for importing a single contact. */
-export interface ContactInput {
-  name: string;
-  email: string;
-}
-
-/** Result of adding a single contact. */
-export interface ContactResult {
-  userId: string;
-  isNew: boolean;
-  isGhost: boolean;
-}
-
-/** Result of importing contacts in bulk. */
-export interface ContactImportResult {
-  imported: number;
-  skipped: number;
-  newContacts: number;
-  existingContacts: number;
-  details: Array<{ email: string; userId: string; isNew: boolean }>;
-}
-
 /** Contact with user details, as returned by listContacts. */
 export interface ContactEntry {
   userId: string;

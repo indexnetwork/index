@@ -1,15 +1,12 @@
 /**
  * contacts/application — createContactTools canonical implementation.
  *
- * Creates contact management tools for the chat agent. Enables importing,
- * listing, adding, removing, and searching the user's personal network.
+ * Creates contact management tools for the chat agent. Enables listing,
+ * removing, and searching the user's personal network.
  *
- * Feature gating: import_contacts and add_contact are gated behind the
- * CONTACTS_ENABLED flag (deps.contactsEnabled). List, remove, and search
- * tools are always registered so existing contacts stay manageable.
- *
- * IND-549: moved from contact/contact.tools.ts into the canonical
- * contacts/application layer.
+ * Contacts are established by accepting an opportunity — opportunity accept
+ * and start-chat write the mutual `contact` memberships. There is no import or
+ * manual-add path, and no ghost users: every contact is a real account.
  */
 
 import { z } from 'zod';
@@ -22,64 +19,20 @@ const logger = protocolLogger('ChatTools:Contact');
 
 /**
  * Creates contact management tools for the chat agent.
- * Enables importing, listing, and managing the user's network.
+ * Enables listing, searching, and removing entries in the user's network.
  */
 export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps) {
   const { contactService } = deps;
-  // Contact import / manual-add create ghost users. These are gated behind the
-  // CONTACTS_ENABLED flag (injected as deps.contactsEnabled). Read/remove/search
-  // tools below are always available so existing contacts stay manageable.
-  const contactsEnabled = deps.contactsEnabled === true;
-
-  // Only register when enabled: in the registry path defineTool registers as a
-  // side effect, so the call itself must be gated, not just the returned array.
-  const import_contacts = contactsEnabled ? defineTool({
-    name: 'import_contacts',
-    description:
-      "Bulk-imports contacts into the authenticated user's personal network (personal network). Contacts become members of the user's " +
-      "personal network with 'contact' permission, making their approved signals eligible for background matching.\n\n" +
-      "**What happens:** Each contact is matched by email. If the email belongs to an existing user, they're linked directly. " +
-      "If not, a 'ghost user' is created — a placeholder account enriched with public profile data (from LinkedIn, GitHub, etc.) " +
-      "that participates in opportunity matching even before the person joins the platform.\n\n" +
-      "**When to use:** When the user provides a list of contacts to add (from CSV, manual input, or any source other than Gmail). " +
-      "For Gmail specifically, use import_gmail_contacts instead.\n\n" +
-      "**Returns:** Import statistics: imported (total processed), skipped (invalid), newContacts (ghost users created), " +
-      "existingContacts (already in network). Use list_contacts to see all contacts after import.",
-    querySchema: z.object({
-      contacts: z.array(z.object({
-        name: z.string().describe('Full name of the contact (e.g. "Jane Smith")'),
-        email: z.string().describe('Email address — used as the unique identifier for matching existing users'),
-      })).describe('Array of contact objects to import. Each must have name and email. Duplicates (by email) are skipped.'),
-    }),
-    handler: async ({ context, query }) => {
-      try {
-        const result = await contactService.importContacts(
-          context.userId,
-          query.contacts
-        );
-        return success({
-          message: `Imported ${result.imported} contacts to your network.`,
-          imported: result.imported,
-          skipped: result.skipped,
-          newContacts: result.newContacts,
-          existingContacts: result.existingContacts,
-        });
-      } catch (err) {
-        logger.error('Failed to import contacts', { err });
-        return error('Failed to import contacts. Please try again.');
-      }
-    },
-  }) : null;
 
   const list_contacts = defineTool({
     name: 'list_contacts',
     description:
-      "Lists all contacts in the authenticated user's personal network. Contacts are people the user has added " +
-      "(via import_contacts, add_contact, or import_gmail_contacts) stored as members of their personal network.\n\n" +
+      "Lists all contacts in the authenticated user's personal network. Contacts are people the user has " +
+      "accepted an opportunity with, stored as members of their personal network.\n\n" +
       "**When to use:** To see who's in the user's network, find a contact's userId for other operations, " +
       "or check if a specific person is already a contact.\n\n" +
-      "**Returns:** Array of contacts, each with userId (use with read_user_contexts), name, email, avatar URL, and isGhost " +
-      "(true = no account yet, profile enriched from public data). Use read_user_contexts(userId) to get the full profile. " +
+      "**Returns:** Array of contacts, each with userId (use with read_user_contexts), name, email, and avatar URL. " +
+      "Use read_user_contexts(userId) to get the full profile. " +
       "Approved signals are matched in the background; list_opportunities only reviews persisted results.",
     querySchema: z.object({
       limit: z.number().optional().describe('Maximum number of contacts to return. Omit to return all contacts. Use for large networks to paginate results.'),
@@ -108,40 +61,6 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
       }
     },
   });
-
-  const add_contact = contactsEnabled ? defineTool({
-    name: 'add_contact',
-    description:
-      "Adds a single contact to the authenticated user's personal network by email address. " +
-      "For bulk imports, use import_contacts instead.\n\n" +
-      "**What happens:** Looks up the email. If an account exists, links that user as a contact. " +
-      "If not, creates a ghost user (placeholder enriched with public profile data) and adds them. " +
-      "Their approved signals can then become eligible for background matching within the user's personal network.\n\n" +
-      "**When to use:** When the user wants to add a specific person (e.g. 'add john@example.com to my network').\n\n" +
-      "**Returns:** Confirmation with the contact's userId and whether a new ghost user was created (isNewGhost). " +
-      "Background matching may create persisted opportunities from approved signals; list_opportunities only reviews those results.",
-    querySchema: z.object({
-      email: z.string().describe('Email address of the person to add. Used as unique identifier — if already a contact, the operation is idempotent.'),
-      name: z.string().optional().describe('Full name of the contact. Optional — if omitted, the email prefix is used as name. Provide when known for better profile enrichment.'),
-    }),
-    handler: async ({ context, query }) => {
-      try {
-        const result = await contactService.addContact(context.userId, query.email, { name: query.name, restore: true });
-
-        return success({
-          added: true,
-          message: result.isNew
-            ? `Added ${query.name || query.email} to your network. Their profile is being enriched.`
-            : `Added ${query.name || query.email} to your network.`,
-          userId: result.userId,
-          isNewGhost: result.isNew,
-        });
-      } catch (err) {
-        logger.error('Failed to add contact', { err });
-        return error('Failed to add contact. Please try again.');
-      }
-    },
-  }) : null;
 
   const remove_contact = defineTool({
     name: 'remove_contact',
@@ -198,11 +117,5 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
     },
   });
 
-  return [
-    ...(import_contacts ? [import_contacts] : []),
-    ...(add_contact ? [add_contact] : []),
-    list_contacts,
-    remove_contact,
-    search_contacts,
-  ];
+  return [list_contacts, remove_contact, search_contacts];
 }

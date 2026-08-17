@@ -72,7 +72,6 @@ export async function createOnboardingTools(
     userId: deps.userId,
     networkId: explicitScope.scopeType === "network" ? explicitScope.scopeId : deps.networkId,
     sessionId: deps.sessionId,
-    contactsEnabled: deps.contactsEnabled,
   });
   if (explicitScope.scopeType && explicitScope.scopeId) {
     resolvedContext.scopeType = explicitScope.scopeType;

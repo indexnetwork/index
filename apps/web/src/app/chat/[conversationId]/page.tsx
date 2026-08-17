@@ -31,7 +31,7 @@ export default function NegotiationDetailPage() {
   const history = conversationId ? sessionHistory.get(conversationId) : undefined;
   const lifecycle = conversation?.negotiation ?? null;
 
-  const { handleOpportunityAction, opportunityStatusMap, opportunityActionLoading, inviteModalElement } =
+  const { handleOpportunityAction, opportunityStatusMap, opportunityActionLoading, opportunityModalElement } =
     useOpportunityActions({
       onRemove: () => { void refreshNegotiations(); },
     });
@@ -350,7 +350,7 @@ export default function NegotiationDetailPage() {
           </div>
         </ContentContainer>
       </div>
-      {inviteModalElement}
+      {opportunityModalElement}
     </>
   );
 }

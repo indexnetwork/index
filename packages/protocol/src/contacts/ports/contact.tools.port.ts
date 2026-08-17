@@ -2,8 +2,7 @@
  * contacts/ports — ContactToolDeps tool host port.
  *
  * Narrow port type consumed by createContactTools. The host provides a
- * ContactServiceAdapter and an optional contactsEnabled flag that gates
- * write-path tools (import_contacts, add_contact).
+ * ContactServiceAdapter.
  *
  * NOTE: This type is intentionally defined inline rather than derived from
  * ToolRegistryCompositionDeps, keeping the capability port independent from
@@ -21,5 +20,4 @@ import type { ContactServiceAdapter } from "./contact.repository.port.js";
 /** Host capabilities consumed by contact tools. */
 export type ContactToolDeps = {
   contactService: ContactServiceAdapter;
-  contactsEnabled?: boolean;
 };

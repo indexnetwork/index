@@ -36,7 +36,6 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
     isOwner: false,
     isOnboarding: false,
     hasName: true,
-    contactsEnabled: false,
     ...overrides,
   } as unknown as ResolvedToolContext;
 }
@@ -323,8 +322,8 @@ describe("filterNegotiatorTools", () => {
       "create_network_membership",
       "delete_network_membership",
       "list_contacts",
-      "import_contacts",
-      "import_gmail_contacts",
+      "search_contacts",
+      "remove_contact",
       "update_opportunity",
       "scrape_url",
     ]) {

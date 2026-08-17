@@ -245,11 +245,6 @@ export const createOpportunitiesService = (
     return api.get<OpportunityDetailResponse>(`/opportunities/${opportunityId}`);
   },
 
-  /** Fetch a pre-generated invite message for a ghost user opportunity. */
-  getInviteMessage: async (opportunityId: string): Promise<{ message: string }> => {
-    return api.get<{ message: string }>(`/opportunities/${opportunityId}/invite-message`);
-  },
-
   /**
    * Atomically accept a `pending` or `draft` opportunity and resolve the h2h
    * conversation ID in one round-trip. Backs the Start Chat button on both

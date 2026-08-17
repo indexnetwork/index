@@ -123,8 +123,6 @@ function renderHelp(): void {
     "--limit <n>",
     "--since <date>",
     "--json",
-    "--name <name>",
-    "--gmail",
     "--objective <text>",
     "--linkedin <url>",
     "--github <url>",
@@ -173,7 +171,7 @@ function renderHelp(): void {
     helpRowCmd(cmdLW, "conversation", "list · with · show · send · stream"),
     helpRowCmd(cmdLW, "network", "list · create · show · update · delete"),
     helpRowCont(cmdLW, "join · leave · invite"),
-    helpRowCmd(cmdLW, "contact", "list · add · remove · import"),
+    helpRowCmd(cmdLW, "contact", "list · remove"),
     "",
     helpRowCmd(cmdLW, "scrape", "extract content from a URL"),
     helpRowCmd(cmdLW, "sync", "download your context locally"),
@@ -188,8 +186,6 @@ function renderHelp(): void {
     helpRowDim(optLW, "--limit <n>", "limit number of results"),
     helpRowDim(optLW, "--since <date>", "filter by ISO date or duration"),
     helpRowDim(optLW, "--json", "output raw JSON"),
-    helpRowDim(optLW, "--name <name>", "name for contact add"),
-    helpRowDim(optLW, "--gmail", "import contacts from Gmail"),
     helpRowDim(optLW, "--objective <text>", "objective for scrape command"),
     helpRowDim(optLW, "--linkedin <url>", "LinkedIn URL for profile create"),
     helpRowDim(optLW, "--github <url>", "GitHub URL for profile create"),
@@ -391,8 +387,6 @@ async function main(): Promise<void> {
     case "contact":
       await handleContact(client, args.subcommand, args.positionals ?? [], {
         json: args.json,
-        name: args.name,
-        gmail: args.gmail,
       });
       return;
     case "scrape":

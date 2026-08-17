@@ -338,19 +338,6 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls[0].query).toEqual({});
     });
 
-    it("add calls add_contact with email and name", async () => {
-      mock.setToolResponse("add_contact", {
-        success: true,
-        data: { message: "Contact added" },
-      });
-
-      await handleContact(client, "add", ["jane@example.com"], { json: true, name: "Jane" });
-
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("add_contact");
-      expect(mock.toolCalls[0].query).toEqual({ email: "jane@example.com", name: "Jane" });
-    });
-
     it("remove calls list_contacts then remove_contact with resolved userId", async () => {
       mock.setToolResponse("list_contacts", {
         success: true,
@@ -367,19 +354,6 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls[0].toolName).toBe("list_contacts");
       expect(mock.toolCalls[1].toolName).toBe("remove_contact");
       expect(mock.toolCalls[1].query).toEqual({ contactUserId: "user-jane" });
-    });
-
-    it("import --gmail calls import_gmail_contacts", async () => {
-      mock.setToolResponse("import_gmail_contacts", {
-        success: true,
-        data: { message: "Imported 5 contacts" },
-      });
-
-      await handleContact(client, "import", [], { json: true, gmail: true });
-
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("import_gmail_contacts");
-      expect(mock.toolCalls[0].query).toEqual({});
     });
   });
 

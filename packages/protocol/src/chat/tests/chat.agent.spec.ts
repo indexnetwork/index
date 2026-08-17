@@ -109,7 +109,6 @@ function createTestAgent() {
     chatSession: {} as any,
     enricher: {} as any,
     negotiationDatabase: {} as any,
-    integrationImporter: {} as any,
     createUserDatabase: () => ({}) as any,
     createSystemDatabase: () => ({}) as any,
   }, FULL_TOOLSET_TEST_PERSONA);

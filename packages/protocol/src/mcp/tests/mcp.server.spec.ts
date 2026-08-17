@@ -287,11 +287,11 @@ describe('getMcpToolMetadataCacheKey', () => {
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, questionerEnqueue: (async () => undefined) as never })).not.toBe(base);
   });
 
-  test('CONTACTS_ENABLED never shapes the MCP registry cache key', () => {
-    // Contact/Gmail tools are omitted from the MCP surface entirely, so the flag
-    // can never change the MCP tool set or its metadata cache key (IND-596).
+  test('contact-related deps never shape the MCP registry cache key', () => {
+    // Contact tools are omitted from the MCP surface entirely, so no
+    // contacts-related dep can change the tool set or its cache key (IND-596).
     const base = getMcpToolMetadataCacheKey(baseDeps);
-    const withContacts = { ...baseDeps, contactsEnabled: true } as Parameters<typeof getMcpToolMetadataCacheKey>[0];
+    const withContacts = { ...baseDeps, contactService: {} } as Parameters<typeof getMcpToolMetadataCacheKey>[0];
     expect(getMcpToolMetadataCacheKey(withContacts)).toBe(base);
   });
 });

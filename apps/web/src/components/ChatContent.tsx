@@ -198,7 +198,7 @@ export default function ChatContent({
     opportunityActionLoading,
     handleOpportunityAction,
     handleStreamingDraftStartChat,
-    inviteModalElement,
+    opportunityModalElement,
   } = useOpportunityActions({ scope: intentOpportunityScope });
 
   // Intents shown on the home shelf.
@@ -1242,7 +1242,7 @@ export default function ChatContent({
 
   return (
     <>
-      {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && inviteModalElement}
+      {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && opportunityModalElement}
       {/* Sticky header - full width, min-h-17 matches ChatView header height.
           Hidden on read-only surfaces (e.g. /agent reporter), which render their own header. */}
       {!effectiveReadOnlySurface && (

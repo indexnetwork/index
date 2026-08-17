@@ -103,8 +103,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `intents/application/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `networks/application/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `opportunities/application/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
-| `contacts/application/contact.tools.ts`³ | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact`, `search_contacts` |
-| `integrations/application/integration.tools.ts`³ | `import_gmail_contacts` |
+| `contacts/application/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
 | `agents/application/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
 | `negotiations/application/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
 | `questions/application/question.tools.ts` | `read_pending_questions` |

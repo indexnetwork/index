@@ -72,7 +72,6 @@ describe("tool composition root", () => {
       "questions",
       "agents",
       "contacts",
-      "integrations",
       "discovery",
     ]);
   });

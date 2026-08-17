@@ -81,7 +81,6 @@ async function makeAgent(): Promise<ChatAgent> {
     chatSession: {} as never,
     enricher: {} as never,
     negotiationDatabase: {} as never,
-    integrationImporter: {} as never,
     createUserDatabase: () => ({} as never),
     createSystemDatabase: () => ({} as never),
   }, FULL_TOOLSET_TEST_PERSONA);

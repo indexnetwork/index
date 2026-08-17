@@ -20,6 +20,40 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 17.0.0 - 2026-08-17
+
+### Removed
+
+- **BREAKING**: Remove the `integrations` capability entirely
+  (`src/integrations/`) and its public exports: `IntegrationAdapter`,
+  `IntegrationConnection`, `IntegrationSession`, `IntegrationSessionOptions`,
+  `ToolActionResponse`. Hosts that typed a Composio adapter against these
+  should declare the shape locally — `services/api` already carries a
+  structurally identical copy in `adapters/integration.adapter.ts`.
+- **BREAKING**: Remove `generateInviteMessage` (and `InviteInput` /
+  `InviteOutput`). It generated outreach copy for ghost-user counterparts and
+  required `recipient.isGhost`; with ghost users retired it can never fire.
+- **BREAKING**: Remove the `import_gmail_contacts`, `import_contacts` and
+  `add_contact` tools. These were the only paths that minted ghost users.
+  Contacts are now established solely by accepting an opportunity, which writes
+  the mutual `contact` memberships. `list_contacts`, `remove_contact` and
+  `search_contacts` are unchanged.
+- **BREAKING**: Remove `contactsEnabled` from `ToolDeps`, the tool-registry
+  composition deps, and `resolveChatContext`. The `CONTACTS_ENABLED` flag gated
+  only the removed write paths and no longer exists.
+- **BREAKING**: Remove `integration` and `integrationImporter` from `ToolDeps`.
+  Nothing in the protocol consumed them once the integration tools were removed.
+- Remove `createGhostUser` from the database interface. No protocol code path
+  creates users any more.
+
+### Changed
+
+- `ContactServiceAdapter` narrows to `listContacts` / `removeContact` /
+  `searchContacts`; `importContacts` and `addContact` are gone, along with the
+  `ContactInput`, `ContactResult` and `ContactImportResult` domain types.
+- Orchestrator, negotiator, signal and onboarding prompt surfaces no longer
+  advertise contact import or Gmail import.
+
 ## 16.1.0 - 2026-08-17
 
 ### Removed

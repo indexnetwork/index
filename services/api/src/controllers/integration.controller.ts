@@ -2,7 +2,6 @@ import type { IntegrationService } from '../services/integration.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
-import { ContactsEnabledGuard } from '../guards/contacts.guard';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
 
 /** Server-side allowlist of supported Composio toolkits. */
@@ -119,31 +118,6 @@ export class IntegrationController {
       return { success: true };
     } catch (err) {
       return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unlink failed' }), { status: 400 });
-    }
-  }
-
-  /**
-   * Import contacts from a connected toolkit into an index.
-   * Personal networks receive contacts with 'contact' permission;
-   * non-personal networks receive members with 'member' permission.
-   * POST /api/integrations/:toolkit/import
-   */
-  @Post('/:toolkit/import')
-  @UseGuards(RateLimit('write'), ContactsEnabledGuard, AuthGuard)
-  async importContacts(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
-    if (!isAllowedToolkit(params.toolkit)) {
-      return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
-    }
-    if (params.toolkit === 'telegram') {
-      return new Response(JSON.stringify({ error: `Import not supported for ${params.toolkit}` }), { status: 400 });
-    }
-    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    const networkId = typeof body.networkId === 'string' ? body.networkId.trim() || undefined : undefined;
-    try {
-      const result = await this.integrationService.importContacts(user.id, params.toolkit, networkId);
-      return result;
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Import failed' }), { status: 400 });
     }
   }
 

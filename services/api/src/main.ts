@@ -655,11 +655,11 @@ controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
 controllerInstances.set(ConnectedAgentsController, new ConnectedAgentsController());
 controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
-const integrationService = new IntegrationService(integrationAdapter, contactService);
+const integrationService = new IntegrationService(integrationAdapter);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
-const toolService = new ToolService(contactService, integrationService, integrationAdapter);
+const toolService = new ToolService(contactService);
 controllerInstances.set(ToolController, new ToolController(toolService));
 controllerInstances.set(QuestionController, new QuestionController());
 

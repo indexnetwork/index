@@ -340,7 +340,6 @@ export class ChatAgent {
       userId: context.userId,
       networkId: scopedNetworkId,
       sessionId: context.sessionId,
-      contactsEnabled: context.contactsEnabled,
       actionToolsEnabled: context.actionToolsEnabled,
     });
     if (explicitScope.scopeType && explicitScope.scopeId) {

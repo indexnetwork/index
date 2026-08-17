@@ -123,10 +123,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   update_opportunity: "Updating opportunity status...",
   scrape_url: "Reading content from URL...",
   read_docs: "Looking up documentation...",
-  import_gmail_contacts: "Importing Gmail contacts...",
-  import_contacts: "Importing contacts...",
   list_contacts: "Listing your contacts...",
-  add_contact: "Adding contact...",
   remove_contact: "Removing contact...",
 };
 

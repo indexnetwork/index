@@ -69,8 +69,6 @@ const ASYNC_CANDIDATE_TOOLS = new Set([
   "create_intent",
   "update_intent",
   "scrape_url",
-  "import_gmail_contacts",
-  "import_contacts",
   "respond_to_negotiation",
   "create_premise",
   "update_premise",

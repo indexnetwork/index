@@ -141,7 +141,6 @@ function makeDeps(opts: {
     cache: {} as unknown as ToolDeps['cache'],
     integration: {} as unknown as ToolDeps['integration'],
     contactService: {} as unknown as ToolDeps['contactService'],
-    integrationImporter: {} as unknown as ToolDeps['integrationImporter'],
     enricher: {} as unknown as ToolDeps['enricher'],
     negotiationDatabase: {
       getNegotiationTaskForOpportunity: async () => null,
