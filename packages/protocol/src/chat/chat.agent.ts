@@ -498,8 +498,8 @@ export class ChatAgent {
 
         try {
           logger.verbose("Executing tool", { name: tc.name, args: tc.args });
-          let result = await tool.invoke(tc.args);
-          let resultStr =
+          const result = await tool.invoke(tc.args);
+          const resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
 
           logger.debug("Tool response", { name: tc.name, result: resultStr });

@@ -45,10 +45,10 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
           let description = intent.description;
           const _traceEmitterVerifier = requestContext.getStore()?.traceEmitter;
           const verifierStart1 = Date.now();
-          _traceEmitterVerifier?.({ type: "agent_start", name: "intent-deps.verifier" });
+          _traceEmitterVerifier?.({ type: "agent_start", name: "intent-verifier" });
           let verdict = await deps.verifier.invoke(description, state.userProfile);
           agentTimingsAccum.push({ name: 'intent.verifier', durationMs: Date.now() - verifierStart1 });
-          _traceEmitterVerifier?.({ type: "agent_end", name: "intent-deps.verifier", durationMs: Date.now() - verifierStart1, summary: `Verified: ${verdict.classification}` });
+          _traceEmitterVerifier?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart1, summary: `Verified: ${verdict.classification}` });
 
           if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
             // Role-hint enrichment for vague job intents reads the global
@@ -62,10 +62,10 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
               });
               const _traceEmitterVerifier2 = requestContext.getStore()?.traceEmitter;
               const verifierStart2 = Date.now();
-              _traceEmitterVerifier2?.({ type: "agent_start", name: "intent-deps.verifier" });
+              _traceEmitterVerifier2?.({ type: "agent_start", name: "intent-verifier" });
               const enrichedVerdict = await deps.verifier.invoke(enrichedDescription, state.userProfile);
               agentTimingsAccum.push({ name: 'intent.verifier', durationMs: Date.now() - verifierStart2 });
-              _traceEmitterVerifier2?.({ type: "agent_end", name: "intent-deps.verifier", durationMs: Date.now() - verifierStart2, summary: `Verified (enriched): ${enrichedVerdict.classification}` });
+              _traceEmitterVerifier2?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart2, summary: `Verified (enriched): ${enrichedVerdict.classification}` });
               const becameClear =
                 enrichedVerdict.semantic_entropy < verdict.semantic_entropy ||
                 enrichedVerdict.felicity_scores.clarity > verdict.felicity_scores.clarity;
@@ -288,17 +288,17 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
       `  Verification: ${c.verification?.classification} (Flags: ${c.verification?.flags.join(', ') || 'None'})`
     ).join('\n');
 
-    logger.verbose("Invoking deps.reconciler agent", {
+    logger.verbose("Invoking reconciler agent", {
       candidateCount: candidates.length,
       operationMode: state.operationMode
     });
 
     const _traceEmitterReconciler = requestContext.getStore()?.traceEmitter;
     const reconcilerStart = Date.now();
-    _traceEmitterReconciler?.({ type: "agent_start", name: "intent-deps.reconciler" });
+    _traceEmitterReconciler?.({ type: "agent_start", name: "intent-reconciler" });
     const result = await deps.reconciler.invoke(formattedCandidates, state.activeIntents);
     agentTimingsAccum.push({ name: 'intent.reconciler', durationMs: Date.now() - reconcilerStart });
-    _traceEmitterReconciler?.({ type: "agent_end", name: "intent-deps.reconciler", durationMs: Date.now() - reconcilerStart, summary: `Reconciled ${result.actions.length} action(s)` });
+    _traceEmitterReconciler?.({ type: "agent_end", name: "intent-reconciler", durationMs: Date.now() - reconcilerStart, summary: `Reconciled ${result.actions.length} action(s)` });
 
     const actions = enforceIntentActionBoundary(
       state.operationMode,

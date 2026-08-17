@@ -135,7 +135,7 @@ export async function analyzeNode(state: PremiseState, deps: PremiseGraphDeps) {
     const start = Date.now();
     const result = await deps.premiseAnalyzer.invoke(state.assertionText);
     const timing: DebugMetaAgent = {
-      name: "premise-deps.premiseAnalyzer",
+      name: "premise-analyzer",
       durationMs: Date.now() - start,
     };
 
@@ -286,7 +286,7 @@ export async function indexNode(state: PremiseState, deps: PremiseGraphDeps) {
             memberPrompt: memberPrompt ?? undefined,
           });
           const timing: DebugMetaAgent = {
-            name: "premise-deps.premiseIndexer",
+            name: "premise-indexer",
             durationMs: Date.now() - start,
           };
           rawScores = { indexScore: result.indexScore, memberScore: result.memberScore };
@@ -301,7 +301,7 @@ export async function indexNode(state: PremiseState, deps: PremiseGraphDeps) {
           indexPrompt,
           memberPrompt,
           rawScores,
-          evaluator: "premise-deps.premiseIndexer",
+          evaluator: "premise-indexer",
           source: "premise-graph",
           reason,
           createdAt: new Date().toISOString(),

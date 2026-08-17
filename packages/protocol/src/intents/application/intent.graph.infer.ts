@@ -85,7 +85,7 @@ export async function inferenceNode(state: IntentState, deps: IntentGraphDeps) {
     const inferrerMode = (state.operationMode === 'read' || state.operationMode === 'propose') ? 'create' : state.operationMode;
     const _traceEmitterInferrer = requestContext.getStore()?.traceEmitter;
     const inferrerStart = Date.now();
-    _traceEmitterInferrer?.({ type: "agent_start", name: "intent-deps.inferrer" });
+    _traceEmitterInferrer?.({ type: "agent_start", name: "intent-inferrer" });
     const result = await deps.inferrer.invoke(
       state.inputContent || null,
       state.userProfile,
@@ -96,7 +96,7 @@ export async function inferenceNode(state: IntentState, deps: IntentGraphDeps) {
       }
     );
     agentTimingsAccum.push({ name: 'intent.inferrer', durationMs: Date.now() - inferrerStart });
-    _traceEmitterInferrer?.({ type: "agent_end", name: "intent-deps.inferrer", durationMs: Date.now() - inferrerStart, summary: result.intents.length > 0 ? `Extracted ${result.intents.length} intent(s)` : "intent-deps.inferrer completed" });
+    _traceEmitterInferrer?.({ type: "agent_end", name: "intent-inferrer", durationMs: Date.now() - inferrerStart, summary: result.intents.length > 0 ? `Extracted ${result.intents.length} intent(s)` : "intent-inferrer completed" });
 
     logger.verbose("Inference complete", {
       inferredCount: result.intents.length,
