@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "17.0.0",
+  "version": "17.0.1",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -23,7 +23,7 @@
     "test": "bun test scripts/tests/test-runner.spec.ts && bun scripts/test.ts",
     "test:isolated": "bun test scripts/tests/test-runner.spec.ts && bun scripts/test.ts",
     "test:shared": "bun test",
-    "test:architecture": "bun test src/architecture/tests scripts/architecture/tests",
+    "test:architecture": "bun test scripts/architecture/tests",
     "architecture:host-isolation": "bun scripts/architecture/host-isolation.ts",
     "architecture:capabilities": "bun scripts/architecture/capability-boundaries.ts",
     "architecture:check": "bun run architecture:host-isolation && bun run architecture:capabilities && bun run test:architecture",
