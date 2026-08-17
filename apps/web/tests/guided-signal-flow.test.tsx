@@ -202,7 +202,8 @@ describe("guided Signal creation", () => {
     });
 
     expect(screen.getByText("LOOKING FOR")).toBeInTheDocument();
-    expect(screen.getByText("Find a thoughtful technical collaborator")).toBeInTheDocument();
+    expect(screen.getByLabelText("YOUR SIGNAL")).toHaveValue("Find a thoughtful technical collaborator");
+    expect(screen.getAllByText("Find a thoughtful technical collaborator")).toHaveLength(2);
     expect(screen.getByText("YOU BRING")).toBeInTheDocument();
     expect(screen.getByText("Product experience")).toBeInTheDocument();
     expect(screen.getByText("Builders")).toBeInTheDocument();

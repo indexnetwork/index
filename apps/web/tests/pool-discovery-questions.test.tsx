@@ -34,6 +34,9 @@ const mocks = vi.hoisted(() => ({
   opportunitiesService: {
     getRadarView: vi.fn(),
   },
+  conversationsService: {
+    getNegotiationActivity: vi.fn(),
+  },
 }));
 
 vi.mock('@/components/ClientLayout', () => ({
@@ -72,7 +75,12 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
+  useConversations: () => mocks.conversationsService,
   useQuestionsService: () => mocks.questionsService,
+}));
+
+vi.mock('@/contexts/ConversationContext', () => ({
+  useConversation: () => ({ negotiations: [] }),
 }));
 
 function primePageServices() {
@@ -83,6 +91,7 @@ function primePageServices() {
     createdAt: new Date().toISOString(),
   });
   mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
+  mocks.conversationsService.getNegotiationActivity.mockResolvedValue([]);
 }
 
 

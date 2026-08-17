@@ -50,6 +50,7 @@ export function OptionRow({
         type={type}
         name={name}
         value={value}
+        aria-label={label}
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}

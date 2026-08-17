@@ -176,7 +176,7 @@ describe('NetworkOverviewPanel context and signals overview', () => {
       expect(mocks.setSelectedNetworkIds).toHaveBeenCalledWith([]);
       expect(mocks.resolveIntentSession).toHaveBeenCalledWith(
         { id: 'intent-1', label: 'Seeking a product designer' },
-        undefined,
+        'signal',
       );
       expect(mocks.navigate).toHaveBeenCalledWith('/d/session-1');
     });

@@ -41,6 +41,9 @@ const mocks = vi.hoisted(() => ({
   opportunitiesService: {
     getRadarView: vi.fn(),
   },
+  conversationsService: {
+    getNegotiationActivity: vi.fn(),
+  },
 }));
 
 vi.mock('@/components/ClientLayout', () => ({
@@ -79,7 +82,12 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
+  useConversations: () => mocks.conversationsService,
   useQuestionsService: () => mocks.questionsService,
+}));
+
+vi.mock('@/contexts/ConversationContext', () => ({
+  useConversation: () => ({ negotiations: [] }),
 }));
 
 vi.mock('@/contexts/QuestionsContext', () => ({
@@ -153,6 +161,7 @@ function primeServices() {
   });
   mocks.intentsService.visitIntent.mockResolvedValue(undefined);
   mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
+  mocks.conversationsService.getNegotiationActivity.mockResolvedValue([]);
   mocks.questionsService.getPending.mockResolvedValue([
     makeQuestion('q-1'),
     makeQuestion('q-2'),

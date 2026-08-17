@@ -98,7 +98,7 @@ export function QuestionCard({
         {otherSelected && (
           <input
             type="text"
-            placeholder="Type your answer..."
+            placeholder="Specify..."
             value={otherText}
             disabled={disabled}
             autoFocus

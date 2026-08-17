@@ -177,7 +177,7 @@ export function outcomeChipVariant(status: string | null | undefined): OutcomeCh
 export function formatSectionDate(isoDate: string): string {
   const date = new Date(isoDate);
   if (!Number.isFinite(date.getTime())) return '';
-  return date.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 export interface SectionLabelOpts {
@@ -217,7 +217,7 @@ export function deriveSectionLabel(opts: SectionLabelOpts): string {
   // Unattributed legacy fallback — keep existing format.
   const date = opts.firstTurnCreatedAt ? new Date(opts.firstTurnCreatedAt) : null;
   const monthYear = date && Number.isFinite(date.getTime())
-    ? date.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+    ? date.toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
     : '';
   return `Earlier negotiation${monthYear ? ` · ${monthYear}` : ''}`;
 }

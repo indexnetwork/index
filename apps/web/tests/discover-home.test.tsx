@@ -5,6 +5,8 @@ import { beforeEach, afterEach, describe, expect, test, vi } from 'vitest';
 import DiscoverHome from '@/components/DiscoverHome';
 
 const mocks = vi.hoisted(() => ({
+  auth: { user: { id: 'viewer', name: 'Viewer', avatar: null } },
+  negotiations: [] as Array<Record<string, unknown>>,
   apiClient: {
     post: vi.fn(),
     patch: vi.fn(),
@@ -16,6 +18,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ apiClient: mocks.apiClient }));
 vi.mock('@/contexts/NotificationContext', () => ({
   useNotifications: () => ({ error: mocks.showError }),
+}));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuthContext: () => mocks.auth,
+}));
+vi.mock('@/contexts/ConversationContext', () => ({
+  useConversation: () => ({ negotiations: mocks.negotiations }),
 }));
 
 function renderHome() {

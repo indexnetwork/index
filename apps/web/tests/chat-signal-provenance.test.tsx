@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   getOrCreateDM: vi.fn(),
   markConversationRead: vi.fn().mockResolvedValue(undefined),
   loadMessages: vi.fn().mockResolvedValue(undefined),
+  loadSessionHistory: vi.fn().mockResolvedValue(undefined),
+  loadPreviousSessionMessages: vi.fn().mockResolvedValue(undefined),
   getChatContext: vi.fn().mockResolvedValue([]),
 }));
 
@@ -26,8 +28,11 @@ vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({
     conversations: mocks.conversations,
     messages: mocks.messages,
+    sessionHistory: new Map(),
     sendMessage: vi.fn(),
     loadMessages: mocks.loadMessages,
+    loadSessionHistory: mocks.loadSessionHistory,
+    loadPreviousSessionMessages: mocks.loadPreviousSessionMessages,
     getOrCreateDM: mocks.getOrCreateDM,
     markConversationRead: mocks.markConversationRead,
     hideConversation: vi.fn(),
@@ -64,6 +69,8 @@ beforeEach(() => {
   mocks.messages = new Map();
   mocks.getOrCreateDM.mockResolvedValue(summary([]));
   mocks.markConversationRead.mockClear();
+  mocks.loadSessionHistory.mockClear();
+  mocks.loadPreviousSessionMessages.mockClear();
   mocks.getChatContext.mockResolvedValue([]);
 });
 
