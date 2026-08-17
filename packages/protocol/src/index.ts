@@ -133,12 +133,22 @@ export { OpportunityGraphFactory } from "./opportunities/index.js";
 export { hasUnsupportedOpportunityClaim } from "./opportunities/index.js";
 export type { StampNewbornOpportunitiesFn } from "./opportunities/index.js";
 export { bindOwnerApprovalProvenance } from "./opportunities/index.js";
+// The member/parameter types below are reachable from the exported entry points
+// above: `OpportunityOwnerAction` types `OpportunityOwnerApprovalBinding.action`,
+// `OpportunityOwnerApprovalDenialReason` types the denied `…Verdict.reason`, and
+// the provenance pair types both `…Attestation.provenance` and the second
+// argument of `bindOwnerApprovalProvenance`. An exported symbol whose members
+// cannot be named is not usable, so these stay exported with it.
 export type {
+  OpportunityOwnerAction,
   OpportunityOwnerApprovalAttestation,
   OpportunityOwnerApprovalAuthority,
   OpportunityOwnerApprovalBinding,
   OpportunityOwnerApprovalChallenge,
+  OpportunityOwnerApprovalDenialReason,
   OpportunityOwnerApprovalVerdict,
+  OpportunityOwnerInteractionProvenance,
+  OpportunityOwnerInteractionSurface,
 } from "./opportunities/index.js";
 export { EnrichmentGraphFactory } from "./contexts/index.js";
 export { PremiseGraphFactory } from "./contexts/index.js";
@@ -252,7 +262,15 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 export { createMcpServer, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
 export { CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from "./mcp/mcp.authorization-policy.js";
-export type { McpAuthorizationObserver } from "./mcp/mcp.authorization-policy.js";
+// `McpCapabilityPolicyOptions` types the fourth `createMcpServer` parameter and
+// `McpAuthorizationDenialEvent` is the sole argument of the observer's
+// `onCapabilityDenied`. Both are required to type a host's own composition, so
+// they ship with the entry point rather than with the pruned policy internals.
+export type {
+  McpAuthorizationDenialEvent,
+  McpAuthorizationObserver,
+  McpCapabilityPolicyOptions,
+} from "./mcp/mcp.authorization-policy.js";
 
 // ─── States (for advanced graph consumers) ────────────────────────────────────
 // @experimental — internal graph-state shapes; may change in a minor release.

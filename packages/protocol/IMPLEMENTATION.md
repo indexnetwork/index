@@ -35,21 +35,9 @@ npm install @indexnetwork/protocol
 
 The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
 
-To override the chat model or reasoning effort when using the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`), pass `modelConfig` on the `ToolDeps` you hand to the registry. `ChatAgent` reads these fields when the chat graph runs; the tools themselves do not consume `modelConfig`:
+Environment variables are the supported way to configure models. `CHAT_MODEL` and `CHAT_REASONING_EFFORT` (`minimal | low | medium | high | xhigh`) drive the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`); every other protocol agent — evaluators, generators, miners — reads `OPENROUTER_API_KEY` from the environment.
 
-```typescript
-import type { ToolDeps } from "@indexnetwork/protocol";
-
-const deps: ToolDeps = {
-  // ... other deps ...
-  modelConfig: {
-    chatModel: "google/gemini-2.5-flash",       // optional — has a default
-    chatReasoningEffort: "low",                  // optional: minimal | low | medium | high | xhigh
-  },
-};
-```
-
-`apiKey` and `baseURL` can also be overridden this way. All other protocol agents (evaluators, generators, etc.) rely on `OPENROUTER_API_KEY` set in the environment regardless of `modelConfig`.
+There is a per-instance `modelConfig` (chat model, reasoning effort, `apiKey`, `baseURL`) that `ChatAgent` reads off the resolved tool context, but it lives on the internal composition types (`ToolContext` / `ProtocolDeps`), not on `ToolDeps`, and those types are not exported. **Programmatic model override is therefore not part of the public contract in 15.0.0** — use the environment variables. If you need a typed override path, open an issue rather than reaching through a deep import.
 
 ### 2. Implement the adapters
 
