@@ -20,6 +20,91 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 15.0.0 - 2026-08-17
+
+Public-surface prune. `src/index.ts` goes from 443 exported symbols across 164
+export statements to 312 across 143. No implementation changed: every removed
+symbol still exists and still works inside the package — it is simply no longer
+re-exported from the barrel.
+
+A symbol was kept whenever a retained export could not be *used* without it —
+parameter and member types of exported functions, interfaces, and unions stay
+public even with no direct importer, because an exported symbol whose members
+cannot be named is not usable.
+
+The removal set was derived by parsing every barrel export and resolving it
+against every consumer reference in `services/`, `apps/`, `packages/*`,
+`docs/`, `.claude/`, and the protocol's own `eval/` and `skills/` trees —
+covering static named imports, `import type` queries, `import('...').Sym` type
+positions, `await import()` destructuring, namespace aliases, and `mock.module`
+shapes. A symbol was removed only when nothing outside the package imported it
+from the package root.
+
+### Removed from the public API (BREAKING)
+
+131 symbols. None were deleted; all remain internal. The largest groups:
+
+- **Capability tool factories** — `createChatTools`, `createAgentTools`,
+  `createIntentTools`, `createNetworkTools`, `createOpportunityTools`,
+  `createNegotiationTools`, `createQuestionerTools`,
+  `createAskUserQuestionTools`, `createContactTools`, `createIntegrationTools`,
+  `createPremiseTools`, and their `*ToolDeps` types. These are composed
+  internally by `createMcpServer` / `createToolRegistry`, which remain public.
+  `createEnrichmentTools` and `EnrichmentToolDeps` stay exported — the API
+  service calls them directly from its enrichment-run worker.
+- **MCP authorization policy** — 27 symbols from `mcp/mcp.authorization-policy.ts`
+  (`MCP_AGENT_ADMIN_TOOLS`, `McpCapabilityPolicy`, `McpToolAccessRuleSchema`,
+  `defineMcpToolAccessRules`, the `Mcp*` policy types, …). Four stay public
+  because a host cannot type its own `createMcpServer` call without them:
+  `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`, `McpCapabilityPolicyOptions` (the
+  fourth parameter), `McpAuthorizationObserver`, and
+  `McpAuthorizationDenialEvent` (the observer callback's only argument).
+- **Activity projection** — 15 symbols from `shared/agent/activity-projection.ts`
+  (`projectActivitySummary`, `ActivitySummaryResponseSchema`,
+  `QUESTION_MODE_TO_DOMAIN`, `READ_ACTIVITY_SUMMARY_TOOL_NAME`, …).
+- **Persona helpers** — the `filter*Tools` / `narrow*Tools` helpers, the
+  `*_TOOL_NAMES` constants, and the `SIGNAL_NEW_SIGNAL_KICKOFF` /
+  `ONBOARDING_PROFILE_KICKOFF` constants. The persona IDs, the prompt
+  constants, and `REPORTER_BRIEFING_KICKOFF` stay — `apps/web` imports the
+  latter.
+- **Discovery env accessors** — `discoveryAllowedTypes`, `discoveryMinSimilarity`,
+  `discoveryProfileSource`, `discoveryIntentMatchingEnabled`,
+  `discoveryProfileMatchingEnabled`, the `validate*` helpers, and the
+  `DISCOVERY_*_DEFAULT` constants. `discoveryEvaluatorMinScore` stays: its one
+  importer is `services/api/src/cli/discovery-env-matrix.main.ts`. That CLI is
+  slated for removal with the eval harnesses, and this accessor should be
+  pruned in the same change. These back live Railway configuration and are
+  unchanged in behaviour; only the re-export is gone.
+- **Signal-intake types** — `IntakePack`, `IntakePackInput`, `SynthesisInput`,
+  `SynthesisResult`, `FollowUpPlan`, `answerLabel`, `normalizeIntakePack`, …
+
+Two of the removed symbols (`createAgentTools` and
+`CANONICAL_MCP_TOOL_ACCESS_RULES`) are referenced by `services/api` tests
+through deep source paths rather than the package root, so those tests are
+unaffected by the barrel change.
+
+### Changed
+
+- `IMPLEMENTATION.md` §1 no longer documents a `modelConfig` override on
+  `ToolDeps` — that field does not exist there. `modelConfig` lives on the
+  internal `ToolContext` / `ProtocolDeps` composition, which is not exported, so
+  the section now documents the environment variables as the supported
+  configuration path and states plainly that programmatic override is outside
+  the public contract.
+- `IMPLEMENTATION.md` §3 now documents `createMcpServer` and
+  `createToolRegistry` + `invokeToolRuntime` as the supported tool entry points,
+  replacing the `createChatTools` walkthrough.
+- `STABILITY.md` — the **Capability tools** tier now covers
+  `createEnrichmentTools` only; the **Public API** row names `createToolRegistry`
+  and corrects `ToolContext` to the actually-exported `ResolvedToolContext`.
+
+### Migration
+
+Hosts composing tools by capability should call `createMcpServer` (full MCP
+server, policy applied) or `createToolRegistry` (raw handler map, invoked via
+`invokeToolRuntime`). Both take the same dependency object the individual
+factories did.
+
 ## 14.3.2 - 2026-08-16
 
 No source change. The public contract in `src/index.ts` is untouched; only
