@@ -10,7 +10,7 @@ supported entry point is the package root (`import { ... } from "@indexnetwork/p
 deep imports are not part of the contract. Every symbol is re-exported explicitly from
 `src/index.ts` and tagged with a stability tier:
 
-- **Stable** — interfaces, graph factories, agents, `createChatTools`, the
+- **Stable** — interfaces, graph factories, agents, `createMcpServer`, the
   tool/runtime helpers, and shared schemas. Breaking changes require a major bump.
 - **Experimental** (`@experimental`) — advanced graph-state types and internal
   helpers; may change in a minor release.
@@ -35,18 +35,18 @@ npm install @indexnetwork/protocol
 
 The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
 
-To override the chat model or reasoning effort when using the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`), pass `modelConfig` on `ToolContext`. `ChatAgent` reads these fields when the chat graph runs; the tools themselves do not consume `modelConfig`:
+To override the chat model or reasoning effort when using the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`), pass `modelConfig` on the `ToolDeps` you hand to the registry. `ChatAgent` reads these fields when the chat graph runs; the tools themselves do not consume `modelConfig`:
 
 ```typescript
-import { createChatTools } from "@indexnetwork/protocol";
+import type { ToolDeps } from "@indexnetwork/protocol";
 
-const tools = await createChatTools({
+const deps: ToolDeps = {
   // ... other deps ...
   modelConfig: {
     chatModel: "google/gemini-2.5-flash",       // optional — has a default
     chatReasoningEffort: "low",                  // optional: minimal | low | medium | high | xhigh
   },
-});
+};
 ```
 
 `apiKey` and `baseURL` can also be overridden this way. All other protocol agents (evaluators, generators, etc.) rely on `OPENROUTER_API_KEY` set in the environment regardless of `modelConfig`.
@@ -55,7 +55,7 @@ const tools = await createChatTools({
 
 The package defines interfaces — your application provides the concrete implementations.
 
-**Required** (always needed by `createChatTools`):
+**Required** (always needed by the tool registry):
 
 | Interface | Responsibility |
 |---|---|
@@ -90,50 +90,60 @@ All interfaces are exported from the package root — import them with `import t
 
 ### 3. Create tools
 
-Pass your adapter implementations to `createChatTools` to get a set of LangChain-compatible tools bound to a user session:
+Two entry points are supported, both taking a single dependency object built
+from the adapters above.
+
+`createMcpServer` is the complete integration: it composes every capability's
+tools internally, applies the authorization policy, and returns a ready MCP
+server.
 
 ```typescript
-import { createChatTools } from "@indexnetwork/protocol";
+import { createMcpServer, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from "@indexnetwork/protocol";
 
-const tools = await createChatTools({
-  userId: "user-uuid",
-
-  // ── Required adapters ──
-  database,             // ChatGraphCompositeDatabase
-  embedder,             // Embedder
-  scraper,              // Scraper
-  cache,                // Cache
-  hydeCache,            // HydeCache
-  integration,          // IntegrationAdapter
-  intentQueue,          // IntentGraphQueue
-  contactService,       // ContactServiceAdapter
-  chatSession,          // ChatSessionReader
-  enricher,             // ProfileEnricher
-  negotiationDatabase,  // NegotiationGraphDatabase
-  integrationImporter,  // bulk contact import
-  createUserDatabase,   // (db, userId) => UserDatabase
-  createSystemDatabase, // (db, userId, indexScope, embedder?) => SystemDatabase
-
-  // ── Optional scoping ──
-  networkId: "optional-network-uuid", // scope tools to a specific index/network
-  sessionId: "chat-session-id",       // enables draft opportunities with conversation context
-
-  // ── Optional capabilities (enable when the host supports them) ──
-  agentDatabase,        // AgentDatabase — agent registry
-  agentDispatcher,      // AgentDispatcher — routes negotiation turns to personal agents
-  deliveryLedger,       // DeliveryLedger — OpenClaw delivery commits
-  enrichmentRuns,       // EnrichmentRunStore (+ enrichmentRunQueue) — async MCP enrichment runs
-  mintConnectLink,      // short connect links for opportunity accepts
-  modelConfig,          // override chat model / reasoning effort (see above)
-});
-
-// tools is an array of LangChain Tool objects ready to bind to an agent
+const server = createMcpServer(
+  deps,                // ToolDeps + the opportunity owner-approval port
+  authResolver,        // McpAuthResolver
+  scopedDepsFactory,   // ScopedDepsFactory — builds per-user scoped userDb/systemDb
+  CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
+  authorizationObserver, // optional McpAuthorizationObserver
+);
 ```
 
-`createChatTools` accepts a single `ToolContext` object. The required adapters
-above are always needed; optional capabilities default to a degraded-but-
-functional mode when omitted (for example, without `agentDispatcher` the
-negotiation tools are not registered).
+`createToolRegistry` is the lower-level surface for hosts running their own
+runtime. It returns a `Map` of tool name to `RawToolDefinition` — raw async
+handlers taking `{ context, query }` — which you invoke through
+`invokeToolRuntime`:
+
+```typescript
+import { createToolRegistry, invokeToolRuntime, resolveChatContext } from "@indexnetwork/protocol";
+
+const registry = createToolRegistry(deps, { surface: "mcp" }); // omit `surface` for the full REST set
+
+const context = await resolveChatContext({
+  database,                 // the ChatGraphCompositeDatabase reads listed above
+  userId: "user-uuid",
+  networkId,                // optional — scopes tools to one network
+  sessionId,                // optional — enables draft opportunities
+});
+
+const tool = registry.get("search_intents")!;
+const result = await invokeToolRuntime({
+  toolName: tool.name,
+  tool,
+  context,
+  query: { /* validated against tool.schema */ },
+});
+```
+
+The dependency object carries the required adapters listed above; optional
+capabilities default to a degraded-but-functional mode when omitted (for
+example, without `agentDispatcher` the negotiation tools are not registered).
+
+The per-capability tool factories behind these entry points
+(`createChatTools`, `createIntentTools`, `createNegotiationTools`, …) are
+package-internal as of 15.0.0 and are not part of the supported surface.
+`createEnrichmentTools` remains exported for hosts that run enrichment on its
+own worker, separately from the chat runtime.
 
 ## Graphs
 

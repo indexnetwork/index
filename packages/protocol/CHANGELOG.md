@@ -20,6 +20,72 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 15.0.0 - 2026-08-17
+
+Public-surface prune. `src/index.ts` goes from 443 exported symbols across 164
+export statements to 306 across 143. No implementation changed: every removed
+symbol still exists and still works inside the package — it is simply no longer
+re-exported from the barrel.
+
+The removal set was derived by parsing every barrel export and resolving it
+against every consumer reference in `services/`, `apps/`, `packages/*`,
+`docs/`, `.claude/`, and the protocol's own `eval/` and `skills/` trees —
+covering static named imports, `import type` queries, `import('...').Sym` type
+positions, `await import()` destructuring, namespace aliases, and `mock.module`
+shapes. A symbol was removed only when nothing outside the package imported it
+from the package root.
+
+### Removed from the public API (BREAKING)
+
+137 symbols. None were deleted; all remain internal. The largest groups:
+
+- **Capability tool factories** — `createChatTools`, `createAgentTools`,
+  `createIntentTools`, `createNetworkTools`, `createOpportunityTools`,
+  `createNegotiationTools`, `createQuestionerTools`,
+  `createAskUserQuestionTools`, `createContactTools`, `createIntegrationTools`,
+  `createPremiseTools`, and their `*ToolDeps` types. These are composed
+  internally by `createMcpServer` / `createToolRegistry`, which remain public.
+  `createEnrichmentTools` and `EnrichmentToolDeps` stay exported — the API
+  service calls them directly from its enrichment-run worker.
+- **MCP authorization policy** — 29 symbols from `mcp/mcp.authorization-policy.ts`
+  (`MCP_AGENT_ADMIN_TOOLS`, `McpCapabilityPolicy`, `McpToolAccessRuleSchema`,
+  `defineMcpToolAccessRules`, the `Mcp*` policy types, …).
+  `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS` and `McpAuthorizationObserver`
+  remain public: they are the two the host actually passes to `createMcpServer`.
+- **Activity projection** — 15 symbols from `shared/agent/activity-projection.ts`
+  (`projectActivitySummary`, `ActivitySummaryResponseSchema`,
+  `QUESTION_MODE_TO_DOMAIN`, `READ_ACTIVITY_SUMMARY_TOOL_NAME`, …).
+- **Persona helpers** — the `filter*Tools` / `narrow*Tools` helpers and the
+  `*_TOOL_NAMES` / `*_KICKOFF` constants for the signal, reporter, and
+  onboarding personas. The persona IDs and prompt constants stay.
+- **Discovery env accessors** — `discoveryAllowedTypes`, `discoveryMinSimilarity`,
+  `discoveryProfileSource`, and the rest of the `DISCOVERY_*` accessors. These
+  back live Railway configuration and are unchanged in behaviour; only their
+  re-export is gone.
+- **Signal-intake types** — `IntakePack`, `IntakePackInput`, `SynthesisInput`,
+  `SynthesisResult`, `FollowUpPlan`, `answerLabel`, `normalizeIntakePack`, …
+
+Three of the removed symbols (`createAgentTools`,
+`CANONICAL_MCP_TOOL_ACCESS_RULES`, `McpAuthorizationDenialEvent`) are referenced
+by `services/api` tests through deep source paths rather than the package root,
+so those tests are unaffected by the barrel change.
+
+### Changed
+
+- `IMPLEMENTATION.md` §3 now documents `createMcpServer` and
+  `createToolRegistry` + `invokeToolRuntime` as the supported tool entry points,
+  replacing the `createChatTools` walkthrough.
+- `STABILITY.md` — the **Capability tools** tier now covers
+  `createEnrichmentTools` only; the **Public API** row names `createToolRegistry`
+  and corrects `ToolContext` to the actually-exported `ResolvedToolContext`.
+
+### Migration
+
+Hosts composing tools by capability should call `createMcpServer` (full MCP
+server, policy applied) or `createToolRegistry` (raw handler map, invoked via
+`invokeToolRuntime`). Both take the same dependency object the individual
+factories did.
+
 ## 14.3.2 - 2026-08-16
 
 No source change. The public contract in `src/index.ts` is untouched; only

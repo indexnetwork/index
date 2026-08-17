@@ -30,13 +30,13 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 
 | Barrel section | What it is |
 |---|---|
-| **Public API** | `createChatTools`, model config helpers, tool/runtime helpers (`ToolContext`, `ToolDeps`, `invokeToolRuntime`, …), `requestContext`. |
+| **Public API** | `createToolRegistry`, model config helpers, tool/runtime helpers (`ResolvedToolContext`, `ToolDeps`, `invokeToolRuntime`, …), `requestContext`. |
 | **Interfaces** | Every `*.interface.ts` port you implement to inject infrastructure (databases, embedder, cache, scraper, queues, integration, agent dispatcher, …). |
 | **Shared schemas** | Zod schemas + inferred types that cross the boundary (questions, identity, network-assignment, chat-context, …). |
 | **Graph factories** | `*GraphFactory` classes (`ChatGraphFactory`, `OpportunityGraphFactory`, `NegotiationGraphFactory`, …). |
 | **Agents** | Structured LLM agents (`UserContextGenerator`, `IndexNegotiator`, `OpportunityEvaluator`, …). |
 | **MCP** | `createMcpServer` and its supporting types. |
-| **Capability tools** | Named tool-factory entry points for Signals, Participant context, Communities, Opportunities, Negotiation, Questions, Participant agents, Contacts, and Integrations. |
+| **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories became package-internal in 15.0.0 — compose them through `createMcpServer` or `createToolRegistry`. |
 
 ### Experimental
 
