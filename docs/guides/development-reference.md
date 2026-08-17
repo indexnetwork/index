@@ -103,8 +103,21 @@ Restore any part of it by path:
 ```bash
 git checkout archive/eval-2026-08-16 -- packages/protocol/eval
 git checkout archive/eval-2026-08-16 -- apps/eval-ops
-git checkout archive/eval-2026-08-16 -- services/api/src/cli
+# Scope the CLI restore to the eval files. `services/api/src/cli/` still holds
+# 19 live operational tools and its own AGENTS.md; restoring the whole
+# directory would overwrite them with their pre-removal state.
+git checkout archive/eval-2026-08-16 -- 'services/api/src/cli/discovery*'
+git checkout archive/eval-2026-08-16 -- 'services/api/src/cli/tests/discovery*'
+git checkout archive/eval-2026-08-16 -- \
+  services/api/src/cli/tests/fixtures/discovery-env-matrix-base-runtime-handoff.fixture.ts \
+  services/api/src/cli/tests/fixtures/historical-quality-lease-process.ts
+git checkout archive/eval-2026-08-16 -- services/api/eval
 ```
+
+Those five pathspecs are the complete set: the two fixtures sit under
+`src/cli/tests/fixtures/` alongside retained `backfill-*` fixtures, so the
+`discovery*` globs do not reach them. A restore also needs the CI jobs, the
+`eval:*` scripts and `.env.example` § 15d, all in the same tag.
 
 Restoring the harnesses also means restoring the CI jobs that gated them
 (`eval-verify`, `eval-ops`, `eval-cli-tests` in `.github/workflows/lint.yml`,

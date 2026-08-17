@@ -9,6 +9,7 @@
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
+    "typecheck:specs": "tsc -p tsconfig.spec.json",
     "test:isolated": "NODE_ENV=test bash scripts/test-isolated.sh",
     "test:all": "NODE_ENV=test API_TEST_REQUIRE_DATABASE=1 bun test",
     "db:generate": "drizzle-kit generate",

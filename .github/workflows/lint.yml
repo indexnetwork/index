@@ -100,6 +100,15 @@ jobs:
       - name: Type check API
         run: cd services/api && bun run build
 
+      # `bun run build` compiles services/api/tsconfig.json, which excludes
+      # `src/**/*.spec.ts`, so no spec is type-checked by the step above. That
+      # matters for `discovery-trigger.builders.spec.ts`, where three
+      # `@ts-expect-error` directives prove trigger callers must pass a concrete
+      # `networkId`, and a directive nobody compiles proves nothing.
+      # See services/api/tsconfig.spec.json.
+      - name: Type check the guarded API specs
+        run: cd services/api && bun run typecheck:specs
+
   test:
     # Runs the hermetic pinning/characterization specs that mock all external
     # systems (Redis/LLM/DB), so they need no services or secrets. The timeout
@@ -140,6 +149,17 @@ jobs:
             src/adapters/tests/negotiation-lifecycle.projection.spec.ts \
             src/queues/tests/timeout.queue.spec.ts \
             src/queues/tests/claim-timeout.queue.spec.ts
+
+      # These guard destructive operational CLIs (paused-intent rediscovery
+      # refusal, global user-context backfill classification, intent
+      # verification analysis). They used to ride along in the removed
+      # `eval-cli-tests` job's `bun test src/cli/tests/`; name them explicitly
+      # so the eval removal does not silently drop them.
+      - name: Run operational CLI guard specs
+        run: |
+          unset OPENROUTER_API_KEY OPENAI_API_KEY
+          cd services/api
+          bun test src/cli/tests/
 
   protocol-source-tests:
     # Per-file processes prevent Bun mock.module state from leaking between

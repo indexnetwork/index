@@ -15,17 +15,33 @@ section before promoting to `main`).
   onboarding chat and `POST /api/tools/complete_onboarding` are unchanged.
 - Remove the `discovery` / `discovery-env-matrix` / `discovery-quality` eval CLI
   (`src/cli/discovery*.ts` and its specs), the committed env-matrix baselines,
-  the 12 `eval:*` scripts, `typecheck:cli-specs` and `tsconfig.spec.json`. These
+  the 12 `eval:*` scripts and `typecheck:cli-specs`. These
   statically imported `packages/protocol/eval/**`, which was removed in the same
   change. The `eval_matrix_metadata` table, migrations `0115`/`0125` and the
   `evalMatrixMetadata` schema entry are deliberately retained — dropping the
   table is a destructive production migration and is not part of this change.
-  Restore with `git checkout archive/eval-2026-08-16 -- services/api/src/cli`.
+  Restore by scoping to the eval paths (`src/cli/discovery*`,
+  `src/cli/tests/discovery*`, the two discovery fixtures under
+  `src/cli/tests/fixtures/`, and `services/api/eval`) — `src/cli/` still holds
+  19 live operational tools, so a whole-directory restore would overwrite them.
 - Drop the `.env.example` § 15d discovery eval gate (`DISCOVERY_TARGETS`,
   `DISCOVERY_CONFIRM`, `NEON_API_KEY`, and the quality base/replica targets) and
   the matching `NON_API_PATTERNS` exemptions, now that nothing reads them.
+- Drop the orphaned `HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY` constant
+  from `src/lib/embedding/embedding.identity.ts`; its only consumer was the
+  removed quality CLI. `embeddingConfigurationFingerprint` in the same file is
+  still used by `embedder.adapter.ts` and is retained.
 
 ### Changed
+- Retain `tsconfig.spec.json` as `typecheck:specs`, rescoped from the deleted
+  discovery specs to `src/queues/tests/discovery-trigger.builders.spec.ts`. That
+  spec is production, not eval: its three `@ts-expect-error` directives are the
+  compile-time proof that discovery-trigger callers pass a concrete `networkId`,
+  and `tsconfig.json` excludes `src/**/*.spec.ts`, so deleting the config
+  outright would have dropped the guard silently.
+- Keep `bun test src/cli/tests/` in CI as a dedicated `test`-job step. The
+  removed `eval-cli-tests` job also covered three retained non-eval specs
+  guarding destructive operational CLIs (33 tests).
 - Move the raw-SQL maintenance-write guidance for `src/cli/` into a nested `AGENTS.md`, so it loads whenever those files are open instead of depending on a skill description matching the prompt. No runtime change.
 
 ### Fixed
