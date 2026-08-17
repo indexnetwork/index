@@ -329,7 +329,6 @@ Returns the current authenticated user with their full profile.
     "location": "...",
     "timezone": "...",
     "socials": { ... },
-    "isGhost": false,
     "notificationPreferences": { ... },
     "createdAt": "...",
     "updatedAt": "..."
@@ -443,7 +442,7 @@ Dual-auth SSE endpoint for chat messages with context support. There is no defau
   "scopeType": "network | intent | null (optional — mutually-exclusive focused scope)",
   "scopeId": "string | null (required when scopeType is provided)",
   "networkId": "string | null (deprecated alias for scopeType=network)",
-  "recipientUserId": "string | null (optional — DM recipient for ghost invites)",
+  "recipientUserId": "string | null (optional — DM recipient)",
   "persona": "signal | negotiator | null (optional persona assertion; stored session persona is authoritative)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
@@ -2338,7 +2337,7 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, any n
 
 ### POST /api/networks/:id/members/invite
 
-Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is.
+Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network is provisioned and emailed the same way a brand-new user is.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2362,7 +2361,7 @@ Invite a single member to a network by email. Owner-only, any network. Idempoten
 
 **Response 200** (user already exists): Status code is 200 regardless of whether a scoped agent had to be provisioned. Examples:
 
-- Pre-existing user without a scoped agent (e.g. ghost contact) — agent + key minted, invitation email sent:
+- Pre-existing user without a scoped agent — agent + key minted, invitation email sent:
   ```json
   {
     "user": { "id": "user-uuid", "email": "attendee@example.com" },
@@ -3292,23 +3291,6 @@ Subscribe to newsletter or waitlist via Loops.so.
 
 ---
 
-## Unsubscribe
-
-**Controller prefix**: `/unsubscribe`
-
-### GET /api/unsubscribe/:token
-
-Soft-delete a ghost user to opt out of emails. Returns an HTML response.
-
-**Auth**: None (public)
-
-**Path params**:
-- `token` — Unsubscribe token from `userNotificationSettings`
-
-**Response**: HTML page confirming unsubscribe or indicating the link is no longer valid.
-
----
-
 ## User
 
 **Controller prefix**: `/users`
@@ -3333,7 +3315,6 @@ Batch-fetch users by IDs (max 100).
       "avatar": "...",
       "location": "...",
       "socials": { ... },
-      "isGhost": false,
       "createdAt": "...",
       "updatedAt": "..."
     }
@@ -3495,7 +3476,6 @@ Get a user by ID.
     "avatar": "...",
     "location": "...",
     "socials": { ... },
-    "isGhost": false,
     "createdAt": "...",
     "updatedAt": "..."
   }

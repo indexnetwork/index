@@ -904,6 +904,13 @@
       "when": 1786799687811,
       "tag": "0129_delete_ghost_users",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1786799687812,
+      "tag": "0130_drop_is_ghost",
+      "breakpoints": true
     }
   ]
 }

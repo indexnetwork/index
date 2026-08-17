@@ -593,7 +593,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           }
         }
 
-        const isCounterpartGhost = otherUser?.isGhost ?? false;
         // Skeleton presentation: return an identity-only card without the
         // deps.presenter LLM or negotiation-context load. Name resolution and
         // the unresolvable-counterpart drop above still apply, so the card
@@ -611,7 +610,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             secondaryActionLabel: SECONDARY_ACTION_LABEL,
             mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
             viewerRole,
-            isGhost: isCounterpartGhost,
             ...(secondPartyData ? { secondParty: secondPartyData } : {}),
             presentationPending: true,
             _cardIndex: cardIndex,
@@ -635,7 +633,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             ? { name: 'You', text: 'Worth a look.', userId: state.userId }
             : { name: 'Index', text: 'Worth a look.' },
           viewerRole,
-          isGhost: isCounterpartGhost,
           ...(secondPartyData ? { secondParty: secondPartyData } : {}),
           _presentationFallback: true,
           _cardIndex: cardIndex,
@@ -699,7 +696,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             mutualIntentsLabel: presentation.mutualIntentsLabel,
             narratorChip,
             viewerRole,
-            isGhost: isCounterpartGhost,
             ...(secondPartyData ? { secondParty: secondPartyData } : {}),
             _cardIndex: cardIndex,
           } satisfies RadarCardItem;

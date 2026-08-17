@@ -419,7 +419,6 @@ export interface ChatConversationMeta {
   /** Canonical focused scope id. */
   scopeId?: string | null;
   shareToken?: string | null;
-  ghostInviteSent?: boolean;
   [key: string]: unknown;
 }
 

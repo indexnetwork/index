@@ -47,9 +47,9 @@ beforeAll(async () => {
   const deletedUserIntentId = uuidv4();
 
   await db.insert(users).values([
-    { id: userAId, email: TEST_PREFIX + 'a@t.com', name: 'User A', isGhost: true },
-    { id: userBId, email: TEST_PREFIX + 'b@t.com', name: 'User B', isGhost: true },
-    { id: deletedUserId, email: TEST_PREFIX + 'deleted@t.com', name: 'Deleted User', deletedAt: new Date(), isGhost: true },
+    { id: userAId, email: TEST_PREFIX + 'a@t.com', name: 'User A' },
+    { id: userBId, email: TEST_PREFIX + 'b@t.com', name: 'User B' },
+    { id: deletedUserId, email: TEST_PREFIX + 'deleted@t.com', name: 'Deleted User', deletedAt: new Date() },
   ]);
   await db.insert(networks).values({
     id: networkId,

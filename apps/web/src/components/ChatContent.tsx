@@ -191,7 +191,7 @@ export default function ChatContent({
     [chatScope],
   );
 
-  // Opportunity accept/reject/start-chat + ghost invite modal (shared with the intent detail view).
+  // Opportunity accept/reject/start-chat (shared with the intent detail view).
   const {
     opportunityStatusMap,
     setOpportunityStatusMap,
@@ -1434,7 +1434,6 @@ export default function ChatContent({
                               userId,
                               viewerRole,
                               counterpartName,
-                              isGhost,
                             ) => {
                               if (mutationsBlockedRef.current) return;
                               return handleOpportunityAction(
@@ -1443,7 +1442,6 @@ export default function ChatContent({
                                 userId,
                                 viewerRole,
                                 counterpartName,
-                                isGhost,
                               );
                             }}
                             onOpportunitySecondaryAction={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : (
@@ -1451,7 +1449,6 @@ export default function ChatContent({
                               userId,
                               viewerRole,
                               counterpartName,
-                              isGhost,
                             ) => {
                               if (mutationsBlockedRef.current) return;
                               return handleOpportunityAction(
@@ -1460,7 +1457,6 @@ export default function ChatContent({
                                 userId,
                                 viewerRole,
                                 counterpartName,
-                                isGhost,
                               );
                             }}
                             opportunityLoadingMap={opportunityActionLoading}

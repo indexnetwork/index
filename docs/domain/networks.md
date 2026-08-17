@@ -1,7 +1,7 @@
 ---
 title: "Networks"
 type: domain
-tags: [networks, communities, permissions, personal-networks, ghost-users, contacts, auto-assign]
+tags: [networks, communities, permissions, personal-networks, contacts, auto-assign]
 created: 2026-03-26
 updated: 2026-05-24
 ---
@@ -82,24 +82,19 @@ Personal networks serve as the user's private workspace:
 
 Index Network does not have a separate contacts table. Instead, contacts are stored as `network_members` rows with the `'contact'` permission on the owner's personal network.
 
-When a user adds a contact (by email), the system:
-1. Looks up the email to find an existing user
-2. If no user exists, creates a **ghost user** (see below)
-3. Creates a `network_members` row on the owner's personal network with `permissions: ['contact']`
+Contacts are created by one path only: accepting an opportunity. On accept (and
+on the Start Chat transition) both parties are written into each other's
+personal network as `network_members` rows with `permissions: ['contact']`.
 
-When a user accepts an opportunity, the counterpart is automatically added as a contact via this same mechanism with `restore: true` (which re-activates a previously soft-deleted contact if one exists).
+The accepter's own row uses `restore: true`, re-activating a contact they had
+previously removed — an explicit act overrides their earlier removal. The
+counterpart's row uses `restore: false`, so a person who removed this contact is
+not silently re-added. Removal is a hard delete, and that absence *is* the
+opt-out signal.
 
----
-
-## Ghost Users
-
-A ghost user is a placeholder for someone who has been imported as a contact but has not yet signed up for Index Network. Ghost users have `isGhost: true` on the users table.
-
-Ghost users are created when:
-- A user adds a contact by email and no account exists for that email
-- A CSV or integration import references unknown email addresses
-
-Ghost users participate in the data model (they can be members of networks, they can be actors in opportunities) but they cannot log in or take actions until they sign up. When a ghost user signs up with the same email, their ghost account is upgraded to a full account and all existing memberships and opportunities carry over.
+There is no import path and no manual-add path, so every contact is a real
+account. Placeholder "ghost" accounts were retired in api 0.92.0; the
+`users.is_ghost` column was dropped in migration 0130.
 
 ---
 

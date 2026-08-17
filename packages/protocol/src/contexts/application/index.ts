@@ -83,11 +83,6 @@ export {
 
 export { EnrichmentGenerator, type GeneratedProfile } from "../../enrichment/enrichment.generator.js";
 
-export {
-  shouldEnrichGhostDisplayNameFromParallel,
-  isEnrichedNameMeaningful,
-} from "../../enrichment/enrichment.enricher.js";
-
 // ── Tool factories (foreground adapters) ──────────────────────────────────────
 // These are foreground adapter entry points consumed by the tool composition root (shared/agent)
 // composition.  They accept compiled graphs and host deps through the tool-dep

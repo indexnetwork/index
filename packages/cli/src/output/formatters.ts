@@ -20,7 +20,6 @@ export interface ProfileData {
   avatar: string | null;
   location: string | null;
   socials: Array<{ label: string; value: string }> | null;
-  isGhost: boolean;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -43,9 +42,8 @@ export function profileCard(data: ProfileData): string {
 
   // Name line
   const displayName = data.name ?? "(unnamed)";
-  const ghostTag = data.isGhost ? `  ${YELLOW}[ghost]${RESET}` : "";
-  const nameContent = `${BOLD}${WHITE}${displayName}${RESET}${ghostTag}`;
-  lines.push(`  ${border("|")} ${nameContent}${padTo(W - 2, stripAnsi(displayName + (data.isGhost ? "  [ghost]" : "")))}${border("|")}`);
+  const nameContent = `${BOLD}${WHITE}${displayName}${RESET}`;
+  lines.push(`  ${border("|")} ${nameContent}${padTo(W - 2, stripAnsi(displayName))}${border("|")}`);
 
   // Intro / bio
   if (data.intro) {
@@ -98,7 +96,7 @@ export function profileCard(data: ProfileData): string {
  * @param contacts - Array of contact objects from the API.
  */
 export function contactTable(
-  contacts: Array<{ userId: string; name: string; email: string; isGhost?: boolean }>,
+  contacts: Array<{ userId: string; name: string; email: string }>,
 ): void {
   if (contacts.length === 0) {
     console.log("  No contacts yet.");
@@ -108,8 +106,7 @@ export function contactTable(
   const header = `  ${"Name".padEnd(nameWidth)}  Email`;
   console.log(`${BOLD}${header}${RESET}`);
   for (const c of contacts) {
-    const ghost = c.isGhost ? ` ${DIM}(ghost)${RESET}` : "";
-    console.log(`  ${c.name.padEnd(nameWidth)}  ${c.email}${ghost}`);
+    console.log(`  ${c.name.padEnd(nameWidth)}  ${c.email}`);
   }
 }
 

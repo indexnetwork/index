@@ -15,7 +15,6 @@ import { validateFile } from '@/lib/file-validation';
 import { parseCsvText, type ImportRow, type ParsedCsvResult } from '@/lib/csv-import';
 import CsvPreviewModal from '@/components/modals/CsvPreviewModal';
 import UserAvatar from '@/components/UserAvatar';
-import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
 import { log } from '@/lib/logger';
 
@@ -306,7 +305,7 @@ export default function AccessTab({
     (memberSearchQuery.trim()
       ? members.filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
       : members
-    ).slice().sort((a, b) => (a.isGhost ? 1 : 0) - (b.isGhost ? 1 : 0)),
+    ),
     [members, memberSearchQuery]
   );
   const totalContactsPages = Math.max(1, Math.ceil(filteredMembers.length / CONTACTS_PAGE_SIZE));
@@ -496,11 +495,9 @@ export default function AccessTab({
                     name={member.name}
                     avatar={member.avatar}
                     size={28}
-                    blur={member.isGhost}
                   />
                   <span className="text-sm flex-1 truncate flex items-center gap-1.5 text-black">
                     {member.name}
-                    {member.isGhost && <GhostBadge />}
                   </span>
                 </button>
                 {member.permissions.includes('owner') && (

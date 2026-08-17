@@ -79,7 +79,7 @@ const streamBodySchema = z.object({
   networkId: z.string().nullish(),
   scopeType: z.enum(['network', 'intent']).nullish(),
   scopeId: z.string().nullish(),
-  /** The recipient user ID for DM-style chats (used for ghost invite emails). */
+  /** The recipient user ID for DM-style chats. */
   recipientUserId: z.string().nullish(),
   /** Explicit persona assertion for a newly bootstrapped persona chat. */
   persona: z.enum(['negotiator', 'signal', 'reporter']).nullish(),
@@ -125,7 +125,7 @@ const interruptBodySchema = z.object({
 
 /**
  * Resolve the caller's personal negotiator agent row (provisioning it when
- * missing — idempotent). Returns null for ghost or missing users, which
+ * missing — idempotent). Returns null for missing users, which
  * callers treat as 404.
  */
 async function resolveNegotiatorAgent(userId: string) {

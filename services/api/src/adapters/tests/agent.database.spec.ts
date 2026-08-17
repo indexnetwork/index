@@ -71,12 +71,11 @@ describe('AgentDatabaseAdapter.ensureNegotiatorAgent', () => {
   const adapter = new AgentDatabaseAdapter();
   const createdUserIds: string[] = [];
 
-  const createUser = async (input: { name: string; isGhost?: boolean }) => {
+  const createUser = async (input: { name: string }) => {
     const [user] = await db.insert(schema.users).values({
       email: `negotiator-ensure-${crypto.randomUUID()}@test.local`,
       name: input.name,
-      isGhost: input.isGhost ?? false,
-    }).returning({ id: schema.users.id });
+          }).returning({ id: schema.users.id });
     createdUserIds.push(user.id);
     return user.id;
   };
@@ -122,16 +121,9 @@ describe('AgentDatabaseAdapter.ensureNegotiatorAgent', () => {
     expect(rows.length).toBe(1);
   });
 
-  it('skips ghost users', async () => {
-    const userId = await createUser({ name: 'Ghost User', isGhost: true });
-    const agentId = await adapter.ensureNegotiatorAgent(userId);
+  it('skips missing users', async () => {
+    const agentId = await adapter.ensureNegotiatorAgent(crypto.randomUUID());
     expect(agentId).toBeNull();
-
-    const rows = await db
-      .select({ id: schema.agents.id })
-      .from(schema.agents)
-      .where(eq(schema.agents.ownerId, userId));
-    expect(rows.length).toBe(0);
   });
 
   it('returns null for unknown users', async () => {

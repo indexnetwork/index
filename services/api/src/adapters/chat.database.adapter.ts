@@ -354,43 +354,8 @@ export class ChatDatabaseAdapter {
     await persistProfileIdentityToUser(userId, profile);
   }
 
-  /**
-   * Soft-delete a ghost user and all their contact memberships.
-   * Delegates to EnrichmentDatabaseAdapter.
-   * @param userId - The ghost user to soft-delete
-   * @returns true if the user was soft-deleted
-   */
-  async softDeleteGhost(userId: string): Promise<boolean> {
-    const profileAdapter = new EnrichmentDatabaseAdapter();
-    return profileAdapter.softDeleteGhost(userId);
-  }
 
-  /**
-   * Find an existing user that shares any of the given social handles with the specified ghost.
-   * Delegates to EnrichmentDatabaseAdapter.
-   * @param userId - The ghost user ID to exclude from results
-   * @param socials - Social handles to match against
-   * @returns The matching user's ID, or null if no match found
-   */
-  async findDuplicateUser(
-    userId: string,
-    socials: Array<{ id: string; userId: string; label: string; value: string }>,
-  ): Promise<{ id: string } | null> {
-    const profileAdapter = new EnrichmentDatabaseAdapter();
-    return profileAdapter.findDuplicateUser(userId, socials);
-  }
 
-  /**
-   * Merge a ghost user (source) into a target user.
-   * Re-points all data from source to target, cleans up ghost-only records, and soft-deletes source.
-   * Delegates to EnrichmentDatabaseAdapter.
-   * @param sourceId - The ghost user to merge away (must be an active ghost)
-   * @param targetId - The user to merge into
-   */
-  async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
-    const profileAdapter = new EnrichmentDatabaseAdapter();
-    return profileAdapter.mergeGhostUser(sourceId, targetId);
-  }
 
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
     try {
@@ -1381,7 +1346,6 @@ export class ChatDatabaseAdapter {
         avatar: users.avatar,
         intro: users.intro,
         email: users.email,
-        isGhost: users.isGhost,
         permissions: networkMembers.permissions,
         memberPrompt: networkMembers.prompt,
         autoAssign: networkMembers.autoAssign,
@@ -1413,7 +1377,6 @@ export class ChatDatabaseAdapter {
       avatar: m.avatar,
       intro: m.intro ?? null,
       email: m.email,
-      isGhost: m.isGhost ?? false,
       permissions: m.permissions ?? [],
       memberPrompt: m.memberPrompt,
       autoAssign: m.autoAssign,
@@ -2801,39 +2764,6 @@ export class ChatDatabaseAdapter {
   // ─────────────────────────────────────────────────────────────────────────────
 
 
-  /**
-   * Soft-delete a ghost user by unsubscribe token.
-   * Looks up the user via userNotificationSettings.unsubscribeToken,
-   * then soft-deletes if the user is a ghost and not already deleted.
-   * @param token - The unsubscribe token from the email link
-   * @returns true if user was soft-deleted, false if not found or not eligible
-   */
-  async softDeleteGhostByUnsubscribeToken(token: string): Promise<boolean> {
-    const [settings] = await db.select({ userId: schema.userNotificationSettings.userId })
-      .from(schema.userNotificationSettings)
-      .where(eq(schema.userNotificationSettings.unsubscribeToken, token))
-      .limit(1);
-    if (!settings) return false;
-
-    // Verify user is a ghost
-    const [user] = await db.select({ id: schema.users.id, isGhost: schema.users.isGhost })
-      .from(schema.users)
-      .where(eq(schema.users.id, settings.userId))
-      .limit(1);
-    if (!user || !user.isGhost) return false;
-
-    // Soft-delete all index_members rows where this ghost is a contact
-    const result = await db.update(schema.networkMembers)
-      .set({ deletedAt: new Date() })
-      .where(and(
-        eq(schema.networkMembers.userId, settings.userId),
-        sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-        isNull(schema.networkMembers.deletedAt),
-      ))
-      .returning({ networkId: schema.networkMembers.networkId });
-
-    return result.length > 0;
-  }
 
   /**
    * Get or create notification settings for a user.
@@ -2863,23 +2793,6 @@ export class ChatDatabaseAdapter {
     return row;
   }
 
-  /**
-   * Get emails of soft-deleted ghost users from a list of emails.
-   * Used to prevent re-importing opted-out ghost contacts.
-   * @param emails - List of emails to check
-   * @returns Emails belonging to soft-deleted ghost users
-   */
-  async getSoftDeletedGhostEmails(emails: string[]): Promise<string[]> {
-    if (emails.length === 0) return [];
-    const results = await db.select({ email: schema.users.email })
-      .from(schema.users)
-      .where(and(
-        inArray(schema.users.email, emails),
-        eq(schema.users.isGhost, true),
-        isNotNull(schema.users.deletedAt),
-      ));
-    return results.map(r => r.email);
-  }
 
 
   /**
@@ -2906,14 +2819,13 @@ export class ChatDatabaseAdapter {
    * @param email - The email to search for
    * @returns User record or null
    */
-  async getUserByEmail(email: string): Promise<{ id: string; name: string; email: string; isGhost: boolean } | null> {
+  async getUserByEmail(email: string): Promise<{ id: string; name: string; email: string } | null> {
     const normalized = email.toLowerCase().trim();
     const [row] = await db
       .select({
         id: schema.users.id,
         name: schema.users.name,
         email: schema.users.email,
-        isGhost: schema.users.isGhost,
       })
       .from(schema.users)
       .where(and(
@@ -2929,14 +2841,13 @@ export class ChatDatabaseAdapter {
    * @param emails - Array of emails to search for
    * @returns Array of user records (only those that exist)
    */
-  async getUsersByEmails(emails: string[]): Promise<Array<{ id: string; name: string; email: string; isGhost: boolean }>> {
+  async getUsersByEmails(emails: string[]): Promise<Array<{ id: string; name: string; email: string }>> {
     if (emails.length === 0) return [];
     const rows = await db
       .select({
         id: schema.users.id,
         name: schema.users.name,
         email: schema.users.email,
-        isGhost: schema.users.isGhost,
       })
       .from(schema.users)
       .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt)));
@@ -3191,7 +3102,7 @@ export class ChatDatabaseAdapter {
    */
   async getContactMembers(ownerId: string): Promise<Array<{
     userId: string;
-    user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
+    user: { id: string; name: string; email: string; avatar: string | null };
   }>> {
     const personalIndexId = await getPersonalIndexId(ownerId);
     if (!personalIndexId) return [];
@@ -3202,7 +3113,6 @@ export class ChatDatabaseAdapter {
         userName: schema.users.name,
         userEmail: schema.users.email,
         userAvatar: schema.users.avatar,
-        userIsGhost: schema.users.isGhost,
       })
       .from(schema.networkMembers)
       .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
@@ -3222,7 +3132,6 @@ export class ChatDatabaseAdapter {
         name: row.userName,
         email: row.userEmail,
         avatar: row.userAvatar,
-        isGhost: row.userIsGhost,
       },
     }));
   }

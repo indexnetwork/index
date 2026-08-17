@@ -19,7 +19,6 @@ import { UserController } from './controllers/user.controller';
 import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
-import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
 import { NotificationController } from './controllers/notification.controller';
@@ -644,7 +643,6 @@ controllerInstances.set(ConnectLinkController, new ConnectLinkController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
 controllerInstances.set(
   NotificationController,

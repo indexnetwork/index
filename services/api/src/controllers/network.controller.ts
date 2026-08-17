@@ -492,7 +492,7 @@ export class NetworkController {
    * Invite a single member to a network by email. Owner-only.
    * Idempotent: re-inviting a user who already has a network-scoped agent is
    * a no-op (no key minted, no email). When the user does NOT yet have a
-   * scoped agent — newly created users and pre-existing ghost contacts alike
+   * scoped agent — newly created and pre-existing users alike
    * — provisions one and emails the invitation with a connect command.
    */
   @Post('/:id/members/invite')

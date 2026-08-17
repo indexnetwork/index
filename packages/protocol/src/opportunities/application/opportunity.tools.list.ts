@@ -260,7 +260,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
 
                 const viewerActor = opp.actors.find((a) => a.userId === context.userId);
                 const viewerRole = viewerActor?.role ?? "party";
-                const isCounterpartGhost = counterpartUser?.isGhost ?? false;
 
                 try {
                   // Load the negotiation context alongside presenter context so
@@ -330,7 +329,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                       ? opp.interpretation.confidence
                       : undefined,
                     status: opp.status,
-                    isGhost: isCounterpartGhost,
                     ...(redeliveryIds.has(opp.id) ? { redelivery: true } : {}),
                     ...(viewerIsIntroducerHere && secondPartyNameForHeadline
                       ? {
@@ -447,7 +445,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
 
                 const viewerActor = opp.actors.find((a) => a.userId === context.userId);
                 const viewerRole = viewerActor?.role ?? "party";
-                const isCounterpartGhost = counterpartUser?.isGhost ?? false;
 
                 const [ctx, negotiationContext] = await Promise.all([
                   gatherOpportunityPresenterContext(
@@ -500,7 +497,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                     ? opp.interpretation.confidence
                     : undefined,
                   status: opp.status,
-                  isGhost: isCounterpartGhost,
                   ...(viewerIsIntroducerHere && secondPartyNameForHeadline
                     ? {
                         secondParty: {

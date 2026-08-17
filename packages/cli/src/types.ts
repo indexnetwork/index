@@ -30,7 +30,6 @@ export interface UserData {
   avatar: string | null;
   location: string | null;
   socials: SocialLink[] | null;
-  isGhost: boolean;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -148,7 +147,6 @@ export interface OpportunityDetail {
   category?: string;
   confidence?: number;
   index?: { id: string; title: string };
-  isGhost?: boolean;
   primaryActionLabel?: string;
   createdAt?: string;
   /** Present when the requested opportunity was superseded by this enriched opportunity. */

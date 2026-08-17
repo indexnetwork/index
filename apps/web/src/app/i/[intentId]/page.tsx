@@ -1412,7 +1412,6 @@ export default function IntentDetailPage() {
                             userId,
                             viewerRole,
                             counterpartName,
-                            isGhost,
                           ) =>
                             handleOpportunityAction(
                               oppId,
@@ -1420,7 +1419,6 @@ export default function IntentDetailPage() {
                               userId,
                               viewerRole,
                               counterpartName,
-                              isGhost,
                             )
                           }
                           onSecondaryAction={(
@@ -1428,7 +1426,6 @@ export default function IntentDetailPage() {
                             userId,
                             viewerRole,
                             counterpartName,
-                            isGhost,
                           ) =>
                             handleOpportunityAction(
                               oppId,
@@ -1436,7 +1433,6 @@ export default function IntentDetailPage() {
                               userId,
                               viewerRole,
                               counterpartName,
-                              isGhost,
                             )
                           }
                           isLoading={

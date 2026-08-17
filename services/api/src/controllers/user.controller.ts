@@ -157,7 +157,6 @@ export class UserController {
       avatar: row.avatar,
       location: row.location,
       socials: row.socials,
-      isGhost: row.isGhost,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));
@@ -581,7 +580,6 @@ export class UserController {
         avatar: user.avatar,
         location: user.location,
         socials,
-        isGhost: user.isGhost,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },

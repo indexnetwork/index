@@ -77,7 +77,7 @@ function generateSnowflakeId(): string {
  * ChatSessionService — H2A (Human-to-Agent) conversation layer.
  *
  * Builds on the unified ConversationDatabaseAdapter to add agent-specific behavior:
- * graph invocation, SSE streaming, title generation, sharing, and ghost invites.
+ * graph invocation, SSE streaming, title generation, and sharing.
  *
  * Part of the unified conversation architecture:
  * - ConversationDatabaseAdapter: single data layer for all conversation types

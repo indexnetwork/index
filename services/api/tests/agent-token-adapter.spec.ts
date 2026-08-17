@@ -19,7 +19,7 @@ describe('agentTokenAdapter.revokeAllForAgent', () => {
 
   beforeAll(async () => {
     const email = `test-revoke-${randomUUID()}@example.com`;
-    const [u] = await db.insert(users).values({ email, name: 'Revoke Test', emailVerified: true, isGhost: false }).returning({ id: users.id });
+    const [u] = await db.insert(users).values({ email, name: 'Revoke Test', emailVerified: true }).returning({ id: users.id });
     userId = u.id;
     const [a] = await db.insert(agents).values({ ownerId: userId, name: 'Agent A', type: 'external' }).returning({ id: agents.id });
     agentId = a.id;

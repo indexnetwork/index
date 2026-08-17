@@ -29,7 +29,7 @@ export class ContactService {
    */
   async listContacts(ownerId: string): Promise<Array<{
     userId: string;
-    user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
+    user: { id: string; name: string; email: string; avatar: string | null };
   }>> {
     return this.db.getContactMembers(ownerId);
   }
@@ -46,7 +46,6 @@ export class ContactService {
     name: string;
     email: string;
     avatar: string | null;
-    isGhost: boolean;
   }>> {
     return this.db.searchContactMembers(ownerId, q, limit);
   }

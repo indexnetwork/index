@@ -986,7 +986,6 @@ export class IntentDatabaseAdapter {
       location: user.location ?? null,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       onboarding: user.onboarding ?? null,
-      isGhost: user.isGhost ?? false,
       deletedAt: user.deletedAt ?? null,
     };
   }

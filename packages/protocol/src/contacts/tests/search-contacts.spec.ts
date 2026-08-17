@@ -56,7 +56,6 @@ describe("search_contacts", () => {
             name: "Jane Smith",
             email: "jane@example.com",
             avatar: null,
-            isGhost: false,
           },
         ];
       },
@@ -96,7 +95,6 @@ describe("search_contacts", () => {
           name: "Bob Jones",
           email: "bob@example.com",
           avatar: null,
-          isGhost: false,
         },
       ],
     };

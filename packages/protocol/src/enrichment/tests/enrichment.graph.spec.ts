@@ -57,7 +57,6 @@ describe('ProfileGraph', () => {
         location: data.location ?? null,
       })),
       saveProfile: mock(async () => {}),
-      softDeleteGhost: mock(async () => true),
       getPremisesForUser: mock(async () => []),
     } as any;
 
@@ -359,7 +358,7 @@ describe('ProfileGraph', () => {
 const mockEnrichUserProfile = mock(async () => null as any);
 
 /**
- * Integration tests for generate mode (ghost user profile generation).
+ * Integration tests for generate mode (profile generation from enrichment).
  *
  * These tests mock the enrichUserProfile Chat API call and verify that the
  * profile graph correctly handles both enrichment success (text blob routed
@@ -385,9 +384,6 @@ describe('ProfileGraph - Generate Mode', () => {
       saveProfile: mock(async (userId: string, profile: any) => {
         savedProfiles.set(userId, profile);
       }),
-      softDeleteGhost: mock(async () => true),
-      findDuplicateUser: mock(async () => null),
-      mergeGhostUser: mock(async () => {}),
       getPremisesForUser: mock(async () => []),
     } as any;
 
@@ -440,34 +436,7 @@ describe('ProfileGraph - Generate Mode', () => {
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 120_000);
 
-    it('should update ghost user display name from enrichment when placeholder', async () => {
-      const ghost = {
-        id: 'ghost-enriched',
-        name: 'jane',
-        email: 'jane@example.com',
-        isGhost: true,
-        socials: [],
-        location: null,
-        intro: null,
-      };
-      (mockDatabase.getUser as any).mockResolvedValue(ghost);
-      mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
-
-      const graph = buildGraph();
-      const result = await graph.invoke({
-        userId: ghost.id,
-        operationMode: 'generate',
-      });
-
-      expect(result.error).toBeUndefined();
-      expect(mockDatabase.updateUser).toHaveBeenCalledWith(
-        ghost.id,
-        expect.objectContaining({ name: 'Jane Doe' }),
-      );
-      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
-    }, 60_000);
-
-    it('should not overwrite non-ghost user display name from enrichment', async () => {
+    it('should not overwrite the user display name from enrichment', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
 
@@ -496,7 +465,7 @@ describe('ProfileGraph - Generate Mode', () => {
       intro: null,
     };
 
-    it('should end gracefully when enrichment fails for a non-ghost user', async () => {
+    it('should end gracefully when enrichment fails', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockRejectedValue(new Error('API timeout'));
 
@@ -506,11 +475,10 @@ describe('ProfileGraph - Generate Mode', () => {
         operationMode: 'generate',
       });
 
-      // Non-ghost: enrichment failure falls back to basic info and ends without error.
-      // Nothing is saved (the generate->save tail was removed) and the ghost is not deleted.
+      // Enrichment failure falls back to basic info and ends without error;
+      // nothing is saved (the generate->save tail was removed).
       expect(result.error).toBeUndefined();
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
-      expect(mockDatabase.softDeleteGhost).not.toHaveBeenCalled();
     }, 120_000);
   });
 
@@ -524,7 +492,7 @@ describe('ProfileGraph - Generate Mode', () => {
       intro: null,
     };
 
-    it('should end gracefully when enrichment has empty fields (non-ghost)', async () => {
+    it('should end gracefully when enrichment has empty fields', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockResolvedValue({
         identity: { name: 'seren', bio: '', location: '' },
@@ -541,7 +509,7 @@ describe('ProfileGraph - Generate Mode', () => {
         operationMode: 'generate',
       });
 
-      // Low-signal enrichment for a non-ghost falls back to basic info and ends; no save.
+      // Low-signal enrichment falls back to basic info and ends; no save.
       expect(result.error).toBeUndefined();
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     }, 120_000);
@@ -557,7 +525,7 @@ describe('ProfileGraph - Generate Mode', () => {
       intro: null,
     };
 
-    it('should not update the user when match is not confident (non-ghost)', async () => {
+    it('should not update the user when match is not confident', async () => {
       (mockDatabase.getUser as any).mockResolvedValue(user);
       mockEnrichUserProfile.mockResolvedValue({
         identity: { name: 'Alex Unknown', bio: 'Possibly a developer.', location: 'Remote' },
@@ -585,32 +553,6 @@ describe('ProfileGraph - Generate Mode', () => {
   // Full pipeline
   // ─────────────────────────────────────────────────────────
 
-  describe('ghost user with no enrichment signal', () => {
-    const ghost = {
-      id: 'ghost-pipeline',
-      name: 'seren',
-      email: 'seren@index.network',
-      isGhost: true,
-      socials: [],
-      location: null,
-      intro: null,
-    };
-
-    it('should soft-delete the ghost when enrichment returns nothing', async () => {
-      (mockDatabase.getUser as any).mockResolvedValue(ghost);
-      mockEnrichUserProfile.mockResolvedValue(null);
-
-      const graph = buildGraph();
-      const result = await graph.invoke({
-        userId: ghost.id,
-        operationMode: 'generate',
-      });
-
-      // A ghost with no confident enrichment is soft-deleted; no profile is saved.
-      expect(mockDatabase.softDeleteGhost).toHaveBeenCalledWith(ghost.id);
-      expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
-    }, 120_000);
-  });
 });
 
 // ─── Enrichment → Premise Decomposition Path ─────────────────────────────────
@@ -649,9 +591,6 @@ describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
       setUserSocials: mock(async () => {}),
       updateUser: mock(async (userId: string, data: any) => ({ id: userId, ...data })),
       saveProfile: mock(async () => {}),
-      softDeleteGhost: mock(async () => true),
-      findDuplicateUser: mock(async () => null),
-      mergeGhostUser: mock(async () => {}),
       getPremisesForUser: mock(async () => []),
     } as any;
 

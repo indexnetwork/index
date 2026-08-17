@@ -473,7 +473,7 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 ### 4.16 Invite Generator
 
 **File:** `invite.generator.ts`
-**Role:** Generates contextual invite messages for ghost user outreach.
+**Role:** Retired with ghost users (api 0.92.0).
 **Model:** `google/gemini-2.5-flash`, temperature 0.3, maxTokens 512
 
 ### 4.17 Premise Decomposer
@@ -853,7 +853,7 @@ Enrichment combines web scraping, external API enrichment, premise decomposition
 
 **Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather public web data -> `decompose_premises` processes the scraped content.
 
-**Generate mode:** Uses the external enrichment API (Parallel Chat API) via the `auto_generate` node to enrich the user's identity (and dedupe/update ghost display names + socials on `users`), then decomposes into premises.
+**Generate mode:** Uses the external enrichment API (Parallel Chat API) via the `auto_generate` node to enrich the user's identity and socials on `users`, then decomposes into premises.
 
 **Query mode:** Fast path that returns the user's existing identity/context without any LLM calls.
 

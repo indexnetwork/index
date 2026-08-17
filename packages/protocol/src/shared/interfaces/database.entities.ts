@@ -130,7 +130,6 @@ export interface UserRecord {
   location?: string | null;
   socials: UserSocial[];
   onboarding?: OnboardingState | null;
-  isGhost?: boolean;
   deletedAt?: Date | null;
 }
 
@@ -433,7 +432,6 @@ export interface IndexMemberDetails {
   /** Count of their intents in this network */
   intentCount: number;
   /** Whether this user is a ghost (not yet onboarded) */
-  isGhost?: boolean;
 }
 
 /**

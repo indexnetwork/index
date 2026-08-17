@@ -243,7 +243,6 @@ export function buildMinimalOpportunityCard(
   secondPartyName?: string,
   secondPartyAvatar?: string | null,
   secondPartyUserId?: string,
-  isCounterpartGhost?: boolean,
 ): {
   opportunityId: string;
   userId: string;
@@ -259,7 +258,6 @@ export function buildMinimalOpportunityCard(
   viewerRole: string;
   score: number | undefined;
   status: string;
-  isGhost: boolean;
   secondParty?: { name: string; avatar?: string | null; userId?: string };
 } {
   const viewerActor = opp.actors.find((a) => a.userId === viewerId);
@@ -312,7 +310,6 @@ export function buildMinimalOpportunityCard(
     viewerRole,
     score,
     status: opp.status ?? "latent",
-    isGhost: isCounterpartGhost ?? false,
     ...(viewerIsIntroducer && secondPartyName
       ? {
           secondParty: {

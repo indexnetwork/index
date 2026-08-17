@@ -1,0 +1,20 @@
+-- Drop `users.is_ghost`.
+--
+-- Migration 0129 (immediately before this one) deleted every row carrying
+-- is_ghost = true, and protocol 17.0.0 / api 0.91.0 removed the only code paths
+-- that could set it. The column now has exactly one value on every row, and no
+-- reader left: the ghost branches in the enrichment graph, the `isGhost` field
+-- on opportunity cards and contact payloads, and the `claimGhostUser` /
+-- `softDeleteGhost` / `mergeGhostUser` / `findDuplicateUser` operations are all
+-- gone in the same release.
+--
+-- Ordering is what makes this safe, and it is guaranteed rather than assumed:
+-- Drizzle applies migrations in journal order within a single run, so 0129
+-- deletes the ghosts before this statement executes. If 0129 fails the run
+-- halts and this never applies — there is no interleaving in which the column
+-- disappears while a ghost row survives and silently becomes indistinguishable
+-- from a real account.
+--
+-- Irreversible. `is_ghost` cannot be reconstructed after this, which is the
+-- intent: the feature is retired, not paused.
+ALTER TABLE "users" DROP COLUMN IF EXISTS "is_ghost";

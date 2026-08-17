@@ -1050,11 +1050,10 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   /**
    * Ensure the user has a personal negotiator agent row (one per user).
    * Idempotent — safe to call on every sign-in; follows the ensurePersonalNetwork
-   * setup-side-effect pattern. Ghost users are skipped: they never signed up and
-   * must not get negotiator rows (a later real sign-in de-ghosts and provisions).
+   * setup-side-effect pattern. A missing user row is skipped rather than provisioned.
    *
    * @param userId - The user to provision a negotiator for
-   * @returns The negotiator agent id, or null when the user is missing or a ghost
+   * @returns The negotiator agent id, or null when the user is missing
    */
   async ensureNegotiatorAgent(userId: string): Promise<string | null> {
     const findExisting = () =>
@@ -1077,12 +1076,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     }
 
     const [user] = await db
-      .select({ name: schema.users.name, isGhost: schema.users.isGhost })
+      .select({ name: schema.users.name })
       .from(schema.users)
       .where(eq(schema.users.id, userId))
       .limit(1);
 
-    if (!user || user.isGhost) {
+    if (!user) {
       return null;
     }
 

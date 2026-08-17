@@ -18,7 +18,7 @@ export class UserDatabaseAdapter {
   /**
    * Find multiple users by IDs. Returns public profile fields only (same shape as single-user API).
    */
-  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; isGhost: boolean; createdAt: Date; updatedAt: Date }>> {
+  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; createdAt: Date; updatedAt: Date }>> {
     if (userIds.length === 0) return [];
     const userRows = await db.select({
       id: users.id,
@@ -26,7 +26,6 @@ export class UserDatabaseAdapter {
       intro: users.intro,
       avatar: users.avatar,
       location: users.location,
-      isGhost: users.isGhost,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     })

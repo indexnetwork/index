@@ -99,7 +99,6 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
         email: `${name}-${suffix}@example.com`,
         name: `Frame Drift ${name}`,
         emailVerified: true,
-        isGhost: false,
       })),
     ]);
     await db.update(users).set({ deletedAt: new Date('2026-07-01T00:00:00Z') })

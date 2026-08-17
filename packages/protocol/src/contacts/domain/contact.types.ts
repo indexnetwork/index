@@ -9,7 +9,7 @@
 /** Contact with user details, as returned by listContacts. */
 export interface ContactEntry {
   userId: string;
-  user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
+  user: { id: string; name: string; email: string; avatar: string | null };
 }
 
 /** Flat contact row returned by searchContacts. */
@@ -18,5 +18,4 @@ export interface ContactSearchResult {
   name: string;
   email: string;
   avatar: string | null;
-  isGhost: boolean;
 }

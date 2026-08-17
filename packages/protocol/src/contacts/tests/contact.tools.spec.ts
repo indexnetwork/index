@@ -31,7 +31,7 @@ function makeDeps(overrides?: {
   return {
     contactService: {
       listContacts: overrides?.listContacts ?? (async () => ([
-        { userId: 'c1', user: { name: 'Alice', email: 'alice@example.com', avatar: null, isGhost: false } },
+        { userId: 'c1', user: { name: 'Alice', email: 'alice@example.com', avatar: null } },
       ])),
       removeContact: overrides?.removeContact ?? (async () => {}),
     },
@@ -80,7 +80,7 @@ describe('createContactTools - list_contacts', () => {
 
     const result = await call('list_contacts', {}) as {
       success: boolean;
-      data: { count: number; contacts: Array<{ name: string; isGhost: boolean }> };
+      data: { count: number; contacts: Array<{ name: string }> };
     };
 
     expect(result.success).toBe(true);
@@ -94,9 +94,9 @@ describe('createContactTools - list_contacts', () => {
       defineTool,
       makeDeps({
         listContacts: async () => ([
-          { userId: 'c1', user: { name: 'Alice', email: 'a@x.com', avatar: null, isGhost: false } },
-          { userId: 'c2', user: { name: 'Bob', email: 'b@x.com', avatar: null, isGhost: false } },
-          { userId: 'c3', user: { name: 'Carol', email: 'c@x.com', avatar: null, isGhost: false } },
+          { userId: 'c1', user: { name: 'Alice', email: 'a@x.com', avatar: null } },
+          { userId: 'c2', user: { name: 'Bob', email: 'b@x.com', avatar: null } },
+          { userId: 'c3', user: { name: 'Carol', email: 'c@x.com', avatar: null } },
         ]),
       }),
     );

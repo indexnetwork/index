@@ -53,7 +53,7 @@ export interface EnrichmentQueueDeps {
  * Handles `ensure_profile_hyde`: invokes the profile graph in write mode so the user has
  * a profile and HyDE documents for discovery (network members can be found).
  *
- * Handles `enrich.user`: enriches users (ghost or real) via Chat API enrichment
+ * Handles `enrich.user`: enriches users via Chat API enrichment
  * inside the profile graph, then generates profile + HyDE documents.
  *
  * @remarks
@@ -90,7 +90,7 @@ export class EnrichmentQueue {
 
   /**
    * Enqueue a job to enrich a user with public data and generate their profile.
-   * Works for both ghost users (imported contacts) and real users (onboarding).
+   * Runs for users during onboarding and on demand.
    * @param data - userId to enrich
    * @returns The BullMQ job
    */

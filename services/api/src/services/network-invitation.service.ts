@@ -123,7 +123,7 @@ class NetworkInvitationService {
    * always exist; provisions a network-scoped personal agent and API key
    * (and emails the connect command) whenever the user does not already have
    * a scoped agent for this network. Reusing a user who was created via
-   * another path (e.g. ghost contact) still yields a key + email.
+   * another path still yields a key + email.
    *
    * @param params - networkId, email, optional name
    * @returns InviteResult — see field docs
@@ -246,7 +246,6 @@ class NetworkInvitationService {
         // browser session. Keep the legacy Better Auth flag for compatibility;
         // authorization must continue to come from JWT sessions or scoped keys.
         emailVerified: true,
-        isGhost: false,
       })
       .onConflictDoNothing()
       .returning({ id: schema.users.id, email: schema.users.email });

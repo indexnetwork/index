@@ -12,7 +12,7 @@ const logger = log.service.from('ConversationService');
  * - ConversationDatabaseAdapter: single data layer for all conversation types (H2A, H2H, future A2A)
  * - ConversationService: general conversation operations (create, message, DM, metadata, real-time)
  * - ChatSessionService: layered on top for H2A-specific behavior (graph invocation, SSE streaming,
- *   title generation, sharing, ghost invites)
+ *   title generation, sharing)
  *
  * @remarks Delegates all persistence to ConversationDatabaseAdapter. Does not call other services.
  */
@@ -131,20 +131,6 @@ export class ConversationService {
       metadata: opts?.metadata,
     });
 
-    const participants = await this.db.getParticipants(conversationId);
-
-    // Ghost invite email: on first user message to a ghost, send an invite
-    if (role === 'user') {
-      try {
-        await this.sendGhostInviteIfNeeded(conversationId, senderId, parts, participants);
-      } catch (err) {
-        logger.error('Ghost invite email failed', {
-          conversationId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
     return msg;
   }
 
@@ -212,72 +198,6 @@ export class ConversationService {
   async updateMetadata(conversationId: string, metadata: Record<string, unknown>, userId: string) {
     await this.verifyParticipant(userId, conversationId);
     return this.db.upsertMetadata(conversationId, metadata);
-  }
-
-  /**
-   * Sends a ghost invite email if any non-sender participant is a ghost user
-   * and no invite has been sent yet for this conversation.
-   */
-  private async sendGhostInviteIfNeeded(
-    conversationId: string,
-    senderId: string,
-    parts: unknown[],
-    participants: { participantId: string; participantType: string }[],
-  ): Promise<void> {
-    const otherUsers = participants.filter(
-      (p) => p.participantId !== senderId && p.participantType === 'user',
-    );
-    if (otherUsers.length === 0) return;
-
-    const metadata = await this.db.getMetadata(conversationId);
-    if (metadata?.ghostInviteSent) return;
-
-    for (const p of otherUsers) {
-      const recipient = await this.db.getUser(p.participantId);
-      if (!recipient || !recipient.isGhost || recipient.deletedAt || !recipient.email) continue;
-
-      const sender = await this.db.getUser(senderId);
-      if (!sender) continue;
-
-      const messageText = parts
-        .map((part) => (typeof part === 'object' && part !== null && 'text' in part ? (part as { text: string }).text : ''))
-        .filter(Boolean)
-        .join('\n') || '(attachment)';
-
-      const { ghostInviteTemplate } = await import('../lib/email/templates');
-      const { emailQueue } = await import('../queues/email.queue');
-
-      const appUrl = process.env.WEB_APP_URL || 'https://index.network';
-      const replyUrl = `${appUrl}/onboarding?ref=invite&alpha=true`;
-      const notifSettings = await this.db.getOrCreateNotificationSettings(recipient.id);
-      const unsubscribeUrl = `${appUrl}/api/unsubscribe/${notifSettings.unsubscribeToken}`;
-
-      const email = ghostInviteTemplate(
-        recipient.name ?? 'there',
-        sender.name ?? 'Someone',
-        messageText,
-        replyUrl,
-        unsubscribeUrl,
-      );
-
-      await emailQueue.addJob({
-        to: recipient.email,
-        subject: email.subject,
-        html: email.html,
-        text: email.text,
-      });
-
-      await this.db.upsertMetadata(conversationId, {
-        ...(metadata ?? {}),
-        ghostInviteSent: true,
-      });
-
-      logger.info('Ghost invite email queued', {
-        conversationId,
-        recipientId: recipient.id,
-      });
-      break;
-    }
   }
 
   /**

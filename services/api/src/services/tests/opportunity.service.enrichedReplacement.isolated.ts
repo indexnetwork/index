@@ -57,7 +57,6 @@ function createDb(
       id,
       name: id === PEER_ID ? 'Peer User' : 'Viewer User',
       avatar: null,
-      isGhost: false,
       deletedAt: null,
     })),
     getNetwork: mock((id: string) => Promise.resolve({ id, title: 'Test Index' })),

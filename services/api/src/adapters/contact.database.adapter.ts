@@ -72,7 +72,7 @@ export class ContactDatabaseAdapter {
 
   async getContactMembers(ownerId: string): Promise<Array<{
     userId: string;
-    user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
+    user: { id: string; name: string; email: string; avatar: string | null };
   }>> {
     const personalIndexId = await getPersonalIndexId(ownerId);
     if (!personalIndexId) return [];
@@ -83,7 +83,6 @@ export class ContactDatabaseAdapter {
         userName: schema.users.name,
         userEmail: schema.users.email,
         userAvatar: schema.users.avatar,
-        userIsGhost: schema.users.isGhost,
       })
       .from(schema.networkMembers)
       .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
@@ -96,7 +95,7 @@ export class ContactDatabaseAdapter {
 
     return rows.map(row => ({
       userId: row.userId,
-      user: { id: row.userId, name: row.userName, email: row.userEmail, avatar: row.userAvatar, isGhost: row.userIsGhost },
+      user: { id: row.userId, name: row.userName, email: row.userEmail, avatar: row.userAvatar },
     }));
   }
 
@@ -109,7 +108,6 @@ export class ContactDatabaseAdapter {
     name: string;
     email: string;
     avatar: string | null;
-    isGhost: boolean;
   }>> {
     const personalIndexId = await getPersonalIndexId(ownerId);
     if (!personalIndexId) return [];
@@ -122,7 +120,6 @@ export class ContactDatabaseAdapter {
         userName: schema.users.name,
         userEmail: schema.users.email,
         userAvatar: schema.users.avatar,
-        userIsGhost: schema.users.isGhost,
       })
       .from(schema.networkMembers)
       .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
@@ -141,7 +138,6 @@ export class ContactDatabaseAdapter {
       name: row.userName,
       email: row.userEmail,
       avatar: row.userAvatar,
-      isGhost: row.userIsGhost,
     }));
   }
 

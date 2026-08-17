@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Check, CheckCircle2, Clock, X } from "lucide-react";
-import GhostBadge from "@/components/GhostBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import UserAvatar from "@/components/UserAvatar";
@@ -72,8 +71,6 @@ export interface OpportunityCardData {
   score?: number;
   /** Opportunity status at the time the card was created. */
   status?: string;
-  /** Whether the counterpart is a ghost (not yet onboarded) user. */
-  isGhost?: boolean;
   /** Template-only pool-answer demotion explanation from server metadata. */
   deprioritizedReason?: string;
   /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
@@ -167,7 +164,6 @@ interface OpportunityCardProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void | Promise<void>;
   /** Handler for secondary action (reject/skip). */
   onSecondaryAction?: (
@@ -175,7 +171,6 @@ interface OpportunityCardProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void | Promise<void>;
   /** Whether an action is currently loading for this card. */
   isLoading?: boolean;
@@ -262,7 +257,6 @@ export default function OpportunityCard({
           card.userId,
           card.viewerRole,
           card.name,
-          card.isGhost,
         );
         setActionTaken("accepted");
       } catch (err) {
@@ -281,7 +275,6 @@ export default function OpportunityCard({
           card.userId,
           card.viewerRole,
           card.name,
-          card.isGhost,
         );
         setActionTaken("rejected");
       } catch {
@@ -353,7 +346,6 @@ export default function OpportunityCard({
                 avatar={card.avatar || null}
                 size={28}
                 className="shrink-0"
-                blur={card.isGhost}
               />
               <span className="font-bold text-gray-900 text-sm hover:underline truncate">
                 {card.name || "Someone"}
@@ -416,12 +408,10 @@ export default function OpportunityCard({
               avatar={card.avatar || null}
               size={32}
               className="shrink-0"
-              blur={card.isGhost}
             />
             <div className="min-w-0">
               <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
                 {card.name || "Someone"}
-                {card.isGhost && <GhostBadge />}
               </h4>
               <p className="text-[11px] text-[#3D3D3D]">
                 {toSignalProductLanguage(card.mutualIntentsLabel || "Potential connection")}

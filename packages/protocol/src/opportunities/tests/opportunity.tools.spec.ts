@@ -148,7 +148,7 @@ describe("buildMinimalOpportunityCard - IND-113", () => {
   });
 });
 
-describe('buildMinimalOpportunityCard - ghost user CTA (IND-161)', () => {
+describe('buildMinimalOpportunityCard - primary action label (IND-161)', () => {
   const baseOpp = {
     id: 'opp-ghost',
     status: 'latent',
@@ -160,33 +160,14 @@ describe('buildMinimalOpportunityCard - ghost user CTA (IND-161)', () => {
     detection: { source: 'opportunity_graph' },
   } as unknown as Opportunity;
 
-  it('uses "Start Chat" as primaryActionLabel even when counterpart is a ghost user', () => {
+  it('uses "Start Chat" as primaryActionLabel for a party viewer', () => {
     const card = buildMinimalOpportunityCard(
-      baseOpp, 'viewer-1', 'ghost-user', 'Ghost User', null,
-      undefined, null, undefined, undefined, undefined, undefined, true,
+      baseOpp, 'viewer-1', 'counterpart-user', 'Real User', null,
     );
     expect(card.primaryActionLabel).toBe('Start Chat');
-    expect(card.isGhost).toBe(true);
   });
 
-  it('uses "Start Chat" as primaryActionLabel when counterpart is not a ghost user', () => {
-    const card = buildMinimalOpportunityCard(
-      baseOpp, 'viewer-1', 'ghost-user', 'Real User', null,
-      undefined, null, undefined, undefined, undefined, undefined, false,
-    );
-    expect(card.primaryActionLabel).toBe('Start Chat');
-    expect(card.isGhost).toBe(false);
-  });
-
-  it('uses "Start Chat" as primaryActionLabel when isCounterpartGhost is not provided', () => {
-    const card = buildMinimalOpportunityCard(
-      baseOpp, 'viewer-1', 'ghost-user', 'Real User', null,
-    );
-    expect(card.primaryActionLabel).toBe('Start Chat');
-    expect(card.isGhost).toBe(false);
-  });
-
-  it('uses "Good match" when viewer is the introducer, even for ghost counterpart', () => {
+  it('uses "Good match" when viewer is the introducer', () => {
     const introOpp = {
       ...baseOpp,
       actors: [
@@ -196,8 +177,7 @@ describe('buildMinimalOpportunityCard - ghost user CTA (IND-161)', () => {
       ],
     } as unknown as Opportunity;
     const card = buildMinimalOpportunityCard(
-      introOpp, 'introducer-1', 'ghost-user', 'Ghost User', null,
-      undefined, null, undefined, undefined, undefined, undefined, true,
+      introOpp, 'introducer-1', 'counterpart-user', 'Real User', null,
     );
     expect(card.primaryActionLabel).toBe('Good match');
   });

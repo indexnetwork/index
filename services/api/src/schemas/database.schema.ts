@@ -121,8 +121,6 @@ export const users = pgTable('users', {
   timezone: text('timezone').default('UTC'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
 
-  // Ghost users (imported contacts who haven't signed up yet)
-  isGhost: boolean('is_ghost').default(false).notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

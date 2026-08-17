@@ -233,7 +233,6 @@ export class NetworkService {
       intro: m.intro,
       email: m.email,
       avatar: m.avatar,
-      isGhost: m.isGhost ?? false,
       permissions: m.permissions,
       createdAt: m.joinedAt,
     }));

@@ -218,14 +218,12 @@ export interface AssistantMessageContentProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void;
   onOpportunitySecondaryAction?: (
     opportunityId: string,
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void;
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */

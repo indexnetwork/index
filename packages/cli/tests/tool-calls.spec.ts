@@ -343,7 +343,7 @@ describe("CLI tool call contracts", () => {
         success: true,
         data: {
           count: 1,
-          contacts: [{ userId: "user-jane", email: "jane@example.com", name: "Jane", isGhost: false }],
+          contacts: [{ userId: "user-jane", email: "jane@example.com", name: "Jane" }],
         },
       });
       mock.setToolResponse("remove_contact", { success: true, data: {} });

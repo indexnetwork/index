@@ -341,7 +341,7 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
   hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
   integration: { createSession: async () => ({}) as any, executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) },
   intentQueue: { addGenerateHydeJob: async () => ({}), addDeleteHydeJob: async () => ({}) },
-  contactService: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] }), listContacts: async () => [], searchContacts: async () => [], addContact: async () => ({ userId: "", isNew: false, isGhost: false }), removeContact: async () => {} },
+  contactService: { listContacts: async () => [], searchContacts: async () => [], removeContact: async () => {} },
   chatSession: { getSessionMessages: async () => [], listSessions: async () => [], getSession: async () => null },
   enricher: { enrichUserProfile: async () => null },
   negotiationDatabase: {

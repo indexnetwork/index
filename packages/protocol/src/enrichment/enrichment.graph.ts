@@ -3,7 +3,6 @@ import { EnrichmentGraphState } from "./enrichment.state.js";
 import { EnrichmentGraphDatabase, PremiseProvenance } from "../shared/interfaces/database.interface.js";
 import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
-import { shouldEnrichGhostDisplayNameFromParallel, isEnrichedNameMeaningful } from "./enrichment.enricher.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questions/index.js";
@@ -491,8 +490,7 @@ export async function autoGenerateNode(state: EnrichmentState, deps: EnrichmentG
         const enrichment = await deps.enricher.enrichUserProfile(request);
 
         if (enrichment && !enrichment.isHuman) {
-          logger.info("Enrichment detected non-human entity, soft-deleting ghost", { userId: state.userId });
-          await deps.database.softDeleteGhost(state.userId);
+          logger.info("Enrichment detected non-human entity, aborting", { userId: state.userId });
           return { error: "Non-human entity detected" };
         }
 
@@ -506,12 +504,6 @@ export async function autoGenerateNode(state: EnrichmentState, deps: EnrichmentG
           );
 
         if (hasMeaningfulEnrichment) {
-          if (user.isGhost && !isEnrichedNameMeaningful(user.email || '', enrichment!.identity.name || '')) {
-            logger.info("Enrichment has content but no real name for ghost, soft-deleting", { userId: state.userId });
-            await deps.database.softDeleteGhost(state.userId);
-            return { error: "No real name found for ghost user" };
-          }
-
           logger.verbose("Chat API enrichment succeeded", {
             userId: state.userId,
             skillsCount: enrichment!.attributes.skills.length,
@@ -524,16 +516,6 @@ export async function autoGenerateNode(state: EnrichmentState, deps: EnrichmentG
             intro?: string;
             location?: string;
           } = {};
-          const enrichedName = enrichment!.identity.name?.trim();
-          if (
-            enrichedName &&
-            shouldEnrichGhostDisplayNameFromParallel(
-              { isGhost: !!user.isGhost, name: user.name ?? '', email: user.email ?? '' },
-              enrichedName,
-            )
-          ) {
-            updatePayload.name = enrichedName;
-          }
           if (enrichment!.identity.bio?.trim()) updatePayload.intro = enrichment!.identity.bio.trim();
           if (enrichment!.identity.location?.trim()) updatePayload.location = enrichment!.identity.location.trim();
 
@@ -561,20 +543,6 @@ export async function autoGenerateNode(state: EnrichmentState, deps: EnrichmentG
             await deps.database.updateUser(state.userId, updatePayload);
           }
 
-          // Post-enrichment dedup: check if this ghost matches an existing user
-          if (user.isGhost) {
-            const currentSocials = await deps.database.getUserSocials(state.userId);
-            const duplicate = await deps.database.findDuplicateUser(state.userId, currentSocials);
-            if (duplicate) {
-              logger.info("Post-enrichment dedup: merging ghost into existing user", {
-                ghostId: state.userId,
-                targetId: duplicate.id,
-              });
-              await deps.database.mergeGhostUser(state.userId, duplicate.id);
-              return { error: `Merged as duplicate of user ${duplicate.id}` };
-            }
-          }
-
           // Build a text blob from the enrichment result so it flows
           // through premise decomposition (when available) rather than
           // bypassing premises via prePopulatedProfile.
@@ -597,18 +565,8 @@ export async function autoGenerateNode(state: EnrichmentState, deps: EnrichmentG
           };
         }
 
-        if (user.isGhost) {
-          logger.info("Low-confidence enrichment for ghost, soft-deleting", { userId: state.userId });
-          await deps.database.softDeleteGhost(state.userId);
-          return { error: "Enrichment not confident for ghost user" };
-        }
         logger.warn("Chat API returned low-signal enrichment, falling back to basic info", { userId: state.userId });
       } catch (enrichErr) {
-        if (user.isGhost) {
-          logger.info("Enrichment failed for ghost, soft-deleting", { userId: state.userId });
-          await deps.database.softDeleteGhost(state.userId);
-          return { error: "Enrichment failed for ghost user" };
-        }
         logger.warn("Chat API enrichment failed, falling back to basic info", {
           userId: state.userId,
           error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),

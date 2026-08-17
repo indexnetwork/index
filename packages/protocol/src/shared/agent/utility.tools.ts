@@ -156,8 +156,7 @@ Contacts are people in a user's personal network, stored as members of their per
 - **Intents**: Signals of interest/need — what a user is looking for (e.g. "Looking for a React developer in Berlin"). Each has a description (payload), summary, confidence score (0-1), inferenceType (explicit/implicit), source tracking, and vector embedding.
 - **IntentNetworks**: Many-to-many junction between Intents and Indexes. An intent can be in multiple indexes. Has a relevancyScore (0-1) indicating how well the intent fits the index's purpose.
 - **Opportunities**: Discovered connections between users based on complementary intents within shared networks. Have actors with roles (introducer, party), status lifecycle, match reasoning, confidence score, and presentation data.
-- **Contacts**: People in a user's personal network, stored as network members with 'contact' permission on the personal network. Can be real users or ghost users (placeholder accounts enriched from public data).
-- **Ghost Users**: Placeholder accounts created for contacts who aren't on the platform yet. Enriched with public profile data (LinkedIn, GitHub) and participate in opportunity matching.
+- **Contacts**: People in a user's personal network, stored as network members with 'contact' permission on the personal network. Established by accepting an opportunity, which adds both people to each other's personal network. Always real accounts.
 
 ### Key Relationships
 - Users → Profiles (1:1)

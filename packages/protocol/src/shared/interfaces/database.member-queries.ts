@@ -37,7 +37,7 @@ export interface DatabaseMemberQueries {
   /** Get all contact members from the owner's personal network with user details. */
   getContactMembers(ownerId: string): Promise<Array<{
     userId: string;
-    user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
+    user: { id: string; name: string; email: string; avatar: string | null };
   }>>;
 
   /** Clear a reverse opt-out (reactivate soft-deleted contact membership in another user's personal network). */
@@ -53,7 +53,7 @@ export interface DatabaseMemberQueries {
   getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]>;
 
   /** Find a user by email. */
-  getUserByEmail(email: string): Promise<{ id: string; name: string; email: string; isGhost: boolean } | null>;
+  getUserByEmail(email: string): Promise<{ id: string; name: string; email: string } | null>;
 
   // ─── Premise operations ──────────────────────────────────────────────────────
 

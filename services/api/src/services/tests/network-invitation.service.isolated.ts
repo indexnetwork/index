@@ -94,7 +94,7 @@ describe('networkInvitationService.invite', () => {
     expect(perms.every((p) => p.scope === 'network' && p.scopeId === networkId)).toBe(true);
   }, 45_000);
 
-  test('existing user without scoped agent (e.g. ghost contact) gets provisioned + emailed', async () => {
+  test('existing user without scoped agent gets provisioned + emailed', async () => {
     const email = `ghost-${Date.now()}@test.dev`;
     const [existing] = await db.insert(schema.users)
       .values({ email, name: email, emailVerified: true })

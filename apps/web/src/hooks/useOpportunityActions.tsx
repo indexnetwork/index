@@ -33,7 +33,7 @@ function getUptakeAdvisory(error: unknown): UptakeAcceptanceAdvisory | null {
 
 /**
  * Shared accept/reject/start-chat handling for opportunity cards, including the
- * ghost-user invite modal flow. Used by the chat message render and the intent
+ * uptake-preflight modal flow. Used by the chat message render and the intent
  * detail view so both surfaces share identical opportunity behavior.
  */
 export function useOpportunityActions({
@@ -87,7 +87,6 @@ export function useOpportunityActions({
       fallbackUserId?: string,
       viewerRole?: string,
       counterpartName?: string,
-      _isGhost?: boolean,
     ) => {
       const isIntroducer = viewerRole === "introducer";
 

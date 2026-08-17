@@ -68,13 +68,12 @@ async function main(): Promise<void> {
     `${Number.isFinite(limit) ? ` (limit ${limit})` : ''}${dryRun ? ' (dry run)' : ''}`,
   );
 
-  // Active intents of onboarded, non-ghost users, newest first. Optionally
+  // Active intents of onboarded users, newest first. Optionally
   // restricted to members of one network. The newest-first ordering plus the
   // per-user dedup below selects each user's most recent active intent.
   const baseConditions = [
     isNull(intents.archivedAt),
     or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
-    eq(users.isGhost, false),
     sql`${users.onboarding}->>'completedAt' IS NOT NULL`,
   ];
 

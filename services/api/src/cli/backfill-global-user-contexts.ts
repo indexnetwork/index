@@ -186,7 +186,7 @@ async function main(): Promise<void> {
   );
 
   try {
-    // Idempotent candidate set: live, non-ghost users WITHOUT a global context row
+    // Idempotent candidate set: live users WITHOUT a global context row
     // (networkId IS NULL). Ordered by premise count so cheap high-signal users go first.
     const candidates = await db.execute<CandidateRow>(sql`
       SELECT
@@ -198,7 +198,6 @@ async function main(): Promise<void> {
         ) AS premise_count
       FROM users u
       WHERE u.deleted_at IS NULL
-        AND u.is_ghost = false
         AND NOT EXISTS (
           SELECT 1 FROM user_contexts uc
           WHERE uc.user_id = u.id AND uc.network_id IS NULL

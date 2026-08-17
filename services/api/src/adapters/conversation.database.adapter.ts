@@ -1702,7 +1702,7 @@ export class ConversationDatabaseAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Users (for ghost invite emails)
+  // Users
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
@@ -1710,13 +1710,12 @@ export class ConversationDatabaseAdapter {
    * @param userId - User ID
    * @returns Core user fields, or null if not found
    */
-  async getUser(userId: string): Promise<{ id: string; name: string | null; email: string | null; isGhost: boolean; deletedAt: Date | null } | null> {
+  async getUser(userId: string): Promise<{ id: string; name: string | null; email: string | null; deletedAt: Date | null } | null> {
     const [row] = await db
       .select({
         id: schema.users.id,
         name: schema.users.name,
         email: schema.users.email,
-        isGhost: schema.users.isGhost,
         deletedAt: schema.users.deletedAt,
       })
       .from(schema.users)

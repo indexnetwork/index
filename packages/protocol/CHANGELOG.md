@@ -20,6 +20,30 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 19.0.0 - 2026-08-17
+
+### Removed
+
+- **BREAKING**: Retire ghost users. `softDeleteGhost`, `mergeGhostUser` and
+  `findDuplicateUser` are gone from the database port, along with `isGhost` on
+  every entity, contact payload, member row and opportunity card.
+- **BREAKING**: Remove `shouldEnrichGhostDisplayNameFromParallel` and
+  `isEnrichedNameMeaningful` (and the `enrichment.enricher` module). Both were
+  ghost-only: the first returned `false` for every real account.
+- **BREAKING**: `buildMinimalOpportunityCard` loses its trailing
+  `isCounterpartGhost` parameter and the `isGhost` field on its result. The
+  primary action label was never derived from it — it reads `viewerRole` alone —
+  so labels are unchanged.
+
+### Changed
+
+- The enrichment graph no longer soft-deletes or merges on the ghost paths. A
+  non-human enrichment result still aborts with `"Non-human entity detected"`;
+  it previously also called `softDeleteGhost`, which the host implemented as a
+  no-op for any non-ghost, so behaviour for real accounts is identical.
+- Low-confidence and failed enrichment now always fall through to basic info.
+  That was already the real-account path; only the ghost early-return is gone.
+
 ## 18.0.0 - 2026-08-17
 
 ### Changed

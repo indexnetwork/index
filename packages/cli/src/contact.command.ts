@@ -39,7 +39,7 @@ export async function handleContact(
       const result = await client.callTool("list_contacts", {});
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to list contacts", 1); return; }
-      const data = result.data as { count: number; contacts: Array<{ userId: string; name: string; email: string; isGhost: boolean }> };
+      const data = result.data as { count: number; contacts: Array<{ userId: string; name: string; email: string }> };
       output.heading("Contacts");
       output.contactTable(data.contacts);
       output.dim(`\n  ${data.count} contact${data.count !== 1 ? "s" : ""}`);

@@ -36,7 +36,6 @@ describe("profileCard", () => {
         avatar: null,
         location: "San Francisco",
         socials: [{ label: "twitter", value: "@alice" }],
-        isGhost: false,
         createdAt: "2025-06-15T00:00:00Z",
         updatedAt: null,
       });
@@ -48,23 +47,6 @@ describe("profileCard", () => {
     expect(output).toContain("Member since");
   });
 
-  it("renders ghost badge", () => {
-    const output = captureLogs(() => {
-      profileCard({
-        id: "u2",
-        name: null,
-        intro: null,
-        avatar: null,
-        location: null,
-        socials: null,
-        isGhost: true,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: null,
-      });
-    });
-    expect(output).toContain("(unnamed)");
-    expect(output).toContain("[ghost]");
-  });
 });
 
 // ── intentTable ─────────────────────────────────────────────────────

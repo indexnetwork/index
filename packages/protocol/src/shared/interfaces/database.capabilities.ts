@@ -18,7 +18,7 @@ import type { Database, SystemDatabase, UserDatabase } from './database.port.js'
  */
 export type EnrichmentGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser' | 'getUserContext'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser' | 'getUserContext'
 > & {
   /**
    * Optional premise retraction support. When present, write-mode input that
@@ -62,7 +62,6 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getUserSocials'
   | 'setUserSocials'
   | 'saveProfile'
-  | 'softDeleteGhost'
   // IntentGraph subgraph requirements (getActiveIntents already included)
   | 'createIntent'
   | 'updateIntent'
@@ -127,8 +126,6 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'addMemberToNetwork'
   | 'removeMemberFromIndex'
   // ProfileGraph post-enrichment ghost deduplication
-  | 'findDuplicateUser'
-  | 'mergeGhostUser'
   // ProfileGraph aggregate mode (premise-to-profile materialization)
   // Premise lifecycle (CRUD + network assignment)
   | 'getPremisesForUser'

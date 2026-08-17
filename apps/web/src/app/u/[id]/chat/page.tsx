@@ -106,7 +106,6 @@ export default function ChatPage() {
       userId={profileData.id}
       userName={profileData.name}
       userAvatar={profileData.avatar || undefined}
-      isGhost={profileData.isGhost}
       initialGroupId={initialGroupId}
       initialMessage={prefillMessage}
       autoSend={autoSend}

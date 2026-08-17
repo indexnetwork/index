@@ -52,7 +52,6 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
             name: c.user.name,
             email: c.user.email,
             avatar: c.user.avatar,
-            isGhost: c.user.isGhost,
           })),
         });
       } catch (err) {
@@ -92,7 +91,7 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
       "Use when the user refers to a contact by partial name or email and you need their userId for another tool " +
       "(e.g. read_user_contexts).\n\n" +
       "**When to use:** Before list_contacts when the network is large — returns only matching contacts, bounded by limit.\n\n" +
-      "**Returns:** Array of matching contacts: userId, name, email, avatar, isGhost.",
+      "**Returns:** Array of matching contacts: userId, name, email, avatar.",
     querySchema: z.object({
       query: z.string().trim().min(1).describe('Free-text query matched against contact name and email (case-insensitive, substring).'),
       limit: z.number().int().positive().max(100).optional().describe('Maximum rows to return. Defaults to 25.'),
@@ -107,7 +106,6 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
             name: r.name,
             email: r.email,
             avatar: r.avatar,
-            isGhost: r.isGhost,
           })),
         });
       } catch (err) {

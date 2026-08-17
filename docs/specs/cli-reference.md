@@ -87,7 +87,7 @@ The `index profile` command lets users view, create, update, and search profiles
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
 2. Call `GET /api/auth/me` to get the current user's ID.
 3. Call `GET /api/users/:userId` to get the full profile.
-4. Render a styled profile card showing: name, intro/bio, location, socials, ghost status, and member-since date.
+4. Render a styled profile card showing: name, intro/bio, location, socials, and member-since date.
 
 ### `index profile show <user-id>`
 
