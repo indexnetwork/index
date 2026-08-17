@@ -7,6 +7,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-14
+### Added
+- Discover dashboard signal-creation flow: Mac/web fast-intake funnel (`/intents/intake/*` + `/intents/confirm`) behind `features.fastSignalIntake`, with a **who are you trying to meet?** CTA, empty-list entry, and post-onboarding open when there are no intents yet.
+
 ## [0.23.0] - 2026-08-14
 ### Added
 - Conversation SSE wake for ordinary agent keys: `negotiation_wake` listens to `GET /conversations/stream`, stamps negotiation pickup on keepalive (~15s) and non-own negotiation messages, and runs one conservative consult/respond pass when a turn is pending. Desktop reuses the existing 15s inbox poll tick (no second scheduler).

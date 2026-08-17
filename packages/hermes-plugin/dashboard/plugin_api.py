@@ -375,13 +375,27 @@ def _fetch_user(user_id: str) -> dict[str, Any]:
     return user if isinstance(user, dict) else {}
 
 
-def _fetch_me() -> dict[str, Any]:
-    """Fetch the authenticated user's account row (email, timezone, notif prefs) over REST."""
+def _fetch_auth_me() -> dict[str, Any]:
+    """Full GET /auth/me payload (user + features). Empty dict on failure."""
     payload = tools._api_request("GET", "/auth/me")
     if not isinstance(payload, dict) or payload.get("success") is False:
         return {}
+    return payload
+
+
+def _fetch_me(auth_me: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fetch the authenticated user's account row (email, timezone, notif prefs) over REST."""
+    payload = _fetch_auth_me() if auth_me is None else auth_me
     user = payload.get("user")
     return user if isinstance(user, dict) else {}
+
+
+def _feature_flags(auth_me: dict[str, Any]) -> dict[str, bool]:
+    """Dashboard-facing feature flags from the same /auth/me response as identity."""
+    features = auth_me.get("features") if isinstance(auth_me.get("features"), dict) else {}
+    return {
+        "fastSignalIntake": features.get("fastSignalIntake") is True,
+    }
 
 
 def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -393,6 +407,41 @@ def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
         "profileConfirmedAt": confirmed_at or None,
         "needsProfileConfirm": bool(row.get("id")) and not bool(confirmed_at),
     }
+
+
+def _proxy_upstream(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Index REST responses for the credential-free dashboard.
+
+    Success payloads often omit ``success``; HTTP failures wrap the JSON body under
+    ``details`` (see env_transport). Unwrap recoverable intake codes such as
+    ``verification_rejected`` so the UI can render clarification questions.
+    """
+    if not isinstance(payload, dict):
+        return {"success": False, "error": "Unexpected upstream response."}
+    if payload.get("success") is False:
+        details = payload.get("details")
+        if isinstance(details, dict):
+            out: dict[str, Any] = {
+                "success": False,
+                "error": _text(details.get("error") or details.get("detail") or payload.get("error"))
+                or "Request failed.",
+            }
+            if payload.get("status") is not None:
+                out["status"] = payload["status"]
+            code = _text(details.get("code"))
+            if code:
+                out["code"] = code
+            clarification = details.get("clarification")
+            if isinstance(clarification, dict):
+                out["clarification"] = clarification
+            intent_id = _text(details.get("intentId"))
+            if intent_id:
+                out["intentId"] = intent_id
+            return out
+        return payload
+    if "success" not in payload:
+        return {"success": True, **payload}
+    return payload
 
 
 def _approved_draft_from_body(body: dict[str, Any]) -> dict[str, Any]:
@@ -932,9 +981,11 @@ def _fetch_scoped_questions(intent_id: str, status: str) -> tuple[list[dict[str,
 
 def _bootstrap_payload() -> dict[str, Any]:
     """Fast home boot: auth metadata + intents list only (web DiscoverHome parity)."""
-    me = _fetch_me()
+    auth_me = _fetch_auth_me()
+    me = _fetch_me(auth_me)
     current_user_id = _text(me.get("id"))
     onboarding = _onboarding_gate(me)
+    features = _feature_flags(auth_me)
     intents_payload = _call_read_intents()
     intents_data = _data(intents_payload)
     raw_intents = _list(intents_data.get("intents") if isinstance(intents_data, dict) else None)
@@ -954,6 +1005,7 @@ def _bootstrap_payload() -> dict[str, Any]:
         "apiUrl": None,
         "currentUserId": current_user_id or None,
         "onboarding": onboarding,
+        "features": features,
         "intents": intents,
         "errors": errors,
     }
@@ -1807,6 +1859,52 @@ def start_chat(
 
 
 _INTENT_STATUSES = {"ACTIVE", "PAUSED"}
+
+
+@full_router.post("/intents/intake/start")
+def intake_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Start the fast-signal intake funnel (Mac/web `/intents/intake/start`)."""
+    return _proxy_upstream(tools._api_request("POST", "/intents/intake/start", {}))
+
+
+@full_router.post("/intents/intake/question")
+def intake_question(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Next follow-up batch for fast intake (`POST /intents/intake/question`)."""
+    if not isinstance(body, dict):
+        return {"success": False, "error": "Body must be an object."}
+    return _proxy_upstream(tools._api_request("POST", "/intents/intake/question", body))
+
+
+@full_router.post("/intents/intake/prepare")
+def intake_prepare(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Kick off speculative synthesis (`POST /intents/intake/prepare`)."""
+    if not isinstance(body, dict):
+        return {"success": False, "error": "Body must be an object."}
+    return _proxy_upstream(tools._api_request("POST", "/intents/intake/prepare", body))
+
+
+@full_router.post("/intents/intake/proposal")
+def intake_proposal(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Resolve the speculative proposal (`POST /intents/intake/proposal`)."""
+    if not isinstance(body, dict):
+        return {"success": False, "error": "Body must be an object."}
+    return _proxy_upstream(tools._api_request("POST", "/intents/intake/proposal", body))
+
+
+@full_router.post("/intents/confirm")
+def confirm_intent(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Persist a durable signal from a proposal (`POST /intents/confirm`)."""
+    if not isinstance(body, dict):
+        return {"success": False, "error": "Confirm body must be an object."}
+    proposal_id = _text(body.get("proposalId"))
+    description = _text(body.get("description"))
+    if not proposal_id or not description:
+        return {"success": False, "error": "proposalId and description are required."}
+    request_body: dict[str, Any] = {"proposalId": proposal_id, "description": description}
+    network_id = _text(body.get("networkId"))
+    if network_id:
+        request_body["networkId"] = network_id
+    return _proxy_upstream(tools._api_request("POST", "/intents/confirm", request_body))
 
 
 @full_router.post("/intents/{intent_id}/status")

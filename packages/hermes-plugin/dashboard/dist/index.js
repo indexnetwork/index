@@ -2284,13 +2284,528 @@
 
   function IntentList(props) {
     const intents = Array.isArray(props.intents) ? props.intents : [];
+    const canCreate = !!props.canCreate;
     return React.createElement("div", { className: "index-dashboard__intent-list" },
+      canCreate
+        ? React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__new-signal",
+          onClick: props.onCreateSignal,
+        },
+          React.createElement("span", { className: "index-dashboard__new-signal-plus", "aria-hidden": "true" }, "+"),
+          React.createElement("span", { className: "index-dashboard__new-signal-label" }, "who are you trying to meet?"),
+        )
+        : null,
       intents.length === 0
-        ? React.createElement(EmptyState, null, "No active intents yet.")
+        ? (canCreate
+          ? null
+          : React.createElement(EmptyState, null, "No active intents yet."))
         : intents.map(function (intent) {
           return React.createElement(IntentRow, { key: intent.id, intent: intent, selected: props.selectedId === intent.id, onSelect: props.onSelect });
         }),
     );
+  }
+
+  // Fast-signal intake overlay (Mac/web /intents/intake/* funnel). Hermes chrome:
+  // profile-style overlay, OptionRow chips, existing loading art — not Mac System 6.
+  function NewSignalPanel(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+    const stageState = useState("loading");
+    const stage = stageState[0];
+    const setStage = stageState[1];
+    const questionState = useState(null);
+    const question = questionState[0];
+    const setQuestion = questionState[1];
+    const busyState = useState(false);
+    const busy = busyState[0];
+    const setBusy = busyState[1];
+    const errorState = useState(null);
+    const panelError = errorState[0];
+    const setPanelError = errorState[1];
+    const noteState = useState("");
+    const note = noteState[0];
+    const setNote = noteState[1];
+    const proposalState = useState(null);
+    const proposal = proposalState[0];
+    const setProposal = proposalState[1];
+    const whereLabelState = useState("everywhere");
+    const whereLabel = whereLabelState[0];
+    const setWhereLabel = whereLabelState[1];
+    const whereTextState = useState("");
+    const whereText = whereTextState[0];
+    const setWhereText = whereTextState[1];
+    const clarifyModeState = useState(false);
+    const clarifyMode = clarifyModeState[0];
+    const setClarifyMode = clarifyModeState[1];
+
+    const roundsRef = useRef([]);
+    const queueRef = useRef([]);
+    const totalRef = useRef(null);
+    const prepareRef = useRef(null);
+    const runIdRef = useRef(null);
+    const choiceRef = useRef({});
+    const proposalRef = useRef(null);
+    const cancelledRef = useRef(false);
+
+    const communities = (Array.isArray(props.communities) ? props.communities : [])
+      .filter(function (n) { return n && n.id && !n.isPersonal; });
+
+    useEffect(function () {
+      cancelledRef.current = false;
+      return function () { cancelledRef.current = true; };
+    }, []);
+
+    function showQuestion(q, clarify) {
+      setClarifyMode(!!clarify);
+      setQuestion(q || null);
+      setBusy(false);
+      setStage("question");
+    }
+
+    function showWhere() {
+      setBusy(false);
+      setStage("where");
+    }
+
+    function showSummary(p, summaryNote) {
+      proposalRef.current = p;
+      setProposal(p);
+      setNote(summaryNote || "");
+      setBusy(false);
+      setStage("summary");
+    }
+
+    function showRetry() {
+      setBusy(false);
+      setStage("retry");
+    }
+
+    function showStartRetry() {
+      setBusy(false);
+      setStage("start-retry");
+    }
+
+    function loadStart() {
+      setStage("loading");
+      setPanelError(null);
+      setBusy(true);
+      fetchPluginJSON(API + "/intents/intake/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).then(function (payload) {
+        if (cancelledRef.current) return;
+        if (!payload || payload.success === false || !payload.question) {
+          showStartRetry();
+          return;
+        }
+        showQuestion(payload.question, false);
+      }).catch(function () {
+        if (!cancelledRef.current) showStartRetry();
+      });
+    }
+
+    useEffect(function () {
+      loadStart();
+      // One mounted funnel; retries are explicit UI actions.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    function advance() {
+      if (queueRef.current.length > 0) {
+        showQuestion(queueRef.current.shift(), false);
+        return;
+      }
+      const rounds = roundsRef.current;
+      setBusy(true);
+      setStage("loading");
+      function goWhere() {
+        if (cancelledRef.current) return;
+        prepareRef.current = fetchPluginJSON(API + "/intents/intake/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rounds: rounds }),
+        }).then(function (payload) {
+          if (payload && payload.success !== false && payload.runId) {
+            runIdRef.current = payload.runId;
+          }
+          return payload;
+        }).catch(function () { return null; });
+        showWhere();
+      }
+      if (totalRef.current === null || rounds.length < totalRef.current) {
+        const body = { rounds: rounds };
+        if (totalRef.current !== null) body.plannedTotal = totalRef.current;
+        fetchPluginJSON(API + "/intents/intake/question", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (payload) {
+          if (cancelledRef.current) return;
+          if (payload && payload.success !== false) {
+            totalRef.current = payload.total;
+            const qs = payload.questions || [];
+            if (qs.length > 0 && rounds.length < payload.total) {
+              queueRef.current = qs.slice(1);
+              showQuestion(qs[0], false);
+              return;
+            }
+          }
+          goWhere();
+        }).catch(function () {
+          if (!cancelledRef.current) goWhere();
+        });
+        return;
+      }
+      goWhere();
+    }
+
+    function submitAnswer(selectedOptions, freeText) {
+      const prompt = (question && (question.prompt || question.title)) || "";
+      const answer = { selectedOptions: selectedOptions || [] };
+      const text = (freeText || "").trim();
+      if (text) answer.freeText = text;
+      if (clarifyMode && roundsRef.current.length > 0) {
+        const last = roundsRef.current[roundsRef.current.length - 1];
+        const prev = (last.answer && last.answer.freeText) || "";
+        last.answer = Object.assign({}, last.answer, {
+          freeText: prev ? (prev + "\n" + text) : text,
+        });
+        setClarifyMode(false);
+        resolveProposal();
+        return;
+      }
+      roundsRef.current = roundsRef.current.concat([{ prompt: prompt, answer: answer }]);
+      advance();
+    }
+
+    function resolveProposal() {
+      setBusy(true);
+      setStage("loading");
+      setPanelError(null);
+      function ensureRunId() {
+        if (runIdRef.current) return Promise.resolve(runIdRef.current);
+        if (prepareRef.current) {
+          return prepareRef.current.then(function () {
+            return runIdRef.current;
+          }).catch(function () { return null; });
+        }
+        return fetchPluginJSON(API + "/intents/intake/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rounds: roundsRef.current }),
+        }).then(function (payload) {
+          if (payload && payload.success !== false && payload.runId) {
+            runIdRef.current = payload.runId;
+            return payload.runId;
+          }
+          return null;
+        });
+      }
+      ensureRunId().then(function (runId) {
+        if (cancelledRef.current) return null;
+        if (!runId) {
+          showRetry();
+          return null;
+        }
+        const body = Object.assign({
+          runId: runId,
+          rounds: roundsRef.current,
+        }, choiceRef.current);
+        return fetchPluginJSON(API + "/intents/intake/proposal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }).then(function (payload) {
+        if (cancelledRef.current || payload == null) return;
+        if (payload && payload.code === "verification_rejected" && payload.clarification) {
+          showQuestion(payload.clarification, true);
+          return;
+        }
+        if (!payload || payload.success === false || !payload.proposalId) {
+          showRetry();
+          return;
+        }
+        showSummary(payload);
+      }).catch(function () {
+        if (!cancelledRef.current) showRetry();
+      });
+    }
+
+    function chooseWhere(choice, label) {
+      choiceRef.current = choice || {};
+      setWhereLabel(label || "everywhere");
+      resolveProposal();
+    }
+
+    function confirmSignal() {
+      const p = proposalRef.current || proposal;
+      if (!p || !p.proposalId) return;
+      setBusy(true);
+      setStage("confirming");
+      setNote("");
+      const body = {
+        proposalId: p.proposalId,
+        description: p.description,
+      };
+      if (choiceRef.current.networkId) body.networkId = choiceRef.current.networkId;
+      fetchPluginJSON(API + "/intents/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function (payload) {
+        if (cancelledRef.current) return;
+        if (!payload || payload.success === false || !payload.intentId) {
+          showSummary(p, "that didn't go through — try again.");
+          return;
+        }
+        if (props.onCreated) props.onCreated(payload.intentId, p.description);
+      }).catch(function () {
+        if (!cancelledRef.current) showSummary(p, "that didn't go through — try again.");
+      });
+    }
+
+    function IntakeQuestionForm(qProps) {
+      const q = qProps.question || {};
+      const options = Array.isArray(q.options) ? q.options : [];
+      const hasOptions = options.length > 0;
+      const selectedState = React.useState([]);
+      const selected = selectedState[0];
+      const setSelected = selectedState[1];
+      const otherState = React.useState(false);
+      const otherSelected = otherState[0];
+      const setOtherSelected = otherState[1];
+      const freeTextState = React.useState("");
+      const freeText = freeTextState[0];
+      const setFreeText = freeTextState[1];
+      const showFreeText = otherSelected || !hasOptions;
+      const canSubmit = hasOptions
+        ? selected.length > 0 || (otherSelected && freeText.trim().length > 0)
+        : freeText.trim().length > 0;
+
+      function toggleOption(label) {
+        setOtherSelected(false);
+        setSelected(function (current) {
+          if (q.multiSelect) {
+            return current.indexOf(label) >= 0
+              ? current.filter(function (item) { return item !== label; })
+              : current.concat([label]);
+          }
+          return current.indexOf(label) >= 0 ? [] : [label];
+        });
+      }
+
+      function toggleOther() {
+        setOtherSelected(function (prev) {
+          const next = !prev;
+          if (next) setSelected([]);
+          return next;
+        });
+      }
+
+      function submit(event) {
+        event.preventDefault();
+        if (!canSubmit || busy) return;
+        const sendOther = otherSelected || !hasOptions;
+        qProps.onSubmit(sendOther ? [] : selected, sendOther ? freeText : "");
+      }
+
+      return React.createElement("form", { className: "index-dashboard__question", onSubmit: submit },
+        React.createElement("p", { className: "index-dashboard__question-prompt" }, q.prompt || q.title || "Question"),
+        q.evidence
+          ? React.createElement("p", { className: "index-dashboard__intake-hint" }, q.evidence)
+          : null,
+        hasOptions
+          ? React.createElement("div", { className: "index-dashboard__question-options" },
+            options.map(function (option, index) {
+              const label = String(option.label || "");
+              return React.createElement(OptionRow, {
+                key: label,
+                letter: letterFor(index),
+                label: label,
+                description: option.description,
+                selected: selected.indexOf(label) >= 0,
+                onToggle: function () { toggleOption(label); },
+              });
+            }),
+            React.createElement(OptionRow, {
+              letter: letterFor(options.length),
+              label: "Other…",
+              description: "",
+              selected: otherSelected,
+              onToggle: toggleOther,
+            }),
+          )
+          : null,
+        showFreeText
+          ? React.createElement("textarea", {
+            className: "index-dashboard__textarea",
+            onChange: function (event) { setFreeText(event.target.value); },
+            placeholder: hasOptions ? "Type your own answer…" : "type your answer…",
+            rows: 3,
+            value: freeText,
+          })
+          : null,
+        React.createElement("div", { className: "index-dashboard__question-actions" },
+          React.createElement(Button, { type: "submit", size: "sm", className: "index-dashboard__btn-md", disabled: !canSubmit || busy }, "Continue"),
+        ),
+      );
+    }
+
+    function WhereStep() {
+      return React.createElement("div", { className: "index-dashboard__intake-where" },
+        React.createElement("p", { className: "index-dashboard__question-prompt" }, "where should we look?"),
+        React.createElement("div", { className: "index-dashboard__intake-where-list" },
+          communities.map(function (network) {
+            return React.createElement("button", {
+              key: network.id,
+              type: "button",
+              className: "index-dashboard__intake-where-row",
+              disabled: busy,
+              onClick: function () { chooseWhere({ networkId: network.id }, network.title || "community"); },
+            }, network.title || "Untitled community");
+          }),
+          React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__intake-where-row",
+            disabled: busy,
+            onClick: function () { chooseWhere({}, "everywhere"); },
+          },
+            React.createElement("span", { className: "index-dashboard__intake-where-title" }, "Everywhere"),
+            React.createElement("span", { className: "index-dashboard__intake-where-sub" }, "no community or place constraint"),
+          ),
+        ),
+        React.createElement("form", {
+          className: "index-dashboard__intake-where-form",
+          onSubmit: function (event) {
+            event.preventDefault();
+            const value = whereText.trim();
+            if (!value || busy) return;
+            chooseWhere({ whereText: value }, value);
+          },
+        },
+          React.createElement("input", {
+            className: "index-dashboard__input",
+            value: whereText,
+            disabled: busy,
+            placeholder: "Somewhere more specific?",
+            onChange: function (event) { setWhereText(event.target.value); },
+          }),
+          React.createElement(Button, {
+            type: "submit",
+            size: "sm",
+            className: "index-dashboard__btn-md",
+            disabled: busy || !whereText.trim(),
+          }, "Continue"),
+        ),
+        React.createElement("p", { className: "index-dashboard__intake-hint" },
+          "naming a place rewrites your signal, so it takes a moment longer.",
+        ),
+      );
+    }
+
+    function SummaryStep() {
+      const p = proposal || {};
+      return React.createElement("div", { className: "index-dashboard__intake-summary" },
+        React.createElement("p", { className: "index-dashboard__intake-summary-desc" }, p.description || ""),
+        React.createElement("div", { className: "index-dashboard__intake-summary-meta" },
+          p.lookingFor ? React.createElement("div", null, "looking for · " + p.lookingFor) : null,
+          p.youBring ? React.createElement("div", null, "you bring · " + p.youBring) : null,
+          whereLabel ? React.createElement("div", null, "looking in · " + whereLabel) : null,
+        ),
+        note
+          ? React.createElement("p", { className: "index-dashboard__intake-note" }, note)
+          : null,
+        React.createElement("div", { className: "index-dashboard__question-actions" },
+          React.createElement(Button, {
+            type: "button",
+            size: "sm",
+            className: "index-dashboard__btn-md",
+            disabled: busy,
+            onClick: confirmSignal,
+          }, "create this signal"),
+        ),
+      );
+    }
+
+    function RetryStep(retryProps) {
+      return React.createElement("div", { className: "index-dashboard__intake-retry" },
+        React.createElement("p", { className: "index-dashboard__question-prompt" }, retryProps.prompt),
+        React.createElement("div", { className: "index-dashboard__question-actions" },
+          React.createElement(Button, {
+            type: "button",
+            size: "sm",
+            className: "index-dashboard__btn-md",
+            onClick: retryProps.onRetry,
+          }, "try again"),
+        ),
+      );
+    }
+
+    let body = null;
+    if (stage === "loading" || stage === "confirming") {
+      body = React.createElement("div", { className: "index-dashboard__intake-loading" },
+        LOADING_IMAGE()
+          ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+          : React.createElement("span", { className: "index-dashboard__loading-text" }, stage === "confirming" ? "Creating signal…" : "Loading…"),
+      );
+    } else if (stage === "question" && question) {
+      body = React.createElement(IntakeQuestionForm, {
+        key: (question.prompt || "") + String(clarifyMode),
+        question: question,
+        onSubmit: submitAnswer,
+      });
+    } else if (stage === "where") {
+      body = React.createElement(WhereStep, null);
+    } else if (stage === "summary") {
+      body = React.createElement(SummaryStep, null);
+    } else if (stage === "start-retry") {
+      body = React.createElement(RetryStep, {
+        prompt: "couldn't start your signal.",
+        onRetry: function () {
+          roundsRef.current = [];
+          queueRef.current = [];
+          totalRef.current = null;
+          prepareRef.current = null;
+          runIdRef.current = null;
+          loadStart();
+        },
+      });
+    } else if (stage === "retry") {
+      body = React.createElement(RetryStep, {
+        prompt: "couldn't build your signal.",
+        onRetry: resolveProposal,
+      });
+    } else {
+      body = React.createElement(EmptyState, null, "Something went wrong.");
+    }
+
+    const panel = React.createElement("div", {
+      className: "index-dashboard__profile-panel index-dashboard__intake-panel",
+      onClick: function (e) { e.stopPropagation(); },
+    },
+      React.createElement("div", { className: "index-dashboard__profile-header" },
+        React.createElement("h2", { className: "index-dashboard__profile-title" }, "New signal"),
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__profile-close",
+          "aria-label": "Close",
+          onClick: props.onClose,
+        }, "×"),
+      ),
+      panelError
+        ? React.createElement("div", { className: "index-dashboard__error" }, panelError)
+        : null,
+      body,
+    );
+
+    return React.createElement("div", {
+      className: "index-dashboard__profile-overlay",
+      onClick: props.onClose,
+    }, panel);
   }
 
   function DetailHead(props) {
@@ -3555,6 +4070,9 @@
     const createOpenState = useState(false);
     const createOpen = createOpenState[0];
     const setCreateOpen = createOpenState[1];
+    const createSignalOpenState = useState(false);
+    const createSignalOpen = createSignalOpenState[0];
+    const setCreateSignalOpen = createSignalOpenState[1];
     const editingRequestState = useState(null);
     const editingRequest = editingRequestState[0];
     const setEditingRequest = editingRequestState[1];
@@ -3587,6 +4105,7 @@
     const setInlineHdr = inlineHdrState[1];
     // Auth gate: "checking" until /auth/status resolves, then "needsLogin"
     // (browser sign-in) or "authed" (load the dashboard).
+    const openCreateAfterOnboardingRef = useRef(false);
     const authState = useState("checking");
     const auth = authState[0];
     const setAuth = authState[1];
@@ -3701,8 +4220,15 @@
           }
           setSummary(payload);
           setNeedsOnboarding(!!(payload.onboarding && payload.onboarding.needsProfileConfirm));
+          if (openCreateAfterOnboardingRef.current) {
+            openCreateAfterOnboardingRef.current = false;
+            const fast = !!(payload.features && payload.features.fastSignalIntake);
+            const list = payload.intents || [];
+            if (fast && list.length === 0) setCreateSignalOpen(true);
+          }
         })
         .catch(function (err) {
+          openCreateAfterOnboardingRef.current = false;
           setError(err && err.message ? err.message : String(err));
         })
         .finally(function () {
@@ -4196,10 +4722,40 @@
     }, []);
 
     const intents = (summary && summary.intents) || [];
+    const canCreateSignal = !!(summary && summary.features && summary.features.fastSignalIntake);
+    const communities = (networks && Array.isArray(networks.items)) ? networks.items : [];
 
     function selectIntent(id) {
       setSelectedId(id);
       writeHash(id);
+    }
+
+    function openCreateSignal() {
+      if (!canCreateSignal) return;
+      setCreateSignalOpen(true);
+    }
+
+    function closeCreateSignal() {
+      setCreateSignalOpen(false);
+    }
+
+    function onSignalCreated(intentId, description) {
+      setCreateSignalOpen(false);
+      const row = {
+        id: intentId,
+        title: description || "Untitled intent",
+        lifecycleStatus: "ACTIVE",
+        pendingCount: 0,
+      };
+      setSummary(function (prev) {
+        if (!prev) return prev;
+        const existing = Array.isArray(prev.intents) ? prev.intents : [];
+        const without = existing.filter(function (intent) { return !intent || intent.id !== intentId; });
+        return Object.assign({}, prev, { intents: [row].concat(without) });
+      });
+      selectIntent(intentId);
+      load();
+      loadNetworks();
     }
 
     toggleProfileRef.current = function () { setProfileOpen(function (open) { return !open; }); };
@@ -4248,7 +4804,13 @@
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
           React.createElement(Panel, { icon: ICON_SPARKLES(), title: "Intents", count: intents.length },
-            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
+            React.createElement(IntentList, {
+              intents: intents,
+              selectedId: selectedId,
+              onSelect: selectIntent,
+              canCreate: canCreateSignal,
+              onCreateSignal: openCreateSignal,
+            }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
             React.createElement(NetworksMini, {
@@ -4309,6 +4871,13 @@
       createOpen
         ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })
         : null,
+      createSignalOpen
+        ? React.createElement(NewSignalPanel, {
+          communities: communities,
+          onClose: closeCreateSignal,
+          onCreated: onSignalCreated,
+        })
+        : null,
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
@@ -4326,7 +4895,9 @@
               gettingStarted: true,
               onConfirmed: function () {
                 setNeedsOnboarding(false);
+                openCreateAfterOnboardingRef.current = true;
                 load();
+                loadNetworks();
               },
             })
             : (loading && !summary

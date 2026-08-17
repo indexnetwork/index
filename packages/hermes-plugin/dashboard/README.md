@@ -8,7 +8,7 @@ In full mode the tab displays connection status. When no `INDEX_API_KEY` is conf
 
 ## Scope
 
-Full mode exposes the normal Index dashboard surface: intent and question work, opportunities, networks, profile context, and bounded conversation SSE. Scheduled negotiation actions are intentionally absent from dashboard flows.
+Full mode exposes the normal Index dashboard surface: intent and question work, opportunities, networks, profile context, bounded conversation SSE, and the fast-signal intake creation flow (when `FAST_SIGNAL_INTAKE` is enabled). Scheduled negotiation actions are intentionally absent from dashboard flows.
 
 `INDEX_PLUGIN_MODE=negotiator` (and every unknown non-empty mode) exposes no dashboard routes or component. Negotiator mode is restricted to the four registered negotiation handlers and generated negotiator skill; static manifest discovery does not activate this UI.
 

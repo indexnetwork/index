@@ -2787,3 +2787,174 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
+
+/* New-signal CTA + fast-intake overlay (Mac/web funnel, Hermes tokens). */
+.index-dashboard__new-signal {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0 0 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--color-border, rgba(148, 163, 184, 0.4));
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-card-foreground, inherit);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.index-dashboard__new-signal:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.4)));
+  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 8%, transparent);
+}
+
+.index-dashboard__new-signal-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.4));
+  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 18%, transparent);
+  color: var(--color-card-foreground, inherit);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.index-dashboard__new-signal-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.index-dashboard__intake-panel {
+  max-width: 36rem;
+  gap: 1.15rem;
+}
+
+.index-dashboard__intake-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 10rem;
+  padding: 1.5rem 0;
+}
+
+.index-dashboard__intake-loading .index-dashboard__loading-anim {
+  width: 180px;
+  max-width: 60%;
+}
+
+.index-dashboard__intake-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__intake-where {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.index-dashboard__intake-where-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.index-dashboard__intake-where-row {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
+  color: var(--color-card-foreground, inherit);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.index-dashboard__intake-where-row:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 45%, var(--color-border, rgba(148, 163, 184, 0.24)));
+}
+
+.index-dashboard__intake-where-row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.index-dashboard__intake-where-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.index-dashboard__intake-where-sub {
+  font-size: 0.78rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__intake-where-form {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.index-dashboard__input {
+  min-width: 0;
+  flex: 1;
+  box-sizing: border-box;
+  padding: 0.65rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: 0;
+  background: color-mix(in srgb, var(--background-base, #041c1c) 80%, transparent);
+  color: var(--color-card-foreground, inherit);
+  font: inherit;
+}
+
+.index-dashboard__input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 55%, var(--color-border, rgba(148, 163, 184, 0.24)));
+}
+
+.index-dashboard__intake-summary {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.index-dashboard__intake-summary-desc {
+  margin: 0;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--color-border, rgba(148, 163, 184, 0.4));
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__intake-summary-meta {
+  display: grid;
+  gap: 0.2rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__intake-note {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__intake-retry {
+  display: grid;
+  gap: 0.85rem;
+}

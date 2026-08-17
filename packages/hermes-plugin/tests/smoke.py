@@ -596,12 +596,30 @@ def main() -> None:
     assert "radarLoading" in dashboard_js
     assert "questionsPath" in dashboard_js
     assert "payload.pending" in dashboard_js
+    # Fast-signal intake (Mac/web /intents/intake/*) in Hermes Discover.
+    assert "NewSignalPanel" in dashboard_js
+    assert "index-dashboard__new-signal" in dashboard_js
+    assert "who are you trying to meet?" in dashboard_js
+    assert "/intents/intake/start" in dashboard_js
+    assert "/intents/intake/question" in dashboard_js
+    assert "/intents/intake/prepare" in dashboard_js
+    assert "/intents/intake/proposal" in dashboard_js
+    assert "/intents/confirm" in dashboard_js
+    assert "fastSignalIntake" in dashboard_js
+    assert "create this signal" in dashboard_js
     plugin_api_src = (ROOT / "dashboard" / "plugin_api.py").read_text()
     assert "/bootstrap" in plugin_api_src
     assert "intent_radar" in plugin_api_src
     assert "networks_home" in plugin_api_src
     assert "/notifications/stream" in plugin_api_src
     assert "_notification_stream" in plugin_api_src
+    assert "intake_start" in plugin_api_src
+    assert "intake_question" in plugin_api_src
+    assert "intake_prepare" in plugin_api_src
+    assert "intake_proposal" in plugin_api_src
+    assert "confirm_intent" in plugin_api_src
+    assert "fastSignalIntake" in plugin_api_src
+    assert "_proxy_upstream" in plugin_api_src
     assert "/networks/search-users" in dashboard_js
     assert "/members/invite" in dashboard_js
     assert "Your Signals" in dashboard_js
@@ -659,6 +677,10 @@ def main() -> None:
     assert "onDeepLink" not in desktop_js
     assert "NetworkDetailModal" in desktop_js
     assert "/regenerate-invitation" in desktop_js
+    assert "NewSignalPanel" in desktop_js
+    assert "/intents/intake/start" in desktop_js
+    assert "create this signal" in desktop_js
+    assert "index_pickup_negotiation" not in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js
@@ -1251,12 +1273,16 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                # bootstrap → GET /auth/me (identity + onboarding gate).
+                # bootstrap → GET /auth/me (identity + onboarding gate + features).
                 FakeResponse({
                     "user": {
                         "id": "user-1",
                         "onboarding": {"profileConfirmedAt": "2026-01-01T00:00:00.000Z"},
-                    }
+                    },
+                    "features": {
+                        "fastSignalIntake": True,
+                        "signalAgent": True,
+                    },
                 }),
                 # _call_read_intents → POST /intents/list (carries lifecycle status; includes PAUSED).
                 FakeResponse(
@@ -1279,6 +1305,7 @@ def main() -> None:
         )
         boot = dashboard_api.bootstrap()
         assert boot["success"] is True
+        assert boot["features"] == {"fastSignalIntake": True}
         assert boot["onboarding"] == {
             "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
             "needsProfileConfirm": False,
@@ -1788,6 +1815,116 @@ def main() -> None:
         assert dashboard_api.onboarding_confirm("nope") == {
             "success": False,
             "error": "Confirm body must be an object.",
+        }
+
+        # Fast-signal intake proxies (body pass-through + confirm shape).
+        captured = []
+        install_fake_urlopen(
+            [FakeResponse({"question": {"prompt": "Who are you trying to meet?", "options": []}})],
+            captured,
+        )
+        start_result = dashboard_api.intake_start({})
+        assert start_result["success"] is True
+        assert start_result["question"]["prompt"] == "Who are you trying to meet?"
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/intents/intake/start"
+        assert captured[-1]["body"] == {}
+
+        rounds = [{"prompt": "Who?", "answer": {"selectedOptions": [], "freeText": "mentors"}}]
+        captured = []
+        install_fake_urlopen(
+            [FakeResponse({"questions": [{"prompt": "What do you bring?"}], "total": 2})],
+            captured,
+        )
+        question_result = dashboard_api.intake_question({"rounds": rounds})
+        assert question_result["success"] is True
+        assert question_result["total"] == 2
+        assert captured[-1]["body"] == {"rounds": rounds}
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"runId": "11111111-1111-1111-1111-111111111111"}, status=202)], captured)
+        prepare_result = dashboard_api.intake_prepare({"rounds": rounds})
+        assert prepare_result["success"] is True
+        assert prepare_result["runId"] == "11111111-1111-1111-1111-111111111111"
+        assert captured[-1]["url"] == "https://api.example.test/api/intents/intake/prepare"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "proposalId": "22222222-2222-2222-2222-222222222222",
+                        "description": "Find robotics mentors",
+                        "lookingFor": "mentors",
+                        "youBring": "curiosity",
+                    }
+                )
+            ],
+            captured,
+        )
+        proposal_body = {
+            "runId": "11111111-1111-1111-1111-111111111111",
+            "rounds": rounds,
+            "networkId": "33333333-3333-3333-3333-333333333333",
+        }
+        proposal_result = dashboard_api.intake_proposal(proposal_body)
+        assert proposal_result["success"] is True
+        assert proposal_result["proposalId"] == "22222222-2222-2222-2222-222222222222"
+        assert captured[-1]["body"] == proposal_body
+
+        captured = []
+        install_fake_urlopen(
+            [
+                http_error(
+                    422,
+                    {
+                        "error": "verification_rejected",
+                        "code": "verification_rejected",
+                        "clarification": {"prompt": "Can you be more specific?"},
+                    },
+                )
+            ],
+            captured,
+        )
+        rejected = dashboard_api.intake_proposal(proposal_body)
+        assert rejected["success"] is False
+        assert rejected["code"] == "verification_rejected"
+        assert rejected["clarification"]["prompt"] == "Can you be more specific?"
+        assert rejected["status"] == 422
+
+        assert dashboard_api.intake_question("nope") == {
+            "success": False,
+            "error": "Body must be an object.",
+        }
+
+        captured = []
+        install_fake_urlopen(
+            [FakeResponse({"success": True, "proposalId": "22222222-2222-2222-2222-222222222222", "intentId": "intent-9"})],
+            captured,
+        )
+        confirm_result = dashboard_api.confirm_intent(
+            {
+                "proposalId": "22222222-2222-2222-2222-222222222222",
+                "description": "Find robotics mentors",
+                "networkId": "33333333-3333-3333-3333-333333333333",
+            }
+        )
+        assert confirm_result["success"] is True
+        assert confirm_result["intentId"] == "intent-9"
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/intents/confirm"
+        assert captured[-1]["body"] == {
+            "proposalId": "22222222-2222-2222-2222-222222222222",
+            "description": "Find robotics mentors",
+            "networkId": "33333333-3333-3333-3333-333333333333",
+        }
+        assert dashboard_api.confirm_intent("nope") == {
+            "success": False,
+            "error": "Confirm body must be an object.",
+        }
+        assert dashboard_api.confirm_intent({"proposalId": "x"}) == {
+            "success": False,
+            "error": "proposalId and description are required.",
         }
 
         captured = []
