@@ -13,7 +13,15 @@ packages/protocol/src/
   discovery/        HyDE pipeline: lens inference, hypothetical-document generation, validation
   enrichment/       Enrichment graph, identity generation, and enrichment tools
   integrations/     Integration domain, tools, and ports
-  intents/          Intent domain and application workflows
+  intents/          The signal capability, behind one class (Intents)
+    intent.module.ts The sole public surface; everything below it is private
+    graph/           Lifecycle graph: prep, infer, verify, reconcile, execute
+    inference/       Utterance -> candidate signals -> reconciled actions
+    verification/    Felicity/entropy verdicts and the clarification path
+    indexing/        Scoring one signal against one network
+    intake/          The guided first-signal interview
+    proposal/        Persisted proposal record and description normalization
+    tools/           Agent-facing intent tools
   maintenance/      Maintenance graph (radar health, opportunity expiration)
   mcp/              MCP server + elicitation builder/dispatcher
   negotiations/     Bilateral negotiation domain and application workflows
@@ -44,7 +52,7 @@ from anywhere.
 | Graph | File | Purpose |
 |-------|------|---------|
 | Chat | `chat/chat.graph.ts` | ReAct agent loop — LLM calls tools, responds to user |
-| Intent | `intents/application/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
+| Intent | `intents/graph/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
 | Enrichment | `enrichment/enrichment.graph.ts` | Generate/update user identity with scraping and embedding (decomposes into premises) |
 | Premise | `premises/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `opportunities/application/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
@@ -67,11 +75,11 @@ from anywhere.
 | Chat Suggester | `chat/chat.suggester.ts` | Chat — generates proactive reply suggestions |
 | Chat Summarizer | `chat/chat.summarizer.ts` | Chat — produces a read-through digest of a chat session |
 | Chat Interrupt Classifier | `chat/chat.interrupt.classifier.ts` | Chat — classifies whether a new message interrupts an in-flight turn |
-| Intent Clarifier | `intents/application/intent.clarifier.ts` | Intent tools — checks specificity (entropy threshold) before persisting |
-| Intent Inferrer | `intents/application/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
-| Intent Reconciler | `intents/application/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
-| Intent Verifier | `intents/application/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
-| Intent Indexer | `intents/application/intent.indexer.ts` | Intent Network graph — scores intent-network fit as relevancy score |
+| Intent Clarifier | `intents/verification/intent.clarifier.ts` | Intent tools — checks specificity (entropy threshold) before persisting |
+| Intent Inferrer | `intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
+| Intent Reconciler | `intents/inference/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
+| Intent Verifier | `intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
+| Intent Indexer | `intents/indexing/intent.indexer.ts` | Intent Network graph — scores intent-network fit as relevancy score |
 | Enrichment Generator | `enrichment/enrichment.generator.ts` | Enrichment graph — generates structured identity from raw data |
 | Enrichment Enricher | `enrichment/enrichment.enricher.ts` | Identity enrichment — display name and metadata enrichment |
 | Premise Decomposer | `premises/premise.decomposer.ts` | Premise graph — decomposes free text into atomic, first-person self-descriptive premises |
@@ -100,7 +108,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 |------|-------|
 | `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`³, `get_enrichment_run`, `cancel_enrichment_run` |
 | `premises/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
-| `intents/application/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
+| `intents/tools/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `networks/application/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `opportunities/application/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
 | `contacts/application/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |

@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 
-import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer, SignalIntakePackGenerator } from '@indexnetwork/protocol';
+import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer, Intents } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
@@ -104,7 +104,7 @@ export class UserContextQueue {
    * Lazily-built, reused fast-intake pack generator. Like {@link generator},
    * built once and shared across jobs rather than re-created per job.
    */
-  private intakePackGenerator: SignalIntakePackGenerator | undefined;
+  private intents: Intents | undefined;
 
   constructor(deps?: UserContextQueueDeps) {
     this.deps = deps;
@@ -432,8 +432,8 @@ export class UserContextQueue {
     premiseHash: string,
     input: { premises: Array<{ text: string }>; networkTitles: string[]; globalContext: string | null },
   ): Promise<void> {
-    this.intakePackGenerator ??= new SignalIntakePackGenerator();
-    const pack = await this.intakePackGenerator.generate(input);
+    this.intents ??= new Intents();
+    const pack = await this.intents.generateIntakePack(input);
     await signalIntakePackAdapter.upsertPack({
       userId,
       brief: pack.brief,

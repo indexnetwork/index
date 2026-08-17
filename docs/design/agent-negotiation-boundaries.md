@@ -60,7 +60,7 @@ So the grounding is real at the **seed** (explicit text → provenance-tagged pr
 
 **The asterisk on "explicit."** Intents are LLM-*inferred* from content and then labeled explicit:
 
-- `ExplicitIntentInferrer` ("infer the user's current intentions based on their profile and new content", `packages/protocol/src/intents/application/intent.inferrer.ts:46-47`); the graph hardcodes `inferenceType: 'explicit'` and derives `confidence` from a score (`packages/protocol/src/intents/application/intent.graph.ts:549-550`).
+- `ExplicitIntentInferrer` ("infer the user's current intentions based on their profile and new content", `packages/protocol/src/intents/inference/intent.inferrer.ts:46-47`); the graph hardcodes `inferenceType: 'explicit'` and derives `confidence` from a score (`packages/protocol/src/intents/graph/intent.graph.execute.ts`).
 - Those two fields are **not even persisted** — the adapter's `createIntent` drops `confidence` and `inferenceType` (`services/api/src/adapters/intent.database.adapter.ts:31-58`), though the MCP surface still advertises them.
 - A profile-fallback mode infers intents from the profile alone when no content is supplied (`intent.inferrer.ts:104-108`).
 - Ambient/autonomous discovery creates `latent` opportunities with no live user query (`services/api/src/services/opportunity.service.ts:791,799`).

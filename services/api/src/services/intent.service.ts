@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import { IntentGraphFactory } from '@indexnetwork/protocol';
+import { Intents } from '@indexnetwork/protocol';
 import type { IntentGraphDatabase, QuestionerEnqueueFn } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
@@ -64,7 +64,7 @@ export class IntentAdmissionEnqueueError extends Error {
  *
  * Manages intent processing through the Intent Graph and CRUD operations.
  * Uses IntentDatabaseAdapter for database operations.
- * Uses IntentGraphFactory for graph-based intent processing.
+ * Uses the Intents module for graph-based intent processing.
  *
  * RESPONSIBILITIES:
  * - Process intents through Intent Graph
@@ -73,7 +73,7 @@ export class IntentAdmissionEnqueueError extends Error {
  */
 export class IntentService {
   private db: IntentGraphDatabase;
-  private factory: IntentGraphFactory;
+  private intents: Intents;
   private adapter: IntentDatabaseAdapter;
   private proposalAdapter: IntentProposalDatabaseAdapter;
   private embedder: EmbedderAdapter;
@@ -102,7 +102,7 @@ export class IntentService {
     this.seedIndexQueue = deps?.seedIndexQueue ?? intentQueue;
     this.questionerEnqueue = deps?.questionerEnqueue ?? questionerEnqueueIfEnabled();
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
-    this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue, this.questionerEnqueue);
+    this.intents = new Intents({ database: this.db, embedder: this.embedder, queue: intentQueue, questionerEnqueue: this.questionerEnqueue });
   }
 
   /**
@@ -140,7 +140,7 @@ export class IntentService {
   ): Promise<Record<string, unknown>> {
     logger.verbose('Processing intent', { userId });
 
-    const graph = this.factory.createGraph();
+    const graph = this.intents.createGraph();
     const result = await graph.invoke(
       {
         userId,

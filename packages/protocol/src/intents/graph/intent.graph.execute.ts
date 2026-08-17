@@ -2,10 +2,10 @@
  * Intent graph, stage 4 and the read fast path.
  */
 
-import { VerifiedIntent, ExecutionResult, type IntentValidationFailure } from "../domain/intent.state.js";
-import { DEFAULT_SPECIFICITY_WARNING } from "../domain/signal.specificity.js";
-import { normalizeIntentDescription } from "../domain/intent.proposal.js";
-import type { NormalizedIntentAction } from "./intent.reconciler.js";
+import { VerifiedIntent, ExecutionResult, type IntentValidationFailure } from "./intent.graph.state.js";
+import { DEFAULT_SPECIFICITY_WARNING } from "../verification/intent.specificity.js";
+import { normalizeIntentDescription } from "../proposal/intent.proposal.js";
+import type { NormalizedIntentAction } from "../inference/intent.reconciler.js";
 import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";

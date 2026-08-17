@@ -50,6 +50,27 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   "interaction-composition": undefined,
 };
 
+/**
+ * The barrel filename for capabilities that do not use `index.ts`.
+ *
+ * intents states its surface as a module class (`Intents`) rather than a
+ * re-export list, so its barrel is named for what it is.
+ */
+export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, string>>> = {
+  intents: "intent.module.ts",
+};
+
+/** The barrel filename a capability's public surface must live in. */
+export function barrelFilenameForCapability(capability: Capability): string {
+  return CAPABILITY_BARREL_FILENAMES[capability] ?? "index.ts";
+}
+
+/** The source-relative barrel path for a capability, if it has one. */
+export function barrelPathForCapability(capability: Capability): string | undefined {
+  const directory = CAPABILITY_BARREL_DIRECTORIES[capability];
+  return directory ? `${directory}/${barrelFilenameForCapability(capability)}` : undefined;
+}
+
 /** Every permitted direction is deliberately named and reviewed here. */
 export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   Record<Capability, readonly Capability[]>
@@ -109,10 +130,11 @@ export function barrelCapabilityForSourcePath(
   pathFromSource: string,
 ): Capability | undefined {
   const normalized = pathFromSource.replace(/\\/g, "/");
-  const match = /^([a-z-]+)\/index\.ts$/.exec(normalized);
+  const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
   if (!match) return undefined;
-  const directory = match[1];
+  const [, directory, filename] = match;
   const capability = CAPABILITY_DIRECTORIES[directory];
   if (!capability) return undefined;
-  return CAPABILITY_BARREL_DIRECTORIES[capability] === directory ? capability : undefined;
+  if (CAPABILITY_BARREL_DIRECTORIES[capability] !== directory) return undefined;
+  return barrelFilenameForCapability(capability) === filename ? capability : undefined;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { SignalIntakePackGenerator, type IntakePack } from "../application/intake.pack.generator.js";
+import { SignalIntakePackGenerator, type IntakePack } from "../intake/intake.pack.generator.js";
 
 function stubModel(pack: IntakePack, capture?: { prompt?: string }) {
   return {

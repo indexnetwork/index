@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test';
 
-import { UserContextGenerator, HydeGraphFactory, SignalIntakePackGenerator } from '@indexnetwork/protocol';
+import { UserContextGenerator, HydeGraphFactory, Intents } from '@indexnetwork/protocol';
 
 import { UserContextQueue, computePremiseHash } from '../usercontext.queue';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
@@ -217,7 +217,7 @@ describe('UserContextQueue intake pack production wiring', () => {
     spyOn(HydeGraphFactory.prototype, 'createGraph').mockReturnValue({ invoke: async () => undefined } as never);
     spyOn(signalIntakePackAdapter, 'getPack').mockResolvedValue(null);
     const upsertPackSpy = spyOn(signalIntakePackAdapter, 'upsertPack').mockResolvedValue(undefined);
-    const generateSpy = spyOn(SignalIntakePackGenerator.prototype, 'generate').mockResolvedValue({
+    const generateSpy = spyOn(Intents.prototype, 'generateIntakePack').mockResolvedValue({
       brief: 'A concise brief about Ada.',
       question: {
         title: 'Who do you want to meet?',

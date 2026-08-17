@@ -57,7 +57,7 @@ function makeDb(overrides: DbOverrides = {}): IntentNetworkGraphDatabase {
 }
 
 function makeIndexer(result: IntentIndexerOutput | null) {
-  return { evaluate: async () => result };
+  return { indexIntent: async () => result };
 }
 
 function makeGraph(dbOverrides: DbOverrides = {}, indexerResult: IntentIndexerOutput | null = null) {
@@ -156,7 +156,7 @@ describe("assignment policy: evaluated (skipEvaluation: false)", () => {
 describe("assignment policy: no-prompt fast path", () => {
   it("assigns without LLM call when both prompts are absent", async () => {
     let evaluatorCalled = false;
-    const indexer = { evaluate: async () => { evaluatorCalled = true; return null; } };
+    const indexer = { indexIntent: async () => { evaluatorCalled = true; return null; } };
     const graph = new IntentNetworkGraphFactory(
       makeDb({
         getNetworkAssignmentContext: async () => ({ networkId: "net-1", indexPrompt: null, memberPrompt: null }),

@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it } from "bun:test";
-import { IntentIndexer } from "../../intents/application/intent.indexer.js";
+import { IntentIndexer } from "../../intents/indexing/intent.indexer.js";
 
 describe("IntentIndexer", () => {
   const indexer = new IntentIndexer();

@@ -8,7 +8,7 @@
 import type { ActiveIntent, Id } from '../../shared/interfaces/database.interface.js';
 import type { DebugMetaAgent } from '../../agents/index.js';
 import type { IndexedIntent, TargetNetwork } from '../domain/opportunity.state.js';
-import { IntentIndexer } from '../../intents/index.js';
+import { Intents } from '../../intents/intent.module.js';
 import { withCallLogging } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from '../../shared/observability/request-context.js';
@@ -223,7 +223,7 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
       } else if (state.searchQuery?.trim()) {
         // Chat path: score query against target indexes in parallel
         try {
-          const indexer = new IntentIndexer();
+          const indexer = new Intents();
           const scopeAgentTimings: DebugMetaAgent[] = [];
           const scorableIndexes = targetNetworks.filter(ti => ti.title !== 'Unknown');
           const scoringPromises = scorableIndexes.map(async (ti) => {
@@ -234,9 +234,9 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
             const _indexerStart = Date.now();
             const traceEmitter = requestContext.getStore()?.traceEmitter;
             traceEmitter?.({ type: "agent_start", name: "intent-networker" });
-            let result: Awaited<ReturnType<typeof indexer.invoke>> | null = null;
+            let result: Awaited<ReturnType<typeof indexer.indexIntent>> | null = null;
             try {
-              result = await indexer.invoke(
+              result = await indexer.indexIntent(
                 state.searchQuery!,
                 ctx?.indexPrompt ?? null,
                 ctx?.memberPrompt ?? null,

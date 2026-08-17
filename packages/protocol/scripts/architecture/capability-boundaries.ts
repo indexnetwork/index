@@ -3,7 +3,8 @@
  * Enforces the capability seams introduced by IND-528.
  *
  * One rule: a capability may reach another capability only through that
- * capability's `index.ts`. Direct implementation imports are prohibited.
+ * capability's barrel — `index.ts`, or `intent.module.ts` for intents.
+ * Direct implementation imports are prohibited.
  *
  * This replaces the capabilities/*.facade.ts layer, where the contract lived in
  * a separate directory of re-export files — 24 of them, several two lines long,
@@ -19,7 +20,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 
-import { ALLOWED_CAPABILITY_DIRECTIONS, barrelCapabilityForSourcePath, CAPABILITY_BARREL_DIRECTORIES, capabilityForSourcePath, DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES, implementationCapabilityForSourcePath } from "./capability-model.ts";
+import { ALLOWED_CAPABILITY_DIRECTIONS, barrelCapabilityForSourcePath, barrelPathForCapability, CAPABILITY_BARREL_DIRECTORIES, capabilityForSourcePath, DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES, implementationCapabilityForSourcePath } from "./capability-model.ts";
 
 const packageRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const sourceRoot = resolve(packageRoot, "src");
@@ -100,7 +101,7 @@ for (const filePath of await sourceFiles(sourceRoot)) {
     if (isRootIndex) {
       if (!barrelTarget && targetHasBarrel) {
         violations.push(
-          `${relative(packageRoot, filePath)} exports ${target} implementation directly via ${specifier}; root exports must use the capability barrel ${target}/index.ts`,
+          `${relative(packageRoot, filePath)} exports ${target} implementation directly via ${specifier}; root exports must use the capability barrel ${barrelPathForCapability(target)}`,
         );
       }
       continue;
@@ -114,7 +115,7 @@ for (const filePath of await sourceFiles(sourceRoot)) {
     }
     if (!barrelTarget && targetHasBarrel && !DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES.has(from!)) {
       violations.push(
-        `${relative(packageRoot, filePath)} imports ${target} implementation directly via ${specifier}; import it via ${target}/index.ts`,
+        `${relative(packageRoot, filePath)} imports ${target} implementation directly via ${specifier}; import it via ${barrelPathForCapability(target)}`,
       );
     }
   }

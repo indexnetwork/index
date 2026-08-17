@@ -29,8 +29,13 @@ export type {
 } from "../../shared/interfaces/database.interface.js";
 
 // ── Signal-assignment port ────────────────────────────────────────────────────
-// Re-exported from the signals capability facade so that application-layer code
+// Derived from the intents module surface so that application-layer code
 // (indexer.graph.ts, indexer.state.ts) imports from the communities port, not
-// directly from the signals facade or its implementation.
-export { IntentIndexer } from "../../intents/index.js";
-export type { IntentIndexerOutput } from "../../intents/index.js";
+// directly from the intents module or its implementation. The port names the
+// single method communities needs rather than the whole capability.
+import type { Intents } from "../../intents/intent.module.js";
+
+/** The one intents method communities calls: score a signal against a network. */
+export type IntentNetworkIndexer = Pick<Intents, "indexIntent">;
+
+export type { IntentIndexerOutput } from "../../intents/intent.module.js";

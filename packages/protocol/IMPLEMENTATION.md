@@ -20,7 +20,10 @@ and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 Internal source is domain-first: `signals`, `communities`, `questions`,
 `participant-agents`, `contacts`, and `integrations`; opportunity and negotiation
-place state/contracts in `domain/` and workflows/tools in `application/`.
+place state/contracts in `domain/` and workflows/tools in `application/`. The
+`intents` capability is instead organized by function (`graph/`, `inference/`,
+`verification/`, `indexing/`, `intake/`, `proposal/`, `tools/`) behind a single
+exported class, `Intents`.
 
 
 ## Install
@@ -140,7 +143,6 @@ For direct graph invocation (bypassing the tool layer), a `*GraphFactory` class 
 ```typescript
 import {
   ChatGraphFactory,
-  IntentGraphFactory,
   OpportunityGraphFactory,
   EnrichmentGraphFactory,
   PremiseGraphFactory,
@@ -157,10 +159,12 @@ import {
 Each factory takes its typed dependencies in the constructor and exposes a
 `.createGraph()` method that returns a compiled LangGraph ready for `.invoke()`.
 
+The intent lifecycle graph is the exception: it is reached through the `Intents`
+module rather than a factory of its own (see [Intents](#intents) below).
+
 | Factory | Workflow |
 |---|---|
 | `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
-| `IntentGraphFactory` | Clarify, infer, verify felicity, reconcile, and persist intents |
 | `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, persist |
 | `EnrichmentGraphFactory` | Enrich users (scrape + embed) and decompose into premises |
 | `PremiseGraphFactory` | Decompose and index a user's premises |
@@ -175,6 +179,45 @@ Each factory takes its typed dependencies in the constructor and exposes a
 ### Persisted chat personas
 
 `ChatGraphFactory.withPersona()` keeps the runtime neutral while selecting an exported persona configuration. `SIGNAL_PERSONA`, `REPORTER_PERSONA`, and `ONBOARDING_PERSONA` each own an exact positive tool allowlist; shared tools added later remain unavailable until reviewed. `ONBOARDING_PERSONA` reuses Signal's proposal-only, live-membership-narrowed `create_intent` contract and otherwise exposes only privacy consent, approved self-context preview/confirmation, guided questions, and validated completion. Hosts must persist the exported persona ID on session creation and treat it as authoritative on follow-ups.
+
+## Intents
+
+Signals are the protocol's base unit, and the whole capability ships as one
+class. `Intents` covers the lifecycle graph, semantic verification, network
+indexing, the guided intake interview, and the agent-facing intent tools.
+
+```typescript
+import { Intents } from "@indexnetwork/protocol";
+
+const intents = new Intents({
+  database,           // IntentGraphDatabase — required only by createGraph()
+  embedder,           // EmbeddingGenerator
+  queue,              // IntentGraphQueue
+  questionerEnqueue,  // QuestionerEnqueueFn
+});
+```
+
+Every dependency is optional, so a host that only wants the model-backed
+helpers can construct `new Intents()` with nothing. Collaborators are built on
+first use, so an unused method costs nothing.
+
+| Method | Purpose |
+|---|---|
+| `createGraph()` | Compile the lifecycle graph — prep, infer, verify, reconcile, execute. Requires `database` |
+| `verifyIntent(content, profileContext)` | Felicity conditions, speech-act classification, semantic entropy, specificity |
+| `indexIntent(intent, indexPrompt, memberPrompt, sourceName?, networkContext?)` | Score one signal against one network; `null` when the model call fails |
+| `generateIntakePack(input)` | The participant's intake brief and round-1 question |
+| `generateIntakeFollowUps(input)` | Plan and write the next follow-up questions |
+| `synthesizeIntake(input)` | Turn answered rounds into a description and card summary |
+| `Intents.createTools(defineTool, deps)` | Register the agent-facing intent tools |
+| `Intents.normalizeDescription(description)` | Normalize a description to its persisted form |
+| `Intents.FALLBACK_INTAKE_QUESTION` | The static round-1 question used when generation is unavailable |
+
+`IntentNetworkGraphFactory` takes an `Intents` instance as its evaluator:
+
+```typescript
+const intentNetworkGraph = new IntentNetworkGraphFactory(database, intents).createGraph();
+```
 
 ## MCP server
 

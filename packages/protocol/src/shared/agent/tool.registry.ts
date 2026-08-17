@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { DefineTool, ResolvedToolContext, ToolDeps, RawToolDefinition, ToolRegistry } from './tool.helpers.js';
 import { error, redactSensitiveFields } from './tool.helpers.js';
 import { createEnrichmentTools } from '../../enrichment/enrichment.tools.js';
-import { createIntentTools } from '../../intents/application/intent.tools.js';
+import { Intents } from '../../intents/intent.module.js';
 import { createNetworkTools } from '../../networks/index.js';
 import { createOpportunityTools } from '../../opportunities/index.js';
 import { createUtilityTools } from './utility.tools.js';
@@ -91,7 +91,7 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   // The local defineTool is compatible with DefineTool (which returns any).
   const dt = defineTool as DefineTool;
   createEnrichmentTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
-  createIntentTools(dt, deps);
+  Intents.createTools(dt, deps);
   createNetworkTools(dt, deps);
   createOpportunityTools(dt, deps);
   // Utility tools always register read_docs + read_activity_summary; on the

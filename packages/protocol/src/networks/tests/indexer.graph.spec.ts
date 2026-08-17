@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import type { IntentIndexerOutput } from "../../intents/application/intent.indexer.js";
+import type { IntentIndexerOutput } from "../../intents/indexing/intent.indexer.js";
 
 import { IntentNetworkGraphFactory } from "../../networks/application/index.js";
 
@@ -29,7 +29,7 @@ function createDb(overrides: Record<string, unknown> = {}) {
 
 function createIndexer(result: IntentIndexerOutput | null) {
   return {
-    evaluate: async () => result,
+    indexIntent: async () => result,
   };
 }
 

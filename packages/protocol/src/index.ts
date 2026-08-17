@@ -122,9 +122,29 @@ export { RadarGraphFactory } from "./opportunities/index.js";
 export { HydeGraphFactory } from "./discovery/index.js";
 export { NetworkGraphFactory } from "./networks/index.js";
 export { NetworkMembershipGraphFactory } from "./networks/index.js";
-export { IntentGraphFactory } from "./intents/index.js";
-export { SemanticVerifier } from "./intents/index.js";
 export { IntentNetworkGraphFactory } from "./networks/index.js";
+
+// ─── Intents ──────────────────────────────────────────────────────────────────
+// The whole capability behind one class: lifecycle graph, verification,
+// network indexing, guided intake, and the agent-facing tools.
+
+export { Intents } from "./intents/intent.module.js";
+export type {
+  FollowUpPlan,
+  FollowUpPlanInput,
+  IntakeAnswer,
+  IntakePack,
+  IntakePackInput,
+  IntakePackQuestion,
+  IntakePackQuestionOption,
+  IntakeRound,
+  IntentIndexerOutput,
+  IntentsDeps,
+  IntentToolDeps,
+  SynthesisInput,
+  SynthesisResult,
+} from "./intents/intent.module.js";
+
 export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
 export { NegotiationGraphFactory, negotiateCandidates } from "./negotiations/index.js";
@@ -160,19 +180,6 @@ export { ChatInterruptClassifier } from "./agents/index.js";
 export { ChatSummarizer } from "./agents/index.js";
 export { HydeGenerator } from "./discovery/index.js";
 export { SuggestionGenerator } from "./agents/index.js";
-export { IntentIndexer } from "./intents/index.js";
-export type { IntentIndexerOutput } from "./intents/index.js";
-export { SignalIntakePackGenerator } from "./intents/index.js";
-export type { IntakePackQuestion } from "./intents/index.js";
-export {
-  SignalIntakeOrchestrator,
-  FALLBACK_WHO_QUESTION,
-} from "./intents/index.js";
-export type {
-  IntakeAnswer,
-  IntakeRound,
-} from "./intents/index.js";
-export { normalizeIntentDescription } from "./intents/index.js";
 export { LensInferrer } from "./discovery/index.js";
 export { NegotiationInsightsGenerator } from "./negotiations/index.js";
 export type { NegotiationDigest } from "./negotiations/index.js";

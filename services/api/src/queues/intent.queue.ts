@@ -5,7 +5,7 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
-import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
+import { HydeGraphFactory, HydeGenerator, LensInferrer, Intents, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
 
@@ -464,13 +464,13 @@ export class IntentQueue implements IntentGraphQueue {
       let evaluateIntentAssignment = this.deps?.evaluateIntentAssignment;
       const getIntentAssignmentEvaluator = () => {
         evaluateIntentAssignment ??= (() => {
-          const indexer = new IntentIndexer();
+          const indexer = new Intents();
           return (o: {
             intent: string;
             indexPrompt: string | null;
             memberPrompt: string | null;
             sourceName?: string | null;
-          }) => indexer.invoke(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null);
+          }) => indexer.indexIntent(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null);
         })();
         return evaluateIntentAssignment;
       };

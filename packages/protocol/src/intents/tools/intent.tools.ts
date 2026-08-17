@@ -1,14 +1,14 @@
 import { z } from "zod";
 
-import { IntentClarifier } from "./intent.clarifier.js";
-import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "../domain/intent.state.js";
-import { DEFAULT_SPECIFICITY_WARNING } from "../domain/signal.specificity.js";
-import { normalizeIntentDescription, type PersistableIntentProposal } from "../domain/intent.proposal.js";
+import { IntentClarifier } from "../verification/intent.clarifier.js";
+import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "../graph/intent.graph.state.js";
+import { DEFAULT_SPECIFICITY_WARNING } from "../verification/intent.specificity.js";
+import { normalizeIntentDescription, type PersistableIntentProposal } from "../proposal/intent.proposal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { traceGraph } from "../../shared/observability/trace.js";
 
 import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { IntentToolDeps } from "../ports/signals.tools.port.js";
+import type { IntentToolDeps } from "./intent.tools.port.js";
 import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
 import type { UserRecord } from "../../shared/interfaces/database.interface.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";

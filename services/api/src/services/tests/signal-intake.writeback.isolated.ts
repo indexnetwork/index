@@ -31,11 +31,11 @@ function makeDeps(recordAnsweredQuestion: unknown) {
       createProposals: mock(async () => undefined),
       getProposalForOwner: mock(async () => null),
     },
-    orchestrator: {
-      generateFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
-      synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+    intents: {
+      generateIntakePack: mock(async () => ({ brief: 'b', question })),
+      generateIntakeFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
+      synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
     },
-    packGenerator: { generate: mock(async () => ({ brief: 'b', question })) },
     getPremises: mock(async () => []),
     getNetworkTitles: mock(async () => []),
     getGlobalContext: mock(async () => null),

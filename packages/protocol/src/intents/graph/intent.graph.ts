@@ -7,14 +7,14 @@
  */
 
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { ExplicitIntentInferrer } from "./intent.inferrer.js";
-import { SemanticVerifier } from "./intent.verifier.js";
-import { IntentReconciler } from "./intent.reconciler.js";
+import { ExplicitIntentInferrer } from "../inference/intent.inferrer.js";
+import { SemanticVerifier } from "../verification/intent.verifier.js";
+import { IntentReconciler } from "../inference/intent.reconciler.js";
 import type { IntentGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { EmbeddingGenerator } from "../../shared/interfaces/embedder.interface.js";
 import type { IntentGraphQueue } from "../../shared/interfaces/queue.interface.js";
 import type { QuestionerEnqueueFn } from "../../questions/index.js";
-import { IntentGraphState } from "../domain/intent.state.js";
+import { IntentGraphState } from "./intent.graph.state.js";
 import { logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 import { inferenceNode, prepNode } from "./intent.graph.infer.js";
 import { reconciliationNode, verificationNode } from "./intent.graph.reconcile.js";

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { createMcpServer, clearMcpToolMetadataCacheForTests } from '../../../packages/protocol/src/mcp/mcp.server';
-import { setIntentClarifierForTesting } from '../../../packages/protocol/src/intents/application/intent.tools';
+import { setIntentClarifierForTesting } from '../../../packages/protocol/src/intents/tools/intent.tools';
 import type { ScopedDepsFactory } from '../../../packages/protocol/src/mcp/mcp.server';
 import type { McpAuthorizationDenialEvent, McpAuthorizationObserver } from '../../../packages/protocol/src/mcp/mcp.authorization-policy';
 import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';

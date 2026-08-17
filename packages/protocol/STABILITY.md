@@ -18,7 +18,10 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
   `src/index.ts` diff, and that is what triggers the major bump below.
 - Root exports are assembled through named capability facades. Those facades are
   implementation seams, not package subpath entry points: consumers must still
-  import only from `@indexnetwork/protocol`.
+  import only from `@indexnetwork/protocol`. A capability may state that facade
+  as a class rather than a re-export list — `intents` does, via `Intents` in
+  `intents/intent.module.ts` — which makes the whole capability one exported
+  symbol and its internal layout free to change without a contract change.
 
 ## Stability tiers
 
@@ -34,6 +37,7 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 | **Interfaces** | Every `*.interface.ts` port you implement to inject infrastructure (databases, embedder, cache, scraper, queues, integration, agent dispatcher, …). |
 | **Shared schemas** | Zod schemas + inferred types that cross the boundary (questions, identity, network-assignment, chat-context, …). |
 | **Graph factories** | `*GraphFactory` classes (`ChatGraphFactory`, `OpportunityGraphFactory`, `NegotiationGraphFactory`, …). |
+| **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, network indexing, guided intake, tools) plus `IntentsDeps` and the intake/indexer types. Replaced the six separate intent exports in 18.0.0. |
 | **Agents** | Structured LLM agents (`UserContextGenerator`, `IndexNegotiator`, `OpportunityEvaluator`, …). |
 | **MCP** | `createMcpServer` plus the types needed to call it: `ScopedDepsFactory`, `McpCapabilityPolicyOptions`, `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`, `McpAuthorizationObserver`, `McpAuthorizationDenialEvent`. The rest of `mcp.authorization-policy.ts` is package-internal as of 15.0.0. |
 | **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories became package-internal in 15.0.0 — compose them through `createMcpServer` or `createToolRegistry`. |

@@ -20,6 +20,45 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 18.0.0 - 2026-08-17
+
+### Changed
+
+- **BREAKING**: The `intents` capability now ships as a single class. `Intents`
+  replaces `IntentGraphFactory`, `SemanticVerifier`, `IntentIndexer`,
+  `SignalIntakePackGenerator`, `SignalIntakeOrchestrator`,
+  `normalizeIntentDescription`, and `FALLBACK_WHO_QUESTION`, all of which are
+  no longer exported. Dependencies move from positional constructor arguments
+  to a named `IntentsDeps` bag, and every field is optional — a host that wants
+  only the model-backed helpers can call `new Intents()`.
+
+  | Removed | Replacement |
+  |---|---|
+  | `new IntentGraphFactory(db, embedder, queue, enqueue).createGraph()` | `new Intents({ database, embedder, queue, questionerEnqueue }).createGraph()` |
+  | `new SemanticVerifier().invoke(content, context)` | `new Intents().verifyIntent(content, context)` |
+  | `new IntentIndexer().invoke(...)` / `.evaluate(...)` | `new Intents().indexIntent(...)` |
+  | `new SignalIntakePackGenerator().generate(input)` | `new Intents().generateIntakePack(input)` |
+  | `new SignalIntakeOrchestrator().generateFollowUps(input)` | `new Intents().generateIntakeFollowUps(input)` |
+  | `new SignalIntakeOrchestrator().synthesize(input)` | `new Intents().synthesizeIntake(input)` |
+  | `normalizeIntentDescription(text)` | `Intents.normalizeDescription(text)` |
+  | `FALLBACK_WHO_QUESTION` | `Intents.FALLBACK_INTAKE_QUESTION` |
+
+  Collaborators are constructed on first use rather than in the constructor, so
+  an unused method costs nothing. `new Intents()` no longer touches the model
+  provider at all — code that relied on construction failing without
+  `OPENROUTER_API_KEY` now fails on the first call instead.
+
+- **BREAKING**: `IntentNetworkGraphFactory`'s second argument is now an
+  `Intents` instance (anything with `indexIntent`) rather than an
+  `IntentIndexer`. Pass the same instance used for the intent graph.
+
+- Reorganize `src/intents/` by function rather than by layer: `graph/`,
+  `inference/`, `verification/`, `indexing/`, `intake/`, `proposal/`, and
+  `tools/`, with `intent.module.ts` as the capability barrel in place of
+  `index.ts`. The directories are private; only `Intents` crosses the boundary.
+  `IntentIndexerOutput`, `IntakePack*`, `Intake{Answer,Round}`, `FollowUpPlan*`,
+  `Synthesis*`, `IntentToolDeps`, and `IntentsDeps` remain exported as types.
+
 ## 17.0.1 - 2026-08-17
 
 ### Removed

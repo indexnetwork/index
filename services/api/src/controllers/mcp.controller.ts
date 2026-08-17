@@ -47,7 +47,7 @@ import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -226,7 +226,13 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 
   const { database, embedder, scraper } = protocolDeps;
   const qEnqueue = protocolDeps.questionerEnqueue;
-  const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
+  const intents = new Intents({
+    database,
+    embedder,
+    queue: protocolDeps.intentQueue,
+    questionerEnqueue: qEnqueue,
+  });
+  const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
   const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
@@ -255,7 +261,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
-  const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+  const intentIndexGraph = new IntentNetworkGraphFactory(database, intents).createGraph();
 
   compiledGraphs = {
     profile: profileGraph,

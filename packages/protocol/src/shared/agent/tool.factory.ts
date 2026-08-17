@@ -1,14 +1,13 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
-import { IntentGraphFactory } from "../../intents/application/intent.graph.js";
+import { Intents } from "../../intents/intent.module.js";
 import { EnrichmentGraphFactory } from "../../enrichment/enrichment.graph.js";
 import { OpportunityGraphFactory } from "../../opportunities/index.js";
 import { HydeGraphFactory } from "../../discovery/hyde.graph.js";
 import { HydeGenerator } from "../../discovery/hyde.generator.js";
 import { LensInferrer } from "../../discovery/lens.inferrer.js";
 import { NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory } from "../../networks/index.js";
-import { IntentIndexer } from "../../intents/application/intent.indexer.js";
 import { NegotiationGraphFactory } from "../../negotiations/index.js";
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
@@ -19,7 +18,6 @@ import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatC
 import { deriveAllowedNetworkIds, focusedIntentId, scopeFromNetworkId } from "./tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
-import { createIntentTools } from "../../intents/application/intent.tools.js";
 import { createNetworkTools } from "../../networks/index.js";
 import { createOpportunityTools } from "../../opportunities/index.js";
 import { createUtilityTools } from "./utility.tools.js";
@@ -148,7 +146,13 @@ export async function createChatTools(
       })
     : undefined;
 
-  const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue, sessionAwareEnqueue).createGraph();
+  const intents = new Intents({
+    database,
+    embedder,
+    queue: deps.intentQueue,
+    questionerEnqueue: sessionAwareEnqueue,
+  });
+  const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
   const profileGraph = new EnrichmentGraphFactory(database, scraper, deps.enricher, premiseGraph).createGraph();
   const hydeCache = deps.hydeCache;
@@ -182,7 +186,7 @@ export async function createChatTools(
   ).createGraph();
   const networkGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
-  const intentNetworkGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+  const intentNetworkGraph = new IntentNetworkGraphFactory(database, intents).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
@@ -240,7 +244,7 @@ export async function createChatTools(
 
   // ─── Create domain tools ──────────────────────────────────────────────────
   const profileTools = createEnrichmentTools(defineTool, toolDeps);
-  const intentTools = createIntentTools(defineTool, toolDeps);
+  const intentTools = Intents.createTools(defineTool, toolDeps);
   // An intent-scoped conversation exists to refine its selected signal. Keep
   // creation out of the model-visible registry; the update handler separately
   // clamps writes to the exact scoped intent as a runtime backstop.

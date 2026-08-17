@@ -101,7 +101,7 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { AMBIENT_PARK_WINDOW_MS, IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
@@ -310,7 +310,7 @@ fromIntentQueue.setRuntimeDeps({
 // Intent graph for answer-driven refinements — same update path as the chat
 // update_intent tool. The graph owns merge, verification, sanitization,
 // re-embedding, persistence, and HyDE regeneration.
-const answerIntentGraph = new IntentGraphFactory(chatDatabaseAdapter, embedderAdapter, intentQueue).createGraph();
+const answerIntentGraph = new Intents({ database: chatDatabaseAdapter, embedder: embedderAdapter, queue: intentQueue }).createGraph();
 
 const enqueueIntentRefinement = enqueueIntentRefinementFactory({
   getQuestionPrompt: async (questionId) => {

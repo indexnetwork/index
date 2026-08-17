@@ -169,15 +169,15 @@ function makeSeam(options: { runStatus?: 'pending' | 'failed' } = {}) {
     },
     proposalStore: store,
     isNetworkMember: async (networkId: string, userId: string) => members.has(`${networkId}:${userId}`),
-    orchestrator: {
-      generateFollowUps: async () => ({ questions: [question], plannedFollowUpCount: 1 }),
-      synthesize: async () => ({
+    intents: {
+      generateIntakePack: async () => ({ brief: 'b', question }),
+      generateIntakeFollowUps: async () => ({ questions: [question], plannedFollowUpCount: 1 }),
+      synthesizeIntake: async () => ({
         description: 'Looking for a design partner.',
         lookingFor: 'A design partner',
         youBring: 'Engineering depth',
       }),
     },
-    packGenerator: { generate: async () => ({ brief: 'b', question }) },
     getPremises: async () => [{ text: 'Ada builds tools.' }],
     getNetworkTitles: async () => ['Builders'],
     getGlobalContext: async () => null,

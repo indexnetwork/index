@@ -28,7 +28,7 @@ const round1Question = {
   multiSelect: false,
 };
 
-/** Round-2's question as produced by the (mocked) orchestrator; irrelevant to
+/** Round-2's question as produced by the (mocked) intents module; irrelevant to
  * the follow-up write-back, which receives only the client-sent prompt. */
 const round2Question = {
   title: 'What would you bring?',
@@ -75,28 +75,25 @@ mock.module('../../adapters/embedder.adapter', () => ({ EmbedderAdapter: class E
 mock.module('../../queues/intent.queue', () => ({ intentQueue: {} }));
 mock.module('../../queues/questioner.queue', () => ({ questionerEnqueueIfEnabled: () => undefined }));
 
-// Stubs the LLM-backed orchestrator/pack-generator/intent-graph collaborators
-// so `followUpQuestions()` can run end to end (through the real `record()` call
-// site) without ever reaching the network.
+// Stubs the LLM-backed intents module so `followUpQuestions()` can run end to
+// end (through the real `record()` call site) without ever reaching the network.
 mock.module('@indexnetwork/protocol', () => ({
-  FALLBACK_WHO_QUESTION: { title: 'Fallback', prompt: 'fallback', options: [], multiSelect: false },
-  normalizeIntentDescription: (value: string) => value,
-  IntentGraphFactory: class IntentGraphFactory {
+  Intents: class Intents {
+    static FALLBACK_INTAKE_QUESTION = { title: 'Fallback', prompt: 'fallback', options: [], multiSelect: false };
+    static normalizeDescription(value: string) {
+      return value;
+    }
     createGraph() {
       return { invoke: async () => ({ verifiedIntents: [] }) };
     }
-  },
-  SignalIntakeOrchestrator: class SignalIntakeOrchestrator {
-    async generateFollowUps() {
+    async generateIntakePack() {
+      return { brief: 'b', question: round1Question };
+    }
+    async generateIntakeFollowUps() {
       return { questions: [round2Question], plannedFollowUpCount: 1 };
     }
-    async synthesize() {
+    async synthesizeIntake() {
       return { description: 'd', lookingFor: 'l', youBring: 'y' };
-    }
-  },
-  SignalIntakePackGenerator: class SignalIntakePackGenerator {
-    async generate() {
-      return { brief: 'b', question: round1Question };
     }
   },
 }));
@@ -144,7 +141,7 @@ describe('production intake recorder wiring', () => {
 
   it('persists and answers a chat-mode question row through the shared questioner adapter, falling back to the documented proxy for follow-up rounds', async () => {
     // `prepare` is used (not `followUpQuestions`) so this stays clear of the real
-    // `SignalIntakeOrchestrator`/intent-graph LLM calls: the run store mock
+    // intake/intent-graph LLM calls: the run store mock
     // reports `claimed: false`, so speculative synthesis never fires and the
     // only production collaborator exercised is the questioner adapter.
     await signalIntakeService.prepare('u1', {

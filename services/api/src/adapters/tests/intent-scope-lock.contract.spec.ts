@@ -32,8 +32,10 @@ const answerHandlerSource = readFileSync(
   'utf8',
 );
 const mainSource = readFileSync(new URL('../../main.ts', import.meta.url), 'utf8');
+// The executor node is where the graph issues the locked intent write, so that
+// is the file the CAS contract below is asserted against.
 const protocolIntentGraphSource = readFileSync(
-  new URL('../../../../../packages/protocol/src/intents/application/intent.graph.ts', import.meta.url),
+  new URL('../../../../../packages/protocol/src/intents/graph/intent.graph.execute.ts', import.meta.url),
   'utf8',
 );
 

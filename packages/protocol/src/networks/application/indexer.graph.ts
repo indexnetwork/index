@@ -8,7 +8,7 @@ import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../agents/index.js";
 import { renderNetworkContext } from "../../shared/network/metadata.renderer.js";
 
-import type { IntentIndexer } from "../ports/index.js";
+import type { IntentNetworkIndexer } from "../ports/index.js";
 import { IntentNetworkGraphState, type AssignmentResult } from "./indexer.state.js";
 
 const logger = protocolLogger("IntentNetworkGraphFactory");
@@ -23,9 +23,9 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  *
  * ## Signal assignment policy
  *
- * The `IntentIndexer` is injected at construction time from the signals public
- * facade via the communities ports layer — this factory never imports signals
- * application internals directly.
+ * The indexer is injected at construction time via the communities ports layer,
+ * which narrows the intents module to the one method used here — this factory
+ * never reaches intents internals directly.
  *
  * Two assignment paths:
  * 1. Direct (`skipEvaluation: true`):
@@ -34,7 +34,7 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  *    - Loads intent + network context (indexPrompt, memberPrompt).
  *    - No-prompt fast path: if both prompts are absent, assigns with
  *      `mode: automatic, promptPresence: 'none'` without calling the LLM.
- *    - Otherwise invokes IntentIndexer to get indexScore + memberScore + reasoning.
+ *    - Otherwise invokes the intents indexer to get indexScore + memberScore + reasoning.
  *    - Applies `buildNetworkAssignmentDecision` to produce the threshold/metadata.
  *    - Only writes the link when the decision's `assigned` flag is true.
  *
@@ -62,7 +62,7 @@ export type IntentNetworkState = typeof IntentNetworkGraphState.State;
 /** Everything the intent-network nodes reach for. */
 export interface IntentNetworkGraphDeps {
   database: IntentNetworkGraphDatabase;
-  intentNetworker: IntentIndexer;
+  intentNetworker: IntentNetworkIndexer;
 }
 
 export class IntentNetworkGraphFactory {
@@ -71,7 +71,7 @@ export class IntentNetworkGraphFactory {
 
   constructor(
     database: IntentNetworkGraphDatabase,
-    intentNetworker: IntentIndexer,
+    intentNetworker: IntentNetworkIndexer,
   ) {
     this.deps = { database, intentNetworker };
   }
@@ -250,13 +250,13 @@ export async function assignNode(state: IntentNetworkState, deps: IntentNetworkG
         ? `${intentForIndexing.sourceType}:${intentForIndexing.sourceId ?? ""}`
         : undefined;
 
-      // Run IntentIndexer evaluation (injected from signals public facade via ports)
+      // Score the signal against the network (intents module, injected via ports)
       const _traceEmitter = requestContext.getStore()?.traceEmitter;
       const _indexerStart = Date.now();
       _traceEmitter?.({ type: "agent_start", name: "intent-networker" });
-      let result: Awaited<ReturnType<typeof deps.intentNetworker.evaluate>> | null = null;
+      let result: Awaited<ReturnType<typeof deps.intentNetworker.indexIntent>> | null = null;
       try {
-        result = await deps.intentNetworker.evaluate(
+        result = await deps.intentNetworker.indexIntent(
           intentForIndexing.payload,
           indexPrompt,
           memberPrompt,

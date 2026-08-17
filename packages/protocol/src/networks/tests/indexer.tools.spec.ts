@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createIntentTools } from "../../intents/application/intent.tools.js";
+import { createIntentTools } from "../../intents/tools/intent.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown ? (...args: any[]) => any : T extends object ? { [K in keyof T]?: Fixture<T[K]> } : T;

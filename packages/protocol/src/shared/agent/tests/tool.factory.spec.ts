@@ -8,7 +8,7 @@ config({ path: '.env.test', override: true });
 import { mock, afterAll } from "bun:test";
 // Route to canonical application path so the mock intercepts the import used
 // by tool.factory.ts after the IND-544 signals domain-first migration.
-mock.module("../../../intents/application/intent.graph.js", () => ({
+mock.module("../../../intents/graph/intent.graph.js", () => ({
   IntentGraphFactory: class {
     private database: ChatGraphCompositeDatabase;
     constructor(database: ChatGraphCompositeDatabase) {

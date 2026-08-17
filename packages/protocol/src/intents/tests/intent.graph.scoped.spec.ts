@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { IntentGraphFactory } from '../../intents/application/intent.graph.js';
+import { IntentGraphFactory } from '../../intents/graph/intent.graph.js';
 import type { IntentGraphDatabase, ActiveIntent, CreatedIntent, ArchiveResult } from '../../shared/interfaces/database.interface.js';
 
 const PERSONAL = 'personal-idx';

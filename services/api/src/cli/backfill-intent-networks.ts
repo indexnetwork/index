@@ -32,7 +32,7 @@ import { and, eq, isNull, or, sql } from 'drizzle-orm/sql';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import { IntentIndexer, buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
+import { Intents, buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 
 interface Args { userId?: string; networkId?: string; dryRun: boolean; limit: number }
@@ -76,7 +76,7 @@ async function findOrphanedIntents(userId: string | undefined, limit: number) {
 async function main(): Promise<void> {
   const { userId, networkId, dryRun, limit } = parseArgs();
   const adapter = new ChatDatabaseAdapter();
-  const indexer = new IntentIndexer();
+  const indexer = new Intents();
 
   console.log(
     `Backfill intent→networks` +
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
 
       let raw: { indexScore: number; memberScore: number } | undefined;
       if (hasPrompts) {
-        const r = await indexer.invoke(intent.payload, indexPrompt, memberPrompt, null);
+        const r = await indexer.indexIntent(intent.payload, indexPrompt, memberPrompt, null);
         if (r) raw = { indexScore: r.indexScore, memberScore: r.memberScore };
       }
 

@@ -10,7 +10,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
-import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
@@ -269,12 +269,13 @@ export class ToolService {
 
     logger.verbose('Compiling graphs (first call, will be cached)');
 
-    const intentGraph = new IntentGraphFactory(
+    const intents = new Intents({
       database,
-      this.embedder,
-      intentQueue,
-      questionerEnqueueIfEnabled(),
-    ).createGraph();
+      embedder: this.embedder,
+      queue: intentQueue,
+      questionerEnqueue: questionerEnqueueIfEnabled(),
+    });
+    const intentGraph = intents.createGraph();
     const profileGraph = new EnrichmentGraphFactory(database, this.scraper).createGraph();
     const hydeCache = new RedisCacheAdapter();
     const compiledHydeGraph = new HydeGraphFactory(
@@ -314,7 +315,7 @@ export class ToolService {
     ).createGraph();
     const indexGraph = new NetworkGraphFactory(database).createGraph();
     const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
-    const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+    const intentIndexGraph = new IntentNetworkGraphFactory(database, intents).createGraph();
     const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
 
     this.compiledGraphs = {

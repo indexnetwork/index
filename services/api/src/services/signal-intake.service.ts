@@ -9,7 +9,7 @@
 
 import crypto from 'crypto';
 
-import { FALLBACK_WHO_QUESTION, normalizeIntentDescription, IntentGraphFactory, SignalIntakeOrchestrator, SignalIntakePackGenerator, type IntakeAnswer, type IntakePackQuestion, type IntakeRound } from '@indexnetwork/protocol';
+import { Intents, type IntakeAnswer, type IntakePackQuestion, type IntakeRound } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database.adapter';
@@ -72,8 +72,8 @@ export interface SignalIntakeServiceDeps {
   >;
   /** Server-side authority for the client-supplied `networkId`. */
   isNetworkMember: (networkId: string, userId: string) => Promise<boolean>;
-  orchestrator: Pick<SignalIntakeOrchestrator, 'generateFollowUps' | 'synthesize'>;
-  packGenerator: Pick<SignalIntakePackGenerator, 'generate'>;
+  /** The intents module: intake pack, follow-up planning, and synthesis. */
+  intents: Pick<Intents, 'generateIntakePack' | 'generateIntakeFollowUps' | 'synthesizeIntake'>;
   /** Intake knobs; production reads the env accessors, tests inject fixed values. */
   intakeConfig?: () => { maxQuestions: number; mode: SignalIntakeQuestionMode };
   getPremises: (userId: string) => Promise<Array<{ text: string }>>;
@@ -154,7 +154,7 @@ export class SignalIntakeService {
         this.deps.getNetworkTitles(userId),
         this.deps.getGlobalContext(userId),
       ]);
-      const pack = await this.deps.packGenerator.generate({ premises, networkTitles, globalContext });
+      const pack = await this.deps.intents.generateIntakePack({ premises, networkTitles, globalContext });
       // premiseHash is owned by the background job; a cold-start write stores an
       // empty key so the next regen always refreshes rather than short-circuiting.
       await this.deps.packStore.upsertPack({
@@ -171,7 +171,7 @@ export class SignalIntakeService {
         stage: 'start', durationMs: Date.now() - started,
         packHit: false, speculationHit: false, whereTextUsed: false, fallbackUsed: true,
       });
-      return { brief: '', question: FALLBACK_WHO_QUESTION, packHit: false };
+      return { brief: '', question: Intents.FALLBACK_INTAKE_QUESTION, packHit: false };
     }
   }
 
@@ -220,7 +220,7 @@ export class SignalIntakeService {
       ? Math.min(Math.max(Math.trunc(input.plannedTotal), 1), maxQuestions)
       : undefined;
     const budget = mode === 'plural' || lockedTotal === undefined ? remaining : 1;
-    const plan = await this.deps.orchestrator.generateFollowUps({
+    const plan = await this.deps.intents.generateIntakeFollowUps({
       brief,
       rounds: input.rounds,
       maxFollowUps: budget,
@@ -398,7 +398,7 @@ export class SignalIntakeService {
   ): Promise<IntakeProposal> {
     try {
       const { brief } = await this.getOrCreatePack(userId);
-      const synthesis = await this.deps.orchestrator.synthesize({ brief, ...answers });
+      const synthesis = await this.deps.intents.synthesizeIntake({ brief, ...answers });
 
       // The brief stands in for the profile graph here: it is already a
       // distilled identity paragraph, so `propose` skips that leg entirely.
@@ -425,7 +425,7 @@ export class SignalIntakeService {
       }
 
       const proposalId = crypto.randomUUID();
-      const description = normalizeIntentDescription(first.description);
+      const description = Intents.normalizeDescription(first.description);
       await this.deps.proposalStore.createProposals([{
         proposalId,
         userId,
@@ -549,13 +549,13 @@ export class SignalIntakeService {
 
 /** Compiled once and reused: the intent graph always runs in verification-only
  * `propose` mode here, so no DB writes happen from this leg of the funnel. */
-const intentGraphFactory = new IntentGraphFactory(
-  intentDatabaseAdapter,
-  new EmbedderAdapter(),
-  intentQueue,
-  questionerEnqueueIfEnabled(),
-);
-const compiledIntentGraph = intentGraphFactory.createGraph();
+const productionIntents = new Intents({
+  database: intentDatabaseAdapter,
+  embedder: new EmbedderAdapter(),
+  queue: intentQueue,
+  questionerEnqueue: questionerEnqueueIfEnabled(),
+});
+const compiledIntentGraph = productionIntents.createGraph();
 
 /** Verify-only invocation of the intent graph, skipping the profile-graph leg
  * by supplying the precomputed pack brief as `userProfile` directly. */
@@ -658,8 +658,7 @@ export const signalIntakeService = new SignalIntakeService({
   runStore: signalIntakeRunAdapter,
   proposalStore: intentProposalDatabaseAdapter,
   isNetworkMember: (networkId, userId) => intentDatabaseAdapter.isNetworkMember(networkId, userId),
-  orchestrator: new SignalIntakeOrchestrator(),
-  packGenerator: new SignalIntakePackGenerator(),
+  intents: productionIntents,
   getPremises: getPremisesProduction,
   getNetworkTitles: getNetworkTitlesProduction,
   getGlobalContext: getGlobalContextProduction,

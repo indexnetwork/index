@@ -41,6 +41,9 @@ const verifiedIntent = {
 };
 
 function makeDeps(overrides: Record<string, unknown> = {}) {
+  // `intents` merges rather than replaces: a test that swaps the follow-up
+  // planner still keeps the default pack generator and synthesizer.
+  const { intents: intentsOverride, ...rest } = overrides as { intents?: Record<string, unknown> };
   return {
     packStore: {
       getPack: mock(async () => ({
@@ -69,16 +72,17 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       setProposalNetwork: mock(async () => true),
     },
     isNetworkMember: mock(async () => true),
-    orchestrator: {
-      generateFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
-      synthesize: mock(async () => ({ description: 'Looking for a design partner.', lookingFor: 'A design partner', youBring: 'Depth' })),
+    intents: {
+      generateIntakePack: mock(async () => ({ brief: 'generated brief', question })),
+      generateIntakeFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
+      synthesizeIntake: mock(async () => ({ description: 'Looking for a design partner.', lookingFor: 'A design partner', youBring: 'Depth' })),
+      ...intentsOverride,
     },
-    packGenerator: { generate: mock(async () => ({ brief: 'generated brief', question })) },
     getPremises: mock(async () => [{ text: 'Ada builds tools.' }]),
     getNetworkTitles: mock(async () => ['Builders']),
     getGlobalContext: mock(async () => 'Ada is a founder.'),
     invokeIntentGraph: mock(async () => ({ verifiedIntents: [verifiedIntent], trace: [] })),
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -91,7 +95,7 @@ describe('SignalIntakeService.getOrCreatePack', () => {
 
     expect(result.packHit).toBe(true);
     expect(result.brief).toBe('Ada builds tools.');
-    expect(deps.packGenerator.generate).not.toHaveBeenCalled();
+    expect(deps.intents.generateIntakePack).not.toHaveBeenCalled();
   });
 
   it('generates and persists synchronously on a cold miss', async () => {
@@ -108,7 +112,7 @@ describe('SignalIntakeService.getOrCreatePack', () => {
   it('falls back to the static question when generation fails', async () => {
     const deps = makeDeps({
       packStore: { getPack: mock(async () => null), upsertPack: mock(async () => undefined) },
-      packGenerator: { generate: mock(async () => { throw new Error('model down'); }) },
+      intents: { generateIntakePack: mock(async () => { throw new Error('model down'); }) },
     });
     const service = new SignalIntakeService(deps as never);
 
@@ -125,9 +129,9 @@ describe('SignalIntakeService.followUpQuestions', () => {
   it('singular: returns one question and locks the total from the plan', async () => {
     const service = new SignalIntakeService(makeDeps({
       intakeConfig: () => ({ maxQuestions: 4, mode: 'singular' as const }),
-      orchestrator: {
-        generateFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }], plannedFollowUpCount: 2 })),
-        synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+      intents: {
+        generateIntakeFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }], plannedFollowUpCount: 2 })),
+        synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
       },
     }));
 
@@ -142,9 +146,9 @@ describe('SignalIntakeService.followUpQuestions', () => {
   it('plural: returns the whole batch and totals rounds + batch', async () => {
     const service = new SignalIntakeService(makeDeps({
       intakeConfig: () => ({ maxQuestions: 5, mode: 'plural' as const }),
-      orchestrator: {
-        generateFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }, { ...followUp, prompt: 'q4' }], plannedFollowUpCount: 3 })),
-        synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+      intents: {
+        generateIntakeFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }, { ...followUp, prompt: 'q4' }], plannedFollowUpCount: 3 })),
+        synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
       },
     }));
 
@@ -160,7 +164,7 @@ describe('SignalIntakeService.followUpQuestions', () => {
     const generateFollowUps = mock(async () => ({ questions: [followUp], plannedFollowUpCount: 9 }));
     const service = new SignalIntakeService(makeDeps({
       intakeConfig: () => ({ maxQuestions: 3, mode: 'singular' as const }),
-      orchestrator: { generateFollowUps, synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })) },
+      intents: { generateIntakeFollowUps: generateFollowUps, synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })) },
     }));
 
     const result = await service.followUpQuestions('u1', {
@@ -174,9 +178,9 @@ describe('SignalIntakeService.followUpQuestions', () => {
   it('singular continuation: echoes a clamped client-carried plannedTotal', async () => {
     const service = new SignalIntakeService(makeDeps({
       intakeConfig: () => ({ maxQuestions: 4, mode: 'singular' as const }),
-      orchestrator: {
-        generateFollowUps: mock(async () => ({ questions: [followUp], plannedFollowUpCount: 1 })),
-        synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+      intents: {
+        generateIntakeFollowUps: mock(async () => ({ questions: [followUp], plannedFollowUpCount: 1 })),
+        synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
       },
     }));
 
@@ -218,7 +222,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     const result = await service.resolveProposal('u1', { runId: 'run-1', rounds });
 
     expect(result.proposalId).toBe('prop-1');
-    expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
+    expect(deps.intents.synthesizeIntake).not.toHaveBeenCalled();
   });
 
   it('re-synthesizes when whereText is supplied', async () => {
@@ -227,7 +231,7 @@ describe('SignalIntakeService.resolveProposal', () => {
 
     await service.resolveProposal('u1', { runId: 'run-1', whereText: 'Berlin only', rounds });
 
-    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+    expect(deps.intents.synthesizeIntake).toHaveBeenCalledTimes(1);
     expect(deps.proposalStore.createProposals).toHaveBeenCalledTimes(1);
   });
 
@@ -235,9 +239,9 @@ describe('SignalIntakeService.resolveProposal', () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const deps = makeDeps({
-      orchestrator: {
-        generateFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
-        synthesize: mock(async () => {
+      intents: {
+        generateIntakeFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
+        synthesizeIntake: mock(async () => {
           await gate;
           return { description: 'd', lookingFor: 'l', youBring: 'y' };
         }),
@@ -265,7 +269,7 @@ describe('SignalIntakeService.resolveProposal', () => {
 
     const result = await service.resolveProposal('u1', { runId: 'run-1', rounds });
 
-    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+    expect(deps.intents.synthesizeIntake).toHaveBeenCalledTimes(1);
     // normalizeIntentDescription strips trailing sentence punctuation from the
     // verified intent's description, so the fixture's trailing period is gone.
     expect(result.description).toBe('Looking for a design partner');
@@ -282,7 +286,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     // option labels the user clicked on almost every real run.
     expect(result.lookingFor).toBe('A hands-on design partner');
     expect(result.youBring).toBe('Engineering depth on developer tooling');
-    expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
+    expect(deps.intents.synthesizeIntake).not.toHaveBeenCalled();
   });
 
   it('attaches the picked community to the speculative proposal', async () => {
@@ -328,7 +332,7 @@ describe('SignalIntakeService.resolveProposal', () => {
 
     const result = await service.resolveProposal('u1', { runId: 'run-1', rounds });
 
-    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+    expect(deps.intents.synthesizeIntake).toHaveBeenCalledTimes(1);
     expect(result.proposalId).not.toBe('prop-1');
   });
 
@@ -354,7 +358,7 @@ describe('SignalIntakeService.resolveProposal', () => {
 
     const result = await service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, rounds });
 
-    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+    expect(deps.intents.synthesizeIntake).toHaveBeenCalledTimes(1);
     expect(result.proposalId).not.toBe('prop-1');
   });
 
@@ -434,7 +438,7 @@ describe('SignalIntakeService.prepare run reuse', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(deps.runStore.resetRun).toHaveBeenCalledWith('run-1');
-    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+    expect(deps.intents.synthesizeIntake).toHaveBeenCalledTimes(1);
   });
 
   it('reuses a matched run whose proposal is still pending', async () => {
@@ -450,7 +454,7 @@ describe('SignalIntakeService.prepare run reuse', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(deps.runStore.resetRun).not.toHaveBeenCalled();
-    expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
+    expect(deps.intents.synthesizeIntake).not.toHaveBeenCalled();
   });
 
   it('leaves an in-flight run alone so concurrent tabs single-flight', async () => {
@@ -472,7 +476,7 @@ describe('SignalIntakeService.prepare run reuse', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(deps.runStore.resetRun).not.toHaveBeenCalled();
-    expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
+    expect(deps.intents.synthesizeIntake).not.toHaveBeenCalled();
   });
 });
 
@@ -490,7 +494,7 @@ describe('SignalIntakeService.revise', () => {
       runId: 'run-1', feedback: 'make it about hardware, not software', rounds,
     });
 
-    const [input] = deps.orchestrator.synthesize.mock.calls[0] as [{ feedback?: string; whereText?: string }];
+    const [input] = deps.intents.synthesizeIntake.mock.calls[0] as [{ feedback?: string; whereText?: string }];
     expect(input.feedback).toBe('make it about hardware, not software');
     expect(input.whereText).toBeUndefined();
   });

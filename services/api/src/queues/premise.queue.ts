@@ -596,16 +596,16 @@ export class PremiseQueue {
 
   /**
    * Default production implementation: run the protocol package's
-   * SemanticVerifier. Imported lazily so loading this queue module (and its
+   * intents verifier. Imported lazily so loading this queue module (and its
    * tests) doesn't pull the LLM stack.
    */
   private async defaultVerifyIntent(
     content: string,
     profileContext: string
   ): Promise<IntentReverificationVerdict> {
-    const { SemanticVerifier } = await import('@indexnetwork/protocol');
-    const verifier = new SemanticVerifier();
-    return verifier.invoke(content, profileContext);
+    const { Intents } = await import('@indexnetwork/protocol');
+    const verifier = new Intents();
+    return verifier.verifyIntent(content, profileContext);
   }
 
   /**
