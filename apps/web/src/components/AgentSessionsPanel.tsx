@@ -31,15 +31,11 @@ export default function AgentSessionsPanel() {
   const { pathname } = useLocation();
   const { user, features } = useAuthContext();
   const { sessionsVersion } = useAIChatSessions();
-  const { startReporterSession } = useAIChat();
   const { indexes } = useNetworksState();
   const { error } = useNotifications();
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
-
-  const reporterEnabled = features?.agentSurface === true;
-  const [openingReporter, setOpeningReporter] = useState(false);
 
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
 
@@ -49,7 +45,7 @@ export default function AgentSessionsPanel() {
     const fetchSessions = async () => {
       try {
         if (isInitialLoad) setLoadingSessions(true);
-        // Session-authenticated web history keeps legacy, Signal, and Reporter
+        // Session-authenticated web history keeps legacy and Signal
         // conversations readable even when a persona flag is rolled back.
         const data = await apiClient.get<{ sessions: ChatSession[] }>('/chat/web/sessions');
         setChatSessions(data.sessions.slice(0, 20));
@@ -62,37 +58,16 @@ export default function AgentSessionsPanel() {
     fetchSessions();
   }, [sessionsVersion, user?.id]);
 
-  const handleNewConversation = async () => {
-    if (!reporterEnabled) {
-      navigate('/agent');
-      return;
-    }
-    if (openingReporter) return;
-
-    setOpeningReporter(true);
-    const started = startReporterSession({ forceNew: true });
-    // Navigation is immediate; AgentReporterSurface coalesces its mount call
-    // with this in-flight reporter start instead of claiming a second session.
+  const handleNewConversation = () => {
     navigate('/agent');
-    try {
-      if (!(await started)) error('Failed to start a fresh Agent briefing');
-    } catch (err) {
-      logger.error('Failed to start reporter conversation', { error: err });
-      error('Failed to start a fresh Agent briefing');
-    } finally {
-      setOpeningReporter(false);
-    }
   };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 px-4 py-4 border-b border-gray-100">
         <button
-          onClick={() => void handleNewConversation()}
-          disabled={openingReporter}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-black hover:bg-gray-50 transition-colors border border-gray-200 ${
-            openingReporter ? 'opacity-50 cursor-wait' : ''
-          }`}
+          onClick={handleNewConversation}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-black hover:bg-gray-50 transition-colors border border-gray-200"
         >
           <Plus className="w-4 h-4" />
           New conversation

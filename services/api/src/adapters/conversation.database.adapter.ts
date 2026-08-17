@@ -195,7 +195,6 @@ function consumeHermesRunCapabilityMetadata(input: {
 
 /** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
 const NEGOTIATOR_PERSONA = 'negotiator';
-const REPORTER_PERSONA = 'reporter';
 const logger = log.lib.from('conversation-database');
 
 /**
@@ -206,8 +205,7 @@ const logger = log.lib.from('conversation-database');
  * for the same signal distinct without a schema change.
  *
  * The bare `'intent'` key is retired: it belonged to the removed orchestrator
- * persona. Those rows are retained read-only, and migration 0128 relabels the
- * reporter rows that shared the key so no existing session is orphaned.
+ * persona. Those rows are retained read-only.
  */
 
 function intentRegistryScopeType(persona: string): string {
@@ -4690,72 +4688,6 @@ export class ConversationDatabaseAdapter {
         });
       }
     });
-  }
-
-  /**
-   * Atomically reuse the newest fresh reporter briefing or create its successor.
-   *
-   * A transaction-scoped per-user advisory lock serializes browser reloads and
-   * tabs before the freshness read. Expiry is lazy and creation-time based;
-   * old reporter rows are never deleted or hidden.
-   *
-   * @param data - Owner, candidate ID, stable freshness cutoff, and force-new flag
-   * @returns The authoritative reporter session and sole creation claim
-   */
-  async resolveReporterChatSession(data: {
-    id: string;
-    userId: string;
-    freshAfter: Date;
-    forceNew?: boolean;
-  }): Promise<{ session: ChatSession; created: boolean }> {
-    const resolved = await db.transaction(async (tx) => {
-      const lockName = `reporter-briefing:${data.userId}`;
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockName}, 0))`);
-
-      if (!data.forceNew) {
-        const chatSessionIds = tx
-          .select({ conversationId: schema.conversationParticipants.conversationId })
-          .from(schema.conversationParticipants)
-          .where(and(
-            eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
-            eq(schema.conversationParticipants.participantType, 'agent'),
-          ));
-        const [fresh] = await tx
-          .select({ id: schema.conversations.id })
-          .from(schema.conversationParticipants)
-          .innerJoin(
-            schema.conversations,
-            eq(schema.conversationParticipants.conversationId, schema.conversations.id),
-          )
-          .where(and(
-            eq(schema.conversationParticipants.participantId, data.userId),
-            eq(schema.conversationParticipants.participantType, 'user'),
-            inArray(schema.conversations.id, chatSessionIds),
-            eq(schema.conversations.persona, REPORTER_PERSONA),
-            gte(schema.conversations.createdAt, data.freshAfter),
-          ))
-          .orderBy(desc(schema.conversations.createdAt))
-          .limit(1);
-        if (fresh) return { id: fresh.id, created: false };
-      }
-
-      const now = new Date();
-      await tx.insert(schema.conversations).values({
-        id: data.id,
-        persona: REPORTER_PERSONA,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await tx.insert(schema.conversationParticipants).values([
-        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
-        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
-      ]);
-      return { id: data.id, created: true };
-    });
-
-    const session = await this.getChatSession(resolved.id);
-    if (!session) throw new Error('Reporter session claim could not be loaded');
-    return { session, created: resolved.created };
   }
 
   /**

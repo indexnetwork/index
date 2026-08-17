@@ -97,9 +97,6 @@ function Probe() {
       if (resolvedSessionId) setResolutionTarget(resolvedSessionId);
     });
   };
-  const resolveReporter = () => {
-    void chat.resolveIntentSession({ id: 'reporter-scope', label: 'Reporter scope' }, 'reporter');
-  };
   return (
     <div>
       <button onClick={() => void chat.sendWebMessage('first', undefined, undefined, { persona: 'signal' })}>
@@ -110,9 +107,6 @@ function Probe() {
       <button onClick={() => chat.clearChat()}>clear</button>
       <button onClick={() => chat.clearChat({ abortStream: false })}>clear detached</button>
       <button onClick={() => chat.startSignalSession()}>start signal</button>
-      <button onClick={() => void chat.startReporterSession()}>start reporter</button>
-      <button onClick={() => void chat.startReporterSession({ forceNew: true })}>new reporter</button>
-      <button onClick={() => void chat.sendWebMessage('reporter message')}>reporter message</button>
       <button onClick={() => void chat.loadSession('session-a')}>load a</button>
       <button onClick={() => void chat.loadSession('session-b')}>load b</button>
       <button onClick={() => void chat.loadSession('old-session')}>load old</button>
@@ -121,7 +115,6 @@ function Probe() {
       </button>
       <button onClick={() => resolveIntent('intent-a')}>resolve intent a</button>
       <button onClick={() => resolveIntent('intent-b')}>resolve intent b</button>
-      <button onClick={resolveReporter}>resolve reporter</button>
       <button onClick={() => chat.submitMidStreamMessage('queued follow-up', [])}>queue follow-up</button>
       <span data-testid="session">{chat.sessionId ?? 'none'}</span>
       <span data-testid="persona">{chat.sessionPersona ?? 'none'}</span>
@@ -190,94 +183,6 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(mocks.apiClient.stream.mock.calls[2]?.[0]).toBe('/chat/stream');
   });
 
-  test('a newly claimed reporter session loads first and sends exactly one bound kickoff', async () => {
-    mocks.apiClient.post
-      .mockResolvedValueOnce({ session: { id: 'reporter-session' }, created: true })
-      .mockResolvedValueOnce(sessionResponse('reporter-session', 'persisted', 'reporter'));
-    mocks.apiClient.stream.mockResolvedValueOnce(streamResponse({
-      sessionId: 'reporter-session',
-      persona: 'reporter',
-      response: 'fresh briefing',
-    }));
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
-
-    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1));
-    expect(mocks.apiClient.post.mock.calls[0]).toEqual([
-      '/chat/reporter/session',
-      { forceNew: false },
-    ]);
-    expect(mocks.apiClient.post.mock.calls[1]).toEqual([
-      '/chat/web/session',
-      { sessionId: 'reporter-session' },
-    ]);
-    expect(mocks.apiClient.stream.mock.calls[0]?.[0]).toBe('/chat/web/stream');
-    expect(mocks.apiClient.stream.mock.calls[0]?.[1]).toMatchObject({
-      message: 'reporter-briefing-kickoff',
-      sessionId: 'reporter-session',
-      persona: 'reporter',
-    });
-    await waitFor(() => expect(text('session')).toBe('reporter-session'));
-  });
-
-  test('a within-TTL reporter session hydrates persisted messages without a kickoff', async () => {
-    mocks.apiClient.post
-      .mockResolvedValueOnce({ session: { id: 'reporter-existing' }, created: false })
-      .mockResolvedValueOnce(sessionResponse('reporter-existing', 'saved follow-up', 'reporter'));
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
-
-    await waitFor(() => expect(text('session')).toBe('reporter-existing'));
-    expect(text('messages')).toBe('saved follow-up');
-    expect(mocks.apiClient.stream).not.toHaveBeenCalled();
-  });
-
-  test('force-new aborts the old briefing and quarantines its late response', async () => {
-    const oldBriefing = deferred<Response>();
-    mocks.apiClient.post
-      .mockResolvedValueOnce({ session: { id: 'reporter-old' }, created: true })
-      .mockResolvedValueOnce(sessionResponse('reporter-old', 'old persisted', 'reporter'))
-      .mockResolvedValueOnce({ session: { id: 'reporter-fresh' }, created: true })
-      .mockResolvedValueOnce(sessionResponse('reporter-fresh', 'fresh persisted', 'reporter'));
-    mocks.apiClient.stream
-      .mockReturnValueOnce(oldBriefing.promise)
-      .mockResolvedValueOnce(streamResponse({
-        sessionId: 'reporter-fresh',
-        persona: 'reporter',
-        response: 'fresh briefing',
-      }));
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
-    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1));
-    const oldSignal = (mocks.apiClient.stream.mock.calls[0]?.[2] as { signal: AbortSignal }).signal;
-
-    fireEvent.click(screen.getByRole('button', { name: 'new reporter' }));
-    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(2));
-    expect(oldSignal.aborted).toBe(true);
-    expect(mocks.apiClient.post.mock.calls[2]).toEqual([
-      '/chat/reporter/session',
-      { forceNew: true },
-    ]);
-    await waitFor(() => expect(text('session')).toBe('reporter-fresh'));
-
-    await act(async () => {
-      oldBriefing.resolve(streamResponse({
-        sessionId: 'reporter-old',
-        persona: 'reporter',
-        response: 'late old briefing',
-      }));
-      await oldBriefing.promise;
-    });
-
-    expect(text('session')).toBe('reporter-fresh');
-    expect(text('messages')).toContain('fresh briefing');
-    expect(text('messages')).not.toContain('late old briefing');
-    expect(text('loading')).toBe('no');
-  });
-
   test('preserves a message submitted before the first web session id arrives', async () => {
     const first = deferred<Response>();
     mocks.apiClient.stream
@@ -293,7 +198,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      first.resolve(streamResponse({ sessionId: 'web-session', persona: 'reporter' }));
+      first.resolve(streamResponse({ sessionId: 'web-session', persona: 'signal' }));
       await first.promise;
     });
 

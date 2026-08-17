@@ -4,7 +4,7 @@
 //
 // Persona-neutral prompt text owned by the agent loop rather than by any one
 // persona. Each persona builds its own system prompt (see signal.prompt.ts,
-// negotiator.prompt.ts, reporter.prompt.ts, onboarding.prompt.ts); what remains
+// negotiator.prompt.ts, onboarding.prompt.ts); what remains
 // here is only what the loop itself injects regardless of persona.
 
 /**

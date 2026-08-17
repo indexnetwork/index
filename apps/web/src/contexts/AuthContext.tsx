@@ -25,13 +25,11 @@ const SPLASH_BACKGROUND = '#0d1a13';
 /**
  * Server-driven feature flags returned alongside the user on GET /auth/me
  * (sibling of `user`, not part of it). `negotiatorChat` gates the pinned
- * Personal Agent entry; `agentSurface` gates the read-only Reporter Agent
- * surface; `fastSignalIntake`
+ * Personal Agent entry; `fastSignalIntake`
  * swaps the guided intake for the deterministic funnel on the same surfaces.
  */
 export type UserFeatures = {
   negotiatorChat?: boolean;
-  agentSurface?: boolean;
   fastSignalIntake?: boolean;
 };
 

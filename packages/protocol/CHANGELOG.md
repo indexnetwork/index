@@ -20,6 +20,30 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 21.0.0 - 2026-08-17
+
+### Removed
+
+- **Breaking:** remove the Agent reporter persona. `REPORTER_PERSONA`,
+  `REPORTER_PERSONA_ID`, `REPORTER_BRIEFING_KICKOFF`, `REPORTER_TOOL_NAMES`,
+  `createReporterTools`, `filterReporterTools` and `narrowReporterTools` are
+  gone from the package entry point, along with `reporter.persona.ts`,
+  `reporter.prompt.ts` and the `propose_cleanup_actions` tool
+  (`reporter.action.tools.ts`, `reporter.action.contracts.ts`). Hosts that named
+  the `reporter` persona must pick another; unknown personas already fail closed.
+- **Breaking:** drop `actionToolsEnabled` from `ToolContext`/`ToolDeps`/
+  `ResolvedToolContext` and `actionProposalStore` from `ToolDeps`. Both existed
+  solely to gate the reporter's cleanup-action tool. `resolveChatContext()` no
+  longer accepts or returns `actionToolsEnabled`.
+- Remove `ChatAgent.hasPriorAgentActionProposal()`, the
+  ```agent_action_proposal``` fence parser behind it, and
+  `IterationContext.hasPriorAgentActionProposal`. The reporter prompt was the
+  only consumer, so all of it became dead with the persona.
+
+`read_activity_summary` and the whole `activity-projection` module are
+**unchanged** — they are shared utility tools registered for every persona and
+exposed on the MCP server, not reporter-specific.
+
 ## 20.0.1 - 2026-08-17
 
 ### Changed

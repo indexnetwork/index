@@ -173,7 +173,7 @@ The intent and community graphs are the exceptions: they are reached through the
 
 ### Persisted chat personas
 
-`ChatGraphFactory.withPersona()` keeps the runtime neutral while selecting an exported persona configuration. `SIGNAL_PERSONA`, `REPORTER_PERSONA`, and `ONBOARDING_PERSONA` each own an exact positive tool allowlist; shared tools added later remain unavailable until reviewed. `ONBOARDING_PERSONA` reuses Signal's proposal-only, live-membership-narrowed `create_intent` contract and otherwise exposes only privacy consent, approved self-context preview/confirmation, guided questions, and validated completion. Hosts must persist the exported persona ID on session creation and treat it as authoritative on follow-ups.
+`ChatGraphFactory.withPersona()` keeps the runtime neutral while selecting an exported persona configuration. `SIGNAL_PERSONA` and `ONBOARDING_PERSONA` each own an exact positive tool allowlist; shared tools added later remain unavailable until reviewed. `ONBOARDING_PERSONA` reuses Signal's proposal-only, live-membership-narrowed `create_intent` contract and otherwise exposes only privacy consent, approved self-context preview/confirmation, guided questions, and validated completion. Hosts must persist the exported persona ID on session creation and treat it as authoritative on follow-ups.
 
 ## Intents
 

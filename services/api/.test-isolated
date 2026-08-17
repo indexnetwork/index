@@ -58,7 +58,6 @@ src/controllers/tests/route-deprecation.controller.isolated.ts
 src/lib/tests/log-sentry.isolated.ts
 src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts
-src/controllers/tests/chat.reporter.isolated.ts
 src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/negotiation.e2e.isolated.ts
 src/guards/tests/fast-intake.guard.isolated.ts
@@ -112,12 +111,8 @@ src/lib/limiter/tests/guard.isolated.ts
 src/lib/limiter/tests/mcp.isolated.ts
 src/lib/limiter/tests/identifier.isolated.ts
 src/controllers/tests/question.visitmining.isolated.ts
-src/controllers/tests/agent-action.controller.isolated.ts
-src/services/tests/agent-action.service.isolated.ts
 src/services/tests/intent-recovery-refinement.service.isolated.ts
 src/services/tests/intent.service.proposal.isolated.ts
-src/adapters/tests/agent-action-proposal.database.adapter.isolated.ts
-src/adapters/tests/conversation.reporter.isolated.ts
 src/controllers/tests/conversation.negotiation-activity.isolated.ts
 src/adapters/tests/archive-legacy-negotiations.isolated.ts
 src/lib/mcp/tests/owner-approval.isolated.ts

@@ -1,12 +1,11 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, REPORTER_PERSONA, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
-import { getReporterBriefingTtlMs, isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
 const logger = log.service.from("ChatSessionService");
@@ -20,8 +19,6 @@ export type ChatPersonaPolicyCode =
   | 'CHAT_PERSONA_MISMATCH'
   | 'CHAT_PERSONA_UNSUPPORTED'
   | 'WEB_SIGNAL_PERSONA_FORBIDDEN'
-  | 'WEB_AGENT_SURFACE_DISABLED'
-  | 'WEB_AGENT_PERSONA_FORBIDDEN'
   | 'WEB_ONBOARDING_PERSONA_FORBIDDEN';
 
 export type ChatPersonaPolicyResult =
@@ -31,7 +28,7 @@ export type ChatPersonaPolicyResult =
       status: 403 | 409;
       code: ChatPersonaPolicyCode;
       error: string;
-      action?: { type: 'start_signal_session' | 'start_reporter_session'; href: string };
+      action?: { type: 'start_signal_session'; href: string };
     };
 
 /**
@@ -57,7 +54,6 @@ const READ_ONLY_CHAT_PERSONAS: ReadonlySet<string> = new Set([
 const KNOWN_CHAT_PERSONAS: ReadonlySet<string> = new Set([
   SIGNAL_PERSONA_ID,
   NEGOTIATOR_PERSONA_ID,
-  REPORTER_PERSONA_ID,
   ONBOARDING_PERSONA_ID,
 ]);
 
@@ -88,7 +84,6 @@ interface ChatSessionServiceDeps {
   graphDatabase?: ChatGraphCompositeDatabase;
   createTitleGenerator?: () => Pick<ChatTitleGenerator, 'invoke'>;
   now?: () => Date;
-  reporterBriefingTtlMs?: () => number;
 }
 
 export class ChatSessionService {
@@ -96,7 +91,6 @@ export class ChatSessionService {
   private _factory: ChatGraphFactory | null = null;
   private readonly createTitleGenerator: () => Pick<ChatTitleGenerator, 'invoke'>;
   private readonly now: () => Date;
-  private readonly reporterBriefingTtlMs: () => number;
 
   constructor(
     private db: ConversationDatabaseAdapter = conversationDatabaseAdapter,
@@ -105,7 +99,6 @@ export class ChatSessionService {
     this.graphDb = deps.graphDatabase ?? new ChatDatabaseAdapter();
     this.createTitleGenerator = deps.createTitleGenerator ?? (() => new ChatTitleGenerator());
     this.now = deps.now ?? (() => new Date());
-    this.reporterBriefingTtlMs = deps.reporterBriefingTtlMs ?? getReporterBriefingTtlMs;
   }
 
   /**
@@ -139,7 +132,6 @@ export class ChatSessionService {
     requestedPersona?: string;
     storedPersona?: string;
   }): ChatPersonaPolicyResult {
-    const agentSurfaceEnabled = isAgentSurfaceEnabled();
     const requestedPersona = input.requestedPersona?.trim() || undefined;
     const storedPersona = input.storedPersona?.trim() || undefined;
 
@@ -205,26 +197,6 @@ export class ChatSessionService {
         };
       }
 
-      if (storedPersona === REPORTER_PERSONA_ID) {
-        if (!agentSurfaceEnabled) {
-          return {
-            ok: false,
-            status: 409,
-            code: 'WEB_AGENT_SURFACE_DISABLED',
-            error: 'Agent reporting is not available right now. Your chat history is still saved.',
-          };
-        }
-        if (input.surface !== 'web') {
-          return {
-            ok: false,
-            status: 403,
-            code: 'WEB_AGENT_PERSONA_FORBIDDEN',
-            error: 'This chat can only be continued in the web app.',
-          };
-        }
-        return { ok: true, persona: REPORTER_PERSONA_ID };
-      }
-
       if (storedPersona === SIGNAL_PERSONA_ID) {
         if (input.surface !== 'web') {
           return {
@@ -247,26 +219,6 @@ export class ChatSessionService {
         code: 'WEB_ONBOARDING_PERSONA_FORBIDDEN',
         error: 'Onboarding chats can only be started by the onboarding route.',
       };
-    }
-
-    if (requestedPersona === REPORTER_PERSONA_ID) {
-      if (!agentSurfaceEnabled) {
-        return {
-          ok: false,
-          status: 409,
-          code: 'WEB_AGENT_SURFACE_DISABLED',
-          error: 'Agent reporting is not available right now.',
-        };
-      }
-      if (input.surface !== 'web') {
-        return {
-          ok: false,
-          status: 403,
-          code: 'WEB_AGENT_PERSONA_FORBIDDEN',
-          error: 'Agent reporting chats can only be started in the web app.',
-        };
-      }
-      return { ok: true, persona: REPORTER_PERSONA_ID };
     }
 
     if (requestedPersona === SIGNAL_PERSONA_ID) {
@@ -341,28 +293,6 @@ export class ChatSessionService {
     });
 
     return id;
-  }
-
-  /**
-   * Resolve the current opening briefing for the main-web reporter surface.
-   *
-   * Freshness is anchored to immutable session creation time. The adapter owns
-   * the advisory-lock transaction so concurrent browser tabs receive one
-   * creation claim, while forceNew intentionally bypasses TTL reuse.
-   *
-   * @param userId - Authenticated session user
-   * @param forceNew - Whether an explicit New conversation action must create a successor
-   * @returns The authoritative reporter session and whether this caller claimed creation
-   */
-  async resolveReporterSession(userId: string, forceNew = false) {
-    const ttlMs = this.reporterBriefingTtlMs();
-    const freshAfter = new Date(this.now().getTime() - ttlMs);
-    return this.db.resolveReporterChatSession({
-      id: crypto.randomUUID(),
-      userId,
-      freshAfter,
-      forceNew,
-    });
   }
 
   /**
@@ -615,7 +545,7 @@ export class ChatSessionService {
     return this.db.getUserChatSessions(
       userId,
       limit,
-      [RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID],
+      [RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID],
     );
   }
 
@@ -785,15 +715,6 @@ export class ChatSessionService {
   /** Derive the restricted onboarding graph factory from the shared runtime. */
   getOnboardingGraphFactory(): ChatGraphFactory {
     return this.factory.withPersona(ONBOARDING_PERSONA);
-  }
-
-  /**
-   * Derive the read-only reporter graph factory while sharing the persona-neutral runtime.
-   *
-   * @returns A reporter-persona sibling factory
-   */
-  getReporterGraphFactory(): ChatGraphFactory {
-    return this.factory.withPersona(REPORTER_PERSONA);
   }
 
   /**

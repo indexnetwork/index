@@ -16,7 +16,6 @@ import { DecisionQuestions } from "@/components/DecisionQuestions";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import AssistantMessageContent, { parseAllBlocks } from "@/components/chat/AssistantMessageContent";
-import type { AgentActionConfirmationResponse } from "@/components/chat/AgentActionProposalCard";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { ContentContainer } from "@/components/layout";
@@ -29,7 +28,6 @@ import { useNetworksState } from "@/contexts/IndexesContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
-import { confirmAgentActionProposal, getAgentActionProposal } from "@/services/agent-actions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import { log } from "@/lib/logger";
@@ -55,15 +53,9 @@ interface HomeIntent {
 
 interface ChatContentProps {
   sessionIdParam?: string | null;
-  persona?: "signal" | "reporter";
-  readOnlySurface?: boolean;
-  suggestionOverride?: Suggestion[];
 }
 export default function ChatContent({
   sessionIdParam,
-  persona,
-  readOnlySurface = false,
-  suggestionOverride,
 }: ChatContentProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,8 +87,6 @@ export default function ChatContent({
     submitMidStreamMessage,
     liveQuestions,
   } = useAIChat();
-  const reporterSurface = persona === "reporter" || sessionPersona === "reporter";
-  const effectiveReadOnlySurface = readOnlySurface || sessionPersona === "reporter";
   const routedSessionReady = !sessionIdFromUrl
     || isSessionReady(sessionIdFromUrl)
     || (sessionId === sessionIdFromUrl && sessionLoadState.status === "idle");
@@ -112,14 +102,10 @@ export default function ChatContent({
     && routedSessionReady;
   const routeSessionMismatch = sessionId !== sessionIdFromUrl
     && Boolean(sessionId || sessionIdFromUrl)
-    && !(reporterSurface && !sessionIdFromUrl);
+    ;
   const mutationsBlocked = legacyOrchestratorReadOnly
     || routeSessionMismatch
     || (Boolean(sessionIdFromUrl) && !routedSessionReady);
-  const reporterActionsAllowed = reporterSurface
-    && effectiveReadOnlySurface
-    && !routeSessionMismatch
-    && routedSessionReady;
   const mutationsBlockedRef = useRef(mutationsBlocked);
   const routeSessionIdRef = useRef(sessionIdFromUrl);
   const inMemorySessionIdRef = useRef(sessionId);
@@ -166,21 +152,6 @@ export default function ChatContent({
       showError("Failed to create share link");
     }
   }, [sessionId, showError]);
-
-  const handleAgentActionResolve = useCallback(
-    (proposalId: string) => {
-      if (!sessionId) return Promise.reject(new Error("Active conversation is required"));
-      return getAgentActionProposal(proposalId, sessionId);
-    },
-    [sessionId],
-  );
-  const handleAgentActionConfirm = useCallback(
-    (proposalId: string): Promise<AgentActionConfirmationResponse> => {
-      if (!sessionId) return Promise.reject(new Error("Active conversation is required"));
-      return confirmAgentActionProposal(proposalId, sessionId);
-    },
-    [sessionId],
-  );
 
   const opportunitiesService = useOpportunities();
 
@@ -517,15 +488,14 @@ export default function ChatContent({
   }, [sessionIdFromUrl, routedSessionReady, sessionLoadState, loadSession]);
 
   useLayoutEffect(() => {
-    if (sessionIdFromUrl || persona === "reporter") return;
+    if (sessionIdFromUrl) return;
     navigatingToHomeRef.current = true;
     // Don't abort in-flight stream so the new session can finish and appear in the sidebar.
-    // The reporter surface owns a stronger abort-and-resolve boundary in AIChatContext.
     // Preserve a continuation's one-shot forced Signal persona across route cleanup.
     clearChat({ abortStream: false, preserveForcedPersona: true });
     setChatScope(null);
     setSelectedNetworkIds([]);
-  }, [sessionIdFromUrl, persona, clearChat, setChatScope, setSelectedNetworkIds]);
+  }, [sessionIdFromUrl, clearChat, setChatScope, setSelectedNetworkIds]);
 
 
   useEffect(() => {
@@ -548,11 +518,10 @@ export default function ChatContent({
       navigatingToHomeRef.current = false;
       return;
     }
-    if (reporterSurface) return;
     if (sessionId && !sessionIdFromUrl) {
       navigate(`/d/${sessionId}`);
     }
-  }, [reporterSurface, sessionId, sessionIdFromUrl, navigate]);
+  }, [sessionId, sessionIdFromUrl, navigate]);
 
   const archiveProposalIntent = useCallback(
     async (proposalId: string, intentId: string) => {
@@ -756,11 +725,7 @@ export default function ChatContent({
         msgContent,
         fileArg,
         nameArg,
-        !sessionId && persona
-          ? { persona }
-          : !sessionId
-            ? { persona: "signal" as const }
-            : undefined,
+        !sessionId ? { persona: "signal" as const } : undefined,
       );
     }
     inputRef.current?.focus();
@@ -1117,13 +1082,6 @@ export default function ChatContent({
             <DebugCopyButton fetchPath="/debug/radar" title="Copy radar debug JSON" iconSize="w-5 h-5" />
           </div>
           <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
-            {reporterSurface && (
-              <SuggestionChips
-                suggestions={suggestionOverride ?? []}
-                disabled={isUploadingFiles}
-                onSuggestionClick={handleSuggestionClick}
-              />
-            )}
             {turnBlock ? renderContinuationPanel() : (
             <form
               onSubmit={handleSubmit}
@@ -1179,7 +1137,7 @@ export default function ChatContent({
                   autoFocus
                   inputRef={inputRef}
                 />
-                {!reporterSurface && renderScopeDropdown()}
+                {renderScopeDropdown()}
                 {isLoading ? (
                   <Button
                     type="button"
@@ -1207,8 +1165,7 @@ export default function ChatContent({
             </form>
             )}
           </div>
-          {!reporterSurface && (
-            <button
+          <button
               type="button"
               onClick={() => navigate("/i/new")}
               className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-400 hover:shadow-sm"
@@ -1219,9 +1176,7 @@ export default function ChatContent({
                 <span className="block text-xs text-gray-500">Let your Signal Agent guide you through a new signal.</span>
               </span>
             </button>
-          )}
-          {!reporterSurface && (
-            <div className="mt-8">
+          <div className="mt-8">
               <IntentList
                 intents={homeIntents}
                 isLoading={homeIntentsLoading}
@@ -1230,7 +1185,6 @@ export default function ChatContent({
                 onArchiveIntent={turnBlock ? undefined : handleArchiveHomeIntent}
               />
             </div>
-          )}
         </ContentContainer>
       </div>
     );
@@ -1242,10 +1196,8 @@ export default function ChatContent({
 
   return (
     <>
-      {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && opportunityModalElement}
-      {/* Sticky header - full width, min-h-17 matches ChatView header height.
-          Hidden on read-only surfaces (e.g. /agent reporter), which render their own header. */}
-      {!effectiveReadOnlySurface && (
+      {!legacyOrchestratorReadOnly && opportunityModalElement}
+      {/* Sticky header - full width, min-h-17 matches ChatView header height. */}
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-17">
         <button
           type="button"
@@ -1260,7 +1212,7 @@ export default function ChatContent({
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        {isEditingTitle && !legacyOrchestratorReadOnly && !effectiveReadOnlySurface ? (
+        {isEditingTitle && !legacyOrchestratorReadOnly ? (
           <input
             ref={titleInputRef}
             type="text"
@@ -1284,14 +1236,14 @@ export default function ChatContent({
             <button
               type="button"
               onClick={startEditingTitle}
-              disabled={!sessionId || legacyOrchestratorReadOnly || effectiveReadOnlySurface}
+              disabled={!sessionId || legacyOrchestratorReadOnly}
               className="text-left font-bold font-ibm-plex-mono text-lg text-black truncate hover:text-gray-700 disabled:pointer-events-none focus:outline-none rounded"
             >
               {displayTitle}
             </button>
             {sessionId && (
               <>
-                {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && (
+                {!legacyOrchestratorReadOnly && (
                   <>
                     <button
                       type="button"
@@ -1343,7 +1295,6 @@ export default function ChatContent({
           </div>
         )}
       </div>
-      )}
 
       {/* Scrollable content */}
       <div className="px-6 lg:px-8 pb-32 flex-1">
@@ -1429,7 +1380,7 @@ export default function ChatContent({
                           <AssistantMessageContent
                             content={msg.content}
                             isStreaming={msg.isStreaming ?? false}
-                            onOpportunityPrimaryAction={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : (
+                            onOpportunityPrimaryAction={legacyOrchestratorReadOnly ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
@@ -1444,7 +1395,7 @@ export default function ChatContent({
                                 counterpartName,
                               );
                             }}
-                            onOpportunitySecondaryAction={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : (
+                            onOpportunitySecondaryAction={legacyOrchestratorReadOnly ? undefined : (
                               oppId,
                               userId,
                               viewerRole,
@@ -1461,14 +1412,12 @@ export default function ChatContent({
                             }}
                             opportunityLoadingMap={opportunityActionLoading}
                             currentStatusMap={opportunityStatusMap}
-                            onIntentProposalApprove={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalApprove}
-                            onIntentProposalReject={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalReject}
-                            onIntentProposalUndo={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleIntentProposalUndo}
+                            onIntentProposalApprove={legacyOrchestratorReadOnly ? undefined : handleIntentProposalApprove}
+                            onIntentProposalReject={legacyOrchestratorReadOnly ? undefined : handleIntentProposalReject}
+                            onIntentProposalUndo={legacyOrchestratorReadOnly ? undefined : handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
-                            onAgentActionResolve={reporterActionsAllowed && sessionId ? handleAgentActionResolve : undefined}
-                            onAgentActionConfirm={reporterActionsAllowed && sessionId ? handleAgentActionConfirm : undefined}
-                            OAuthLink={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : OAuthLink}
-                            onNetworkJoin={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : handleNetworkJoin}
+                            OAuthLink={legacyOrchestratorReadOnly ? undefined : OAuthLink}
+                            onNetworkJoin={legacyOrchestratorReadOnly ? undefined : handleNetworkJoin}
                             networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                           />
                         </article>
@@ -1534,7 +1483,7 @@ export default function ChatContent({
                             key={draft.opportunityId}
                             card={cardData}
                             currentStatus={cardStatus}
-                            onPrimaryAction={legacyOrchestratorReadOnly || effectiveReadOnlySurface ? undefined : (oppId, userId) => {
+                            onPrimaryAction={legacyOrchestratorReadOnly ? undefined : (oppId, userId) => {
                               if (mutationsBlockedRef.current) return;
                               return handleStreamingDraftStartChat(oppId, userId);
                             }}
@@ -1546,7 +1495,6 @@ export default function ChatContent({
                   )}
                 {msg.role === "assistant" &&
                   !legacyOrchestratorReadOnly &&
-                  !effectiveReadOnlySurface &&
                   msg.decisionQuestions &&
                   msg.decisionQuestions.length > 0 && (
                     <DecisionQuestions
@@ -1568,7 +1516,6 @@ export default function ChatContent({
                   )}
                 {msg.role === "assistant" &&
                   !legacyOrchestratorReadOnly &&
-                  !effectiveReadOnlySurface &&
                   injectedByMessageId.has(msg.id) && (
                     <InjectedQuestions
                       questions={injectedByMessageId.get(msg.id)!}
@@ -1578,7 +1525,7 @@ export default function ChatContent({
                   )}
               </div>
             ))}
-            {!legacyOrchestratorReadOnly && !effectiveReadOnlySurface && injectedByMessageId.has(null) && (
+            {!legacyOrchestratorReadOnly && injectedByMessageId.has(null) && (
               <InjectedQuestions
                 questions={injectedByMessageId.get(null)!}
                 onAnswer={handleInjectedAnswer}
@@ -1599,7 +1546,7 @@ export default function ChatContent({
             ) : (
               <>
                 <SuggestionChips
-                  suggestions={suggestionOverride ?? suggestions}
+                  suggestions={suggestions}
                   disabled={isUploadingFiles}
                   onSuggestionClick={handleSuggestionClick}
                 />

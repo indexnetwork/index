@@ -113,8 +113,6 @@ export interface ResolvedToolContext {
    * which are owner-trusted and receive the full owner view.
    */
   mcpCaller?: McpActivityCaller;
-  /** True only when the gated reporter cleanup-action proposal tool is registered. */
-  actionToolsEnabled?: boolean;
 }
 
 /**
@@ -155,8 +153,6 @@ interface ToolContextBindings {
   intentQueue: IntentGraphQueue;
   /** Contact management operations. */
   contactService: ContactServiceAdapter;
-  /** True only when the gated reporter cleanup-action proposal tool is registered. */
-  actionToolsEnabled?: boolean;
   /** Chat session reader for loading conversation history. */
   chatSession: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
@@ -206,8 +202,6 @@ interface ToolContextBindings {
    * the backend composition root; when absent the tool is not registered.
    */
   chatQuestions?: ChatQuestionsHost;
-  /** Optional durable persistence for reporter cleanup-action proposals. */
-  actionProposalStore?: import('../../chat/reporter.action.contracts.js').AgentActionProposalStore;
   /** Durable host persistence for verified intent proposals shown in chat. */
   intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   /**
@@ -327,10 +321,8 @@ export async function resolveChatContext(params: {
   networkId?: string;
   /** Chat session ID for draft opportunities (stored as context.conversationId). */
   sessionId?: string;
-  /** Reporter action gate forwarded into the persona prompt/context. */
-  actionToolsEnabled?: boolean;
 }): Promise<ResolvedToolContext> {
-  const { database, userId, networkId, sessionId, actionToolsEnabled } = params;
+  const { database, userId, networkId, sessionId } = params;
 
   const [user, rawProfile, userNetworks, globalContext] = await Promise.all([
     database.getUser(userId),
@@ -431,7 +423,6 @@ export async function resolveChatContext(params: {
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     hasName,
-    actionToolsEnabled,
     ...(sessionId !== undefined ? { sessionId } : {}),
   };
 }

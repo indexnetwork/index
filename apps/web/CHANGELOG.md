@@ -8,6 +8,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- **Breaking (web 0.58.0):** remove the Agent reporter surface. `/agent` now
+  always renders the ordinary agent chat; `AgentReporterSurface`, the
+  `agentSurface` feature flag, `startReporterSession`, the reporter branch of the
+  sessions panel's **New conversation** action, `services/agent-actions.ts` and
+  the `AgentActionProposalCard` (plus its ```agent_action_proposal``` fence
+  parsing and loading skeleton in `AssistantMessageContent`) are all gone.
+- Remove `ChatContent`'s `persona`, `readOnlySurface` and `suggestionOverride`
+  props. The reporter surface was their only caller, so the read-only header
+  suppression, suggestion override and reporter routing branches collapse away.
 - **Breaking (web 0.55.0):** remove the Protocol Atlas. The `/protocol-atlas`
   route, its host allowlist (`dev.index.network`, `localhost`, `127.0.0.1`,
   `[::1]`), and the static site under `docs/protocol-atlas/` are gone, along with

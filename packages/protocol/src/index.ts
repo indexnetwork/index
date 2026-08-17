@@ -110,11 +110,6 @@ export {
   SIGNAL_PERSONA,
 } from "./agents/index.js";
 export {
-  REPORTER_PERSONA_ID,
-  REPORTER_PERSONA,
-  REPORTER_BRIEFING_KICKOFF,
-} from "./agents/index.js";
-export {
   ONBOARDING_PERSONA_ID,
   ONBOARDING_PERSONA,
 } from "./agents/index.js";

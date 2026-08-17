@@ -12,9 +12,8 @@ import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
 import { questionService } from "../services/question.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
-import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
+import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
@@ -82,7 +81,7 @@ const streamBodySchema = z.object({
   /** The recipient user ID for DM-style chats. */
   recipientUserId: z.string().nullish(),
   /** Explicit persona assertion for a newly bootstrapped persona chat. */
-  persona: z.enum(['negotiator', 'signal', 'reporter']).nullish(),
+  persona: z.enum(['negotiator', 'signal']).nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -106,14 +105,10 @@ const negotiatorSessionBodySchema = z.object({
   intentId: z.string().min(1),
 });
 
-const reporterSessionBodySchema = z.object({
-  forceNew: z.boolean().optional(),
-}).strict();
-
 const resolveSessionBodySchema = z.object({
   scopeType: z.enum(['intent']),
   scopeId: z.string().min(1),
-  persona: z.enum(['signal', 'reporter']).optional(),
+  persona: z.enum(['signal']).optional(),
 });
 
 const interruptBodySchema = z.object({
@@ -463,8 +458,6 @@ export class ChatController {
       ? chatSessionService.getOnboardingGraphFactory()
       : sessionPersona === SIGNAL_PERSONA_ID
         ? chatSessionService.getSignalGraphFactory()
-      : sessionPersona === REPORTER_PERSONA_ID
-        ? chatSessionService.getReporterGraphFactory()
         : sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
         ? await chatSessionService.getNegotiatorGraphFactory(
             negotiatorAgent,
@@ -869,48 +862,6 @@ export class ChatController {
   }
 
   /**
-   * Resolve the current Reporter opening briefing for the authenticated web session.
-   *
-   * The route never accepts a persona. It returns the adapter's atomic creation
-   * claim so only one tab sends the hidden opening marker. `forceNew` is reserved
-   * for the explicit New conversation action and bypasses normal TTL reuse.
-   *
-   * @param req - Body `{ forceNew?: boolean }`
-   * @param user - Session-authenticated user
-   * @returns The authoritative reporter session and creation claim
-   */
-  @Post("/reporter/session")
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
-  async reporterSession(req: Request, user: AuthenticatedUser) {
-    if (!isAgentSurfaceEnabled()) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
-
-    let body: z.infer<typeof reporterSessionBodySchema>;
-    try {
-      const parsed = reporterSessionBodySchema.safeParse(await req.json());
-      if (!parsed.success) {
-        return Response.json(
-          { error: "Invalid request body. Expected { forceNew?: boolean }" },
-          { status: 400 },
-        );
-      }
-      body = parsed.data;
-    } catch {
-      return Response.json(
-        { error: "Invalid JSON in request body" },
-        { status: 400 },
-      );
-    }
-
-    const result = await chatSessionService.resolveReporterSession(
-      user.id,
-      body.forceNew ?? false,
-    );
-    return Response.json(result);
-  }
-
-  /**
    * Resolve or create the stable orchestrator chat session for a selected intent.
    *
    * @param req - The HTTP request object (body: { scopeType: 'intent', scopeId: string })
@@ -1000,7 +951,7 @@ export class ChatController {
     return this.getSessionForPersonas(
       req,
       user,
-      new Set([RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
+      new Set([RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
     );
   }
 

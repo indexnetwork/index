@@ -43,15 +43,6 @@ export {
   ONBOARDING_TOOL_NAMES,
 } from "../chat/onboarding.persona.js";
 export {
-  createReporterTools,
-  filterReporterTools,
-  narrowReporterTools,
-  REPORTER_BRIEFING_KICKOFF,
-  REPORTER_PERSONA,
-  REPORTER_PERSONA_ID,
-  REPORTER_TOOL_NAMES,
-} from "../chat/reporter.persona.js";
-export {
   createSignalTools,
   filterSignalTools,
   narrowSignalTools,

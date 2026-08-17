@@ -55,8 +55,6 @@ import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
-import { isAgentActionsEnabled } from '../lib/agent-surface-feature';
-import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-proposal.database.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
@@ -141,8 +139,6 @@ const protocolDeps = {
   hydeCache: hydeCacheAdapter,
   intentQueue,
   contactService,
-  actionToolsEnabled: isAgentActionsEnabled(),
-  actionProposalStore: agentActionProposalDatabaseAdapter,
   intentProposalStore: intentProposalDatabaseAdapter,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
@@ -206,7 +202,7 @@ const chatSessionReader = {
 /**
  * Composition-root chat factory. Signal is the product's primary chat persona,
  * so it is the one this factory carries; every other persona (onboarding,
- * reporter, negotiator) is derived from it via `withPersona`, sharing the
+ * negotiator) is derived from it via `withPersona`, sharing the
  * persona-neutral runtime and all injected deps. There is no default persona —
  * the retired orchestrator used to be it.
  */
