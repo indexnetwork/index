@@ -27,7 +27,9 @@ than treating barrel trimming as ownership migration (IND-457 remains separate).
 
 `bun run architecture:host-isolation` rejects static or literal dynamic protocol source imports that escape `packages/protocol/src`, direct API/web implementation imports, or concrete Drizzle, queue, and database-driver packages. Protocol continues to receive host behavior through interfaces.
 
-`bun run test:architecture` encodes the representative foreground/ambient matrix for signal admission, opportunity discovery, and negotiation. The transport differs, while the corresponding injected graph factory and application invariants remain shared.
+`bun run test:architecture` covers the capability model that both scripts above resolve paths through — the canonical and compatibility directory mappings, barrel recognition, and the legacy paths that must not come back.
+
+The two scripts are the enforcement; the tests cover the model they share. There is deliberately no third layer of fixtures asserting that source files contain particular strings.
 
 ## Credential-free baseline
 

@@ -20,6 +20,19 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 17.0.1 - 2026-08-17
+
+### Removed
+
+- Remove `src/architecture/tests/` (`capability-barrels`, `package-entry`,
+  `execution-matrix`). These asserted that source files contain particular
+  strings — including the wording of `capability-boundaries.ts`'s own violation
+  messages — and duplicated the model assertions already in
+  `scripts/architecture/tests/capability-model.spec.ts`. Enforcement is
+  unchanged: `architecture:host-isolation` and `architecture:capabilities` walk
+  the real import graph and are what the CI gate depends on. `test:architecture`
+  now runs `scripts/architecture/tests` only.
+
 ## 17.0.0 - 2026-08-17
 
 ### Removed
