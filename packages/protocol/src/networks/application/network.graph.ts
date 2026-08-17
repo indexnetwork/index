@@ -36,282 +36,32 @@ const logger = protocolLogger("NetworkGraphFactory");
  *
  * IND-546: canonical home — previously network/network.graph.ts.
  */
+
+/** The graph's channel state, as every node sees it. */
+export type NetworkState = typeof NetworkGraphState.State;
+
+/** Everything the network nodes reach for. */
+export interface NetworkGraphDeps {
+  database: NetworkGraphDatabase;
+}
+
 export class NetworkGraphFactory {
-  constructor(private database: NetworkGraphDatabase) {}
+  /** Resolved dependency bag shared by every node. */
+  public readonly deps: NetworkGraphDeps;
+
+  constructor(database: NetworkGraphDatabase) {
+    this.deps = { database };
+  }
 
   public createGraph() {
-    // --- NODE DEFINITIONS ---
-
-    /**
-     * Read Node: List networks the user belongs to and owns.
-     */
-    const readNode = async (state: typeof NetworkGraphState.State) => {
-      return timed("NetworkGraph.read", async () => {
-        logger.verbose("Read networks", { userId: state.userId, networkId: state.networkId, showAll: state.showAll });
-
-        // Shared projections for both the scoped and unscoped read paths.
-        const projectMembership = (m: Awaited<ReturnType<typeof this.database.getNetworkMemberships>>[number]) => ({
-          networkId: m.networkId,
-          title: m.networkTitle,
-          prompt: m.indexPrompt,
-          autoAssign: m.autoAssign,
-          isPersonal: m.isPersonal,
-          joinedAt: m.joinedAt,
-        });
-        const projectOwned = (o: Awaited<ReturnType<typeof this.database.getOwnedIndexes>>[number]) => ({
-          networkId: o.id,
-          title: o.title,
-          prompt: o.prompt,
-          memberCount: o.memberCount,
-          intentCount: o.intentCount,
-          joinPolicy: o.permissions.joinPolicy,
-        });
-
-        try {
-          const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
-            this.database.getNetworkMemberships(state.userId),
-            this.database.getOwnedIndexes(state.userId),
-            this.database.getPublicIndexesNotJoined(state.userId),
-          ]);
-
-          // If network-scoped and not showAll, return just that network plus the
-          // user's personal network (their contacts).  The personal network is part
-          // of every allowed-network reach calculation for network-bound agents,
-          // and a user in a community-scoped chat still owns their contact list —
-          // so surfacing it here keeps contact tools discoverable.  Other community
-          // memberships are still hidden, and `publicNetworks` is omitted.
-          const scopeToCurrentNetwork = state.networkId && !state.showAll;
-          if (scopeToCurrentNetwork) {
-            const networkId = state.networkId!;
-            const isMember = await this.database.isNetworkMember(networkId, state.userId);
-            if (!isMember) {
-              return {
-                readResult: {
-                  memberOf: [],
-                  owns: [],
-                  stats: { memberOfCount: 0, ownsCount: 0, scopeNote: "Network not found or you are not a member." },
-                },
-              };
-            }
-            const scopedMembership = allMemberships.find((m) => m.networkId === networkId);
-            const personalMembership = scopedMembership?.isPersonal
-              ? undefined
-              : allMemberships.find((m) => m.isPersonal);
-            const scopedOwned = ownedIndexes.find((o) => o.id === networkId);
-            const personalOwned = personalMembership
-              ? ownedIndexes.find((o) => o.id === personalMembership.networkId)
-              : undefined;
-            const memberOf = [
-              ...(scopedMembership ? [projectMembership(scopedMembership)] : []),
-              ...(personalMembership ? [projectMembership(personalMembership)] : []),
-            ];
-            const owns = [
-              ...(scopedOwned ? [projectOwned(scopedOwned)] : []),
-              ...(personalOwned ? [projectOwned(personalOwned)] : []),
-            ];
-            return {
-              readResult: {
-                memberOf,
-                owns,
-                stats: {
-                  memberOfCount: memberOf.length,
-                  ownsCount: owns.length,
-                  scopeNote: "Showing current network and your personal network. Use showAll: true for all networks.",
-                },
-              },
-            };
-          }
-
-          // Include public networks available to join
-          const publicNetworks = publicIndexesResult.networks.map((idx) => ({
-            networkId: idx.id,
-            title: idx.title,
-            prompt: idx.prompt,
-            memberCount: idx.memberCount,
-            owner: idx.owner,
-          }));
-
-          return {
-            readResult: {
-              memberOf: allMemberships.map(projectMembership),
-              owns: ownedIndexes.map(projectOwned),
-              publicNetworks,
-              stats: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicNetworksCount: publicNetworks.length },
-            },
-          };
-        } catch (err) {
-          logger.error("Read networks failed", { error: err });
-          return { error: "Failed to fetch network information." };
-        }
-      });
-    };
-
-    /**
-     * Create Node: Create a new network and add user as owner.
-     *
-     * Atomicity contract:
-     * 1. Create the network row.
-     * 2. Add the calling user as owner.
-     * 3. On step-2 failure: soft-delete the network (rollback).
-     * 4. Rollback failures are logged at error level but never override the
-     *    primary failure message returned to the caller.
-     */
-    const createNode = async (state: typeof NetworkGraphState.State) => {
-      return timed("NetworkGraph.create", async () => {
-        logger.verbose("Create network", { userId: state.userId, createInput: state.createInput });
-
-        if (!state.createInput?.title?.trim()) {
-          return { mutationResult: { success: false, error: "Title is required." } };
-        }
-
-        let createdNetworkId: string | undefined;
-        try {
-          const network = await this.database.createNetwork({
-            title: state.createInput.title.trim(),
-            prompt: state.createInput.prompt?.trim() || undefined,
-            imageUrl: state.createInput.imageUrl ?? undefined,
-            joinPolicy: state.createInput.joinPolicy,
-          });
-          createdNetworkId = network.id;
-
-          const added = await this.database.addMemberToNetwork(network.id, state.userId, 'owner');
-          if (!added.success) {
-            logger.error("addMemberToNetwork failed; cleaning up orphaned network", { networkId: network.id });
-            try {
-              await this.database.softDeleteNetwork(network.id);
-            } catch (rollbackError) {
-              logger.error("Network create rollback failed", {
-                networkId: network.id,
-                rollbackFor: "owner_membership",
-                rollbackErrorKind: rollbackError instanceof Error ? "error" : "non_error",
-              });
-            }
-            return { mutationResult: { success: false, error: "Failed to set you as owner. Network was not created." } };
-          }
-
-          return {
-            mutationResult: {
-              success: true,
-              networkId: network.id,
-              title: network.title,
-              message: `Network "${network.title}" created. You are the owner.`,
-            },
-          };
-        } catch (err) {
-          logger.error("Create network failed", { error: err });
-          if (createdNetworkId) {
-            try {
-              await this.database.softDeleteNetwork(createdNetworkId);
-            } catch (rollbackError) {
-              logger.error("Network create rollback failed", {
-                networkId: createdNetworkId,
-                rollbackFor: "create_operation",
-                rollbackErrorKind: rollbackError instanceof Error ? "error" : "non_error",
-              });
-            }
-          }
-          return {
-            mutationResult: {
-              success: false,
-              error: err instanceof Error ? err.message : "Failed to create network.",
-            },
-          };
-        }
-      });
-    };
-
-    /**
-     * Update Node: Update network settings (owner only).
-     */
-    const updateNode = async (state: typeof NetworkGraphState.State) => {
-      return timed("NetworkGraph.update", async () => {
-        const networkId = state.networkId;
-        logger.verbose("Update network", { userId: state.userId, networkId, updateInput: state.updateInput });
-
-        if (!networkId) {
-          return { mutationResult: { success: false, error: "networkId is required for update." } };
-        }
-
-        try {
-          const isOwner = await this.database.isIndexOwner(networkId, state.userId);
-          if (!isOwner) {
-            return { mutationResult: { success: false, error: "You can only modify networks you own." } };
-          }
-
-          await this.database.updateIndexSettings(networkId, state.userId, state.updateInput ?? {});
-
-          return {
-            mutationResult: {
-              success: true,
-              networkId,
-              message: "Network settings updated.",
-            },
-          };
-        } catch (err) {
-          logger.error("Update network failed", { error: err });
-          return { mutationResult: { success: false, error: "Failed to update network." } };
-        }
-      });
-    };
-
-    /**
-     * Delete Node: Soft-delete a network (owner only, sole member).
-     */
-    const deleteNode = async (state: typeof NetworkGraphState.State) => {
-      return timed("NetworkGraph.delete", async () => {
-        const networkId = state.networkId;
-        logger.verbose("Delete network", { userId: state.userId, networkId });
-
-        if (!networkId) {
-          return { mutationResult: { success: false, error: "networkId is required for delete." } };
-        }
-
-        try {
-          const isOwner = await this.database.isIndexOwner(networkId, state.userId);
-          if (!isOwner) {
-            return { mutationResult: { success: false, error: "You can only delete networks you own." } };
-          }
-
-          const count = await this.database.getNetworkMemberCount(networkId);
-          if (count > 1) {
-            return { mutationResult: { success: false, error: "Cannot delete network with other members. Remove members first." } };
-          }
-
-          await this.database.softDeleteNetwork(networkId);
-
-          return {
-            mutationResult: {
-              success: true,
-              networkId,
-              message: "Network deleted.",
-            },
-          };
-        } catch (err) {
-          logger.error("Delete network failed", { error: err });
-          return { mutationResult: { success: false, error: "Failed to delete network." } };
-        }
-      });
-    };
-
-    // --- CONDITIONAL ROUTING ---
-
-    const routeByMode = (state: typeof NetworkGraphState.State): string => {
-      switch (state.operationMode) {
-        case 'create': return 'create';
-        case 'read': return 'read';
-        case 'update': return 'update';
-        case 'delete': return 'delete_idx';
-        default: return 'read';
-      }
-    };
-
+    const deps = this.deps;
     // --- GRAPH ASSEMBLY ---
 
     const workflow = new StateGraph(NetworkGraphState)
-      .addNode("read", readNode)
-      .addNode("create", createNode)
-      .addNode("update", updateNode)
-      .addNode("delete_idx", deleteNode)
+      .addNode("read", (state: NetworkState) => readNode(state, deps))
+      .addNode("create", (state: NetworkState) => createNode(state, deps))
+      .addNode("update", (state: NetworkState) => updateNode(state, deps))
+      .addNode("delete_idx", (state: NetworkState) => deleteNode(state, deps))
       .addConditionalEdges(START, routeByMode, {
         read: "read",
         create: "create",
@@ -326,3 +76,265 @@ export class NetworkGraphFactory {
     return workflow.compile();
   }
 }
+
+/**
+ * Read Node: List networks the user belongs to and owns.
+ */
+export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
+  return timed("NetworkGraph.read", async () => {
+    logger.verbose("Read networks", { userId: state.userId, networkId: state.networkId, showAll: state.showAll });
+
+    // Shared projections for both the scoped and unscoped read paths.
+    const projectMembership = (m: Awaited<ReturnType<typeof deps.database.getNetworkMemberships>>[number]) => ({
+      networkId: m.networkId,
+      title: m.networkTitle,
+      prompt: m.indexPrompt,
+      autoAssign: m.autoAssign,
+      isPersonal: m.isPersonal,
+      joinedAt: m.joinedAt,
+    });
+    const projectOwned = (o: Awaited<ReturnType<typeof deps.database.getOwnedIndexes>>[number]) => ({
+      networkId: o.id,
+      title: o.title,
+      prompt: o.prompt,
+      memberCount: o.memberCount,
+      intentCount: o.intentCount,
+      joinPolicy: o.permissions.joinPolicy,
+    });
+
+    try {
+      const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
+        deps.database.getNetworkMemberships(state.userId),
+        deps.database.getOwnedIndexes(state.userId),
+        deps.database.getPublicIndexesNotJoined(state.userId),
+      ]);
+
+      // If network-scoped and not showAll, return just that network plus the
+      // user's personal network (their contacts).  The personal network is part
+      // of every allowed-network reach calculation for network-bound agents,
+      // and a user in a community-scoped chat still owns their contact list —
+      // so surfacing it here keeps contact tools discoverable.  Other community
+      // memberships are still hidden, and `publicNetworks` is omitted.
+      const scopeToCurrentNetwork = state.networkId && !state.showAll;
+      if (scopeToCurrentNetwork) {
+        const networkId = state.networkId!;
+        const isMember = await deps.database.isNetworkMember(networkId, state.userId);
+        if (!isMember) {
+          return {
+            readResult: {
+              memberOf: [],
+              owns: [],
+              stats: { memberOfCount: 0, ownsCount: 0, scopeNote: "Network not found or you are not a member." },
+            },
+          };
+        }
+        const scopedMembership = allMemberships.find((m) => m.networkId === networkId);
+        const personalMembership = scopedMembership?.isPersonal
+          ? undefined
+          : allMemberships.find((m) => m.isPersonal);
+        const scopedOwned = ownedIndexes.find((o) => o.id === networkId);
+        const personalOwned = personalMembership
+          ? ownedIndexes.find((o) => o.id === personalMembership.networkId)
+          : undefined;
+        const memberOf = [
+          ...(scopedMembership ? [projectMembership(scopedMembership)] : []),
+          ...(personalMembership ? [projectMembership(personalMembership)] : []),
+        ];
+        const owns = [
+          ...(scopedOwned ? [projectOwned(scopedOwned)] : []),
+          ...(personalOwned ? [projectOwned(personalOwned)] : []),
+        ];
+        return {
+          readResult: {
+            memberOf,
+            owns,
+            stats: {
+              memberOfCount: memberOf.length,
+              ownsCount: owns.length,
+              scopeNote: "Showing current network and your personal network. Use showAll: true for all networks.",
+            },
+          },
+        };
+      }
+
+      // Include public networks available to join
+      const publicNetworks = publicIndexesResult.networks.map((idx) => ({
+        networkId: idx.id,
+        title: idx.title,
+        prompt: idx.prompt,
+        memberCount: idx.memberCount,
+        owner: idx.owner,
+      }));
+
+      return {
+        readResult: {
+          memberOf: allMemberships.map(projectMembership),
+          owns: ownedIndexes.map(projectOwned),
+          publicNetworks,
+          stats: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicNetworksCount: publicNetworks.length },
+        },
+      };
+    } catch (err) {
+      logger.error("Read networks failed", { error: err });
+      return { error: "Failed to fetch network information." };
+    }
+  });
+}
+
+/**
+ * Create Node: Create a new network and add user as owner.
+ *
+ * Atomicity contract:
+ * 1. Create the network row.
+ * 2. Add the calling user as owner.
+ * 3. On step-2 failure: soft-delete the network (rollback).
+ * 4. Rollback failures are logged at error level but never override the
+ *    primary failure message returned to the caller.
+ */
+export async function createNode(state: NetworkState, deps: NetworkGraphDeps) {
+  return timed("NetworkGraph.create", async () => {
+    logger.verbose("Create network", { userId: state.userId, createInput: state.createInput });
+
+    if (!state.createInput?.title?.trim()) {
+      return { mutationResult: { success: false, error: "Title is required." } };
+    }
+
+    let createdNetworkId: string | undefined;
+    try {
+      const network = await deps.database.createNetwork({
+        title: state.createInput.title.trim(),
+        prompt: state.createInput.prompt?.trim() || undefined,
+        imageUrl: state.createInput.imageUrl ?? undefined,
+        joinPolicy: state.createInput.joinPolicy,
+      });
+      createdNetworkId = network.id;
+
+      const added = await deps.database.addMemberToNetwork(network.id, state.userId, 'owner');
+      if (!added.success) {
+        logger.error("addMemberToNetwork failed; cleaning up orphaned network", { networkId: network.id });
+        try {
+          await deps.database.softDeleteNetwork(network.id);
+        } catch (rollbackError) {
+          logger.error("Network create rollback failed", {
+            networkId: network.id,
+            rollbackFor: "owner_membership",
+            rollbackErrorKind: rollbackError instanceof Error ? "error" : "non_error",
+          });
+        }
+        return { mutationResult: { success: false, error: "Failed to set you as owner. Network was not created." } };
+      }
+
+      return {
+        mutationResult: {
+          success: true,
+          networkId: network.id,
+          title: network.title,
+          message: `Network "${network.title}" created. You are the owner.`,
+        },
+      };
+    } catch (err) {
+      logger.error("Create network failed", { error: err });
+      if (createdNetworkId) {
+        try {
+          await deps.database.softDeleteNetwork(createdNetworkId);
+        } catch (rollbackError) {
+          logger.error("Network create rollback failed", {
+            networkId: createdNetworkId,
+            rollbackFor: "create_operation",
+            rollbackErrorKind: rollbackError instanceof Error ? "error" : "non_error",
+          });
+        }
+      }
+      return {
+        mutationResult: {
+          success: false,
+          error: err instanceof Error ? err.message : "Failed to create network.",
+        },
+      };
+    }
+  });
+}
+
+/**
+ * Update Node: Update network settings (owner only).
+ */
+export async function updateNode(state: NetworkState, deps: NetworkGraphDeps) {
+  return timed("NetworkGraph.update", async () => {
+    const networkId = state.networkId;
+    logger.verbose("Update network", { userId: state.userId, networkId, updateInput: state.updateInput });
+
+    if (!networkId) {
+      return { mutationResult: { success: false, error: "networkId is required for update." } };
+    }
+
+    try {
+      const isOwner = await deps.database.isIndexOwner(networkId, state.userId);
+      if (!isOwner) {
+        return { mutationResult: { success: false, error: "You can only modify networks you own." } };
+      }
+
+      await deps.database.updateIndexSettings(networkId, state.userId, state.updateInput ?? {});
+
+      return {
+        mutationResult: {
+          success: true,
+          networkId,
+          message: "Network settings updated.",
+        },
+      };
+    } catch (err) {
+      logger.error("Update network failed", { error: err });
+      return { mutationResult: { success: false, error: "Failed to update network." } };
+    }
+  });
+}
+
+/**
+ * Delete Node: Soft-delete a network (owner only, sole member).
+ */
+export async function deleteNode(state: NetworkState, deps: NetworkGraphDeps) {
+  return timed("NetworkGraph.delete", async () => {
+    const networkId = state.networkId;
+    logger.verbose("Delete network", { userId: state.userId, networkId });
+
+    if (!networkId) {
+      return { mutationResult: { success: false, error: "networkId is required for delete." } };
+    }
+
+    try {
+      const isOwner = await deps.database.isIndexOwner(networkId, state.userId);
+      if (!isOwner) {
+        return { mutationResult: { success: false, error: "You can only delete networks you own." } };
+      }
+
+      const count = await deps.database.getNetworkMemberCount(networkId);
+      if (count > 1) {
+        return { mutationResult: { success: false, error: "Cannot delete network with other members. Remove members first." } };
+      }
+
+      await deps.database.softDeleteNetwork(networkId);
+
+      return {
+        mutationResult: {
+          success: true,
+          networkId,
+          message: "Network deleted.",
+        },
+      };
+    } catch (err) {
+      logger.error("Delete network failed", { error: err });
+      return { mutationResult: { success: false, error: "Failed to delete network." } };
+    }
+  });
+}
+
+export function routeByMode(state: NetworkState): string {
+  switch (state.operationMode) {
+    case 'create': return 'create';
+    case 'read': return 'read';
+    case 'update': return 'update';
+    case 'delete': return 'delete_idx';
+    default: return 'read';
+  }
+}
+
