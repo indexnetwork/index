@@ -8,7 +8,7 @@ import type { IterationContext } from "./chat.prompt.modules.js";
 // The chat runtime (ChatAgent + ChatGraphFactory) is persona-neutral infrastructure:
 // prompt, toolset, and loop behaviors are injected via a ChatPersonaConfig rather
 // than hardcoded. There is no default — every caller names the persona it drives
-// (onboarding, signal, reporter, negotiator), and unknown personas fail closed.
+// (onboarding, signal, negotiator), and unknown personas fail closed.
 
 /**
  * Behaviors that live in the agent loop itself (not in the prompt or toolset).
@@ -19,8 +19,7 @@ export interface ChatPersonaLoopBehaviors {
    * Detect hallucinated ```opportunity / ```intent_proposal code blocks in model
    * text, auto-invoke the corresponding tool, and strip unbacked blocks from the
    * final response. Only meaningful for personas whose toolset can legitimately
-   * produce those blocks — enabled for onboarding, signal and negotiator, off
-   * for reporter.
+   * produce those blocks — enabled for onboarding, signal and negotiator.
    */
   hallucinationRecovery: boolean;
 }

@@ -366,7 +366,7 @@ export type ChatScopeType = 'network' | 'intent';
 /**
  * Value of `conversations.persona`.
  *
- * - `signal` | `negotiator` | `reporter` | `onboarding` — live chat personas.
+ * - `signal` | `negotiator` | `onboarding` — live chat personas.
  * - `telegram` — Telegram notification transcript. Not a chat persona: nothing
  *   drives a turn in it, it only collects delivered notifications.
  * - `orchestrator` — retired pre-personafication default. No new rows are
@@ -375,7 +375,6 @@ export type ChatScopeType = 'network' | 'intent';
 export type ChatPersonaId =
   | 'signal'
   | 'negotiator'
-  | 'reporter'
   | 'onboarding'
   | 'telegram'
   | 'orchestrator';

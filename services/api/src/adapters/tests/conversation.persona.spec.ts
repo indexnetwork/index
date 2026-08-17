@@ -21,12 +21,12 @@ const adapter = new ConversationDatabaseAdapter();
 const USER_ID = `persona-test-user-${Date.now()}`;
 const RETIRED_SESSION_ID = crypto.randomUUID();
 const SIGNAL_SESSION_ID = crypto.randomUUID();
-const REPORTER_INTENT_SESSION_ID = crypto.randomUUID();
+const ONBOARDING_INTENT_SESSION_ID = crypto.randomUUID();
 const SIGNAL_INTENT_SESSION_ID = crypto.randomUUID();
 const SHARED_INTENT_ID = crypto.randomUUID();
 
 afterAll(async () => {
-  for (const id of [RETIRED_SESSION_ID, SIGNAL_SESSION_ID, REPORTER_INTENT_SESSION_ID, SIGNAL_INTENT_SESSION_ID]) {
+  for (const id of [RETIRED_SESSION_ID, SIGNAL_SESSION_ID, ONBOARDING_INTENT_SESSION_ID, SIGNAL_INTENT_SESSION_ID]) {
     try { await adapter.deleteChatSession(id); } catch { /* best effort */ }
   }
 });
@@ -69,9 +69,9 @@ describe('conversations.persona column', () => {
 describe('persona-specific intent scope registry', () => {
   it('keeps two personas distinct for the same intent', async () => {
     await adapter.createChatSession({
-      id: REPORTER_INTENT_SESSION_ID,
+      id: ONBOARDING_INTENT_SESSION_ID,
       userId: USER_ID,
-      persona: 'reporter',
+      persona: 'onboarding',
       scopeType: 'intent',
       scopeId: SHARED_INTENT_ID,
     });
@@ -83,11 +83,11 @@ describe('persona-specific intent scope registry', () => {
       scopeId: SHARED_INTENT_ID,
     });
 
-    const reporter = await adapter.getChatSessionByScope(
+    const onboarding = await adapter.getChatSessionByScope(
       USER_ID,
       'intent',
       SHARED_INTENT_ID,
-      'reporter',
+      'onboarding',
     );
     const signal = await adapter.getChatSessionByScope(
       USER_ID,
@@ -96,8 +96,8 @@ describe('persona-specific intent scope registry', () => {
       'signal',
     );
 
-    expect(reporter?.id).toBe(REPORTER_INTENT_SESSION_ID);
-    expect(reporter?.persona).toBe('reporter');
+    expect(onboarding?.id).toBe(ONBOARDING_INTENT_SESSION_ID);
+    expect(onboarding?.persona).toBe('onboarding');
     expect(signal?.id).toBe(SIGNAL_INTENT_SESSION_ID);
     expect(signal?.persona).toBe('signal');
   }, 15000);

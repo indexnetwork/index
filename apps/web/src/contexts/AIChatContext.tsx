@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
-import { REPORTER_BRIEFING_KICKOFF } from "@indexnetwork/protocol";
 
 import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import { apiClient } from "@/lib/api";
@@ -118,7 +117,7 @@ export interface QueuedMessage {
 export interface ChatSendOptions {
   hidden?: boolean;
   prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
-  persona?: "signal" | "reporter";
+  persona?: "signal";
   /** @deprecated Product surfaces should use their dedicated send helper. */
   surface?: "web";
   existingMessageId?: string;
@@ -191,7 +190,7 @@ interface AIChatContextType {
   /** Resolve or create the stable persona session for an intent scope. */
   resolveIntentSession: (
     intent: { id: string; label?: string },
-    persona?: "signal" | "reporter",
+    persona?: "signal",
   ) => Promise<string | null>;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
@@ -217,8 +216,6 @@ interface AIChatContextType {
   clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
   /** Clear the current chat and force the next new web session to request Signal. */
   startSignalSession: () => void;
-  /** Resolve the current reporter briefing, optionally forcing an explicit fresh conversation. */
-  startReporterSession: (options?: { forceNew?: boolean }) => Promise<boolean>;
   /** Load a session, returning false for failed or superseded requests. */
   loadSession: (sessionId: string) => Promise<boolean>;
   /** Load exactly one earlier durable timeline session into display history. */
@@ -371,7 +368,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [sessionPersona, setSessionPersona] = useState<string | null>(null);
   const [turnBlock, setTurnBlock] = useState<ChatTurnBlock | null>(null);
-  const forcePersonaNextSessionRef = useRef<"signal" | "reporter" | null>(null);
+  const forcePersonaNextSessionRef = useRef<"signal" | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionLoadState, setSessionLoadState] = useState<ChatSessionLoadState>({
@@ -409,8 +406,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   /** Independent latest-owner token for intent-session resolution requests. */
   const intentResolutionOwnerRef = useRef<symbol | null>(null);
   const activeSendRef = useRef<SendOperation | null>(null);
-  /** Coalesce route-mount resolution with an already-started reporter action. */
-  const reporterStartRef = useRef<Promise<boolean> | null>(null);
 
   const ownsOperation = useCallback((token: symbol) => operationOwnerRef.current === token, []);
 
@@ -452,7 +447,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const resolveIntentSession = useCallback(async (
     intent: { id: string; label?: string },
-    persona?: "signal" | "reporter",
+    persona?: "signal",
   ): Promise<string | null> => {
     const resolutionToken = Symbol(`resolve-intent-session:${intent.id}`);
     intentResolutionOwnerRef.current = resolutionToken;
@@ -508,7 +503,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
       // A new session has no id until the first stream receives its response
       // headers. Keep submissions made during that window instead of dropping
-      // them (the reporter briefing hits this path).
+      // them (a hidden kickoff send hits this path).
       if (!sessionId) {
         preSessionQueueRef.current = [...preSessionQueueRef.current, entry];
         return;
@@ -596,9 +591,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         ?? (!operationSessionId ? forcePersonaNextSessionRef.current ?? undefined : undefined);
       const effectiveTransport: ChatTransport = transport === "web"
         || requestedPersona === "signal"
-        || requestedPersona === "reporter"
         || sessionPersona === "signal"
-        || sessionPersona === "reporter"
         ? "web"
         : "compatibility";
 
@@ -1236,9 +1229,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const transport: ChatTransport = options?.surface === "web"
       || options?.persona === "signal"
-      || options?.persona === "reporter"
       || sessionPersona === "signal"
-      || sessionPersona === "reporter"
       ? "web"
       : "compatibility";
     return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
@@ -1259,8 +1250,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Drain pending messages whenever loading ends.
-  // Pre-session messages are first so a new reporter chat cannot lose a user
-  // submission while its hidden briefing creates the session.
+  // Pre-session messages are first so a new chat cannot lose a user
+  // submission while its first send creates the session.
   React.useEffect(() => {
     if (isLoading || turnBlock) return;
     if (preSessionQueueRef.current.length > 0 && sessionId) {
@@ -1318,7 +1309,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     const active = activeSendRef.current;
     operationOwnerRef.current = null;
     intentResolutionOwnerRef.current = null;
-    reporterStartRef.current = null;
     if (active && !abortStream) {
       active.refreshSidebarWhenStale = true;
     } else {
@@ -1551,58 +1541,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [hasPreviousSession, isLoadingPreviousMessages, previousSessionCursor, sessionId]);
 
-  const startReporterSession = useCallback((options?: {
-    forceNew?: boolean;
-  }): Promise<boolean> => {
-    const forceNew = options?.forceNew === true;
-    if (!forceNew && reporterStartRef.current) return reporterStartRef.current;
-
-    const start = (async (): Promise<boolean> => {
-      // Route cleanup deliberately detaches ordinary streams. Reporter entry and
-      // explicit New conversation are stronger ownership boundaries: abort and
-      // invalidate everything before claiming the server-authoritative briefing.
-      clearChat();
-      const resolutionToken = Symbol("resolve-reporter-session");
-      operationOwnerRef.current = resolutionToken;
-
-      try {
-        const resolved = await apiClient.post<{
-          session: { id: string };
-          created: boolean;
-        }>("/chat/reporter/session", { forceNew });
-        if (!ownsOperation(resolutionToken)) return false;
-
-        const loaded = await loadSession(resolved.session.id);
-        if (!loaded) return false;
-        if (!resolved.created) return true;
-
-        // Bind the hidden marker to the already-created claim explicitly. The
-        // load state update has not necessarily produced a new React closure yet.
-        await sendMessageWithTransport(
-          "web",
-          REPORTER_BRIEFING_KICKOFF,
-          undefined,
-          undefined,
-          { hidden: true, persona: "reporter" },
-          resolved.session.id,
-        );
-        return true;
-      } catch (error) {
-        if (ownsOperation(resolutionToken)) {
-          operationOwnerRef.current = null;
-          logger.error("Reporter session resolution failed", { error });
-        }
-        return false;
-      }
-    })();
-
-    const tracked = start.finally(() => {
-      if (reporterStartRef.current === tracked) reporterStartRef.current = null;
-    });
-    reporterStartRef.current = tracked;
-    return tracked;
-  }, [clearChat, loadSession, ownsOperation, sendMessageWithTransport]);
-
   const isSessionReady = useCallback((id: string) => (
     sessionLoadState.status === "ready"
     && sessionLoadState.targetSessionId === id
@@ -1653,7 +1591,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sendWebMessage,
         clearChat,
         startSignalSession,
-        startReporterSession,
         loadSession,
         loadPreviousMessages,
         hasPreviousSession,

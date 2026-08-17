@@ -17,7 +17,6 @@ export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node',
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
-export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
 export interface HistoricalQualityBaseAttestation {
@@ -693,59 +692,6 @@ export const questions = pgTable('questions', {
 
 export type QuestionRow = typeof questions.$inferSelect;
 export type NewQuestionRow = typeof questions.$inferInsert;
-
-export interface AgentActionProposalSnapshotRecord {
-  status: string;
-  updatedAt?: string;
-  payload?: string;
-  summary?: string | null;
-  assertionText?: string;
-}
-
-interface AgentActionProposalActionBase {
-  entityId: string;
-  currentState: string;
-  proposedOperation: string;
-  evidence?: string;
-  skipped?: boolean;
-  reason?: string;
-  snapshot?: AgentActionProposalSnapshotRecord;
-  description?: string;
-}
-
-export type AgentActionProposalActionRecord =
-  | (AgentActionProposalActionBase & { type: 'retract_premise' })
-  | (AgentActionProposalActionBase & { type: 'narrow_signal' })
-  | (AgentActionProposalActionBase & { type: 'pause_signal' });
-
-export interface AgentActionProposalResultRecord {
-  type: 'retract_premise' | 'narrow_signal' | 'pause_signal';
-  entityId: string;
-  operation: string;
-  previousState: string;
-  resultingState: string;
-  evidence?: string;
-  outcome: 'applied' | 'alreadyDone' | 'skipped' | 'stale';
-  reason?: string;
-}
-
-export const agentActionProposals = pgTable('agent_action_proposals', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  conversationId: text('conversation_id'),
-  actions: jsonb('actions').$type<AgentActionProposalActionRecord[]>().notNull(),
-  status: agentActionProposalStatusEnum('status').notNull().default('pending'),
-  result: jsonb('result').$type<AgentActionProposalResultRecord[]>(),
-  executionLeaseAt: timestamp('execution_lease_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  consumedAt: timestamp('consumed_at', { withTimezone: true }),
-}, (table) => ({
-  userIdIdx: index('agent_action_proposals_user_id_idx').on(table.userId),
-  conversationIdx: index('agent_action_proposals_conversation_id_idx').on(table.conversationId),
-}));
-
-export type AgentActionProposalRow = typeof agentActionProposals.$inferSelect;
-export type NewAgentActionProposalRow = typeof agentActionProposals.$inferInsert;
 
 export interface IntentProposalVerifierOutputRecord {
   reasoning: string;

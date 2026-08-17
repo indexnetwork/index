@@ -152,7 +152,6 @@ describe('TopBar Personal Agent badge', () => {
       // rather than persona determines whether a conversation is visible.
       conversationSummary('visible-h2h', 1, ['user', 'user'], 'orchestrator'),
       conversationSummary('signal', 1, ['user', 'agent'], 'signal'),
-      conversationSummary('reporter', 1, ['user', 'agent'], 'reporter'),
       conversationSummary('negotiator', 1, ['user', 'agent'], 'negotiator'),
       conversationSummary('legacy-orchestrator', 1, ['user', 'agent'], 'orchestrator'),
       conversationSummary('hidden-group', 1, ['user', 'user', 'user'], 'orchestrator'),

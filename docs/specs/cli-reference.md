@@ -41,7 +41,7 @@ by `/api/conversations/*`.
 
 Human-to-Agent chat from the CLI has been removed. It ran on the retired
 `orchestrator` persona, and API-key callers can no longer start a chat without
-naming one; the personas that remain (`signal`, `reporter`) are web-only.
+naming one; the persona that remains (`signal`) is web-only.
 Invoking `index conversation` with no subcommand — or with a bare message —
 prints an error pointing at the app and exits 1.
 

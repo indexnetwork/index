@@ -8,7 +8,6 @@ import { cliCredentialService, type CliCredentialService } from '../services/cli
 import { userService } from '../services/user.service';
 import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
-import { isAgentActionsEnabled, isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
@@ -82,8 +81,6 @@ export class AuthController {
       // config channel). These gate the negotiator entry and agent surfaces.
       features: {
         negotiatorChat: isNegotiatorChatEnabled(),
-        agentSurface: isAgentSurfaceEnabled(),
-        agentActions: isAgentActionsEnabled(),
         fastSignalIntake: isFastSignalIntakeEnabled(),
       },
     });

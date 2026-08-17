@@ -131,16 +131,16 @@ describe("Negotiator chat persona (IND-402)", () => {
     const offRes = await authController.me(meReq(), mockUser());
     expect(offRes.status).toBe(200);
     const offData = (await offRes.json()) as {
-      features: { negotiatorChat: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
+      features: { negotiatorChat: boolean; fastSignalIntake: boolean };
     };
-    expect(offData.features).toEqual({ negotiatorChat: false, agentSurface: false, agentActions: false, fastSignalIntake: false });
+    expect(offData.features).toEqual({ negotiatorChat: false, fastSignalIntake: false });
 
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     const onRes = await authController.me(meReq(), mockUser());
     const onData = (await onRes.json()) as {
-      features: { negotiatorChat: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
+      features: { negotiatorChat: boolean; fastSignalIntake: boolean };
     };
-    expect(onData.features).toEqual({ negotiatorChat: true, agentSurface: false, agentActions: false, fastSignalIntake: false });
+    expect(onData.features).toEqual({ negotiatorChat: true, fastSignalIntake: false });
   }, 60000);
 
   // ── Flag off: endpoints behave as if they do not exist ────────────────────
@@ -250,15 +250,15 @@ describe("Negotiator chat persona (IND-402)", () => {
 
     // Keying spec: the orchestrator's session for the SAME (user, intent) is a
     // different conversation — persona is part of the key.
-    const reporter = await chatSessionService.resolveSessionForScope(testUserId, {
+    const signal = await chatSessionService.resolveSessionForScope(testUserId, {
       scopeType: "intent",
       scopeId: testIntentId,
-    }, "reporter");
-    if ('error' in reporter) throw new Error(reporter.error);
-    createdSessionIds.push(reporter.session.id);
-    expect(reporter.session.id).not.toBe(firstData.session.id);
-    expect(reporter.session.persona).toBe("reporter");
-    expect(reporter.session.scopeType).toBe("intent");
+    }, "signal");
+    if ('error' in signal) throw new Error(signal.error);
+    createdSessionIds.push(signal.session.id);
+    expect(signal.session.id).not.toBe(firstData.session.id);
+    expect(signal.session.persona).toBe("signal");
+    expect(signal.session.scopeType).toBe("intent");
   }, 120_000);
 
   test("flag off → streaming an existing pinned session returns 404", async () => {

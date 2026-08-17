@@ -59,7 +59,6 @@ starts, and unknown values fail closed.
 | Persona | Surface |
 | --- | --- |
 | `signal` | Main web chat — the primary product persona |
-| `reporter` | Read-only agent-reporting surface (web only) |
 | `onboarding` | Session-only onboarding route, while onboarding is incomplete |
 | `negotiator` | Intent-pinned agent chat, including the macOS pane |
 

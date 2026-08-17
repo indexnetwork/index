@@ -10,6 +10,26 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- **Breaking (API 0.95.0):** remove the Agent reporter feature. `POST
+  /api/chat/reporter/session` and the `POST /api/agent/actions/confirm` /
+  `GET /api/agent/actions/proposals/:id` endpoints are gone, together with
+  `AgentActionController`, `AgentActionService`,
+  `AgentActionProposalDatabaseAdapter`, `resolveReporterChatSession`, and the
+  `reporter` branch of `resolveStreamPersonaPolicy`. `reporter` is no longer a
+  known persona, so any surviving row fails closed with
+  `CHAT_PERSONA_UNSUPPORTED` (409) rather than driving a turn. The
+  `WEB_AGENT_SURFACE_DISABLED` and `WEB_AGENT_PERSONA_FORBIDDEN` policy codes are
+  removed with it.
+- **Breaking (API 0.95.0):** drop the `WEB_AGENT_SURFACE_ENABLED`,
+  `WEB_AGENT_ACTIONS_ENABLED` and `REPORTER_BRIEFING_TTL_MS` environment
+  variables and the `features.agentSurface` / `features.agentActions` fields on
+  `GET /api/auth/me`. Remove these three variables from Railway after deploying.
+- Migration `0131_remove_agent_reporter` deletes every `persona = 'reporter'`
+  conversation (4 rows / 2 messages in production, cascading to messages,
+  participants, metadata, timeline sessions, scopes and summaries) and drops the
+  empty `agent_action_proposals` table and its
+  `agent_action_proposal_status` enum. The actions flag was never enabled
+  anywhere, so the table had never held a row.
 - **Breaking (API 0.89.0):** MCP no longer gates tools on incomplete
   onboarding. `complete_onboarding` is omitted from the MCP surface; web
   onboarding chat and `POST /api/tools/complete_onboarding` are unchanged.

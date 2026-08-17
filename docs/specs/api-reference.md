@@ -68,7 +68,6 @@ Session-only endpoints:
 - `POST /api/agents/:id/tokens`, `DELETE /api/agents/:id/tokens/:tokenId`
 - `POST /api/agents/:id/permissions`, `DELETE /api/agents/:id/permissions/:permissionId`
 - `POST /api/agents/:id/transports`, `DELETE /api/agents/:id/transports/:transportId`
-- `POST /api/agent/actions/confirm`
 
 ### DebugGuard
 
@@ -100,20 +99,6 @@ All error responses follow a consistent JSON format:
 ```
 
 ---
-
-## Agent reporter opening briefings
-
-`POST /api/chat/reporter/session` is session-authenticated and available only while `WEB_AGENT_SURFACE_ENABLED=true`. It accepts the strict body `{ "forceNew"?: boolean }` and returns `{ session, created }`. The server serializes each user's claim, reuses the newest reporter session whose creation time is within `REPORTER_BRIEFING_TTL_MS` (24 hours by default), and creates a successor otherwise. Only `created: true` authorizes the client to send the hidden opening-briefing marker. `forceNew: true` is used by the explicit Reporter **New conversation** action; callers cannot select another persona through this route.
-
-Expiry is lazy: stale reporter sessions and their user follow-ups remain readable in ordinary session-only web history, but follow-up activity does not extend freshness because the resolver uses `createdAt`, not `updatedAt`.
-
-## Agent reporter cleanup actions
-
-The dark-shipped reporter action path is gated by `WEB_AGENT_ACTIONS_ENABLED=true` and the reporter surface flag. The proposal tool persists owner-scoped, full-UUID action plans; chat never mutates domain rows. The endpoint below is session-only and returns `404` while the action flag is off.
-
-### POST /api/agent/actions/confirm
-
-Confirm one persisted proposal with `{ "proposalId": "<uuid>" }`. The server re-reads each owner premise or signal immediately before the sequential mutation, skips stale/non-owner/terminal entries, treats already-retracted or already-paused entries as idempotent success, and stores the result for replay. Supported operations are premise retraction, signal description narrowing, and signal pause. A second confirmation returns the stored result with `status: "replayed"`.
 
 ## Non-Controller Routes
 
@@ -428,7 +413,7 @@ Soft-deletes the authenticated user's account.
 
 ### POST /api/chat/stream
 
-Dual-auth SSE endpoint for chat messages with context support. There is no default persona. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same Signal policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the policy by selecting this endpoint. API-key principals are classified as the agent surface and must name a persona explicitly; `signal` and `reporter` stay web-only, so `negotiator` is the one they can start. Omitting the persona returns HTTP 409 with `code: "CHAT_PERSONA_REQUIRED"`. The main web composer uses `/api/chat/web/stream` below.
+Dual-auth SSE endpoint for chat messages with context support. There is no default persona. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same Signal policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the policy by selecting this endpoint. API-key principals are classified as the agent surface and must name a persona explicitly; `signal` stays web-only, so `negotiator` is the one they can start. Omitting the persona returns HTTP 409 with `code: "CHAT_PERSONA_REQUIRED"`. The main web composer uses `/api/chat/web/stream` below.
 
 **Auth**: AuthGuard
 
@@ -493,7 +478,7 @@ Compatibility history for the authenticated user. Every request is clamped to th
 
 ### GET /api/chat/web/sessions
 
-Session-only main-web history. Returns `signal` and `reporter` sessions plus the read-only rows (retired `orchestrator`, `telegram` notification transcripts), and excludes the pinned negotiator conversation.
+Session-only main-web history. Returns `signal` sessions plus the read-only rows (retired `orchestrator`, `telegram` notification transcripts), and excludes the pinned negotiator conversation.
 
 **Auth**: SessionOnlyGuard
 
@@ -576,7 +561,7 @@ Compatibility detail for a specific retired-`orchestrator` session with its mess
 
 ### POST /api/chat/web/session
 
-Session-only main-web detail endpoint. It permits the readable web personas (`signal`, `reporter`) and the read-only rows (`orchestrator`, `telegram`) plus the pinned negotiator conversation, and fails closed for unknown personas.
+Session-only main-web detail endpoint. It permits the readable web persona (`signal`) and the read-only rows (`orchestrator`, `telegram`) plus the pinned negotiator conversation, and fails closed for unknown personas.
 
 Both chat detail endpoints now hydrate one durable timeline session only. The first request sends `{ "sessionId": "..." }`; to reveal exactly one older section, send `{ "sessionId": "...", "beforeSessionId": "<oldest loaded durable session id>" }`. Responses retain `{ session, messages }` and add `sessionId` (the loaded durable session), `hasPreviousSession`, and `previousSessionCursor`. The cursor is opaque; callers must not infer ordering from IDs.
 
