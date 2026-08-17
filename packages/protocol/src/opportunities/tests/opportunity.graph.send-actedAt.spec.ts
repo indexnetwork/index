@@ -80,10 +80,9 @@ describe('opportunity graph — send node stamps actedAt', () => {
       },
     });
 
-    const graph = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined).createGraph();
-    const result = await graph.invoke({
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const result = await operations.sendOpportunity({
       userId: USER_ID,
-      operationMode: 'send' as const,
       opportunityId: OPP_ID,
     });
 

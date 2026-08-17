@@ -1,0 +1,265 @@
+/**
+ * Negotiation graph, stage 1: claim the conversation, task and seat.
+ */
+
+import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+import { requestContext } from "../../shared/observability/request-context.js";
+import type { NegotiationContinuationReceipt } from "../../shared/interfaces/database.interface.js";
+import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
+import { type NegotiationTurn, type NegotiationOutcome } from "../domain/negotiation.state.js";
+import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "../domain/negotiation.protocol.js";
+import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "../domain/negotiation.consultation-policy.js";
+import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
+import { configuredScreenMode } from "../domain/negotiation.screen.contracts.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "../domain/negotiation.deadlock.js";
+import type { NegotiationSeat, NegotiationProtocolVersion } from "../../shared/schemas/negotiation-state.schema.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from '../domain/negotiation.question-safety.js';
+import { buildIntentSnapshots } from "../domain/negotiation.intent-snapshot-provenance.js";
+import { holdsNegotiationConversationLock } from "../domain/negotiation.task-lock-policy.js";
+import { isNegotiationTurnCapReached } from "../domain/negotiation.turn-cap.js";
+import { expectedNegotiationSpeaker } from "../domain/negotiation.expected-speaker.js";
+import { buildSeededAttribution } from '../negotiation.attribution.js';
+import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
+
+
+export async function initNode(state: NegotiationState, deps: NegotiationGraphDeps) {
+  try {
+    // Exact continuations reuse the prior conversation and preclaimed
+    // successor; they must not create any mutable state before the fence.
+    const agentIdA = `agent:${state.sourceUser.id}`;
+    const agentIdB = `agent:${state.candidateUser.id}`;
+    const execution = state.continuationExecution;
+    const conversation = execution
+      ? { id: execution.conversationId }
+      : await deps.database.getOrCreateDM(agentIdA, agentIdB, 'agent');
+
+    // --- Lock gate: check for an active task on this conversation ---
+    const priorMessages = await deps.database.getMessagesForConversation(conversation.id);
+
+    if (
+      Boolean(state.resumeFromTaskId) !== Boolean(state.continuationSettlementId)
+      || Boolean(state.resumeFromTaskId) !== Boolean(execution)
+    ) return { error: 'invalid continuation correlation' };
+    const exactContinuation = state.resumeFromTaskId && state.continuationSettlementId && execution
+      ? { taskId: state.resumeFromTaskId, settlementId: state.continuationSettlementId, execution }
+      : null;
+    const priorTask = exactContinuation
+      ? await deps.database.getTask(exactContinuation.taskId)
+      : state.opportunityId
+        ? await deps.database.getNegotiationTaskForOpportunity(state.opportunityId)
+        : null;
+    const claimedSuccessor = exactContinuation
+      ? await deps.database.getTask(exactContinuation.execution.successorTaskId)
+      : null;
+    if (exactContinuation) {
+      const settlement = priorTask?.metadata?.questionSettlement as Record<string, unknown> | undefined;
+      const storedExecution = claimedSuccessor?.metadata?.continuationExecution as Record<string, unknown> | undefined;
+      if (
+        !priorTask
+        || priorTask.conversationId !== conversation.id
+        || priorTask.state !== 'canceled'
+        || priorTask.metadata?.opportunityId !== state.opportunityId
+        || settlement?.settlementId !== exactContinuation.settlementId
+        || settlement?.taskId !== exactContinuation.taskId
+        || !claimedSuccessor
+        || claimedSuccessor.conversationId !== conversation.id
+        || storedExecution?.token !== exactContinuation.execution.token
+        || storedExecution?.fence !== exactContinuation.execution.fence
+        || storedExecution?.status !== 'claimed'
+      ) return { error: 'invalid exact continuation task' };
+    }
+    const isLocked = !exactContinuation && !!priorTask && holdsNegotiationConversationLock(priorTask);
+
+    if (isLocked) {
+      initLog.info('Conversation locked by active task, returning busy', {
+        conversationId: conversation.id,
+        opportunityId: state.opportunityId,
+      });
+      return { error: 'busy' };
+    }
+
+    // --- Load prior messages and determine continuation ---
+    const priorTurns: NegotiationTurn[] = turnsFromMessages(priorMessages);
+
+    const isContinuation = priorTurns.length > 0;
+
+    const expectedSpeaker = expectedNegotiationSpeaker({
+      sourceUserId: state.sourceUser.id,
+      candidateUserId: state.candidateUser.id,
+    }, priorMessages);
+    if (!expectedSpeaker) return { error: 'invalid negotiation participants' };
+    const currentSpeaker: 'source' | 'candidate' = expectedSpeaker === state.sourceUser.id
+      ? 'source'
+      : 'candidate';
+
+    // Determine scenario-based maxTurns
+    const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
+    const [sourceHasAgent, candidateHasAgent] = await Promise.all([
+      deps.dispatcher.hasExternalAgent(state.sourceUser.id, scope),
+      deps.dispatcher.hasExternalAgent(state.candidateUser.id, scope),
+    ]);
+
+    const ambientMax = Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
+    let maxTurns = state.maxTurns;
+    if (maxTurns == null) {
+      maxTurns = (sourceHasAgent && candidateHasAgent) ? 0 : ambientMax;
+    }
+
+    // --- Initiator seat resolution (v2: rigid per match, stamped at discovery) ---
+    // 1. Continuations inherit from the prior task for the same opportunity —
+    //    never re-derive, so the seat cannot flip between sessions.
+    // 2. Conversation-scoped tie-break: if another negotiation on this DM is
+    //    active and fresh (symmetric concurrent start under a different
+    //    opportunityId — the opportunity-scoped lock above cannot see it),
+    //    the first created task keeps the seat; this run inherits its stamp.
+    // 3. Otherwise: explicit stamp from the caller, falling back to the
+    //    session's sourceUser (pre-stamp heuristic behavior, unchanged).
+    const readInitiator = (metadata: Record<string, unknown> | null | undefined): string | null => {
+      const v = metadata?.initiatorUserId;
+      return typeof v === 'string' && v.length > 0 ? v : null;
+    };
+    let initiatorUserId = readInitiator(priorTask?.metadata) ?? state.initiatorUserId ?? state.sourceUser.id;
+    // Conversation-scoped prior task: used only for the initiator tie-break
+    // (and only when active+fresh).
+    const convTask = !exactContinuation && !readInitiator(priorTask?.metadata)
+      ? await deps.database.getLatestNegotiationTaskForConversation?.(conversation.id).catch(() => null)
+      : null;
+    if (!readInitiator(priorTask?.metadata)) {
+      if (convTask && convTask.id !== priorTask?.id && holdsNegotiationConversationLock(convTask)) {
+        const convInitiator = readInitiator(convTask.metadata);
+        if (convInitiator) {
+          initLog.info('Conversation-scoped tie-break: inheriting initiator seat from concurrent task', {
+            conversationId: conversation.id,
+            winningTaskId: convTask.id,
+            initiatorUserId: convInitiator,
+          });
+          initiatorUserId = convInitiator;
+        }
+      }
+    }
+
+    // --- Protocol version: pinned per negotiation, re-stamped per match ---
+    // A prior task for this same negotiation (exact continuation resume or
+    // a re-run of the same opportunity) pins the version, so one
+    // negotiation never flips semantics mid-flight (absent field on a
+    // genuine prior = pre-v2 task = v1). Everything else — including
+    // continuations of older conversations between the same pair — stamps
+    // fresh from NEGOTIATION_PROTOCOL_VERSION, so a version cutover
+    // reaches existing pairs on their next new match instead of being
+    // pinned to v1 forever by conversation history.
+    const protocolVersion: NegotiationProtocolVersion = priorTask
+      ? (readProtocolVersion(priorTask.metadata) ?? 'v1')
+      : configuredProtocolVersion();
+
+    const taskMetadata = {
+      type: 'negotiation',
+      sourceUserId: state.sourceUser.id,
+      initiatorUserId,
+      protocolVersion,
+      candidateUserId: state.candidateUser.id,
+      networkId: state.indexContext.networkId,
+      sourceIntentId: state.sourceIntentId,
+      candidateIntentId: state.candidateIntentId,
+      participantBindings: [
+        ...(state.sourceIntentId ? [{ userId: state.sourceUser.id, intentId: state.sourceIntentId, networkId: state.indexContext.networkId }] : []),
+        ...(state.candidateIntentId ? [{ userId: state.candidateUser.id, intentId: state.candidateIntentId, networkId: state.indexContext.networkId }] : []),
+      ],
+      intentSnapshots: buildIntentSnapshots(state.sourceUser, state.candidateUser),
+      ...(state.opportunityId && { opportunityId: state.opportunityId }),
+      maxTurns,
+      isContinuation,
+      priorTurnCount: priorTurns.length,
+      ...(exactContinuation ? {
+        resumeFromTaskId: exactContinuation.taskId,
+        continuationSettlementId: exactContinuation.settlementId,
+      } : {}),
+    };
+    if (state.opportunityId && Boolean(state.opportunityStatus) !== Boolean(state.opportunityUpdatedAt)) {
+      throw new Error('Negotiation attempt requires both opportunity status and updatedAt');
+    }
+
+    const task = exactContinuation
+      ? claimedSuccessor
+      : state.opportunityId && state.opportunityStatus && state.opportunityUpdatedAt
+        ? await deps.database.createNegotiationTaskForAttempt({
+            conversationId: conversation.id,
+            opportunityId: state.opportunityId,
+            expectedStatus: state.opportunityStatus,
+            expectedUpdatedAt: state.opportunityUpdatedAt,
+            metadata: taskMetadata,
+          })
+        : await deps.database.createTask(conversation.id, taskMetadata);
+
+    if (!task) {
+      throw new Error('Negotiation attempt is stale or already claimed');
+    }
+
+    // Attempt-bound discovery atomically promoted the exact persisted state
+    // to `negotiating` while inserting the task. Legacy/direct invocations
+    // with only an opportunity ID retain the prior best-effort status update.
+    if (state.opportunityId && !state.opportunityUpdatedAt) {
+      await deps.database.updateOpportunityStatus(state.opportunityId, 'negotiating').catch((err) => {
+        initLog.error('Failed to set opportunity status to negotiating', { opportunityId: state.opportunityId, error: err });
+      });
+    }
+
+    // Load user answers collected by the questioner between sessions
+    const userAnswers = (isContinuation && state.opportunityId)
+      ? await deps.database.getOpportunityUserAnswers(state.opportunityId).catch((err) => {
+          initLog.error('Failed to load user answers', { opportunityId: state.opportunityId, error: err });
+          return [];
+        })
+      : [];
+
+    // Seed messages with prior turns (additive reducer appends new turns on top).
+    // taskId is preserved so the turn/screen nodes can separate this
+    // session's turns from seeded prior-task turns (IND-569).
+    const seedMessages = isContinuation ? priorMessages.map((m) => ({
+      id: m.id,
+      senderId: m.senderId,
+      role: 'agent' as const,
+      parts: m.parts,
+      createdAt: m.createdAt,
+      taskId: (m as { taskId?: string | null }).taskId ?? null,
+    })) : [];
+
+    // IND-569: attribute seeded prior turns to their originating opportunity
+    // once, up front. Earlier-opportunity and legacy unattributed blocks are
+    // immutable for the session; the current block is composed per turn.
+    const priorAttribution = isContinuation
+      ? await buildSeededAttribution(
+          priorMessages
+            .map((m) => ({ taskId: (m as { taskId?: string | null }).taskId ?? null, turn: turnsFromMessages([m])[0] }))
+            .filter((e): e is { taskId: string | null; turn: NegotiationTurn } => Boolean(e.turn)),
+          state.opportunityId,
+          (taskId: string) => resolveTaskAttribution(deps, taskId),
+        )
+      : null;
+
+    return {
+      conversationId: conversation.id,
+      taskId: task.id,
+      currentSpeaker,
+      turnCount: 0,
+      maxTurns,
+      isContinuation,
+      initiatorUserId,
+      protocolVersion,
+      priorTurnCount: priorTurns.length,
+      ...(priorAttribution && { priorAttribution }),
+      ...(userAnswers.length > 0 && { userAnswers }),
+      ...(exactContinuation?.execution.consultation
+        ? { privateConsultation: exactContinuation.execution.consultation }
+        : {}),
+      ...(exactContinuation && (() => {
+        const turnContext = priorTask?.metadata?.turnContext as Record<string, unknown> | undefined;
+        const reason = turnContext?.consultationPolicyReason;
+        return typeof reason === 'string' ? { consultationPolicyReason: reason as NegotiationConsultationReason } : {};
+      })()),
+      ...(seedMessages.length > 0 && { messages: seedMessages }),
+    };
+  } catch (err) {
+    return { error: `Init failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}

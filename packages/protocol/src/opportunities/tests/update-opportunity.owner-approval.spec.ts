@@ -198,7 +198,7 @@ function makeDeps(authority?: OpportunityOwnerApprovalAuthority, opportunity: Op
   const invoke = mock(async () => ({ mutationResult: { success: true, opportunityId: opportunity.id, message: "ok" } }));
   const deps = {
     systemDb: { getOpportunity: async () => opportunity },
-    graphs: { opportunity: { invoke } },
+    opportunityOperations: { updateOpportunityStatus: invoke, sendOpportunity: invoke },
     ...(authority ? { opportunityOwnerApproval: authority } : {}),
   } as unknown as ToolDeps;
   return { deps, invoke };
@@ -385,7 +385,7 @@ describe("update_opportunity — owner approval gate (IND-593)", () => {
     const invoke = mock(async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }));
     const deps = {
       systemDb: { getOpportunity: async () => makeOpportunity() },
-      graphs: { opportunity: { invoke } },
+      opportunityOperations: { updateOpportunityStatus: invoke, sendOpportunity: invoke },
       opportunityOwnerApproval: authority,
       findPendingQuestions: async () => [{
         id: QUESTION_ID,

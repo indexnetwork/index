@@ -6,7 +6,7 @@ import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import type { Lens } from "../../discovery/index.js";
 import type { OpportunityStatus } from "../../shared/interfaces/database.interface.js";
 import { Timed } from "../../shared/observability/performance.js";
-import { stripUuids } from "../domain/opportunity.presentation.js";
+import { stripUuids } from "./opportunity.presentation.js";
 import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';

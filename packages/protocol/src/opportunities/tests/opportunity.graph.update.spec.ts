@@ -96,10 +96,9 @@ describe('opportunity graph — update node (accepted)', () => {
       },
     });
 
-    const graph = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined).createGraph();
-    const result = await graph.invoke({
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
-      operationMode: 'update' as const,
       opportunityId: OPP_ID,
       newStatus: 'accepted',
     });
@@ -121,10 +120,9 @@ describe('opportunity graph — update node (accepted)', () => {
       },
     });
 
-    const graph = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined).createGraph();
-    const result = await graph.invoke({
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
-      operationMode: 'update' as const,
       opportunityId: OPP_ID,
       newStatus: 'rejected',
     });
@@ -148,10 +146,9 @@ describe('opportunity graph — update node (accepted)', () => {
       },
     });
 
-    const graph = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined).createGraph();
-    const result = await graph.invoke({
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
-      operationMode: 'update' as const,
       opportunityId: OPP_ID,
       newStatus: 'accepted',
     });

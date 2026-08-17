@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { createOpportunityTools } from '../application/opportunity.tools.js';
 import { selectOpportunityFeed } from '../application/opportunity.feed-selection.js';
 import { selectDigestCandidates, DIGEST_REDELIVERY_COOLDOWN_DAYS } from '../domain/opportunity.utils.js';
-import type { PresenterDatabase } from '../application/opportunity.presenter.js';
+import type { PresenterDatabase } from '../application/opportunity.presentation.js';
 
 // ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 

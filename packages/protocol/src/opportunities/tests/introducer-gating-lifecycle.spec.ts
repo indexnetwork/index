@@ -96,14 +96,12 @@ describe('introducer gating lifecycle', () => {
     const mockHyde = { invoke: async () => ({ hydeEmbeddings: {} }) };
     const queueNotification = async (_oppId: string, userId: string) => { notifiedUserIds.push(userId); };
 
-    let compiledGraph: ReturnType<OpportunityGraphFactory['createGraph']>;
+    let operations: OpportunityGraphFactory;
     const queueNegotiateExisting = async (opportunityId: string, userId: string) => {
       queueNegotiateExistingCalls.push({ opportunityId, userId });
-      await compiledGraph.invoke({
+      await operations.negotiateExisting({
         userId: userId as Id<'users'>,
-        operationMode: 'negotiate_existing' as const,
         opportunityId,
-        options: {},
       });
     };
 
@@ -117,14 +115,13 @@ describe('introducer gating lifecycle', () => {
       undefined,
       queueNegotiateExisting,
     );
-    compiledGraph = factory.createGraph();
+    operations = factory;
 
     expect(negotiationInvocations).toHaveLength(0);
 
-    await compiledGraph.invoke({
+    await operations.approveIntroduction({
       userId: 'introducer-user' as Id<'users'>,
       opportunityId: OPP_ID,
-      operationMode: 'approve_introduction' as const,
     });
 
     const postApprovalIntroducer = state.actors.find((a) => a.role === 'introducer');

@@ -525,6 +525,7 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 ## [Unreleased]
 
 ### Changed
+- Behaviour-neutral internal refactor (16.1.1): split the six largest modules and hoist every graph node to a top-level function. The opportunity graph is now the discovery pipeline only — its eight non-pipeline modes (read, update, delete, send, negotiate_existing, approve_introduction, and the two introduction stages) are plain functions on `OpportunityGraphFactory` instead of `operationMode` conditional-edge routing. `database.interface.ts` becomes a barrel over entity, query-group, and capability-view modules; every `Pick<Database, ...>` resolves as before. The opportunity presentation cluster is one module. `opportunity.graph.ts` 4167 → 250 lines, `database.interface.ts` 2925 → 17, `negotiation.graph.ts` 1619 → 111, `opportunity.tools.ts` 1200 → 354, `enrichment.tools.ts` 1198 → 178, `intent.graph.ts` 1091 → 174. No public export, feature flag, or environment variable changed.
 - Move the opportunity-presentation review checklist into `src/opportunity/AGENTS.md` and repoint the `opportunity.safe-presentation.ts` and `discriminator.adjustments.ts` comments at it. Comment-only; no runtime change.
 
 ### Removed

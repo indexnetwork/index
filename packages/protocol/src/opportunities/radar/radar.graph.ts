@@ -16,12 +16,12 @@ import { StateGraph, START, END } from '@langchain/langgraph';
 import type { RadarGraphDatabase, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
 import { RadarGraphState, type RadarCardItem, type RadarResponseItem } from './radar.state.js';
-import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../application/opportunity.presenter.js';
+import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../application/opportunity.presentation.js';
 import { loadNegotiationContext } from '../application/negotiation-context.loader.js';
 import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../domain/opportunity.utils.js';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../domain/opportunity.labels.js';
-import { safeFallbackSummary } from '../domain/opportunity.safe-presentation.js';
-import { buildRadarCardPresentationCacheKey } from '../domain/opportunity.presentation-cache.js';
+import { safeFallbackSummary } from '../application/opportunity.presentation.js';
+import { buildRadarCardPresentationCacheKey } from '../application/opportunity.presentation.js';
 import type { DebugMetaAgent } from '../../agents/index.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
@@ -242,532 +242,36 @@ const pickDisplayCounterpartActor = (
   return sorted[0] ?? null;
 };
 
+/** The graph's channel state, as every node sees it. */
+export type RadarState = typeof RadarGraphState.State;
+
+/** Everything the radar nodes reach for. */
+export interface RadarGraphDeps {
+  database: RadarGraphDb;
+  cache: OpportunityCache;
+  /** Card-copy presenter, shared across the run. */
+  presenter: OpportunityPresenter;
+}
+
 export class RadarGraphFactory {
-  constructor(private database: RadarGraphDb, private cache: OpportunityCache) {}
+  /** Resolved dependency bag shared by every node. */
+  public readonly deps: RadarGraphDeps;
+
+  constructor(database: RadarGraphDb, cache: OpportunityCache) {
+    this.deps = { database, cache, presenter: new OpportunityPresenter() };
+  }
 
   createGraph() {
-    const presenter = new OpportunityPresenter();
-
-    const loadOpportunitiesNode = async (state: typeof RadarGraphState.State) => {
-      return timed("RadarGraph.loadOpportunities", async () => {
-        if (!state.userId) {
-          return { error: 'userId is required' };
-        }
-        try {
-          // Minimum of 50 ensures enough candidates across all radar categories
-          // (connection, connector-flow, expired) for selectByComposition to fill
-          // its soft targets, even after visibility filtering and dedup.
-          const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
-          const statuses = state.statuses ?? DEFAULT_RADAR_STATUSES;
-          const poolRankingProvenance = getPoolRankingProvenance(state);
-          const options: { limit?: number; networkId?: string; scopeType?: 'intent'; scopeId?: string; statuses?: OpportunityStatus[] } = {
-            limit: fetchLimit,
-            statuses,
-          };
-          if (state.networkId) options.networkId = state.networkId;
-          if (state.scopeType === 'intent' && state.scopeId) {
-            options.scopeType = 'intent';
-            options.scopeId = state.scopeId;
-          }
-          // Do not pass conversationId: radar view excludes draft opportunities (chat-only drafts).
-          const raw = await this.database.getOpportunitiesForUser(state.userId, options);
-          const visible = raw.filter((opp) =>
-            canUserSeeOpportunity(opp.actors, opp.status, state.userId)
-          );
-          // Actionability only gates the live statuses a viewer could act on:
-          // latent/pending cards the viewer cannot act on are noise, but
-          // terminal/internal statuses (accepted, rejected, expired, negotiating,
-          // stalled, draft) are deliberate history — when a caller explicitly
-          // requests them via `statuses`, they must pass through (they are never
-          // actionable by rule 5, so filtering them here would return nothing).
-          // The requested-status membership check is defense-in-depth: rows
-          // outside the requested set are dropped even if the adapter drifts.
-          const requestedStatuses = new Set<OpportunityStatus>(statuses);
-          const visibleForRadar = visible.filter((opp) => {
-            if (!requestedStatuses.has(opp.status)) return false;
-            if (opp.status === 'latent' || opp.status === 'pending') {
-              return isActionableForViewer(opp.actors, opp.status, state.userId);
-            }
-            return true;
-          });
-          const explicitStatuses = (state.statuses?.length ?? 0) > 0;
-          if (explicitStatuses) {
-            // Lifecycle view (e.g. intent radar): newest-first so counterpart
-            // dedup keeps each person's most recent state (an accepted
-            // opportunity supersedes an older pending one), no composition
-            // capping — the caller wants the full pipeline up to `limit`.
-            const newestFirst = [...visibleForRadar].sort(
-              (a, b) => safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt)
-            );
-            const seenIds = new Set<string>();
-            const dedupedByCounterpart = newestFirst.filter((opp) => {
-              const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
-              const hasOverlap = [...counterpartIds].some((id) => seenIds.has(id));
-              if (hasOverlap) return false;
-              for (const id of counterpartIds) seenIds.add(id);
-              return true;
-            });
-            // Preserve byte-identical newest-first behavior while the flag is
-            // off. When on, re-order the already-deduped lifecycle set by
-            // adjusted confidence so each client-side radar bucket reflects
-            // pool answers immediately.
-            if (
-              !poolRankingProvenance ||
-              !dedupedByCounterpart.some((opportunity) => hasPoolAdjustment(opportunity, poolRankingProvenance))
-            ) {
-              return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
-            }
-            const adjustedOrder = [...dedupedByCounterpart].sort((a, b) => {
-              const confidenceDelta = getConfidence(b, poolRankingProvenance) - getConfidence(a, poolRankingProvenance);
-              if (confidenceDelta !== 0) return confidenceDelta;
-              return safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt);
-            });
-            return { opportunities: adjustedOrder.slice(0, state.limit) };
-          }
-          const sorted = [...visibleForRadar].sort((a, b) => {
-            // Connections before connector-flow so dedup claims counterpart IDs
-            // for direct connections first — prevents introducer cards from
-            // shadowing a user's own connection opportunities.
-            const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
-            const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
-            if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
-            const confA = getConfidence(a, poolRankingProvenance);
-            const confB = getConfidence(b, poolRankingProvenance);
-            if (confB !== confA) return confB - confA;
-            const aTime = safeParseDate(a.updatedAt);
-            const bTime = safeParseDate(b.updatedAt);
-            return bTime - aTime;
-          });
-          const seenUserIds = new Set<string>();
-          const deduped = sorted.filter((opp) => {
-            const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
-            const hasOverlap = [...counterpartIds].some((id) => seenUserIds.has(id));
-            if (hasOverlap) return false;
-            for (const id of counterpartIds) seenUserIds.add(id);
-            return true;
-          });
-          const opportunities = selectByComposition(deduped, state.userId);
-          return { opportunities };
-        } catch (e) {
-          logger.error('RadarGraph loadOpportunities failed', { error: e });
-          return { error: 'Failed to load opportunities', opportunities: [] };
-        }
-      });
-    };
-
-    const checkPresenterCacheNode = async (state: typeof RadarGraphState.State) => {
-      return timed("RadarGraph.checkPresenterCache", async () => {
-        const { opportunities, userId } = state;
-        const poolRankingProvenance = getPoolRankingProvenance(state);
-        if (opportunities.length === 0) {
-          return { cachedCards: new Map(), uncachedOpportunities: [] };
-        }
-
-        if (state.noCache) {
-          checkPresenterCacheLog.verbose('noCache=true, skipping cache');
-          return { cachedCards: new Map(), uncachedOpportunities: opportunities };
-        }
-
-        try {
-          // Negotiating cards are templated (no LLM call) and their text
-          // depends on the live turn count, which changes between requests
-          // without changing the opportunity status. Skip cache entirely
-          // for them so each render reflects the current turn.
-          //
-          // For all other statuses, include status in the key so status
-          // transitions (e.g. negotiating → pending) don't serve stale cards.
-          const cacheable = opportunities.filter((opp) => opp.status !== 'negotiating');
-          const liveNegotiating = opportunities.filter((opp) => opp.status === 'negotiating');
-
-          const keys = cacheable.map((opp) =>
-            buildRadarCardPresentationCacheKey(opp.id, opp.status, userId)
-          );
-          const results = keys.length > 0 ? await this.cache.mget<RadarCardItem>(keys) : [];
-
-          const cachedCards = new Map<string, RadarCardItem>();
-          const uncachedOpportunities: typeof opportunities = [...liveNegotiating];
-
-          for (let i = 0; i < cacheable.length; i++) {
-            const cached = results[i];
-            if (cached) {
-              const originalIndex = opportunities.indexOf(cacheable[i]);
-              // Stamp the live status: pre-status cache entries lack the field,
-              // and the key already guarantees it matches the current status.
-              const deprioritizedReason = poolRankingProvenance
-                ? latestPoolDemotionDetail(
-                    (cacheable[i] as { metadata?: Record<string, unknown> | null }).metadata,
-                    poolRankingProvenance,
-                  )
-                : undefined;
-              cachedCards.set(cacheable[i].id, {
-                ...cached,
-                status: cacheable[i].status,
-                deprioritizedReason,
-                _cardIndex: originalIndex,
-              });
-            } else {
-              uncachedOpportunities.push(cacheable[i]);
-            }
-          }
-
-          checkPresenterCacheLog.verbose('', {
-            total: opportunities.length,
-            cacheHits: cachedCards.size,
-            cacheMisses: uncachedOpportunities.length,
-          });
-
-          return { cachedCards, uncachedOpportunities };
-        } catch (e) {
-          checkPresenterCacheLog.warn('cache unavailable, skipping', { error: e });
-          return { cachedCards: new Map(), uncachedOpportunities: opportunities };
-        }
-      });
-    };
-
-    const shouldGenerateCards = (state: typeof RadarGraphState.State): string => {
-      if (state.uncachedOpportunities.length > 0) {
-        return 'generate';
-      }
-      logger.verbose('All presenter results cached, skipping generation');
-      return 'skip';
-    };
-
-    const generateCardTextNode = async (state: typeof RadarGraphState.State) => {
-      return timed("RadarGraph.generateCardText", async () => {
-      const opportunities = state.uncachedOpportunities.length > 0
-        ? state.uncachedOpportunities
-        : state.opportunities;
-      generateCardTextLog.verbose('entry', { opportunitiesLength: opportunities.length, userId: state.userId });
-      if (opportunities.length === 0) {
-        generateCardTextLog.verbose('exit', { totalOpportunities: 0 });
-        return { cards: [], agentTimings: [], meta: { totalOpportunities: 0 } };
-      }
-      const db = this.database as PresenterDatabase & RadarGraphDb;
-      const cards: RadarCardItem[] = [];
-      const relevantActorIds = new Set<string>();
-      for (const opp of opportunities) {
-        for (const a of opp.actors) {
-          if (a.userId) relevantActorIds.add(a.userId);
-        }
-      }
-
-      const userEntries = await Promise.all(
-        Array.from(relevantActorIds).map(async (userId) => {
-          try {
-            const user = await this.database.getUser(userId);
-            return [userId, user ?? null] as const;
-          } catch {
-            return [userId, null] as const;
-          }
-        })
-      );
-      const userMap = new Map(userEntries);
-
-      const oppIndexMap = new Map(
-        state.opportunities.map((opp, idx) => [opp.id, idx])
-      );
-
-      const agentTimingsAccum: DebugMetaAgent[] = [];
-
-      for (let i = 0; i < opportunities.length; i += PRESENTATION_CONCURRENCY) {
-        const chunk = opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
-        const chunkCards = await Promise.all(
-          chunk.map(async (opportunity, offset) => {
-            const cardIndex = oppIndexMap.get(opportunity.id) ?? (i + offset);
-            const viewerActor = opportunity.actors.find((a) => a.userId === state.userId);
-            const viewerRole = viewerActor?.role ?? 'party';
-            const isIntroducer = viewerRole === 'introducer';
-            const preferredActor = pickDisplayCounterpartActor(opportunity, state.userId)
-              ?? opportunity.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
-            const actorWithProfile = opportunity.actors.find(
-              (a) => a.userId !== state.userId && a.role !== 'introducer' && !!userMap.get(a.userId)
-            );
-            const introducer = opportunity.actors.find((a) => a.role === 'introducer');
-            let otherActor = (preferredActor && userMap.get(preferredActor.userId))
-              ? preferredActor
-              : (actorWithProfile ?? preferredActor);
-            // When the only other participant is the introducer (no separate party), use introducer as display counterpart so the card shows a name instead of "Unknown"
-            if (!otherActor && introducer && introducer.userId !== state.userId && introducer.userId) {
-              otherActor = { userId: introducer.userId, role: introducer.role };
-            }
-            const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
-            const introducerCounterparts = opportunity.actors.filter(
-              (a) => a.userId !== state.userId && a.role !== 'introducer'
-            );
-            // Deduplicate by userId — actors array can contain multiple rows per user
-            // (e.g. from different intents), which would produce repeated names.
-            const uniqueCounterpartIds = [...new Set(introducerCounterparts.map((a) => a.userId))];
-            const participantNames = uniqueCounterpartIds
-              .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
-              .sort();
-            // When secondPartyData will be present (2+ counterparts), use single counterpart name
-            // because the frontend arrow layout renders "card.name → secondParty.name".
-            // Using the joined "A ↔ B" format here would produce redundant "A ↔ B → B".
-            // Only use the joined format when there is a single counterpart (no arrow layout).
-            const willHaveSecondParty = isIntroducer && uniqueCounterpartIds.length > 1;
-            let userName = isIntroducer && participantNames.length > 0 && !willHaveSecondParty
-              ? participantNames.join(' ↔ ')
-              : (otherUser?.name ?? 'Unknown');
-            // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
-            if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {
-              const profile = await db.getProfile(otherActor.userId).catch((err) => {
-                logger.debug('getProfile fallback failed', { otherActorUserId: otherActor.userId, error: err });
-                return null;
-              });
-              const profileName = profile?.identity?.name?.trim();
-              if (profileName) userName = profileName;
-            }
-            // Unresolvable display counterpart (deleted user: no users row, no
-            // profile fallback). Drop the card entirely instead of rendering an
-            // "Unknown" placeholder: such cards are unusable, excluded from the
-            // presenter cache (see cachePresenterResults), and would otherwise
-            // trigger a fresh presenter LLM call on every request — a permanent
-            // cache miss that keeps the whole radar slow (~9s per load).
-            if (userName === 'Unknown' || !userName?.trim()) {
-              logger.verbose('[RadarGraph:generateCardText] dropping card with unresolvable counterpart', {
-                opportunityId: opportunity.id,
-                otherActorUserId: otherActor?.userId,
-              });
-              return null;
-            }
-            const userAvatar = otherUser?.avatar ?? null;
-            // Shared sanitization standard (UUID strip, viewer-centric rewrite,
-            // boundary truncation) — raw reasoning must never render verbatim.
-            const reasoningSnippet = safeFallbackSummary(
-              typeof opportunity.interpretation?.reasoning === 'string'
-                ? opportunity.interpretation.reasoning
-                : '',
-              {
-                counterpartName: userName !== 'Unknown' ? userName : undefined,
-                maxChars: MAX_REASONING_SNIPPET_LENGTH,
-                emptyText: 'A promising connection.',
-              },
-            );
-
-            // Build secondParty for introducer arrow layout (the party that isn't the display counterpart)
-            let secondPartyData: { name: string; avatar?: string | null; userId?: string } | undefined;
-            if (isIntroducer && introducerCounterparts.length > 1 && otherActor) {
-              const secondActor = introducerCounterparts.find((a) => a.userId !== otherActor.userId);
-              if (secondActor) {
-                const secondUser = userMap.get(secondActor.userId) ?? null;
-                secondPartyData = {
-                  name: secondUser?.name ?? 'Unknown',
-                  avatar: secondUser?.avatar ?? null,
-                  userId: secondActor.userId,
-                };
-              }
-            }
-
-            const isCounterpartGhost = otherUser?.isGhost ?? false;
-            // Skeleton presentation: return an identity-only card without the
-            // presenter LLM or negotiation-context load. Name resolution and
-            // the unresolvable-counterpart drop above still apply, so the card
-            // set matches what the follow-up full request will return.
-            if (state.presentation === 'skeleton') {
-              return {
-                opportunityId: opportunity.id,
-                status: opportunity.status,
-                userId: otherActor?.userId ?? '',
-                name: userName,
-                avatar: userAvatar,
-                mainText: '',
-                cta: '',
-                primaryActionLabel: getPrimaryActionLabel(viewerRole),
-                secondaryActionLabel: SECONDARY_ACTION_LABEL,
-                mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
-                viewerRole,
-                isGhost: isCounterpartGhost,
-                ...(secondPartyData ? { secondParty: secondPartyData } : {}),
-                presentationPending: true,
-                _cardIndex: cardIndex,
-              } satisfies RadarCardItem;
-            }
-            const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
-            const fallbackCard = (): RadarCardItem => ({
-              opportunityId: opportunity.id,
-              status: opportunity.status,
-              userId: otherActor?.userId ?? '',
-              name: userName,
-              avatar: userAvatar,
-              mainText: reasoningSnippet,
-              cta: isIntroducer
-                ? (isPendingIntroducerFallback ? 'Share this introduction to get things started.' : 'Take a look and decide if this is a good match.')
-                : 'Take a look and decide whether to reach out.',
-              primaryActionLabel: getPrimaryActionLabel(viewerRole),
-              secondaryActionLabel: SECONDARY_ACTION_LABEL,
-              mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
-              narratorChip: isIntroducer
-                ? { name: 'You', text: 'Worth a look.', userId: state.userId }
-                : { name: 'Index', text: 'Worth a look.' },
-              viewerRole,
-              isGhost: isCounterpartGhost,
-              ...(secondPartyData ? { secondParty: secondPartyData } : {}),
-              _presentationFallback: true,
-              _cardIndex: cardIndex,
-            });
-
-            try {
-              const [ctx, negotiationContext] = await Promise.all([
-                gatherPresenterContext(
-                  db,
-                  opportunity,
-                  state.userId,
-                  otherActor?.userId,
-                ),
-                loadNegotiationContext(db, opportunity.id, opportunity.status),
-              ]);
-              const presenterInput = {
-                ...ctx,
-                mutualIntentCount: undefined,
-                opportunityStatus: opportunity.status,
-                ...(negotiationContext ? { negotiationContext } : {}),
-              };
-              const _traceEmitterPresenter = requestContext.getStore()?.traceEmitter;
-              const presenterStart = Date.now();
-              _traceEmitterPresenter?.({ type: "agent_start", name: "opportunity-presenter" });
-              const presentation = await presenter.presentCard(presenterInput);
-              const _presenterDuration = Date.now() - presenterStart;
-              agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: _presenterDuration });
-              _traceEmitterPresenter?.({ type: "agent_end", name: "opportunity-presenter", durationMs: _presenterDuration, summary: `Presented: ${userName}` });
-              if (presentation.isFallback) {
-                return fallbackCard();
-              }
-              let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
-              // Only show a person as narrator when they are the introducer and not the display counterpart
-              // (bad data can have same user as introducer and party, e.g. "Amina introduced you to Amina")
-              const introducerIsCounterpart = introducer && otherActor && introducer.userId === otherActor.userId;
-              if (introducer && introducer.userId !== state.userId && !introducerIsCounterpart) {
-                const introUser = userMap.get(introducer.userId) ?? null;
-                const narratorName = introUser?.name ?? 'Someone';
-                narratorChip = {
-                  name: narratorName,
-                  text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
-                  avatar: introUser?.avatar ?? null,
-                  userId: introducer.userId,
-                };
-              } else if (introducer?.userId === state.userId) {
-                narratorChip = { name: 'You', text: presentation.narratorRemark, userId: state.userId };
-              } else {
-                narratorChip = { name: 'Index', text: presentation.narratorRemark };
-              }
-              return {
-                opportunityId: opportunity.id,
-                status: opportunity.status,
-                userId: otherActor?.userId ?? '',
-                name: userName,
-                avatar: userAvatar,
-                mainText: presentation.personalizedSummary,
-                cta: presentation.suggestedAction,
-                headline: presentation.headline,
-                primaryActionLabel: getPrimaryActionLabel(viewerRole),
-                secondaryActionLabel: SECONDARY_ACTION_LABEL,
-                mutualIntentsLabel: presentation.mutualIntentsLabel,
-                narratorChip,
-                viewerRole,
-                isGhost: isCounterpartGhost,
-                ...(secondPartyData ? { secondParty: secondPartyData } : {}),
-                _cardIndex: cardIndex,
-              } satisfies RadarCardItem;
-            } catch (e) {
-              logger.warn('RadarGraph presenter failed for opportunity', { opportunityId: opportunity.id, error: e });
-              return fallbackCard();
-            }
-          })
-        );
-        cards.push(...chunkCards.filter((c): c is RadarCardItem => c !== null));
-      }
-      generateCardTextLog.verbose('exit', { totalOpportunities: state.opportunities.length });
-      return {
-        cards,
-        agentTimings: agentTimingsAccum,
-        meta: { totalOpportunities: state.opportunities.length },
-      };
-      });
-    };
-
-    const cachePresenterResultsNode = async (state: typeof RadarGraphState.State) => {
-      return timed("RadarGraph.cachePresenterResults", async () => {
-        const { cards, cachedCards, userId, opportunities } = state;
-        const poolRankingProvenance = getPoolRankingProvenance(state);
-        const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
-        const cardsWithAdjustments = cards.map((card) => {
-          const opportunity = liveById.get(card.opportunityId);
-          const deprioritizedReason = poolRankingProvenance
-            ? latestPoolDemotionDetail(
-                (opportunity as { metadata?: Record<string, unknown> | null } | undefined)?.metadata,
-                poolRankingProvenance,
-              )
-            : undefined;
-          return { ...card, deprioritizedReason };
-        });
-
-        // Only cache cards that weren't already from cache
-        const newCards = cardsWithAdjustments.filter((card) => !cachedCards.has(card.opportunityId));
-        const statusById = new Map(opportunities.map((opp) => [opp.id, opp.status]));
-
-        try {
-          await Promise.all(
-            newCards.map((card) => {
-              const status = statusById.get(card.opportunityId);
-              // Negotiating, skeleton, fallback, and unresolved-name cards are
-              // safe for the current response but must not become 24h entries.
-              if (!status || !isRadarPresentationCacheable(card, status)) return Promise.resolve();
-              return this.cache.set(
-                buildRadarCardPresentationCacheKey(card.opportunityId, status, userId),
-                card,
-                { ttl: RADAR_CACHE_TTL }
-              );
-            })
-          );
-        } catch (e) {
-          cachePresenterResultsLog.warn('cache write failed, continuing', { error: e });
-        }
-
-        // Merge cached cards into full card list
-        const allCards: RadarCardItem[] = [...cardsWithAdjustments];
-        for (const [oppId, cachedCard] of cachedCards) {
-          if (!cardsWithAdjustments.some((card) => card.opportunityId === oppId)) {
-            allCards.push(cachedCard);
-          }
-        }
-
-        // Re-sort by _cardIndex to maintain original ordering
-        allCards.sort((a, b) => a._cardIndex - b._cardIndex);
-
-        cachePresenterResultsLog.verbose('', {
-          newlyCached: newCards.length,
-          totalCards: allCards.length,
-        });
-
-        return {
-          cards: allCards,
-          meta: { totalOpportunities: state.opportunities.length },
-        };
-      });
-    };
-
-    const normalizeItemsNode = async (state: typeof RadarGraphState.State) => {
-      return timed("RadarGraph.normalizeItems", async () => {
-        normalizeItemsLog.verbose('entry', { cardsLength: state.cards.length });
-        const items: RadarResponseItem[] = state.cards.map((card) => {
-          const { _cardIndex, _presentationFallback, ...rest } = card;
-          return rest;
-        });
-        const meta = { totalOpportunities: state.opportunities.length };
-        normalizeItemsLog.verbose('exit', { totalOpportunities: meta.totalOpportunities, totalItems: items.length });
-        return { items, meta };
-      });
-    };
-
+    const deps = this.deps;
     const graph = new StateGraph(RadarGraphState)
-      .addNode('loadOpportunities', loadOpportunitiesNode)
-      .addNode('checkPresenterCache', checkPresenterCacheNode)
-      .addNode('generateCardText', generateCardTextNode)
-      .addNode('cachePresenterResults', cachePresenterResultsNode)
+      .addNode('loadOpportunities', (state: RadarState) => loadOpportunitiesNode(state, deps))
+      .addNode('checkPresenterCache', (state: RadarState) => checkPresenterCacheNode(state, deps))
+      .addNode('generateCardText', (state: RadarState) => generateCardTextNode(state, deps))
+      .addNode('cachePresenterResults', (state: RadarState) => cachePresenterResultsNode(state, deps))
       .addNode('normalizeItems', normalizeItemsNode)
       .addEdge(START, 'loadOpportunities')
       .addEdge('loadOpportunities', 'checkPresenterCache')
-      .addConditionalEdges('checkPresenterCache', shouldGenerateCards, {
+      .addConditionalEdges('checkPresenterCache', (state: RadarState) => shouldGenerateCards(state, deps), {
         generate: 'generateCardText',
         skip: 'cachePresenterResults',
       })
@@ -778,3 +282,515 @@ export class RadarGraphFactory {
     return graph.compile();
   }
 }
+
+export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphDeps) {
+  return timed("RadarGraph.loadOpportunities", async () => {
+    if (!state.userId) {
+      return { error: 'userId is required' };
+    }
+    try {
+      // Minimum of 50 ensures enough candidates across all radar categories
+      // (connection, connector-flow, expired) for selectByComposition to fill
+      // its soft targets, even after visibility filtering and dedup.
+      const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
+      const statuses = state.statuses ?? DEFAULT_RADAR_STATUSES;
+      const poolRankingProvenance = getPoolRankingProvenance(state);
+      const options: { limit?: number; networkId?: string; scopeType?: 'intent'; scopeId?: string; statuses?: OpportunityStatus[] } = {
+        limit: fetchLimit,
+        statuses,
+      };
+      if (state.networkId) options.networkId = state.networkId;
+      if (state.scopeType === 'intent' && state.scopeId) {
+        options.scopeType = 'intent';
+        options.scopeId = state.scopeId;
+      }
+      // Do not pass conversationId: radar view excludes draft opportunities (chat-only drafts).
+      const raw = await deps.database.getOpportunitiesForUser(state.userId, options);
+      const visible = raw.filter((opp) =>
+        canUserSeeOpportunity(opp.actors, opp.status, state.userId)
+      );
+      // Actionability only gates the live statuses a viewer could act on:
+      // latent/pending cards the viewer cannot act on are noise, but
+      // terminal/internal statuses (accepted, rejected, expired, negotiating,
+      // stalled, draft) are deliberate history — when a caller explicitly
+      // requests them via `statuses`, they must pass through (they are never
+      // actionable by rule 5, so filtering them here would return nothing).
+      // The requested-status membership check is defense-in-depth: rows
+      // outside the requested set are dropped even if the adapter drifts.
+      const requestedStatuses = new Set<OpportunityStatus>(statuses);
+      const visibleForRadar = visible.filter((opp) => {
+        if (!requestedStatuses.has(opp.status)) return false;
+        if (opp.status === 'latent' || opp.status === 'pending') {
+          return isActionableForViewer(opp.actors, opp.status, state.userId);
+        }
+        return true;
+      });
+      const explicitStatuses = (state.statuses?.length ?? 0) > 0;
+      if (explicitStatuses) {
+        // Lifecycle view (e.g. intent radar): newest-first so counterpart
+        // dedup keeps each person's most recent state (an accepted
+        // opportunity supersedes an older pending one), no composition
+        // capping — the caller wants the full pipeline up to `limit`.
+        const newestFirst = [...visibleForRadar].sort(
+          (a, b) => safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt)
+        );
+        const seenIds = new Set<string>();
+        const dedupedByCounterpart = newestFirst.filter((opp) => {
+          const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
+          const hasOverlap = [...counterpartIds].some((id) => seenIds.has(id));
+          if (hasOverlap) return false;
+          for (const id of counterpartIds) seenIds.add(id);
+          return true;
+        });
+        // Preserve byte-identical newest-first behavior while the flag is
+        // off. When on, re-order the already-deduped lifecycle set by
+        // adjusted confidence so each client-side radar bucket reflects
+        // pool answers immediately.
+        if (
+          !poolRankingProvenance ||
+          !dedupedByCounterpart.some((opportunity) => hasPoolAdjustment(opportunity, poolRankingProvenance))
+        ) {
+          return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
+        }
+        const adjustedOrder = [...dedupedByCounterpart].sort((a, b) => {
+          const confidenceDelta = getConfidence(b, poolRankingProvenance) - getConfidence(a, poolRankingProvenance);
+          if (confidenceDelta !== 0) return confidenceDelta;
+          return safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt);
+        });
+        return { opportunities: adjustedOrder.slice(0, state.limit) };
+      }
+      const sorted = [...visibleForRadar].sort((a, b) => {
+        // Connections before connector-flow so dedup claims counterpart IDs
+        // for direct connections first — prevents introducer cards from
+        // shadowing a user's own connection opportunities.
+        const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
+        const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
+        if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
+        const confA = getConfidence(a, poolRankingProvenance);
+        const confB = getConfidence(b, poolRankingProvenance);
+        if (confB !== confA) return confB - confA;
+        const aTime = safeParseDate(a.updatedAt);
+        const bTime = safeParseDate(b.updatedAt);
+        return bTime - aTime;
+      });
+      const seenUserIds = new Set<string>();
+      const deduped = sorted.filter((opp) => {
+        const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
+        const hasOverlap = [...counterpartIds].some((id) => seenUserIds.has(id));
+        if (hasOverlap) return false;
+        for (const id of counterpartIds) seenUserIds.add(id);
+        return true;
+      });
+      const opportunities = selectByComposition(deduped, state.userId);
+      return { opportunities };
+    } catch (e) {
+      logger.error('RadarGraph loadOpportunities failed', { error: e });
+      return { error: 'Failed to load opportunities', opportunities: [] };
+    }
+  });
+}
+
+export async function checkPresenterCacheNode(state: RadarState, deps: RadarGraphDeps) {
+  return timed("RadarGraph.checkPresenterCache", async () => {
+    const { opportunities, userId } = state;
+    const poolRankingProvenance = getPoolRankingProvenance(state);
+    if (opportunities.length === 0) {
+      return { cachedCards: new Map(), uncachedOpportunities: [] };
+    }
+
+    if (state.noCache) {
+      checkPresenterCacheLog.verbose('noCache=true, skipping cache');
+      return { cachedCards: new Map(), uncachedOpportunities: opportunities };
+    }
+
+    try {
+      // Negotiating cards are templated (no LLM call) and their text
+      // depends on the live turn count, which changes between requests
+      // without changing the opportunity status. Skip cache entirely
+      // for them so each render reflects the current turn.
+      //
+      // For all other statuses, include status in the key so status
+      // transitions (e.g. negotiating → pending) don't serve stale cards.
+      const cacheable = opportunities.filter((opp) => opp.status !== 'negotiating');
+      const liveNegotiating = opportunities.filter((opp) => opp.status === 'negotiating');
+
+      const keys = cacheable.map((opp) =>
+        buildRadarCardPresentationCacheKey(opp.id, opp.status, userId)
+      );
+      const results = keys.length > 0 ? await deps.cache.mget<RadarCardItem>(keys) : [];
+
+      const cachedCards = new Map<string, RadarCardItem>();
+      const uncachedOpportunities: typeof opportunities = [...liveNegotiating];
+
+      for (let i = 0; i < cacheable.length; i++) {
+        const cached = results[i];
+        if (cached) {
+          const originalIndex = opportunities.indexOf(cacheable[i]);
+          // Stamp the live status: pre-status cache entries lack the field,
+          // and the key already guarantees it matches the current status.
+          const deprioritizedReason = poolRankingProvenance
+            ? latestPoolDemotionDetail(
+                (cacheable[i] as { metadata?: Record<string, unknown> | null }).metadata,
+                poolRankingProvenance,
+              )
+            : undefined;
+          cachedCards.set(cacheable[i].id, {
+            ...cached,
+            status: cacheable[i].status,
+            deprioritizedReason,
+            _cardIndex: originalIndex,
+          });
+        } else {
+          uncachedOpportunities.push(cacheable[i]);
+        }
+      }
+
+      checkPresenterCacheLog.verbose('', {
+        total: opportunities.length,
+        cacheHits: cachedCards.size,
+        cacheMisses: uncachedOpportunities.length,
+      });
+
+      return { cachedCards, uncachedOpportunities };
+    } catch (e) {
+      checkPresenterCacheLog.warn('cache unavailable, skipping', { error: e });
+      return { cachedCards: new Map(), uncachedOpportunities: opportunities };
+    }
+  });
+}
+
+export function shouldGenerateCards(state: RadarState, deps: RadarGraphDeps): string {
+  if (state.uncachedOpportunities.length > 0) {
+    return 'generate';
+  }
+  logger.verbose('All presenter results cached, skipping generation');
+  return 'skip';
+}
+
+export async function generateCardTextNode(state: RadarState, deps: RadarGraphDeps) {
+  return timed("RadarGraph.generateCardText", async () => {
+  const opportunities = state.uncachedOpportunities.length > 0
+    ? state.uncachedOpportunities
+    : state.opportunities;
+  generateCardTextLog.verbose('entry', { opportunitiesLength: opportunities.length, userId: state.userId });
+  if (opportunities.length === 0) {
+    generateCardTextLog.verbose('exit', { totalOpportunities: 0 });
+    return { cards: [], agentTimings: [], meta: { totalOpportunities: 0 } };
+  }
+  const db = deps.database as PresenterDatabase & RadarGraphDb;
+  const cards: RadarCardItem[] = [];
+  const relevantActorIds = new Set<string>();
+  for (const opp of opportunities) {
+    for (const a of opp.actors) {
+      if (a.userId) relevantActorIds.add(a.userId);
+    }
+  }
+
+  const userEntries = await Promise.all(
+    Array.from(relevantActorIds).map(async (userId) => {
+      try {
+        const user = await deps.database.getUser(userId);
+        return [userId, user ?? null] as const;
+      } catch {
+        return [userId, null] as const;
+      }
+    })
+  );
+  const userMap = new Map(userEntries);
+
+  const oppIndexMap = new Map(
+    state.opportunities.map((opp, idx) => [opp.id, idx])
+  );
+
+  const agentTimingsAccum: DebugMetaAgent[] = [];
+
+  for (let i = 0; i < opportunities.length; i += PRESENTATION_CONCURRENCY) {
+    const chunk = opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
+    const chunkCards = await Promise.all(
+      chunk.map(async (opportunity, offset) => {
+        const cardIndex = oppIndexMap.get(opportunity.id) ?? (i + offset);
+        const viewerActor = opportunity.actors.find((a) => a.userId === state.userId);
+        const viewerRole = viewerActor?.role ?? 'party';
+        const isIntroducer = viewerRole === 'introducer';
+        const preferredActor = pickDisplayCounterpartActor(opportunity, state.userId)
+          ?? opportunity.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
+        const actorWithProfile = opportunity.actors.find(
+          (a) => a.userId !== state.userId && a.role !== 'introducer' && !!userMap.get(a.userId)
+        );
+        const introducer = opportunity.actors.find((a) => a.role === 'introducer');
+        let otherActor = (preferredActor && userMap.get(preferredActor.userId))
+          ? preferredActor
+          : (actorWithProfile ?? preferredActor);
+        // When the only other participant is the introducer (no separate party), use introducer as display counterpart so the card shows a name instead of "Unknown"
+        if (!otherActor && introducer && introducer.userId !== state.userId && introducer.userId) {
+          otherActor = { userId: introducer.userId, role: introducer.role };
+        }
+        const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
+        const introducerCounterparts = opportunity.actors.filter(
+          (a) => a.userId !== state.userId && a.role !== 'introducer'
+        );
+        // Deduplicate by userId — actors array can contain multiple rows per user
+        // (e.g. from different intents), which would produce repeated names.
+        const uniqueCounterpartIds = [...new Set(introducerCounterparts.map((a) => a.userId))];
+        const participantNames = uniqueCounterpartIds
+          .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
+          .sort();
+        // When secondPartyData will be present (2+ counterparts), use single counterpart name
+        // because the frontend arrow layout renders "card.name → secondParty.name".
+        // Using the joined "A ↔ B" format here would produce redundant "A ↔ B → B".
+        // Only use the joined format when there is a single counterpart (no arrow layout).
+        const willHaveSecondParty = isIntroducer && uniqueCounterpartIds.length > 1;
+        let userName = isIntroducer && participantNames.length > 0 && !willHaveSecondParty
+          ? participantNames.join(' ↔ ')
+          : (otherUser?.name ?? 'Unknown');
+        // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
+        if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {
+          const profile = await db.getProfile(otherActor.userId).catch((err) => {
+            logger.debug('getProfile fallback failed', { otherActorUserId: otherActor.userId, error: err });
+            return null;
+          });
+          const profileName = profile?.identity?.name?.trim();
+          if (profileName) userName = profileName;
+        }
+        // Unresolvable display counterpart (deleted user: no users row, no
+        // profile fallback). Drop the card entirely instead of rendering an
+        // "Unknown" placeholder: such cards are unusable, excluded from the
+        // deps.presenter cache (see cachePresenterResults), and would otherwise
+        // trigger a fresh deps.presenter LLM call on every request — a permanent
+        // cache miss that keeps the whole radar slow (~9s per load).
+        if (userName === 'Unknown' || !userName?.trim()) {
+          logger.verbose('[RadarGraph:generateCardText] dropping card with unresolvable counterpart', {
+            opportunityId: opportunity.id,
+            otherActorUserId: otherActor?.userId,
+          });
+          return null;
+        }
+        const userAvatar = otherUser?.avatar ?? null;
+        // Shared sanitization standard (UUID strip, viewer-centric rewrite,
+        // boundary truncation) — raw reasoning must never render verbatim.
+        const reasoningSnippet = safeFallbackSummary(
+          typeof opportunity.interpretation?.reasoning === 'string'
+            ? opportunity.interpretation.reasoning
+            : '',
+          {
+            counterpartName: userName !== 'Unknown' ? userName : undefined,
+            maxChars: MAX_REASONING_SNIPPET_LENGTH,
+            emptyText: 'A promising connection.',
+          },
+        );
+
+        // Build secondParty for introducer arrow layout (the party that isn't the display counterpart)
+        let secondPartyData: { name: string; avatar?: string | null; userId?: string } | undefined;
+        if (isIntroducer && introducerCounterparts.length > 1 && otherActor) {
+          const secondActor = introducerCounterparts.find((a) => a.userId !== otherActor.userId);
+          if (secondActor) {
+            const secondUser = userMap.get(secondActor.userId) ?? null;
+            secondPartyData = {
+              name: secondUser?.name ?? 'Unknown',
+              avatar: secondUser?.avatar ?? null,
+              userId: secondActor.userId,
+            };
+          }
+        }
+
+        const isCounterpartGhost = otherUser?.isGhost ?? false;
+        // Skeleton presentation: return an identity-only card without the
+        // deps.presenter LLM or negotiation-context load. Name resolution and
+        // the unresolvable-counterpart drop above still apply, so the card
+        // set matches what the follow-up full request will return.
+        if (state.presentation === 'skeleton') {
+          return {
+            opportunityId: opportunity.id,
+            status: opportunity.status,
+            userId: otherActor?.userId ?? '',
+            name: userName,
+            avatar: userAvatar,
+            mainText: '',
+            cta: '',
+            primaryActionLabel: getPrimaryActionLabel(viewerRole),
+            secondaryActionLabel: SECONDARY_ACTION_LABEL,
+            mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
+            viewerRole,
+            isGhost: isCounterpartGhost,
+            ...(secondPartyData ? { secondParty: secondPartyData } : {}),
+            presentationPending: true,
+            _cardIndex: cardIndex,
+          } satisfies RadarCardItem;
+        }
+        const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
+        const fallbackCard = (): RadarCardItem => ({
+          opportunityId: opportunity.id,
+          status: opportunity.status,
+          userId: otherActor?.userId ?? '',
+          name: userName,
+          avatar: userAvatar,
+          mainText: reasoningSnippet,
+          cta: isIntroducer
+            ? (isPendingIntroducerFallback ? 'Share this introduction to get things started.' : 'Take a look and decide if this is a good match.')
+            : 'Take a look and decide whether to reach out.',
+          primaryActionLabel: getPrimaryActionLabel(viewerRole),
+          secondaryActionLabel: SECONDARY_ACTION_LABEL,
+          mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
+          narratorChip: isIntroducer
+            ? { name: 'You', text: 'Worth a look.', userId: state.userId }
+            : { name: 'Index', text: 'Worth a look.' },
+          viewerRole,
+          isGhost: isCounterpartGhost,
+          ...(secondPartyData ? { secondParty: secondPartyData } : {}),
+          _presentationFallback: true,
+          _cardIndex: cardIndex,
+        });
+
+        try {
+          const [ctx, negotiationContext] = await Promise.all([
+            gatherPresenterContext(
+              db,
+              opportunity,
+              state.userId,
+              otherActor?.userId,
+            ),
+            loadNegotiationContext(db, opportunity.id, opportunity.status),
+          ]);
+          const presenterInput = {
+            ...ctx,
+            mutualIntentCount: undefined,
+            opportunityStatus: opportunity.status,
+            ...(negotiationContext ? { negotiationContext } : {}),
+          };
+          const _traceEmitterPresenter = requestContext.getStore()?.traceEmitter;
+          const presenterStart = Date.now();
+          _traceEmitterPresenter?.({ type: "agent_start", name: "opportunity-presenter" });
+          const presentation = await deps.presenter.presentCard(presenterInput);
+          const _presenterDuration = Date.now() - presenterStart;
+          agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: _presenterDuration });
+          _traceEmitterPresenter?.({ type: "agent_end", name: "opportunity-presenter", durationMs: _presenterDuration, summary: `Presented: ${userName}` });
+          if (presentation.isFallback) {
+            return fallbackCard();
+          }
+          let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
+          // Only show a person as narrator when they are the introducer and not the display counterpart
+          // (bad data can have same user as introducer and party, e.g. "Amina introduced you to Amina")
+          const introducerIsCounterpart = introducer && otherActor && introducer.userId === otherActor.userId;
+          if (introducer && introducer.userId !== state.userId && !introducerIsCounterpart) {
+            const introUser = userMap.get(introducer.userId) ?? null;
+            const narratorName = introUser?.name ?? 'Someone';
+            narratorChip = {
+              name: narratorName,
+              text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
+              avatar: introUser?.avatar ?? null,
+              userId: introducer.userId,
+            };
+          } else if (introducer?.userId === state.userId) {
+            narratorChip = { name: 'You', text: presentation.narratorRemark, userId: state.userId };
+          } else {
+            narratorChip = { name: 'Index', text: presentation.narratorRemark };
+          }
+          return {
+            opportunityId: opportunity.id,
+            status: opportunity.status,
+            userId: otherActor?.userId ?? '',
+            name: userName,
+            avatar: userAvatar,
+            mainText: presentation.personalizedSummary,
+            cta: presentation.suggestedAction,
+            headline: presentation.headline,
+            primaryActionLabel: getPrimaryActionLabel(viewerRole),
+            secondaryActionLabel: SECONDARY_ACTION_LABEL,
+            mutualIntentsLabel: presentation.mutualIntentsLabel,
+            narratorChip,
+            viewerRole,
+            isGhost: isCounterpartGhost,
+            ...(secondPartyData ? { secondParty: secondPartyData } : {}),
+            _cardIndex: cardIndex,
+          } satisfies RadarCardItem;
+        } catch (e) {
+          logger.warn('RadarGraph presenter failed for opportunity', { opportunityId: opportunity.id, error: e });
+          return fallbackCard();
+        }
+      })
+    );
+    cards.push(...chunkCards.filter((c): c is RadarCardItem => c !== null));
+  }
+  generateCardTextLog.verbose('exit', { totalOpportunities: state.opportunities.length });
+  return {
+    cards,
+    agentTimings: agentTimingsAccum,
+    meta: { totalOpportunities: state.opportunities.length },
+  };
+  });
+}
+
+export async function cachePresenterResultsNode(state: RadarState, deps: RadarGraphDeps) {
+  return timed("RadarGraph.cachePresenterResults", async () => {
+    const { cards, cachedCards, userId, opportunities } = state;
+    const poolRankingProvenance = getPoolRankingProvenance(state);
+    const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
+    const cardsWithAdjustments = cards.map((card) => {
+      const opportunity = liveById.get(card.opportunityId);
+      const deprioritizedReason = poolRankingProvenance
+        ? latestPoolDemotionDetail(
+            (opportunity as { metadata?: Record<string, unknown> | null } | undefined)?.metadata,
+            poolRankingProvenance,
+          )
+        : undefined;
+      return { ...card, deprioritizedReason };
+    });
+
+    // Only cache cards that weren't already from cache
+    const newCards = cardsWithAdjustments.filter((card) => !cachedCards.has(card.opportunityId));
+    const statusById = new Map(opportunities.map((opp) => [opp.id, opp.status]));
+
+    try {
+      await Promise.all(
+        newCards.map((card) => {
+          const status = statusById.get(card.opportunityId);
+          // Negotiating, skeleton, fallback, and unresolved-name cards are
+          // safe for the current response but must not become 24h entries.
+          if (!status || !isRadarPresentationCacheable(card, status)) return Promise.resolve();
+          return deps.cache.set(
+            buildRadarCardPresentationCacheKey(card.opportunityId, status, userId),
+            card,
+            { ttl: RADAR_CACHE_TTL }
+          );
+        })
+      );
+    } catch (e) {
+      cachePresenterResultsLog.warn('cache write failed, continuing', { error: e });
+    }
+
+    // Merge cached cards into full card list
+    const allCards: RadarCardItem[] = [...cardsWithAdjustments];
+    for (const [oppId, cachedCard] of cachedCards) {
+      if (!cardsWithAdjustments.some((card) => card.opportunityId === oppId)) {
+        allCards.push(cachedCard);
+      }
+    }
+
+    // Re-sort by _cardIndex to maintain original ordering
+    allCards.sort((a, b) => a._cardIndex - b._cardIndex);
+
+    cachePresenterResultsLog.verbose('', {
+      newlyCached: newCards.length,
+      totalCards: allCards.length,
+    });
+
+    return {
+      cards: allCards,
+      meta: { totalOpportunities: state.opportunities.length },
+    };
+  });
+}
+
+export async function normalizeItemsNode(state: RadarState) {
+  return timed("RadarGraph.normalizeItems", async () => {
+    normalizeItemsLog.verbose('entry', { cardsLength: state.cards.length });
+    const items: RadarResponseItem[] = state.cards.map((card) => {
+      const { _cardIndex, _presentationFallback, ...rest } = card;
+      return rest;
+    });
+    const meta = { totalOpportunities: state.opportunities.length };
+    normalizeItemsLog.verbose('exit', { totalOpportunities: meta.totalOpportunities, totalItems: items.length });
+    return { items, meta };
+  });
+}
+

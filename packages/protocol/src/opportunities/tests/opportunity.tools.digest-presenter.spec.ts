@@ -5,7 +5,7 @@ import { mock, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createOpportunityTools } from '../application/opportunity.tools.js';
-import type { PresenterDatabase } from '../application/opportunity.presenter.js';
+import type { PresenterDatabase } from '../application/opportunity.presentation.js';
 
 // ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 

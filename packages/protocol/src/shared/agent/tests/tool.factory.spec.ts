@@ -176,7 +176,7 @@ mock.module("../../../intents/application/intent.graph.js", () => ({
 
 // Mutable mock result for opportunity discovery — tests set this before invoking the tool.
 // Default preserves the existing no-memberships test expectation (found:false + join/index/community message).
-let mockDiscoveryResult: {
+const mockDiscoveryResult: {
   found: boolean;
   count: number;
   message?: string;
@@ -200,7 +200,7 @@ let mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-mock.module("../../../opportunities/opportunity.presenter.js", () => ({
+mock.module("../../../opportunities/application/opportunity.presentation.js", () => ({
   OpportunityPresenter: class {
     async presentCard() {
       return {
