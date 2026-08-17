@@ -1,14 +1,18 @@
 import { z } from "zod";
 
-import { requestContext } from "../../shared/observability/request-context.js";
-import { log } from "../../shared/observability/log.js";
-import { renderNetworkContext } from "../../shared/network/metadata.renderer.js";
+import { requestContext } from "../shared/observability/request-context.js";
+import { log } from "../shared/observability/log.js";
+import { renderNetworkContext } from "../shared/network/metadata.renderer.js";
 
-import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { NetworkToolDeps } from "../ports/communities.tools.port.js";
-import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
-import { focusedNetworkId } from "../../shared/agent/tool.scope.js";
+import type { DefineTool, ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.js";
+import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import { focusedNetworkId } from "../shared/agent/tool.scope.js";
 import { NetworkRecommender } from "./network.recommender.js";
+
+/** Host capabilities consumed by community discovery and membership tools. */
+export type NetworkToolDeps = Pick<ToolRegistryCompositionDeps,
+  "userDb" | "systemDb" | "getUserContextText" | "networkRanker" | "reportToolError"
+> & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "index" | "networkMembership"> };
 
 /**
  * Resolves the community this caller is hard-bound to, if any.
@@ -64,8 +68,6 @@ const logger = log.protocol.from("ChatTools:Network");
  * `context.isOnboarding` is true and public networks are available.  Ranking is
  * performed by `NetworkRecommender` (ambient LLM agent) or a `deps.networkRanker`
  * override, with graceful degradation if ranking fails.
- *
- * IND-546: canonical home — previously network/network.tools.ts.
  */
 export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps) {
   const { graphs, userDb, systemDb } = deps;

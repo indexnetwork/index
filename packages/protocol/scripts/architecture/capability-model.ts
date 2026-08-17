@@ -53,11 +53,13 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
 /**
  * The barrel filename for capabilities that do not use `index.ts`.
  *
- * intents states its surface as a module class (`Intents`) rather than a
- * re-export list, so its barrel is named for what it is.
+ * intents and networks state their surface as a module class (`Intents`,
+ * `Networks`) rather than a re-export list, so their barrels are named for what
+ * they are.
  */
 export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, string>>> = {
   intents: "intent.module.ts",
+  networks: "network.module.ts",
 };
 
 /** The barrel filename a capability's public surface must live in. */

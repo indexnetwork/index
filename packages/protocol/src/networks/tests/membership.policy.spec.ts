@@ -11,8 +11,8 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import { NetworkMembershipGraphFactory } from "../application/membership.graph.js";
-import type { NetworkMembershipGraphDatabase } from "../ports/index.js";
+import { NetworkMembershipGraphFactory } from "../membership.graph.js";
+import type { NetworkMembershipGraphDatabase } from "../../shared/interfaces/database.interface.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

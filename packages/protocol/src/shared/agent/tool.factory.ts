@@ -7,7 +7,7 @@ import { OpportunityGraphFactory } from "../../opportunities/index.js";
 import { HydeGraphFactory } from "../../discovery/hyde.graph.js";
 import { HydeGenerator } from "../../discovery/hyde.generator.js";
 import { LensInferrer } from "../../discovery/lens.inferrer.js";
-import { NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory } from "../../networks/index.js";
+import { Networks } from "../../networks/network.module.js";
 import { NegotiationGraphFactory } from "../../negotiations/index.js";
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
@@ -18,7 +18,6 @@ import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatC
 import { deriveAllowedNetworkIds, focusedIntentId, scopeFromNetworkId } from "./tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
-import { createNetworkTools } from "../../networks/index.js";
 import { createOpportunityTools } from "../../opportunities/index.js";
 import { createUtilityTools } from "./utility.tools.js";
 import { createContactTools } from "../../contacts/index.js";
@@ -184,9 +183,10 @@ export async function createChatTools(
     deps.queueNegotiateExisting,
     deps.stampNewbornOpportunities,
   ).createGraph();
-  const networkGraph = new NetworkGraphFactory(database).createGraph();
-  const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
-  const intentNetworkGraph = new IntentNetworkGraphFactory(database, intents).createGraph();
+  const networks = new Networks({ database, indexer: intents });
+  const networkGraph = networks.createGraph();
+  const networkMembershipGraph = networks.createMembershipGraph();
+  const intentNetworkGraph = networks.createAssignmentGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
@@ -251,7 +251,7 @@ export async function createChatTools(
   const intentToolsForChat = focusedIntentId(resolvedContext)
     ? intentTools.filter((candidate) => (candidate as { name: string }).name !== "create_intent")
     : intentTools;
-  const networkTools = createNetworkTools(defineTool, toolDeps);
+  const networkTools = Networks.createTools(defineTool, toolDeps);
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
   const contactTools = createContactTools(defineTool, toolDeps);

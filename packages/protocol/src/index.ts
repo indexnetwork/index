@@ -120,9 +120,16 @@ export {
 } from "./agents/index.js";
 export { RadarGraphFactory } from "./opportunities/index.js";
 export { HydeGraphFactory } from "./discovery/index.js";
-export { NetworkGraphFactory } from "./networks/index.js";
-export { NetworkMembershipGraphFactory } from "./networks/index.js";
-export { IntentNetworkGraphFactory } from "./networks/index.js";
+// ─── Networks ─────────────────────────────────────────────────────────────────
+// The whole capability behind one class: the community lifecycle graph, the
+// membership graph, signal assignment, and the agent-facing tools.
+
+export { Networks } from "./networks/network.module.js";
+export type {
+  IntentNetworkIndexer,
+  NetworksDeps,
+  NetworkToolDeps,
+} from "./networks/network.module.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────
 // The whole capability behind one class: lifecycle graph, verification,

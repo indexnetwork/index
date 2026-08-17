@@ -20,6 +20,36 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 20.0.0 - 2026-08-17
+
+### Changed
+
+- **BREAKING**: The communities capability ships as one class, `Networks`,
+  mirroring `Intents`. `NetworkGraphFactory`, `NetworkMembershipGraphFactory`
+  and `IntentNetworkGraphFactory` are no longer exported from the package root;
+  construct `new Networks({ database, indexer })` and call `createGraph()`,
+  `createMembershipGraph()` or `createAssignmentGraph()`. `createNetworkTools`
+  is now `Networks.createTools`. Graph behaviour is unchanged.
+
+  ```typescript
+  // before
+  const indexGraph = new NetworkGraphFactory(database).createGraph();
+  const membershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
+  const assignmentGraph = new IntentNetworkGraphFactory(database, intents).createGraph();
+
+  // after
+  const networks = new Networks({ database, indexer: intents });
+  const indexGraph = networks.createGraph();
+  const membershipGraph = networks.createMembershipGraph();
+  const assignmentGraph = networks.createAssignmentGraph();
+  ```
+
+- `networks/` is flat: the `application/`, `domain/` and `ports/` directories are
+  gone, and `network.module.ts` is the capability's only public surface.
+  `NetworkToolDeps` now comes from that module rather than
+  `networks/ports/communities.tools.port.ts`, and the narrowed indexer port is
+  exported as `IntentNetworkIndexer`.
+
 ## 19.0.0 - 2026-08-17
 
 ### Removed

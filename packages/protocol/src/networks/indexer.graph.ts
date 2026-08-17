@@ -1,15 +1,23 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 
-import { buildNetworkAssignmentDecision } from "../../shared/assignment/network-assignment.policy.js";
-import type { IntentNetworkGraphDatabase } from "../ports/index.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { timed } from "../../shared/observability/performance.js";
-import { requestContext } from "../../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../../agents/index.js";
-import { renderNetworkContext } from "../../shared/network/metadata.renderer.js";
+import { buildNetworkAssignmentDecision } from "../shared/assignment/network-assignment.policy.js";
+import type { IntentNetworkGraphDatabase } from "../shared/interfaces/database.interface.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { timed } from "../shared/observability/performance.js";
+import { requestContext } from "../shared/observability/request-context.js";
+import type { DebugMetaAgent } from "../agents/index.js";
+import { renderNetworkContext } from "../shared/network/metadata.renderer.js";
 
-import type { IntentNetworkIndexer } from "../ports/index.js";
+import type { Intents } from "../intents/intent.module.js";
 import { IntentNetworkGraphState, type AssignmentResult } from "./indexer.state.js";
+
+/**
+ * The one intents method assignment calls: score a signal against a network.
+ *
+ * Naming the single method rather than accepting the whole capability keeps the
+ * injected surface auditable, and lets a test pass a one-method stub.
+ */
+export type IntentNetworkIndexer = Pick<Intents, "indexIntent">;
 
 const logger = protocolLogger("IntentNetworkGraphFactory");
 
@@ -23,7 +31,7 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  *
  * ## Signal assignment policy
  *
- * The indexer is injected at construction time via the communities ports layer,
+ * The indexer is injected at construction time as {@link IntentNetworkIndexer},
  * which narrows the intents module to the one method used here — this factory
  * never reaches intents internals directly.
  *
@@ -51,9 +59,6 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  *   read: readNode → END
  *   delete: unassignNode → END
  * }
- *
- * IND-546: canonical home — previously network/indexer/indexer.graph.ts.
- * Signals dependency consumed via capabilities/signals.facade.ts (through ports).
  */
 
 /** The graph's channel state, as every node sees it. */
@@ -250,7 +255,7 @@ export async function assignNode(state: IntentNetworkState, deps: IntentNetworkG
         ? `${intentForIndexing.sourceType}:${intentForIndexing.sourceId ?? ""}`
         : undefined;
 
-      // Score the signal against the network (intents module, injected via ports)
+      // Score the signal against the network (intents module, injected as IntentNetworkIndexer)
       const _traceEmitter = requestContext.getStore()?.traceEmitter;
       const _indexerStart = Date.now();
       _traceEmitter?.({ type: "agent_start", name: "intent-networker" });

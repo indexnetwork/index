@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 
 import type { NetworkGraphDatabase } from "../../shared/interfaces/database.interface.js";
 
-import { NetworkGraphFactory } from "../../networks/application/index.js";
+import { NetworkGraphFactory } from "../network.graph.js";
 
 const networkId = "11111111-1111-4111-8111-111111111111";
 const rollbackError = new Error("rollback failed with a secret that must not be logged");
