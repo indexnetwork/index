@@ -38,11 +38,6 @@ const NON_API_PATTERNS: RegExp[] = [
   /^VITE_[A-Z0-9_]+$/, // apps/web build-time vars — not read by the API
   /^MCP_TOOL_TIMEOUT_[A-Z0-9_]+_MS$/, // dynamic per-tool overrides
   /^MCP_TOOL_MAX_OUTPUT_[A-Z0-9_]+_BYTES$/, // dynamic per-tool overrides
-  // Discovery eval gate (.env.example § 15d). Read by the `discovery` CLI
-  // (src/cli/discovery.gate.ts) and by the eval-ops server that spawns it —
-  // never by the API service, so the API schema must NOT validate them.
-  /^DISCOVERY_(CONFIRM|TARGETS)$/,
-  /^NEON_API_KEY$/,
 ];
 
 function exampleVars(): Set<string> {

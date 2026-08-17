@@ -126,9 +126,6 @@ src/adapters/tests/archive-legacy-negotiations.isolated.ts
 src/lib/mcp/tests/owner-approval.isolated.ts
 src/controllers/tests/opportunity.owner-approval.isolated.ts
 src/services/tests/intent.service.seed-index.isolated.ts
-src/cli/tests/discovery-env-matrix-base-indexer.isolated.ts
-src/cli/tests/discovery.ab-threshold-wiring.isolated.ts
-src/cli/tests/discovery.matrix-threshold-default.isolated.ts
 src/services/tests/signal-intake.service.isolated.ts
 src/services/tests/signal-intake.writeback.isolated.ts
 src/services/tests/signal-intake.writeback-wiring.isolated.ts
@@ -137,7 +134,6 @@ src/queues/tests/usercontext.intake-pack.isolated.ts
 src/lib/tests/staff.isolated.ts
 src/controllers/tests/network-request.controller.authz.isolated.ts
 src/controllers/tests/webhooks.controller.isolated.ts
-
 src/controllers/tests/agent.controller.error-sanitization.isolated.ts
 src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts
 src/adapters/tests/embedder.provider-free.isolated.ts

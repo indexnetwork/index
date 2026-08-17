@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "16.0.0",
+  "version": "16.1.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,20 +28,7 @@
     "architecture:capabilities": "bun scripts/architecture/capability-boundaries.ts",
     "architecture:check": "bun run architecture:host-isolation && bun run architecture:capabilities && bun run test:architecture",
     "prepublishOnly": "bun run build",
-    "prepack": "bun run build:package",
-    "eval:matching": "bun --env-file=../../.env.test ./eval/matching/matching.eval.ts",
-    "eval:hyde": "bun --env-file=../../.env.test ./eval/hyde/hyde.eval.ts",
-    "eval:premise": "bun --env-file=../../.env.test ./eval/premise/premise.eval.ts",
-    "eval:profile": "bun --env-file=../../.env.test ./eval/profile/profile.eval.ts",
-    "eval:opportunity": "bun --env-file=../../.env.test ./eval/opportunity/opportunity.eval.ts",
-    "eval:clarification": "bun --env-file=../../.env.test ./eval/clarification/clarification.eval.ts",
-    "eval:intake": "bun --env-file=../../.env.test ./eval/intake/intake.eval.ts",
-    "eval:discovery-retrieval": "bun --env-file=../../.env.test ./eval/discovery-retrieval/discovery-retrieval.eval.ts",
-    "eval:canary": "bun --env-file=../../.env.test ./eval/canary/canary.eval.ts",
-    "eval:stance": "bun --env-file=../../.env.test ./eval/stance/stance.eval.ts",
-    "eval:view": "bun ./eval/viewer/viewer.eval.ts",
-    "eval:web": "bun --env-file=../../.env.test ./eval/ops/ops.serve.ts",
-    "eval:verify": "bun ./eval/verify.ts"
+    "prepack": "bun run build:package"
   },
   "dependencies": {
     "@langchain/core": "1.1.48",

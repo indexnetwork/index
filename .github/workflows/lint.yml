@@ -102,12 +102,12 @@ jobs:
 
       # `bun run build` compiles services/api/tsconfig.json, which excludes
       # `src/**/*.spec.ts`, so no spec is type-checked by the step above. That
-      # matters for the discovery CLI specs, where one assertion *is* a type
-      # assertion: `discovery.neon.spec.ts` proves `resetAbBranch` refuses an
-      # unattested manifest with a `@ts-expect-error`, and a directive nobody
-      # compiles proves nothing. See services/api/tsconfig.spec.json.
-      - name: Type check the discovery CLI specs
-        run: cd services/api && bun run typecheck:cli-specs
+      # matters for `discovery-trigger.builders.spec.ts`, where three
+      # `@ts-expect-error` directives prove trigger callers must pass a concrete
+      # `networkId`, and a directive nobody compiles proves nothing.
+      # See services/api/tsconfig.spec.json.
+      - name: Type check the guarded API specs
+        run: cd services/api && bun run typecheck:specs
 
   test:
     # Runs the hermetic pinning/characterization specs that mock all external
@@ -150,42 +150,12 @@ jobs:
             src/queues/tests/timeout.queue.spec.ts \
             src/queues/tests/claim-timeout.queue.spec.ts
 
-  eval-cli-tests:
-    # The services/api eval CLI specs, which ran local-only until now. They are
-    # drift guards, and a drift guard nobody runs guards nothing: the discovery
-    # set derives its offerable flags from the discovery graph's own import
-    # closure and fails when that set moves, refuses an asymmetric or identical
-    # configuration pair, and proves every artifact case row carries the
-    # configuration it was produced under. The per-harness catalogue that feeds
-    # the launch form is derived the same way and pinned in packages/protocol
-    # (eval/ops/tests/envcatalog.spec.ts), which the `test` job runs.
-    #
-    # Separate from the `test` job above because these are not dist-free: the
-    # discovery artifact and child specs import `discovery.main.ts`, which imports
-    # `@indexnetwork/protocol` (that is, `packages/protocol/dist`, gitignored).
-    # Hence the explicit build step. No secrets and no database: every spec here
-    # fakes the control plane, the graph and the judge, and provider
-    # credentials are stripped so a spec that reached for a live model fails.
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: "1.3.14"
-          no-cache: true
-
-      - name: Install dependencies
-        run: |
-          bun pm cache rm || true
-          bun install --frozen-lockfile
-
-      - name: Build packages/protocol
-        run: cd packages/protocol && bun run build
-
-      - name: Run the eval CLI specs (discovery and env matrix)
+      # These guard destructive operational CLIs (paused-intent rediscovery
+      # refusal, global user-context backfill classification, intent
+      # verification analysis). They used to ride along in the removed
+      # `eval-cli-tests` job's `bun test src/cli/tests/`; name them explicitly
+      # so the eval removal does not silently drop them.
+      - name: Run operational CLI guard specs
         run: |
           unset OPENROUTER_API_KEY OPENAI_API_KEY
           cd services/api
@@ -215,34 +185,6 @@ jobs:
           cd packages/protocol
           TEST_CONCURRENCY=4 bun run test:isolated
 
-  eval-verify:
-    # Provider-free verification of the protocol eval harnesses (IND-441):
-    # type-checks every packages/protocol/eval/*/tsconfig.json and runs every
-    # provider-free eval spec via a single manifest-checked command. Needs no
-    # secrets — the script strips provider credentials from the child env, so
-    # any spec that reaches for a live model fails loudly here. The explicit
-    # suite manifest in eval/verify.ts means a new eval directory that is not
-    # wired into verification fails this job instead of silently escaping CI.
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-      - uses: actions/checkout@v4
-        # Immutable approval provenance resolves the approval commit's parent.
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: "1.3.14"
-          no-cache: true
-
-      - name: Install dependencies
-        run: |
-          bun pm cache rm || true
-          bun install --frozen-lockfile
-
-      - name: Verify eval suites (typecheck + provider-free tests)
-        run: cd packages/protocol && bun run eval:verify
-
   protocol-architecture:
     # Keep the architectural dependency checks visible as separate CI checks so
     # a failure names the violated invariant directly in the checks list.
@@ -269,34 +211,3 @@ jobs:
 
       - name: Run architecture tests
         run: cd packages/protocol && bun run test:architecture
-
-  eval-ops:
-    # The eval-ops app was excluded from the root build (by design: it is not
-    # part of the API's deployment — it deploys as its own Railway service from
-    # apps/eval-ops/railway.toml) but was also absent from CI entirely,
-    # so neither typecheck nor the 47 vitest tests written in Tasks 12–17 gated
-    # anything — which is how 8 type errors accumulated unnoticed.
-    # Like typecheck, this required correctness gate must not depend on a
-    # third-party runner allocation that may never be assigned.
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: "1.3.14"
-          no-cache: true
-
-      - name: Install dependencies
-        run: |
-          bun pm cache rm || true
-          bun install --frozen-lockfile
-
-      - name: Type check eval-ops
-        run: cd apps/eval-ops && bun run typecheck
-
-      - name: Run eval-ops tests
-        run: cd apps/eval-ops && bun run test
-
-      - name: Lint eval-ops
-        run: cd apps/eval-ops && bun run lint

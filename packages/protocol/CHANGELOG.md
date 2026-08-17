@@ -20,6 +20,16 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 16.1.0 - 2026-08-17
+
+### Removed
+
+- Remove the eval harnesses (`eval/`) and the 13 `eval:*` package scripts. No
+  public API change: `src/` never imported `eval/`, so the package build,
+  architecture gates and source tests are unaffected. The final state is
+  preserved in the `archive/eval-2026-08-16` tag; restore with
+  `git checkout archive/eval-2026-08-16 -- packages/protocol/eval`.
+
 ## 16.0.0 - 2026-08-17
 
 ### Removed
