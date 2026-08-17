@@ -100,7 +100,7 @@ anywhere.
 | Opportunity Presenter | `opportunities/application/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Opportunity Introducer | `opportunities/application/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | Questioner Agent | `questions/question.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
-| Contact Inviter | `contacts/application/contact.inviter.ts` | Invite flow — generates personalized invite messages |
+| Contact Inviter | `contacts/contact.inviter.ts` | Invite flow — generates personalized invite messages |
 | Index Negotiator | `negotiations/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
 | Negotiation Insights Generator | `negotiations/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
 | Negotiation Summarizer | `negotiations/negotiation.summarizer.ts` | Negotiation — builds the discovery negotiation digest (deterministic fallback when LLM unavailable) |

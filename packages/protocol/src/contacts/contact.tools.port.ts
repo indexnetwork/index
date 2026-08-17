@@ -1,5 +1,5 @@
 /**
- * contacts/ports — ContactToolDeps tool host port.
+ * contacts — ContactToolDeps tool host port.
  *
  * Narrow port type consumed by createContactTools. The host provides a
  * ContactServiceAdapter.
@@ -11,8 +11,7 @@
  * Its shape remains structurally equivalent to the matching
  * ToolRegistryCompositionDeps fields.
  *
- * IND-549: extracted from capabilities/contacts.tools.port.ts into the
- * contacts capability's dedicated ports layer.
+ * This root-level contract keeps the capability dependency surface compact.
  */
 
 import type { ContactServiceAdapter } from "./contact.repository.port.js";
