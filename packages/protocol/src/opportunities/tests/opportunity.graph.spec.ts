@@ -2493,7 +2493,7 @@ describe('Opportunity Graph', () => {
     ];
 
     test('with valid entities and hint returns one opportunity with manual detection and introducer actor', async () => {
-      const { compiledGraph, mockDb, evaluatorCalls } = createMockGraph({
+      const { factory, mockDb, evaluatorCalls } = createMockGraph({
         thresholdOverrides: { evaluatorMinScore: 80 },
         evaluatorResult: [
           {
@@ -2545,7 +2545,7 @@ describe('Opportunity Graph', () => {
     });
 
     test('when opportunityExistsBetweenActors returns true returns error', async () => {
-      const { compiledGraph, mockDb } = createMockGraph();
+      const { factory, mockDb } = createMockGraph();
       spyOn(mockDb, 'opportunityExistsBetweenActors').mockResolvedValue(true);
 
       const result = (await factory.createIntroduction({
@@ -2560,7 +2560,7 @@ describe('Opportunity Graph', () => {
     });
 
     test('when introducer is not network member returns error', async () => {
-      const { compiledGraph, mockDb } = createMockGraph();
+      const { factory, mockDb } = createMockGraph();
       spyOn(mockDb, 'isNetworkMember').mockImplementation(async (networkId: string, userId: string) => {
         if (userId === 'a0000000-0000-4000-8000-000000000001') return false;
         return true;
