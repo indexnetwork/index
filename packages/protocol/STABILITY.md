@@ -13,7 +13,9 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
   of the contract and may change or disappear in any release — do not rely on them.
 - The contract is exactly the set of symbols re-exported from `src/index.ts`.
   Exports are listed explicitly (no `export *` wildcards), so the surface is
-  reviewable and additions are always intentional.
+  reviewable and additions are always intentional. Nothing checks this
+  mechanically — a removed or renamed stable export is caught in review of the
+  `src/index.ts` diff, and that is what triggers the major bump below.
 - Root exports are assembled through named capability facades. Those facades are
   implementation seams, not package subpath entry points: consumers must still
   import only from `@indexnetwork/protocol`.

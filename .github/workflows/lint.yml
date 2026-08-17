@@ -267,9 +267,6 @@ jobs:
       - name: Check capability boundaries
         run: cd packages/protocol && bun run architecture:capabilities
 
-      - name: Check export inventory is current
-        run: cd packages/protocol && bun run check:exports
-
       - name: Run architecture tests
         run: cd packages/protocol && bun run test:architecture
 

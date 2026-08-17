@@ -19,8 +19,6 @@
     "dev:frontend": "bun run dev:web",
     "dev:backend": "bun run dev:api",
     "build:skills": "bun scripts/build-skills.ts",
-    "build:protocol-atlas": "bun scripts/build-protocol-atlas.ts",
-    "check:protocol-atlas": "bun scripts/build-protocol-atlas.ts --check",
     "build": "bun run build:skills && bun run build:package:protocol && bun run build:api && bun run build:web",
     "build:web": "cd apps/web && bun install && bun run build",
     "build:eval-ops": "cd apps/eval-ops && bun install && bun run build",

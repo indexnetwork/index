@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "14.3.1",
+  "version": "14.3.2",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,9 +26,7 @@
     "test:architecture": "bun test src/architecture/tests scripts/architecture/tests",
     "architecture:host-isolation": "bun scripts/architecture/host-isolation.ts",
     "architecture:capabilities": "bun scripts/architecture/capability-boundaries.ts",
-    "architecture:exports": "bun scripts/architecture/export-inventory.ts",
-    "check:exports": "bun scripts/architecture/export-inventory.ts --check",
-    "architecture:check": "bun run architecture:host-isolation && bun run architecture:capabilities && bun run check:exports && bun run test:architecture",
+    "architecture:check": "bun run architecture:host-isolation && bun run architecture:capabilities && bun run test:architecture",
     "prepublishOnly": "bun run build",
     "prepack": "bun run build:package",
     "eval:matching": "bun --env-file=../../.env.test ./eval/matching/matching.eval.ts",

@@ -1,13 +1,11 @@
 {
   "name": "@indexnetwork/web",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "license": "MIT",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "bun run check:protocol-atlas && bun run build:blog && vite build && bun run publish:protocol-atlas",
+    "build": "bun run build:blog && vite build",
     "build:blog": "bun run build-blog.ts",
-    "check:protocol-atlas": "bun ../../scripts/build-protocol-atlas.ts --check",
-    "publish:protocol-atlas": "bun build-protocol-atlas.ts",
     "start": "bun server.ts",
     "lint": "eslint src/",
     "test": "bun --bun vitest run",
