@@ -2,9 +2,6 @@
 [build]
 watchPatterns = [
   "/apps/web/**",
-  "/docs/protocol-atlas/**",
-  "/scripts/build-protocol-atlas.ts",
-  "/scripts/tests/build-protocol-atlas.spec.ts",
   "/packages/protocol/**",
   "/bun.lock",
   "/package.json",

@@ -20,6 +20,30 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 14.3.2 - 2026-08-16
+
+No source change. The public contract in `src/index.ts` is untouched; only
+non-shipped tooling was removed.
+
+### Removed
+
+- `architecture/exports.snapshot.json`, the `architecture:exports` and
+  `check:exports` scripts, and `scripts/architecture/export-inventory.ts`.
+  `check:exports` is gone from `architecture:check` and from the CI lint job.
+
+  The inventory was fully derived from `src/index.ts` as of 14.3.1, so
+  `check:exports` could not catch a genuine defect — only a missed regenerate.
+  Its remaining value was making stable-export removals visible in a PR diff,
+  and that is now a review responsibility: consult [STABILITY.md](./STABILITY.md)
+  when changing the barrel, because nothing mechanical will flag a major bump.
+
+  The snapshot was never published (`files` covers `dist`, `IMPLEMENTATION.md`,
+  `STABILITY.md`, `CHANGELOG.md`), so no consumer is affected.
+
+- `scripts/architecture/module-graph.ts` and its spec. Its only non-test caller
+  was the deleted protocol atlas generator. `capability-model.ts` is unaffected —
+  `capability-boundaries.ts` and the `src/architecture` specs still use it.
+
 ## 14.3.1 - 2026-08-16
 
 No source change. Tooling and release record only.

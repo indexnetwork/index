@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- **Breaking (web 0.55.0):** remove the Protocol Atlas. The `/protocol-atlas`
+  route, its host allowlist (`dev.index.network`, `localhost`, `127.0.0.1`,
+  `[::1]`), and the static site under `docs/protocol-atlas/` are gone, along with
+  the 2,080-line generator (`scripts/build-protocol-atlas.ts`), the
+  `publish:protocol-atlas` build step, and the `check:protocol-atlas` gate that
+  ran ahead of `vite build`. The atlas was a generated architecture diagram of
+  `packages/protocol`; it is no longer maintained, and the build no longer
+  depends on regenerating it.
 - **Breaking (web 0.54.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Retired `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
 - **Breaking (web 0.53.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Legacy `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
 - **Breaking (web 0.52.0):** delete the `/hermes-authorize` and `/index-app-authorize` PKCE consent pages; the dedicated `idxh_`/`idxo_` credential layer was removed from the API. Hermes uses an ordinary agent API key and the Mac app signs in through `/cli-auth`.
