@@ -133,7 +133,6 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
     scraper: {} as unknown as ToolDeps["scraper"],
     embedder: { embedText: mock(async () => []), generateEmbedding: mock(async () => []) } as unknown as ToolDeps["embedder"],
     cache: {} as unknown as ToolDeps["cache"],
-    integration: {} as unknown as ToolDeps["integration"],
     contactService: {} as unknown as ToolDeps["contactService"],
     enricher: {} as unknown as ToolDeps["enricher"],
     frontendUrl: 'https://index.network',

@@ -283,7 +283,6 @@ export function createMockProtocolDeps(overrides?: Partial<ProtocolDeps>): Proto
     cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
     hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
 
-    integration: { createSession: async () => ({ toolkits: async () => ({ items: [] }), authorize: async () => ({ redirectUrl: "" }) }), executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) } as unknown as ProtocolDeps["integration"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     intentQueue: { addGenerateHydeJob: async () => ({}), addDeleteHydeJob: async () => ({}) } as any,
     contactService: { listContacts: async () => [], removeContact: async () => {} } as unknown as ProtocolDeps["contactService"],

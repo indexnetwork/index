@@ -11,6 +11,8 @@ export default tseslint.config(
       "**/dist/",
       "**/node_modules/",
       "**/.worktrees/",
+      // Nested Agent Village project has its own package/tooling and generated Next output.
+      "packages/edge-city/**",
       "services/api/drizzle/",
       "scripts/",
       "docs/",

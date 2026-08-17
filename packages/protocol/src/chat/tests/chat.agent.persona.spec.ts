@@ -89,7 +89,6 @@ function createTestAgent(persona: ChatPersonaConfig) {
       sessionId: "test-session",
       cache: {} as any,
       hydeCache: {} as any,
-      integration: {} as any,
       intentQueue: {} as any,
       contactService: {} as any,
       chatSession: {} as any,

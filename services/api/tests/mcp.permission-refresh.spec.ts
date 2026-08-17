@@ -55,7 +55,6 @@ const mockDeps = {
   scraper: {} as ToolDeps['scraper'],
   embedder: {} as ToolDeps['embedder'],
   cache: {} as ToolDeps['cache'],
-  integration: {} as ToolDeps['integration'],
   contactService: {} as ToolDeps['contactService'],
   integrationImporter: {} as ToolDeps['integrationImporter'],
   enricher: {} as ToolDeps['enricher'],

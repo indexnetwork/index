@@ -75,7 +75,6 @@ async function makeAgent(): Promise<ChatAgent> {
     sessionId: "s-test",
     cache: {} as never,
     hydeCache: {} as never,
-    integration: {} as never,
     intentQueue: {} as never,
     contactService: {} as never,
     chatSession: {} as never,
