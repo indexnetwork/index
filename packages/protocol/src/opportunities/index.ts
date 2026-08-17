@@ -63,10 +63,10 @@ export {
 export {
   gatherPresenterContext,
   OpportunityPresenter,
-} from "./application/opportunity.presenter.js";
+} from "./application/opportunity.presentation.js";
 export type {
   PresenterDatabase,
-} from "./application/opportunity.presenter.js";
+} from "./application/opportunity.presentation.js";
 export {
   createOpportunityTools,
 } from "./application/opportunity.tools.js";
@@ -154,19 +154,19 @@ export {
   buildApiChatCardPresentationCacheKey,
   buildDeliveryCardPresentationCacheKey,
   buildRadarCardPresentationCacheKey,
-} from "./domain/opportunity.presentation-cache.js";
+} from "./application/opportunity.presentation.js";
 export {
   presentOpportunity,
   stripUuids,
   truncateAtBoundary,
-} from "./domain/opportunity.presentation.js";
+} from "./application/opportunity.presentation.js";
 export type {
   UserInfo,
-} from "./domain/opportunity.presentation.js";
+} from "./application/opportunity.presentation.js";
 export {
   DEFAULT_FALLBACK_HEADLINE,
   safeFallbackSummary,
-} from "./domain/opportunity.safe-presentation.js";
+} from "./application/opportunity.presentation.js";
 export {
   canUserSeeOpportunity,
   classifyOpportunity,

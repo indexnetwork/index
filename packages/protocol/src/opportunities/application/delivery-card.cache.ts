@@ -1,7 +1,7 @@
 import type { Cache } from '../../shared/interfaces/cache.interface.js';
-import type { OpportunityPresenter, PresenterDatabase } from './opportunity.presenter.js';
-import { gatherPresenterContext } from './opportunity.presenter.js';
-import { buildDeliveryCardPresentationCacheKey } from '../domain/opportunity.presentation-cache.js';
+import type { OpportunityPresenter, PresenterDatabase } from './opportunity.presentation.js';
+import { gatherPresenterContext } from './opportunity.presentation.js';
+import { buildDeliveryCardPresentationCacheKey } from './opportunity.presentation.js';
 
 export interface CachedDeliveryCard {
   opportunityId: string;

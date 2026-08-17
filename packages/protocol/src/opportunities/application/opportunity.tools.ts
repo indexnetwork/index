@@ -16,18 +16,16 @@ import type { OpportunityToolDeps } from "../ports/index.js";
 import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
 import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../../shared/agent/tool.scope.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "../domain/opportunity.labels.js";
-import { narratorRemarkFromReasoning, stripUuids } from "../domain/opportunity.presentation.js";
-import { safeFallbackSummary, getSafePresentationOrSkip } from "../domain/opportunity.safe-presentation.js";
-import { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
+import { OpportunityPresenter, gatherPresenterContext, getSafePresentationOrSkip, narratorRemarkFromReasoning, safeFallbackSummary, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
+import { buildOpportunityPresentation } from "./opportunity.presentation.js";
 import { isUptakeGuardEnabled } from "../../questions/index.js";
-import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from './opportunity.update-admission.js';
 import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from './opportunity.owner-approval.js';
 import { ownerApprovalProvenanceFor } from './opportunity.owner-provenance.js';
 import { selectOpportunityFeed } from './opportunity.feed-selection.js';
 
-export { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
+export { buildOpportunityPresentation } from "./opportunity.presentation.js";
 
 import { sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
 import { createListOpportunitiesTool } from "./opportunity.tools.list.js";

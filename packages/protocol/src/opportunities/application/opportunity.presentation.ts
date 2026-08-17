@@ -1,4 +1,878 @@
 /**
+ * The opportunity presentation cluster.
+ *
+ * One file for the whole path from a persisted opportunity to the copy a user
+ * reads: the pure text transforms, the cache-key builders, the safe-fallback
+ * pipeline, and the LLM presenter itself. They were four modules that only ever
+ * called each other in one direction, and following a card's copy meant hopping
+ * between them.
+ *
+ * Sections, in dependency order:
+ *   1. Pure presentation transforms
+ *   2. Presentation cache keys
+ *   3. Safe-presentation pipeline (fallbacks that never leak raw reasoning)
+ *   4. OpportunityPresenter (LLM card and chat copy)
+ */
+
+import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../domain/opportunity.labels.js";
+import { stripUnsupportedOpportunityClaims } from "../../shared/utils/claim-safety.js";
+import type { Runnable } from "@langchain/core/runnables";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { z } from "zod";
+import { Timed } from "../../shared/observability/performance.js";
+import { protocolLogger } from "../../shared/observability/protocol.logger.js";
+import { createStructuredModel } from "../../shared/agent/model.config.js";
+import type { Opportunity } from "../../shared/interfaces/database.interface.js";
+import type { ChatGraphCompositeDatabase } from "../../shared/interfaces/database.interface.js";
+import type { NegotiationContext } from "./negotiation-context.loader.js";
+
+
+// ──────────────────────────────────────────────────────────────────────
+// ── 1. Pure presentation transforms ──
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Pure presentation layer for opportunities.
+ * Generates title, description, and CTA based on viewer context — no DB access.
+ */
+
+
+export interface OpportunityPresentation {
+  title: string;
+  description: string;
+  callToAction: string;
+}
+
+export interface UserInfo {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
+
+/**
+ * Generate presentation copy for an opportunity based on viewer context.
+ * Pure function — no side effects, no database access.
+ */
+export function presentOpportunity(
+  opp: Opportunity,
+  viewerId: string,
+  otherPartyInfo: UserInfo,
+  introducerInfo: UserInfo | null,
+  format: 'card' | 'email' | 'notification'
+): OpportunityPresentation {
+  const myActor = opp.actors.find((a) => a.userId === viewerId);
+  const introducer = opp.actors.find((a) => a.role === 'introducer');
+
+  if (!myActor) {
+    throw new Error('Viewer is not an actor in this opportunity');
+  }
+
+  const otherName = otherPartyInfo.name;
+  const safeReasoning =
+    stripUnsupportedOpportunityClaims(stripUuids(opp.interpretation.reasoning)) ||
+    'A promising connection.';
+  let title: string;
+  let description: string;
+  let descriptionIsReasoning = false;
+
+  switch (myActor.role) {
+    case 'agent':
+      title = `You can help ${otherName}`;
+      description = `Based on your expertise, ${otherName} might benefit from connecting with you.`;
+      break;
+    case 'patient':
+      title = `${otherName} might be able to help you`;
+      description = `${otherName} has skills that align with what you're looking for.`;
+      break;
+    case 'peer':
+      title = `Potential collaboration with ${otherName}`;
+      description = `You and ${otherName} have complementary interests.`;
+      break;
+    case 'mentee':
+      title = `${otherName} could mentor you`;
+      description = `${otherName} has experience that could help guide your journey.`;
+      break;
+    case 'mentor':
+      title = `${otherName} is looking for guidance`;
+      description = `Your expertise could help ${otherName} on their path.`;
+      break;
+    case 'founder':
+      title = `${otherName} might be interested in your venture`;
+      description = `${otherName}'s investment focus aligns with what you're building.`;
+      break;
+    case 'investor':
+      title = `${otherName} is building something interesting`;
+      description = `${otherName}'s venture might fit your investment thesis.`;
+      break;
+    case 'party':
+    default:
+      if (introducer && introducerInfo) {
+        title = `${introducerInfo.name} thinks you should meet ${otherName}`;
+        description = safeReasoning;
+        descriptionIsReasoning = true;
+      } else {
+        title = `Opportunity with ${otherName}`;
+        description = safeReasoning;
+        descriptionIsReasoning = true;
+      }
+      break;
+  }
+
+  if (!descriptionIsReasoning) {
+    description += `\n\n${safeReasoning}`;
+  }
+
+  if (format === 'notification') {
+    description =
+      description.length > 100 ? description.slice(0, 97) + '...' : description;
+  }
+
+  return {
+    title,
+    description,
+    callToAction: 'View Opportunity',
+  };
+}
+
+/**
+ * Strips UUID patterns from user-facing text to prevent internal ID leaks.
+ */
+
+const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+export function stripUuids(text: string): string {
+  return text
+    .replace(/\(([^)]*)\)/g, (_match, inner: string) => {
+      if (!UUID_PATTERN.test(inner)) {
+        UUID_PATTERN.lastIndex = 0;
+        return _match;
+      }
+      UUID_PATTERN.lastIndex = 0;
+      const cleaned = inner
+        .replace(UUID_PATTERN, '')
+        .replace(/,\s*,/g, ',')
+        .replace(/\b(?:from|and)\b/gi, '')
+        .replace(/^[\s,]+|[\s,]+$/g, '');
+      return cleaned ? `(${cleaned})` : '';
+    })
+    .replace(UUID_PATTERN, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * Truncate user-facing text to at most `maxChars` without cutting mid-word.
+ *
+ * Prefers a sentence boundary, then a word boundary, and only falls back to a
+ * hard slice if no boundary exists within the limit. An ellipsis is appended
+ * when the text is actually shortened. Used by presenter fallbacks so a degraded
+ * card never shows a sentence chopped mid-word (e.g. "His focus on 'indiv").
+ */
+export function truncateAtBoundary(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+
+  const slice = trimmed.slice(0, maxChars);
+
+  // Prefer ending on the last completed sentence within the limit.
+  const lastSentence = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("! "),
+    slice.lastIndexOf("? "),
+  );
+  if (lastSentence >= maxChars * 0.5) {
+    return slice.slice(0, lastSentence + 1).trim();
+  }
+
+  // Otherwise back off to the last whole word and add an ellipsis.
+  const lastSpace = slice.lastIndexOf(" ");
+  const body = lastSpace > 0 ? slice.slice(0, lastSpace) : slice;
+  return body.replace(/[\s,;:.!?'"-]+$/, "").trim() + "\u2026";
+}
+
+/**
+ * Strips introducer mentions from opportunity summary text.
+ * Removes patterns like:
+ * - "[Introducer] introduced you to [Counterpart]"
+ * - "[Introducer] thinks you should meet [Counterpart]"
+ * - "[Introducer] connected you to [Counterpart]"
+ * - "[Introducer] suggested you meet [Counterpart]"
+ *
+ * @param text - The text to clean (personalizedSummary)
+ * @param introducerName - Full name of the introducer to strip
+ * @returns Text with introducer mentions removed, counterpart preserved
+ */
+export function stripIntroducerMentions(
+  text: string,
+  introducerName: string | undefined,
+): string {
+  if (!introducerName?.trim()) return text;
+
+  const fullName = introducerName.trim();
+  const firstName = fullName.split(/\s+/)[0];
+  const namesToCheck = [fullName];
+  if (firstName && firstName.length > 1) {
+    namesToCheck.push(firstName);
+  }
+
+  let result = text;
+
+  for (const [idx, name] of namesToCheck.entries()) {
+    const escapedName = escapeRegex(name);
+
+    // Pattern: "Name introduced you to " (with or without comma, optionally with "directly")
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+introduced\\s+you\\s+(?:directly\\s+)?to\\s*`, "gi"),
+      "",
+    );
+
+    // Pattern: "Name thinks you should meet "
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+thinks\\s+you\\s+should\\s+meet\\s*`, "gi"),
+      "",
+    );
+
+    // Pattern: "Name connected you to "
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+connected\\s+you\\s+(?:to|with)\\s*`, "gi"),
+      "",
+    );
+
+    // Pattern: "Name suggested you meet "
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+suggested\\s+you\\s+(?:meet|connect\\s+(?:to|with))\\s*`, "gi"),
+      "",
+    );
+
+    // Pattern: "Name recommended you meet "
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+recommended\\s+you\\s+(?:meet|connect)\\s*`, "gi"),
+      "",
+    );
+
+    // Pattern: "Name thinks you and Counterpart should meet" -> remove entire phrase up to Counterpart
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+thinks\\s+you\\s+and\\s+`, "gi"),
+      "",
+    );
+
+    // Pattern: "Name also thought..." - remove sentences starting with Name + also/also thought
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+(?:also\\s+)?(?:thought|thinks?|believes?|felt)\\s*`, "gi"),
+      "",
+    );
+
+    // General: Remove any remaining standalone mention of the introducer name at sentence start.
+    // Only apply for fullName (idx === 0) to avoid stripping valid counterpart first names
+    // (e.g. "David Smith" intro to "David Johnson" → we strip "David Smith" but not "David" in "David Johnson").
+    if (idx === 0) {
+      result = result.replace(
+        new RegExp(`(?:^|\\.\\s*)\\b${escapedName}\\s+`, "gi"),
+        (match, offset) => {
+          if (offset === 0 || match.startsWith(".")) {
+            return match.startsWith(".") ? ". " : "";
+          }
+          return match;
+        },
+      );
+    }
+  }
+
+  // Clean up: remove leading/trailing whitespace and common punctuation artifacts
+  result = result
+    .replace(/^[\,\s]+/, "") // Remove leading commas/spaces
+    .replace(/\s{2,}/g, " ") // Normalize multiple spaces
+    .trim();
+
+  // Capitalize first letter if we removed from start
+  if (result.length > 0) {
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+  }
+
+  return result;
+}
+
+// Helper function
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Viewer-centric text for opportunity cards.
+ * The card is shown to the viewer (logged-in user) and should introduce the
+ * counterpart, not describe the viewer to themselves.
+ */
+
+/**
+ * Splits text into sentences using (?<=[.!?])\s+ (period/exclamation/question followed by whitespace).
+ * Note: splits after any such punctuation, including abbreviations like "Dr." or "e.g.".
+ */
+function splitSentences(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  return trimmed
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Returns viewer-centric main text for an opportunity card.
+ * Prefers the part of the reasoning that describes the counterpart (the person
+ * on the card), so the viewer sees an introduction to the counterpart rather
+ * than a description of themselves.
+ *
+ * @param reasoning - Raw interpretation.reasoning (may describe both parties).
+ * @param counterpartName - Display name of the suggested connection (e.g. "Alex Chen").
+ * @param maxChars - Max length of returned string (default MINIMAL_MAIN_TEXT_MAX_CHARS).
+ * @param viewerName - Optional display name of the viewer (signed-in user). When provided, sentences or prefixes describing the viewer are skipped so the card introduces the counterpart, not the viewer.
+ * @param introducerName - Optional display name of the introducer. When provided, introducer phrases (e.g., "X introduced you to...") are stripped from the summary to keep the body text focused on match quality.
+ * @returns Viewer-centric snippet mentioning the counterpart when possible; if counterpartName is empty, returns reasoning truncated to maxChars. Never null; may be "A suggested connection." when reasoning is empty.
+ */
+export function viewerCentricCardSummary(
+  reasoning: string,
+  counterpartName: string,
+  maxChars: number = MINIMAL_MAIN_TEXT_MAX_CHARS,
+  viewerName?: string,
+  introducerName?: string,
+): string {
+  const raw = stripUnsupportedOpportunityClaims(stripUuids(reasoning));
+  if (!raw) return "A suggested connection.";
+
+  const name = counterpartName.trim();
+  if (!name) {
+    let out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+    if (introducerName) {
+      out = stripIntroducerMentions(out, introducerName);
+    }
+    out = replaceViewerNameWithYou(out, viewerName);
+    return out;
+  }
+
+  const sentences = splitSentences(raw);
+  const nameLower = name.toLowerCase();
+  const firstWordOfName = name.split(/\s+/)[0]?.toLowerCase();
+  const hasCounterpartName = (s: string) =>
+    s.toLowerCase().includes(nameLower) ||
+    (firstWordOfName && firstWordOfName.length > 1 && s.toLowerCase().includes(firstWordOfName));
+
+  const viewer = viewerName?.trim().toLowerCase();
+  const viewerFirstWord = viewerName?.trim().split(/\s+/)[0]?.toLowerCase();
+  const startsWithViewer = (s: string) => {
+    if (!viewer) return false;
+    const sl = s.toLowerCase();
+    return sl.startsWith(viewer) ||
+      (viewerFirstWord && viewerFirstWord.length > 1 && sl.startsWith(viewerFirstWord));
+  };
+
+  // When viewerName is provided, prefer sentences that mention the counterpart
+  // but do NOT start with the viewer's name.
+  if (viewer) {
+    // First pass: find a sentence that mentions counterpart and doesn't start with viewer
+    const cleanIdx = sentences.findIndex(
+      (s) => hasCounterpartName(s) && !startsWithViewer(s),
+    );
+    if (cleanIdx !== -1) {
+      const result = sentences.slice(cleanIdx).join(" ").trim();
+      let out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
+      // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+      if (introducerName) {
+        out = stripIntroducerMentions(out, introducerName);
+      }
+      out = replaceViewerNameWithYou(out, viewerName, [name]);
+      return out;
+    }
+
+    // Second pass: sentence mentions counterpart but starts with viewer (compound sentence).
+    // Try to extract the counterpart portion after the counterpart's name.
+    const compoundIdx = sentences.findIndex(
+      (s) => hasCounterpartName(s) && startsWithViewer(s),
+    );
+    if (compoundIdx !== -1) {
+      const sentence = sentences[compoundIdx];
+      // Find where the counterpart name appears and extract from there
+      // Use case-insensitive Unicode-aware regex so the index is correct
+      // even when toLowerCase() changes string length (e.g. Turkish İ→i, German ß→ss).
+      const cpMatch = sentence.match(new RegExp(escapeRegex(name), "iu"));
+      const cpIdx = cpMatch?.index ?? -1;
+      if (cpIdx > 0) {
+        const extracted = sentence.slice(cpIdx).trim();
+        const rest = sentences.slice(compoundIdx + 1).join(" ").trim();
+        const result = rest ? `${extracted} ${rest}` : extracted;
+        let out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
+        // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+        if (introducerName) {
+          out = stripIntroducerMentions(out, introducerName);
+        }
+        out = replaceViewerNameWithYou(out, viewerName, [name]);
+        return out;
+      }
+    }
+  }
+
+  // Fallback: original logic without viewer awareness
+  const idx = sentences.findIndex(hasCounterpartName);
+  if (idx === -1) {
+    let out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+    if (introducerName) {
+      out = stripIntroducerMentions(out, introducerName);
+    }
+    out = replaceViewerNameWithYou(out, viewerName, [name]);
+    return out;
+  }
+
+  const fromCounterpart = sentences.slice(idx).join(" ").trim();
+  let out =
+    fromCounterpart.length <= maxChars
+      ? fromCounterpart
+      : fromCounterpart.slice(0, maxChars) + "...";
+  // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
+  if (introducerName) {
+    out = stripIntroducerMentions(out, introducerName);
+  }
+  out = replaceViewerNameWithYou(out, viewerName, [name]);
+  return out;
+}
+
+/** Max length for narrator chip text (matches LLM presenter schema). */
+const NARRATOR_MAX_CHARS = 80;
+
+const FALLBACK_REMARK = "A potential connection worth exploring.";
+
+/**
+ * Generates a short narrator remark from opportunity reasoning for the narrator chip.
+ * Used by the minimal (no-LLM) card path so each card gets a unique remark
+ * instead of the same static text.
+ *
+ * Extracts domain keywords (e.g. "AI", "design", "machine learning") from the
+ * reasoning and frames them in a short template like "Shared interest in AI and design."
+ *
+ * This is a regex-based heuristic — an alternative is OpportunityPresenter.presentCard()
+ * which generates narratorRemark via LLM with much higher quality (already used by
+ * home.graph.ts and opportunity.discover.ts). See buildMinimalOpportunityCard() in
+ * opportunity.tools.ts for the trade-off discussion.
+ *
+ * @param reasoning - Raw interpretation.reasoning text.
+ * @param counterpartName - Display name of the counterpart (stripped from output).
+ * @param viewerName - Optional display name of the viewer (stripped from output).
+ * @returns A short remark (max ~80 chars) suitable for the narrator chip. Never truncated with "...".
+ */
+export function narratorRemarkFromReasoning(
+  reasoning: string,
+  counterpartName: string,
+  viewerName?: string,
+): string {
+  const raw = stripUnsupportedOpportunityClaims(stripUuids(reasoning)).trim();
+  if (!raw) return FALLBACK_REMARK;
+
+  // Strip all person names from the text so we work only with topics.
+  let cleaned = raw;
+  for (const name of [counterpartName, viewerName]) {
+    if (!name?.trim()) continue;
+    const full = name.trim();
+    cleaned = cleaned.replace(new RegExp(escapeRegex(full), "gi"), "").trim();
+    const first = full.split(/\s+/)[0];
+    if (first && first.length > 1) {
+      cleaned = cleaned.replace(new RegExp(`\\b${escapeRegex(first)}\\b`, "gi"), "").trim();
+    }
+  }
+
+  // Extract domain/topic noun phrases from the cleaned text.
+  // Match multi-word capitalized phrases (e.g. "AI operations toolkit") and
+  // known domain terms.
+  const domainTerms = extractDomainTerms(cleaned);
+
+  if (domainTerms.length > 0) {
+    // Build "Shared interest in X and Y." or "Overlap in X, Y, and Z."
+    const prefixes = [
+      "Shared interest in",
+      "Overlap in",
+      "Common ground in",
+      "Aligned on",
+      "Mutual interest in",
+    ];
+    // Pick prefix deterministically based on first term's char code
+    const prefixIdx = domainTerms[0].charCodeAt(0) % prefixes.length;
+    const prefix = prefixes[prefixIdx];
+    const joined = joinTerms(domainTerms, NARRATOR_MAX_CHARS - prefix.length - 2); // -2 for " " and "."
+    const remark = `${prefix} ${joined}.`;
+    if (remark.length <= NARRATOR_MAX_CHARS) return remark;
+  }
+
+  // Fallback: try to extract a short relationship phrase
+  const relationshipMatch = cleaned.match(
+    /\b(complementary skills|shared expertise|overlapping intents|similar interests|strong match|mutual fit|potential collaboration|looking for (?:a |an )?[\w\s]{3,20})\b/i,
+  );
+  if (relationshipMatch) {
+    const phrase = relationshipMatch[0];
+    const remark = `Spotted ${phrase.toLowerCase()}.`;
+    if (remark.length <= NARRATOR_MAX_CHARS) return remark;
+  }
+
+  return FALLBACK_REMARK;
+}
+
+/**
+ * Extracts domain/topic terms from text by matching known patterns:
+ * - Acronyms (AI, ML, UX, API)
+ * - Multi-word domain phrases (machine learning, game development)
+ * - Capitalized proper nouns that look like topics
+ */
+function extractDomainTerms(text: string): string[] {
+  const seen = new Set<string>();
+  const terms: string[] = [];
+
+  // Known domain phrases (order matters — longer first)
+  const knownPhrases = [
+    /\b(machine learning|artificial intelligence|software development|game development|web development|data science|deep learning|natural language processing|computer vision|cloud computing|mobile development|product design|user experience|graphic design|character design|frontend development|backend development|full[- ]stack|smart contracts|visual art|creative writing|content creation|digital marketing|venture capital|angel invest(?:ing|ment)|open source|blockchain|cryptocurrency|decentralized finance|social impact|community building|music production|film(?:making| production)|photography|illustration|animation|3D modeling|startup|co-?founding|entrepreneurship|research|consulting|mentoring|freelanc(?:e|ing))\b/gi,
+    /\b(AI|ML|UX|UI|API|NLP|SaaS|DeFi|DevOps|DeSci|NFT|DAO|React|Node|Python|TypeScript|JavaScript|Rust|Solidity|Go|Swift|Kotlin|Figma|Blender|Unity|Unreal)\b/g,
+  ];
+
+  for (const pattern of knownPhrases) {
+    for (const match of text.matchAll(pattern)) {
+      const term = match[1] ?? match[0];
+      const key = term.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        // Preserve case for short acronyms/proper nouns; lowercase multi-word phrases
+        if (term.length <= 5 && /^[A-Z]/.test(term)) {
+          terms.push(term); // Keep React, AI, ML, etc. as-is
+        } else {
+          terms.push(key);
+        }
+      }
+    }
+  }
+
+  // If no known phrases found, look for capitalized multi-word phrases
+  // that look like explicit topic references (e.g. "Visual Art", "Smart Contracts").
+  // Only accept capitalized words to avoid grabbing meta-language from evaluator reasoning
+  // (e.g. "discoverer", "explicitly", "states" which are about the matching process, not topics).
+  if (terms.length === 0) {
+    // Multi-word capitalized phrases first (e.g. "Visual Art", "Creative Writing")
+    const multiWordPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
+    for (const match of text.matchAll(multiWordPattern)) {
+      const term = match[1];
+      const key = term.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        terms.push(key);
+        if (terms.length >= 3) break;
+      }
+    }
+
+    // Single capitalized words as last resort (skip common sentence-starters and meta-words)
+    if (terms.length === 0) {
+      const skipCapitalized = new Set([
+        // Articles / conjunctions / prepositions (capitalized at sentence start)
+        "the", "and", "but", "for", "from", "with", "without", "between",
+        "into", "about", "after", "before", "over", "under", "through",
+        // Common sentence starters / pronouns / determiners
+        "both", "their", "they", "this", "that", "these", "those",
+        "here", "there", "would", "could", "should", "also", "very",
+        "one", "another", "other", "each", "some", "many", "most",
+        "such", "clear", "high", "good", "well", "just", "even",
+        // Generic matching/relationship language
+        "strong", "match", "based", "making", "looking", "seeking",
+        "connection", "relationship", "opportunity", "overlap",
+        "complementary", "potential", "interested", "collaborate",
+        // Evaluator meta-language (about the matching process, not topics)
+        "intent", "intents", "profile", "user", "users", "person",
+        "discoverer", "explicitly", "states", "expressed", "mentioned",
+        "indicates", "suggests", "demonstrates", "describes", "involves",
+        "inference", "preparatory", "sincerity", "evaluator", "classifier",
+        "semantic", "pragmatic", "verification", "reconciliation",
+        "assertive", "commissive", "directive", "illocutionary",
+        "felicity", "utterance", "detected", "analysis", "confirmed",
+        "genuine", "conditions", "determined",
+        // Discourse markers
+        "particularly", "specifically", "especially", "primarily",
+        "overall", "furthermore", "however", "therefore", "moreover",
+      ]);
+      const capWords = text.match(/\b[A-Z][a-z]{2,}\b/g) ?? [];
+      for (const w of capWords) {
+        const key = w.toLowerCase();
+        if (!skipCapitalized.has(key) && !seen.has(key)) {
+          seen.add(key);
+          terms.push(key);
+          if (terms.length >= 3) break;
+        }
+      }
+    }
+  }
+
+  return terms.slice(0, 3); // Max 3 terms
+}
+
+/** Joins terms into "X, Y, and Z" form, dropping terms if too long. */
+function joinTerms(terms: string[], maxLen: number): string {
+  if (terms.length === 1) return terms[0];
+  // Try all terms first
+  for (let count = terms.length; count >= 1; count--) {
+    const subset = terms.slice(0, count);
+    let joined: string;
+    if (subset.length === 1) {
+      joined = subset[0];
+    } else if (subset.length === 2) {
+      joined = `${subset[0]} and ${subset[1]}`;
+    } else {
+      joined = `${subset.slice(0, -1).join(", ")}, and ${subset[subset.length - 1]}`;
+    }
+    if (joined.length <= maxLen) return joined;
+  }
+  return terms[0].slice(0, maxLen);
+}
+
+/**
+ * Replaces viewer's name with "you"/"your" so the card addresses the viewer in second person.
+ * Applied to mainText when viewerName is provided.
+ * @param otherNames - Other actor names in the card; first-name replacement is
+ *   skipped when the viewer's first name matches any other actor's first name.
+ */
+function replaceViewerNameWithYou(text: string, viewerName?: string, otherNames?: string[]): string {
+  if (!viewerName?.trim()) return text;
+  const full = viewerName.trim();
+  const first = full.split(/\s+/)[0];
+  let out = text;
+  // Possessive: "Yankı's" → "your", "Yankı Ekin Yüksel's" → "your"
+  out = out.replace(new RegExp(`\\b${escapeRegex(full)}'s\\b`, "gi"), "your");
+
+  const otherFirstNames = (otherNames ?? [])
+    .map(n => n.trim().split(/\s+/)[0]?.toLowerCase())
+    .filter(Boolean);
+  const firstNameCollides = first && otherFirstNames.includes(first.toLowerCase());
+
+  if (first && first.length > 1 && !firstNameCollides) {
+    out = out.replace(new RegExp(`\\b${escapeRegex(first)}'s\\b`, "gi"), "your");
+  }
+  // Standalone: full name then first name so we don't break "Yankı Ekin Yüksel"
+  out = out.replace(new RegExp(`\\b${escapeRegex(full)}\\b`, "gi"), "you");
+  if (first && first.length > 1 && !firstNameCollides) {
+    out = out.replace(new RegExp(`\\b${escapeRegex(first)}\\b`, "gi"), "you");
+  }
+  return out;
+}
+
+
+// ──────────────────────────────────────────────────────────────────────
+// ── 2. Presentation cache keys ──
+// ──────────────────────────────────────────────────────────────────────
+
+/** Cache namespace for opportunity presentation copy. Bump to invalidate copy safety changes. */
+export const OPPORTUNITY_PRESENTATION_CACHE_VERSION = "v2";
+
+export function buildRadarCardPresentationCacheKey(
+  opportunityId: string,
+  status: string,
+  viewerId: string,
+): string {
+  return `radar:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}`;
+}
+
+export function buildDeliveryCardPresentationCacheKey(
+  opportunityId: string,
+  status: string,
+  viewerId: string,
+): string {
+  return `delivery:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}`;
+}
+
+export function buildApiChatCardPresentationCacheKey(
+  opportunityId: string,
+  viewerId: string,
+): string {
+  return `chat:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${viewerId}`;
+}
+
+
+// ──────────────────────────────────────────────────────────────────────
+// ── 3. Safe-presentation pipeline ──
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Shared safe-presentation primitive for all user-facing opportunity surfaces.
+ *
+ * Historically every surface (radar, list/discover cards, minimal chat
+ * cards, notification emails/Telegram, chat context, delivery cards) invented
+ * its own fallback chain for the case where genuine LLM presenter output is
+ * unavailable — some sliced raw `interpretation.reasoning` with no
+ * sanitization at all. This module is the single standard:
+ *
+ *   raw reasoning
+ *     → whitespace-normalize
+ *     → viewer-centric rewrite (incl. UUID stripping + introducer-mention stripping)
+ *     → boundary-aware truncation
+ *     → per-surface empty-text default
+ *
+ * Surfaces choose *policy* (send a sanitized fallback vs skip entirely) via
+ * `allowFallback`; they no longer choose (or forget) sanitization steps.
+ *
+ * See `packages/protocol/src/opportunity/AGENTS.md` for the review checklist this
+ * module exists to satisfy.
+ */
+
+
+/** Default max length for fallback summaries (matches presenter internal fallback). */
+export const SAFE_FALLBACK_MAX_CHARS = 300;
+
+/** Default copy when no reasoning text is available at all. */
+export const DEFAULT_EMPTY_FALLBACK_TEXT = "A promising connection.";
+
+/** Default headline for fallback presentations (matches presenter internal fallback). */
+export const DEFAULT_FALLBACK_HEADLINE = "A promising connection";
+
+/** Default CTA for fallback presentations (matches presenter internal fallback). */
+export const DEFAULT_FALLBACK_ACTION =
+  "Take a look and decide whether to reach out.";
+
+export interface SafeFallbackOptions {
+  /** Display name of the counterpart shown on the card (enables viewer-centric rewrite). */
+  counterpartName?: string;
+  /** Display name of the viewer; sentences describing the viewer are skipped/rewritten to "you". */
+  viewerName?: string;
+  /** Introducer display name; introducer mentions are stripped from the summary body. */
+  introducerName?: string | null;
+  /** Max output length (boundary-aware). Default {@link SAFE_FALLBACK_MAX_CHARS}. */
+  maxChars?: number;
+  /** Copy returned when reasoning is empty/blank. Default {@link DEFAULT_EMPTY_FALLBACK_TEXT}. */
+  emptyText?: string;
+}
+
+/**
+ * Produce safe user-facing fallback copy from raw match reasoning.
+ *
+ * This is the ONE sanitization standard: UUID stripping, introducer-mention
+ * stripping, and viewer-centric rewrite (via {@link viewerCentricCardSummary}),
+ * followed by whitespace normalization and boundary-aware truncation (via
+ * {@link truncateAtBoundary}). Never returns raw reasoning verbatim beyond
+ * these guarantees, and never returns an empty string.
+ *
+ * @param rawReasoning - Raw `interpretation.reasoning` / `matchReason` text (may be null/undefined).
+ * @param opts - Per-surface knobs (names for rewrite, max length, empty-text copy).
+ */
+export function safeFallbackSummary(
+  rawReasoning: string | null | undefined,
+  opts: SafeFallbackOptions = {},
+): string {
+  const emptyText = opts.emptyText ?? DEFAULT_EMPTY_FALLBACK_TEXT;
+  const maxChars = opts.maxChars ?? SAFE_FALLBACK_MAX_CHARS;
+
+  const normalized = (rawReasoning ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) return emptyText;
+  const claimSafeInput = stripUnsupportedOpportunityClaims(normalized);
+  if (!claimSafeInput) return emptyText;
+
+  // viewerCentricCardSummary handles UUID stripping, introducer-mention
+  // stripping, and the viewer-centric rewrite. Pass Infinity so truncation is
+  // handled by boundary-aware logic below instead of a mid-word hard slice.
+  const rewritten = viewerCentricCardSummary(
+    claimSafeInput,
+    opts.counterpartName ?? "",
+    Number.POSITIVE_INFINITY,
+    opts.viewerName,
+    opts.introducerName ?? undefined,
+  );
+
+  // Claim validation intentionally runs after viewer-centric rewriting: rewrite
+  // heuristics may select or join different source sentences, and the final
+  // user-facing sentence set is what must be safe.
+  const claimSafe = stripUnsupportedOpportunityClaims(rewritten);
+  const truncated = truncateAtBoundary(claimSafe, maxChars);
+  return truncated || emptyText;
+}
+
+/** Minimal presenter-output shape the primitive inspects (subset of CardPresentationResult). */
+export interface SafePresentationCandidate {
+  headline?: string;
+  personalizedSummary?: string;
+  suggestedAction?: string;
+  /** Set by OpportunityPresenter when its LLM call failed and it returned fallback-shaped copy. */
+  isFallback?: boolean;
+}
+
+/** Opportunity-ish source object accepted by {@link getSafePresentationOrSkip}. */
+export interface SafePresentationSource {
+  /** Presenter output attached to the record, when available. */
+  homeCardPresentation?: SafePresentationCandidate | null;
+  /** Pre-truncated raw reasoning carried on discovery/list card data. */
+  matchReason?: string | null;
+  /** Full opportunity interpretation, when the caller holds the record. */
+  interpretation?: { reasoning?: string | null } | null;
+}
+
+export interface SafePresentationOptions extends SafeFallbackOptions {
+  /**
+   * Policy switch: when false, return null instead of fallback copy so the
+   * surface can skip rendering entirely (e.g. scheduled digests where sending
+   * degraded copy is worse than sending nothing). Default true.
+   */
+  allowFallback?: boolean;
+}
+
+/** Resolved safe presentation for a surface to render. */
+export interface SafePresentation {
+  headline: string;
+  summary: string;
+  suggestedAction: string;
+  /** True when copy was derived from raw reasoning rather than genuine LLM presenter output. */
+  isFallback: boolean;
+}
+
+/**
+ * Resolve the safe user-facing presentation for an opportunity, or signal skip.
+ *
+ * Resolution order:
+ * 1. Genuine presenter output (`homeCardPresentation` present, non-empty, and
+ *    NOT tagged `isFallback` by the presenter) — claim-validated before return.
+ * 2. Otherwise, if `allowFallback` (default true): sanitized fallback copy
+ *    built from `matchReason` / `interpretation.reasoning` via
+ *    {@link safeFallbackSummary}.
+ * 3. Otherwise `null` — the surface must skip this opportunity.
+ *
+ * Raw `interpretation.reasoning` / `matchReason` never reaches the caller
+ * unsanitized through this function.
+ */
+export function getSafePresentationOrSkip(
+  source: SafePresentationSource,
+  opts: SafePresentationOptions = {},
+): SafePresentation | null {
+  const candidate = source.homeCardPresentation;
+  if (candidate?.personalizedSummary?.trim() && !candidate.isFallback) {
+    const summary = stripUnsupportedOpportunityClaims(candidate.personalizedSummary);
+    if (summary) {
+      return {
+        headline:
+          stripUnsupportedOpportunityClaims(candidate.headline) ||
+          DEFAULT_FALLBACK_HEADLINE,
+        summary,
+        suggestedAction:
+          stripUnsupportedOpportunityClaims(candidate.suggestedAction) ||
+          DEFAULT_FALLBACK_ACTION,
+        isFallback: false,
+      };
+    }
+  }
+
+  if (opts.allowFallback === false) return null;
+
+  const rawReasoning =
+    source.matchReason ?? source.interpretation?.reasoning ?? "";
+  return {
+    headline: DEFAULT_FALLBACK_HEADLINE,
+    summary: safeFallbackSummary(rawReasoning, opts),
+    suggestedAction: DEFAULT_FALLBACK_ACTION,
+    isFallback: true,
+  };
+}
+
+
+// ──────────────────────────────────────────────────────────────────────
+// ── 4. OpportunityPresenter ──
+// ──────────────────────────────────────────────────────────────────────
+
+/**
  * Opportunity Presenter Agent
  *
  * Generates personalized, second-person explanations of why an opportunity
@@ -7,21 +881,8 @@
  * and suggestedAction for chat tools and user-facing surfaces.
  */
 
-import type { Runnable } from "@langchain/core/runnables";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { z } from "zod";
 
-import { Timed } from "../../shared/observability/performance.js";
 
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { viewerCentricCardSummary } from "../domain/opportunity.presentation.js";
-import type { Opportunity } from "../../shared/interfaces/database.interface.js";
-import type { ChatGraphCompositeDatabase } from "../../shared/interfaces/database.interface.js";
-import type { NegotiationContext } from "./negotiation-context.loader.js";
-import { stripUuids, stripIntroducerMentions } from "../domain/opportunity.presentation.js";
-import { stripUnsupportedOpportunityClaims } from "../../shared/utils/claim-safety.js";
-import { DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_ACTION, DEFAULT_FALLBACK_HEADLINE, safeFallbackSummary } from "../domain/opportunity.safe-presentation.js";
 
 /**
  * Minimal database interface required by gatherPresenterContext.
@@ -928,4 +1789,134 @@ export async function gatherPresenterContext(
   };
 
   return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ── 5. MCP card prose ──
+// ──────────────────────────────────────────────────────────────────────
+
+const CODE_FENCE = String.fromCharCode(96, 96, 96);
+
+function sanitizeJsonForCodeFence(json: string): string {
+  return json.replace(/`/g, '\\u0060');
+}
+
+/**
+ * Minimal shape consumed by buildOpportunityPresentation for prose rendering.
+ * Card data objects in the codebase carry additional frontend-only fields;
+ * only these are surfaced to MCP agents.
+ */
+export type OpportunityCardLike = Record<string, unknown> & {
+  opportunityId: string;
+  userId?: string | undefined;
+  name?: string | undefined;
+  mainText?: string | undefined;
+  digestSummary?: string | undefined;
+  status?: string | undefined;
+  feedCategory?: string | undefined;
+  profileUrl?: string | undefined;
+  /** Universal link that opens this opportunity's card (`/o/<id>`). */
+  appUrl?: string | undefined;
+  /** Deep-link to the A2A negotiation trace that produced this opportunity. */
+  negotiationUrl?: string | undefined;
+  score?: number | undefined;
+  /** Digest-mode cooldown re-show — the user has seen this card before. */
+  redelivery?: boolean | undefined;
+};
+
+function sanitizeOpportunityCardProse(card: OpportunityCardLike): OpportunityCardLike {
+  const sanitized: OpportunityCardLike = { ...card };
+  for (const key of ['mainText', 'digestSummary', 'headline', 'cta', 'mutualIntentsLabel'] as const) {
+    const value = card[key];
+    if (typeof value === 'string') {
+      sanitized[key] = stripUnsupportedOpportunityClaims(stripUuids(value)) || 'A suggested connection.';
+    }
+  }
+  const narratorChip = card.narratorChip;
+  if (narratorChip && typeof narratorChip === 'object' && !Array.isArray(narratorChip)) {
+    const narrator = narratorChip as Record<string, unknown>;
+    if (typeof narrator.text === 'string') {
+      sanitized.narratorChip = {
+        ...narrator,
+        text: stripUnsupportedOpportunityClaims(stripUuids(narrator.text)) || 'A potential connection worth exploring.',
+      };
+    }
+  }
+  return sanitized;
+}
+
+/**
+ * Format opportunity cards into the "opportunities" portion of a tool response.
+ *
+ * Web chat (`isMcp=false`): emits ```opportunity``` code fences with an
+ * "include EXACTLY as-is" directive so the frontend card renderer can parse
+ * and render interactive cards.
+ *
+ * MCP (`isMcp=true`): emits prose (name, reason, status, appUrl and profileUrl
+ * when present, feedCategory when present) and includes `opportunityId` for
+ * every card so the agent can act via the tools. The trailing instruction
+ * reminds the agent to synthesize in natural language, to surface the `appUrl`
+ * verbatim as the one link that opens the card, and to fabricate no other URL.
+ * MCP clients have no card renderer, so code fences would surface as raw JSON
+ * to end users.
+ */
+export function buildOpportunityPresentation(
+  inputCards: OpportunityCardLike[],
+  opts: {
+    isMcp: boolean;
+    leadIn: string;
+    label?: 'opportunity' | 'opportunities';
+    /** Include hidden digest metadata markers so scheduled brief tooling can confirm delivery. */
+    includeDigestMarkers?: boolean;
+  },
+): string {
+  const cards = inputCards.map(sanitizeOpportunityCardProse);
+  if (cards.length === 0) return opts.leadIn;
+
+  if (opts.isMcp) {
+    const prose = cards
+      .map((card, i) => {
+        const lines: string[] = [`${i + 1}. ${card.name ?? "Unknown"}`];
+        if (opts.includeDigestMarkers) {
+          const markerId = String(card.opportunityId).replace(/[\s>]/g, "");
+          if (markerId) lines.push(`   <!-- digest-opportunity:id=${markerId} -->`);
+        }
+        if (opts.includeDigestMarkers && card.digestSummary) {
+          lines.push(`   ${card.digestSummary}`);
+        } else if (card.mainText) {
+          lines.push(`   ${card.mainText}`);
+        }
+        if (card.status) lines.push(`   status: ${card.status}`);
+        if (card.appUrl) lines.push(`   appUrl: ${card.appUrl}`);
+        if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
+        if (opts.includeDigestMarkers && card.negotiationUrl) lines.push(`   negotiationUrl: ${card.negotiationUrl}`);
+        if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
+        if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score * 100)}`);
+        if (opts.includeDigestMarkers && card.redelivery) lines.push(`   redelivery: true`);
+        lines.push(`   opportunityId: ${card.opportunityId}`);
+        return lines.join("\n");
+      })
+      .join("\n\n");
+    const idInstructions = `Use opportunityId values only when calling update_opportunity (send/accept/reject) or confirm_opportunity_delivery.`;
+    return (
+      `${opts.leadIn}\n\n${prose}\n\n` +
+      `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +
+      `For each card that has a profileUrl, link the person's name to it. Some cards may have no URL — render those as plain text and never fabricate URLs for them. ` +
+      `For each card that has an appUrl, show that link so the user can open the opportunity: it opens the card in the Index app when installed, and an Index web page otherwise. Show only an appUrl a tool returned — never assemble one from an opportunityId. ` +
+      `No link accepts on the user's behalf: accepting happens in the Index app (or via update_opportunity) — never invent an accept URL. ` +
+      `Do NOT print raw JSON, field labels, or opportunityIds. ` +
+      `${idInstructions}`
+    );
+  }
+
+  const label = opts.label ?? (cards.length === 1 ? "opportunity" : "opportunities");
+  const blocks = cards
+    .map(
+      (card) =>
+        CODE_FENCE + "opportunity\n" + sanitizeJsonForCodeFence(JSON.stringify(card)) + "\n" + CODE_FENCE,
+    )
+    .join("\n\n");
+  return (
+    `${opts.leadIn} IMPORTANT: Include the following ${CODE_FENCE}${label} code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocks}`
+  );
 }

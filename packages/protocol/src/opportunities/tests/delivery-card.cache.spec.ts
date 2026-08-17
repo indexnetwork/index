@@ -1,13 +1,13 @@
 import { mock, describe, expect, it, afterAll } from 'bun:test';
 import { getOrCreateDeliveryCardBatch } from '../application/delivery-card.cache.js';
-import type { OpportunityPresenter } from '../application/opportunity.presenter.js';
-import type { PresenterDatabase } from '../application/opportunity.presenter.js';
+import type { OpportunityPresenter } from '../application/opportunity.presentation.js';
+import type { PresenterDatabase } from '../application/opportunity.presentation.js';
 import type { Cache } from '../../shared/interfaces/cache.interface.js';
 
 // Mock the gatherPresenterContext function.
 // Must target the path application/delivery-card.cache.ts actually imports from
 // (./application/opportunity.presenter.js, not the root-level shim).
-mock.module('../application/opportunity.presenter.js', () => ({
+mock.module('../application/opportunity.presentation.js', () => ({
   gatherPresenterContext: mock(async (presenterDb: PresenterDatabase, opp: any, viewerId: string) => ({
     opportunityStatus: opp.status,
   })),

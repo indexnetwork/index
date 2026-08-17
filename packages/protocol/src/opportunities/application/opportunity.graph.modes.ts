@@ -17,7 +17,7 @@ import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from './op
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from '../../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../../shared/agent/model-signal.js';
-import { safeFallbackSummary } from '../domain/opportunity.safe-presentation.js';
+import { safeFallbackSummary } from './opportunity.presentation.js';
 import { AMBIENT_PARK_WINDOW_MS, negotiateCandidates } from '../../negotiations/index.js';
 import type { OpportunityMutationResult } from './opportunity.lifecycle.js';
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle } from './opportunity.lifecycle.js';

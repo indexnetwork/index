@@ -200,7 +200,7 @@ const mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-mock.module("../../../opportunities/opportunity.presenter.js", () => ({
+mock.module("../../../opportunities/application/opportunity.presentation.js", () => ({
   OpportunityPresenter: class {
     async presentCard() {
       return {
