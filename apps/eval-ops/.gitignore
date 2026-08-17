@@ -1,5 +1,0 @@
-# build output
-/dist/
-
-# typescript
-*.tsbuildinfo

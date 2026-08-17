@@ -6,7 +6,7 @@ This file provides guidance to coding agents working in this repository.
 
 - Read the [Development Reference](./docs/guides/development-reference.md) for project commands, architecture, conventions, testing, Git workflow, and operational safety.
 - More deeply nested `AGENTS.md` files, when present, add to or override these instructions for files in their directory tree. They are the preferred home for guidance that applies to specific code — see `services/api/src/cli/AGENTS.md` and `packages/protocol/src/opportunities/AGENTS.md`.
-- Skills live in `.claude/skills/`. They are reserved for long, rare, high-stakes procedures: `backfill-production-data`, `verify-production-release`, `open-release-pr`, `run-protocol-evals`, `clean-codebase`. Everything shorter or more frequent belongs in a script, a nested `AGENTS.md`, or `docs/guides/`.
+- Skills live in `.claude/skills/`. They are reserved for long, rare, high-stakes procedures: `backfill-production-data`, `verify-production-release`, `open-release-pr`, `clean-codebase`. Everything shorter or more frequent belongs in a script, a nested `AGENTS.md`, or `docs/guides/`.
 
 ## Testing and PR verification
 

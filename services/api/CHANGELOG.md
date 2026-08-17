@@ -13,6 +13,17 @@ section before promoting to `main`).
 - **Breaking (API 0.89.0):** MCP no longer gates tools on incomplete
   onboarding. `complete_onboarding` is omitted from the MCP surface; web
   onboarding chat and `POST /api/tools/complete_onboarding` are unchanged.
+- Remove the `discovery` / `discovery-env-matrix` / `discovery-quality` eval CLI
+  (`src/cli/discovery*.ts` and its specs), the committed env-matrix baselines,
+  the 12 `eval:*` scripts, `typecheck:cli-specs` and `tsconfig.spec.json`. These
+  statically imported `packages/protocol/eval/**`, which was removed in the same
+  change. The `eval_matrix_metadata` table, migrations `0115`/`0125` and the
+  `evalMatrixMetadata` schema entry are deliberately retained — dropping the
+  table is a destructive production migration and is not part of this change.
+  Restore with `git checkout archive/eval-2026-08-16 -- services/api/src/cli`.
+- Drop the `.env.example` § 15d discovery eval gate (`DISCOVERY_TARGETS`,
+  `DISCOVERY_CONFIRM`, `NEON_API_KEY`, and the quality base/replica targets) and
+  the matching `NON_API_PATTERNS` exemptions, now that nothing reads them.
 
 ### Changed
 - Move the raw-SQL maintenance-write guidance for `src/cli/` into a nested `AGENTS.md`, so it loads whenever those files are open instead of depending on a skill description matching the prompt. No runtime change.

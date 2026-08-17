@@ -26,9 +26,9 @@ Four homes, in order of preference. Put a new learning in the earliest one that 
 | Long, rare, high-stakes procedure | `.claude/skills/` | progressive disclosure earns its always-on description |
 
 Skills are the last resort, not the first: every skill's `description` is loaded into
-context on every turn whether or not it triggers. Five exist today
+context on every turn whether or not it triggers. Four exist today
 (`backfill-production-data`, `verify-production-release`, `open-release-pr`,
-`run-protocol-evals`, `clean-codebase`), and adding a sixth should feel like a decision.
+`clean-codebase`), and adding a fifth should feel like a decision.
 
 One fact, one home. If something already lives in the Development Reference, link it
 rather than restating it — a second copy is a copy that will go stale.

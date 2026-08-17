@@ -68,7 +68,6 @@ bun install
 index/
 ├── apps/
 │   ├── web/             # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
-│   ├── eval-ops/        # Internal eval ops console (local by default; own Railway service)
 │   └── mac/             # Native Apple client subtree
 ├── services/
 │   └── api/             # Backend API and agent engine (Bun, TypeScript)
@@ -86,9 +85,9 @@ index/
 
 Exactly two runtime env files exist, both at the **repo root** and gitignored;
 the root `.env.example` is the single canonical reference for every variable
-(API, web, and protocol evals). `.env.development` is used for local
+(API, web, and protocol). `.env.development` is used for local
 development (and whenever `NODE_ENV` is unset); `.env.test` is used when
-`NODE_ENV=test` (API tests, protocol tests/evals). There is deliberately no
+`NODE_ENV=test` (API tests, protocol tests). There is deliberately no
 bare `.env` and no `.env.production` — deployments use platform-injected
 variables, never files.
 
@@ -358,41 +357,6 @@ bun run db:flush        # Flush all data (development only)
 ```
 
 After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `services/api/drizzle/meta/_journal.json` to match.
-
-### Eval ops site (internal)
-
-A local-by-default web console over the protocol's eval harnesses: browse committed baselines and run
-reports, launch a run and watch its log stream live, compare two artifacts, and reset the
-test-database fixture. Two commands, two terminals:
-
-```bash
-# Terminal 1: the ops API (127.0.0.1:4321)
-cd packages/protocol && bun run eval:web
-
-# Terminal 2: the UI (http://127.0.0.1:5174)
-bun run dev:eval-ops
-```
-
-`eval:web` loads the repo-root `.env.test`, so it uses that file's `OPENROUTER_API_KEY` and
-that file's `DATABASE_URL` as the fixture target.
-
-The four scorecard harnesses (`matching`, `profile`, `premise`, `opportunity`) and the
-`discovery` comparison harness are supported (`OPS_HARNESSES`,
-`packages/protocol/eval/ops/ops.registry.ts`). It **binds loopback and requires a verified
-`@index.network` Index account** — signing in opens the same browser-auth bridge the CLI
-uses, and every route but the two that make signing in possible needs that session. The
-authentication is defence in depth, not permission to widen the site: the `Host` check and
-the `Origin` allowlist are what bound who can reach it, and they are extended by exactly
-one entry only when `EVAL_OPS_PUBLIC_ORIGIN` names the deployed origin — so leave
-`EVAL_OPS_BIND` alone locally. `WEB_APP_URL` and `API_URL` must name the same environment —
-the first mints the sign-in key and the second verifies it, and the server refuses to start
-on a mismatched pair. The app is excluded from the root production build, and is deployed
-as its own Railway service from `apps/eval-ops/railway.toml` rather than from the root
-`railway.toml`, which is the API's.
-
-See [`packages/protocol/eval/ops/README.md`](../../packages/protocol/eval/ops/README.md)
-for the security model and [`apps/eval-ops/README.md`](../../apps/eval-ops/README.md) for
-the app itself.
 
 ### Queue monitoring
 

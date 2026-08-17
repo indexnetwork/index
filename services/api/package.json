@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.89.0",
+  "version": "0.90.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -9,7 +9,6 @@
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "typecheck:cli-specs": "tsc -p tsconfig.spec.json",
     "test:isolated": "NODE_ENV=test bash scripts/test-isolated.sh",
     "test:all": "NODE_ENV=test API_TEST_REQUIRE_DATABASE=1 bun test",
     "db:generate": "drizzle-kit generate",
@@ -32,17 +31,6 @@
     "maintenance:backfill-intent-verification-analysis": "bun ./src/cli/backfill-intent-verification-analysis.ts",
     "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
-    "eval:discovery-retrieval-smoke": "bun ./src/cli/discovery-retrieval-smoke.ts",
-    "eval:discovery-env-matrix-base": "bun ./src/cli/discovery-env-matrix-base.ts",
-    "eval:discovery-env-matrix-base:verify": "bun ./src/cli/discovery-env-matrix-base.ts --verify",
-    "eval:discovery-quality-base": "bun ./src/cli/discovery-quality-base.ts",
-    "eval:discovery-quality-base:verify": "bun ./src/cli/discovery-quality-base.ts --verify",
-    "eval:discovery-quality-base-refresh-target:attest": "bun ./src/cli/discovery-quality-refresh-target.ts",
-    "eval:discovery-quality-read-replica:provision": "bun ./src/cli/discovery-quality-read-replica.ts --provision",
-    "eval:discovery-quality-read-replica:attest": "bun ./src/cli/discovery-quality-read-replica.ts --attest",
-    "eval:discovery-quality-db-target:prove": "bun ./src/cli/discovery-quality-db-test.guard.ts",
-    "eval:discovery-env-matrix": "bun --env-file=../../.env.test ./src/cli/discovery-env-matrix.ts",
-    "eval:discovery": "bun --env-file=../../.env.test ./src/cli/discovery.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
   },
