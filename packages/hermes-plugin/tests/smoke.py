@@ -30,6 +30,7 @@ PYTHON_FILES = [
     "negotiation_wake.py",
     "dashboard/plugin_api.py",
     "dashboard/auth_login.py",
+    "dashboard/agent_bootstrap.py",
 ]
 DASHBOARD_FILES = [
     "dashboard/manifest.json",
@@ -2110,6 +2111,7 @@ def main() -> None:
         env_file = os.path.join(env_dir, ".env")
         old_env_path = os.environ.pop("HERMES_ENV_PATH", None)
         old_key_id = os.environ.pop("INDEX_API_KEY_ID", None)
+        old_mcp_url = os.environ.pop("INDEX_MCP_URL", None)
         os.environ["HERMES_ENV_PATH"] = env_file
         try:
             # .env merge: update INDEX_API_KEY in place, keep the other vars.
@@ -2144,11 +2146,112 @@ def main() -> None:
                 if saved_api_url is not None:
                     os.environ["INDEX_API_URL"] = saved_api_url
 
+            bootstrap = dashboard_api.agent_bootstrap
+            other = {"id": "other", "name": "a", "type": "external", "status": "active"}
+            inactive = {"id": "old", "name": "Hermes", "type": "external", "status": "inactive"}
+            plain = {"id": "h1", "name": "Hermes", "type": "external", "status": "active"}
+            negotiator = {
+                "id": "h2",
+                "name": "Hermes",
+                "type": "external",
+                "status": "active",
+                "handleNegotiations": True,
+            }
+            assert bootstrap.select_hermes_agent([other, inactive, plain, negotiator])["id"] == "h2"
+            assert bootstrap.select_hermes_agent([other, inactive]) is None
+
+            class RecordingTransport:
+                def __init__(self, rest_replies, mcp_replies=None):
+                    self.rest = []
+                    self.mcp = []
+                    self.rest_replies = list(rest_replies)
+                    self.mcp_replies = list(mcp_replies or [])
+
+                def request_rest(self, method, path, body=None, **_kwargs):
+                    self.rest.append((method, path, body))
+                    return self.rest_replies.pop(0)
+
+                def call_mcp(self, name, arguments):
+                    self.mcp.append((name, arguments))
+                    return self.mcp_replies.pop(0)
+
+            persisted = []
+            empty = RecordingTransport(
+                [
+                    {"agents": []},
+                    {"token": {"id": "tok-1", "key": "agent-secret"}},
+                    {"success": True},
+                ],
+                [
+                    {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(
+                                    {"success": True, "data": {"agent": {"id": "h1", "name": "Hermes"}}}
+                                ),
+                            }
+                        ]
+                    }
+                ],
+            )
+            assert bootstrap.promote(empty, lambda key, kid: persisted.append((key, kid)), "cli-key", "cli-kid") == {
+                "negotiatorReady": True
+            }
+            assert persisted == [("agent-secret", "tok-1")]
+            assert empty.mcp == [
+                (
+                    "register_agent",
+                    {
+                        "name": "Hermes",
+                        "description": "Hermes on this host",
+                        "permissions": ["manage:negotiations", "manage:intents", "manage:opportunities"],
+                    },
+                )
+            ]
+            assert empty.rest[0] == ("GET", "/agents", None)
+            assert empty.rest[1] == ("POST", "/agents/h1/tokens", {"name": "Hermes API Key"})
+            assert empty.rest[2] == (
+                "POST",
+                "/auth/cli-credential/revoke",
+                {"keyId": "cli-kid", "targetKey": "cli-key"},
+            )
+
+            reused = []
+            existing = RecordingTransport(
+                [
+                    {"agents": [other, negotiator]},
+                    {"token": {"id": "tok-2", "key": "agent-secret-2"}},
+                    {"success": True},
+                ]
+            )
+            assert bootstrap.promote(existing, lambda key, kid: reused.append((key, kid)), "cli-2", "kid-2") == {
+                "negotiatorReady": True
+            }
+            assert reused == [("agent-secret-2", "tok-2")]
+            assert existing.mcp == []
+            assert existing.rest[1][1] == "/agents/h2/tokens"
+
+            mint_fail = RecordingTransport(
+                [
+                    {"agents": [plain]},
+                    {"success": False, "error": "forbidden", "status": 403},
+                ]
+            )
+            keep = []
+            failed_mint = bootstrap.promote(mint_fail, lambda key, kid: keep.append((key, kid)), "cli-3", "kid-3")
+            assert failed_mint["negotiatorReady"] is False
+            assert "forbidden" in failed_mint["error"]
+            assert keep == []
+            assert mint_fail.mcp == []
+
             # No pending login: the status endpoint reports idle.
             assert dashboard_api.auth_login_status() == {"success": True, "status": "idle"}
 
             # Loopback handshake drives poll_status to success (real sockets).
             urllib.request.urlopen = old_urlopen
+            os.environ["INDEX_MCP_URL"] = "https://mcp.example.test/mcp"
+            os.environ["INDEX_API_URL"] = "https://api.example.test/api"
             auth_url = auth_login.start_login("https://app.example.test")
             parsed_auth = urllib.parse.urlsplit(auth_url)
             assert parsed_auth.path == "/cli-auth"
@@ -2161,17 +2264,79 @@ def main() -> None:
                 callback + "?" + urllib.parse.urlencode({"state": state, "api_key": "loop-key", "key_id": "loop-kid"})
             ) as resp:
                 assert resp.status == 200
-            # Success through the dashboard endpoint also resets the cached
-            # transport so the fresh key takes effect without a restart.
+            # Success through the dashboard endpoint bootstraps a Hermes agent
+            # key and resets the cached transport so it takes effect without a restart.
             sentinel = FakeAuthTransport()
             dashboard_api.tools.set_transport_for_tests(sentinel)
-            assert dashboard_api.auth_login_status() == {"success": True, "status": "success"}
+            captured = []
+            install_fake_urlopen(
+                [
+                    FakeResponse({"agents": []}),
+                    mcp_text_response(
+                        {"success": True, "data": {"agent": {"id": "hermes-1", "name": "Hermes"}}}
+                    ),
+                    FakeResponse({"token": {"id": "tok-hermes", "key": "agent-secret"}}),
+                    FakeResponse({"success": True}),
+                ],
+                captured,
+            )
+            assert dashboard_api.auth_login_status() == {
+                "success": True,
+                "status": "success",
+                "negotiatorReady": True,
+            }
             assert dashboard_api.tools.get_transport() is not sentinel
-            assert os.environ["INDEX_API_KEY"] == "loop-key"
-            assert os.environ["INDEX_API_KEY_ID"] == "loop-kid"
+            assert os.environ["INDEX_API_KEY"] == "agent-secret"
+            assert os.environ["INDEX_API_KEY_ID"] == "tok-hermes"
+            assert captured[0]["method"] == "GET"
+            assert captured[0]["url"] == "https://api.example.test/api/agents"
+            assert captured[1]["url"] == "https://mcp.example.test/mcp"
+            assert captured[1]["body"]["params"]["name"] == "register_agent"
+            assert captured[2]["url"] == "https://api.example.test/api/agents/hermes-1/tokens"
+            assert captured[3]["url"] == "https://api.example.test/api/auth/cli-credential/revoke"
+            assert captured[3]["body"] == {"keyId": "loop-kid", "targetKey": "loop-key"}
+            assert "INDEX_API_KEY=agent-secret" in open(env_file, encoding="utf-8").read()
             assert auth_login.poll_status()["status"] == "idle"  # terminal + torn down
 
+            # A second login reuses the existing Hermes agent (no second register_agent).
+            urllib.request.urlopen = old_urlopen
+            auth_url_reuse = auth_login.start_login("https://app.example.test")
+            reuse_params = urllib.parse.parse_qs(urllib.parse.urlsplit(auth_url_reuse).query)
+            with old_urlopen(
+                reuse_params["callback"][0]
+                + "?"
+                + urllib.parse.urlencode({"state": reuse_params["state"][0], "api_key": "cli-2", "key_id": "kid-2"})
+            ) as resp:
+                assert resp.status == 200
+            reuse_captured = []
+            install_fake_urlopen(
+                [
+                    FakeResponse(
+                        {
+                            "agents": [
+                                {
+                                    "id": "hermes-1",
+                                    "name": "Hermes",
+                                    "type": "external",
+                                    "status": "active",
+                                    "handleNegotiations": True,
+                                }
+                            ]
+                        }
+                    ),
+                    FakeResponse({"token": {"id": "tok-2", "key": "agent-secret-2"}}),
+                    FakeResponse({"success": True}),
+                ],
+                reuse_captured,
+            )
+            reused_status = dashboard_api.auth_login_status()
+            assert reused_status == {"success": True, "status": "success", "negotiatorReady": True}
+            assert os.environ["INDEX_API_KEY"] == "agent-secret-2"
+            assert [entry["url"] for entry in reuse_captured if "mcp" in entry["url"]] == []
+            assert reuse_captured[1]["url"] == "https://api.example.test/api/agents/hermes-1/tokens"
+
             # A mismatched callback state fails the attempt.
+            urllib.request.urlopen = old_urlopen
             auth_url2 = auth_login.start_login("https://app.example.test")
             callback2 = urllib.parse.parse_qs(urllib.parse.urlsplit(auth_url2).query)["callback"][0]
             try:
@@ -2222,6 +2387,9 @@ def main() -> None:
             urllib.request.urlopen = old_urlopen
             dashboard_api.tools.set_transport_for_tests(None)
             os.environ.pop("HERMES_ENV_PATH", None)
+            os.environ.pop("INDEX_MCP_URL", None)
+            if old_mcp_url is not None:
+                os.environ["INDEX_MCP_URL"] = old_mcp_url
             if old_env_path is not None:
                 os.environ["HERMES_ENV_PATH"] = old_env_path
             os.environ.pop("INDEX_API_KEY_ID", None)

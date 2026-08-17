@@ -6,8 +6,8 @@ Runs the same `/cli-auth` handshake used by `apps/mac` and `packages/cli`:
 2. Open `{appUrl}/cli-auth?callback=…&version=2&state=…` in the browser.
 3. The web app mints a CLI API key and redirects to the callback with
    `api_key` + `key_id`.
-4. Persist the key into `~/.hermes/.env` and `os.environ` so subsequent
-   `_api_request` / MCP calls in this process use it immediately.
+4. Persist that CLI key, then replace it with a Hermes agent-bound token
+   (register/reuse the agent and mint) so pickup can authenticate.
 
 Login start returns right away; the frontend polls the status until the
 callback lands (or the attempt times out). Only one login runs at a time.
@@ -21,6 +21,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlencode, urlparse
 
 _API_KEY_ENV = "INDEX_API_KEY"
@@ -30,6 +31,13 @@ _LOGIN_TIMEOUT_SECONDS = 180.0
 
 _lock = threading.Lock()
 _session: "_LoginSession | None" = None
+_post_login: Callable[[str, str | None], dict[str, Any]] | None = None
+
+
+def set_post_login(callback: Callable[[str, str | None], dict[str, Any]] | None) -> None:
+    """Install the CLI→agent-key promotion run after a successful handshake."""
+    global _post_login
+    _post_login = callback
 
 
 def _env_path() -> Path:
@@ -188,11 +196,13 @@ def start_login(app_base_url: str) -> str:
     return f"{app_base_url.rstrip('/')}/cli-auth?{query}"
 
 
-def poll_status() -> dict[str, str | None]:
+def poll_status() -> dict[str, Any]:
     """Report and, on success, persist the pending login's result.
 
-    Returns `{status: idle|pending|success|failed, error?}`. Success and
-    failure are terminal: the loopback listener is torn down before returning.
+    Returns `{status: idle|pending|success|failed, error?, negotiatorReady?}`.
+    Success and failure are terminal: the loopback listener is torn down
+    before returning. The CLI key is persisted first, then optional
+    post-login promotion may replace it with a Hermes agent token.
     """
     with _lock:
         session = _session
@@ -210,7 +220,13 @@ def poll_status() -> dict[str, str | None]:
             return {"status": "failed", "error": error}
         else:
             return {"status": "pending"}
-    if api_key:
-        persist_api_key(api_key, key_id)
-        return {"status": "success"}
-    return {"status": "failed", "error": "Login completed without a credential."}
+    if not api_key:
+        return {"status": "failed", "error": "Login completed without a credential."}
+    persist_api_key(api_key, key_id)
+    extra: dict[str, Any] = {}
+    if _post_login is not None:
+        try:
+            extra = _post_login(api_key, key_id) or {}
+        except Exception as exc:  # noqa: BLE001 - login stays signed in as the CLI key.
+            extra = {"negotiatorReady": False, "error": str(exc)}
+    return {"status": "success", **extra}

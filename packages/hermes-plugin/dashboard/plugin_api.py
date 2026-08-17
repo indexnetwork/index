@@ -176,6 +176,27 @@ def _load_tools_module():
 
 tools = _load_tools_module()
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
+agent_bootstrap = _load_module(
+    "index_network_hermes_dashboard_agent_bootstrap",
+    _DASHBOARD_DIR / "agent_bootstrap.py",
+)
+
+
+def _promote_cli_key(cli_key: str, cli_key_id: str | None) -> dict[str, Any]:
+    """Swap the CLI owner key for a Hermes agent token, then rebuild transport."""
+    tools.reset_transport()
+    try:
+        return agent_bootstrap.promote(
+            tools.get_transport(),
+            auth_login.persist_api_key,
+            cli_key,
+            cli_key_id,
+        )
+    finally:
+        tools.reset_transport()
+
+
+auth_login.set_post_login(_promote_cli_key)
 
 
 def _load_negotiation_wake():
@@ -1212,14 +1233,13 @@ def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
 
 @full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the pending login; on success the key is already persisted server-side."""
+    """Poll the pending login; on success the Hermes agent key is persisted."""
     result = auth_login.poll_status()
-    if result.get("status") == "success":
-        # The next transport build must read the freshly persisted key.
-        tools.reset_transport()
     payload: dict[str, Any] = {"success": result.get("status") != "failed", "status": result.get("status")}
     if result.get("error"):
         payload["error"] = result.get("error")
+    if "negotiatorReady" in result:
+        payload["negotiatorReady"] = result["negotiatorReady"]
     return payload
 
 

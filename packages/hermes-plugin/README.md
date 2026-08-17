@@ -8,17 +8,17 @@ The Index plugin connects Hermes to Index over plain HTTPS, authenticated with a
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. It mints a 90-day CLI API key and persists it as `INDEX_API_KEY` in `~/.hermes/.env`; **Sign out** revokes it and clears the file. On a headless host the dashboard shows the login link to open elsewhere.
+Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The handshake mints a CLI owner key, then the plugin registers or reuses the Hermes agent, mints an agent-bound token, and persists that token as `INDEX_API_KEY` in `~/.hermes/.env`. The CLI key is revoked after bootstrap. **Sign out** clears the local key. On a headless host the dashboard shows the login link to open elsewhere.
 
-Manual override: set the key yourself instead of using the browser flow:
+Manual override: set an agent API key yourself instead of using the browser flow:
 
 ```bash
-export INDEX_API_KEY=<your Index API key>
+export INDEX_API_KEY=<your Index agent API key>
 ```
 
 Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production endpoints). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
-The key is an ordinary Index API key: it can be revoked at any time from web settings, and it expires per its configured lifetime.
+Pickup and `GET /agents/me` need the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
 
 ## Modes and capability boundary
 
