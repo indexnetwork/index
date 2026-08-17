@@ -165,7 +165,7 @@ export class NegotiationRunExistingQueue {
     const embedder: Embedder = new EmbedderAdapter();
     const hydeGraph = { invoke: async () => ({ hydeEmbeddings: {} }) };
 
-    const opportunityGraph = new OpportunityGraphFactory(
+    const opportunityOperations = new OpportunityGraphFactory(
       this.graphDb,
       embedder,
       hydeGraph,
@@ -176,15 +176,14 @@ export class NegotiationRunExistingQueue {
       async (oid: string, uid: string) => {
         await this.addJob({ opportunityId: oid, userId: uid });
       },
-    ).createGraph();
+    );
 
     try {
       await this.runClaimedContinuation(execution, continuationAdapter, async () => {
-        const result = await opportunityGraph.invoke({
+        const result = await opportunityOperations.negotiateExisting({
           userId: userId as Id<'users'>,
-          operationMode: 'negotiate_existing',
           opportunityId,
-          options,
+          ...(options.negotiationContinuation ? { continuation: options.negotiationContinuation } : {}),
         });
         return result.negotiationContinuationReceipt;
       });

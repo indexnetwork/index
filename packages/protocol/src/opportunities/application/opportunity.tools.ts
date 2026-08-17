@@ -47,6 +47,7 @@ import type { Opportunity } from "../../shared/interfaces/database.interface.js"
 import type { PendingQuestionSummary } from "../../shared/schemas/pending-question.schema.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+import { sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -1076,12 +1077,17 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       const _updateGraphStart = Date.now();
       const _updateTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-      const result = await invokeWithAbortSignal(graphs.opportunity, {
-        userId: context.userId,
-        operationMode: isSend ? ("send" as const) : ("update" as const),
-        opportunityId: query.opportunityId,
-        ...(isSend ? {} : { newStatus: query.status }),
-      });
+      const operations = deps.opportunityOperations ?? { sendOpportunity, updateOpportunityStatus };
+      const result = isSend
+        ? await operations.sendOpportunity(deps, {
+            userId: context.userId,
+            opportunityId: query.opportunityId,
+          })
+        : await operations.updateOpportunityStatus(deps, {
+            userId: context.userId,
+            opportunityId: query.opportunityId,
+            newStatus: query.status,
+          });
       const _updateGraphMs = Date.now() - _updateGraphStart;
       _updateTraceEmitter?.({ type: "graph_end", name: "opportunity", durationMs: _updateGraphMs });
 
@@ -1095,7 +1101,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
             ...(result.mutationResult.conversationId && {
               conversationId: result.mutationResult.conversationId,
             }),
-            _graphTimings: [{ name: 'opportunity', durationMs: _updateGraphMs, agents: result.agentTimings ?? [] }],
+            // Neither update nor send invokes an agent, so this stage never reports sub-agent timings.
+            _graphTimings: [{ name: 'opportunity', durationMs: _updateGraphMs, agents: [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to update opportunity.");

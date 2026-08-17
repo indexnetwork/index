@@ -238,7 +238,7 @@ function createMockGraph(deps?: {
     thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
-  return { compiledGraph, mockDb, mockEmbedder, mockHydeGenerator, evaluator, evaluatorCalls };
+  return { compiledGraph, factory, mockDb, mockEmbedder, mockHydeGenerator, evaluator, evaluatorCalls };
 }
 
 function createMockGraphWithFnOverrides(deps?: {
@@ -2508,13 +2508,12 @@ describe('Opportunity Graph', () => {
       });
       const createSpy = spyOn(mockDb, 'createOpportunity');
 
-      const result = (await compiledGraph.invoke({
-        operationMode: 'create_introduction',
+      const result = (await factory.createIntroduction({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         networkId: 'idx-1' as Id<'networks'>,
         introductionEntities: introEntities,
         introductionHint: 'both AI devs',
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+      })) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeUndefined();
       expect(evaluatorCalls[0]?.minScore).toBe(0);
@@ -2531,15 +2530,14 @@ describe('Opportunity Graph', () => {
     });
 
     test('when requiredNetworkId does not match networkId returns error', async () => {
-      const { compiledGraph } = createMockGraph();
+      const { factory } = createMockGraph();
 
-      const result = (await compiledGraph.invoke({
-        operationMode: 'create_introduction',
+      const result = (await factory.createIntroduction({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         networkId: 'idx-1' as Id<'networks'>,
         introductionEntities: introEntities,
         requiredNetworkId: 'idx-other' as Id<'networks'>,
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+      })) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('scoped');
@@ -2550,12 +2548,11 @@ describe('Opportunity Graph', () => {
       const { compiledGraph, mockDb } = createMockGraph();
       spyOn(mockDb, 'opportunityExistsBetweenActors').mockResolvedValue(true);
 
-      const result = (await compiledGraph.invoke({
-        operationMode: 'create_introduction',
+      const result = (await factory.createIntroduction({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         networkId: 'idx-1' as Id<'networks'>,
         introductionEntities: introEntities,
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+      })) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('already exists');
@@ -2569,12 +2566,11 @@ describe('Opportunity Graph', () => {
         return true;
       });
 
-      const result = (await compiledGraph.invoke({
-        operationMode: 'create_introduction',
+      const result = (await factory.createIntroduction({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         networkId: 'idx-1' as Id<'networks'>,
         introductionEntities: introEntities,
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+      })) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('not members');
@@ -2582,30 +2578,28 @@ describe('Opportunity Graph', () => {
     });
 
     test('when evaluator returns no results uses fallback and returns one opportunity', async () => {
-      const { compiledGraph } = createMockGraph({ evaluatorResult: [] });
+      const { factory } = createMockGraph({ evaluatorResult: [] });
 
-      const result = (await compiledGraph.invoke({
-        operationMode: 'create_introduction',
+      const result = (await factory.createIntroduction({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         networkId: 'idx-1' as Id<'networks'>,
         introductionEntities: introEntities,
         introductionHint: 'both AI devs',
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+      })) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(1);
       expect(result.error).toBeUndefined();
     });
 
     test('rejects an unsafe user-authored introduction hint at persistence', async () => {
-      const { compiledGraph } = createMockGraph({ evaluatorResult: [] });
+      const { factory } = createMockGraph({ evaluatorResult: [] });
 
-      const result = await compiledGraph.invoke({
-        operationMode: 'create_introduction',
+      const result = await factory.createIntroduction({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         networkId: 'idx-1' as Id<'networks'>,
         introductionEntities: introEntities,
         introductionHint: 'Alice and Bob will both be at Edge Esmeralda.',
-      } as OpportunityGraphInvokeInput);
+      });
 
       expect(result.opportunities).toEqual([]);
     });
@@ -2919,15 +2913,14 @@ describe('Opportunity Graph', () => {
         updatedAt: new Date(),
         expiresAt: null,
       };
-      const { compiledGraph, mockDb } = createMockGraph();
+      const { factory, mockDb } = createMockGraph();
       spyOn(mockDb, 'getOpportunity').mockResolvedValue(draftOpportunity as Opportunity);
       const stampActionSpy = spyOn(mockDb, 'stampOpportunityActorAction').mockResolvedValue(null);
 
-      const result = (await compiledGraph.invoke({
-        operationMode: 'send',
+      const result = await factory.sendOpportunity({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         opportunityId,
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+      });
 
       expect(result.mutationResult?.success).toBe(true);
       expect(result.mutationResult?.opportunityId).toBe(opportunityId);
@@ -3649,13 +3642,9 @@ describe('Opportunity Graph', () => {
         undefined, // agentDispatcher
         async () => undefined, // queueNegotiateExisting
       );
-      const compiledGraph = factory.createGraph();
-
-      await compiledGraph.invoke({
+      await factory.negotiateExisting({
         userId: 'patient-user' as Id<'users'>,
-        operationMode: 'negotiate_existing' as const,
         opportunityId: 'opp-existing',
-        options: {},
       });
 
       // Negotiation should have been invoked with each opportunity actor's exact
@@ -3752,10 +3741,9 @@ describe('Opportunity Graph', () => {
         },
       );
 
-      await factory.createGraph().invoke({
+      await factory.approveIntroduction({
         userId: 'introducer-user' as Id<'users'>,
         opportunityId: 'opp-456',
-        operationMode: 'approve_introduction',
       });
 
       expect(approvalCalls).toHaveLength(1);

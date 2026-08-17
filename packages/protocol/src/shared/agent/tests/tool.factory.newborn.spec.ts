@@ -14,7 +14,7 @@ describe('createChatTools newborn callback propagation', () => {
     const originalCreateGraph = prototype.createGraph;
     let captured: StampNewbornOpportunitiesFn | undefined;
     prototype.createGraph = function (this: OpportunityGraphFactory) {
-      captured = (this as unknown as { stampNewbornOpportunities?: StampNewbornOpportunitiesFn }).stampNewbornOpportunities;
+      captured = this.deps.stampNewbornOpportunities;
       return originalCreateGraph.call(this);
     };
 

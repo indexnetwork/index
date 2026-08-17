@@ -66,8 +66,9 @@ describe("update_opportunity — state machine", () => {
       systemDb: {
         getOpportunity: async () => makeOpportunity("rejected"),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -84,8 +85,9 @@ describe("update_opportunity — state machine", () => {
       systemDb: {
         getOpportunity: async () => makeOpportunity("accepted"),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -101,8 +103,9 @@ describe("update_opportunity — state machine", () => {
       systemDb: {
         getOpportunity: async () => makeOpportunity("negotiating"),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -119,8 +122,9 @@ describe("update_opportunity — state machine", () => {
       systemDb: {
         getOpportunity: async () => makeOpportunity("pending"),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -139,8 +143,9 @@ describe("update_opportunity — actor guard", () => {
         // Opportunity only has OTHER_ID and a third party — not the caller
         getOpportunity: async () => makeOpportunity("pending", [OTHER_ID, "third-333"]),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -158,8 +163,9 @@ describe("update_opportunity — actor guard", () => {
       systemDb: {
         getOpportunity: async () => makeOpportunity("pending", [CALLER_ID, OTHER_ID]),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -201,8 +207,9 @@ describe("update_opportunity — network scope guard", () => {
       systemDb: {
         getOpportunity: async () => mixedNetworkOpportunity(OTHER_NETWORK, BOUND_NETWORK),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -220,8 +227,9 @@ describe("update_opportunity — network scope guard", () => {
       systemDb: {
         getOpportunity: async () => mixedNetworkOpportunity(BOUND_NETWORK, OTHER_NETWORK),
       },
-      graphs: {
-        opportunity: { invoke: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }) },
+      opportunityOperations: {
+        updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
+        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -285,7 +293,7 @@ describe("update_opportunity — uptake soft interlock", () => {
     });
     const deps = {
       systemDb: { getOpportunity: async () => pendingOpportunity() },
-      graphs: { opportunity: { invoke } },
+      opportunityOperations: { updateOpportunityStatus: invoke, sendOpportunity: invoke },
       findPendingQuestions,
       reportToolError: (_error: unknown, report: Record<string, unknown>) => options?.reports?.push(report),
     } as unknown as ToolDeps;

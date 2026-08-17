@@ -1,3 +1,6 @@
+import type { Id } from '../interfaces/database.interface.js';
+import type { OpportunityGraphDeps } from '../../opportunities/application/opportunity.graph.shared.js';
+import type { OpportunityMutationOutcome } from '../../opportunities/application/opportunity.graph.modes.js';
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
@@ -639,6 +642,12 @@ interface ToolDepsBindings {
     limit?: number;
     scope?: 'tool' | 'principal';
   }>;
+  /**
+   * The non-discovery opportunity operations (`update_opportunity` and its
+   * send variant). Defaults to the plain functions in
+   * `opportunity.graph.modes.ts`; injected by tests to observe the call.
+   */
+  opportunityOperations?: OpportunityOperations;
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;
@@ -843,4 +852,16 @@ export function redactSensitiveFields(value: unknown): unknown {
     }
   }
   return out;
+}
+
+/** The subset of opportunity modes the tool layer invokes. */
+export interface OpportunityOperations {
+  updateOpportunityStatus: (
+    deps: Pick<OpportunityGraphDeps, 'database'>,
+    request: { userId: Id<'users'>; opportunityId: string | undefined; newStatus: string | undefined },
+  ) => Promise<OpportunityMutationOutcome>;
+  sendOpportunity: (
+    deps: Pick<OpportunityGraphDeps, 'database' | 'queueNotification'>,
+    request: { userId: Id<'users'>; opportunityId: string | undefined },
+  ) => Promise<OpportunityMutationOutcome>;
 }
