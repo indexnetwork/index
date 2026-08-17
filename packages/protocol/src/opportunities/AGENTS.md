@@ -9,17 +9,19 @@ the consuming services (`services/api/src/services/opportunity.service.ts`,
 Prefer genuine `OpportunityPresenter` output — `presentHomeCard` for cards, `present` for
 accepted chat context. When presenter output is unavailable, a surface may either skip or
 use reasoning-derived fallback copy, but **only** through
-`opportunity.safe-presentation.ts` (`getSafePresentationOrSkip` / `safeFallbackSummary`).
+`application/opportunity.presentation.ts` (`getSafePresentationOrSkip` /
+`safeFallbackSummary`).
 
 Never render `interpretation.reasoning`, `matchReason`, or `opportunityReasoning`
 directly on a user-facing surface.
 
 ## Surfaces to inspect
 
-- `domain/opportunity.safe-presentation.ts` — the single sanitization primitive and each
-  surface's `allowFallback` policy
-- `application/opportunity.tools.ts` — persisted `list_opportunities` card building, and
-  MCP prose via `buildOpportunityPresentation`
+- `application/opportunity.presentation.ts` — the whole presentation cluster in one file:
+  the pure transforms, cache keys, the sanitization primitive with each surface's
+  `allowFallback` policy, the `OpportunityPresenter`, and the MCP prose renderer
+- `application/opportunity.tools.list.ts` — persisted `list_opportunities` card building
+  (MCP prose comes from `buildOpportunityPresentation` in the presentation cluster)
 - `application/opportunity.enricher.ts` — background-enrichment fallback paths where
   `homeCardPresentation` can be missing
 - `feed/feed.graph.ts` — persisted home-feed fallback cards and cache writes
@@ -34,7 +36,7 @@ directly on a user-facing surface.
 1. Grep the fallback chains:
 
    ```bash
-   rg -n "homeCardPresentation\?\.personalizedSummary|matchReason|interpretation\?\.reasoning|interpretation\.reasoning|reasoningSnippet|fallbackCard|buildMinimalOpportunityCard" packages/protocol/src/opportunity services/api/src
+   rg -n "homeCardPresentation\?\.personalizedSummary|matchReason|interpretation\?\.reasoning|interpretation\.reasoning|reasoningSnippet|fallbackCard|buildMinimalOpportunityCard" packages/protocol/src/opportunities services/api/src
    ```
 
 2. For every user-facing `mainText`, `personalizedSummary`, `description`,
