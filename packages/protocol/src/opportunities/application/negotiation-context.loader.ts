@@ -20,7 +20,7 @@
  */
 
 import type { NegotiationGraphDatabase, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
-import type { NegotiationOutcome, NegotiationTurn } from '../../negotiations/index.js';
+import type { NegotiationOutcome, NegotiationTurn } from '../../negotiations/negotiation.module.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('NegotiationContextLoader');

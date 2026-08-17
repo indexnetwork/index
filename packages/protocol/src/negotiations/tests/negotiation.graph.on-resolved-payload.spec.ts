@@ -3,8 +3,8 @@ config({ path: ".env.test", override: true });
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key";
 
 import { describe, it, expect } from "bun:test";
-import { negotiateCandidates, type NegotiationCandidate } from "../application/negotiation.graph.js";
-import type { NegotiationGraphLike } from "../domain/negotiation.state.js";
+import { negotiateCandidates, type NegotiationCandidate } from "../negotiation.graph.js";
+import type { NegotiationGraphLike } from "../negotiation.state.js";
 
 const sourceUser = {
   id: "source-1",

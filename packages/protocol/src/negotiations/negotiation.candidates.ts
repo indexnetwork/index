@@ -6,10 +6,10 @@
  * everything here.
  */
 
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import type { TraceEmitter } from "../../shared/observability/request-context.js";
-import type { OpportunityStatus } from "../../shared/interfaces/database.interface.js";
-import { type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "../domain/negotiation.state.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import type { TraceEmitter } from "../shared/observability/request-context.js";
+import type { OpportunityStatus } from "../shared/interfaces/database.interface.js";
+import { type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "./negotiation.state.js";
 import { negotiateCandidatesLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 
 export interface NegotiationCandidate {
@@ -59,7 +59,7 @@ export type OnNegotiationResolved = (entry: {
   accepted: NegotiationResult | null;
   turns: NegotiationTurn[];
   outcome: NegotiationOutcome;
-  continuationReceipt?: import('../../shared/interfaces/database.interface.js').NegotiationContinuationReceipt;
+  continuationReceipt?: import('../shared/interfaces/database.interface.js').NegotiationContinuationReceipt;
 }) => Promise<void>;
 
 /**
@@ -88,7 +88,7 @@ export async function negotiateCandidates(
     /** Deterministic settlement key paired with resumeFromTaskId. */
     continuationSettlementId?: string;
     /** Current durable lease/fence for this exact continuation successor. */
-    continuationExecution?: import('../../shared/interfaces/database.interface.js').NegotiationContinuationExecution;
+    continuationExecution?: import('../shared/interfaces/database.interface.js').NegotiationContinuationExecution;
   },
 ): Promise<NegotiationResult[]> {
   const {

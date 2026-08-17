@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
 // Memory vocabulary lives in the domain layer; re-export for backward compat.
-export { NEGOTIATOR_MEMORY_KINDS } from "../domain/negotiation.memory.js";
-export type { DistilledMemoryKind } from "../domain/negotiation.memory.js";
-import type { DistilledMemoryKind } from "../domain/negotiation.memory.js";
-import { NEGOTIATOR_MEMORY_KINDS } from "../domain/negotiation.memory.js";
+export { NEGOTIATOR_MEMORY_KINDS } from "./negotiation.memory.js";
+export type { DistilledMemoryKind } from "./negotiation.memory.js";
+import type { DistilledMemoryKind } from "./negotiation.memory.js";
+import { NEGOTIATOR_MEMORY_KINDS } from "./negotiation.memory.js";
 
 const reflectLog = protocolLogger("NegotiationReflector");
 

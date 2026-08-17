@@ -16,8 +16,8 @@
  */
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "./question.schema.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../negotiations/index.js";
-import type { NegotiationConsultationReason } from "../negotiations/index.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../negotiations/negotiation.module.js";
+import type { NegotiationConsultationReason } from "../negotiations/negotiation.module.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
 

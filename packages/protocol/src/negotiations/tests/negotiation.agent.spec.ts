@@ -16,10 +16,10 @@ mock.module("../../shared/agent/model.config", () => ({
   }),
 }));
 
-const { IndexNegotiator } = await import("../application/negotiation.agent.js");
+const { IndexNegotiator } = await import("../negotiation.agent.js");
 
 afterAll(() => mock.restore());
-import type { UserNegotiationContext, SeedAssessment } from "../domain/negotiation.state.js";
+import type { UserNegotiationContext, SeedAssessment } from "../negotiation.state.js";
 
 const mlUser: UserNegotiationContext = {
   id: 'user-alice',

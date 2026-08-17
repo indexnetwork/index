@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { expectedNegotiationSpeaker } from '../domain/negotiation.expected-speaker.js';
+import { expectedNegotiationSpeaker } from '../negotiation.expected-speaker.js';
 
 const participants = { sourceUserId: 'source', candidateUserId: 'candidate' };
 const turn = (senderId: string, action?: string) => ({

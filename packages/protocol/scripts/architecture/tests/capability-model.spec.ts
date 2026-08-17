@@ -22,11 +22,12 @@ describe("protocol capability model", () => {
 
   test("recognizes capability barrels and leaves neutral shared code unclassified", () => {
     expect(barrelCapabilityForSourcePath("opportunities/index.ts")).toBe("opportunities");
-    expect(barrelCapabilityForSourcePath("negotiations/index.ts")).toBe("negotiations");
-    expect(barrelCapabilityForSourcePath("negotiations/application/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("negotiations/negotiation.module.ts")).toBe("negotiations");
+    expect(barrelCapabilityForSourcePath("negotiations/index.ts")).toBeUndefined();
     // Flattened capabilities use named module barrels rather than `index.ts`.
     expect(barrelCapabilityForSourcePath("intents/intent.module.ts")).toBe("intents");
     expect(barrelCapabilityForSourcePath("contexts/context.module.ts")).toBe("contexts");
+    expect(barrelCapabilityForSourcePath("negotiations/negotiation.module.ts")).toBe("negotiations");
     expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBe("questions");
     expect(barrelCapabilityForSourcePath("agents/agent.module.ts")).toBe("agents");
     expect(barrelCapabilityForSourcePath("contacts/contact.module.ts")).toBe("contacts");

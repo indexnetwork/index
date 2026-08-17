@@ -6,7 +6,7 @@
  */
 import type { QuestionMode, QuestionPurpose } from "./question.schema.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, RecoveryIntentContext, UptakeNegotiationContext } from "./question.input.js";
-import { consultationPromptFor } from "../negotiations/index.js";
+import { consultationPromptFor } from "../negotiations/negotiation.module.js";
 
 /**
  * Questions Under Discussion taxonomy, appended to every preset's system prompt.

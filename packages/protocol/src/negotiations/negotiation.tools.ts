@@ -1,22 +1,22 @@
 import { z } from 'zod';
 
-import type { DefineTool } from '../../shared/agent/tool.helpers.js';
-import type { NegotiationToolDeps } from '../ports/negotiation.tools.port.js';
-import { success, error } from '../../shared/agent/tool.helpers.js';
-import type { NegotiationOpportunityLifecycle } from '../../shared/interfaces/database.interface.js';
+import type { DefineTool } from '../shared/agent/tool.helpers.js';
+import type { NegotiationToolDeps } from './negotiation.tools.port.js';
+import { success, error } from '../shared/agent/tool.helpers.js';
+import type { NegotiationOpportunityLifecycle } from '../shared/interfaces/database.interface.js';
 import { IndexNegotiator } from './negotiation.agent.js';
-import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationOutcome } from '../domain/negotiation.state.js';
-import { allowedActionsFor, isTerminalAction, readProtocolVersion, rejectActionFor, resolveSeat, seatViolationMessage } from '../domain/negotiation.protocol.js';
-import { NEGOTIATION_ACTIONS } from '../../shared/schemas/negotiation-state.schema.js';
-import type { NegotiationTurnPayload } from '../../shared/interfaces/agent-dispatcher.interface.js';
-import { protocolLogger } from '../../shared/observability/protocol.logger.js';
-import { focusedIntentId, focusedNetworkId } from '../../shared/agent/tool.scope.js';
+import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationOutcome } from './negotiation.state.js';
+import { allowedActionsFor, isTerminalAction, readProtocolVersion, rejectActionFor, resolveSeat, seatViolationMessage } from './negotiation.protocol.js';
+import { NEGOTIATION_ACTIONS } from '../shared/schemas/negotiation-state.schema.js';
+import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatcher.interface.js';
+import { protocolLogger } from '../shared/observability/protocol.logger.js';
+import { focusedIntentId, focusedNetworkId } from '../shared/agent/tool.scope.js';
 import { readAuthorizedNegotiationDetail } from './negotiation.detail-reader.js';
-import { buildLifecycleNarration } from '../domain/negotiation.lifecycle-narration.js';
-import { isNegotiationTurnCapReached } from '../domain/negotiation.turn-cap.js';
-import { expectedNegotiationSpeaker } from '../domain/negotiation.expected-speaker.js';
+import { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
+import { isNegotiationTurnCapReached } from './negotiation.turn-cap.js';
+import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
 
-export { buildLifecycleNarration } from '../domain/negotiation.lifecycle-narration.js';
+export { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
 
 const logger = protocolLogger('ChatTools:Negotiation');
 

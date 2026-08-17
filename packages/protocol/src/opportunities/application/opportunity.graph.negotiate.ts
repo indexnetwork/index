@@ -11,7 +11,7 @@
 
 import type { ActiveIntent, OpportunityActor } from '../../shared/interfaces/database.interface.js';
 import { requestContext } from '../../shared/observability/request-context.js';
-import { AMBIENT_PARK_WINDOW_MS, negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from '../../negotiations/index.js';
+import { AMBIENT_PARK_WINDOW_MS, negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from '../../negotiations/negotiation.module.js';
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from '../domain/negotiation-summary.builder.js';
 import { resolveOpportunityActorIntent } from '../domain/opportunity.actor.js';
 import { buildPrioritizedNegotiationIntents, negotiationIncludesOtherIntents } from './opportunity.existing-negotiation.js';

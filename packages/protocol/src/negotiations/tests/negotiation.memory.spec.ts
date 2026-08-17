@@ -1,9 +1,9 @@
 import { describe, it, expect } from "bun:test";
 
-import { renderNegotiatorMemorySection, renderNegotiatorChatMemorySection, type NegotiatorMemoryEntry } from "../domain/negotiation.memory.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
-import { NegotiationScreener, type NegotiationScreenerInput } from "../application/negotiation.screen.js";
-import type { UserNegotiationContext } from "../domain/negotiation.state.js";
+import { renderNegotiatorMemorySection, renderNegotiatorChatMemorySection, type NegotiatorMemoryEntry } from "../negotiation.memory.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
+import { NegotiationScreener, type NegotiationScreenerInput } from "../negotiation.screen.js";
+import type { UserNegotiationContext } from "../negotiation.state.js";
 
 /**
  * IND-407 (P5.3) — negotiator memory injection, prompt-assembly layer.

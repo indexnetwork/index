@@ -2,23 +2,23 @@
  * Negotiation graph, stage 4: persist the outcome and fan out follow-ups.
  */
 
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import { requestContext } from "../../shared/observability/request-context.js";
-import type { NegotiationContinuationReceipt } from "../../shared/interfaces/database.interface.js";
-import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import { type NegotiationTurn, type NegotiationOutcome } from "../domain/negotiation.state.js";
-import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "../domain/negotiation.protocol.js";
-import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "../domain/negotiation.consultation-policy.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { requestContext } from "../shared/observability/request-context.js";
+import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
+import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
+import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
+import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
-import { configuredScreenMode } from "../domain/negotiation.screen.contracts.js";
-import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "../domain/negotiation.deadlock.js";
-import type { NegotiationSeat, NegotiationProtocolVersion } from "../../shared/schemas/negotiation-state.schema.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from '../domain/negotiation.question-safety.js';
-import { buildIntentSnapshots } from "../domain/negotiation.intent-snapshot-provenance.js";
-import { holdsNegotiationConversationLock } from "../domain/negotiation.task-lock-policy.js";
-import { isNegotiationTurnCapReached } from "../domain/negotiation.turn-cap.js";
-import { expectedNegotiationSpeaker } from "../domain/negotiation.expected-speaker.js";
-import { buildSeededAttribution } from '../negotiation.attribution.js';
+import { configuredScreenMode } from "./negotiation.screen.contracts.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
+import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
+import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
+import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
+import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
+import { buildSeededAttribution } from './negotiation.attribution.js';
 import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 

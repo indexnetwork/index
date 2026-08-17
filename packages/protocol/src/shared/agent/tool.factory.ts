@@ -8,7 +8,7 @@ import { HydeGraphFactory } from "../../discovery/hyde.graph.js";
 import { HydeGenerator } from "../../discovery/hyde.generator.js";
 import { LensInferrer } from "../../discovery/lens.inferrer.js";
 import { Networks } from "../../networks/network.module.js";
-import { NegotiationGraphFactory } from "../../negotiations/index.js";
+import { NegotiationGraphFactory } from "../../negotiations/negotiation.module.js";
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 
@@ -25,7 +25,7 @@ import { createContactTools } from "../../contacts/contact.module.js";
 // rule by design): importing agents/agent.module.js here would pull in the
 // chat personas, which import this module back -- a runtime cycle.
 import { createAgentTools } from "../../agents/agent.tools.js";
-import { createNegotiationTools } from "../../negotiations/index.js";
+import { createNegotiationTools } from "../../negotiations/negotiation.module.js";
 import { createPremiseTools } from "../../premises/premise.tools.js";
 import { createQuestionerTools, createAskUserQuestionTools } from "../../questions/question.module.js";
 import type { OpportunityOwnerApprovalDeps } from "../../opportunities/ports/opportunity.tools.port.js";

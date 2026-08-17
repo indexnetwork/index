@@ -4,7 +4,7 @@ config({ path: ".env.test", override: true });
 import { describe, expect, it } from "bun:test";
 
 import { loadNegotiationContext, type NegotiationContextDatabase } from "../application/negotiation-context.loader.js";
-import type { NegotiationOutcome } from "../../negotiations/domain/negotiation.state.js";
+import type { NegotiationOutcome } from "../../negotiations/negotiation.state.js";
 
 const OPPORTUNITY_ID = "opp-123";
 

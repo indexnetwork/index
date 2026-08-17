@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { isSafeNegotiationQuestionText, negotiationQuestionSettlementId, validateInflightAskUserFields } from '../domain/negotiation.question-safety.js';
+import { isSafeNegotiationQuestionText, negotiationQuestionSettlementId, validateInflightAskUserFields } from '../negotiation.question-safety.js';
 
 describe('negotiation question privacy gate', () => {
   it('accepts purpose-built neutral structured fields', () => {

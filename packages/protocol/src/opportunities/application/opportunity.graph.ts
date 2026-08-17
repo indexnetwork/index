@@ -24,7 +24,7 @@ import { OpportunityGraphState } from '../domain/opportunity.state.js';
 import { OpportunityEvaluator } from './opportunity.evaluator.js';
 import type { OpportunityGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { NegotiationGraphLike } from '../../negotiations/index.js';
+import type { NegotiationGraphLike } from '../../negotiations/negotiation.module.js';
 import type { AgentDispatcher } from '../../shared/interfaces/agent-dispatcher.interface.js';
 import { discoveryEvaluatorMinScore, discoveryMinSimilarity, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from '../discovery.env.js';
 import type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';

@@ -19,8 +19,8 @@
  */
 import { z } from "zod";
 
-import { AskUserPayloadSchema } from "../../shared/schemas/negotiation-state.schema.js";
-import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../../shared/schemas/negotiation-state.schema.js";
+import { AskUserPayloadSchema } from "../shared/schemas/negotiation-state.schema.js";
+import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
 // ─── Shared assessment fragment ──────────────────────────────────────────────
 

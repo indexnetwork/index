@@ -3,7 +3,7 @@
  * `DiscoveryNegotiation` / `DiscoverySummary` shapes consumed by the question
  * generator. No DB access, no LLM — safe to import from anywhere.
  */
-import type { NegotiationTurn, NegotiationOutcome } from "../../negotiations/index.js";
+import type { NegotiationTurn, NegotiationOutcome } from "../../negotiations/negotiation.module.js";
 import type { DiscoveryNegotiation, DiscoveryOutcome, DiscoverySummary, DiscoveryTurn, NegotiationRole } from "../../shared/schemas/discovery-question.schema.js";
 
 /**

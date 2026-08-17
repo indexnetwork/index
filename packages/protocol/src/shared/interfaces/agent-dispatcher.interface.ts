@@ -11,7 +11,7 @@
  */
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
-import type { NegotiatorMemoryEntry } from '../../negotiations/domain/negotiation.memory.js';
+import type { NegotiatorMemoryEntry } from '../../negotiations/negotiation.memory.js';
 import type { AttributedPriorDialogue } from '../../negotiations/negotiation.attribution.js';
 import type { NegotiationPrivateConsultation } from './database.interface.js';
 import type { NegotiationContinuationTimeoutIdentity } from './negotiation-events.interface.js';

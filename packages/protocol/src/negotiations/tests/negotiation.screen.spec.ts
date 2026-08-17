@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { NegotiationScreener, ScreenDecisionSchema, configuredScreenMode, NEGOTIATION_SCREEN_MODES, type NegotiationScreenerInput } from "../application/negotiation.screen.js";
+import { NegotiationScreener, ScreenDecisionSchema, configuredScreenMode, NEGOTIATION_SCREEN_MODES, type NegotiationScreenerInput } from "../negotiation.screen.js";
 
 /**
  * IND-398 — screener unit behavior.

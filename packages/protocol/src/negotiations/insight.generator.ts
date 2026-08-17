@@ -8,11 +8,11 @@
 
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import { log } from "../../shared/observability/log.js";
-import { Timed } from "../../shared/observability/performance.js";
+import { log } from "../shared/observability/log.js";
+import { Timed } from "../shared/observability/performance.js";
 
-import { createResilientModel } from "../../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+import { createResilientModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = log.lib.from("NegotiationInsightsGenerator");
 

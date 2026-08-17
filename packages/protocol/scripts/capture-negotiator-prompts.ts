@@ -13,7 +13,7 @@
  * prompt specs, so no OPENROUTER_API_KEY round-trip happens. A dummy key is
  * still required because `createStructuredModel` is constructed eagerly.
  */
-import { IndexNegotiator, type NegotiationAgentInput } from "../src/negotiations/application/negotiation.agent.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../src/negotiations/negotiation.agent.js";
 import { PROMPT_MATRIX } from "../src/negotiations/tests/fixtures/negotiator-prompt-matrix.js";
 
 class Capturing extends IndexNegotiator {

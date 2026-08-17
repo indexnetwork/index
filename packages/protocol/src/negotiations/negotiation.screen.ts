@@ -1,10 +1,10 @@
-import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import type { UserNegotiationContext, SeedAssessment } from "../../shared/schemas/negotiation-state.schema.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "../domain/negotiation.memory.js";
-import type { NegotiationTurn } from "../domain/negotiation.state.js";
-import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "../negotiation.attribution.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import type { UserNegotiationContext, SeedAssessment } from "../shared/schemas/negotiation-state.schema.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import type { NegotiationTurn } from "./negotiation.state.js";
+import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "./negotiation.attribution.js";
 
 // Re-export domain screen contracts for backward-compat consumers of this module path.
 export {
@@ -12,14 +12,14 @@ export {
   configuredScreenMode,
   ScreenDecisionSchema,
   blocksNegotiationBeforeFirstTurn,
-} from "../domain/negotiation.screen.contracts.js";
+} from "./negotiation.screen.contracts.js";
 export type {
   NegotiationScreenMode,
   ScreenDecision,
   ScreenDecisionRecord,
-} from "../domain/negotiation.screen.contracts.js";
-import type { ScreenDecision, ScreenDecisionRecord } from "../domain/negotiation.screen.contracts.js";
-import { ScreenDecisionSchema } from "../domain/negotiation.screen.contracts.js";
+} from "./negotiation.screen.contracts.js";
+import type { ScreenDecision, ScreenDecisionRecord } from "./negotiation.screen.contracts.js";
+import { ScreenDecisionSchema } from "./negotiation.screen.contracts.js";
 
 const screenLog = protocolLogger("NegotiationScreener");
 

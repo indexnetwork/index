@@ -1,4 +1,4 @@
-import type { NegotiationAgentInput } from "../../application/negotiation.agent.js";
+import type { NegotiationAgentInput } from "../../negotiation.agent.js";
 
 /**
  * Fixed input matrix for the negotiator system-prompt byte-identity guard

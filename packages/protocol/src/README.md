@@ -24,7 +24,8 @@ packages/protocol/src/
                       proposal, and tools sit flat beside the module)
   maintenance/      Maintenance graph (radar health, opportunity expiration)
   mcp/              MCP server + elicitation builder/dispatcher
-  negotiations/     Bilateral negotiation domain and application workflows
+  negotiations/     Bilateral negotiation workflows, policy, and tools
+    negotiation.module.ts The sole capability surface; implementation files sit beside it
   networks/         The community capability, behind one class (Networks)
     network.module.ts The sole public surface; everything beside it is private
                      (community lifecycle graph, membership graph, signal
@@ -66,7 +67,7 @@ anywhere.
 | Intent Indexer | `networks/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
 | Radar | `opportunities/radar/radar.graph.ts` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 | Maintenance | `maintenance/maintenance.graph.ts` | Periodic maintenance tasks (radar health, opportunity expiration) |
-| Negotiation | `negotiations/application/negotiation.graph.ts` | Multi-turn bilateral negotiation flows |
+| Negotiation | `negotiations/negotiation.graph.ts` | Multi-turn bilateral negotiation flows |
 
 ## Agents
 
@@ -100,9 +101,9 @@ anywhere.
 | Opportunity Introducer | `opportunities/application/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | Questioner Agent | `questions/question.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
 | Contact Inviter | `contacts/application/contact.inviter.ts` | Invite flow — generates personalized invite messages |
-| Index Negotiator | `negotiations/application/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
-| Negotiation Insights Generator | `negotiations/application/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
-| Negotiation Summarizer | `negotiations/application/negotiation.summarizer.ts` | Negotiation — builds the discovery negotiation digest (deterministic fallback when LLM unavailable) |
+| Index Negotiator | `negotiations/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
+| Negotiation Insights Generator | `negotiations/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
+| Negotiation Summarizer | `negotiations/negotiation.summarizer.ts` | Negotiation — builds the discovery negotiation digest (deterministic fallback when LLM unavailable) |
 
 ## Tools (Chat)
 
@@ -117,7 +118,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `opportunities/application/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
 | `contacts/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
 | `agents/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
-| `negotiations/application/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
+| `negotiations/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
 | `questions/question.tools.ts` | `read_pending_questions` |
 | `shared/agent/utility.tools.ts` | `scrape_url`³, `read_docs` |
 

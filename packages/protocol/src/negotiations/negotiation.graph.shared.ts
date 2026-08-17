@@ -9,29 +9,29 @@
 
 import { StateGraph } from "@langchain/langgraph";
 
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import { requestContext, type TraceEmitter } from "../../shared/observability/request-context.js";
-import type { NegotiationGraphDatabase, OpportunityStatus, NegotiationContinuationReceipt } from "../../shared/interfaces/database.interface.js";
-import type { NegotiationTimeoutQueue } from "../../shared/interfaces/negotiation-events.interface.js";
-import type { AgentDispatcher, NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "../domain/negotiation.state.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { requestContext, type TraceEmitter } from "../shared/observability/request-context.js";
+import type { NegotiationGraphDatabase, OpportunityStatus, NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
+import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
+import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
+import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
-import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "../domain/negotiation.protocol.js";
-import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "../domain/negotiation.consultation-policy.js";
+import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, NegotiationScreener, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
-import { configuredScreenMode } from "../domain/negotiation.screen.contracts.js";
-import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "../domain/negotiation.deadlock.js";
-import type { NegotiationSeat, NegotiationProtocolVersion } from "../../shared/schemas/negotiation-state.schema.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
+import { configuredScreenMode } from "./negotiation.screen.contracts.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
-import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "../domain/negotiation.memory.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from '../domain/negotiation.question-safety.js';
-import { buildIntentSnapshots } from "../domain/negotiation.intent-snapshot-provenance.js";
-import { holdsNegotiationConversationLock } from "../domain/negotiation.task-lock-policy.js";
-import { isNegotiationTurnCapReached } from "../domain/negotiation.turn-cap.js";
-import { expectedNegotiationSpeaker } from "../domain/negotiation.expected-speaker.js";
-import { attributedDialogueIsEmpty, buildSeededAttribution, combineAttributedDialogue, type AttributedPriorDialogue, type TaskAttribution } from '../negotiation.attribution.js';
+import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
+import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
+import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
+import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
+import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
+import { attributedDialogueIsEmpty, buildSeededAttribution, combineAttributedDialogue, type AttributedPriorDialogue, type TaskAttribution } from './negotiation.attribution.js';
 
 /** The graph's channel state, as every node sees it. */
 export type NegotiationState = typeof NegotiationGraphState.State;
@@ -179,6 +179,6 @@ export function buildAttributedDialogue(
   const currentSessionTurns = turnsFromMessages(
     state.messages.filter((m) => (m as { taskId?: string | null }).taskId === state.taskId),
   );
-  const dialogue = combineAttributedDialogue(state.priorAttribution as import('../negotiation.attribution.js').SeededAttribution, currentSessionTurns);
+  const dialogue = combineAttributedDialogue(state.priorAttribution as import('./negotiation.attribution.js').SeededAttribution, currentSessionTurns);
   return attributedDialogueIsEmpty(dialogue) ? null : dialogue;
 }

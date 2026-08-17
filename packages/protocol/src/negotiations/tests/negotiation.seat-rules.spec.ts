@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
-import { NegotiationGraphFactory } from "../application/negotiation.graph.js";
-import { NegotiationGraphState } from "../domain/negotiation.state.js";
-import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
-import type { NegotiationTurn } from "../domain/negotiation.state.js";
+import { NegotiationGraphFactory } from "../negotiation.graph.js";
+import { NegotiationGraphState } from "../negotiation.state.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
+import type { NegotiationTurn } from "../negotiation.state.js";
 
 /**
  * IND-397 — seat-scoped turn schemas + counterparty-only accept (graph level).

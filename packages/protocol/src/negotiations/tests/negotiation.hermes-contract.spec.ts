@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { HermesNegotiationResponseSchema, HERMES_SHARED_MESSAGE_TEMPLATES, allowedHermesActionsFor, buildHermesNegotiationTurn } from '../domain/negotiation.hermes-contract.js';
+import { HermesNegotiationResponseSchema, HERMES_SHARED_MESSAGE_TEMPLATES, allowedHermesActionsFor, buildHermesNegotiationTurn } from '../negotiation.hermes-contract.js';
 
 describe('Hermes negotiation response contract', () => {
   it('accepts only the closed action and role-alignment fields', () => {

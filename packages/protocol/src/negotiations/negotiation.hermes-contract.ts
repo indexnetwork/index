@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { NegotiationAction, NegotiationTurn } from '../../shared/schemas/negotiation-state.schema.js';
+import type { NegotiationAction, NegotiationTurn } from '../shared/schemas/negotiation-state.schema.js';
 
 /** Model-visible directives for the dedicated Hermes negotiation bridge. */
 export const HermesNegotiationActionSchema = z.enum([

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { AskUserPayloadSchema } from '../../shared/schemas/negotiation-state.schema.js';
-import { consultationPromptFor } from '../domain/negotiation.consultation-policy.js';
+import { consultationPromptFor } from '../negotiation.consultation-policy.js';
 
 describe('closed owner consultation input', () => {
   it.each([

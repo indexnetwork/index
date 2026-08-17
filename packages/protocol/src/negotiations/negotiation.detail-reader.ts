@@ -1,8 +1,8 @@
-import type { NegotiationOpportunityLifecycle } from '../../shared/interfaces/database.interface.js';
-import { expectedNegotiationSpeaker } from '../domain/negotiation.expected-speaker.js';
-import { buildLifecycleNarration } from '../domain/negotiation.lifecycle-narration.js';
-import { allowedActionsFor, readProtocolVersion, resolveSeat } from '../domain/negotiation.protocol.js';
-import type { SeedAssessment, UserNegotiationContext } from '../domain/negotiation.state.js';
+import type { NegotiationOpportunityLifecycle } from '../shared/interfaces/database.interface.js';
+import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
+import { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
+import { allowedActionsFor, readProtocolVersion, resolveSeat } from './negotiation.protocol.js';
+import type { SeedAssessment, UserNegotiationContext } from './negotiation.state.js';
 
 export interface AuthorizedNegotiationDetailTask {
   id: string;

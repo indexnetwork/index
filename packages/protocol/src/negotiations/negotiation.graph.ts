@@ -8,18 +8,18 @@
 
 import { StateGraph } from "@langchain/langgraph";
 
-import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
-import type { NegotiationTimeoutQueue } from "../../shared/interfaces/negotiation-events.interface.js";
-import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import { NegotiationGraphState } from "../domain/negotiation.state.js";
+import type { NegotiationGraphDatabase } from "../shared/interfaces/database.interface.js";
+import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
+import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
+import { NegotiationGraphState } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { blocksNegotiationBeforeFirstTurn, NegotiationScreener } from "./negotiation.screen.js";
-import { configuredScreenMode } from "../domain/negotiation.screen.contracts.js";
-import { isTerminalAction } from "../domain/negotiation.protocol.js";
-import { isNegotiationTurnCapReached } from "../domain/negotiation.turn-cap.js";
-import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
+import { configuredScreenMode } from "./negotiation.screen.contracts.js";
+import { isTerminalAction } from "./negotiation.protocol.js";
+import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
+import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
-import type { NegotiatorMemoryRetrieveFn } from "../domain/negotiation.memory.js";
+import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 import { initNode } from "./negotiation.graph.init.js";
 import { screenNode } from "./negotiation.graph.screen.js";

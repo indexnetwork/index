@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "bun:test";
-import { IndexNegotiator, type NegotiationAgentInput } from "../application/negotiation.agent.js";
-import { NEGOTIATOR_STANCES, DEFAULT_NEGOTIATOR_STANCE, configuredNegotiatorStance, stanceAppliesValueBar, stanceQueryMatchIsNecessaryNotSufficient, stanceResolvesDeadlockByStalemate, stanceJobFraming, stanceActionRules, stanceQuerySatisfiedRule, type NegotiatorStance } from "../domain/negotiation.stance.contracts.js";
-import { renderBargainingShiftSection } from "../domain/negotiation.deadlock.js";
+import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
+import { NEGOTIATOR_STANCES, DEFAULT_NEGOTIATOR_STANCE, configuredNegotiatorStance, stanceAppliesValueBar, stanceQueryMatchIsNecessaryNotSufficient, stanceResolvesDeadlockByStalemate, stanceJobFraming, stanceActionRules, stanceQuerySatisfiedRule, type NegotiatorStance } from "../negotiation.stance.contracts.js";
+import { renderBargainingShiftSection } from "../negotiation.deadlock.js";
 import { PROMPT_MATRIX } from "./fixtures/negotiator-prompt-matrix.js";
 import GOLDEN from "./fixtures/negotiator-advocate-prompts.golden.json" with { type: "json" };
 

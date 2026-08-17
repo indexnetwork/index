@@ -1,4 +1,4 @@
-import type { NegotiationOpportunityLifecycle, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
+import type { NegotiationOpportunityLifecycle, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 
 const DIRECT_CONVERSATION_EVIDENCE_UNAVAILABLE = 'not_provided' as const;
 

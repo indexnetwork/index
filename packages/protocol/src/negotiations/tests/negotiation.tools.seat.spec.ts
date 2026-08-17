@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { createNegotiationTools } from "../application/negotiation.tools.js";
+import { createNegotiationTools } from "../negotiation.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown ? (...args: any[]) => any : T extends object ? { [K in keyof T]?: Fixture<T[K]> } : T;

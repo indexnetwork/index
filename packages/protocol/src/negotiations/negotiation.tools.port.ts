@@ -1,6 +1,6 @@
-import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
-import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import type { NegotiationTimeoutQueue } from "../../shared/interfaces/negotiation-events.interface.js";
+import type { NegotiationGraphDatabase } from "../shared/interfaces/database.interface.js";
+import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
+import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
 
 /**
  * Host capabilities consumed by the negotiation tool factory.

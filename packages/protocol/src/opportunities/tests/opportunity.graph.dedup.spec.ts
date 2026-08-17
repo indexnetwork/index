@@ -18,7 +18,7 @@ import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../a
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { NegotiationGraphLike } from '../../negotiations/domain/negotiation.state.js';
+import type { NegotiationGraphLike } from '../../negotiations/negotiation.state.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 
 // ---------------------------------------------------------------------------

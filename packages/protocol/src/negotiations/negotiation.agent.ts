@@ -1,14 +1,14 @@
-import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "../domain/negotiation.state.js";
-import { turnSchemaFor, fallbackActionFor } from "../domain/negotiation.protocol.js";
-import type { NegotiationSeat, NegotiationProtocolVersion } from "../../shared/schemas/negotiation-state.schema.js";
-import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../../shared/interfaces/database.interface.js";
-import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "../domain/negotiation.memory.js";
-import { renderBargainingShiftSection } from "../domain/negotiation.deadlock.js";
-import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stanceQuerySatisfiedRule } from "../domain/negotiation.stance.contracts.js";
-import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "../negotiation.attribution.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "./negotiation.state.js";
+import { turnSchemaFor, fallbackActionFor } from "./negotiation.protocol.js";
+import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
+import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
+import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import { renderBargainingShiftSection } from "./negotiation.deadlock.js";
+import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stanceQuerySatisfiedRule } from "./negotiation.stance.contracts.js";
+import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "./negotiation.attribution.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
 const agentLog = protocolLogger("IndexNegotiator");
 

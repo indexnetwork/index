@@ -14,8 +14,8 @@ import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type
 import type { CandidateProfile, EvaluatorEntity, EvaluatorInput } from './opportunity.evaluator.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
-import type { NegotiationGraphLike } from '../../negotiations/index.js';
-import { ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs } from '../../negotiations/index.js';
+import type { NegotiationGraphLike } from '../../negotiations/negotiation.module.js';
+import { ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs } from '../../negotiations/negotiation.module.js';
 import type { AgentDispatcher } from '../../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { renderNetworkContext } from '../../shared/network/metadata.renderer.js';

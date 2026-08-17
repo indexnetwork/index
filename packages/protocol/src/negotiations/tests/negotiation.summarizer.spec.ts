@@ -19,7 +19,7 @@ mock.module("../../shared/agent/model.config", () => ({
   }),
 }));
 
-const { NegotiationSummarizer, buildFallbackDigest } = await import("../application/negotiation.summarizer.js");
+const { NegotiationSummarizer, buildFallbackDigest } = await import("../negotiation.summarizer.js");
 
 afterAll(() => mock.restore());
 
