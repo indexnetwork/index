@@ -60,3 +60,6 @@ apps/mac/Resources/index.html
 
 # Root-only Pi subagent runtime state; nested/source artifacts remain visible.
 /.pi-subagents/
+
+# Local-only agent/LLM configuration, kept out of the repo.
+/ignored/
