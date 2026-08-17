@@ -3,8 +3,8 @@ config({ path: ".env.test", override: true });
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key-for-unit-tests";
 
 import { describe, it, expect } from "bun:test";
-import { QuestionerAgent } from "../../questions/application/question.agent.js";
-import type { QuestionerInput, IntentContext, NegotiationContext } from "../../questions/application/question.input.js";
+import { QuestionerAgent } from "../question.agent.js";
+import type { QuestionerInput, IntentContext, NegotiationContext } from "../question.input.js";
 
 const okOption = { label: "A", description: "desc-a" };
 

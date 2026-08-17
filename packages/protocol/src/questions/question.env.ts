@@ -1,5 +1,5 @@
 /**
- * questions/application/question.env — centralized question-generation env accessors.
+ * questions/question.env — centralized question-generation env accessors.
  *
  * Naming scheme (one prefix, hierarchical):
  *
@@ -18,9 +18,6 @@
  * All reads go through this module — do not read these variables via
  * `process.env` elsewhere. Values are read on every call (no caching) so tests
  * and long-lived processes observe changes.
- *
- * IND-547: canonical home — previously questioner/questioner.env.ts.
- * Legacy path is a thin compatibility shim pointing here.
  */
 
 export const CHAT_QUESTION_WAIT_TIMEOUT_MS_DEFAULT = 240_000;

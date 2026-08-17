@@ -1,5 +1,5 @@
 /**
- * questions/application/question.agent — QuestionerAgent.
+ * questions/question.agent — QuestionerAgent.
  *
  * Stateless, mode-driven agent that generates structured decision questions
  * from arbitrary protocol contexts.
@@ -8,17 +8,14 @@
  * single public `invoke()` method receives the full context per call.
  * The LLM model is bound once at construction; the preset (system prompt +
  * builder) is selected per invocation based on `input.mode`.
- *
- * IND-547: canonical home — previously questioner/questioner.agent.ts.
- * Legacy path is a thin compatibility shim pointing here.
  */
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import { QuestionGeneratorResponseSchema, type Question, type QuestionGenerationResult, type QuestionStrategy, type QuestionWithStrategy } from "../domain/question.schema.js";
-import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { Timed } from "../../shared/observability/performance.js";
+import { QuestionGeneratorResponseSchema, type Question, type QuestionGenerationResult, type QuestionStrategy, type QuestionWithStrategy } from "./question.schema.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { Timed } from "../shared/observability/performance.js";
 import { getPreset } from "./question.presets.js";
 import { isValidQuestionerInputContract, type QuestionerInput } from "./question.input.js";
 

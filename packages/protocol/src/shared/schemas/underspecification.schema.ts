@@ -6,7 +6,7 @@ import { z } from "zod";
  * Shared between signals (the intent clarifier decides whether an utterance is
  * underspecified) and questions (which records the category on the question it
  * raises). It lives here rather than inside either capability because both need
- * it: filing it under `questions/domain` meant the signals clarifier had to
+ * it: filing it under `questions/` meant the signals clarifier had to
  * import the whole questions capability — LLM agents and tools included — to
  * reach a three-value enum.
  */

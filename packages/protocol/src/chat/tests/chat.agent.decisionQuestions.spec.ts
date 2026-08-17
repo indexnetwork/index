@@ -36,7 +36,7 @@ afterAll(() => mock.restore());
 
 import { ChatAgent } from "../chat.agent.js";
 import { FULL_TOOLSET_TEST_PERSONA } from "./full-toolset.persona.js";
-import type { Question, QuestionStrategy } from "../../questions/domain/question.schema.js";
+import type { Question, QuestionStrategy } from "../../questions/question.schema.js";
 
 // ─── Test fixtures ────────────────────────────────────────────────────────────
 

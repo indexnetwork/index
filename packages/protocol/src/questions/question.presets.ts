@@ -1,16 +1,24 @@
 /**
- * questions/application/question.presets — mode presets for QuestionerAgent.
+ * questions/question.presets — mode presets for QuestionerAgent.
  *
  * Each preset provides a system prompt and a buildPrompt function that assembles
  * the user message from a typed context object.
- *
- * IND-547: canonical home — previously questioner/questioner.presets.ts.
- * Legacy path is a thin compatibility shim pointing here.
  */
-import type { QuestionMode, QuestionPurpose } from "../domain/question.schema.js";
-import { QUD_UNDERSPECIFICATION_RULES } from "./question.qud.js";
+import type { QuestionMode, QuestionPurpose } from "./question.schema.js";
 import type { ChatContext, IntentContext, NegotiationContext, NegotiationInflightContext, PostStallNegotiationContext, RecoveryIntentContext, UptakeNegotiationContext } from "./question.input.js";
-import { consultationPromptFor } from "../../negotiations/index.js";
+import { consultationPromptFor } from "../negotiations/index.js";
+
+/**
+ * Questions Under Discussion taxonomy, appended to every preset's system prompt.
+ * Every mode carries it because the structured output schema requires the
+ * internal `underspecificationType` field; intent and discovery are the primary
+ * consumers of non-null classifications.
+ */
+const QUD_UNDERSPECIFICATION_RULES = `QUD underspecification taxonomy. For every structured question, emit a required \`underspecificationType\` field. Use exactly one category only when the question repairs that kind of underspecification:
+- missing_constituent: an absent core participant, entity, or outcome (who/what).
+- missing_constraint: the core target exists, but a ranking boundary is missing (where/when/how/how much).
+- open_alternative_set: an unresolved choice among materially different interpretations or scopes.
+Use null for adjacent, reflective, emergent, or any other question that does not repair underspecification. Strategy and underspecification type are orthogonal: \`strategy\` describes the conversational move; \`underspecificationType\` describes the QUD defect repaired. Never infer one mechanically from the other.`;
 
 /**
  * Shared rule block appended to every questioner system prompt. Enforces that

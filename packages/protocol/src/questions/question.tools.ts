@@ -1,5 +1,5 @@
 /**
- * questions/application/question.tools — foreground adapter: MCP question tools.
+ * questions/question.tools — foreground adapter: MCP question tools.
  *
  * Creates MCP tool definitions for the questions domain. Exposes
  * `read_pending_questions` and `answer_pending_question` for retrieving and
@@ -9,19 +9,16 @@
  * Foreground adapter: these tools respond to authenticated user actions
  * (read, answer, dismiss). Ambient delivery adapters are handled separately
  * via the QuestionerQueue.
- *
- * IND-547: canonical home — previously questioner/questioner.tools.ts.
- * Legacy path is a thin compatibility shim pointing here.
  */
 import { z } from "zod";
 
-import type { DefineTool, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
-import type { QuestionerToolDeps } from "../ports/question.tools.port.js";
-import { error, success } from "../../shared/agent/tool.helpers.js";
-import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../../shared/agent/tool.scope.js";
-import { callerMayAccessQuestionMode } from "../../shared/agent/activity-projection.js";
-import type { PendingQuestionSummary } from "../../shared/schemas/pending-question.schema.js";
-import type { QuestionMode } from "../domain/question.schema.js";
+import type { DefineTool, ResolvedToolContext } from "../shared/agent/tool.helpers.js";
+import type { QuestionerToolDeps } from "./question.tools.port.js";
+import { error, success } from "../shared/agent/tool.helpers.js";
+import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
+import { callerMayAccessQuestionMode } from "../shared/agent/activity-projection.js";
+import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
+import type { QuestionMode } from "./question.schema.js";
 
 /**
  * Detection modes whose questions derive solely from the caller's own data
