@@ -1,9 +1,9 @@
 /**
- * contacts/domain — pure contact entity value types.
+ * contacts — pure contact entity value types.
  *
  * No application logic, no LLM calls, no cross-capability imports.
  *
- * IND-549: canonical domain layer for the contacts capability.
+ * Canonical contact types for the contacts capability.
  */
 
 /** Contact with user details, as returned by listContacts. */

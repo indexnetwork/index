@@ -1,5 +1,5 @@
 /**
- * contacts/application — createContactTools canonical implementation.
+ * contacts — createContactTools canonical implementation.
  *
  * Creates contact management tools for the chat agent. Enables listing,
  * removing, and searching the user's personal network.

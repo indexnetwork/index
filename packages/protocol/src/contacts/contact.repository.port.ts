@@ -1,5 +1,5 @@
 /**
- * contacts/ports — ContactServiceAdapter persistence port.
+ * contacts — ContactServiceAdapter persistence port.
  *
  * Injected boundary for contact management persistence. Implemented by
  * the host application and passed into the protocol layer at the composition root.
