@@ -113,7 +113,7 @@ export {
   ONBOARDING_PERSONA_ID,
   ONBOARDING_PERSONA,
 } from "./agents/agent.module.js";
-export { RadarGraphFactory } from "./opportunities/index.js";
+export { RadarGraphFactory } from "./opportunities/opportunity.module.js";
 export { HydeGraphFactory } from "./discovery/index.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
@@ -150,10 +150,10 @@ export type {
 export { MaintenanceGraphFactory } from "./maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./maintenance/maintenance.graph.js";
 export { NegotiationGraphFactory, negotiateCandidates } from "./negotiations/negotiation.module.js";
-export { OpportunityGraphFactory } from "./opportunities/index.js";
-export { hasUnsupportedOpportunityClaim } from "./opportunities/index.js";
-export type { StampNewbornOpportunitiesFn } from "./opportunities/index.js";
-export { bindOwnerApprovalProvenance } from "./opportunities/index.js";
+export { OpportunityGraphFactory } from "./opportunities/opportunity.module.js";
+export { hasUnsupportedOpportunityClaim } from "./opportunities/opportunity.module.js";
+export type { StampNewbornOpportunitiesFn } from "./opportunities/opportunity.module.js";
+export { bindOwnerApprovalProvenance } from "./opportunities/opportunity.module.js";
 // The member/parameter types below are reachable from the exported entry points
 // above: `OpportunityOwnerAction` types `OpportunityOwnerApprovalBinding.action`,
 // `OpportunityOwnerApprovalDenialReason` types the denied `…Verdict.reason`, and
@@ -170,7 +170,7 @@ export type {
   OpportunityOwnerApprovalVerdict,
   OpportunityOwnerInteractionProvenance,
   OpportunityOwnerInteractionSurface,
-} from "./opportunities/index.js";
+} from "./opportunities/opportunity.module.js";
 export { EnrichmentGraphFactory } from "./contexts/context.module.js";
 export { PremiseGraphFactory } from "./contexts/context.module.js";
 
@@ -194,10 +194,10 @@ export { QuestionerAgent } from "./questions/question.module.js";
 export { isValidQuestionerInputContract } from "./questions/question.module.js";
 export type { QuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questions/question.module.js";
 export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./questions/question.module.js";
-export { PoolDiscriminatorMiner } from "./opportunities/index.js";
-export { PoolDiscriminatorAssigner } from "./opportunities/index.js";
-export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunities/index.js";
-export { runPoolDiscriminatorShadow } from "./opportunities/index.js";
+export { PoolDiscriminatorMiner } from "./opportunities/opportunity.module.js";
+export { PoolDiscriminatorAssigner } from "./opportunities/opportunity.module.js";
+export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunities/opportunity.module.js";
+export { runPoolDiscriminatorShadow } from "./opportunities/opportunity.module.js";
 export {
   poolQuestionsMiningMode,
   poolQuestionsMode,
@@ -208,51 +208,51 @@ export {
   POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS,
   POOL_QUESTION_MIN_VOI,
   POOL_QUESTION_MAX_PENDING_PER_INTENT,
-} from "./opportunities/index.js";
-export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./opportunities/index.js";
+} from "./opportunities/opportunity.module.js";
+export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./opportunities/opportunity.module.js";
 
 // Discovery env accessors (IND-XXX)
-export { discoveryEvaluatorMinScore } from "./opportunities/index.js";
-export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./opportunities/index.js";
-export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./opportunities/index.js";
-export type { PoolAdjustment, PoolAdjustmentSignal } from "./opportunities/index.js";
-export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunities/index.js";
-export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./opportunities/index.js";
+export { discoveryEvaluatorMinScore } from "./opportunities/opportunity.module.js";
+export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./opportunities/opportunity.module.js";
+export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./opportunities/opportunity.module.js";
+export type { PoolAdjustment, PoolAdjustmentSignal } from "./opportunities/opportunity.module.js";
+export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunities/opportunity.module.js";
+export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./opportunities/opportunity.module.js";
 export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./questions/question.module.js";
-export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./opportunities/index.js";
+export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./opportunities/opportunity.module.js";
 
 // Lens C — negotiation-evidence questions (IND-433, shadow).
-export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./opportunities/index.js";
-export { NegotiationEvidenceMiner } from "./opportunities/index.js";
-export { runNegotiationEvidenceShadow } from "./opportunities/index.js";
-export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment } from "./opportunities/index.js";
+export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./opportunities/opportunity.module.js";
+export { NegotiationEvidenceMiner } from "./opportunities/opportunity.module.js";
+export { runNegotiationEvidenceShadow } from "./opportunities/opportunity.module.js";
+export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment } from "./opportunities/opportunity.module.js";
 
 // Lens B — outcome-question shadow (IND-434)
-export { isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunities/index.js";
-export { runOutcomeShadow } from "./opportunities/index.js";
-export type { OutcomeLabel, OutcomeExample, OutcomeShadowResult } from "./opportunities/index.js";
-export { OpportunityEvaluator } from "./opportunities/index.js";
-export type { EvaluatorInput } from "./opportunities/index.js";
-export { OpportunityPresenter, gatherPresenterContext } from "./opportunities/index.js";
-export type { PresenterDatabase } from "./opportunities/index.js";
+export { isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./opportunities/opportunity.module.js";
+export { runOutcomeShadow } from "./opportunities/opportunity.module.js";
+export type { OutcomeLabel, OutcomeExample, OutcomeShadowResult } from "./opportunities/opportunity.module.js";
+export { OpportunityEvaluator } from "./opportunities/opportunity.module.js";
+export type { EvaluatorInput } from "./opportunities/opportunity.module.js";
+export { OpportunityPresenter, gatherPresenterContext } from "./opportunities/opportunity.module.js";
+export type { PresenterDatabase } from "./opportunities/opportunity.module.js";
 
 // ─── Support utilities ────────────────────────────────────────────────────────
 
-export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, RADAR_SOFT_TARGETS } from "./opportunities/index.js";
-export { getPrimaryActionLabel } from "./opportunities/index.js";
-export { computeRadarHealth } from "./opportunities/index.js";
-export type { RadarHealthInput } from "./opportunities/index.js";
-export { isIntroducerDiscoveryEnabled } from "./opportunities/index.js";
-export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./opportunities/index.js";
-export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./opportunities/index.js";
-export { persistOpportunities } from "./opportunities/index.js";
-export { presentOpportunity } from "./opportunities/index.js";
-export type { UserInfo } from "./opportunities/index.js";
-export { stripUuids, truncateAtBoundary } from "./opportunities/index.js";
-export { stripUnsupportedOpportunityClaims } from "./opportunities/index.js";
-export { safeFallbackSummary } from "./opportunities/index.js";
-export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "./opportunities/index.js";
-export { getOrCreateDeliveryCardBatch } from "./opportunities/index.js";
+export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, RADAR_SOFT_TARGETS } from "./opportunities/opportunity.module.js";
+export { getPrimaryActionLabel } from "./opportunities/opportunity.module.js";
+export { computeRadarHealth } from "./opportunities/opportunity.module.js";
+export type { RadarHealthInput } from "./opportunities/opportunity.module.js";
+export { isIntroducerDiscoveryEnabled } from "./opportunities/opportunity.module.js";
+export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./opportunities/opportunity.module.js";
+export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./opportunities/opportunity.module.js";
+export { persistOpportunities } from "./opportunities/opportunity.module.js";
+export { presentOpportunity } from "./opportunities/opportunity.module.js";
+export type { UserInfo } from "./opportunities/opportunity.module.js";
+export { stripUuids, truncateAtBoundary } from "./opportunities/opportunity.module.js";
+export { stripUnsupportedOpportunityClaims } from "./opportunities/opportunity.module.js";
+export { safeFallbackSummary } from "./opportunities/opportunity.module.js";
+export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "./opportunities/opportunity.module.js";
+export { getOrCreateDeliveryCardBatch } from "./opportunities/opportunity.module.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
 

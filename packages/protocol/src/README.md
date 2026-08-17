@@ -30,9 +30,8 @@ packages/protocol/src/
     network.module.ts The sole public surface; everything beside it is private
                      (community lifecycle graph, membership graph, signal
                       assignment, recommender, and tools sit flat beside it)
-  opportunities/    Opportunity domain and application workflows
-    domain/          State, evidence, presentation, visibility helpers
-    application/     Graph, evaluation, presentation, persistence, tools
+  opportunities/    Opportunity workflows, policy, and tools
+    opportunity.module.ts The sole capability surface; implementation files sit beside it
     radar/           Radar graph (flat presenter-card list), radar health
   premises/         Premise graph, decomposer, analyzer, indexer, tools
   questions/        Decision-question domain, generation, and tools
@@ -60,7 +59,7 @@ anywhere.
 | Intent | `intents/graph/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
 | Enrichment | `enrichment/enrichment.graph.ts` | Generate/update user identity with scraping and embedding (decomposes into premises) |
 | Premise | `premises/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
-| Opportunity | `opportunities/application/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
+| Opportunity | `opportunities/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
 | HyDE | `discovery/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
 | Network | `networks/network.graph.ts` | Manage network CRUD |
 | Network Membership | `networks/membership.graph.ts` | Manage network member join/leave |
@@ -96,9 +95,9 @@ anywhere.
 | HyDE Generator | `discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
 | Lens Inferrer | `discovery/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
-| Opportunity Evaluator | `opportunities/application/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
-| Opportunity Presenter | `opportunities/application/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
-| Opportunity Introducer | `opportunities/application/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
+| Opportunity Evaluator | `opportunities/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
+| Opportunity Presenter | `opportunities/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
+| Opportunity Introducer | `opportunities/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | Questioner Agent | `questions/question.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
 | Contact Inviter | `contacts/application/contact.inviter.ts` | Invite flow — generates personalized invite messages |
 | Index Negotiator | `negotiations/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
@@ -115,7 +114,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `premises/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
-| `opportunities/application/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
+| `opportunities/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
 | `contacts/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
 | `agents/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
 | `negotiations/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
@@ -153,7 +152,7 @@ The system models human collaboration through a linguistic and information-theor
 
 ## Opportunity Lifecycle and Role-Based Visibility
 
-The authoritative lifecycle, actor-state rules, and code citations live in [`docs/design/opportunity-status-lifecycle.md`](../../../docs/design/opportunity-status-lifecycle.md). The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `opportunities/domain/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
+The authoritative lifecycle, actor-state rules, and code citations live in [`docs/design/opportunity-status-lifecycle.md`](../../../docs/design/opportunity-status-lifecycle.md). The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `opportunities/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
 
 ## How a User Message Flows Through the System
 
@@ -380,14 +379,14 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 | `shared/assignment/network-assignment.policy.ts` | Threshold-based network-assignment scoring and scope resolution |
 | `shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
 | `chat/chat.utils.ts` | Token counting and context window management |
-| `opportunities/domain/opportunity.presentation.ts` | Pure card text generation for opportunity display |
-| `opportunities/application/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
-| `opportunities/domain/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, radar composition helpers |
-| `opportunities/application/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
-| `opportunities/domain/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
-| `opportunities/application/delivery-card.cache.ts` | Cached delivery-card batch builder for opportunity delivery |
+| `opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
+| `opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
+| `opportunities/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, radar composition helpers |
+| `opportunities/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
+| `opportunities/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
+| `opportunities/delivery-card.cache.ts` | Cached delivery-card batch builder for opportunity delivery |
 | `opportunities/radar/radar.health.ts` | Radar health metrics computation |
-| `opportunities/domain/opportunity.labels.ts` | Opportunity status and role label constants |
+| `opportunities/opportunity.labels.ts` | Opportunity status and role label constants |
 
 ## Data Model
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';
-import { buildCandidateEvidence, mergeOpportunityEvidence, renderOpportunityEvidenceForPrompt, withMatchedStrategies } from '../domain/opportunity.evidence.js';
+import { buildCandidateEvidence, mergeOpportunityEvidence, renderOpportunityEvidenceForPrompt, withMatchedStrategies } from '../opportunity.evidence.js';
 
 describe('opportunity.evidence', () => {
   it('builds premise-similarity evidence', () => {

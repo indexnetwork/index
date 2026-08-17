@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
 import { Intents } from "../../intents/intent.module.js";
 import { EnrichmentGraphFactory } from "../../enrichment/enrichment.graph.js";
-import { OpportunityGraphFactory } from "../../opportunities/index.js";
+import { OpportunityGraphFactory } from "../../opportunities/opportunity.module.js";
 import { HydeGraphFactory } from "../../discovery/hyde.graph.js";
 import { HydeGenerator } from "../../discovery/hyde.generator.js";
 import { LensInferrer } from "../../discovery/lens.inferrer.js";
@@ -18,7 +18,7 @@ import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatC
 import { deriveAllowedNetworkIds, focusedIntentId, scopeFromNetworkId } from "./tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
-import { createOpportunityTools } from "../../opportunities/index.js";
+import { createOpportunityTools } from "../../opportunities/opportunity.module.js";
 import { createUtilityTools } from "./utility.tools.js";
 import { createContactTools } from "../../contacts/contact.module.js";
 // The composition root reaches the leaf directly (it is exempt from the barrel
@@ -28,8 +28,8 @@ import { createAgentTools } from "../../agents/agent.tools.js";
 import { createNegotiationTools } from "../../negotiations/negotiation.module.js";
 import { createPremiseTools } from "../../premises/premise.tools.js";
 import { createQuestionerTools, createAskUserQuestionTools } from "../../questions/question.module.js";
-import type { OpportunityOwnerApprovalDeps } from "../../opportunities/ports/opportunity.tools.port.js";
-import { bindOwnerApprovalProvenance } from "../../opportunities/application/opportunity.owner-provenance.js";
+import type { OpportunityOwnerApprovalDeps } from "../../opportunities/opportunity.tools.port.js";
+import { bindOwnerApprovalProvenance } from "../../opportunities/opportunity.owner-provenance.js";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "./tool.helpers.js";

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { createOpportunityTools } from "../application/opportunity.tools.js";
+import { createOpportunityTools } from "../opportunity.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
-import { bindOwnerApprovalProvenance } from "../application/opportunity.owner-provenance.js";
+import { bindOwnerApprovalProvenance } from "../opportunity.owner-provenance.js";
 
 const CALLER_ID = "caller-111";
 const OTHER_ID  = "other-222";

@@ -18,7 +18,7 @@ import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
 import type { ToolRegistryDeps } from '../shared/agent/tool.registry.js';
-import { bindOwnerApprovalProvenance } from '../opportunities/application/opportunity.owner-provenance.js';
+import { bindOwnerApprovalProvenance } from '../opportunities/opportunity.owner-provenance.js';
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';

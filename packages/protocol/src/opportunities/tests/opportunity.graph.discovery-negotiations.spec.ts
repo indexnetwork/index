@@ -3,7 +3,7 @@ config({ path: ".env.test", override: true });
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "test-key";
 
 import { describe, it, expect } from "bun:test";
-import { buildDiscoverySummary, toDiscoveryNegotiation } from "../domain/negotiation-summary.builder.js";
+import { buildDiscoverySummary, toDiscoveryNegotiation } from "../negotiation-summary.builder.js";
 import type { NegotiationOutcome, NegotiationTurn } from "../../negotiations/negotiation.state.js";
 
 // Smoke test for the public surface the negotiate node exposes via the builder;

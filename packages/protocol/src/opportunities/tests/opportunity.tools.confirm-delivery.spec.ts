@@ -4,7 +4,7 @@ process.env.OPENROUTER_API_KEY ||= 'test-key-unused';
 import { mock, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { createOpportunityTools } from '../application/opportunity.tools.js';
+import { createOpportunityTools } from '../opportunity.tools.js';
 import type { ToolDeps, DefineTool } from '../../shared/agent/tool.helpers.js';
 
 // Minimal passthrough defineTool that mirrors the real registration shape.

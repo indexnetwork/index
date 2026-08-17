@@ -13,8 +13,8 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
-import { OpportunityGraphFactory } from '../application/opportunity.graph.js';
-import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../application/opportunity.graph.js';
+import { OpportunityGraphFactory } from '../opportunity.graph.js';
+import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';

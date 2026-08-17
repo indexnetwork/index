@@ -28,7 +28,7 @@ const { RadarGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES, i
   await import('../radar/radar.graph.js');
 
 afterAll(() => mock.restore());
-import { selectByComposition, classifyOpportunity, RADAR_SOFT_TARGETS } from '../domain/opportunity.utils.js';
+import { selectByComposition, classifyOpportunity, RADAR_SOFT_TARGETS } from '../opportunity.utils.js';
 import type { RadarGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';

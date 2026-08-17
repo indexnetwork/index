@@ -60,6 +60,7 @@ export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, st
   intents: "intent.module.ts",
   contexts: "context.module.ts",
   networks: "network.module.ts",
+  opportunities: "opportunity.module.ts",
   negotiations: "negotiation.module.ts",
   questions: "question.module.ts",
   agents: "agent.module.ts",

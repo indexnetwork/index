@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
-import { assessIntroductionApproval, assessOpportunitySend, assessOpportunityStatusTransition, updateOpportunityLifecycle, type OpportunityLifecyclePort } from '../application/opportunity.lifecycle.js';
+import { assessIntroductionApproval, assessOpportunitySend, assessOpportunityStatusTransition, updateOpportunityLifecycle, type OpportunityLifecyclePort } from '../opportunity.lifecycle.js';
 
 const OWNER_ID = 'u0000000-0000-4000-8000-000000000001';
 const COUNTERPARTY_ID = 'u0000000-0000-4000-8000-000000000002';

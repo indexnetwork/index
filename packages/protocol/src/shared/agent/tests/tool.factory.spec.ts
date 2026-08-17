@@ -200,7 +200,7 @@ const mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-mock.module("../../../opportunities/application/opportunity.presentation.js", () => ({
+mock.module("../../../opportunities/opportunity.presentation.js", () => ({
   OpportunityPresenter: class {
     async presentCard() {
       return {
@@ -1519,7 +1519,7 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     // by temporarily adding getOpportunitiesForUser and using createChatTools' underlying factory.
     // Instead, we import createOpportunityTools and wire a minimal defineTool.
     const { tool: lcTool } = await import("@langchain/core/tools");
-    const { createOpportunityTools } = await import("../../../opportunities/application/opportunity.tools.js");
+    const { createOpportunityTools } = await import("../../../opportunities/opportunity.tools.js");
     const { z } = await import("zod");
 
     const resolvedContext = {

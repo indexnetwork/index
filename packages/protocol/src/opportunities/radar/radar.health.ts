@@ -1,4 +1,4 @@
-import { RADAR_SOFT_TARGETS } from '../domain/opportunity.utils.js';
+import { RADAR_SOFT_TARGETS } from '../opportunity.utils.js';
 
 /** Input for computing radar health score. */
 export interface RadarHealthInput {

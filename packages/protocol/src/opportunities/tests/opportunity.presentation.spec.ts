@@ -9,10 +9,10 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 import { describe, expect, it, mock, test } from 'bun:test';
-import { DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_ACTION, DEFAULT_FALLBACK_HEADLINE, OPPORTUNITY_PRESENTATION_CACHE_VERSION, OpportunityPresenter, presentOpportunity, SAFE_FALLBACK_MAX_CHARS, truncateAtBoundary, buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey, getSafePresentationOrSkip, safeFallbackSummary, summarizeSignalsForPresenter, type CardPresenterInput } from "../application/opportunity.presentation.js";
+import { DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_ACTION, DEFAULT_FALLBACK_HEADLINE, OPPORTUNITY_PRESENTATION_CACHE_VERSION, OpportunityPresenter, presentOpportunity, SAFE_FALLBACK_MAX_CHARS, truncateAtBoundary, buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey, getSafePresentationOrSkip, safeFallbackSummary, summarizeSignalsForPresenter, type CardPresenterInput } from "../opportunity.presentation.js";
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import type { NegotiationContext } from "../application/negotiation-context.loader.js";
+import type { NegotiationContext } from "../negotiation-context.loader.js";
 
 // ──────────────────────────────────────────────────────────────────────
 // presentation

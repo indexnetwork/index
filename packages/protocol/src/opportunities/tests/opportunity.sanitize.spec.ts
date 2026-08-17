@@ -2,7 +2,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, expect, it } from "bun:test";
-import { stripIntroducerMentions } from "../application/opportunity.presentation.js";
+import { stripIntroducerMentions } from "../opportunity.presentation.js";
 
 describe("stripIntroducerMentions", () => {
   it("removes introducer mention at start of sentence", () => {

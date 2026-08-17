@@ -14,10 +14,10 @@
  * advisory/challenge values are not substitutes for owner authorization.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { createOpportunityTools } from "../application/opportunity.tools.js";
+import { createOpportunityTools } from "../opportunity.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
-import type { OpportunityOwnerApprovalAuthority, OpportunityOwnerApprovalBinding, OpportunityOwnerApprovalVerdict } from "../application/opportunity.owner-approval.js";
-import { bindOwnerApprovalProvenance } from "../application/opportunity.owner-provenance.js";
+import type { OpportunityOwnerApprovalAuthority, OpportunityOwnerApprovalBinding, OpportunityOwnerApprovalVerdict } from "../opportunity.owner-approval.js";
+import { bindOwnerApprovalProvenance } from "../opportunity.owner-provenance.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
 
 const CALLER_ID = "caller-111";

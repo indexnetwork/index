@@ -5,7 +5,7 @@ import { error, redactSensitiveFields } from './tool.helpers.js';
 import { createEnrichmentTools } from '../../enrichment/enrichment.tools.js';
 import { Intents } from '../../intents/intent.module.js';
 import { Networks } from '../../networks/network.module.js';
-import { createOpportunityTools } from '../../opportunities/index.js';
+import { createOpportunityTools } from '../../opportunities/opportunity.module.js';
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
 import { createContactTools } from '../../contacts/contact.module.js';
@@ -14,7 +14,7 @@ import { createNegotiationTools } from '../../negotiations/negotiation.module.js
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premises/premise.tools.js';
 import { createQuestionerTools } from '../../questions/question.module.js';
-import type { OpportunityOwnerApprovalDeps } from '../../opportunities/ports/opportunity.tools.port.js';
+import type { OpportunityOwnerApprovalDeps } from '../../opportunities/opportunity.tools.port.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
 import { requestContext } from '../observability/request-context.js';
 

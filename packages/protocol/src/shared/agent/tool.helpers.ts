@@ -1,6 +1,6 @@
 import type { Id } from '../interfaces/database.interface.js';
-import type { OpportunityGraphDeps } from '../../opportunities/application/opportunity.graph.shared.js';
-import type { OpportunityMutationOutcome } from '../../opportunities/application/opportunity.graph.modes.js';
+import type { OpportunityGraphDeps } from '../../opportunities/opportunity.graph.shared.js';
+import type { OpportunityMutationOutcome } from '../../opportunities/opportunity.graph.modes.js';
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";

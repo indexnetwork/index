@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
-import { admitOpportunityUpdate, type OpportunityUpdateAdmissionPort } from '../application/opportunity.update-admission.js';
+import { admitOpportunityUpdate, type OpportunityUpdateAdmissionPort } from '../opportunity.update-admission.js';
 
 const OWNER = 'owner';
 const COUNTERPART = 'counterpart';

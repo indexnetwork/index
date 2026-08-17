@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 
-import { deriveRolesFromCorpus } from '../../opportunities/domain/opportunity.utils.js';
-import type { CandidateMatch } from '../../opportunities/domain/opportunity.state.js';
+import { deriveRolesFromCorpus } from '../../opportunities/opportunity.utils.js';
+import type { CandidateMatch } from '../../opportunities/opportunity.state.js';
 import type { OpportunityActor } from '../../shared/interfaces/database.interface.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 

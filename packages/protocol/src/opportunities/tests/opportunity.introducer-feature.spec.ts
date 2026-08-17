@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { isIntroducerDiscoveryEnabled } from "../application/opportunity.introducer-feature.js";
+import { isIntroducerDiscoveryEnabled } from "../opportunity.introducer-feature.js";
 
 const original = process.env.INTRODUCER_DISCOVERY_ENABLED;
 afterEach(() => {
