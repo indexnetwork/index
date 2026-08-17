@@ -6,9 +6,10 @@ import type { ToolDeps } from "../tool.helpers.js";
 /**
  * Surface-aware tool registry (IND-596/597/598, IND-373).
  *
- * Contact/Gmail-import tools and `scrape_url` remain REST/chat-only. The retired
- * profile/profile-run compatibility aliases are absent from every surface;
- * canonical identity/context and enrichment-run names remain available.
+ * Contact/Gmail-import tools, `scrape_url`, and `complete_onboarding` remain
+ * REST/chat-only. The retired profile/profile-run compatibility aliases are
+ * absent from every surface; canonical identity/context and enrichment-run
+ * names remain available.
  */
 
 // create*Tools only DEFINE tools at registration time (handlers are not invoked),
@@ -42,6 +43,7 @@ const REST_ONLY_TOOLS: readonly string[] = [
   "search_contacts",
   "import_gmail_contacts",
   "scrape_url",
+  "complete_onboarding",
 ];
 
 // Canonical identity/context + enrichment-run replacements that MUST remain on

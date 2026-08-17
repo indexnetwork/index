@@ -32,7 +32,6 @@ describe('MCP capability policy principal inventory', () => {
   test('session humans receive classified tools and agent administration, but not removed/unknown tools', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
-      isOnboarding: false,
     });
 
     expect(subject.profile).toBe('session_human');
@@ -52,34 +51,33 @@ describe('MCP capability policy principal inventory', () => {
     ]);
   });
 
-  test('onboarding humans receive only the onboarding inventory', () => {
+  test('session humans keep the full inventory regardless of web onboarding state', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
-      isOnboarding: true,
     });
 
-    expect(subject.profile).toBe('onboarding_human');
+    expect(subject.profile).toBe('session_human');
     expect(policy.visibleToolNames(subject, [
       'register_agent',
       'read_networks',
       'create_intent',
       'update_agent',
-      'discover_opportunities',
+      'list_opportunities',
     ])).toEqual([
       'register_agent',
       'read_networks',
       'create_intent',
+      'update_agent',
+      'list_opportunities',
     ]);
   });
 
   test('only explicitly enrollment-capable unregistered keys can register', () => {
     const enrollmentSubject = resolveMcpCapabilitySubject({
       identity: identity({ enrollmentCapable: true }),
-      isOnboarding: false,
     });
     const ordinaryKeySubject = resolveMcpCapabilitySubject({
       identity: identity(),
-      isOnboarding: false,
     });
 
     expect(enrollmentSubject.profile).toBe('enrollment_key');
@@ -99,7 +97,6 @@ describe('MCP capability policy principal inventory', () => {
   test('registered agents are self-read-only on the administration surface', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -130,7 +127,6 @@ describe('MCP capability policy principal inventory', () => {
   test('network agents honor only matching-scope or global permission rows', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [
           {
@@ -177,7 +173,6 @@ describe('MCP capability policy principal inventory', () => {
   test('designated delivery agents add delivery confirmation without losing ordinary permissions', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID, isDeliveryAgent: true }),
-      isOnboarding: false,
       agent: agentSnapshot({
         type: 'personal',
         permissions: [{
@@ -208,7 +203,6 @@ describe('MCP capability policy principal inventory', () => {
   test('registered personal agents remain ordinary principals unless designated for delivery', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         type: 'personal',
         permissions: [{
@@ -233,10 +227,9 @@ describe('MCP capability policy principal inventory', () => {
   test('direct discovery names are unclassified and denied', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
-      isOnboarding: false,
     });
 
-    for (const toolName of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run']) {
+    for (const toolName of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run', 'complete_onboarding']) {
       expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(toolName)).toBeUndefined();
       expect(policy.authorize(subject, toolName)).toEqual({
         allowed: false,
@@ -250,17 +243,14 @@ describe('MCP capability policy principal inventory', () => {
     const subjects = [
       resolveMcpCapabilitySubject({
         identity: baseIdentity,
-        isOnboarding: false,
         agent: null,
       }),
       resolveMcpCapabilitySubject({
         identity: baseIdentity,
-        isOnboarding: false,
         agent: agentSnapshot({ status: 'inactive' }),
       }),
       resolveMcpCapabilitySubject({
         identity: baseIdentity,
-        isOnboarding: false,
         agent: agentSnapshot({ ownerId: 'other-user' }),
       }),
     ];
@@ -323,7 +313,6 @@ describe('dedicated Hermes agent MCP profile', () => {
   test('allows only the exact mapped inventory and defaults unknown, human, deletion, permission, and admin tools to deny', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID, isHermesAgent: true }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -345,7 +334,6 @@ describe('dedicated Hermes agent MCP profile', () => {
       'delete_intent_index',
       'delete_network',
       'delete_network_membership',
-      'complete_onboarding',
       'list_conversations',
       'get_conversation',
       'unknown_future_tool',
@@ -358,7 +346,6 @@ describe('dedicated Hermes agent MCP profile', () => {
     for (const [toolName, requirement] of HERMES_AGENT_MCP_TOOL_PERMISSIONS) {
       const allowed = resolveMcpCapabilitySubject({
         identity: identity({ agentId: AGENT_ID, isHermesAgent: true }),
-        isOnboarding: false,
         agent: agentSnapshot({
           permissions: [{
             agentId: AGENT_ID,
@@ -378,7 +365,6 @@ describe('dedicated Hermes agent MCP profile', () => {
 
       const denied = resolveMcpCapabilitySubject({
         identity: identity({ agentId: AGENT_ID, isHermesAgent: true }),
-        isOnboarding: false,
         agent: agentSnapshot({ permissions: [] }),
       });
       expect(policy.authorize(denied, toolName)).toEqual({
@@ -413,7 +399,6 @@ describe('MCP capability permission extension point', () => {
       });
       const subject = resolveMcpCapabilitySubject({
         identity: identity({ agentId: AGENT_ID }),
-        isOnboarding: false,
         agent: agentSnapshot({
           permissions: [{
             agentId: AGENT_ID,
@@ -448,7 +433,6 @@ describe('MCP capability permission extension point', () => {
   test('canonical reach keeps premises meta-network and marks network-bound tools', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -490,7 +474,6 @@ describe('MCP capability permission extension point', () => {
 
     const sessionHuman = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
-      isOnboarding: false,
     });
     expect(policy.authorize(sessionHuman, 'read_activity_summary').allowed).toBe(true);
     expect(policy.authorize(sessionHuman, 'report_agent_activity')).toEqual({
@@ -502,7 +485,6 @@ describe('MCP capability permission extension point', () => {
   test('read_activity_summary admits agents with any activity-domain permission and denies the rest', () => {
     const intentsAgent = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -520,7 +502,6 @@ describe('MCP capability permission extension point', () => {
 
     const networksOnlyAgent = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -543,7 +524,6 @@ describe('MCP capability permission extension point', () => {
     // fail-closed 'tool_unclassified' denial for even the broadest caller.
     const sessionHuman = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
-      isOnboarding: false,
     });
     for (const toolName of [
       'add_contact',
@@ -573,7 +553,6 @@ describe('MCP capability permission extension point', () => {
     const snapshot = agentSnapshot({ permissions: [] });
     const resolvedBeforeGrant = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: snapshot,
     });
 
@@ -589,7 +568,6 @@ describe('MCP capability permission extension point', () => {
 
     const resolvedAfterRefresh = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: snapshot,
     });
     expect(policy.authorize(resolvedAfterRefresh, 'create_intent').allowed).toBe(true);
@@ -635,7 +613,6 @@ describe('rolling-data legacy permission projection (IND-607)', () => {
     // re-written) manage:profile grant is interpreted at capability-load time.
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -658,7 +635,6 @@ describe('rolling-data legacy permission projection (IND-607)', () => {
     // an agent bound to network-1 — scope matching runs before projection.
     const wrongNetwork = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -674,7 +650,6 @@ describe('rolling-data legacy permission projection (IND-607)', () => {
     // The same legacy grant scoped to the bound network DOES project.
     const boundNetwork = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -691,7 +666,6 @@ describe('rolling-data legacy permission projection (IND-607)', () => {
   test('a canonical-only row is unchanged by the projection', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -710,7 +684,6 @@ describe('rolling-data legacy permission projection (IND-607)', () => {
 function globalAgentSubject(actions: string[]) {
   return resolveMcpCapabilitySubject({
     identity: identity({ agentId: AGENT_ID }),
-    isOnboarding: false,
     agent: agentSnapshot({
       permissions: [{
         agentId: AGENT_ID,
@@ -723,86 +696,12 @@ function globalAgentSubject(actions: string[]) {
   });
 }
 
-describe('human-only onboarding completion (IND-583)', () => {
-  const HUMAN_ONLY_TOOLS = ['complete_onboarding'] as const;
-
-  test('the canonical matrix classifies completion human_only', () => {
-    for (const tool of HUMAN_ONLY_TOOLS) {
-      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(tool)).toEqual({ access: 'human_only', reach: 'principal' });
-    }
-  });
-
-  test('the session human is admitted to completion', () => {
-    const human = resolveMcpCapabilitySubject({
-      identity: identity({ isSessionAuth: true }),
-      isOnboarding: false,
-    });
-    for (const tool of HUMAN_ONLY_TOOLS) {
-      expect(policy.authorize(human, tool).allowed).toBe(true);
-    }
-    expect(policy.visibleToolNames(human, [...HUMAN_ONLY_TOOLS])).toEqual([...HUMAN_ONLY_TOOLS]);
-  });
-
-  test('the onboarding human is admitted (completion is onboarding-allowed)', () => {
-    const onboardingHuman = resolveMcpCapabilitySubject({
-      identity: identity({ isSessionAuth: true }),
-      isOnboarding: true,
-    });
-    for (const tool of HUMAN_ONLY_TOOLS) {
-      expect(policy.authorize(onboardingHuman, tool).allowed).toBe(true);
-    }
-  });
-
-  test('an agent holding identity+premises grants is denied completion and never lists it', () => {
-    // manage:identity + manage:premises is exactly what the retired manage:profile
-    // grant projects to; holding both must not unlock the human-only completion flow.
-    const agent = globalAgentSubject(['manage:identity', 'manage:premises']);
-    expect(agent.profile).toBe('registered_global_agent');
-    for (const tool of HUMAN_ONLY_TOOLS) {
-      expect(policy.authorize(agent, tool)).toMatchObject({ allowed: false, reason: 'human_only' });
-    }
-    expect(policy.visibleToolNames(agent, [...HUMAN_ONLY_TOOLS])).toEqual([]);
-  });
-
-  test('a network agent, an enrollment key, and an invalid agent are all denied completion', () => {
-    const networkAgent = resolveMcpCapabilitySubject({
-      identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
-      isOnboarding: false,
-      agent: agentSnapshot({
-        permissions: [{
-          agentId: AGENT_ID,
-          userId: USER_ID,
-          scope: 'network',
-          scopeId: NETWORK_ID,
-          actions: ['manage:identity', 'manage:premises'],
-        }],
-      }),
-    });
-    const enrollmentKey = resolveMcpCapabilitySubject({
-      identity: identity({ enrollmentCapable: true }),
-      isOnboarding: false,
-    });
-    const invalidAgent = resolveMcpCapabilitySubject({
-      identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
-      agent: null,
-    });
-    for (const subject of [networkAgent, enrollmentKey, invalidAgent]) {
-      for (const tool of HUMAN_ONLY_TOOLS) {
-        expect(policy.authorize(subject, tool).allowed).toBe(false);
-      }
-      expect(policy.visibleToolNames(subject, [...HUMAN_ONLY_TOOLS])).toEqual([]);
-    }
-  });
-});
-
 describe('agent administration policy (IND-599)', () => {
   test('registered agent sees/calls only read_own_agent (agent_self_read), never list_agents or mutations', () => {
     // Agents receive read_own_agent (their own record) but not list_agents (admin view)
     // and cannot mutate any admin settings.
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID }),
-      isOnboarding: false,
       agent: agentSnapshot({
         permissions: [{
           agentId: AGENT_ID,
@@ -838,7 +737,6 @@ describe('agent administration policy (IND-599)', () => {
   test('session human sees all agent admin tools except read_own_agent, which is agent-only', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
-      isOnboarding: false,
     });
 
     expect(subject.profile).toBe('session_human');
@@ -863,7 +761,6 @@ describe('agent administration policy (IND-599)', () => {
   test('enrollment-capable key receives only register_agent, denies all admin mutations', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ enrollmentCapable: true }),
-      isOnboarding: false,
     });
 
     expect(subject.profile).toBe('enrollment_key');
@@ -883,7 +780,6 @@ describe('agent administration policy (IND-599)', () => {
     // enrollment-capable unregistered key sees and may call ONLY register_agent.
     const subject = resolveMcpCapabilitySubject({
       identity: identity({ enrollmentCapable: true }),
-      isOnboarding: false,
     });
     expect(subject.profile).toBe('enrollment_key');
 
@@ -903,7 +799,6 @@ describe('agent administration policy (IND-599)', () => {
   test('plain unregistered key fails closed across the ENTIRE canonical matrix', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity(),
-      isOnboarding: false,
     });
     expect(subject.profile).toBe('unregistered_key');
 
@@ -918,7 +813,6 @@ describe('agent administration policy (IND-599)', () => {
   test('plain unregistered key fails closed on all admin tools', () => {
     const subject = resolveMcpCapabilitySubject({
       identity: identity(),
-      isOnboarding: false,
     });
 
     expect(subject.profile).toBe('unregistered_key');
@@ -937,17 +831,14 @@ describe('agent administration policy (IND-599)', () => {
     const subjects = [
       resolveMcpCapabilitySubject({
         identity: baseIdentity,
-        isOnboarding: false,
         agent: null,
       }),
       resolveMcpCapabilitySubject({
         identity: baseIdentity,
-        isOnboarding: false,
         agent: agentSnapshot({ status: 'inactive' }),
       }),
       resolveMcpCapabilitySubject({
         identity: baseIdentity,
-        isOnboarding: false,
         agent: agentSnapshot({ ownerId: 'other-user' }),
       }),
     ];

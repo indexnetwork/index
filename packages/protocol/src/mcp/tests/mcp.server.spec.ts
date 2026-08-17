@@ -67,9 +67,9 @@ describe("MCP_INSTRUCTIONS", () => {
     expect(MCP_INSTRUCTIONS).toContain("is not owner approval");
   });
 
-  test("never mentions retired contact/Gmail/scrape/profile/ghost-user guidance", () => {
+  test("never mentions retired contact/Gmail/scrape/profile/ghost-user/onboarding guidance", () => {
     const lower = MCP_INSTRUCTIONS.toLowerCase();
-    for (const fragment of ["ghost user", "gmail", "scrape", "import_contacts", "read_user_profiles"]) {
+    for (const fragment of ["ghost user", "gmail", "scrape", "import_contacts", "read_user_profiles", "complete_onboarding", "onboarding"]) {
       expect(lower).not.toContain(fragment);
     }
   });

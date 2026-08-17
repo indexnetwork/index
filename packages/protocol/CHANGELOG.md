@@ -20,6 +20,17 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 16.0.0 - 2026-08-17
+
+### Removed
+
+- **Breaking:** MCP no longer gates on web/CLI onboarding. Incomplete
+  onboarding does not restrict the MCP inventory, `onboarding_human` and
+  `onboarding_required` are gone, and `complete_onboarding` is omitted from
+  the MCP registry. `read_user_contexts` no longer returns
+  `onboardingComplete` on MCP. Web onboarding chat and the REST Tool API
+  keep the existing completion flow.
+
 ## 15.0.0 - 2026-08-17
 
 Public-surface prune. `src/index.ts` goes from 443 exported symbols across 164

@@ -145,7 +145,6 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   update_user_context: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
   get_enrichment_run: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
   cancel_enrichment_run: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  complete_onboarding: { access: 'human_only', reach: 'principal' },
 
   // Premises are meta-network; a network-scoped agent retains principal reach.
   read_premises: { access: 'permission', actions: ['manage:premises'], reach: 'principal' },
@@ -248,7 +247,7 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   // the only public activity-reporting name; no legacy alias is retained.
 });
 
-/** Tools visible while a session-authenticated human completes onboarding. */
+/** Tools visible on the REST Tool API while web/CLI onboarding is incomplete. MCP does not use this allowlist. */
 export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'register_agent',
   'read_docs',
@@ -300,7 +299,6 @@ export type McpPolicyAgentSnapshot = z.infer<typeof McpPolicyAgentSnapshotSchema
 
 export const McpPrincipalProfileSchema = z.enum([
   'session_human',
-  'onboarding_human',
   'enrollment_key',
   'unregistered_key',
   'registered_global_agent',
@@ -317,7 +315,6 @@ export const McpCapabilitySubjectSchema = z.object({
   userId: z.string().min(1),
   agentId: z.string().min(1).optional(),
   agentType: z.enum(['personal', 'external', 'system']).optional(),
-  isOnboarding: z.boolean(),
   networkScopeId: z.string().min(1).nullable(),
   permissions: z.array(McpPermissionActionSchema),
 }).strict();
@@ -326,7 +323,6 @@ export type McpCapabilitySubject = z.infer<typeof McpCapabilitySubjectSchema>;
 
 export type ResolveMcpCapabilitySubjectInput = {
   identity: McpResolvedIdentity;
-  isOnboarding: boolean;
   agent?: McpPolicyAgentSnapshot | null;
 };
 
@@ -410,13 +406,12 @@ function resolveAgentPermissions(
 export function resolveMcpCapabilitySubject(
   input: ResolveMcpCapabilitySubjectInput,
 ): McpCapabilitySubject {
-  const { identity, isOnboarding } = input;
+  const { identity } = input;
 
   if (identity.isSessionAuth === true) {
     return McpCapabilitySubjectSchema.parse({
-      profile: isOnboarding ? 'onboarding_human' : 'session_human',
+      profile: 'session_human',
       userId: identity.userId,
-      isOnboarding,
       networkScopeId: null,
       permissions: [],
     });
@@ -426,7 +421,6 @@ export function resolveMcpCapabilitySubject(
     return McpCapabilitySubjectSchema.parse({
       profile: identity.enrollmentCapable === true ? 'enrollment_key' : 'unregistered_key',
       userId: identity.userId,
-      isOnboarding,
       networkScopeId: null,
       permissions: [],
     });
@@ -443,7 +437,6 @@ export function resolveMcpCapabilitySubject(
       profile: 'invalid_agent',
       userId: identity.userId,
       agentId: identity.agentId,
-      isOnboarding,
       networkScopeId: identity.networkScopeId ?? null,
       permissions: [],
     });
@@ -463,7 +456,6 @@ export function resolveMcpCapabilitySubject(
     userId: identity.userId,
     agentId: identity.agentId,
     agentType: agent.type,
-    isOnboarding,
     networkScopeId: identity.networkScopeId ?? null,
     permissions: resolveAgentPermissions(identity, agent),
   });
@@ -471,13 +463,13 @@ export function resolveMcpCapabilitySubject(
 
 /**
  * Maps a resolved capability subject to the typed caller context consumed by
- * the centralized activity-summary projection. Session and onboarding humans
- * own the summarized data and receive the full owner view; every other
- * profile is projected as an agent bounded by its granted permissions and
- * (for network agents) its bound community.
+ * the centralized activity-summary projection. Session humans own the
+ * summarized data and receive the full owner view; every other profile is
+ * projected as an agent bounded by its granted permissions and (for network
+ * agents) its bound community.
  */
 export function resolveMcpActivityCaller(subject: McpCapabilitySubject): McpActivityCaller {
-  const isHuman = subject.profile === 'session_human' || subject.profile === 'onboarding_human';
+  const isHuman = subject.profile === 'session_human';
   return McpActivityCallerSchema.parse({
     kind: isHuman ? 'human' : 'agent',
     permissions: isHuman ? [] : subject.permissions,
@@ -487,14 +479,12 @@ export function resolveMcpActivityCaller(subject: McpCapabilitySubject): McpActi
 
 export const McpCapabilityDecisionReasonSchema = z.enum([
   'session_human',
-  'onboarding',
   'enrollment',
   'authenticated',
   'agent_self_read',
   'informational',
   'permission_granted',
   'delivery',
-  'onboarding_required',
   'enrollment_required',
   'unregistered_principal',
   'invalid_agent',
@@ -623,9 +613,6 @@ export class McpCapabilityPolicy {
         ? { allowed: true, reason: 'enrollment', reach: rule.reach }
         : { allowed: false, reason: 'enrollment_required', reach: rule.reach };
     }
-    if (subject.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
-      return { allowed: false, reason: 'onboarding_required', reach: rule.reach };
-    }
     if (subject.profile === 'hermes_agent') {
       const requirement = HERMES_AGENT_MCP_TOOL_PERMISSIONS.get(toolName);
       if (!requirement) return { allowed: false, reason: 'tool_unclassified' };
@@ -665,27 +652,19 @@ export class McpCapabilityPolicy {
           ? { allowed: true, reason: 'agent_self_read', reach: rule.reach }
           : { allowed: false, reason: 'agent_admin_denied', reach: rule.reach };
       }
-      // Session/onboarding humans get every agent_admin tool EXCEPT
-      // read_own_agent, which is reserved for agent principals.
-      if (subject.profile === 'session_human' || subject.profile === 'onboarding_human') {
+      // Session humans get every agent_admin tool EXCEPT read_own_agent,
+      // which is reserved for agent principals.
+      if (subject.profile === 'session_human') {
         return toolName === 'read_own_agent'
           ? { allowed: false, reason: 'human_read_own_agent_denied', reach: rule.reach }
-          : {
-              allowed: true,
-              reason: subject.profile === 'onboarding_human' ? 'onboarding' : 'session_human',
-              reach: rule.reach,
-            };
+          : { allowed: true, reason: 'session_human', reach: rule.reach };
       }
       // Every other profile (enrollment/unregistered/invalid) is handled above
       // and never reaches here; fail closed for completeness.
       return { allowed: false, reason: 'agent_admin_denied', reach: rule.reach };
     }
-    if (subject.profile === 'session_human' || subject.profile === 'onboarding_human') {
-      return {
-        allowed: true,
-        reason: subject.profile === 'onboarding_human' ? 'onboarding' : 'session_human',
-        reach: rule.reach,
-      };
+    if (subject.profile === 'session_human') {
+      return { allowed: true, reason: 'session_human', reach: rule.reach };
     }
     if (rule.access === 'human_only') {
       return { allowed: false, reason: 'human_only', reach: rule.reach };

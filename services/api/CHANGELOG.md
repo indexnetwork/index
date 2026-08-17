@@ -9,6 +9,11 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- **Breaking (API 0.89.0):** MCP no longer gates tools on incomplete
+  onboarding. `complete_onboarding` is omitted from the MCP surface; web
+  onboarding chat and `POST /api/tools/complete_onboarding` are unchanged.
+
 ### Changed
 - Move the raw-SQL maintenance-write guidance for `src/cli/` into a nested `AGENTS.md`, so it loads whenever those files are open instead of depending on a skill description matching the prompt. No runtime change.
 

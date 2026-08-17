@@ -275,9 +275,9 @@ export const applyNetworkScopeToContext = (
 export { ONBOARDING_ALLOWED } from './mcp.authorization-policy.js';
 
 /**
- * Builds the onboarding gate message for MCP callers.  Condensed from the
- * chat orchestrator's flow (chat.prompt.ts buildOnboarding) into a
- * 6-step tool-error guide suited for non-interactive MCP clients.
+ * Builds the onboarding gate message for REST Tool API callers. Condensed
+ * from the chat onboarding flow into a 6-step tool-error guide. MCP does
+ * not use this gate.
  */
 export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
   const nameStep = ctx.hasName
@@ -414,10 +414,10 @@ export function createMcpServer(
     subject: McpCapabilitySubject;
   };
 
-  // Both snapshots are scoped to this MCP server/connection. Permission and
-  // onboarding changes therefore apply only after the caller reconnects or
-  // refreshes its session. They are never shared with the static tool metadata
-  // cache, so a different server/principal cannot inherit decisions.
+  // Both snapshots are scoped to this MCP server/connection. Permission
+  // changes therefore apply only after the caller reconnects or refreshes
+  // its session. They are never shared with the static tool metadata cache,
+  // so a different server/principal cannot inherit decisions.
   let authenticatedRequest: Promise<AuthenticatedMcpRequest> | undefined;
   let resolvedRequest: Promise<ResolvedMcpRequest> | undefined;
 
@@ -458,11 +458,10 @@ export function createMcpServer(
       return {
         identity,
         agent,
-        // Onboarding can only reduce access, so this snapshot is sufficient to
-        // reject forged/hidden calls before resolving chat context.
+        // This snapshot is sufficient to reject forged/hidden calls before
+        // resolving chat context.
         preliminarySubject: resolveMcpCapabilitySubject({
           identity,
-          isOnboarding: false,
           agent,
         }),
       };
@@ -497,7 +496,6 @@ export function createMcpServer(
 
       const subject = resolveMcpCapabilitySubject({
         identity: authenticated.identity,
-        isOnboarding: context.isOnboarding,
         agent: authenticated.agent,
       });
       // Bind the typed resolved caller context so tools with
@@ -514,13 +512,8 @@ export function createMcpServer(
     return resolvedRequest;
   };
 
-  const capabilityDeniedResult = (
-    decision: McpCapabilityDecision,
-    context?: ResolvedToolContext,
-  ) => {
-    const message = decision.reason === 'onboarding_required' && context
-      ? buildMcpOnboardingMessage(context)
-      : 'This capability is not available to the authenticated principal. Reconnect or refresh the session after an administrator changes permissions.';
+  const capabilityDeniedResult = (_decision: McpCapabilityDecision) => {
+    const message = 'This capability is not available to the authenticated principal. Reconnect or refresh the session after an administrator changes permissions.';
     return {
       content: [{
         type: 'text' as const,
@@ -585,7 +578,7 @@ export function createMcpServer(
               subject: resolved.subject,
               decision,
             });
-            return capabilityDeniedResult(decision, resolved.context);
+            return capabilityDeniedResult(decision);
           }
 
           const { identity, context } = resolved;

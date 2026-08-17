@@ -58,6 +58,7 @@ describe("read_user_contexts — context-derived payload (WS6)", () => {
     expect(res.data.context).toBe("GLOBAL CONTEXT for viewer-1");
     expect(res.data).not.toHaveProperty("skills");
     expect(res.data).not.toHaveProperty("interests");
+    expect(res.data).not.toHaveProperty("onboardingComplete");
   });
 
   test("self read tolerates getUserContextText being unset (optional dep)", async () => {

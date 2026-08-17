@@ -98,7 +98,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 
 | File | Tools |
 |------|-------|
-| `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`, `get_enrichment_run`, `cancel_enrichment_run` |
+| `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`³, `get_enrichment_run`, `cancel_enrichment_run` |
 | `premises/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intents/application/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `networks/application/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
@@ -112,10 +112,11 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 
 ¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.
 ² Negotiation tools are only registered when an `agentDispatcher` is provided.
-³ Chat/REST-only: the contact and Gmail-import tools and `scrape_url` are omitted
-  from the MCP registry entirely (IND-596/597), as are the deprecated
-  `*_user_profile`/`*_profile_run` aliases (IND-598) — none of these are MCP
-  tools. On the MCP surface, agent administration follows the IND-599 split:
+³ Chat/REST-only: the contact and Gmail-import tools, `scrape_url`, and
+  `complete_onboarding` are omitted from the MCP registry entirely
+  (IND-596/597), as are the deprecated `*_user_profile`/`*_profile_run`
+  aliases (IND-598) — none of these are MCP tools. MCP does not gate on
+  web/CLI onboarding. On the MCP surface, agent administration follows the IND-599 split:
   registered agents get `read_own_agent` only; session humans get the owned
   admin tools but never `read_own_agent`; enrollment-capable keys are
   `register_agent`-only; unregistered keys fail closed.

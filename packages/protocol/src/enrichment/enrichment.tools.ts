@@ -14,6 +14,7 @@ import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 import { EnrichmentGenerator } from "./enrichment.generator.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
+import type { ToolSurface } from "../shared/agent/utility.tools.js";
 
 const logger = protocolLogger("ChatTools:Enrichment");
 
@@ -36,8 +37,13 @@ const approvedProfileDraftSchema = z.object({
 
 type ApprovedProfileDraft = z.infer<typeof approvedProfileDraftSchema>;
 
-export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentToolDeps) {
+export function createEnrichmentTools(
+  defineTool: DefineTool,
+  deps: EnrichmentToolDeps,
+  options: { surface?: ToolSurface } = {},
+) {
   const { userDb, systemDb, graphs, enricher, grantDefaultSystemPermissions, reportToolError, getUserContextText } = deps;
+  const isMcpSurface = options.surface === "mcp";
 
   function trimToUndefined(value: string | null | undefined): string | undefined {
     const trimmed = value?.trim();
@@ -274,11 +280,8 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
       "- With `networkId` alone: returns thin-identity profiles of ALL members in that index (no `context`).\n" +
       "- No parameters: returns the current user's own profile, including their `context`.\n\n" +
       "**When to use:** Before creating introductions (need profiles of both parties), when the user asks about a person, " +
-      "or to check if a profile exists before suggesting create_user_context. " +
-      "MCP agents should call this with no arguments at session start to fetch the caller's profile AND onboarding status.\n\n" +
-      "**Returns:** Profile objects with name, bio, location, and (for single-user reads) a `context` paragraph. Use userId from results with other tools like read_intents(userId, networkId). " +
-      "When called for the current user (no args, or userId=self), the response also includes `onboardingComplete: boolean` and `onboardingCompletedAt?: string` — " +
-      "use these as the source of truth for whether the user still needs onboarding (do not rely on local file state).",
+      "or to check if a profile exists before suggesting create_user_context.\n\n" +
+      "**Returns:** Profile objects with name, bio, location, and (for single-user reads) a `context` paragraph. Use userId from results with other tools like read_intents(userId, networkId).",
     querySchema: z.object({
       userId: z.string().optional().describe("Fetch a specific user's profile by their user ID. Get user IDs from read_network_memberships or list_contacts."),
       networkId: z.string().optional().describe("Network UUID — fetch profiles of all members in this network, or narrow a name search to this network. Get from read_networks."),
@@ -439,11 +442,10 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
       const _readProfileGraphMs = Date.now() - _readProfileGraphStart;
       _readProfileTraceEmitter?.({ type: "graph_end", name: "enrichment", durationMs: _readProfileGraphMs });
 
-      // Self-lookup includes onboarding status so MCP agents (e.g. Edge Claw)
-      // can decide whether to run the onboarding flow without depending on
-      // local-only state like a workspace BOOTSTRAP.md file.
+      // REST/CLI self-lookup includes onboarding status. MCP does not — it
+      // no longer gates or completes onboarding.
       const onboardingCompletedAt = context.user.onboarding?.completedAt ?? null;
-      const onboardingFields = {
+      const onboardingFields = context.isMcp ? {} : {
         onboardingComplete: !!onboardingCompletedAt,
         ...(onboardingCompletedAt ? { onboardingCompletedAt } : {}),
       };
@@ -481,7 +483,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
   const previewUserContext = defineTool({
     name: "preview_user_context",
     description:
-      "Builds a structured profile draft for onboarding without saving anything. Use this before asking the user to approve the profile. " +
+      "Builds a structured profile draft without saving anything. Use this before asking the user to approve the profile. " +
       "This tool never runs public internet lookup; it uses only explicit text, staged signup/import seeds, and user-provided social URLs. " +
       "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_enrichment_run until status is `succeeded`, then present its `result`.",
     querySchema: z.object({
@@ -550,7 +552,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
   const confirmUserContext = defineTool({
     name: "confirm_user_context",
     description:
-      "Saves an explicitly approved onboarding profile draft. Call this only after the user has seen the draft from preview_user_context and approved it or provided corrections. " +
+      "Saves an explicitly approved profile draft. Call this only after the user has seen the draft from preview_user_context and approved it or provided corrections. " +
       "This path uses only the approved draft/explicit correction text and does not scrape or run public lookup.",
     querySchema: z.object({
       draft: approvedProfileDraftSchema.optional().describe("The structured profile draft returned by preview_user_context after user approval."),
@@ -645,8 +647,8 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
   const createUserContext = defineTool({
     name: "create_user_context",
     description:
-      "Legacy/backward-compatible tool that creates or regenerates the authenticated user's profile. AgentVillage/Hermes onboarding must use " +
-      "preview_user_context → confirm_user_context instead, so the draft is shown before saving. " +
+      "Legacy/backward-compatible tool that creates or regenerates the authenticated user's profile. Prefer " +
+      "preview_user_context → confirm_user_context so the draft is shown before saving. " +
       "Profiles are essential for discovery — they provide the semantic context used to match users with complementary intents.\n\n" +
       "**How it works:** For generic clients, the system can enrich profile data from public web sources (LinkedIn, GitHub, Twitter) and/or explicit user input, " +
       "then generates a structured profile with bio, skills, interests, location, and narrative context.\n\n" +
@@ -654,7 +656,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
       "- No args: attempts auto-generation from account data. If insufficient info, returns `missingFields` — ask the user for name/social URLs and retry.\n" +
       "- With social URLs (linkedinUrl, githubUrl, etc.): enriches from those specific URLs.\n" +
       "- With bioOrDescription: creates profile from explicit text only (no web scraping).\n" +
-      "- Legacy onboarding clients: first call returns a preview. AgentVillage/Hermes clients should not use this preview path; use preview_user_context instead because it does not persist enrichment side effects.\n\n" +
+      "- First call may return a preview. Prefer preview_user_context instead because it does not persist enrichment side effects.\n\n" +
       "**Returns:** The generated profile (name, bio, location, skills, interests) or a `needsClarification` response listing missing fields.\n\n" +
       "**Next steps:** After profile creation, the user can create intents (create_intent) and join indexes (create_network_membership) to start discovering opportunities.",
     querySchema: z.object({
@@ -665,7 +667,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
       websites: z.array(z.string()).optional().describe("Personal or portfolio website URLs. Pass when user shares website links."),
       location: z.string().optional().describe("User's location (e.g. 'Berlin, Germany' or 'SF Bay Area'). Pass when the user mentions where they are based."),
       bioOrDescription: z.string().optional().describe("Explicit profile text from the user (e.g. 'software engineer focused on AI/ML, based in SF'). When provided, creates/updates profile from this text only — no web scraping. Use when user describes themselves in chat."),
-      confirm: z.boolean().optional().describe("Set to true to save a previously previewed profile. Only used during onboarding flow after the user approves the preview."),
+      confirm: z.boolean().optional().describe("Set to true to save a previously previewed profile after the user approves the preview."),
     }),
     handler: async ({ context, query }) => {
       // Persist user-info fields (name, location, socials) to users table before any branching.
@@ -710,7 +712,9 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
           const existingProfile = await userDb.getProfile();
           return success({
             alreadyExists: true,
-            message: "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use create_user_context(bioOrDescription=\"...\", confirm=true).",
+            message: context.isMcp
+              ? "Profile already exists. If they want changes, use create_user_context(bioOrDescription=\"...\", confirm=true)."
+              : "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use create_user_context(bioOrDescription=\"...\", confirm=true).",
             ...(existingProfile
               ? {
                   profile: {
@@ -1120,7 +1124,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     },
   });
 
-  const completeOnboarding = defineTool({
+  const completeOnboarding = isMcpSurface ? null : defineTool({
     name: "complete_onboarding",
     description:
       "Marks the user's onboarding as complete after validating the durable approved-profile marker and a persisted active first signal created at or after that approval. " +

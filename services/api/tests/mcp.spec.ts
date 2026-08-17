@@ -1374,70 +1374,26 @@ describe('MCP Server Factory', () => {
     expect(ids).toEqual(['intent-q']);
   });
 
-  // ── IND-583: human-only onboarding completion at the transport seam ─────────
-  //
-  // complete_onboarding is human_only. A registered agent — even one holding
-  // BOTH manage:identity and manage:premises (the exact pair the retired
-  // manage:profile grant projected to) — must neither see it in tools/list nor
-  // reach it via tools/call, and the denial must land before any chat DB,
-  // scoped DB, registry, or graph work. The session human is admitted and
-  // reaches the scoped handler seam. tools/list and tools/call therefore agree
-  // for both principals.
-  const IDENTITY_PREMISES_ACTIONS = ['manage:identity', 'manage:premises'];
-  const HUMAN_ONLY_ONBOARDING_TOOLS = ['complete_onboarding'] as const;
-
-  it('hides human-only onboarding tools from an agent holding identity+premises grants (tools/list)', async () => {
+  it('omits complete_onboarding from tools/list for every principal', async () => {
     clearMcpToolMetadataCacheForTests();
-    const deps = {
-      ...mockDeps,
-      database: resolvedContextDatabase,
-      agentDatabase: agentDbWith({ agentId: 'agent-ip', scope: 'global', scopeId: null, actions: IDENTITY_PREMISES_ACTIONS }),
-    };
     const server = createMcpServer(
-      deps,
       {
-        resolveIdentity: async () => ({ userId: 'test-user-id', agentId: 'agent-ip' }),
+        ...mockDeps,
+        database: resolvedContextDatabase,
+      },
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', isSessionAuth: true }),
         resolveUserId: async () => 'test-user-id',
       },
       mockScopedDepsFactory,
     );
-    const response = await invokeMcpRequest({ server, method: 'tools/list', headers: { 'x-api-key': 'agent-key' } });
-    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
-    for (const tool of HUMAN_ONLY_ONBOARDING_TOOLS) {
-      expect(names, `${tool} must be hidden from an identity+premises agent`).not.toContain(tool);
-    }
-  });
-
-  it('denies an identity+premises agent calling human-only onboarding tools before any DB or graph work', async () => {
-    for (const tool of HUMAN_ONLY_ONBOARDING_TOOLS) {
-      const counter = { reads: 0 };
-      const result = await callTool({
-        identity: { userId: 'test-user-id', agentId: 'agent-ip' },
-        agentDatabase: agentDbWith({ agentId: 'agent-ip', scope: 'global', scopeId: null, actions: IDENTITY_PREMISES_ACTIONS }),
-        database: guardReads(counter),
-        scopedThrows: true,
-        toolName: tool,
-        arguments: {},
-      });
-      expect(result.isError, `${tool} must be denied`).toBe(true);
-      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
-      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
-      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
-    }
-  });
-
-  it('admits the session human to human-only onboarding tools and reaches the scoped handler seam', async () => {
-    // Schema-valid arguments; the session human passes policy and reaches the
-    // scoped-deps/handler seam (scopedCreateArgs), which is the admission
-    // boundary — the exact parity partner of the agent denial above.
-    const complete = await callTool({
-      identity: { userId: 'test-user-id', isSessionAuth: true },
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
       headers: { authorization: 'Bearer session-token' },
-      toolName: 'complete_onboarding',
-      arguments: {},
     });
-    expect(complete.code).not.toBe('MCP_CAPABILITY_DENIED');
-    expect(complete.scopedCreateArgs.length).toBe(1);
+    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
+    expect(names).not.toContain('complete_onboarding');
   });
 
   // ── IND-588: signals read/write split at the transport seam ─────────────────
@@ -3215,7 +3171,7 @@ describe('MCP Server Factory', () => {
       { tool: 'confirm_opportunity_delivery', args: { opportunityId: '00000000-0000-4000-8000-000000000001', trigger: 'ambient' } },
       // human_only representative registered on this surface (chat-history tools
       // are chat-session-only and never in this MCP registry).
-      { tool: 'complete_onboarding', args: {} },
+      { tool: 'delete_network', args: { networkId: '00000000-0000-4000-8000-000000000001' } },
     ] as const;
 
     for (const { tool, args } of enrollmentDomainCalls) {

@@ -24,9 +24,10 @@ const logger = protocolLogger('ToolRegistry');
 export interface CreateToolRegistryOptions {
   /**
    * Tool-surface profile. The default `'rest'` profile (direct HTTP Tool API)
-   * exposes contact/Gmail tools and `scrape_url`. The restricted `'mcp'`
-   * profile omits those surfaces (IND-596/597). Retired profile/profile-run
-   * compatibility aliases are absent from both profiles (IND-373/598).
+   * exposes contact/Gmail tools, `scrape_url`, and `complete_onboarding`. The
+   * restricted `'mcp'` profile omits those surfaces (IND-596/597). Retired
+   * profile/profile-run compatibility aliases are absent from both profiles
+   * (IND-373/598).
    */
   surface?: ToolSurface;
 }
@@ -90,7 +91,7 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   // Create all tool domains -- each one calls defineTool() which populates the registry.
   // The local defineTool is compatible with DefineTool (which returns any).
   const dt = defineTool as DefineTool;
-  createEnrichmentTools(dt, deps);
+  createEnrichmentTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
   createIntentTools(dt, deps);
   createNetworkTools(dt, deps);
   createOpportunityTools(dt, deps);
