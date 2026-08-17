@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "bun:test";
 
 import { adjustedConfidence, buildPoolAdjustment, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readActivePoolAdjustments, readPoolAdjustments } from "../discriminator/discriminator.adjustments.js";
 import type { PoolAdjustment } from "../discriminator/discriminator.adjustments.js";
-import type { QuestionPoolDiscriminator } from "../../questions/domain/question.schema.js";
+import type { QuestionPoolDiscriminator } from "../../questions/question.schema.js";
 
 const NOW = "2026-07-15T13:00:00.000Z";
 const FINGERPRINT = "intent-fingerprint-v1";

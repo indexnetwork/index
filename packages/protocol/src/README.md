@@ -86,7 +86,7 @@ from anywhere.
 | Premise Analyzer | `premises/premise.analyzer.ts` | Premise graph — classifies the premise speech act (declarative/assertive) and scores felicity |
 | Premise Indexer | `premises/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
 | User Context Generator | `contexts/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
-| Questioner Agent | `questions/application/question.agent.ts` | Questioner queue — mode-driven structured decision-question generation (enrichment/intent/negotiation/discovery) |
+| Questioner Agent | `questions/question.agent.ts` | Questioner queue — mode-driven structured decision-question generation (enrichment/intent/negotiation/discovery) |
 | Network Recommender | `networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
 | HyDE Generator | `discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
@@ -94,7 +94,7 @@ from anywhere.
 | Opportunity Evaluator | `opportunities/application/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `opportunities/application/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Opportunity Introducer | `opportunities/application/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
-| Questioner Agent | `questions/application/question.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
+| Questioner Agent | `questions/question.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
 | Contact Inviter | `contacts/application/contact.inviter.ts` | Invite flow — generates personalized invite messages |
 | Index Negotiator | `negotiations/application/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
 | Negotiation Insights Generator | `negotiations/application/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
@@ -114,7 +114,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `contacts/application/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
 | `agents/application/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
 | `negotiations/application/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
-| `questions/application/question.tools.ts` | `read_pending_questions` |
+| `questions/question.tools.ts` | `read_pending_questions` |
 | `shared/agent/utility.tools.ts` | `scrape_url`³, `read_docs` |
 
 ¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.

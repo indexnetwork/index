@@ -1,5 +1,5 @@
 /**
- * questions/application/question.input — QuestionerAgent input envelope.
+ * questions/question.input — QuestionerAgent input envelope.
  *
  * Defines per-mode context types (IntentContext, NegotiationContext, …),
  * the discriminated QuestionerInput union, and the runtime validation guard
@@ -13,14 +13,11 @@
  * Foreground and ambient adapter entry points inject a `QuestionerEnqueueFn`
  * (defined here as a port alias) to schedule async generation without
  * importing the queue implementation.
- *
- * IND-547: canonical home — previously questioner/questioner.types.ts.
- * Legacy path is a thin compatibility shim pointing here.
  */
-import type { ToolScopeType } from "../../shared/agent/tool.scope.js";
-import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "../domain/question.schema.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../../negotiations/index.js";
-import type { NegotiationConsultationReason } from "../../negotiations/index.js";
+import type { ToolScopeType } from "../shared/agent/tool.scope.js";
+import type { NegotiationQuestionCandidate, QuestionMode, QuestionPoolDiscriminator } from "./question.schema.js";
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY, isSafeNegotiationQuestionText } from "../negotiations/index.js";
+import type { NegotiationConsultationReason } from "../negotiations/index.js";
 
 // ─── Per-mode context types ─────────────────────────────────────────────────
 

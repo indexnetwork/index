@@ -1,13 +1,11 @@
 /**
- * questions/ports/question.tools.port — host capabilities injected into question tools.
+ * questions/question.tools.port — host capabilities injected into question tools.
  *
  * Declares the narrow port types consumed by the foreground adapter tools
  * (question delivery and chat-inline ask_user_question) without importing
  * the full ToolRegistryCompositionDeps interface.
- *
- * IND-547: canonical tool-host port.
  */
-import type { ToolRegistryCompositionDeps } from "../../shared/agent/tool.helpers.js";
+import type { ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.js";
 
 /** Host capabilities consumed by asynchronous question delivery tools. */
 export type QuestionerToolDeps = Pick<ToolRegistryCompositionDeps,

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
-import { createQuestionerTools } from '../application/question.tools.js';
-import type { QuestionerToolDeps } from '../ports/question.tools.port.js';
+import { createQuestionerTools } from '../question.tools.js';
+import type { QuestionerToolDeps } from '../question.tools.port.js';
 import type { ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 import type { PendingQuestionSummary } from '../../shared/schemas/pending-question.schema.js';
 

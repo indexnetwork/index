@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 
-import { QuestionSchema } from "../../questions/domain/question.schema.js";
-import type { QuestionPoolDiscriminator } from "../../questions/domain/question.schema.js";
+import { QuestionSchema } from "../../questions/question.schema.js";
+import type { QuestionPoolDiscriminator } from "../../questions/question.schema.js";
 import { BOTH_MATTER_LABEL, selectQuestionDiscriminators, synthesizePoolQuestion, toQuestionDiscriminator } from "../discriminator/discriminator.question.js";
 import type { ScoredDiscriminator } from "../discriminator/discriminator.types.js";
 

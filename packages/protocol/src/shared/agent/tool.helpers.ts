@@ -21,11 +21,11 @@ import type { AgentDatabase } from "../../agents/ports/index.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
-import type { ChatQuestionsHost, QuestionerDatabase } from "../../questions/ports/index.js";
+import type { ChatQuestionsHost, QuestionerDatabase } from "../../questions/question.persistence.port.js";
 import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
-import type { QuestionerEnqueueFn } from "../../questions/application/question.input.js";
+import type { QuestionerEnqueueFn } from "../../questions/question.input.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
-import type { QuestionMode, QuestionPurpose } from "../../questions/domain/question.schema.js";
+import type { QuestionMode, QuestionPurpose } from "../../questions/question.schema.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 import type { McpActivityCaller } from "./activity-projection.js";
 

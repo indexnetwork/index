@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { createRequire } from "node:module";
 
-import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolSnapshotSchema, QuestionPoolPushSchema, QuestionVoidedReasonSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../domain/question.schema.js";
+import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolSnapshotSchema, QuestionPoolPushSchema, QuestionVoidedReasonSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
 const okOption = { label: "Stay focused", description: "Higher risk but cleaner narrative" };
 

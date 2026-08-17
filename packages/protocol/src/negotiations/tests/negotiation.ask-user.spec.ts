@@ -5,7 +5,7 @@ import { IndexNegotiator, type NegotiationAgentInput } from "../application/nego
 import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnswerWindowMs, DEFAULT_ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../domain/negotiation.protocol.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../domain/negotiation.state.js";
 import type { NegotiationTurn } from "../domain/negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questions/application/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
 import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../domain/negotiation.consultation-policy.js";
 import type { NegotiationConsultationReason } from "../domain/negotiation.consultation-policy.js";
 import { requestContext } from "../../shared/observability/request-context.js";

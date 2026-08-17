@@ -20,6 +20,30 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 20.0.1 - 2026-08-17
+
+### Changed
+
+- Flatten `src/questions/` from four directories to one, matching the same move
+  already made in `intents/` and `networks/`, and the flat layout of `chat/`,
+  `discovery/`, and `premises/`. The `domain/`, `ports/`, and `application/`
+  directories held two,
+  two, and six files behind 206 lines of re-export barrel; the three sub-barrels
+  re-exported roughly twenty symbols no consumer outside the capability ever
+  imported. Files now sit flat and are named for what they are
+  (`question.schema`, `question.input`, `question.agent`, `question.presets`,
+  `question.env`, `question.tools`, `question.ask.tool`, and the two ports), with
+  a single `index.ts` as the capability barrel.
+- Fold the QUD taxonomy constant into `question.presets.ts`, its only consumer,
+  retiring the 16-line `question.qud.ts`.
+- Share the negotiation candidate/provenance field shape and their identical
+  counterparty-eligibility refinement instead of declaring both twice. The two
+  `superRefine` blocks stated the same uptake-only rule in different words; they
+  now delegate to one helper, so the invariant has a single definition.
+
+The package's exported surface is unchanged — `questions/index.ts` exports the
+same 44 names as before. Only paths private to the capability moved.
+
 ## 20.0.0 - 2026-08-17
 
 ### Changed

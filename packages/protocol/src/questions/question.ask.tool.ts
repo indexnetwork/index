@@ -1,5 +1,5 @@
 /**
- * questions/application/question.ask.tool — foreground adapter: chat ask_user_question tool.
+ * questions/question.ask.tool — foreground adapter: chat ask_user_question tool.
  *
  * Blocking mid-conversation questions for the chat orchestrator
  * (AskUserQuestion-style human-in-the-loop).
@@ -26,19 +26,16 @@
  * Foreground adapter: registered by `createChatTools` only when
  * `deps.chatQuestions` is provided — never part of the MCP tool registry
  * (MCP clients have their own elicitation surface).
- *
- * IND-547: canonical home — previously questioner/questioner.ask.tool.ts.
- * Legacy path is a thin compatibility shim pointing here.
  */
 import { z } from "zod";
 
-import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { AskUserQuestionToolDeps } from "../ports/question.tools.port.js";
-import { error, success } from "../../shared/agent/tool.helpers.js";
-import { requestContext } from "../../shared/observability/request-context.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import type { PersistableQuestion, PersistedQuestion, ChatQuestionAnswerOutcome } from "../ports/question.persistence.port.js";
-import type { Question, QuestionGenerationResult, QuestionStrategy, UnderspecificationType } from "../domain/question.schema.js";
+import type { DefineTool } from "../shared/agent/tool.helpers.js";
+import type { AskUserQuestionToolDeps } from "./question.tools.port.js";
+import { error, success } from "../shared/agent/tool.helpers.js";
+import { requestContext } from "../shared/observability/request-context.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import type { PersistableQuestion, PersistedQuestion, ChatQuestionAnswerOutcome } from "./question.persistence.port.js";
+import type { Question, QuestionGenerationResult, QuestionStrategy, UnderspecificationType } from "./question.schema.js";
 import { QuestionerAgent } from "./question.agent.js";
 import { chatQuestionWaitTimeoutMs } from "./question.env.js";
 import type { ChatContext } from "./question.input.js";
