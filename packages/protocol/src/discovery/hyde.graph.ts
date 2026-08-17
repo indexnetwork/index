@@ -7,7 +7,7 @@
 import { createHash } from 'crypto';
 import { END, START, StateGraph } from '@langchain/langgraph';
 
-import type { DebugMetaAgent } from '../agents/index.js';
+import type { DebugMetaAgent } from '../agents/agent.module.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import type { HydeCache } from '../shared/interfaces/cache.interface.js';
 import type { HydeGraphDatabase } from '../shared/interfaces/database.interface.js';

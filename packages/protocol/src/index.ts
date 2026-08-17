@@ -34,11 +34,11 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 export type { McpAuthResolver } from "./shared/interfaces/auth.interface.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./shared/interfaces/cache.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
-export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./questions/index.js";
+export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./questions/question.module.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer } from "./negotiations/index.js";
-export type { ContactServiceAdapter } from "./contacts/index.js";
+export type { ContactServiceAdapter } from "./contacts/contact.module.js";
 export type {
   ChatGraphCompositeDatabase,
   UserDatabase,
@@ -71,7 +71,7 @@ export type {
   NegotiationContinuationTimeoutIdentity,
 } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
-export { SYSTEM_AGENT_IDS } from './agents/index.js';
+export { SYSTEM_AGENT_IDS } from './agents/agent.module.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ export {
   type QuestionVoidedReason,
   type QuestionPoolPushRequestStatus,
   type QuestionPoolPushRequestReason,
-} from "./questions/index.js";
+} from "./questions/question.module.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export { McpApiKeyMetadataSchema } from "./shared/schemas/mcp-auth.schema.js";
 export type {
@@ -102,17 +102,17 @@ export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, bu
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
-export { ChatGraphFactory } from "./agents/index.js";
-export { type ChatPersonaConfig } from "./agents/index.js";
-export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./agents/index.js";
+export { ChatGraphFactory } from "./agents/agent.module.js";
+export { type ChatPersonaConfig } from "./agents/agent.module.js";
+export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./agents/agent.module.js";
 export {
   SIGNAL_PERSONA_ID,
   SIGNAL_PERSONA,
-} from "./agents/index.js";
+} from "./agents/agent.module.js";
 export {
   ONBOARDING_PERSONA_ID,
   ONBOARDING_PERSONA,
-} from "./agents/index.js";
+} from "./agents/agent.module.js";
 export { RadarGraphFactory } from "./opportunities/index.js";
 export { HydeGraphFactory } from "./discovery/index.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
@@ -171,17 +171,17 @@ export type {
   OpportunityOwnerInteractionProvenance,
   OpportunityOwnerInteractionSurface,
 } from "./opportunities/index.js";
-export { EnrichmentGraphFactory } from "./contexts/index.js";
-export { PremiseGraphFactory } from "./contexts/index.js";
+export { EnrichmentGraphFactory } from "./contexts/context.module.js";
+export { PremiseGraphFactory } from "./contexts/context.module.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
-export { UserContextGenerator } from "./contexts/index.js";
-export { ChatTitleGenerator } from "./agents/index.js";
-export { ChatInterruptClassifier } from "./agents/index.js";
-export { ChatSummarizer } from "./agents/index.js";
+export { UserContextGenerator } from "./contexts/context.module.js";
+export { ChatTitleGenerator } from "./agents/agent.module.js";
+export { ChatInterruptClassifier } from "./agents/agent.module.js";
+export { ChatSummarizer } from "./agents/agent.module.js";
 export { HydeGenerator } from "./discovery/index.js";
-export { SuggestionGenerator } from "./agents/index.js";
+export { SuggestionGenerator } from "./agents/agent.module.js";
 export { LensInferrer } from "./discovery/index.js";
 export { NegotiationInsightsGenerator } from "./negotiations/index.js";
 export type { NegotiationDigest } from "./negotiations/index.js";
@@ -190,10 +190,10 @@ export { NegotiationScreener } from "./negotiations/index.js";
 export { NegotiationReflector } from "./negotiations/index.js";
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiations/index.js";
 export type { NegotiatorMemoryEntry } from "./negotiations/index.js";
-export { QuestionerAgent } from "./questions/index.js";
-export { isValidQuestionerInputContract } from "./questions/index.js";
-export type { QuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questions/index.js";
-export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./questions/index.js";
+export { QuestionerAgent } from "./questions/question.module.js";
+export { isValidQuestionerInputContract } from "./questions/question.module.js";
+export type { QuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questions/question.module.js";
+export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./questions/question.module.js";
 export { PoolDiscriminatorMiner } from "./opportunities/index.js";
 export { PoolDiscriminatorAssigner } from "./opportunities/index.js";
 export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunities/index.js";
@@ -218,7 +218,7 @@ export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from ".
 export type { PoolAdjustment, PoolAdjustmentSignal } from "./opportunities/index.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunities/index.js";
 export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./opportunities/index.js";
-export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./questions/index.js";
+export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./questions/question.module.js";
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./opportunities/index.js";
 
 // Lens C — negotiation-evidence questions (IND-433, shadow).
@@ -259,8 +259,8 @@ export { getOrCreateDeliveryCardBatch } from "./opportunities/index.js";
 export { createToolRegistry } from "./shared/agent/tool.registry.js";
 // Capability-owned tool entry points. These are explicit, narrow contracts;
 // capability implementation directories remain private to the package.
-export { createEnrichmentTools } from "./contexts/index.js";
-export type { EnrichmentToolDeps } from "./contexts/index.js";
+export { createEnrichmentTools } from "./contexts/context.module.js";
+export type { EnrichmentToolDeps } from "./contexts/context.module.js";
 export { AMBIENT_PARK_WINDOW_MS } from './negotiations/index.js';
 export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 

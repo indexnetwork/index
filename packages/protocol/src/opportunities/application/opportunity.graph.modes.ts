@@ -11,7 +11,7 @@
  */
 
 import type { Id, NegotiationContinuationReceipt, OpportunityActor } from '../../shared/interfaces/database.interface.js';
-import type { DebugMetaAgent } from '../../agents/index.js';
+import type { DebugMetaAgent } from '../../agents/agent.module.js';
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from '../domain/opportunity.state.js';
 import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from './opportunity.evaluator.js';
 import { timed } from '../../shared/observability/performance.js';

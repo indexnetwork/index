@@ -2,7 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import type { Id, NegotiationContinuationExecution, NegotiationContinuationReceipt, OpportunityStatus, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Lens } from '../../shared/interfaces/embedder.interface.js';
 import type { EvaluatorEntity } from '../application/opportunity.evaluator.js';
-import type { DebugMetaAgent } from '../../agents/index.js';
+import type { DebugMetaAgent } from '../../agents/agent.module.js';
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';
 import type { DiscoveryNegotiation, DiscoverySummary } from "../../shared/schemas/discovery-question.schema.js";
 

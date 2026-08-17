@@ -6,11 +6,11 @@ describe("protocol capability model", () => {
   test("normalizes canonical and compatibility directories", () => {
     expect(capabilityForSourcePath("intents/graph/intent.graph.ts")).toBe("intents");
     expect(capabilityForSourcePath("intents/intake/intake.orchestrator.ts")).toBe("intents");
-    expect(capabilityForSourcePath("contexts/domain/index.ts")).toBe("contexts");
+    expect(capabilityForSourcePath("contexts/context.module.ts")).toBe("contexts");
     expect(capabilityForSourcePath("enrichment/enrichment.graph.ts")).toBe("contexts");
     expect(capabilityForSourcePath("networks/network.graph.ts")).toBe("networks");
     expect(capabilityForSourcePath("networks/indexer.state.ts")).toBe("networks");
-    expect(capabilityForSourcePath("agents/application/agent.tools.ts")).toBe("agents");
+    expect(capabilityForSourcePath("agents/agent.tools.ts")).toBe("agents");
     expect(capabilityForSourcePath("chat/chat.graph.ts")).toBe("agents");
   });
 
@@ -24,9 +24,12 @@ describe("protocol capability model", () => {
     expect(barrelCapabilityForSourcePath("opportunities/index.ts")).toBe("opportunities");
     expect(barrelCapabilityForSourcePath("negotiations/index.ts")).toBe("negotiations");
     expect(barrelCapabilityForSourcePath("negotiations/application/index.ts")).toBeUndefined();
-    // intents and networks state their surface as a class, so their barrels are
-    // intent.module.ts and network.module.ts.
+    // Flattened capabilities use named module barrels rather than `index.ts`.
     expect(barrelCapabilityForSourcePath("intents/intent.module.ts")).toBe("intents");
+    expect(barrelCapabilityForSourcePath("contexts/context.module.ts")).toBe("contexts");
+    expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBe("questions");
+    expect(barrelCapabilityForSourcePath("agents/agent.module.ts")).toBe("agents");
+    expect(barrelCapabilityForSourcePath("contacts/contact.module.ts")).toBe("contacts");
     expect(barrelCapabilityForSourcePath("intents/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("intents/graph/intent.graph.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("networks/network.module.ts")).toBe("networks");

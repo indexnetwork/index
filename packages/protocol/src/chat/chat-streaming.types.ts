@@ -5,7 +5,7 @@
  * Events are sent as Server-Sent Events (SSE) with JSON payloads.
  */
 
-import type { Question, QuestionStrategy } from "../questions/index.js";
+import type { Question, QuestionStrategy } from "../questions/question.module.js";
 
 // Event type discriminator
 export type ChatStreamEventType =

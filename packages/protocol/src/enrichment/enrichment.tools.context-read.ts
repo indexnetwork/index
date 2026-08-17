@@ -7,7 +7,7 @@ import { z } from "zod";
 import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ResolvedToolContext } from "../shared/agent/tool.helpers.js";
-import type { EnrichmentToolDeps } from "../contexts/ports/participant-context.tools.port.js";
+import type { EnrichmentToolDeps } from "../contexts/context.tools.port.js";
 import { success, error, needsClarification, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { EnrichmentResult } from "../shared/interfaces/enrichment.interface.js";

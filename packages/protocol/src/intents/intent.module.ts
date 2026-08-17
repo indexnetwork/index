@@ -24,7 +24,7 @@ import type { DefineTool } from "../shared/agent/tool.helpers.js";
 import type { IntentGraphDatabase } from "../shared/interfaces/database.interface.js";
 import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
 import type { IntentGraphQueue } from "../shared/interfaces/queue.interface.js";
-import type { QuestionerEnqueueFn } from "../questions/index.js";
+import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 
 import { IntentGraphFactory } from "./graph/intent.graph.js";
 import { IntentIndexer } from "./intent.indexer.js";

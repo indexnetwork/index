@@ -10,7 +10,7 @@
  * flow, not through this port.
  */
 
-import type { ContactEntry, ContactSearchResult } from "../domain/index.js";
+import type { ContactEntry, ContactSearchResult } from "./contact.types.js";
 
 /**
  * Contact management operations used by chat tools.

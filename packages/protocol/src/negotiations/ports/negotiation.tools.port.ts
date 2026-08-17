@@ -7,7 +7,7 @@ import type { NegotiationTimeoutQueue } from "../../shared/interfaces/negotiatio
  *
  * Defined inline here (not derived from ToolRegistryCompositionDeps) to avoid
  * a negotiation → interaction-composition capability dependency, following the
- * same pattern as contacts/ports/contact.tools.port.ts.
+ * same pattern as contacts/contact.tools.port.ts.
  *
  * IND-550: canonical port type for negotiation tool host dependencies.
  */

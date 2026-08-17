@@ -7,9 +7,12 @@ This is the protocol layer: LangGraph workflows, AI agents, chat tools, and supp
 ```
 packages/protocol/src/
   agents/           Participant-agent tools, registration, permissions
+    agent.module.ts  The sole capability surface; implementation files sit beside it
   chat/             Chat graph, agent, prompt modules, streaming, suggestions, title, summarizer, interrupt classifier
   contacts/         Contact domain, tools, and ports
+    contact.module.ts The sole capability surface; implementation files sit beside it
   contexts/         User Context generator (premise -> network-scoped context paragraphs)
+    context.module.ts The sole capability surface; implementation files sit beside it
   discovery/        HyDE pipeline: lens inference, hypothetical-document generation, validation
   enrichment/       Enrichment graph, identity generation, and enrichment tools
   integrations/     Integration domain, tools, and ports
@@ -32,6 +35,7 @@ packages/protocol/src/
     radar/           Radar graph (flat presenter-card list), radar health
   premises/         Premise graph, decomposer, analyzer, indexer, tools
   questions/        Decision-question domain, generation, and tools
+    question.module.ts The sole capability surface; implementation files sit beside it
   shared/
     agent/          Model config/signal, response streamer, tool factory/helpers/registry/runtime
     assignment/     Network-assignment policy (threshold scoring, scope resolution)
@@ -42,9 +46,9 @@ packages/protocol/src/
     utils/          Telegram-handle, social-label, and claim-safety helpers
 ```
 
-Each capability directory exposes exactly one `index.ts`; that barrel is the only
-path another capability may import from. `shared/` is neutral and may be imported
-from anywhere.
+Each capability exposes one root module barrel; that surface is the only path
+another capability may import from. `shared/` is neutral and may be imported from
+anywhere.
 
 
 ## Graphs
@@ -108,11 +112,11 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 |------|-------|
 | `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`³, `get_enrichment_run`, `cancel_enrichment_run` |
 | `premises/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
-| `intents/tools/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
+| `intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `opportunities/application/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
-| `contacts/application/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
-| `agents/application/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
+| `contacts/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
+| `agents/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
 | `negotiations/application/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
 | `questions/question.tools.ts` | `read_pending_questions` |
 | `shared/agent/utility.tools.ts` | `scrape_url`³, `read_docs` |

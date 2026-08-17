@@ -18,7 +18,7 @@ import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../../sh
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "../domain/opportunity.labels.js";
 import { OpportunityPresenter, gatherPresenterContext, getSafePresentationOrSkip, narratorRemarkFromReasoning, safeFallbackSummary, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.presentation.js";
-import { isUptakeGuardEnabled } from "../../questions/index.js";
+import { isUptakeGuardEnabled } from "../../questions/question.module.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from './opportunity.update-admission.js';
 import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from './opportunity.owner-approval.js';

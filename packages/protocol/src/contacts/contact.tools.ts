@@ -10,10 +10,10 @@
  */
 
 import { z } from 'zod';
-import type { DefineTool } from '../../shared/agent/tool.helpers.js';
-import type { ContactToolDeps } from '../ports/index.js';
-import { success, error } from '../../shared/agent/tool.helpers.js';
-import { protocolLogger } from '../../shared/observability/protocol.logger.js';
+import type { DefineTool } from '../shared/agent/tool.helpers.js';
+import type { ContactToolDeps } from './contact.tools.port.js';
+import { success, error } from '../shared/agent/tool.helpers.js';
+import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('ChatTools:Contact');
 

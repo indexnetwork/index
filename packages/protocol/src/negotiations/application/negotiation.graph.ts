@@ -17,7 +17,7 @@ import { blocksNegotiationBeforeFirstTurn, NegotiationScreener } from "./negotia
 import { configuredScreenMode } from "../domain/negotiation.screen.contracts.js";
 import { isTerminalAction } from "../domain/negotiation.protocol.js";
 import { isNegotiationTurnCapReached } from "../domain/negotiation.turn-cap.js";
-import type { QuestionerEnqueueFn } from "../../questions/index.js";
+import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryRetrieveFn } from "../domain/negotiation.memory.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";

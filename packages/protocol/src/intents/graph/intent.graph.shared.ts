@@ -20,8 +20,8 @@ import type { IntentGraphQueue } from "../../shared/interfaces/queue.interface.j
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../../agents/index.js";
-import type { QuestionerEnqueueFn } from "../../questions/index.js";
+import type { DebugMetaAgent } from "../../agents/agent.module.js";
+import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
 
 /** The graph's channel state, as every node sees it. */
 export type IntentState = typeof IntentGraphState.State;

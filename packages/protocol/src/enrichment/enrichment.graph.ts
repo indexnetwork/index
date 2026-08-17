@@ -5,10 +5,10 @@ import { Scraper } from "../shared/interfaces/scraper.interface.js";
 import type { ProfileEnricher } from "../shared/interfaces/enrichment.interface.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { QuestionerEnqueueFn } from "../questions/index.js";
+import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../agents/index.js";
+import type { DebugMetaAgent } from "../agents/agent.module.js";
 import { PremiseDecomposer } from "../premises/premise.decomposer.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 

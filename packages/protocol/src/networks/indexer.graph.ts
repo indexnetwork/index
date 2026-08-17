@@ -5,7 +5,7 @@ import type { IntentNetworkGraphDatabase } from "../shared/interfaces/database.i
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../agents/index.js";
+import type { DebugMetaAgent } from "../agents/agent.module.js";
 import { renderNetworkContext } from "../shared/network/metadata.renderer.js";
 
 import type { Intents } from "../intents/intent.module.js";

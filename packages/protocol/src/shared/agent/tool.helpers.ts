@@ -9,7 +9,7 @@ import type { UserIdentity } from "../schemas/identity.schema.js";
 import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
-import type { ContactServiceAdapter } from "../../contacts/ports/index.js";
+import type { ContactServiceAdapter } from "../../contacts/contact.repository.port.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
 import type { IntentGraphQueue } from "../interfaces/queue.interface.js";
 import type { ChatSessionReader } from "../interfaces/chat-session.interface.js";
@@ -17,7 +17,7 @@ import type { ChatSummaryReader } from "../interfaces/chat-summary.interface.js"
 import type { ChatMessageWriter } from "../interfaces/chat-message-writer.interface.js";
 import type { NegotiationSummaryReader } from "../interfaces/negotiation-summary.interface.js";
 import type { Embedder } from "../interfaces/embedder.interface.js";
-import type { AgentDatabase } from "../../agents/ports/index.js";
+import type { AgentDatabase } from "../../agents/agent.repository.port.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";

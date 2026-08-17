@@ -14,10 +14,10 @@
 
 import { z } from 'zod';
 
-import type { DefineTool } from '../../shared/agent/tool.helpers.js';
-import type { AgentToolDeps } from '../ports/index.js';
-import { error, success } from '../../shared/agent/tool.helpers.js';
-import { protocolLogger } from '../../shared/observability/protocol.logger.js';
+import type { DefineTool } from '../shared/agent/tool.helpers.js';
+import type { AgentToolDeps } from './agent.tools.port.js';
+import { error, success } from '../shared/agent/tool.helpers.js';
+import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('ChatTools:Agent');
 

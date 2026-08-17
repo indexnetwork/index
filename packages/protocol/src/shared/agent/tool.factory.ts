@@ -12,7 +12,7 @@ import { NegotiationGraphFactory } from "../../negotiations/index.js";
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 
-import type { QuestionerEnqueueFn } from "../../questions/index.js";
+import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
 import { deriveAllowedNetworkIds, focusedIntentId, scopeFromNetworkId } from "./tool.scope.js";
@@ -20,14 +20,14 @@ import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
 import { createOpportunityTools } from "../../opportunities/index.js";
 import { createUtilityTools } from "./utility.tools.js";
-import { createContactTools } from "../../contacts/index.js";
+import { createContactTools } from "../../contacts/contact.module.js";
 // The composition root reaches the leaf directly (it is exempt from the barrel
-// rule by design): importing agents/index.js here would pull in the
+// rule by design): importing agents/agent.module.js here would pull in the
 // chat personas, which import this module back -- a runtime cycle.
-import { createAgentTools } from "../../agents/application/agent.tools.js";
+import { createAgentTools } from "../../agents/agent.tools.js";
 import { createNegotiationTools } from "../../negotiations/index.js";
 import { createPremiseTools } from "../../premises/premise.tools.js";
-import { createQuestionerTools, createAskUserQuestionTools } from "../../questions/index.js";
+import { createQuestionerTools, createAskUserQuestionTools } from "../../questions/question.module.js";
 import type { OpportunityOwnerApprovalDeps } from "../../opportunities/ports/opportunity.tools.port.js";
 import { bindOwnerApprovalProvenance } from "../../opportunities/application/opportunity.owner-provenance.js";
 

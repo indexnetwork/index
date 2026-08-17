@@ -13,7 +13,7 @@
  *   agent.dispatcher.port (participant-agents) → capabilities/negotiation.facade
  *   (the facade represents the negotiation implementation boundary) →
  *   negotiation.graph.ts → shared/interfaces/agent-dispatcher.interface.ts
- *   (shim) → agents/ports/index.ts → agent.dispatcher.port
+ *   (shim) → agents/agent.dispatcher.port
  *
  * The solution is to leave shared/interfaces/agent-dispatcher.interface.ts as
  * the authoritative file and surface its types through the participant-agents
@@ -26,4 +26,4 @@ export type {
   AgentDispatcher,
   AgentDispatchResult,
   NegotiationTurnPayload,
-} from '../../shared/interfaces/agent-dispatcher.interface.js';
+} from '../shared/interfaces/agent-dispatcher.interface.js';

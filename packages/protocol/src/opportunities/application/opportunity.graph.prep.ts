@@ -6,7 +6,7 @@
  */
 
 import type { ActiveIntent, Id } from '../../shared/interfaces/database.interface.js';
-import type { DebugMetaAgent } from '../../agents/index.js';
+import type { DebugMetaAgent } from '../../agents/agent.module.js';
 import type { IndexedIntent, TargetNetwork } from '../domain/opportunity.state.js';
 import { Intents } from '../../intents/intent.module.js';
 import { withCallLogging } from '../../shared/observability/protocol.logger.js';

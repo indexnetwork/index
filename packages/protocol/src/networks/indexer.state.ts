@@ -1,7 +1,7 @@
 import { Annotation } from "@langchain/langgraph";
 
 import type { IntentIndexerOutput } from "../intents/intent.module.js";
-import type { DebugMetaAgent } from "../agents/index.js";
+import type { DebugMetaAgent } from "../agents/agent.module.js";
 
 /**
  * Intent payload and metadata loaded for network evaluation.

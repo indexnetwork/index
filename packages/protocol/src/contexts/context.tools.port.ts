@@ -1,4 +1,4 @@
-import type { ToolRegistryCompositionDeps } from "../../shared/agent/tool.helpers.js";
+import type { ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.js";
 
 /** Host capabilities consumed by enrichment and premise-derived identity tools. */
 export type EnrichmentToolDeps = Pick<ToolRegistryCompositionDeps,

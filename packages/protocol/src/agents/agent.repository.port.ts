@@ -8,7 +8,7 @@
  * participant-agents capability's dedicated ports layer.
  */
 
-import type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput } from "../domain/index.js";
+import type { AgentRecord, AgentTransportRecord, AgentPermissionRecord, AgentWithRelations, CreateAgentInput, CreateTransportInput, GrantPermissionInput } from "./agent.types.js";
 
 /**
  * Database adapter interface for agent registry operations.
