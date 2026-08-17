@@ -242,7 +242,7 @@ export const NegotiationGraphState = Annotation.Root({
    * (attribution module imports NegotiationTurn from this module's shim);
    * callers cast to `SeededAttribution` via the negotiation.attribution module.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   priorAttribution: Annotation<unknown>({
     reducer: (curr: any, next: any) => next ?? curr,
     default: () => null,
