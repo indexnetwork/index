@@ -52,10 +52,12 @@ pin a supported release, use `latest`.
   `Intents` instance (anything with `indexIntent`) rather than an
   `IntentIndexer`. Pass the same instance used for the intent graph.
 
-- Reorganize `src/intents/` by function rather than by layer: `graph/`,
-  `inference/`, `verification/`, `indexing/`, `intake/`, `proposal/`, and
-  `tools/`, with `intent.module.ts` as the capability barrel in place of
-  `index.ts`. The directories are private; only `Intents` crosses the boundary.
+- Reorganize `src/intents/` by function rather than by layer, with
+  `intent.module.ts` as the capability barrel in place of `index.ts`. Files are
+  named for what they do and sit flat (`intent.inferrer`, `intent.verifier`,
+  `intent.indexer`, …); only `graph/` and `intake/` — the two multi-file stages
+  — keep a directory. The layout is private; only `Intents` crosses the
+  boundary.
   `IntentIndexerOutput`, `IntakePack*`, `Intake{Answer,Round}`, `FollowUpPlan*`,
   `Synthesis*`, `IntentToolDeps`, and `IntentsDeps` remain exported as types.
 

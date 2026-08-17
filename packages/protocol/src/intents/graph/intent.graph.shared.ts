@@ -8,12 +8,11 @@
 
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { IntentGraphState, VerifiedIntent, ExecutionResult, type IntentValidationFailure } from "./intent.graph.state.js";
-import { ExplicitIntentInferrer } from "../inference/intent.inferrer.js";
-import { SemanticVerifier } from "../verification/intent.verifier.js";
-import { DEFAULT_SPECIFICITY_WARNING } from "../verification/intent.specificity.js";
-import { normalizeIntentDescription } from "../proposal/intent.proposal.js";
-import { IntentReconciler } from "../inference/intent.reconciler.js";
-import type { NormalizedIntentAction } from "../inference/intent.reconciler.js";
+import { ExplicitIntentInferrer } from "../intent.inferrer.js";
+import { SemanticVerifier } from "../intent.verifier.js";
+import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription } from "../intent.proposal.js";
+import { IntentReconciler } from "../intent.reconciler.js";
+import type { NormalizedIntentAction } from "../intent.reconciler.js";
 import { IntentGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../../shared/interfaces/embedder.interface.js";

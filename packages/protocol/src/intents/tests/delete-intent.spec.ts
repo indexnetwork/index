@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createIntentTools } from "../../intents/tools/intent.tools.js";
+import { createIntentTools } from "../../intents/intent.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 function makeContext(userId = "user-123"): ResolvedToolContext {

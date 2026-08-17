@@ -5,16 +5,19 @@
  * {@link Intents} class. The directories beside this file are private
  * implementation, grouped by what they do rather than by layer:
  *
- *   graph/        the intent lifecycle graph — prep, infer, verify, reconcile, execute
- *   inference/    turning an utterance into candidate signals, and those into actions
- *   verification/ felicity/entropy verdicts and the clarification path
- *   indexing/     scoring one signal against one network
- *   intake/       the guided first-signal interview
- *   proposal/     the persisted proposal record and description normalization
- *   tools/        the agent-facing tool definitions
+ *   graph/               the lifecycle graph — prep, infer, verify, reconcile, execute
+ *   intake/              the guided first-signal interview
+ *   intent.inferrer      an utterance into candidate signals
+ *   intent.reconciler    candidate signals into create/update/expire actions
+ *   intent.verifier      felicity and entropy verdicts
+ *   intent.clarifier     the clarification path when a signal is underspecified
+ *   intent.indexer       scoring one signal against one network
+ *   intent.proposal      the persisted proposal record and description normalization
+ *   intent.tools         the agent-facing tool definitions
  *
- * Nothing outside `intents/` imports those directories; they may be
- * reorganized freely as long as this class keeps its shape.
+ * Only the two multi-file stages keep a directory. Nothing outside `intents/`
+ * imports any of it; the layout may change freely as long as this class keeps
+ * its shape.
  */
 
 import type { DefineTool } from "../shared/agent/tool.helpers.js";
@@ -24,19 +27,19 @@ import type { IntentGraphQueue } from "../shared/interfaces/queue.interface.js";
 import type { QuestionerEnqueueFn } from "../questions/index.js";
 
 import { IntentGraphFactory } from "./graph/intent.graph.js";
-import { IntentIndexer } from "./indexing/intent.indexer.js";
-import { ExplicitIntentInferrer } from "./inference/intent.inferrer.js";
-import { IntentReconciler } from "./inference/intent.reconciler.js";
+import { IntentIndexer } from "./intent.indexer.js";
+import { ExplicitIntentInferrer } from "./intent.inferrer.js";
+import { IntentReconciler } from "./intent.reconciler.js";
 import { FALLBACK_WHO_QUESTION, SignalIntakeOrchestrator } from "./intake/intake.orchestrator.js";
 import { SignalIntakePackGenerator } from "./intake/intake.pack.generator.js";
-import { normalizeIntentDescription } from "./proposal/intent.proposal.js";
-import { createIntentTools } from "./tools/intent.tools.js";
-import { SemanticVerifier } from "./verification/intent.verifier.js";
+import { normalizeIntentDescription } from "./intent.proposal.js";
+import { createIntentTools } from "./intent.tools.js";
+import { SemanticVerifier } from "./intent.verifier.js";
 
-import type { IntentIndexerOutput } from "./indexing/intent.indexer.js";
+import type { IntentIndexerOutput } from "./intent.indexer.js";
 import type { FollowUpPlan, FollowUpPlanInput, IntakeAnswer, IntakeRound, SynthesisInput, SynthesisResult } from "./intake/intake.orchestrator.js";
 import type { IntakePack, IntakePackInput, IntakePackQuestion, IntakePackQuestionOption } from "./intake/intake.pack.generator.js";
-import type { IntentToolDeps } from "./tools/intent.tools.port.js";
+import type { IntentToolDeps } from "./intent.tools.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 

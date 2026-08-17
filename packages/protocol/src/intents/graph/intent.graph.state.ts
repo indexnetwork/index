@@ -1,8 +1,8 @@
 import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
-import { InferredIntent } from "../inference/intent.inferrer.js";
-import { SemanticVerifierOutput } from "../verification/intent.verifier.js";
-import { IntentReconcilerOutput } from "../inference/intent.reconciler.js";
+import { InferredIntent } from "../intent.inferrer.js";
+import { SemanticVerifierOutput } from "../intent.verifier.js";
+import { IntentReconcilerOutput } from "../intent.reconciler.js";
 import type { DebugMetaAgent } from '../../agents/index.js';
 import type { ToolScopeType } from '../../shared/agent/tool.scope.js';
 

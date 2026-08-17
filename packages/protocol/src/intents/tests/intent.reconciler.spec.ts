@@ -47,7 +47,7 @@ mock.module("../../shared/agent/model.config", () => ({
   }),
 }));
 
-const { IntentReconciler } = await import("../../intents/inference/intent.reconciler.js");
+const { IntentReconciler } = await import("../../intents/intent.reconciler.js");
 
 afterAll(() => mock.restore());
 

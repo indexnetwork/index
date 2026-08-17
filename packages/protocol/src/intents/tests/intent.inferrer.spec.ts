@@ -36,7 +36,7 @@ mock.module("../../shared/agent/model.config", () => ({
   }),
 }));
 
-const { ExplicitIntentInferrer } = await import("../../intents/inference/intent.inferrer.js");
+const { ExplicitIntentInferrer } = await import("../../intents/intent.inferrer.js");
 
 afterAll(() => mock.restore());
 

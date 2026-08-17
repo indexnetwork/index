@@ -21,9 +21,9 @@ and [CHANGELOG.md](./CHANGELOG.md) for release history.
 Internal source is domain-first: `signals`, `communities`, `questions`,
 `participant-agents`, `contacts`, and `integrations`; opportunity and negotiation
 place state/contracts in `domain/` and workflows/tools in `application/`. The
-`intents` capability is instead organized by function (`graph/`, `inference/`,
-`verification/`, `indexing/`, `intake/`, `proposal/`, `tools/`) behind a single
-exported class, `Intents`.
+`intents` capability is instead organized by function behind a single exported
+class, `Intents`: files sit flat and named for what they do, with `graph/` and
+`intake/` the two multi-file stages that keep a directory.
 
 
 ## Install

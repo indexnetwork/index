@@ -7,9 +7,9 @@
  */
 
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { ExplicitIntentInferrer } from "../inference/intent.inferrer.js";
-import { SemanticVerifier } from "../verification/intent.verifier.js";
-import { IntentReconciler } from "../inference/intent.reconciler.js";
+import { ExplicitIntentInferrer } from "../intent.inferrer.js";
+import { SemanticVerifier } from "../intent.verifier.js";
+import { IntentReconciler } from "../intent.reconciler.js";
 import type { IntentGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { EmbeddingGenerator } from "../../shared/interfaces/embedder.interface.js";
 import type { IntentGraphQueue } from "../../shared/interfaces/queue.interface.js";

@@ -1,18 +1,21 @@
 import { z } from "zod";
 
-import { IntentClarifier } from "../verification/intent.clarifier.js";
-import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "../graph/intent.graph.state.js";
-import { DEFAULT_SPECIFICITY_WARNING } from "../verification/intent.specificity.js";
-import { normalizeIntentDescription, type PersistableIntentProposal } from "../proposal/intent.proposal.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { traceGraph } from "../../shared/observability/trace.js";
+import { IntentClarifier } from "./intent.clarifier.js";
+import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "./graph/intent.graph.state.js";
+import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription, type PersistableIntentProposal } from "./intent.proposal.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { traceGraph } from "../shared/observability/trace.js";
 
-import type { DefineTool } from "../../shared/agent/tool.helpers.js";
-import type { IntentToolDeps } from "./intent.tools.port.js";
-import { success, error, UUID_REGEX } from "../../shared/agent/tool.helpers.js";
-import type { UserRecord } from "../../shared/interfaces/database.interface.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
-import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel, type ToolScopeEnvelope } from "../../shared/agent/tool.scope.js";
+import type { DefineTool, ToolRegistryCompositionDeps } from "../shared/agent/tool.helpers.js";
+import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
+import type { UserRecord } from "../shared/interfaces/database.interface.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
+import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetworkLabel, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
+
+/** Host capabilities consumed by signal and intent tools. */
+export type IntentToolDeps = Pick<ToolRegistryCompositionDeps, "userDb" | "systemDb">
+  & Pick<ToolRegistryCompositionDeps, "intentProposalStore">
+  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentIndex" | "profile"> };
 
 const logger = protocolLogger("ChatTools:Intent");
 

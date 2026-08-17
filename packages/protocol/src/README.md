@@ -14,14 +14,11 @@ packages/protocol/src/
   enrichment/       Enrichment graph, identity generation, and enrichment tools
   integrations/     Integration domain, tools, and ports
   intents/          The signal capability, behind one class (Intents)
-    intent.module.ts The sole public surface; everything below it is private
+    intent.module.ts The sole public surface; everything beside it is private
     graph/           Lifecycle graph: prep, infer, verify, reconcile, execute
-    inference/       Utterance -> candidate signals -> reconciled actions
-    verification/    Felicity/entropy verdicts and the clarification path
-    indexing/        Scoring one signal against one network
     intake/          The guided first-signal interview
-    proposal/        Persisted proposal record and description normalization
-    tools/           Agent-facing intent tools
+                     (inferrer, reconciler, verifier, clarifier, indexer,
+                      proposal, and tools sit flat beside the module)
   maintenance/      Maintenance graph (radar health, opportunity expiration)
   mcp/              MCP server + elicitation builder/dispatcher
   negotiations/     Bilateral negotiation domain and application workflows

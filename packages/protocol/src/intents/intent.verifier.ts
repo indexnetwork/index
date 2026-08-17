@@ -1,10 +1,10 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { Timed } from "../../shared/observability/performance.js";
-import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { Timed } from "../shared/observability/performance.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 const logger = protocolLogger("SemanticVerifier");
 const invokeLog = protocolLogger("SemanticVerifier:invoke");
