@@ -52,6 +52,8 @@ private final class FixtureRunner: HermesCommandRunning {
                 job["state"] = "paused"
                 job["enabled"] = false
             }
+        } else if arguments.starts(with: ["cron", "remove"]), arguments.count == 3 {
+            try deleteJob(id: arguments[2])
         } else if arguments.starts(with: ["cron", "edit"]), arguments.count >= 3 {
             let id = arguments[2]
             try mutateJob(id: id) { job in
@@ -84,6 +86,18 @@ private final class FixtureRunner: HermesCommandRunning {
             throw FixtureFailure.assertion("runner could not find cron job \(id)")
         }
         mutation(&jobs[index])
+        root["jobs"] = jobs
+        try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+            .write(to: jobsURL, options: .atomic)
+    }
+
+    private func deleteJob(id: String) throws {
+        let data = try Data(contentsOf: jobsURL)
+        guard var root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var jobs = root["jobs"] as? [[String: Any]] else {
+            throw FixtureFailure.assertion("runner could not read cron store")
+        }
+        jobs.removeAll { $0["id"] as? String == id }
         root["jobs"] = jobs
         try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
             .write(to: jobsURL, options: .atomic)
@@ -196,9 +210,9 @@ struct HermesPersistenceCompatibilityFixture {
         let reloadedStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
         let reloaded = try reloadedStore.loadOrCreateInstallation()
         try require(reloaded.installationId == "installation-old", "reload changed installation ID")
-        try require(reloaded.currentCronJobId == historicalCronID, "reload changed immutable cron ID")
+        try require(reloaded.currentCronJobId == nil, "configure left a leftover cron ID")
         try require(reloaded.currentSetupAttemptId == "attempt-new", "reload lost rebound setup")
-        try require(reloaded.currentCronSetupAttemptId == "attempt-new", "reload lost cron setup marker")
+        try require(reloaded.currentCronSetupAttemptId == nil, "configure left a leftover cron generation")
         try require(reloaded.currentOwnerId == "owner-new", "reload lost owner")
         try require(reloaded.currentExecutorId == "executor-new", "reload lost executor")
 
@@ -216,15 +230,12 @@ struct HermesPersistenceCompatibilityFixture {
         let afterForeignAttempt = try HermesLocalStore(
             applicationSupportURL: layout.applicationSupport
         ).loadOrCreateInstallation()
-        try require(afterForeignAttempt.currentCronJobId == historicalCronID, "foreign rebind changed cron ID")
+        try require(afterForeignAttempt.currentCronJobId == nil, "foreign rebind restored leftover cron")
         try require(afterForeignAttempt.currentSetupAttemptId == "attempt-new", "foreign rebind changed setup")
         try require(afterForeignAttempt.currentOwnerId == "owner-new", "foreign rebind changed owner")
 
-        let cron = try onlyCron(at: layout.jobsURL)
-        try require(cron["id"] as? String == historicalCronID, "cron ID changed during rebind")
-        try require(cron["index_app_installation_id"] as? String == "installation-old", "cron lost installation marker")
-        try require(cron["index_app_owner_id"] as? String == "owner-new", "cron lost owner marker")
-        try require(cron["index_app_setup_attempt_id"] as? String == "attempt-new", "cron lost setup marker")
+        let leftoverCount = try cronJobCount(at: layout.jobsURL)
+        try require(leftoverCount == 0, "leftover Personal Agent cron was not removed")
     }
 
     private static func makeManager(_ layout: FixtureLayout) -> HermesRuntimeManager {
@@ -295,14 +306,13 @@ struct HermesPersistenceCompatibilityFixture {
         )
     }
 
-    private static func onlyCron(at jobsURL: URL) throws -> [String: Any] {
+    private static func cronJobCount(at jobsURL: URL) throws -> Int {
         let data = try Data(contentsOf: jobsURL)
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let jobs = root["jobs"] as? [[String: Any]],
-              jobs.count == 1 else {
-            throw FixtureFailure.assertion("cron store did not contain exactly one job")
+              let jobs = root["jobs"] as? [[String: Any]] else {
+            throw FixtureFailure.assertion("cron store was unreadable")
         }
-        return jobs[0]
+        return jobs.count
     }
 
     private static func throwsError(_ body: () throws -> Void) -> Bool {

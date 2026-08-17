@@ -57,11 +57,24 @@ enum HermesSetup {
         if status != 0 {
             return ["ok": false, "error": "hermes \(args.joined(separator: " ")): \(String(output.suffix(300)))"]
         }
-        // The plugin self-installs its Hermes Desktop bundle into
-        // ~/.hermes/desktop-plugins when the gateway loads it (see the
-        // plugin's __init__.py), so the restart below covers the desktop app.
+        // Point Hermes Desktop at the plugin's desktop/dist without waiting
+        // for gateway register() to copy it (see plugin __init__.py).
+        linkDesktopPlugin()
         restartGatewayIfRunning(hermes)
         return ["ok": true]
+    }
+
+    /// ~/.hermes/desktop-plugins/index-network → plugins/index-network/desktop/dist
+    private static func linkDesktopPlugin() {
+        let home = NSHomeDirectory() + "/.hermes"
+        let dest = home + "/desktop-plugins/index-network"
+        let src = home + "/plugins/index-network/desktop/dist"
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: src + "/plugin.js") else { return }
+        try? fm.createDirectory(
+            atPath: home + "/desktop-plugins", withIntermediateDirectories: true)
+        try? fm.removeItem(atPath: dest)
+        try? fm.createSymbolicLink(atPath: dest, withDestinationPath: src)
     }
 
     /// Plugins only load at gateway startup: if a gateway is running, bounce

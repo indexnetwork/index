@@ -178,9 +178,10 @@ def register(ctx):
     _register_skills(ctx)
     # Ordinary agent keys: keep lastNegotiationPickupAt fresh via conversation
     # SSE keepalive (~15s) so Index parks turns for Hermes instead of taking
-    # them inline. Best-effort — missing API key must not break register().
+    # them inline. Pickup is a seat heartbeat only — no auto consult/respond.
     if negotiation_wake is not None:
         try:
+            negotiation_wake.bind_plugin_context(ctx)
             negotiation_wake.start_listener()
         except Exception:  # noqa: BLE001
             pass

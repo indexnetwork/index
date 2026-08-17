@@ -31,9 +31,9 @@ const ACTIVE = {
 const LOCAL_DISABLED = {
   ownerId: OWNER,
   installationId: INSTALLATION, executorId: EXECUTOR, pluginInstalled: true,
-  negotiatorMode: true, schedulePresent: true, scheduleEnabled: false, setupAttemptId: ATTEMPT,
+  negotiatorMode: false, schedulePresent: false, scheduleEnabled: false, setupAttemptId: ATTEMPT,
 };
-const LOCAL_ENABLED = { ...LOCAL_DISABLED, scheduleEnabled: true };
+const LOCAL_ENABLED = LOCAL_DISABLED;
 
 function selectionHarness({ failAt, rolledBack = true } = {}) {
   const calls = [];
@@ -1035,7 +1035,7 @@ describe('authentication epoch and operation revision coordinator', () => {
         return { ok: true, stage: 'scheduleDisabled', state: local };
       }
       if (command === 'enable') {
-        local = { ...local, scheduleEnabled: true };
+        local = { ...local, scheduleEnabled: false };
         return { ok: true, stage: 'awaitingHeartbeat', state: local };
       }
       if (command === 'confirmHealthy') {
@@ -1078,7 +1078,7 @@ describe('authentication epoch and operation revision coordinator', () => {
     ]);
     expect(coordinator.snapshot()).toMatchObject({
       binding,
-      localState: { ownerId: OWNER, executorId: EXECUTOR, scheduleEnabled: true },
+      localState: { ownerId: OWNER, executorId: EXECUTOR, scheduleEnabled: false },
       operation: null,
     });
     coordinator.dispose();
