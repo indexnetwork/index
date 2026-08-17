@@ -1,10 +1,10 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
-import { log } from "../../shared/observability/log.js";
-import { Timed } from "../../shared/observability/performance.js";
-import { createStructuredModel } from "../../shared/agent/model.config.js";
-import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
+import { log } from "../shared/observability/log.js";
+import { Timed } from "../shared/observability/performance.js";
+import { createStructuredModel } from "../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
 // ─── Response schema ───────────────────────────────────────────────────────────
 
@@ -72,8 +72,6 @@ OUTPUT RULES:
  * (not at module level) so that importing this module does not require
  * OPENROUTER_API_KEY to be set — tests that import communities tools without a
  * live LLM env are unaffected.
- *
- * IND-546: canonical home — previously network/network.recommender.ts.
  */
 export class NetworkRecommender {
   private model: ReturnType<typeof createStructuredModel>;

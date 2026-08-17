@@ -15,8 +15,6 @@ import { Annotation } from "@langchain/langgraph";
  *
  * Flow:
  * START → routerNode → {addMemberNode | listMembersNode | removeMemberNode} → END
- *
- * IND-546: canonical home — previously network/membership/membership.state.ts.
  */
 export const NetworkMembershipGraphState = Annotation.Root({
   // --- Core Inputs (from ChatGraph via ToolContext) ---

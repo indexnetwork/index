@@ -14,9 +14,9 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import { IntentNetworkGraphFactory } from "../application/indexer.graph.js";
-import type { IntentNetworkGraphDatabase } from "../ports/index.js";
-import type { IntentIndexerOutput } from "../ports/index.js";
+import { IntentNetworkGraphFactory } from "../indexer.graph.js";
+import type { IntentNetworkGraphDatabase } from "../../shared/interfaces/database.interface.js";
+import type { IntentIndexerOutput } from "../../intents/intent.module.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

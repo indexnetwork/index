@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { AskUserQuestionToolDeps, QuestionerToolDeps } from "../../../questions/index.js";
 import type { EnrichmentToolDeps } from "../../../contexts/index.js";
-import type { NetworkToolDeps } from "../../../networks/index.js";
+import type { NetworkToolDeps } from "../../../networks/network.module.js";
 import type { OpportunityToolDeps } from "../../../opportunities/index.js";
 import type { ToolDeps } from "../tool.helpers.js";
 

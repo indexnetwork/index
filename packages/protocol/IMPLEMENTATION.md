@@ -148,9 +148,6 @@ import {
   PremiseGraphFactory,
   NegotiationGraphFactory,
   HydeGraphFactory,
-  NetworkGraphFactory,
-  NetworkMembershipGraphFactory,
-  IntentNetworkGraphFactory,
   RadarGraphFactory,
   MaintenanceGraphFactory,
 } from "@indexnetwork/protocol";
@@ -159,8 +156,9 @@ import {
 Each factory takes its typed dependencies in the constructor and exposes a
 `.createGraph()` method that returns a compiled LangGraph ready for `.invoke()`.
 
-The intent lifecycle graph is the exception: it is reached through the `Intents`
-module rather than a factory of its own (see [Intents](#intents) below).
+The intent and community graphs are the exceptions: they are reached through the
+`Intents` and `Networks` module classes rather than factories of their own (see
+[Intents](#intents) and [Networks](#networks) below).
 
 | Factory | Workflow |
 |---|---|
@@ -170,9 +168,6 @@ module rather than a factory of its own (see [Intents](#intents) below).
 | `PremiseGraphFactory` | Decompose and index a user's premises |
 | `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
-| `NetworkGraphFactory` | Manage network/network CRUD |
-| `NetworkMembershipGraphFactory` | Manage network/network member join/leave |
-| `IntentNetworkGraphFactory` | Evaluate and assign/unassign intents to indexes |
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 | `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |
 
@@ -213,11 +208,33 @@ first use, so an unused method costs nothing.
 | `Intents.normalizeDescription(description)` | Normalize a description to its persisted form |
 | `Intents.FALLBACK_INTAKE_QUESTION` | The static round-1 question used when generation is unavailable |
 
-`IntentNetworkGraphFactory` takes an `Intents` instance as its evaluator:
+## Networks
+
+Communities ship the same way: one class covering the community lifecycle graph,
+the membership graph, signal↔community assignment, and the agent-facing
+community tools.
 
 ```typescript
-const intentNetworkGraph = new IntentNetworkGraphFactory(database, intents).createGraph();
+import { Networks } from "@indexnetwork/protocol";
+
+const networks = new Networks({
+  database,          // community, roster, and assignment persistence
+  indexer: intents,  // an `Intents` instance — scores a signal against a community
+});
 ```
+
+Both dependencies are optional; each method names what it requires, so a host
+that only registers tools can construct `new Networks()` with nothing.
+
+| Method | Purpose |
+|---|---|
+| `createGraph()` | Compile the community lifecycle graph — create, read, update, delete. Requires `database` |
+| `createMembershipGraph()` | Compile the roster graph — add, list, remove members. Requires `database` |
+| `createAssignmentGraph()` | Compile signal↔community assignment, direct or model-evaluated. Requires `database` and `indexer` |
+| `Networks.createTools(defineTool, deps)` | Register the agent-facing community tools |
+
+Assignment takes an `Intents` instance as its evaluator — the `indexer`
+dependency is narrowed to the single `indexIntent` method it calls.
 
 ## MCP server
 

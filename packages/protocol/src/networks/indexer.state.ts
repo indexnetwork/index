@@ -1,13 +1,11 @@
 import { Annotation } from "@langchain/langgraph";
 
-import type { IntentIndexerOutput } from "../ports/index.js";
-import type { DebugMetaAgent } from "../../agents/index.js";
+import type { IntentIndexerOutput } from "../intents/intent.module.js";
+import type { DebugMetaAgent } from "../agents/index.js";
 
 /**
  * Intent payload and metadata loaded for network evaluation.
  * Loaded from the database before LLM-based assignment scoring.
- *
- * IND-546: canonical home — previously network/indexer/indexer.state.ts.
  */
 export interface IntentForIndexing {
   id: string;
@@ -20,8 +18,6 @@ export interface IntentForIndexing {
 /**
  * Index and member prompts for a single network (user must be member with autoAssign).
  * Used by the evaluated assignment path in IntentNetworkGraphFactory.
- *
- * IND-546: canonical home — previously network/indexer/indexer.state.ts.
  */
 export interface IndexMemberContext {
   networkId: string;
@@ -32,8 +28,6 @@ export interface IndexMemberContext {
 /**
  * Result of executing an assignment decision.
  * Returned from the assign node as a structured output alongside mutationResult.
- *
- * IND-546: canonical home — previously network/indexer/indexer.state.ts.
  */
 export interface AssignmentResult {
   networkId: string;
@@ -51,13 +45,13 @@ export interface AssignmentResult {
  * Two assignment paths, selected via `skipEvaluation`:
  * - `true` (direct / manual_override): writes the link immediately with a fixed
  *   score of 1 and mode `manual_override`.  No LLM call.
- * - `false` (automatic / evaluated): loads intent + network context, calls
- *   IntentIndexer from the signals public facade, then applies
- *   `buildNetworkAssignmentDecision` to produce the threshold / metadata.
- *   A no-prompt fast path skips the LLM when both prompts are absent.
+ * - `false` (automatic / evaluated): loads intent + network context, calls the
+ *   injected indexer, then applies `buildNetworkAssignmentDecision` to produce
+ *   the threshold / metadata. A no-prompt fast path skips the LLM when both
+ *   prompts are absent.
  *
- * The IntentIndexer is injected as a constructor argument — communities never
- * imports signals internals directly.
+ * The indexer is injected as a constructor argument — communities never imports
+ * signals internals directly.
  *
  * Flow:
  * START → router → {
@@ -65,10 +59,6 @@ export interface AssignmentResult {
  *   read: readNode → END
  *   delete: unassignNode → END
  * }
- *
- * IND-546: canonical home — previously network/indexer/indexer.state.ts.
- * LangGraph state carries IntentIndexerOutput and DebugMetaAgent which are
- * cross-capability types; this file therefore belongs in the application layer.
  */
 export const IntentNetworkGraphState = Annotation.Root({
   // --- Core Inputs (from ChatGraph via ToolContext) ---

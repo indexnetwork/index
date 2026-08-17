@@ -22,7 +22,10 @@ packages/protocol/src/
   maintenance/      Maintenance graph (radar health, opportunity expiration)
   mcp/              MCP server + elicitation builder/dispatcher
   negotiations/     Bilateral negotiation domain and application workflows
-  networks/         Network, membership, and indexer workflows
+  networks/         The community capability, behind one class (Networks)
+    network.module.ts The sole public surface; everything beside it is private
+                     (community lifecycle graph, membership graph, signal
+                      assignment, recommender, and tools sit flat beside it)
   opportunities/    Opportunity domain and application workflows
     domain/          State, evidence, presentation, visibility helpers
     application/     Graph, evaluation, presentation, persistence, tools
@@ -54,9 +57,9 @@ from anywhere.
 | Premise | `premises/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `opportunities/application/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
 | HyDE | `discovery/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
-| Network | `networks/application/network.graph.ts` | Manage network CRUD |
-| Network Membership | `networks/application/membership.graph.ts` | Manage network member join/leave |
-| Intent Indexer | `networks/application/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
+| Network | `networks/network.graph.ts` | Manage network CRUD |
+| Network Membership | `networks/membership.graph.ts` | Manage network member join/leave |
+| Intent Indexer | `networks/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
 | Radar | `opportunities/radar/radar.graph.ts` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 | Maintenance | `maintenance/maintenance.graph.ts` | Periodic maintenance tasks (radar health, opportunity expiration) |
 | Negotiation | `negotiations/application/negotiation.graph.ts` | Multi-turn bilateral negotiation flows |
@@ -84,7 +87,7 @@ from anywhere.
 | Premise Indexer | `premises/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
 | User Context Generator | `contexts/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
 | Questioner Agent | `questions/application/question.agent.ts` | Questioner queue — mode-driven structured decision-question generation (enrichment/intent/negotiation/discovery) |
-| Network Recommender | `networks/application/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
+| Network Recommender | `networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
 | HyDE Generator | `discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
 | Lens Inferrer | `discovery/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
@@ -106,7 +109,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`³, `get_enrichment_run`, `cancel_enrichment_run` |
 | `premises/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intents/tools/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
-| `networks/application/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
+| `networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `opportunities/application/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
 | `contacts/application/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
 | `agents/application/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |

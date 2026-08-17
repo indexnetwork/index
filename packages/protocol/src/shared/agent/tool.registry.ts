@@ -4,7 +4,7 @@ import type { DefineTool, ResolvedToolContext, ToolDeps, RawToolDefinition, Tool
 import { error, redactSensitiveFields } from './tool.helpers.js';
 import { createEnrichmentTools } from '../../enrichment/enrichment.tools.js';
 import { Intents } from '../../intents/intent.module.js';
-import { createNetworkTools } from '../../networks/index.js';
+import { Networks } from '../../networks/network.module.js';
 import { createOpportunityTools } from '../../opportunities/index.js';
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
@@ -92,7 +92,7 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   const dt = defineTool as DefineTool;
   createEnrichmentTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
   Intents.createTools(dt, deps);
-  createNetworkTools(dt, deps);
+  Networks.createTools(dt, deps);
   createOpportunityTools(dt, deps);
   // Utility tools always register read_docs + read_activity_summary; on the
   // MCP surface scrape_url is omitted and read_docs guidance is sanitized

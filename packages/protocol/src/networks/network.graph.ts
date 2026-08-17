@@ -1,10 +1,10 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 
-import type { NetworkGraphDatabase } from "../ports/index.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { timed } from "../../shared/observability/performance.js";
+import type { NetworkGraphDatabase } from "../shared/interfaces/database.interface.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { timed } from "../shared/observability/performance.js";
 
-import { NetworkGraphState } from "../domain/index.js";
+import { NetworkGraphState } from "./network.state.js";
 
 const logger = protocolLogger("NetworkGraphFactory");
 
@@ -33,8 +33,6 @@ const logger = protocolLogger("NetworkGraphFactory");
  *
  * Flow:
  * START → routerNode → {createNode | readNode | updateNode | deleteNode} → END
- *
- * IND-546: canonical home — previously network/network.graph.ts.
  */
 
 /** The graph's channel state, as every node sees it. */

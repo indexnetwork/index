@@ -1,10 +1,10 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 
-import type { NetworkMembershipGraphDatabase } from "../ports/index.js";
-import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { timed } from "../../shared/observability/performance.js";
+import type { NetworkMembershipGraphDatabase } from "../shared/interfaces/database.interface.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { timed } from "../shared/observability/performance.js";
 
-import { NetworkMembershipGraphState } from "../domain/index.js";
+import { NetworkMembershipGraphState } from "./membership.state.js";
 
 const logger = protocolLogger("NetworkMembershipGraphFactory");
 
@@ -34,8 +34,6 @@ const logger = protocolLogger("NetworkMembershipGraphFactory");
  *
  * Flow:
  * START → routerNode → {addMemberNode | listMembersNode | removeMemberNode} → END
- *
- * IND-546: canonical home — previously network/membership/membership.graph.ts.
  */
 
 /** The graph's channel state, as every node sees it. */
