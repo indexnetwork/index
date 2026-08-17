@@ -200,7 +200,10 @@ auth_login.set_post_login(_promote_cli_key)
 
 
 def _load_negotiation_wake():
-    """Load negotiation_wake once under the dashboard runtime package."""
+    """Load negotiation_wake once. Prefer the plugin-package copy if register() already imported it."""
+    canonical = sys.modules.get("_index_network_negotiation_wake_runtime")
+    if canonical is not None:
+        return canonical
     package_name = "index_network_hermes_dashboard_runtime"
     module_name = f"{package_name}.negotiation_wake"
     existing = sys.modules.get(module_name)
@@ -2252,16 +2255,8 @@ def list_conversations() -> dict[str, Any]:
     """List the caller's conversations (participant-gated) as counterpart summaries."""
     # Desktop polls this every 15s because the REST bridge buffers SSE. Reuse
     # that tick as the negotiation heartbeat instead of a second scheduler.
-    # Run off-thread so a slow/failed pickup never stalls or starves the inbox
-    # list (and so hermetic tests' FakeResponse queues stay ordered).
-    try:
-        threading.Thread(
-            target=lambda: _load_negotiation_wake().tick(),
-            name="index-negotiation-wake-tick",
-            daemon=True,
-        ).start()
-    except Exception:  # noqa: BLE001 - wake must never break the inbox list
-        pass
+    # Run the list first, then tick off-thread, so pickup never starves inbox
+    # FakeResponse queues in hermetic tests (or a slow pickup).
     current_user_id = _resolve_user_id()
     if not current_user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
@@ -2273,6 +2268,14 @@ def list_conversations() -> dict[str, Any]:
         for row in _list(payload.get("conversations"))
         if isinstance(row, dict) and _is_h2h(row)
     ]
+    try:
+        threading.Thread(
+            target=lambda: _load_negotiation_wake().tick(),
+            name="index-negotiation-wake-tick",
+            daemon=True,
+        ).start()
+    except Exception:  # noqa: BLE001 - wake must never break the inbox list
+        pass
     return {"success": True, "conversations": conversations, "currentUserId": current_user_id}
 
 

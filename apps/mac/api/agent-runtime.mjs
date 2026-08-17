@@ -322,9 +322,8 @@ export function mapAgentRuntimeState({ binding, localState, operation }) {
       && localState.executorId === executor.id
       && localState.setupAttemptId
       && localState.pluginInstalled === true
-      && localState.negotiatorMode === true
-      && localState.schedulePresent === true
-      && localState.scheduleEnabled === true
+      && localState.negotiatorMode === false
+      && localState.scheduleEnabled === false
     );
     if (!completeMatchingWiring) {
       return {

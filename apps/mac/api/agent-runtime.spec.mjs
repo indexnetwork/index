@@ -12,8 +12,8 @@ const LOCAL = {
   installationId: 'installation-local',
   executorId: 'executor-hermes',
   pluginInstalled: true,
-  negotiatorMode: true,
-  schedulePresent: true,
+  negotiatorMode: false,
+  schedulePresent: false,
   scheduleEnabled: false,
   setupAttemptId: 'setup-current',
 };
@@ -47,7 +47,7 @@ describe('agent runtime state mapper', () => {
       selectorValue: 'hermes', visualState: 'connecting', canRetry: false, canDisconnect: false,
     });
 
-    expect(mapAgentRuntimeState({ binding: HERMES_ACTIVE, localState: { ...LOCAL, scheduleEnabled: true }, operation: null })).toEqual({
+    expect(mapAgentRuntimeState({ binding: HERMES_ACTIVE, localState: LOCAL, operation: null })).toEqual({
       selectorValue: 'hermes',
       visualState: 'active',
       statusLine: 'Hermes is active. Index takes over when Hermes is unavailable.',
@@ -59,7 +59,7 @@ describe('agent runtime state mapper', () => {
     for (const health of ['stale', 'never-seen']) {
       expect(mapAgentRuntimeState({
         binding: { ...HERMES_ACTIVE, health, indexCovering: true },
-        localState: { ...LOCAL, scheduleEnabled: true },
+        localState: LOCAL,
         operation: null,
       })).toEqual({
         selectorValue: 'hermes',
@@ -152,17 +152,16 @@ describe('agent runtime state mapper', () => {
     });
   });
 
-  it('requires complete matching enabled local wiring before reporting Hermes active', () => {
+  it('requires complete matching heartbeat wiring before reporting Hermes active', () => {
     const incompleteStates = [
       null,
-      { ...LOCAL, installationId: null, scheduleEnabled: true },
-      { ...LOCAL, executorId: null, scheduleEnabled: true },
-      { ...LOCAL, setupAttemptId: null, scheduleEnabled: true },
-      { ...LOCAL, pluginInstalled: false, scheduleEnabled: true },
-      { ...LOCAL, negotiatorMode: false, scheduleEnabled: true },
-      { ...LOCAL, schedulePresent: false, scheduleEnabled: true },
-      { ...LOCAL, scheduleEnabled: false },
-      { ...LOCAL, executorId: 'wrong-executor', scheduleEnabled: true },
+      { ...LOCAL, installationId: null },
+      { ...LOCAL, executorId: null },
+      { ...LOCAL, setupAttemptId: null },
+      { ...LOCAL, pluginInstalled: false },
+      { ...LOCAL, negotiatorMode: true },
+      { ...LOCAL, scheduleEnabled: true },
+      { ...LOCAL, executorId: 'wrong-executor' },
     ];
     for (const localState of incompleteStates) {
       expect(mapAgentRuntimeState({ binding: HERMES_ACTIVE, localState, operation: null })).toMatchObject({
@@ -171,7 +170,7 @@ describe('agent runtime state mapper', () => {
     }
     expect(mapAgentRuntimeState({
       binding: { ...HERMES_ACTIVE, executor: { ...HERMES_ACTIVE.executor, status: 'inactive' } },
-      localState: { ...LOCAL, scheduleEnabled: true },
+      localState: LOCAL,
       operation: null,
     })).toMatchObject({ selectorValue: 'index', visualState: 'needs-attention' });
   });
@@ -185,11 +184,11 @@ describe('agent runtime state mapper', () => {
     });
     expect(mapAgentRuntimeState({
       binding: { ...HERMES_ACTIVE, health: 'stale', indexCovering: true },
-      localState: { ...LOCAL, scheduleEnabled: true }, operation: null,
+      localState: LOCAL, operation: null,
     })).toMatchObject({ retryAction: 'select-hermes', canRetry: true });
     expect(mapAgentRuntimeState({
       binding: HERMES_ACTIVE,
-      localState: { ...LOCAL, executorId: 'wrong', scheduleEnabled: true },
+      localState: { ...LOCAL, executorId: 'wrong' },
       operation: null,
     })).toMatchObject({ retryAction: 'reconcile', canRetry: true });
     expect(mapAgentRuntimeState({ binding: INDEX, localState: null, operation: null }))
@@ -199,19 +198,19 @@ describe('agent runtime state mapper', () => {
   it('gives operation and wiring mismatch precedence, then stale covering precedence', () => {
     expect(mapAgentRuntimeState({
       binding: HERMES_ACTIVE,
-      localState: { ...LOCAL, scheduleEnabled: true },
+      localState: LOCAL,
       operation: { kind: 'select-index', status: 'running' },
     })).toMatchObject({ selectorValue: 'index', visualState: 'connecting' });
 
     expect(mapAgentRuntimeState({
       binding: { ...HERMES_ACTIVE, health: 'stale', indexCovering: true },
-      localState: { ...LOCAL, executorId: 'wrong-executor', scheduleEnabled: true },
+      localState: { ...LOCAL, executorId: 'wrong-executor' },
       operation: null,
     })).toMatchObject({ selectorValue: 'index', visualState: 'needs-attention' });
 
     expect(mapAgentRuntimeState({
       binding: { ...HERMES_ACTIVE, health: 'stale', indexCovering: true },
-      localState: { ...LOCAL, scheduleEnabled: true },
+      localState: LOCAL,
       operation: null,
     })).toMatchObject({ selectorValue: 'hermes', visualState: 'unavailable' });
 
@@ -221,7 +220,7 @@ describe('agent runtime state mapper', () => {
     ]) {
       expect(mapAgentRuntimeState({
         binding: contradictory,
-        localState: { ...LOCAL, scheduleEnabled: true },
+        localState: LOCAL,
         operation: null,
       })).toMatchObject({ selectorValue: 'index', visualState: 'needs-attention' });
     }

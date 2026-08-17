@@ -1063,11 +1063,19 @@ private final class HermesEnvironmentFile {
     }
 
     func removeOwnedValues() throws {
-        let keys = Set(Self.ownedKeys)
+        try removeKeys(Self.ownedKeys)
+    }
+
+    func removeKeys(_ keys: [String]) throws {
+        let allowed = Set(Self.ownedKeys)
+        guard keys.allSatisfy({ allowed.contains($0) }) else {
+            throw HermesRuntimeFailure.invalidArguments
+        }
+        let drop = Set(keys)
         try mutate { lines in
             lines.removeAll { line in
                 guard let separator = line.firstIndex(of: "=") else { return false }
-                return keys.contains(String(line[..<separator]))
+                return drop.contains(String(line[..<separator]))
             }
         }
     }
@@ -1545,12 +1553,10 @@ final class HermesRuntimeManager {
     }
 
     private func cronOwnership(_ installation: HermesInstallationRecord) throws -> HermesCronOwnership? {
-        let fields = [
-            installation.currentCronJobId,
-            installation.currentOwnerId,
-            installation.currentCronSetupAttemptId,
-        ]
-        if fields.allSatisfy({ $0 == nil }) { return nil }
+        if validValue(installation.currentCronJobId) == nil
+            && validValue(installation.currentCronSetupAttemptId) == nil {
+            return nil
+        }
         guard let jobId = validValue(installation.currentCronJobId),
               let ownerId = validValue(installation.currentOwnerId),
               let setupAttemptId = validValue(installation.currentCronSetupAttemptId) else {
@@ -1835,15 +1841,9 @@ final class HermesRuntimeManager {
                 && (journal.setupAttemptId != installation.currentSetupAttemptId
                     || journal.ownerId != installation.currentOwnerId
                     || journal.executorId != installation.currentExecutorId)
-            let cronPublishedStages: Set<HermesSetupStage> = [
-                .scheduleDisabled, .enabling, .awaitingHeartbeat,
-                .disconnecting, .disconnectCleanupComplete,
-            ]
             let mismatchedCronFence = journal.cronJobId != nil
                 && journal.cronJobId != installation.currentCronJobId
-            let missingCronFence = cronPublishedStages.contains(journal.stage)
-                && journal.cronJobId == nil
-            if generationMismatch || mismatchedCronFence || missingCronFence {
+            if generationMismatch || mismatchedCronFence {
                 if let ownership = try cronOwnership(installation) {
                     try quarantineAttributableCron(ownership)
                 }
@@ -1899,58 +1899,17 @@ final class HermesRuntimeManager {
             throw HermesRuntimeFailure.invalidArguments
         }
 
-        // Resolve a historical job once before publishing the new generation.
-        // A pre-owner record has no owner with which to construct ordinary
-        // ownership, so its one explicit rebind path runs first and accepts only
-        // a paused immutable ID with exact installation + old-generation markers
-        // and the shipping sandbox. Every attributed generation then uses the
-        // ordinary strict owner validation below.
+        // Resolve a leftover owned job once so configure can pause and remove it.
+        // SSE keepalive already stamps the seat; this Mac must not also run the
+        // historical 1-minute Personal Agent cron.
         try adoptLegacyCronIfNeeded(installation: &installation, store: store)
-        var priorCron: HermesCronJob?
-        let preOwnerGeneration = validValue(installation.currentSetupAttemptId)
-        let preOwnerRecord = preOwnerGeneration != nil
-            && installation.currentOwnerId == nil
-            && installation.currentExecutorId == nil
-        if preOwnerRecord {
-            guard try store.loadJournal() == nil,
-                  let jobId = validValue(installation.currentCronJobId),
-                  installation.currentCronSetupAttemptId == preOwnerGeneration else {
-                throw HermesRuntimeFailure.installationStoreInvalid
-            }
-            let candidate = try cronStore.preOwnerRebindJob(
-                jobId: jobId,
-                installationId: installation.installationId,
-                setupAttemptId: preOwnerGeneration!
-            )
-            guard isExactOwnedCron(candidate)
-                    || isExactHistoricalPreOwnerCron(
-                        candidate,
-                        installationId: installation.installationId,
-                        setupAttemptId: preOwnerGeneration!
-                    ) else {
-                throw HermesRuntimeFailure.cronStoreInvalid
-            }
-            priorCron = candidate
-        } else {
-            guard installation.currentOwnerId == nil
-                    || installation.currentOwnerId == ownerId else {
-                throw HermesRuntimeFailure.ownerMismatch
-            }
-            if let ownership = try cronOwnership(installation) {
-                let inventory = try cronStore.inventory(ownership: ownership)
-                if !inventory.isExact
-                    || inventory.ownedJob.map({ isExactOwnedCron($0) }) != true {
-                    try quarantineAttributableCron(ownership)
-                }
-                guard let stored = try cronStore.job(id: ownership.jobId) else {
-                    throw HermesRuntimeFailure.cronStoreInvalid
-                }
-                priorCron = stored
-            }
+        guard installation.currentOwnerId == nil
+                || installation.currentOwnerId == ownerId else {
+            throw HermesRuntimeFailure.ownerMismatch
         }
 
         // Journal first: a crash after this point makes relaunch inspection
-        // pause any owned schedule before JavaScript performs server rollback.
+        // pause any leftover schedule before JavaScript performs server rollback.
         try saveStage(
             .preparing, owner: ownerId, attempt: setupAttemptId,
             executor: executorId, cronJobId: installation.currentCronJobId, store: store
@@ -1961,8 +1920,11 @@ final class HermesRuntimeManager {
         try store.saveInstallation(installation)
 
         let hermes = try requireHermesBinary()
-        if priorCron?.enabled == true {
-            try pauseCronByID(hermes, jobId: priorCron!.id)
+        if let jobId = validValue(installation.currentCronJobId),
+           try cronStore.job(id: jobId)?.enabled == true {
+            try pauseCronByID(hermes, jobId: jobId)
+        } else if let leftover = try cronStore.legacyJob(), leftover.enabled {
+            try pauseCronByID(hermes, jobId: leftover.id)
         }
 
         do {
@@ -1972,8 +1934,8 @@ final class HermesRuntimeManager {
                 ("INDEX_MCP_URL", AppConfig.trimTrailingSlash(AppConfig.apiURL) + "/mcp"),
                 ("INDEX_AGENT_ID", executorId),
                 ("INDEX_INSTALLATION_ID", installation.installationId),
-                ("INDEX_PLUGIN_MODE", "negotiator"),
             ])
+            try environment.removeKeys(["INDEX_PLUGIN_MODE"])
         } catch let failure as HermesRuntimeFailure {
             throw failure
         } catch {
@@ -1991,16 +1953,14 @@ final class HermesRuntimeManager {
             executor: executorId, store: store
         )
 
-        try reconcileDisabledCron(
+        try removeLeftoverOwnedCron(
             hermes,
             installation: &installation,
-            ownerId: ownerId,
-            setupAttemptId: setupAttemptId,
             store: store
         )
         try saveStage(
             .scheduleDisabled, owner: ownerId, attempt: setupAttemptId,
-            executor: executorId, cronJobId: installation.currentCronJobId, store: store
+            executor: executorId, cronJobId: nil, store: store
         )
 
         return try success(request, stage: HermesSetupStage.scheduleDisabled.rawValue)
@@ -2033,39 +1993,21 @@ final class HermesRuntimeManager {
             throw HermesRuntimeFailure.installationStoreInvalid
         }
 
-        guard let (_, job) = try verifiedOwnedCron(installation: installation) else {
-            throw HermesRuntimeFailure.cronStoreInvalid
-        }
         if let stage = alreadyEnabledCurrentGeneration(
             journal: journal,
-            attempt: expectedSetupAttemptId,
-            job: job
+            attempt: expectedSetupAttemptId
         ) {
             return try success(request, stage: stage)
         }
 
         try saveStage(
             .enabling, owner: ownerId, attempt: expectedSetupAttemptId,
-            executor: executor, cronJobId: job.id, store: store
+            executor: executor, store: store
         )
         let hermes = try requireHermesBinary()
-        if !job.enabled {
-            let resume = try runner.run(executable: hermes, arguments: ["cron", "resume", job.id])
-            guard resume.status == 0 else { throw HermesRuntimeFailure.cronResumeFailed }
-            guard let (_, resumed) = try verifiedOwnedCron(installation: installation),
-                  resumed.id == job.id,
-                  resumed.enabled == true else {
-                throw HermesRuntimeFailure.cronResumeFailed
-            }
-        }
-
         do {
             try startOrRestartGateway(hermes)
         } catch let failure as HermesRuntimeFailure {
-            // Retain the enabling journal for relaunch recovery. A gateway
-            // failure is safe only after the exact resumed job is confirmed
-            // paused; otherwise report a distinct retryable rollback failure.
-            try rollbackActivation(hermes, job: job)
             switch failure {
             case .gatewayStatusFailed, .commandTimedOut:
                 throw failure
@@ -2073,12 +2015,11 @@ final class HermesRuntimeManager {
                 throw HermesRuntimeFailure.gatewayFailed
             }
         } catch {
-            try rollbackActivation(hermes, job: job)
             throw HermesRuntimeFailure.gatewayFailed
         }
         try saveStage(
             .awaitingHeartbeat, owner: ownerId, attempt: expectedSetupAttemptId,
-            executor: executor, cronJobId: job.id, store: store
+            executor: executor, store: store
         )
         return try success(request, stage: HermesSetupStage.awaitingHeartbeat.rawValue)
     }
@@ -2092,29 +2033,10 @@ final class HermesRuntimeManager {
             && job.enabledToolsets == [Self.ownedCronToolset]
     }
 
-    private func isExactHistoricalPreOwnerCron(
-        _ job: HermesCronJob,
-        installationId: String,
-        setupAttemptId: String
-    ) -> Bool {
-        job.name == Self.ownedCronName
-            && job.schedule == Self.ownedCronSchedule
-            && job.prompt == Self.historicalPreOwnerCronPrompt
-            && job.skills.isEmpty
-            && job.legacySkill == nil
-            && job.enabledToolsets.isEmpty
-            && job.appInstallationId == installationId
-            && job.appOwnerId == nil
-            && job.appSetupAttemptId == setupAttemptId
-            && !job.enabled
-    }
-
     private func alreadyEnabledCurrentGeneration(
         journal: HermesSetupJournal?,
-        attempt: String,
-        job: HermesCronJob
+        attempt: String
     ) -> String? {
-        guard job.enabled else { return nil }
         if journal == nil { return "confirmed_healthy" }
         guard journal?.setupAttemptId == attempt,
               journal?.stage == .awaitingHeartbeat else { return nil }
@@ -2148,13 +2070,7 @@ final class HermesRuntimeManager {
         }
 
         // Invocation of confirmHealthy is the JS saga's attestation that the
-        // backend observed an active pickup heartbeat for this generation. The
-        // immutable job and sandbox are reverified before recovery evidence is
-        // cleared, closing the enable-to-heartbeat tamper window.
-        guard let (_, job) = try verifiedOwnedCron(installation: installation),
-              job.enabled else {
-            throw HermesRuntimeFailure.cronStoreInvalid
-        }
+        // backend observed an active pickup heartbeat for this generation.
         try store.deleteJournal()
         return try success(request, stage: "confirmed_healthy")
     }
@@ -2179,18 +2095,15 @@ final class HermesRuntimeManager {
         installation: HermesInstallationRecord
     ) throws {
         try verifyNoEnabledAttributableCron(installation: installation)
-        if let ownership = try cronOwnership(installation) {
-            let inventory = try cronStore.inventory(ownership: ownership)
-            guard inventory.isExact,
-                  let job = inventory.ownedJob,
-                  isExactOwnedCron(job),
-                  job.enabled == false else {
-                throw HermesRuntimeFailure.cronStoreInvalid
-            }
-        } else {
-            guard try cronStore.markedJobs(installationId: installation.installationId).isEmpty else {
-                throw HermesRuntimeFailure.cronStoreInvalid
-            }
+        if try cronStore.legacyJob() != nil {
+            throw HermesRuntimeFailure.cronStoreInvalid
+        }
+        if let storedId = validValue(installation.currentCronJobId),
+           try cronStore.job(id: storedId) != nil {
+            throw HermesRuntimeFailure.cronStoreInvalid
+        }
+        guard try cronStore.markedJobs(installationId: installation.installationId).isEmpty else {
+            throw HermesRuntimeFailure.cronStoreInvalid
         }
         let env = try environment.values()
         guard env["INDEX_API_KEY"] == nil,
@@ -2209,11 +2122,10 @@ final class HermesRuntimeManager {
             return try success(request, stage: "disable_noop")
         }
         try adoptLegacyCronIfNeeded(installation: &installation, store: store)
-        guard let (_, job) = try verifiedOwnedCron(installation: installation) else {
-            return try success(request, stage: "disabled")
-        }
-        if job.enabled {
-            try pauseCronByID(try requireHermesBinary(), jobId: job.id)
+        if let hermes = availableHermesBinary() {
+            try removeLeftoverOwnedCron(hermes, installation: &installation, store: store)
+        } else if try leftoverOwnedCronPresent(installation: installation) {
+            throw HermesRuntimeFailure.hermesNotFound
         }
         try verifyNoEnabledAttributableCron(installation: installation)
         return try success(request, stage: "disabled")
@@ -2244,8 +2156,10 @@ final class HermesRuntimeManager {
         var pendingFailure: HermesRuntimeFailure?
         do {
             try adoptLegacyCronIfNeeded(installation: &installation, store: store)
-            if let (_, job) = try verifiedOwnedCron(installation: installation), job.enabled {
-                try pauseCronByID(try requireHermesBinary(), jobId: job.id)
+            if let hermes = availableHermesBinary() {
+                try removeLeftoverOwnedCron(hermes, installation: &installation, store: store)
+            } else if try leftoverOwnedCronPresent(installation: installation) {
+                throw HermesRuntimeFailure.hermesNotFound
             }
             try verifyNoEnabledAttributableCron(installation: installation)
         } catch let failure as HermesRuntimeFailure {
@@ -2331,11 +2245,6 @@ final class HermesRuntimeManager {
             if let disconnectOwnership {
                 let inventory = try cronStore.inventory(ownership: disconnectOwnership)
                 attributableJobs = inventory.attributableJobs
-                // A missing immutable ID with no remaining marker cannot be
-                // proven removed: it may have been renamed and stripped.
-                if inventory.ownedJob == nil && attributableJobs.isEmpty {
-                    pendingFailure = .cronStoreInvalid
-                }
                 try quarantineAttributableCron(disconnectOwnership)
                 attributableJobs = try cronStore.inventory(
                     ownership: disconnectOwnership
@@ -2344,6 +2253,10 @@ final class HermesRuntimeManager {
                 attributableJobs = try cronStore.markedJobs(
                     installationId: installation.installationId
                 )
+            }
+            if let leftover = try cronStore.legacyJob(),
+               !attributableJobs.contains(where: { $0.id == leftover.id }) {
+                attributableJobs.append(leftover)
             }
         } catch let failure as HermesRuntimeFailure {
             if pendingFailure == nil { pendingFailure = failure }
@@ -2496,105 +2409,41 @@ final class HermesRuntimeManager {
         guard result.status == 0 else { throw failure }
     }
 
-    private func reconcileDisabledCron(
-        _ hermes: String,
-        installation: inout HermesInstallationRecord,
-        ownerId: String,
-        setupAttemptId: String,
-        store: HermesLocalStore
-    ) throws {
-        let job: HermesCronJob
-        if let storedId = installation.currentCronJobId {
-            guard let stored = try cronStore.job(id: storedId) else {
-                throw HermesRuntimeFailure.cronStoreInvalid
-            }
-            job = stored
-        } else {
-            guard try cronStore.markedJobs(
-                installationId: installation.installationId
-            ).isEmpty else {
-                throw HermesRuntimeFailure.cronStoreInvalid
-            }
-            if let legacy = try cronStore.legacyJob() {
-                job = legacy
-            } else {
-                let created = try runner.run(
-                    executable: hermes,
-                    arguments: [
-                        "cron", "create", Self.ownedCronSchedule, Self.ownedCronPrompt,
-                        "--name", Self.ownedCronName,
-                    ]
-                )
-                guard created.status == 0,
-                      let createdJob = try cronStore.legacyJob() else {
-                    throw HermesRuntimeFailure.cronCreateFailed
-                }
-                job = createdJob
-            }
+    private func leftoverOwnedCronPresent(
+        installation: HermesInstallationRecord
+    ) throws -> Bool {
+        if let storedId = validValue(installation.currentCronJobId),
+           try cronStore.job(id: storedId) != nil {
+            return true
         }
-
-        // Persist the generated/adopted immutable ID and its generation before
-        // the first pause/edit. A crash can therefore never force a later
-        // display-name lookup.
-        installation.currentCronJobId = job.id
-        installation.currentCronSetupAttemptId = setupAttemptId
-        try store.saveInstallation(installation)
-        if let journal = try store.loadJournal(),
-           journal.setupAttemptId == setupAttemptId {
-            try store.saveJournal(HermesSetupJournal(
-                setupAttemptId: journal.setupAttemptId,
-                stage: journal.stage,
-                ownerId: journal.ownerId,
-                executorId: journal.executorId,
-                cronJobId: job.id
-            ))
-        }
-        let ownership = HermesCronOwnership(
-            jobId: job.id,
-            installationId: installation.installationId,
-            ownerId: ownerId,
-            setupAttemptId: setupAttemptId
-        )
-
-        if job.enabled { try pauseCronByID(hermes, jobId: job.id) }
-        let edited = try runner.run(
-            executable: hermes,
-            arguments: [
-                "cron", "edit", job.id,
-                "--schedule", Self.ownedCronSchedule,
-                "--prompt", Self.ownedCronPrompt,
-                "--name", Self.ownedCronName,
-            ]
-        )
-        guard edited.status == 0 else { throw HermesRuntimeFailure.cronEditFailed }
-
-        // Hermes CLI supports skill attachment but not enabled_toolsets or our
-        // marker fence. Update all of them under the official cron store lock.
-        try cronStore.enforceOwnedSandbox(ownership: ownership)
-        var inventory = try cronStore.inventory(ownership: ownership)
-        guard inventory.isExact, let reconciled = inventory.ownedJob else {
-            try quarantineAttributableCron(ownership)
-            throw HermesRuntimeFailure.cronStoreInvalid
-        }
-        if reconciled.enabled {
-            try pauseCronByID(hermes, jobId: reconciled.id)
-            inventory = try cronStore.inventory(ownership: ownership)
-        }
-        guard inventory.isExact,
-              let verified = inventory.ownedJob,
-              isExactOwnedCron(verified),
-              verified.enabled == false else {
-            try quarantineAttributableCron(ownership)
-            throw HermesRuntimeFailure.cronStoreInvalid
-        }
+        return try cronStore.legacyJob() != nil
     }
 
-    private func rollbackActivation(_ hermes: String, job: HermesCronJob) throws {
-        do {
-            try pauseCronByID(hermes, jobId: job.id)
-        } catch {
-            throw HermesRuntimeFailure.activationRollbackFailed
+    private func removeLeftoverOwnedCron(
+        _ hermes: String,
+        installation: inout HermesInstallationRecord,
+        store: HermesLocalStore
+    ) throws {
+        var ids = Set<String>()
+        if let storedId = validValue(installation.currentCronJobId) {
+            ids.insert(storedId)
         }
+        if let leftover = try cronStore.legacyJob() {
+            ids.insert(leftover.id)
+        }
+        for jobId in ids {
+            guard try cronStore.job(id: jobId) != nil else { continue }
+            let removed = try runner.run(
+                executable: hermes,
+                arguments: ["cron", "remove", jobId]
+            )
+            guard try removed.status == 0 || cronStore.job(id: jobId) == nil else {
+                throw HermesRuntimeFailure.cronRemoveFailed
+            }
+        }
+        installation.currentCronJobId = nil
+        installation.currentCronSetupAttemptId = nil
+        try store.saveInstallation(installation)
     }
 
     private func gatewayState(_ hermes: String) throws -> HermesGatewayState {

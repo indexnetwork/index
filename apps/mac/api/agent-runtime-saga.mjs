@@ -72,8 +72,8 @@ function requireSelectionNativeResult(result, {
     && state?.executorId === executorId
     && state?.setupAttemptId === setupAttemptId
     && state?.pluginInstalled === true
-    && state?.negotiatorMode === true
-    && state?.schedulePresent === true
+    && state?.negotiatorMode === false
+    && state?.schedulePresent === false
     && state?.scheduleEnabled === scheduleEnabled;
   if (!matches) throw generationMismatch(command, successful);
   return successful;
@@ -436,7 +436,7 @@ export async function runHermesSelectionSaga({
       await nativeRuntime('enable', { ownerId, setupAttemptId }, { signal }),
       {
         command: 'enable', expectedStage: 'awaitingHeartbeat',
-        ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: true,
+        ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: false,
       },
     );
     const binding = requireActivatedBinding(
@@ -448,7 +448,7 @@ export async function runHermesSelectionSaga({
       await nativeRuntime('confirmHealthy', { ownerId, setupAttemptId }, { signal }),
       {
         command: 'confirmHealthy', expectedStage: 'confirmed_healthy',
-        ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: true,
+        ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: false,
       },
     );
 

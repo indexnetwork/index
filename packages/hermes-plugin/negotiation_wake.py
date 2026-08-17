@@ -2,17 +2,16 @@
 
 Gateway process: listen to GET /conversations/stream. Keepalive (~15s) and
 non-own negotiation messages each run one cheap pickup. Empty pickup stamps
-lastNegotiationPickupAt; pending pickup takes one conservative consult or
-respond pass. One in-flight pass at a time.
-
-Desktop: the inbox polls every 15s because the REST bridge buffers SSE — call
-tick() from that path instead of inventing a second scheduler.
+lastNegotiationPickupAt. Pending pickup claims the turn, then asks Hermes
+to run one model turn. No auto consult or respond from this thread.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 import threading
 from typing import Any, Callable
 
@@ -22,18 +21,17 @@ _WAKE_LOCK = threading.Lock()
 _INFLIGHT = False
 _LISTENER_STARTED = False
 _STOP = threading.Event()
+_TURN_STARTER: Callable[[str], None] | None = None
+_STARTED_IDS: set[str] = set()
+_RUNTIME_KEY = "_index_network_negotiation_wake_runtime"
 
-# Prefer owner consult; never auto-accept/decline. Fallback respond maps closed
-# Hermes directives onto ordinary-key turn bodies.
-_CONSULT_REASON = "insufficient_commitment_authority"
-_MESSAGE_TEMPLATES = {
-    "request_time": "I need more time before deciding.",
-    "continue": "I am open to continuing within the current scope.",
-}
-_ACTION_CANDIDATES = {
-    "request_time": ("counter", "outreach", "propose"),
-    "continue": ("question", "outreach", "propose", "counter"),
-}
+_TURN_PROMPT = (
+    "Index negotiation {negotiation_id} is already claimed on this Hermes seat. "
+    "Do not call index_pickup_negotiation. Read the claimed thread, then reply "
+    "once with index_respond_to_negotiation using a protocol action and a real "
+    "message written for this counterpart. Consult the owner only if the thread "
+    "needs Seref. Do not stall with request_time."
+)
 
 
 def _transport():
@@ -116,59 +114,50 @@ def _resolve_me(transport) -> tuple[str | None, str | None]:
     return agent_id, owner_id
 
 
-def _protocol_action(preferred: str, allowed: list[str]) -> str | None:
-    allowed_set = set(allowed)
-    for candidate in _ACTION_CANDIDATES.get(preferred, ()):
-        if candidate in allowed_set:
-            return candidate
-    for fallback in ("question", "outreach", "propose", "counter"):
-        if fallback in allowed_set:
-            return fallback
-    return None
+def set_turn_starter(starter: Callable[[str], None] | None) -> None:
+    """Tests and register() install the Hermes turn hook. Wake never POSTs respond."""
+    global _TURN_STARTER
+    _TURN_STARTER = starter
 
 
-def _respond_body(allowed: list[str]) -> dict[str, Any] | None:
-    for preferred in ("request_time", "continue"):
-        action = _protocol_action(preferred, allowed)
-        if action:
-            return {
-                "action": action,
-                "message": _MESSAGE_TEMPLATES[preferred],
-                "assessment": {
-                    "reasoning": f"Hermes wake selected a conservative {preferred} turn.",
-                    "suggestedRoles": {"ownUser": "peer", "otherUser": "peer"},
-                },
-            }
-    return None
+def bind_plugin_context(ctx) -> None:
+    """Start one Hermes chat turn after a pending claim via inject_message."""
+
+    def start(negotiation_id: str) -> None:
+        if not hasattr(ctx, "inject_message"):
+            return
+        prompt = _TURN_PROMPT.format(negotiation_id=negotiation_id)
+        session = os.environ.get("INDEX_HERMES_SESSION_KEY", "").strip() or None
+        try:
+            ok = (
+                ctx.inject_message(prompt, session_key=session)
+                if session
+                else ctx.inject_message(prompt)
+            )
+            if ok is False:
+                logger.warning("negotiation wake inject returned false for %s", negotiation_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("negotiation wake inject failed: %s", exc)
+
+    set_turn_starter(start)
 
 
-def _handle_pending(transport, agent_id: str, pickup: dict[str, Any]) -> None:
-    negotiation_id = pickup.get("negotiationId")
-    if not isinstance(negotiation_id, str) or not negotiation_id:
+def _maybe_start_turn(negotiation_id: str) -> None:
+    with _WAKE_LOCK:
+        if negotiation_id in _STARTED_IDS:
+            return
+        _STARTED_IDS.add(negotiation_id)
+        starter = _TURN_STARTER
+    if starter is None:
         return
-    consult = transport.request_rest(
-        "POST",
-        f"/agents/{agent_id}/negotiations/{negotiation_id}/consult",
-        {"reason": _CONSULT_REASON},
-    )
-    if isinstance(consult, dict) and consult.get("success") is not False and consult.get("status") == "input_required":
-        return
-    allowed = pickup.get("allowedActions")
-    if not isinstance(allowed, list):
-        allowed = []
-    allowed_actions = [a for a in allowed if isinstance(a, str)]
-    body = _respond_body(allowed_actions)
-    if not body:
-        return
-    transport.request_rest(
-        "POST",
-        f"/agents/{agent_id}/negotiations/{negotiation_id}/respond",
-        body,
-    )
+    try:
+        starter(negotiation_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("negotiation wake turn start failed: %s", exc)
 
 
 def run_pickup_pass(transport=None) -> dict[str, Any]:
-    """One pickup; empty is silent success. Pending → consult then maybe respond."""
+    """One pickup. Empty stamps the seat. Pending claims, then one Hermes turn."""
     global _INFLIGHT
     with _WAKE_LOCK:
         if _INFLIGHT:
@@ -188,8 +177,11 @@ def run_pickup_pass(transport=None) -> dict[str, Any]:
             return {"ok": True, "pending": False}
         if pickup.get("pending") is not True and not pickup.get("negotiationId"):
             return {"ok": True, "pending": False}
-        _handle_pending(transport, agent_id, pickup)
-        return {"ok": True, "pending": True, "negotiationId": pickup.get("negotiationId")}
+        negotiation_id = pickup.get("negotiationId")
+        if isinstance(negotiation_id, str) and negotiation_id.strip():
+            _maybe_start_turn(negotiation_id.strip())
+            return {"ok": True, "pending": True, "negotiationId": negotiation_id.strip()}
+        return {"ok": True, "pending": True, "negotiationId": negotiation_id}
     except Exception as exc:  # noqa: BLE001 - wake must never break the host process
         logger.debug("negotiation wake pickup failed: %s", exc)
         return {"ok": False, "error": str(exc)}
@@ -232,8 +224,6 @@ def _listen_loop(stream_factory: Callable[[], Any] | None = None) -> None:
 def start_listener(*, stream_factory: Callable[[], Any] | None = None) -> bool:
     """Start the background SSE listener once (gateway / full plugin mode)."""
     global _LISTENER_STARTED
-    import os
-
     if stream_factory is None and not os.environ.get("INDEX_API_KEY", "").strip():
         return False
     with _WAKE_LOCK:
@@ -261,4 +251,12 @@ def stop_listener_for_tests() -> None:
 
 
 def reset_for_tests() -> None:
+    global _TURN_STARTER
     stop_listener_for_tests()
+    with _WAKE_LOCK:
+        _STARTED_IDS.clear()
+        _TURN_STARTER = None
+
+
+if _RUNTIME_KEY not in sys.modules:
+    sys.modules[_RUNTIME_KEY] = sys.modules[__name__]

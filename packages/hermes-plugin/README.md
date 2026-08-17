@@ -20,6 +20,8 @@ Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production e
 
 Pickup and `GET /agents/me` need the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
 
+Full-mode wake listens to `GET /conversations/stream` (and the Discover 15s inbox tick) and POSTs pickup so Index keeps parking turns on Hermes. Empty pickup only refreshes the seat. Pending pickup claims the turn and injects one Hermes chat to reply with `index_respond_to_negotiation` (real message, not a canned stall). Gateway injection needs `plugins.entries.index-network.allow_gateway_injection: true` plus a live Hermes session.
+
 ## Modes and capability boundary
 
 `full` (the default) registers the normal Index tool/dashboard surface. `negotiator` registers exactly four handlers:

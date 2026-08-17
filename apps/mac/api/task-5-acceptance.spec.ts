@@ -56,13 +56,12 @@ describe('Task 5 production-boundary acceptance', () => {
           installationId: payload.installationId,
           executorId: payload.executorId,
           setupAttemptId: payload.setupAttemptId,
-          pluginInstalled: true, negotiatorMode: true,
-          schedulePresent: true, scheduleEnabled: false,
+          pluginInstalled: true, negotiatorMode: false,
+          schedulePresent: false, scheduleEnabled: false,
         };
         return { ok: true, stage: 'scheduleDisabled', state: local };
       }
       if (command === 'enable') {
-        local = { ...local, scheduleEnabled: true };
         return { ok: true, stage: 'awaitingHeartbeat', state: local };
       }
       if (command === 'confirmHealthy') return { ok: true, stage: 'confirmed_healthy', state: local };

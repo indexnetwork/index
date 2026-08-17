@@ -46,6 +46,7 @@ class FakeContext:
         self.skills = []
         self.hooks = []
         self.commands = []
+        self.injected = []
 
     def register_tool(self, **kwargs):
         self.tools.append(kwargs)
@@ -58,6 +59,10 @@ class FakeContext:
 
     def register_command(self, name, handler, description="", args_hint=""):
         self.commands.append((name, handler, description, args_hint))
+
+    def inject_message(self, content, role="user", *, session_key=None):
+        self.injected.append({"content": content, "role": role, "session_key": session_key})
+        return True
 
 
 def load_plugin():
@@ -449,9 +454,10 @@ def main() -> None:
     assert "_load_negotiation_wake().tick()" in (ROOT / "dashboard" / "plugin_api.py").read_text()
     assert "index-negotiation-wake-tick" in (ROOT / "dashboard" / "plugin_api.py").read_text()
     assert "negotiation_wake.start_listener()" in (ROOT / "__init__.py").read_text()
+    assert "negotiation_wake.bind_plugin_context(ctx)" in (ROOT / "__init__.py").read_text()
 
     # Conversation SSE wake: keepalive + non-own negotiation messages run one
-    # pickup; own agent turns do not; empty pickup stays silent.
+    # pickup; own agent turns do not; pickup never auto-consults or auto-responds.
     assert plugin.negotiation_wake is not None
     wake = plugin.negotiation_wake
     wake.reset_for_tests()
@@ -512,15 +518,39 @@ def main() -> None:
                     "negotiationId": "neg-wake",
                     "allowedActions": ["question", "outreach", "propose"],
                 }
-            if path.endswith("/consult"):
-                return {"success": True, "status": "input_required", "settlementId": "s1"}
             return {"success": True}
+
+    started: list[str] = []
+    wake.reset_for_tests()
+    wake.set_turn_starter(lambda negotiation_id: started.append(negotiation_id))
+    empty_again = _WakeTransport()
+    assert wake.run_pickup_pass(empty_again) == {"ok": True, "pending": False}
+    assert started == []
+    assert not any("/consult" in c[1] or "/respond" in c[1] for c in empty_again.calls)
 
     pending_transport = _PendingTransport()
     pending_result = wake.run_pickup_pass(pending_transport)
     assert pending_result["ok"] is True and pending_result["pending"] is True
-    assert any(c[1].endswith("/consult") for c in pending_transport.calls)
-    assert not any("/respond" in c[1] for c in pending_transport.calls)
+    assert pending_result["negotiationId"] == "neg-wake"
+    assert started == ["neg-wake"]
+    assert not any("/consult" in c[1] or "/respond" in c[1] for c in pending_transport.calls)
+    second = wake.run_pickup_pass(_PendingTransport())
+    assert second["pending"] is True
+    assert started == ["neg-wake"]
+
+    wake.reset_for_tests()
+    inject_ctx = FakeContext()
+    wake.bind_plugin_context(inject_ctx)
+    assert wake.run_pickup_pass(_WakeTransport()) == {"ok": True, "pending": False}
+    assert inject_ctx.injected == []
+    pending_inject = wake.run_pickup_pass(_PendingTransport())
+    assert pending_inject["pending"] is True
+    assert len(inject_ctx.injected) == 1
+    injected = inject_ctx.injected[0]["content"]
+    assert "neg-wake" in injected
+    assert "index_respond_to_negotiation" in injected
+    assert wake.run_pickup_pass(_PendingTransport())["pending"] is True
+    assert len(inject_ctx.injected) == 1
 
     stream_lines = [
         b": keepalive\n",
@@ -756,6 +786,7 @@ def main() -> None:
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
+    plugin.tools.reset_transport()
 
     old_urlopen = urllib.request.urlopen
     try:
