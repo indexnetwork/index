@@ -158,6 +158,34 @@ function parkTurn() {
   };
 }
 
+/**
+ * A PRE-CONTACT consult park: the turn-0 third verdict. Same `ask_user`
+ * shape, but the negotiation holds nothing else — the counterparty was never
+ * contacted — and the reasoning is the agent's own, not the post-stall gap
+ * literal. Both predicates must read it as the mid-flight park it is.
+ */
+function preContactParkTurn() {
+  return {
+    action: 'ask_user',
+    message: null,
+    assessment: {
+      reasoning: 'cannot tell whether the stated criterion bounds the search',
+      suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+    },
+    askUser: {
+      reason: 'unresolved_owner_constraint',
+      question: {
+        title: 'Scope',
+        prompt: 'Does the stated field strictly bound who counts here?',
+        options: [
+          { label: 'Strictly that field', description: 'Only reach out inside it.' },
+          { label: 'Adjacent counts', description: 'Also reach out to strong neighbours.' },
+        ],
+      },
+    },
+  };
+}
+
 function ordinaryTurn() {
   return {
     action: 'counter',
@@ -222,6 +250,63 @@ describe('parked-set reader ⇄ classifyParkedNegotiation convergence', () => {
     const counterpartySet = await reader.readParkedNegotiations(fixture.counterpartyId, fixture.counterpartyIntentId);
     expect(counterpartyClassification.kind).toBe('wrong_recipient');
     expect(counterpartySet.some((parked) => parked.opportunityId === negotiation.opportunityId)).toBe(false);
+  });
+
+  test('pre-contact consult: a park with no exchange behind it still converges as mid_flight', async () => {
+    // The turn-0 third verdict parks BEFORE any contact, so the negotiation's
+    // whole record is its own `ask_user` turn. Neither predicate may be
+    // confused by the missing exchange: the classifier keys on the exact
+    // task's binding, and the reader on the same `input_required` row — and
+    // the post-stall branch must not claim it (the opportunity is
+    // `negotiating`, and the reasoning is the agent's own, not the gap
+    // literal).
+    const fixture = await seedParticipants();
+    const negotiation = await seedNegotiation(fixture, 'negotiating');
+    await appendTurn(negotiation.conversationId, negotiation.taskId, `agent:${fixture.ownerId}`, preContactParkTurn());
+    await db.update(tasks).set({
+      state: 'input_required',
+      metadata: (await db.select({ metadata: tasks.metadata }).from(tasks).where(eq(tasks.id, negotiation.taskId)))
+        .map((row) => ({
+          ...(row.metadata as Record<string, unknown>),
+          turnContext: {
+            preContactConsult: true,
+            askUserBinding: {
+              version: 2,
+              settlementId: negotiationQuestionSettlementId(negotiation.taskId),
+              recipientUserId: fixture.ownerId,
+              recipientIntentId: fixture.ownerIntentId,
+              opportunityId: negotiation.opportunityId,
+              networkId: fixture.networkId,
+              intentFingerprint: 'fixture-fingerprint',
+              opportunityStatus: 'negotiating',
+              opportunityUpdatedAt: new Date().toISOString(),
+              counterpartyUserId: fixture.counterpartyId,
+              counterpartyIntentId: fixture.counterpartyIntentId,
+            },
+          },
+        }))[0],
+    }).where(eq(tasks.id, negotiation.taskId));
+
+    const classification = await classifyParkedNegotiation(chatDatabaseAdapter, {
+      opportunityId: negotiation.opportunityId,
+      userId: fixture.ownerId,
+    });
+    const parkedSet = await reader.readParkedNegotiations(fixture.ownerId, fixture.ownerIntentId);
+    const entry = parkedSet.find((parked) => parked.opportunityId === negotiation.opportunityId);
+
+    expect(classification.kind).toBe('inflight');
+    expect(entry?.kind).toBe('mid_flight');
+    // The authored question is what the client reads — a pre-contact park has
+    // no transcript to fall back on, so it is the whole of the ask.
+    expect(entry?.question?.prompt).toBe('Does the stated field strictly bound who counts here?');
+    expect(entry?.transcript.map((turn) => turn.action)).toEqual(['ask_user']);
+
+    // Still scoped to the asking side alone.
+    const counterpartyClassification = await classifyParkedNegotiation(chatDatabaseAdapter, {
+      opportunityId: negotiation.opportunityId,
+      userId: fixture.counterpartyId,
+    });
+    expect(counterpartyClassification.kind).toBe('wrong_recipient');
   });
 
   test('post-stall park: classifier says post_stall, reader includes it as post_stall', async () => {

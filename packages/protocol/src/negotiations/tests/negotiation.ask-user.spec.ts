@@ -130,7 +130,11 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
 
   it.each([
     { protocolVersion: "v1" as const },
+    // The opening turn admits ONLY a model-authored `ask_user` from the
+    // initiator seat (the pre-contact verdict); every inferred category the
+    // table above relies on stays excluded there.
     { isOpeningTurn: true },
+    { isOpeningTurn: true, seat: "counterparty" as const, action: "ask_user" as const },
     { isFinalTurn: true },
     { screenedOut: true },
     { action: "accept" as const },
@@ -250,6 +254,8 @@ function mkStubs(opts?: {
     getTask: async (id: string) => tasksById.get(id) ?? null,
     getLatestNegotiationTaskForConversation: async () => null,
     getUserContext: async () => ({ text: "Alice builds AI startups" }),
+    /** Pre-contact consult cap substrate: no parks open for either side. */
+    getTasksForUser: async () => [],
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0];
 
   const dispatcher = {
@@ -803,7 +809,12 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     },
   );
 
-  it("withholds canAskUser on the opening turn of a fresh negotiation", async () => {
+  it("grants canAskUser on the opening turn of a fresh negotiation (pre-contact verdict) and keeps it after", async () => {
+    // The opening turn used to be a blanket exclusion here. It is now the
+    // pre-contact consultation: the initiator may consult its client BEFORE
+    // deciding whether to reach out. `negotiation.pre-contact-consult.spec.ts`
+    // owns that behaviour end to end; this pins the grant itself, and that
+    // granting it did not disturb the mid-flight grant on later turns.
     const stubs = mkStubs({ priorMessages: [], priorTask: null });
     const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
@@ -813,8 +824,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
         declineTurn,
       ];
       await runGraph(stubs);
-      expect(agentInputs[0].canAskUser).toBeUndefined();
-      // Subsequent turn (turnCount > 0) regains it.
+      expect(agentInputs[0].canAskUser).toBe(true);
       expect(agentInputs[1].canAskUser).toBe(true);
     } finally {
       if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;

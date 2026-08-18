@@ -62,6 +62,16 @@ export const PROMPT_MATRIX: PromptMatrixEntry[] = [
     input: { ...base, history: [] },
   },
   {
+    // The turn-0 third verdict: the opening turn WITH the consult grant. The
+    // pre-contact rule renders here and nowhere else in this matrix — the
+    // opening entry above holds no grant, and the granted entries above are
+    // mid-exchange — which is what keeps every pre-existing golden capture
+    // byte-identical while this one pins the new rendering.
+    id: "v2-initiator-opening-ask-user",
+    action: "outreach",
+    input: { ...base, history: [], canAskUser: true },
+  },
+  {
     id: "v2-initiator-bargaining",
     action: "counter",
     input: { ...base, bargaining: { consecutiveNonConvergent: 4 } },

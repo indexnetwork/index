@@ -8,7 +8,7 @@ import type { NegotiationContinuationReceipt } from "../shared/interfaces/databa
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
 import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
-import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
+import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, negotiationConsultationPolicyMode, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
@@ -22,6 +22,47 @@ import { buildSeededAttribution } from './negotiation.attribution.js';
 import { buildAttributedDialogue, countNegotiationAskRounds, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
+
+/**
+ * Whether this signal may open another pre-contact consultation.
+ *
+ * The count comes from the user's own parked negotiation tasks — the durable
+ * parks themselves — rather than a stored counter, so an answered, expired, or
+ * resumed park frees its slot with nothing to keep in step. The acting task is
+ * excluded: it is `working` at this point, but a retried turn on a task that
+ * already parked must not count itself out.
+ *
+ * Fails OPEN. This bound defends against an agent that would re-ask the same
+ * signal-level question candidate by candidate; it is not the safety gate. The
+ * per-negotiation ration and the ask-rounds cap already hold that line from
+ * the message record, and neither depends on this query — so a database blip
+ * must not silently retire the turn-0 verdict.
+ */
+async function preContactConsultsUnderCap(
+  deps: NegotiationGraphDeps,
+  userId: string,
+  intentId: string,
+  actingTaskId: string,
+): Promise<boolean> {
+  try {
+    const parked = await deps.database.getTasksForUser(userId, { state: 'input_required' });
+    const open = countOpenPreContactConsults(parked, { userId, intentId, excludeTaskId: actingTaskId });
+    if (open >= MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT) {
+      turnLog.info('negotiation_pre_contact_consult_capped', {
+        userId, intentId, open, cap: MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT,
+      });
+      return false;
+    }
+    return true;
+  } catch (err) {
+    turnLog.warn('Pre-contact consult cap check failed; proceeding without the per-signal bound', {
+      userId,
+      intentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return true;
+  }
+}
 
 export async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps) {
   const traceEmitter = requestContext.getStore()?.traceEmitter;
@@ -65,7 +106,24 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // also persist `ask_user` messages — count against the same budget,
     // and a negotiation near its cap cannot spend a further round here.
     const policyMode = negotiationConsultationPolicyMode();
-    const askUserAvailable =
+    // The opening turn, before anything is sent. `outreachOpened` is per-run
+    // and history is this negotiation's own record, so this is true exactly
+    // once per negotiation — and stays true across a pre-contact park, whose
+    // resume re-enters holding nothing but its own `ask_user` turn.
+    const isFreshOpeningTurn = state.turnCount === 0 && !state.isContinuation;
+    const isPreContactResume = state.turnCount === 0 && isPreContactConsultResume(history);
+    // Pre-contact consultation (the turn-0 third verdict). The initiator may
+    // consult its client BEFORE deciding whether to reach out, so the seat's
+    // opening vocabulary stops being binary. Everything downstream is the
+    // shipped consult loop unchanged: same park, same binding, same question
+    // routing, same expiry. Only admission moves.
+    //
+    // Bounded twice over. Per negotiation by the same ration and ask-rounds
+    // cap the mid-flight consult reads (this consult IS round 1). Per signal
+    // by the open-park count below, so one vague intent cannot interrogate
+    // its client candidate-by-candidate.
+    const preContactConsultShapeAvailable = isFreshOpeningTurn && seat === 'initiator';
+    const askUserWiringAvailable =
       version === 'v2'
       && !isFinalTurn
       && configuredAskUserEnabled()
@@ -74,9 +132,12 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       && !!state.opportunityId
       && !!ownIntentId
       && !!state.indexContext.networkId
-      && !(state.turnCount === 0 && !state.isContinuation)
+      && (!isFreshOpeningTurn || preContactConsultShapeAvailable)
       && !hasPriorAskUser(state.messages, ownUser.id)
       && countNegotiationAskRounds(state.messages) < negotiationAskRoundsCap();
+    const askUserAvailable = askUserWiringAvailable
+      && (!preContactConsultShapeAvailable
+        || await preContactConsultsUnderCap(deps, ownUser.id, ownIntentId!, state.taskId));
 
     // ─── Deadlock detection → persuasion→bargaining stance (IND-428) ──────
     // Deterministic trailing-run inspection of the persisted history — no
@@ -249,7 +310,17 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // Exact ask_user resumes are exempt: the successor is the SAME logical
     // negotiation resumed after the client answered, so post-consultation
     // withdraw is legitimate.
-    if (turn.action === 'withdraw' && !state.outreachOpened && !state.continuationExecution) {
+    //
+    // A PRE-CONTACT resume is exempt from that exemption. The exemption exists
+    // because a mid-flight consult has an outreach behind it — there is a
+    // message on the table, and walking away from it is a real move. A
+    // pre-contact park has nothing behind it: the counterparty was never
+    // contacted, so the post-consult refusal is still the opening refusal and
+    // must land on the same quiet `screened_out` outcome the unconsulted pass
+    // lands on. This is also what makes an UNANSWERED pre-contact consult
+    // resolve to today's behavior — the expiry worker resumes through exactly
+    // this path.
+    if (turn.action === 'withdraw' && !state.outreachOpened && (!state.continuationExecution || isPreContactResume)) {
       turnLog.info('negotiation_opening_withdraw_screened_out', {
         taskId: state.taskId,
         opportunityId: state.opportunityId || undefined,
@@ -269,11 +340,21 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // A legitimate turn-0 refusal never reaches here: the opening-withdraw
     // guard above already returned. What remains are genuinely malformed
     // openings (a turn-0 `counter`/`question`), which are still coerced.
-    if (state.turnCount === 0 && !state.isContinuation) {
+    //
+    // A pre-contact resume is coerced by the same rule: nothing was ever sent,
+    // so the negotiation still has to OPEN, and a `counter`/`question` there
+    // would make the counterparty's first sight of this match a mid-exchange
+    // reply. An admissible `ask_user` is the one non-opening action left to
+    // stand — it is the turn-0 third verdict, not a malformed opening.
+    if (isFreshOpeningTurn || isPreContactResume) {
       const openingAction = version === 'v2' ? 'outreach' : 'propose';
-      if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction) {
+      const consultingInstead = turn.action === 'ask_user' && askUserAvailable;
+      if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction && !consultingInstead) {
         turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
-        turn.action = openingAction;
+        // Rebind rather than mutate: `turn` may be the very object a dispatched
+        // personal agent returned, and every other rewrite in this function
+        // already replaces it instead of editing it in place.
+        turn = { ...turn, action: openingAction };
       }
     }
 
@@ -285,7 +366,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     const policyEligibility = policyMode === 'off' ? { eligible: false } : assessConsultationEligibility({
       protocolVersion: version,
       seat,
-      isOpeningTurn: state.turnCount === 0 && !state.isContinuation,
+      isOpeningTurn: isFreshOpeningTurn,
       isFinalTurn,
       screenedOut: blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount),
       action: turn.action,
@@ -310,17 +391,36 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     if (policyEligibility.eligible && policyEligibility.reason) {
       emitConsultationTelemetry('eligible', policyEligibility.reason);
       if (policyMode === 'on') {
-        consultationPolicyReason = policyEligibility.reason;
-        turn = {
-          ...turn,
-          action: 'ask_user',
-          message: null,
-          assessment: {
-            reasoning: 'Client consultation required.',
-            suggestedRoles: turn.assessment.suggestedRoles,
-          },
-          askUser: { reason: consultationPolicyReason },
-        };
+        // Two shapes reach here and the policy owes them different things.
+        //
+        // A draft that asked for something ELSE is REPLACED: the policy
+        // inferred the consultation, so nothing in that draft was written to
+        // be read by the client, and its reasoning/message may carry material
+        // the client's question must not (the disclosure and authority
+        // categories are inferred from exactly such drafts).
+        //
+        // A draft that already IS `ask_user` is only ADMITTED. Here the policy
+        // is the gate, not the author: the agent volunteered the pause and
+        // wrote the question its client reads, and it is the only party that
+        // has read this negotiation. Overwriting `askUser` would discard that
+        // question and park on a server template — which is what the
+        // pre-contact verdict has nothing to fall back on, since a turn-0
+        // park has no transcript for the client to read instead. The authored
+        // payload still faces the identifier-aware safety gate below.
+        const draftedOwnConsultation = turn.action === 'ask_user' && !!turn.askUser;
+        consultationPolicyReason = draftedOwnConsultation ? turn.askUser!.reason : policyEligibility.reason;
+        if (!draftedOwnConsultation) {
+          turn = {
+            ...turn,
+            action: 'ask_user',
+            message: null,
+            assessment: {
+              reasoning: 'Client consultation required.',
+              suggestedRoles: turn.assessment.suggestedRoles,
+            },
+            askUser: { reason: consultationPolicyReason },
+          };
+        }
         emitConsultationTelemetry('asked', consultationPolicyReason);
       }
     }
@@ -456,6 +556,11 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           seedAssessment: state.seedAssessment,
           ...(isSource && state.discoveryQuery && { discoveryQuery: state.discoveryQuery }),
           ...(consultationReason && { consultationPolicyReason: consultationReason }),
+          // Marks a park the counterparty has never been contacted about, so
+          // the per-signal open-consult cap can count these without counting
+          // mid-flight consults. Read back by `countOpenPreContactConsults`;
+          // the park row is the only durable record, so the stamp lives on it.
+          ...(isFreshOpeningTurn ? { [PRE_CONTACT_CONSULT_MARKER]: true } : {}),
         },
         ...(state.continuationExecution ? { continuationExecution: state.continuationExecution } : {}),
       });

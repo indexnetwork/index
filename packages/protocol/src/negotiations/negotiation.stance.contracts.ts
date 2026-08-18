@@ -170,6 +170,33 @@ export function stanceActionRules(stance: NegotiatorStance): string {
 }
 
 /**
+ * `skeptic` sharpening of the pre-contact consultation rule (the turn-0 third
+ * verdict). Appended to the base rule in `negotiation.agent.ts`, which renders
+ * it only on an opening initiator turn that actually holds the grant — so
+ * unlike every other fragment here this one is not seat- and version-blind,
+ * and does not need to be: it can never reach a seat without the vocabulary.
+ *
+ * The base rule sets when consulting is warranted. This sets which way to lean
+ * when it is genuinely a toss-up, and the skeptic's prior is what makes the
+ * lean asymmetric: under "most matches are not worth making" a pass is the
+ * cheap default, which is exactly why an unverified pass deserves the same
+ * suspicion as an unverified acceptance. Both decide for the client.
+ *
+ * Names no action and no mechanism, like the rest of this module.
+ */
+const SKEPTIC_PRE_CONTACT_LEAN = ` When it is genuinely close, lean toward asking rather than passing. Your prior is that most matches are not worth making — which makes passing the cheap answer, and a pass you reached by GUESSING at {userName}'s own criteria decides for them just as much as a connection you made by guessing. Nothing has been spent yet: the pause costs the counterparty nothing and costs {userName} one question.`;
+
+/**
+ * Stance contribution to the pre-contact consultation rule. Empty under
+ * `advocate` and `evaluator` — the base seat-level rule already states when
+ * the verdict applies, and only the skeptic's not-worth-making prior changes
+ * which way a close call should fall.
+ */
+export function stancePreContactConsultRule(stance: NegotiatorStance): string {
+  return stance === "skeptic" ? SKEPTIC_PRE_CONTACT_LEAN : "";
+}
+
+/**
  * The discovery-query satisfaction rule.
  *
  * `advocate` keeps today's mandate wording verbatim ("PROPOSE or ACCEPT the

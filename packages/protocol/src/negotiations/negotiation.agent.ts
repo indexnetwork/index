@@ -7,7 +7,8 @@ import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../s
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage } from "./negotiation.client-dm.js";
 import { renderBargainingShiftSection } from "./negotiation.deadlock.js";
-import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stanceQuerySatisfiedRule } from "./negotiation.stance.contracts.js";
+import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stancePreContactConsultRule, stanceQuerySatisfiedRule } from "./negotiation.stance.contracts.js";
+import { isPreContactConsultResume } from "./negotiation.consultation-policy.js";
 import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "./negotiation.attribution.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
@@ -101,6 +102,30 @@ const ASK_USER_RULE = `
  */
 const ASK_USER_DM_GROUNDING_RULE = `
 - Ground the question in your conversation with {userName} about this signal (shown below) as well as in the exchange above. Do NOT ask what they have already answered there: if their own words settle the point, act on them and spend your one consultation on what is genuinely still open. Use their terms for the thing at stake — the words, numbers, and framing they used, not your paraphrase of them.`;
+
+/**
+ * The turn-0 third verdict, appended to `ASK_USER_RULE` on an opening
+ * initiator turn that holds the grant.
+ *
+ * Base seat-level, deliberately NOT a stance fragment. The stance renderers
+ * carry a byte-identity constraint between stances (`advocate` must render the
+ * legacy string), so delivering this through them would make the verdict
+ * available under some stances and not others — while the vocabulary the graph
+ * grants is the same for all three. A stance may still lean on a close call;
+ * that is `stancePreContactConsultRule`, appended after this.
+ *
+ * The two halves matter equally. The first says the pause is FREE: the whole
+ * cost of an outreach is that it reaches someone, and this one has not, so the
+ * pause is invisible and an unanswered pause lands exactly where a pass would.
+ * The second draws the line the admission policy cannot see — a doubt about
+ * the client's OWN criteria is theirs to settle; a candidate who plainly
+ * contradicts the signal is the agent's to judge, and asking about that spends
+ * the client's attention to confirm something already known.
+ */
+const PRE_CONTACT_ASK_USER_RULE = `
+- BEFORE ANY CONTACT, "ask_user" is a THIRD verdict on this opening turn, alongside reaching out and letting the match pass. Nothing has been sent and nothing is sent while you wait: the counterparty is never told this match was considered, and if {userName} does not answer in time the match simply passes — the same outcome as passing now, reached later.
+- Use it when ONE fact you do not hold is what stands between you and the decision, and only {userName} holds it: how their own criteria bound this search, what they meant by a term in their own signal, whether a strong candidate just outside the literal wording is in scope. Ask about the SIGNAL's scope, not about this candidate — their answer has to hold for the next candidate too.
+- Do NOT use it when the evidence in front of you already decides: if this candidate plainly does not satisfy what {userName} asked for, pass, and pass silently. A contradiction is yours to judge; making {userName} confirm it spends their attention on a decision you could already make.`;
 
 /** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
 const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
@@ -264,6 +289,18 @@ export class IndexNegotiator {
     // otherwise render the client's private thread with no rule explaining
     // what it is for.
     const clientDm = canAskUser ? input.clientDm ?? [] : [];
+    // The opening initiator turn: nothing has been sent, so a granted
+    // consultation is the pre-contact verdict rather than a mid-exchange
+    // pause. Derived, not passed: the graph grants `canAskUser` on a turn-0
+    // initiator turn only when the pre-contact admission and its per-signal
+    // bound both hold, so the grant plus the turn's own shape is the fact.
+    const preContactConsult = canAskUser && seat === "initiator"
+      && input.history.length === 0 && input.isContinuation !== true;
+    // The resume after such a pause. The negotiation's whole record is its own
+    // consultation park, so this is still the opening decision — the client
+    // answered, and the seat now reaches out or lets the match pass.
+    const preContactResume = version === "v2" && seat === "initiator"
+      && isPreContactConsultResume(input.history);
     // Negotiator stance (IND-611). Resolved from the environment once per turn
     // via the domain contract, exactly like `configuredScreenMode()`. Under the
     // `advocate` default every stance fragment below is the legacy string, so
@@ -281,7 +318,11 @@ export class IndexNegotiator {
     const actionRules = (version === "v2"
       ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
       : V1_ACTION_RULES) + stanceActionRules(stance)
-      + (canAskUser ? ASK_USER_RULE + (clientDm.length > 0 ? ASK_USER_DM_GROUNDING_RULE : "") : "");
+      + (canAskUser
+        ? ASK_USER_RULE
+          + (preContactConsult ? PRE_CONTACT_ASK_USER_RULE + stancePreContactConsultRule(stance) : "")
+          + (clientDm.length > 0 ? ASK_USER_DM_GROUNDING_RULE : "")
+        : "");
     const finalTurnInstruction = input.isFinalTurn
       ? (version === "v2"
           ? (seat === "initiator"
@@ -363,7 +404,16 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
     // "make your own case for it" — which, for the initiator seat, reads as
     // an instruction to re-open, and produced a fresh outreach on every one
     // of its turns instead of a reply.
-    const priorDialoguePolicy = input.isContinuation
+    //
+    // A pre-contact resume is checked FIRST. It reads as a continuation to
+    // every existing test here (`isContinuation` is true — the negotiation has
+    // spoken), but the only thing it said was its own pause, and both the
+    // continuation policy ("you may resolve quickly") and the mid-exchange
+    // policy ("respond to the counterparty's latest turn") describe an
+    // exchange that has not happened.
+    const priorDialoguePolicy = preContactResume
+      ? `Policy: You have NOT contacted ${otherName} about this signal. The only turn above is your own pause to consult ${userName} before deciding — there is no exchange to respond to, and nothing has been sent. This is still the opening decision.`
+      : input.isContinuation
       ? 'Policy: You are continuing a prior dialogue. If this signal is materially the same as one you previously evaluated, you may resolve quickly. If materially different, evaluate on its own merits.'
       : input.history.length > 0
         ? 'Policy: This negotiation is already under way — the turns above under the current opportunity are THIS exchange. Respond to the counterparty\'s latest turn; do not restate or re-pitch your opening.'
@@ -415,7 +465,11 @@ ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n"
 
 Why this match was suggested: ${input.seedAssessment.reasoning}${hasPriorDialogue ? priorDialogueContext : historyText}${clientDmContext}${userAnswersContext}${privateConsultationContext}
 ${discoveryQueryReminder}
-${input.history.length === 0 && !input.isContinuation ? (version === "v2" && seat === "initiator" ? "This is the opening turn. Make the outreach case." : "This is the opening turn. Propose the connection case.") : "Evaluate the latest arguments and respond."}`;
+${preContactResume
+  ? `You paused this opening turn to ask ${userName} the one thing you could not decide without. Their answer is above. Take the opening decision now: "outreach" to make the case, or "withdraw" to let the match pass without ever contacting ${otherName}.`
+  : input.history.length === 0 && !input.isContinuation
+    ? (version === "v2" && seat === "initiator" ? "This is the opening turn. Make the outreach case." : "This is the opening turn. Propose the connection case.")
+    : "Evaluate the latest arguments and respond."}`;
 
     const chatMessages = [
       { role: "system", content: systemPrompt },
