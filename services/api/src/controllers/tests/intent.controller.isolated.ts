@@ -7,7 +7,7 @@ import { IntentProposalDatabaseAdapter } from "../../adapters/intent-proposal.da
 import { deleteNetworkAndMembers } from "./test-helpers";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { ScopeViolationError } from '../../guards/agent-scope.guard';
-import { IntentNetworkMembershipError } from '../../services/intent.service';
+import { IntentNetworkMembershipError, IntentProposalConfirmationError } from '../../services/intent.service';
 import db from '../../lib/drizzle/drizzle';
 import { IntentEvents } from '../../events/intent.event';
 import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunities as opportunitiesTable } from '../../schemas/database.schema';
@@ -81,7 +81,7 @@ describe("IntentDatabaseAdapter Integration", () => {
     console.log(`Created test intent: ${testIntentId}`);
   });
 
-  test("proposal creation atomically requires a current membership", async () => {
+  test("proposal revision and creation atomically preserve authority and current membership", async () => {
     const chatAdapter = new ChatDatabaseAdapter();
     const proposalAdapter = new IntentProposalDatabaseAdapter();
     const network = await chatAdapter.createNetwork({
@@ -115,10 +115,27 @@ describe("IntentDatabaseAdapter Integration", () => {
         networkId: network.id,
         analysis: authoritativeAnalysis,
       }]);
+      const revisedAnalysis = {
+        ...authoritativeAnalysis,
+        verifierOutput: {
+          ...authoritativeAnalysis.verifierOutput,
+          reasoning: 'The owner-edited request remains direct and actionable.',
+          semantic_entropy: 0.18,
+        },
+      };
+      const revisedProposal = await proposalAdapter.revisePendingProposal({
+        proposalId: allowedSourceId,
+        userId: testUserId,
+        expectedDescription: 'Find climate founders',
+        expectedNetworkId: network.id,
+        description: 'Find climate founders building adaptation tools',
+        analysis: revisedAnalysis,
+      });
+      expect(revisedProposal?.description).toBe('Find climate founders building adaptation tools');
       const confirmationData = {
         proposalId: allowedSourceId,
         userId: testUserId,
-        description: 'Find climate founders',
+        description: 'Find climate founders building adaptation tools',
         networkId: network.id,
         embedding: deterministicEmbedding,
       };
@@ -155,8 +172,8 @@ describe("IntentDatabaseAdapter Integration", () => {
       expect(persisted).toHaveLength(1);
       expect(persisted[0]).toEqual({
         id: allowedIntentId,
-        payload: 'Find climate founders',
-        semanticEntropy: 0.21,
+        payload: 'Find climate founders building adaptation tools',
+        semanticEntropy: 0.18,
         referentialAnchor: 'Climate Founders Circle',
         intentMode: 'REFERENTIAL',
         speechActType: 'DIRECTIVE',
@@ -890,6 +907,27 @@ describe('IntentController confirm authorization', () => {
       proposalId,
       undefined,
     );
+  });
+
+  test('maps a rejected manual proposal edit to a typed 422', async () => {
+    const createFromProposal = mock(async () => {
+      throw new IntentProposalConfirmationError('proposal_edit_rejected');
+    });
+    const controller = new IntentController({
+      service: { createFromProposal } as never,
+      assertNetworkScope: mock(async () => {}),
+    });
+
+    const response = await controller.confirm(request({
+      proposalId,
+      description: 'This is merely an observation',
+    }), user);
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      code: 'proposal_edit_rejected',
+      proposalId,
+    }));
   });
 
   test('preserves matching agent scope and rejects mismatched scope before persistence', async () => {

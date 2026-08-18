@@ -86,6 +86,20 @@ function makeHarness(options: {
 } = {}) {
   const authoritativeProposal = options.proposal === undefined ? proposal() : options.proposal;
   const getProposalForOwner = mock(async () => authoritativeProposal);
+  const revisePendingProposal = mock(async (input: {
+    expectedDescription: string;
+    expectedNetworkId: string | null;
+    description: string;
+    analysis: unknown;
+  }) => {
+    if (!authoritativeProposal
+      || authoritativeProposal.status !== 'pending'
+      || authoritativeProposal.description !== input.expectedDescription
+      || authoritativeProposal.networkId !== input.expectedNetworkId) return null;
+    authoritativeProposal.description = input.description;
+    authoritativeProposal.analysis = input.analysis;
+    return authoritativeProposal;
+  });
   const rejectProposal = mock(async () => true);
   const getIntentBySourceId = mock(async () => (
     authoritativeProposal?.consumedIntentId
@@ -105,6 +119,7 @@ function makeHarness(options: {
   const getUserContext = mock(async () => ({ text: 'Climate founder operator' }));
   const addGenerateHydeJob = mock(async () => 'job-id');
   const emitProposalCreated = mock(() => {});
+  const verifyProposalEdit = mock(async () => analysis.verifierOutput);
 
   const service = new IntentService({
     adapter: {
@@ -115,23 +130,27 @@ function makeHarness(options: {
     } as never,
     proposalAdapter: {
       getProposalForOwner,
+      revisePendingProposal,
       rejectProposal,
     } as never,
     embedder: { generate } as never,
     proposalQueue: { addGenerateHydeJob } as never,
     emitProposalCreated,
+    verifyProposalEdit,
   });
 
   return {
     service,
     calls: {
       getProposalForOwner,
+      revisePendingProposal,
       getIntentBySourceId,
       isNetworkMember,
       confirmProposalIntent,
       generate,
       addGenerateHydeJob,
       emitProposalCreated,
+      verifyProposalEdit,
     },
   };
 }
@@ -192,20 +211,59 @@ describe('IntentService.createFromProposal authoritative confirmation', () => {
     expect(harness.calls.generate).not.toHaveBeenCalled();
   });
 
-  it('rejects description and network tampering before embedding', async () => {
+  it('re-verifies a directly edited description before confirming it', async () => {
     const harness = makeHarness();
-    await expect(harness.service.createFromProposal(
+    const edited = `${DESCRIPTION} in Cancun`;
+    await harness.service.createFromProposal(
       USER_ID,
-      `${DESCRIPTION}!`,
+      edited,
       proposal().id,
       NETWORK_ID,
-    )).rejects.toMatchObject({ code: 'proposal_payload_mismatch' });
+    );
+
+    expect(harness.calls.verifyProposalEdit).toHaveBeenCalledWith(
+      edited,
+      'Climate founder operator',
+    );
+    expect(harness.calls.revisePendingProposal).toHaveBeenCalledWith(expect.objectContaining({
+      proposalId: proposal().id,
+      userId: USER_ID,
+      expectedDescription: DESCRIPTION,
+      expectedNetworkId: NETWORK_ID,
+      description: edited,
+      analysis: { verifierOutput: analysis.verifierOutput, combinedScore: 83 },
+    }));
+    expect(harness.calls.confirmProposalIntent).toHaveBeenCalledWith(expect.objectContaining({
+      description: edited,
+    }));
+  });
+
+  it('still rejects network tampering before verification or embedding', async () => {
+    const harness = makeHarness();
     await expect(harness.service.createFromProposal(
       USER_ID,
       DESCRIPTION,
       proposal().id,
       undefined,
     )).rejects.toMatchObject({ code: 'proposal_payload_mismatch' });
+    expect(harness.calls.verifyProposalEdit).not.toHaveBeenCalled();
+    expect(harness.calls.generate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an edited description that does not pass verification', async () => {
+    const harness = makeHarness();
+    harness.calls.verifyProposalEdit.mockImplementation(async () => ({
+      ...analysis.verifierOutput,
+      classification: 'ASSERTIVE' as const,
+    }));
+
+    await expect(harness.service.createFromProposal(
+      USER_ID,
+      'Climate technology is interesting',
+      proposal().id,
+      NETWORK_ID,
+    )).rejects.toMatchObject({ code: 'proposal_edit_rejected' });
+    expect(harness.calls.revisePendingProposal).not.toHaveBeenCalled();
     expect(harness.calls.generate).not.toHaveBeenCalled();
   });
 

@@ -65,6 +65,10 @@ section before promoting to `main`).
 - Move the raw-SQL maintenance-write guidance for `src/cli/` into a nested `AGENTS.md`, so it loads whenever those files are open instead of depending on a skill description matching the prompt. No runtime change.
 
 ### Fixed
+- Allow owners to confirm a manually edited Signal proposal by re-verifying the
+  edited description and atomically replacing the pending proposal's
+  authoritative payload and analysis before confirmation. Network mismatches,
+  expired proposals, and concurrent proposal changes still fail closed.
 - Budget refinement questions per intent to 2 per rolling 24 hours (`QUESTIONER_INTENT_DAILY_CAP`), counted across the recovery and pool-discovery families combined. Both families re-arm whenever the intent text changes, and answering a refinement question is what changes it — so without a budget each answer bought another question and the loop only ended when the user stopped replying. Chat intake is not counted, and `0` disables background refinement without touching `QUESTIONER_ENABLED`.
 
 ### Changed
