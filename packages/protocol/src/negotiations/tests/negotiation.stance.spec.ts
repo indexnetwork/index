@@ -193,6 +193,45 @@ describe("evaluator / skeptic — additive, gated fragments", () => {
     expect(prompt).toContain("OPPORTUNITY COST");
   });
 
+  it("evaluator prefers consulting the client over resolving intent uncertainty by assumption", async () => {
+    const rendered = await renderMatrix("evaluator");
+    for (const entry of PROMPT_MATRIX) {
+      const prompt = rendered[entry.id];
+      expect(prompt).toContain("CONSULT, DON'T ASSUME");
+      expect(prompt).toContain("prefer consulting Alice over resolving that uncertainty by assumption");
+      // Guessing, conceding, and vibes-acceptance are all named as the failure mode.
+      expect(prompt).toContain("deciding for them what only they can decide");
+      // evaluator does NOT carry the skeptic gate.
+      expect(prompt).not.toContain("a gate, not a preference");
+    }
+  });
+
+  it("skeptic sharpens the consult rule into a gate: unverified alignment is a reason NOT to proceed", async () => {
+    const rendered = await renderMatrix("skeptic");
+    for (const entry of PROMPT_MATRIX) {
+      const prompt = rendered[entry.id];
+      expect(prompt).toContain("CONSULT, DON'T ASSUME");
+      expect(prompt).toContain("a gate, not a preference");
+      expect(prompt).toContain(
+        "an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed",
+      );
+      expect(prompt).toContain("consulting Alice is how that assumption gets verified");
+    }
+  });
+
+  it("the consult rule stays conditional — no wording that fights the ask-rounds cap", () => {
+    for (const stance of ["evaluator", "skeptic"] as const) {
+      const rules = stanceActionRules(stance);
+      // Conditional on client-resolvable uncertainty, never an unconditional urge:
+      // when the cap is reached the action is simply not offered, and the prompt
+      // must not push against that.
+      expect(rules).not.toMatch(/always/i);
+      expect(rules).not.toMatch(/regardless/i);
+      expect(rules).not.toMatch(/every turn/i);
+      expect(rules).toContain("when your judgment turns on a fact about {userName}'s OWN intent");
+    }
+  });
+
   it("query satisfaction becomes necessary-not-sufficient under evaluator and skeptic", async () => {
     for (const stance of ["evaluator", "skeptic"]) {
       const rendered = await renderMatrix(stance);

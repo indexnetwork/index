@@ -9,11 +9,11 @@
  *
  * `NEGOTIATOR_STANCE` makes that stance configurable instead of hard-coded:
  *
- * | stance      | framing                              | value bar        | query rule              | deadlock  |
- * |-------------|--------------------------------------|------------------|-------------------------|-----------|
- * | `advocate`  | argue the case (today)               | none             | mandate (today)         | bargain   |
- * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| bargain   |
- * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| stalemate |
+ * | stance      | framing                              | value bar        | query rule              | consult propensity      | deadlock  |
+ * |-------------|--------------------------------------|------------------|-------------------------|-------------------------|-----------|
+ * | `advocate`  | argue the case (today)               | none             | mandate (today)         | none (today)            | bargain   |
+ * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | bargain   |
+ * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | stalemate |
  *
  * Design constraints (hard):
  * - **`advocate` is byte-identical.** Every fragment below is additive and
@@ -128,11 +128,45 @@ const VALUE_BAR_RULE = `
 - OPPORTUNITY COST: {userName}'s attention is finite and their name is spent on every connection made on their behalf. The bar is "worth that spend", not "does no harm" — absence of a downside is NOT a reason to proceed. Ask what {userName} gives up by spending this attention here instead of on a better match, and say no when the answer is "too much".`;
 
 /**
+ * Consult propensity — assessing stances only.
+ *
+ * The assessing stances demand a judgment ("is this actually worth making for
+ * {userName}?") that sometimes turns on a fact only the client holds: their
+ * current priorities, their real constraints, what "alignment" would mean to
+ * them. The legacy failure mode is resolving that gap by assumption —
+ * guessing, conceding, or accepting on vibes. This rule names the resolution
+ * path instead: consult the client.
+ *
+ * Deliberately names no action and no mechanism: like every fragment here it
+ * renders into all seats and protocol versions, including seats with no
+ * consultation vocabulary, so the seat's own rules decide HOW a consultation
+ * happens and whether one is still available this turn. This only sets when
+ * the agent should WANT one — which is also why it stays conditional on the
+ * uncertainty being client-resolvable: no "always"/"regardless" wording that
+ * would fight the per-negotiation consultation cap
+ * (`negotiationAskRoundsCap`).
+ */
+const CONSULT_PROPENSITY_RULE = `
+- CONSULT, DON'T ASSUME: when your judgment turns on a fact about {userName}'s OWN intent that you do not hold — their current priorities, their real constraints, what "alignment" would actually mean to them — prefer consulting {userName} over resolving that uncertainty by assumption. Guessing their answer, conceding to keep things moving, or proceeding because nothing contradicts the match are all ways of deciding for them what only they can decide.`;
+
+/**
+ * `skeptic` sharpening of the consult rule, appended to the same bullet (the
+ * same additive pattern as `SKEPTIC_FRAMING` over `EVALUATOR_FRAMING`): under
+ * the not-worth-making prior an unverified alignment assumption is itself a
+ * reason not to proceed, and consulting the client is how it gets verified.
+ */
+const SKEPTIC_CONSULT_SHARPENING = ` For you this is a gate, not a preference: an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed, and consulting {userName} is how that assumption gets verified.`;
+
+/**
  * Extra action-rule lines contributed by the stance, appended after the seat's
  * own rules. Empty under `advocate` → byte-identical.
  */
 export function stanceActionRules(stance: NegotiatorStance): string {
-  return stanceAppliesValueBar(stance) ? VALUE_BAR_RULE : "";
+  if (!stanceAppliesValueBar(stance)) return "";
+  const consultRule = stance === "skeptic"
+    ? CONSULT_PROPENSITY_RULE + SKEPTIC_CONSULT_SHARPENING
+    : CONSULT_PROPENSITY_RULE;
+  return VALUE_BAR_RULE + consultRule;
 }
 
 /**
