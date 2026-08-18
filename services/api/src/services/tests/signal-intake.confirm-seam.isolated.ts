@@ -4,9 +4,9 @@
  * Every other test around this funnel either mocks the web `apiClient` or fakes
  * `proposalStore`, so nothing exercised the one check that actually decides
  * whether a fast-intake signal can be created: `IntentService.createFromProposal`
- * comparing the confirmation's `description`/`networkId` against the stored
- * proposal row. That gap let a build ship in which the picked community never
- * reached the proposal, so every community pick 409'd at confirm.
+ * enforcing the stored network scope and the authoritative proposal lifecycle.
+ * That gap let a build ship in which the picked community never reached the
+ * proposal, so every community pick 409'd at confirm.
  *
  * This file therefore runs the REAL `createFromProposal` against the SAME
  * proposal store the intake service wrote to, with the client's exact confirm
@@ -124,6 +124,22 @@ class MemoryProposalStore {
     row.networkId = networkId;
     return true;
   }
+
+  async revisePendingProposal(input: {
+    proposalId: string;
+    userId: string;
+    expectedDescription: string;
+    expectedNetworkId: string | null;
+    description: string;
+    analysis: unknown;
+  }) {
+    const row = this.rows.get(input.proposalId);
+    if (!row || row.userId !== input.userId || row.status !== 'pending'
+      || row.description !== input.expectedDescription || row.networkId !== input.expectedNetworkId) return null;
+    row.description = input.description;
+    row.analysis = input.analysis;
+    return row;
+  }
 }
 
 /** Wires both services onto one proposal store, as production does. */
@@ -207,6 +223,7 @@ function makeSeam(options: { runStatus?: 'pending' | 'failed' } = {}) {
     proposalQueue: { addGenerateHydeJob: async () => 'job-id' } as never,
     questionerEnqueue: async () => undefined,
     emitProposalCreated: () => {},
+    verifyProposalEdit: async () => verifierOutput,
   });
 
   return { intake, confirm, store, run };
@@ -263,6 +280,23 @@ describe('fast intake -> /intents/confirm seam', () => {
 
     expect(created.id).toBe(intentIdFor(proposal.proposalId));
     expect(seam.store.rows.get(proposal.proposalId)?.networkId).toBeNull();
+  });
+
+  it('re-verifies and confirms a description edited directly in the card', async () => {
+    const seam = makeSeam();
+    await speculate(seam);
+    const proposal = await seam.intake.resolveProposal(USER_ID, {
+      runId: 'run-1', networkId: NETWORK_ID, rounds,
+    });
+    const editedDescription = 'Looking for a design partner in Cancun.';
+
+    const created = await seam.confirm.createFromProposal(
+      USER_ID, editedDescription, proposal.proposalId, NETWORK_ID,
+    );
+
+    expect(created.id).toBe(intentIdFor(proposal.proposalId));
+    expect(seam.store.rows.get(proposal.proposalId)?.description).toBe(editedDescription);
+    expect(seam.store.rows.get(proposal.proposalId)?.status).toBe('consumed');
   });
 
   it('accepts the serial where-text path, which creates its proposal on demand', async () => {

@@ -6,8 +6,9 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { IntentProposalDatabaseAdapter, intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import { intentQueue } from '../queues/intent.queue';
 import { IntentEvents } from '../events/intent.event';
-import { intentProposalAnalysisSchema } from '../lib/intent/intent-proposal';
+import { intentProposalAnalysisSchema, intentProposalVerifierOutputSchema } from '../lib/intent/intent-proposal';
 import { indexExistingIntentForSeed as indexSeedIntent } from '../lib/intent/seed-indexer';
+import type { IntentProposalRow } from '../schemas/database.schema';
 
 const logger = log.service.from("IntentService");
 
@@ -26,6 +27,7 @@ export type IntentProposalConfirmationErrorCode =
   | 'proposal_expired'
   | 'proposal_consumed'
   | 'proposal_payload_mismatch'
+  | 'proposal_edit_rejected'
   | 'proposal_analysis_missing';
 
 /** Stable typed failure for an invalid authoritative proposal confirmation. */
@@ -36,6 +38,7 @@ export class IntentProposalConfirmationError extends Error {
       proposal_expired: 'Intent proposal has expired',
       proposal_consumed: 'Intent proposal has already been consumed',
       proposal_payload_mismatch: 'Intent proposal payload does not match the authoritative record',
+      proposal_edit_rejected: 'Edited intent proposal did not pass verification',
       proposal_analysis_missing: 'Intent proposal has no valid verifier analysis',
     }[code]);
     this.name = 'IntentProposalConfirmationError';
@@ -79,6 +82,7 @@ export class IntentService {
   private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
   private seedIndexQueue: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
   private emitProposalCreated: (intentId: string, userId: string) => void;
+  private verifyProposalEdit: (description: string, profileContext: string) => Promise<unknown>;
 
   /**
    * @param deps - Optional dependency overrides for focused service tests.
@@ -90,6 +94,7 @@ export class IntentService {
     proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
     seedIndexQueue?: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
     emitProposalCreated?: (intentId: string, userId: string) => void;
+    verifyProposalEdit?: (description: string, profileContext: string) => Promise<unknown>;
   }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.proposalAdapter = deps?.proposalAdapter ?? intentProposalDatabaseAdapter;
@@ -99,6 +104,8 @@ export class IntentService {
     this.seedIndexQueue = deps?.seedIndexQueue ?? intentQueue;
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
     this.intents = new Intents({ database: this.db, embedder: this.embedder, queue: intentQueue });
+    this.verifyProposalEdit = deps?.verifyProposalEdit
+      ?? ((description, profileContext) => this.intents.verifyIntent(description, profileContext));
   }
 
   /**
@@ -322,7 +329,8 @@ export class IntentService {
 
   /**
    * Create an intent directly from a confirmed chat proposal.
-   * Bypasses the full intent graph (no LLM re-inference/verification).
+   * An unchanged proposal bypasses the full intent graph. An owner-edited
+   * description is re-verified and atomically made authoritative first.
    * Idempotent under concurrent confirmation: the adapter serializes one exact
    * user + proposal pair and returns the transaction winner to every caller.
    * Generates embedding, inserts into DB, optionally associates with index, and
@@ -330,7 +338,7 @@ export class IntentService {
    * A queue failure after commit is retryable through the consumed proposal.
    *
    * @param userId - The user ID
-   * @param description - The pre-verified intent description
+   * @param description - The displayed description, possibly edited by the owner
    * @param proposalId - The proposal ID (stored as sourceId for status tracking)
    * @param networkId - Optional index to associate the intent with
    * @returns The created or existing intent record (at least { id }).
@@ -338,10 +346,19 @@ export class IntentService {
   async createFromProposal(userId: string, description: string, proposalId: string, networkId?: string) {
     logger.verbose('Creating intent from proposal', { userId, proposalId });
 
-    const proposal = await this.proposalAdapter.getProposalForOwner(proposalId, userId);
+    let proposal = await this.proposalAdapter.getProposalForOwner(proposalId, userId);
     if (!proposal) throw new IntentProposalConfirmationError('proposal_not_found');
-    if (proposal.description !== description || proposal.networkId !== (networkId ?? null)) {
+    if (proposal.networkId !== (networkId ?? null)) {
       throw new IntentProposalConfirmationError('proposal_payload_mismatch');
+    }
+    if (proposal.description !== description) {
+      if (proposal.status !== 'pending') {
+        throw new IntentProposalConfirmationError('proposal_consumed');
+      }
+      if (proposal.expiresAt.getTime() <= Date.now()) {
+        throw new IntentProposalConfirmationError('proposal_expired');
+      }
+      proposal = await this.reviseProposalDescription(userId, proposal, description);
     }
     if (proposal.status === 'consumed' && proposal.consumedIntentId) {
       const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
@@ -418,6 +435,61 @@ export class IntentService {
     this.emitProposalCreated(created.id, userId);
 
     return created;
+  }
+
+  /**
+   * Re-verify an owner-edited confirmation-card description and make it the
+   * proposal's authoritative payload before confirmation continues.
+   */
+  private async reviseProposalDescription(
+    userId: string,
+    proposal: IntentProposalRow,
+    description: string,
+  ) {
+    const profileContext = (await this.db.getUserContext(userId, null))?.text ?? '';
+    const verifierOutput = intentProposalVerifierOutputSchema.parse(
+      await this.verifyProposalEdit(description, profileContext),
+    );
+    const validClassification = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'].includes(
+      verifierOutput.classification,
+    );
+    const vague = /\b(?:a|any|some)\s+job\b/i.test(description)
+      || verifierOutput.semantic_entropy > 0.75
+      || verifierOutput.felicity_scores.clarity < 40;
+    if (!validClassification || vague) {
+      throw new IntentProposalConfirmationError('proposal_edit_rejected');
+    }
+
+    const analysis = {
+      verifierOutput,
+      combinedScore: Math.min(
+        verifierOutput.felicity_scores.authority,
+        verifierOutput.felicity_scores.sincerity,
+        verifierOutput.felicity_scores.clarity,
+      ),
+    };
+    const revised = await this.proposalAdapter.revisePendingProposal({
+      proposalId: proposal.id,
+      userId,
+      expectedDescription: proposal.description,
+      expectedNetworkId: proposal.networkId,
+      description,
+      analysis,
+    });
+    if (revised) return revised;
+
+    // A same-text concurrent edit is harmless. Any other winner is resolved
+    // through the ordinary confirmation errors instead of being overwritten.
+    const authoritative = await this.proposalAdapter.getProposalForOwner(proposal.id, userId);
+    if (!authoritative) throw new IntentProposalConfirmationError('proposal_not_found');
+    if (authoritative.status !== 'pending') throw new IntentProposalConfirmationError('proposal_consumed');
+    if (authoritative.expiresAt.getTime() <= Date.now()) {
+      throw new IntentProposalConfirmationError('proposal_expired');
+    }
+    if (authoritative.description !== description || authoritative.networkId !== proposal.networkId) {
+      throw new IntentProposalConfirmationError('proposal_payload_mismatch');
+    }
+    return authoritative;
   }
 
   /**
