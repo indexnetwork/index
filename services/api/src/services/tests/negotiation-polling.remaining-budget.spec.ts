@@ -16,11 +16,12 @@ describe('computeRemainingBudgetMs', () => {
     expect(result).toBeLessThanOrEqual(240_000);
   });
 
-  it('clamps to the 1s floor when elapsed time has overrun the budget', () => {
-    // 400s elapsed against a 300s budget → raw remaining is negative,
-    // implementation clamps via Math.max(1_000, remainingMs).
+  it('clamps to zero when elapsed time has overrun the budget', () => {
+    // 400s elapsed against a 300s budget → raw remaining is negative.
+    // Clamped to zero since b3a050b5f7: an already elapsed preserved deadline
+    // is repaired as an immediate BullMQ fallback rather than being extended.
     const parkStart = new Date(Date.now() - 400_000);
     const result = computeRemainingBudgetMs(parkStart, 300_000);
-    expect(result).toBe(1_000);
+    expect(result).toBe(0);
   });
 });
