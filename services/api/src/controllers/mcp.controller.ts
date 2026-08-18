@@ -41,6 +41,7 @@ import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
@@ -247,6 +248,8 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     reflectEnqueueIfEnabled(),
     // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
     negotiatorMemoryRetrieve(),
+    // A2H client-DM read path (gated on NEGOTIATOR_CLIENT_DM_INJECT).
+    negotiatorClientDmRetrieve(),
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,

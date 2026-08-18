@@ -151,6 +151,7 @@ const envSchema = z.object({
   NEGOTIATOR_MEMORY_WRITE_ENABLED: optionalBoolean,
   NEGOTIATOR_CHAT_REFLECT_DELAY_MS: optionalInt,
   NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
+  NEGOTIATOR_CLIENT_DM_INJECT: optionalBoolean,
   QUESTIONER_ENABLED: optionalBoolean,
   POOL_QUESTIONS_MINING: z.union([z.literal(''), z.enum(['off', 'shadow'])]).optional(),
   POOL_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),

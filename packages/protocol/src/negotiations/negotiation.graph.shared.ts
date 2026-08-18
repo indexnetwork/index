@@ -26,6 +26,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
+import type { NegotiatorClientDmMessage, NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
@@ -44,6 +45,12 @@ export interface NegotiationGraphDeps {
   questionerEnqueue?: QuestionerEnqueueFn;
   reflectEnqueue?: ReflectEnqueueFn;
   memoryRetrieve?: NegotiatorMemoryRetrieveFn;
+  /**
+   * A2H read path: the acting user's own negotiator DM for this signal.
+   * System-agent grounding only — see `negotiation.client-dm.ts`; this must
+   * never be forwarded to an external seat via `NegotiationTurnPayload`.
+   */
+  clientDmRetrieve?: NegotiatorClientDmRetrieveFn;
   /** In-process negotiator used when no personal agent answers. */
   systemAgent: IndexNegotiator;
   /** Outreach gate for fresh negotiations. */
@@ -106,6 +113,32 @@ export async function retrieveMemory(
     logger.warn("Negotiator memory retrieval failed; proceeding without memory", {
       userId,
       scope,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
+/**
+ * A2H client-DM retrieval — never throws, never blocks a negotiation. The
+ * injected fn already resolves [] when the flag is off or the user has no
+ * negotiator DM for this signal; this wrapper adds the graph-side failure
+ * guard, exactly as `retrieveMemory` does for the memory seam.
+ *
+ * `userId` is always the ACTING user's — the seam has no counterparty field,
+ * so the counterparty's DM cannot be requested from here.
+ */
+export async function retrieveClientDm(
+  deps: NegotiationGraphDeps,
+  userId: string,
+  intentId: string,
+): Promise<NegotiatorClientDmMessage[]> {
+  if (!deps.clientDmRetrieve) return [];
+  try {
+    return await deps.clientDmRetrieve({ userId, intentId });
+  } catch (err) {
+    logger.warn("Negotiator client DM retrieval failed; proceeding without it", {
+      userId,
       error: err instanceof Error ? err.message : String(err),
     });
     return [];

@@ -20,6 +20,7 @@ import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
+import type { NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 import { initNode } from "./negotiation.graph.init.js";
 import { screenNode } from "./negotiation.graph.screen.js";
@@ -45,6 +46,7 @@ export class NegotiationGraphFactory {
     questionerEnqueue?: QuestionerEnqueueFn,
     reflectEnqueue?: ReflectEnqueueFn,
     memoryRetrieve?: NegotiatorMemoryRetrieveFn,
+    clientDmRetrieve?: NegotiatorClientDmRetrieveFn,
   ) {
     this.deps = {
       database,
@@ -53,6 +55,7 @@ export class NegotiationGraphFactory {
       questionerEnqueue,
       reflectEnqueue,
       memoryRetrieve,
+      clientDmRetrieve,
       systemAgent: new IndexNegotiator(),
       screener: new NegotiationScreener(),
     };

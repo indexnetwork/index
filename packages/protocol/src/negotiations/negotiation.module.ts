@@ -80,4 +80,9 @@ export type {
 export type { NegotiationSpeakerMessage, NegotiationSpeakerParticipants } from "./negotiation.expected-speaker.js";
 export type { NegotiationScopeMetadata } from "./negotiation.scope.js";
 export type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
+export type {
+  NegotiatorClientDmMessage,
+  NegotiatorClientDmQuery,
+  NegotiatorClientDmRetrieveFn,
+} from "./negotiation.client-dm.js";
 export type { NegotiationToolDeps } from "./negotiation.tools.port.js";
