@@ -9,11 +9,11 @@
  *
  * `NEGOTIATOR_STANCE` makes that stance configurable instead of hard-coded:
  *
- * | stance      | framing                              | value bar        | query rule              | consult propensity      | responder check          | deadlock  |
- * |-------------|--------------------------------------|------------------|-------------------------|-------------------------|--------------------------|-----------|
- * | `advocate`  | argue the case (today)               | none             | mandate (today)         | none (today)            | none (today)             | bargain   |
- * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | verify the opening       | bargain   |
- * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | + probe before accepting | stalemate |
+ * | stance      | framing                              | value bar        | query rule              | consult propensity      | evidence provenance      | responder check          | deadlock  |
+ * |-------------|--------------------------------------|------------------|-------------------------|-------------------------|--------------------------|--------------------------|-----------|
+ * | `advocate`  | argue the case (today)               | none             | mandate (today)         | none (today)            | none (today)             | none (today)             | bargain   |
+ * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | own record ≠ client's evidence | verify the opening | bargain   |
+ * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | (same — no sharpening) | + probe before accepting | stalemate |
  *
  * Design constraints (hard):
  * - **`advocate` is byte-identical.** Every fragment below is additive and
@@ -43,6 +43,12 @@
  * renders them only there. They still name no action and no mechanism, so the
  * seat's own rules and the graph's grants stay the sole authority on what this
  * turn may actually do.
+ *
+ * The seat parameter is a scoping tool, not a licence to fork: a duty both
+ * seats hold stays in the shared prefix even when the failure that motivated it
+ * showed up on one seat. `EVIDENCE_PROVENANCE_RULE` is the case in point — it
+ * was written for a responder accept, and it renders seat-blind, because an
+ * initiator can cite its own prior openings' claims exactly as readily.
  */
 
 import type { NegotiationSeat } from "../shared/schemas/negotiation-state.schema.js";
@@ -176,6 +182,50 @@ const CONSULT_PROPENSITY_RULE = `
 const SKEPTIC_CONSULT_SHARPENING = ` For you this is a gate, not a preference: an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed, and consulting {userName} is how that assumption gets verified.`;
 
 /**
+ * Evidence provenance — assessing stances, BOTH seats.
+ *
+ * The third sibling of the consult-propensity and responder-verification
+ * fragments, and written for the way the second one was formally obeyed and
+ * substantively evaded. A responder accepted a first contact grounded — as the
+ * responder rule demands — in its OWN side's record rather than in the
+ * opening's characterization. But the record it reached for was its own prior
+ * conclusions, surfaced through memory and prior dialogue: "{userName}'s
+ * previous acceptances ... reinforce this strong alignment", from acceptances
+ * this same negotiator had made under a weaker bar. Circular verification —
+ * I accepted before, therefore accepting is grounded.
+ *
+ * So the rule the verification duty was missing: an agent's own output is not
+ * its client's evidence. Verification grounds in what a PERSON authored — never
+ * in what an agent concluded about them, on either side of the table. The
+ * fragment names exactly the client-authored sections this prompt actually
+ * renders (intents, profile, and the client's own answers between sessions),
+ * so the ground it points at is one the negotiator can see.
+ *
+ * Two boundaries it deliberately does not cross:
+ * - **It does not ban memory.** Memory keeps the job it has (advisory notes on
+ *   how to argue, what has been asked, what each side said); what changes is
+ *   only what may count as verification. A fragment that told the negotiator to
+ *   ignore its memory would fight `renderNegotiatorMemorySection` rather than
+ *   complete it.
+ * - **It does not forbid resolving a repeat signal quickly.** The continuation
+ *   policy in `negotiation.agent.ts` ("materially the same as one you
+ *   previously evaluated ... you may resolve quickly") governs how much EFFORT
+ *   a re-run deserves; this governs what counts as GROUNDS. The nearest
+ *   existing neighbor is the IND-569 attribution policy — "do not treat their
+ *   conclusions as decisions about this opportunity" — which scopes conclusions
+ *   across opportunities; this scopes them across the decision/evidence line.
+ *
+ * No `skeptic` sharpening: the prior that most matches are not worth making
+ * does not change what an unverified assertion is worth. It is worth nothing
+ * under either assessing stance, and a sharpening here would only restate the
+ * rule louder.
+ *
+ * Names no action and no mechanism, like every other fragment in this module.
+ */
+const EVIDENCE_PROVENANCE_RULE = `
+- YOUR OWN RECORD IS DECISIONS, NOT EVIDENCE: your earlier turns, the connections you proposed or accepted on {userName}'s behalf, and the conclusions you carry in memory are YOUR record — decisions you made for them, reached under whatever bar you applied at the time. Leaning on one ("they have been open to this before", "the fit was already established") re-asserts a judgment instead of checking it, and reads your own past eagerness back as {userName}'s interest. Ground the fit in what a person stated for themselves: {userName}'s own intents, profile, and the answers they gave you directly on your side; the counterparty's own intents and profile on theirs. Prior dialogue and memory keep their job — what has already been asked, what each side actually said, how to pitch this one — but they are the history of the argument, not grounds for it. A fit that was not verified does not become verified by having been asserted before.`;
+
+/**
  * Responder verification — assessing stances, RESPONDING seat only.
  *
  * Two structural gaps this closes, both visible in the failure it was written
@@ -223,9 +273,15 @@ const SKEPTIC_RESPONDER_SHARPENING = ` For you an accept on the first exchange i
  * own rules. Empty under `advocate` → byte-identical.
  *
  * `seat` scopes the responder verification rules to the seat that did NOT
- * open. Everything else here is seat-blind: the value bar and the consult
- * propensity are duties of both seats, and the seat parameter must not become
- * a reason to fork them.
+ * open. Everything else here is seat-blind: the value bar, the consult
+ * propensity and the evidence-provenance rule are duties of both seats, and
+ * the seat parameter must not become a reason to fork them.
+ *
+ * Order matters twice over. The seat-blind rules come first, so the initiator's
+ * rendering stays a strict PREFIX of the responder's — the invariant the stance
+ * spec checks by subtraction. And provenance lands immediately before the
+ * responder rules, so "ground the accept in what {userName} themselves stated"
+ * is already qualified by whose statements count when the responder reads it.
  */
 export function stanceActionRules(stance: NegotiatorStance, seat: NegotiationSeat): string {
   if (!stanceAppliesValueBar(stance)) return "";
@@ -235,7 +291,7 @@ export function stanceActionRules(stance: NegotiatorStance, seat: NegotiationSea
   const responderRule = seat === "counterparty" && stanceVerifiesResponderFit(stance)
     ? RESPONDER_VERIFICATION_RULE + (stance === "skeptic" ? SKEPTIC_RESPONDER_SHARPENING : "")
     : "";
-  return VALUE_BAR_RULE + consultRule + responderRule;
+  return VALUE_BAR_RULE + consultRule + EVIDENCE_PROVENANCE_RULE + responderRule;
 }
 
 /**
