@@ -13,7 +13,7 @@ import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecis
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
@@ -367,6 +367,47 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           consecutiveNonConvergent: deadlockShiftRecord.consecutiveNonConvergent,
           threshold: deadlockShiftRecord.threshold,
         });
+      }
+    }
+
+    // ─── Authored ask_user question: identifier-aware safety gate ─────────
+    // The agent now writes the question its client reads verbatim (the
+    // pre-A2H `disclosureSubject` was only an input to server-templated copy),
+    // and an external registered agent can hold the personal-agent seat — so
+    // this runs on every turn, dispatched or system, not just our own.
+    //
+    // Placed BEFORE persistence deliberately. The turn is about to become a
+    // message in the shared conversation, so a rejected question must not
+    // survive there either; and issue 6 reads the field back off the persisted
+    // turn, which means dropping it here is what makes that read safe by
+    // construction rather than by remembering to re-check.
+    //
+    // Rejection is a DOWNGRADE, never a failure: the turn, its action, and
+    // `askUser.reason` all stand, so the consultation proceeds on today's
+    // enum-only path — the same shape a v1 turn or an older agent produces.
+    // A guard that could fail a turn would let malformed model output stall a
+    // negotiation, which is strictly worse than asking a generic question.
+    //
+    // The two inputs are exactly what the api-side payload guard can never
+    // have: it sees the question at the DB boundary with no idea who the
+    // counterparty is or what the evaluator wrote, so it cannot tell that a
+    // well-formed question is naming them or paraphrasing it.
+    if (turn.askUser?.question) {
+      const counterpartyName = otherUser.profile?.name?.trim();
+      const seedReasoning = state.seedAssessment?.reasoning?.trim();
+      const safeAuthoredQuestion = isSafeAuthoredNegotiationQuestion(turn.askUser.question, {
+        ...(counterpartyName ? { forbiddenIdentifiers: [counterpartyName] } : {}),
+        ...(seedReasoning ? { forbiddenSourceText: [seedReasoning] } : {}),
+      });
+      if (!safeAuthoredQuestion) {
+        turnLog.warn('Dropping unsafe authored ask_user question; consultation continues without it', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          handledExternally: dispatchResult.handled,
+        });
+        const { question: _rejected, ...askUserWithoutQuestion } = turn.askUser;
+        turn = { ...turn, askUser: askUserWithoutQuestion };
       }
     }
 
