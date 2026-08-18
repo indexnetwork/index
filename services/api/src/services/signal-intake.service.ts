@@ -18,7 +18,6 @@ import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.datab
 import { questionerAdapter } from '../adapters/questioner.adapter.instance';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { getSignalIntakeConfig, type SignalIntakeQuestionMode } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 
@@ -553,7 +552,6 @@ const productionIntents = new Intents({
   database: intentDatabaseAdapter,
   embedder: new EmbedderAdapter(),
   queue: intentQueue,
-  questionerEnqueue: questionerEnqueueIfEnabled(),
 });
 const compiledIntentGraph = productionIntents.createGraph();
 

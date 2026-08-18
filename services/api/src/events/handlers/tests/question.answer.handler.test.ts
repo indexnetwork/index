@@ -4,7 +4,6 @@ import { handleQuestionAnswered, type QuestionAnswerHandlerDeps } from "../quest
 function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswerHandlerDeps {
   return {
     createPremiseFromAnswer: mock(async () => {}),
-    enqueueIntentRefinement: mock(async () => ({ applied: true })),
     resumeInflightNegotiation: mock(async () => {}),
     resolveChatQuestionWait: mock(() => {}),
     ...overrides,
@@ -46,7 +45,6 @@ describe("handleQuestionAnswered", () => {
   it("does nothing for discovery mode (context flows via chat)", async () => {
     await handleQuestionAnswered({ ...basePayload, mode: "discovery" }, deps);
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
-    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
   });
 
   it("calls createPremiseFromAnswer for enrichment mode", async () => {
@@ -65,35 +63,13 @@ describe("handleQuestionAnswered", () => {
     });
   });
 
-  it("calls enqueueIntentRefinement for intent mode", async () => {
+  it("treats a stray intent answer as the default no-op (retired generator)", async () => {
     await handleQuestionAnswered(
       { ...basePayload, mode: "intent", sourceType: "intent", sourceId: "int-1" },
       deps,
     );
-    expect(deps.enqueueIntentRefinement).toHaveBeenCalledTimes(1);
-    const call = (deps.enqueueIntentRefinement as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toEqual({
-      userId: "u-1",
-      intentId: "int-1",
-      questionId: "q-1",
-      selectedOptions: ["Option A"],
-      freeText: undefined,
-    });
-  });
-
-  it("carries the expected recovery fingerprint into the intent refinement guard", async () => {
-    await handleQuestionAnswered(
-      {
-        ...basePayload, mode: "intent", purpose: "recovery", sourceType: "intent", sourceId: "int-1",
-        recoveryIntentFingerprint: "fingerprint-1",
-      },
-      deps,
-    );
-    expect(deps.enqueueIntentRefinement).toHaveBeenCalledWith({
-      userId: "u-1", intentId: "int-1", questionId: "q-1",
-      selectedOptions: ["Option A"], freeText: undefined,
-      expectedIntentFingerprint: "fingerprint-1",
-    });
+    expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
+    expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
 
   it("resolves the chat wait bus for chat mode", async () => {
@@ -108,7 +84,6 @@ describe("handleQuestionAnswered", () => {
       answer: basePayload.answer,
     });
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
-    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
   });
 
   it("does not perform negotiation mutation outside the authoritative adapter boundary", async () => {
@@ -220,7 +195,6 @@ describe("handleQuestionAnswered", () => {
       deps,
     );
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
-    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
     expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
 
@@ -230,6 +204,5 @@ describe("handleQuestionAnswered", () => {
       deps,
     );
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
-    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
   });
 });

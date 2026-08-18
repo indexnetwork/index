@@ -148,7 +148,6 @@ export async function createChatTools(
     database,
     embedder,
     queue: deps.intentQueue,
-    questionerEnqueue: sessionAwareEnqueue,
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();

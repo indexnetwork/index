@@ -38,7 +38,6 @@ export { createQuestionerTools } from "./question.tools.js";
 export {
   INTENT_QUESTION_DAILY_CAP_DEFAULT,
   INTENT_QUESTION_DAILY_WINDOW_HOURS,
-  intentQuestionDailyCap,
   isQuestionerEnabled,
 } from "./question.env.js";
 

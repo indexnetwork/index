@@ -7,7 +7,6 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import type { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
-import { IntentRecoveryRefinementService } from '../services/intent-recovery-refinement.service';
 import { isSafeNegotiationQuestionPayload } from '../lib/question/negotiation-question.contract';
 import { emitConsultationDeliveredTelemetry } from '../lib/question/consultation-policy.telemetry';
 import { routeParkedQuestionEnqueue } from './question-message.queue';
@@ -44,8 +43,6 @@ export interface QuestionerQueueDeps {
   agent?: Pick<QuestionerAgent, 'invoke'>;
   /** Lifecycle lookup used to gate intent-scoped jobs before generation. */
   getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
-  /** Recovery policy/generation service; injected so queue tests remain hermetic. */
-  recoveryService?: Pick<IntentRecoveryRefinementService, 'recover'>;
 }
 
 /**
@@ -67,7 +64,6 @@ export class QuestionerQueue {
   private readonly queueLogger = log.queue.from('QuestionerQueue');
   private adapter: QuestionerQueueAdapter | null;
   private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
-  private readonly recoveryService: Pick<IntentRecoveryRefinementService, 'recover'>;
   private readonly onConsultationTelemetry: (event: { stage: 'delivered'; reason: NegotiationConsultationReason }) => void;
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
   private worker: ReturnType<typeof QueueFactory.createWorker<QuestionerJobData>> | null = null;
@@ -81,7 +77,6 @@ export class QuestionerQueue {
       ?? (deps
         ? async (intentId) => ({ id: intentId, status: 'ACTIVE' as const, archivedAt: null })
         : async (intentId, userId) => (await this.getAdapter()).getIntentLifecycle!(intentId, userId));
-    this.recoveryService = deps?.recoveryService ?? new IntentRecoveryRefinementService();
     this.onConsultationTelemetry = deps?.onConsultationTelemetry
       ?? ((event) => this.logger.info('negotiation_consultation_policy', event));
     this.agent = deps?.agent ?? null; // lazy — created on first job
@@ -180,10 +175,12 @@ export class QuestionerQueue {
   }
 
   private async handleGenerateQuestions(data: QuestionerInput): Promise<void> {
-    // Recovery must use the dedicated service so generic generation cannot
-    // bypass authoritative cadence/actionability/fingerprint gates.
-    if (data.purpose === 'recovery') {
-      this.logger.warn('Recovery input rejected on generic generation job', {
+    // Retired generator families (intent refinement, recovery) can no longer
+    // generate: their triggers are gone, and any stale queued payload is
+    // dropped here instead of reaching the generator.
+    if (data.mode === 'intent') {
+      this.logger.warn('Retired question mode/purpose rejected on generation job', {
+        mode: data.mode,
         userId: data.userId,
         sourceId: data.sourceId,
       });
@@ -195,8 +192,7 @@ export class QuestionerQueue {
     }
     const adapter = await this.getAdapter();
     const intentId = data.triggeredByIntentId?.trim()
-      || (data.scopeType === 'intent' ? data.scopeId?.trim() : undefined)
-      || (data.mode === 'intent' ? data.sourceId?.trim() : undefined);
+      || (data.scopeType === 'intent' ? data.scopeId?.trim() : undefined);
     if (intentId) {
       const lifecycle = await this.getIntentLifecycle(intentId, data.userId);
       if (!lifecycle || lifecycle.archivedAt || (lifecycle.status != null && lifecycle.status !== 'ACTIVE')) {
@@ -208,24 +204,6 @@ export class QuestionerQueue {
         });
         return;
       }
-    }
-
-    // Ordinary intent questions from intent creation and post-discovery
-    // refinement share one fingerprint-deduplicated persistence path:
-    // creation can surface the clarification immediately, while completion
-    // hooks safely retry the same material intent version without duplicates.
-    if (
-      data.mode === 'intent'
-      && data.purpose === undefined
-      && data.sourceType === 'intent'
-      && data.sourceId.trim()
-    ) {
-      await this.recoveryService.recover({
-        source: 'intent_creation',
-        recipientUserId: data.userId,
-        intentId: data.sourceId,
-      });
-      return;
     }
 
     let negotiationAdmission: Omit<NegotiationQuestionProvenance, 'questionOrdinal'> | null = null;

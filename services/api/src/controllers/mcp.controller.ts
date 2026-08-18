@@ -224,12 +224,10 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   logger.info('Compiling MCP graphs (first call, will be cached)');
 
   const { database, embedder, scraper } = protocolDeps;
-  const qEnqueue = protocolDeps.questionerEnqueue;
   const intents = new Intents({
     database,
     embedder,
     queue: protocolDeps.intentQueue,
-    questionerEnqueue: qEnqueue,
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
@@ -245,7 +243,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.negotiationDatabase,
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
-    qEnqueue,
+    protocolDeps.questionerEnqueue,
     // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
     reflectEnqueueIfEnabled(),
     // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).

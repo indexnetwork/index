@@ -13,7 +13,8 @@
  * Mode reactions:
  * - discovery: no-op (retired; answers enriched chat context via the message path)
  * - enrichment: retired; create a premise from the answer → triggers profile regen
- * - intent:    enqueue intent refinement with the new context
+ * - intent:    retired generator (rows voided by migrations 0134/0135); any
+ *              stray answer falls through to the default no-op
  * - negotiation: no-op after authoritative adapter settlement (uptake private;
  *              ordinary shared context already committed)
  * - negotiation_inflight: after authoritative exact-task settlement, enqueue
@@ -25,7 +26,6 @@
  */
 
 import { log } from '../../lib/log';
-import type { IntentRefinementResult } from './question.answer.intent';
 
 const logger = log.service.from('QuestionAnswerHandler');
 
@@ -70,16 +70,6 @@ export interface QuestionAnswerHandlerDeps {
     freeText?: string;
     sourceId: string;
   }) => Promise<void>;
-
-  /** Enqueue an intent refinement job with the answer as additional context. */
-  enqueueIntentRefinement: (input: {
-    userId: string;
-    intentId: string;
-    questionId: string;
-    selectedOptions: string[];
-    freeText?: string;
-    expectedIntentFingerprint?: string;
-  }) => Promise<IntentRefinementResult>;
 
   /**
    * Resume a negotiation paused on an `ask_user` client consultation:
@@ -136,19 +126,6 @@ export async function handleQuestionAnswered(
           selectedOptions: answer.selectedOptions,
           freeText: answer.freeText,
           sourceId,
-        });
-        break;
-
-      case 'intent':
-        await deps.enqueueIntentRefinement({
-          userId,
-          intentId: sourceId,
-          questionId,
-          selectedOptions: answer.selectedOptions,
-          freeText: answer.freeText,
-          ...(payload.recoveryIntentFingerprint
-            ? { expectedIntentFingerprint: payload.recoveryIntentFingerprint }
-            : {}),
         });
         break;
 

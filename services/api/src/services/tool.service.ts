@@ -271,7 +271,6 @@ export class ToolService {
       database,
       embedder: this.embedder,
       queue: intentQueue,
-      questionerEnqueue: questionerEnqueueIfEnabled(),
     });
     const intentGraph = intents.createGraph();
     const profileGraph = new EnrichmentGraphFactory(database, this.scraper).createGraph();

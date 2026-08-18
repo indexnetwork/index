@@ -103,7 +103,6 @@ src/lib/limiter/tests/index.isolated.ts
 src/lib/limiter/tests/guard.isolated.ts
 src/lib/limiter/tests/mcp.isolated.ts
 src/lib/limiter/tests/identifier.isolated.ts
-src/services/tests/intent-recovery-refinement.service.isolated.ts
 src/services/tests/intent.service.proposal.isolated.ts
 src/controllers/tests/conversation.negotiation-activity.isolated.ts
 src/adapters/tests/archive-legacy-negotiations.isolated.ts

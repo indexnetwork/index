@@ -11,7 +11,6 @@ import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
-import { questionerEnqueueIfEnabled } from './questioner.queue';
 
 export const QUEUE_NAME = 'enrichment-tool-run';
 

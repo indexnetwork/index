@@ -84,7 +84,6 @@ import { evaluateOpportunityTransition } from './lib/question/question-exhaustio
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
 import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
-import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
 import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
 import { QuestionerAdapter } from './adapters/questioner.adapter';
 import { questionerAdapter } from './adapters/questioner.adapter.instance';
@@ -260,74 +259,11 @@ const profileAnswerPremiseGraph = new PremiseGraphFactory(
 
 const answerQuestionerAdapter = new QuestionerAdapter(db);
 
-// Intent graph for answer-driven refinements — same update path as the chat
-// update_intent tool. The graph owns merge, verification, sanitization,
-// re-embedding, persistence, and HyDE regeneration.
-const answerIntentGraph = new Intents({ database: chatDatabaseAdapter, embedder: embedderAdapter, queue: intentQueue }).createGraph();
-
-const enqueueIntentRefinement = enqueueIntentRefinementFactory({
-  getQuestionPrompt: async (questionId) => {
-    const question = await answerQuestionerAdapter.getById(questionId);
-    return question?.payload.prompt ?? null;
-  },
-  getUserProfile: async (userId) => {
-    const profile = await chatDatabaseAdapter.getProfile(userId);
-    return profile ? JSON.stringify(profile) : '';
-  },
-  runIntentUpdate: async ({
-    userId,
-    userProfile,
-    inputContent,
-    targetIntentIds,
-    expectedIntentFingerprint,
-  }) => {
-    const result = await answerIntentGraph.invoke(
-      {
-        userId,
-        userProfile,
-        operationMode: 'update' as const,
-        inputContent,
-        targetIntentIds,
-        expectedIntentFingerprint,
-      },
-      { recursionLimit: 100 },
-    );
-    const executionResults = (result as {
-      executionResults?: Array<{
-        actionType: 'create' | 'update' | 'expire';
-        success: boolean;
-        intentId?: string;
-        payload?: string;
-      }>;
-    }).executionResults;
-    const targetIds = new Set(targetIntentIds);
-    const appliedUpdate = executionResults?.find((execution) =>
-      execution.success
-      && execution.actionType === 'update'
-      && execution.intentId !== undefined
-      && targetIds.has(execution.intentId));
-    if (!appliedUpdate || appliedUpdate.payload === undefined) return { applied: false };
-    return { applied: true, payload: appliedUpdate.payload };
-  },
-  getIntent: async (intentId) => {
-    const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (!intent) return null;
-    return {
-      id: intent.id,
-      userId: intent.userId,
-      description: intent.payload,
-      summary: intent.summary,
-      status: (intent.status ?? 'ACTIVE').toLowerCase(),
-    };
-  },
-});
-
 const questionAnswerDeps = {
   createPremiseFromAnswer: createPremiseFromAnswerFactory({
     runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
-  enqueueIntentRefinement,
   resumeInflightNegotiation: resumeInflightNegotiationFactory({
     enqueueResume: async (input) => {
       await negotiationRunExistingQueue.addJob(input);

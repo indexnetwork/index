@@ -97,16 +97,43 @@ describe('question retirement static invariants', () => {
       expect(fromIntent).not.toContain('maybeEnqueueIntentRecovery');
       expect(questionerQueue).not.toContain('generate_recovery_refinement');
       expect(questionerQueue).not.toContain('addRecoveryJob');
-      const service = read('../../services/intent-recovery-refinement.service.ts');
-      expect(service).toContain("source: 'intent_creation'");
-      expect(service).not.toContain("'from_intent'");
-      expect(service).not.toContain("'discovery_run'");
+      // The whole refinement service retired with intent refinement (next
+      // block); nothing remains that could consume a recovery completion.
+      expect(existsSync(new URL('../../services/intent-recovery-refinement.service.ts', import.meta.url))).toBe(false);
     });
 
     it('voids its leftover pending rows with the retired_mode marker', () => {
       const migration = read('../../../drizzle/0134_dismiss_retired_recovery_questions.sql');
       expect(migration).toContain("detection->>'purpose' = 'recovery'");
       expect(migration).toContain("IN ('from_intent', 'discovery_run')");
+      expect(migration).toContain("'\"retired_mode\"'::jsonb");
+      expect(migration).toContain("status = 'pending'");
+    });
+  });
+
+  describe('intent refinement', () => {
+    it('no longer enqueues from intent creation, the intent graph, or the answer reaction', () => {
+      // The refinement service, its answer-driven refinement reaction, and the
+      // backfill CLI are gone; no composition site passes a questioner enqueue
+      // into the Intents graph; the worker drops stale intent-mode payloads.
+      for (const relative of [
+        '../../services/intent-recovery-refinement.service.ts',
+        '../../events/handlers/question.answer.intent.ts',
+        '../../cli/backfill-intent-questions.ts',
+      ]) {
+        expect(existsSync(new URL(relative, import.meta.url))).toBe(false);
+      }
+      const intentService = read('../../services/intent.service.ts');
+      expect(intentService).not.toContain('questionerEnqueue');
+      const intentGraphExecute = read('../../../../../packages/protocol/src/intents/graph/intent.graph.execute.ts');
+      expect(intentGraphExecute).not.toContain('questionerEnqueue');
+      expect(main).not.toContain('enqueueIntentRefinement');
+      expect(questionerQueue).toContain("if (data.mode === 'intent') {");
+    });
+
+    it('voids its leftover pending rows with the retired_mode marker', () => {
+      const migration = read('../../../drizzle/0135_dismiss_retired_intent_questions.sql');
+      expect(migration).toContain("detection->>'mode' = 'intent'");
       expect(migration).toContain("'\"retired_mode\"'::jsonb");
       expect(migration).toContain("status = 'pending'");
     });

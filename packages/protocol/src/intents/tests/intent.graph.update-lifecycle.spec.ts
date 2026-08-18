@@ -32,7 +32,7 @@ describe("IntentGraph explicit update lifecycle", () => {
     } as unknown as IntentGraphDatabase;
 
     let reconcilerCalls = 0;
-    const graph = new IntentGraphFactory(database, undefined, undefined, undefined, {
+    const graph = new IntentGraphFactory(database, undefined, undefined, {
       inferrer: {
         invoke: async () => ({
           intents: [{

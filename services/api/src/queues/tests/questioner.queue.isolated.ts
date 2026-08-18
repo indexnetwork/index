@@ -202,27 +202,17 @@ describe('QuestionerQueue', () => {
     expect(persisted).toBe(false);
   });
 
-  it('routes creation-time intent questions through the shared fingerprint-deduplicated surfacing service', async () => {
-    const recoveries: Array<{
-      source: string;
-      recipientUserId: string;
-      intentId: string;
-    }> = [];
+  it('drops retired intent-mode payloads before any generation or persistence', async () => {
     let invoked = false;
+    let persisted = false;
     const queue = new QuestionerQueue({
       adapter: {
-        persist: async () => [],
+        persist: async () => { persisted = true; return []; },
       },
       agent: {
         invoke: async () => {
           invoked = true;
           return null;
-        },
-      },
-      recoveryService: {
-        recover: async (input) => {
-          recoveries.push(input);
-          return 'question-1';
         },
       },
     });
@@ -239,12 +229,8 @@ describe('QuestionerQueue', () => {
       },
     });
 
-    expect(recoveries).toEqual([{
-      source: 'intent_creation',
-      recipientUserId: 'user-1',
-      intentId: 'intent-1',
-    }]);
     expect(invoked).toBe(false);
+    expect(persisted).toBe(false);
   });
 
   it('stamps task-backed follow-up provenance on every generated ordinal without changing cardinality', async () => {
