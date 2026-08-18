@@ -10,8 +10,6 @@ import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGrap
 import { buildIntentDiscoveryTrigger, type FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
 export type { FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
 import { maybeRunNegotiationEvidenceShadow } from '../pool/negotiation-evidence.shadow';
-import { maybeEnqueueIntentRecovery } from '../questioner/recovery.shared';
-import type { RecoveryQuestionerJobData } from '../questioner.queue';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
 
@@ -33,8 +31,6 @@ export interface FromIntentDeps {
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  /** Post-success no-opportunity recovery hook; failure-isolated by this queue. */
-  recoverAfterCompletion?: (input: RecoveryQuestionerJobData) => Promise<unknown>;
 }
 
 export class FromIntentQueue {
@@ -185,25 +181,6 @@ export class FromIntentQueue {
         intentId,
         userId,
         error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    // Intent refinement is an independent, failure-isolated post-success
-    // effect. It shares a material-fingerprint cadence with the creation-time
-    // intent Questioner, so this completion retry cannot duplicate a question.
-    try {
-      await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
-        source: 'from_intent',
-        recipientUserId: userId,
-        intentId,
-      });
-    } catch (error) {
-      // Discovery has already completed authoritatively. Recovery is bounded,
-      // asynchronous follow-up and must never turn success into a retry.
-      this.logger.warn('Recovery completion hook failed after successful discovery', {
-        intentId,
-        userId,
-        errorClass: error instanceof Error ? error.name : 'UnknownError',
       });
     }
 

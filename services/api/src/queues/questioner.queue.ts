@@ -7,7 +7,7 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import type { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
-import { IntentRecoveryRefinementService, type IntentRecoveryCompletion } from '../services/intent-recovery-refinement.service';
+import { IntentRecoveryRefinementService } from '../services/intent-recovery-refinement.service';
 import { isSafeNegotiationQuestionPayload } from '../lib/question/negotiation-question.contract';
 import { emitConsultationDeliveredTelemetry } from '../lib/question/consultation-policy.telemetry';
 import { routeParkedQuestionEnqueue } from './question-message.queue';
@@ -15,11 +15,8 @@ import { routeParkedQuestionEnqueue } from './question-message.queue';
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
 
-/** Privacy-minimal post-discovery recovery job. */
-export type RecoveryQuestionerJobData = IntentRecoveryCompletion;
-
 /** All payloads processed by the shared Questioner worker. */
-export type QuestionerJobData = QuestionerInput | RecoveryQuestionerJobData;
+export type QuestionerJobData = QuestionerInput;
 
 function uniqueConstraintName(error: unknown): string | null {
   if (typeof error !== 'object' || error === null) return null;
@@ -119,14 +116,6 @@ export class QuestionerQueue {
     return this.addJob('generate_questions', data, options);
   }
 
-  /** Enqueue one privacy-minimal post-discovery recovery attempt. */
-  addRecoveryJob(
-    data: RecoveryQuestionerJobData,
-    options?: { jobId?: string; priority?: number },
-  ): Promise<Job<QuestionerJobData>> {
-    return this.addJob('generate_recovery_refinement', data, options);
-  }
-
   /**
    * Add a job to the questioner queue.
    *
@@ -136,11 +125,11 @@ export class QuestionerQueue {
    * @returns The BullMQ job.
    */
   async addJob(
-    name: 'generate_questions' | 'generate_recovery_refinement',
+    name: 'generate_questions',
     data: QuestionerJobData,
     options?: { jobId?: string; priority?: number },
   ): Promise<Job<QuestionerJobData>> {
-    if (name === 'generate_questions' && !isValidQuestionerInputContract(data as QuestionerInput)) {
+    if (!isValidQuestionerInputContract(data)) {
       throw new Error('Invalid questioner mode/purpose/context contract');
     }
     return this.queue.add(name, data, {
@@ -159,10 +148,7 @@ export class QuestionerQueue {
   async processJob(name: string, data: QuestionerJobData): Promise<void> {
     switch (name) {
       case 'generate_questions':
-        await this.handleGenerateQuestions(data as QuestionerInput);
-        break;
-      case 'generate_recovery_refinement':
-        await this.recoveryService.recover(data as RecoveryQuestionerJobData);
+        await this.handleGenerateQuestions(data);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });

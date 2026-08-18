@@ -455,27 +455,6 @@ describe('QuestionerQueue', () => {
     });
   });
 
-  it('delegates privacy-minimal recovery jobs to the dedicated service', async () => {
-    let captured: unknown;
-    const queue = new QuestionerQueue({
-      adapter: { persist: async () => [] },
-      recoveryService: {
-        recover: async (input) => { captured = input; return null; },
-      },
-    });
-    queues.push(queue);
-
-    await queue.processJob('generate_recovery_refinement', {
-      source: 'discovery_run',
-      recipientUserId: 'user-1',
-      intentId: 'intent-1',
-      runId: 'run-1',
-    });
-    expect(captured).toEqual({
-      source: 'discovery_run', recipientUserId: 'user-1', intentId: 'intent-1', runId: 'run-1',
-    });
-  });
-
   it('persists no inflight row when the generator returns zero questions', async () => {
     let persisted = false;
     const candidate = {

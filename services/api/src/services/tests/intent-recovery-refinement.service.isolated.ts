@@ -106,8 +106,6 @@ function makeService(input: {
       prepareRecoveryRefinement: async () => input.prepared === undefined ? preparation() : input.prepared,
       persistFreshRecoveryQuestion,
     },
-    getNegotiationTasksForOpportunity: async () => input.tasks ?? [],
-    getArtifactsForTask: async () => input.artifacts ?? [],
     getGlobalUserContext: async () => 'Owner builds climate-data products in Berlin.',
     generate,
     onCreated,
@@ -143,17 +141,17 @@ describe('IntentRecoveryRefinementService', () => {
     });
   });
 
-  it('uses source-only intent and global context when no candidate or negotiation exists', async () => {
+  it('stamps intent-creation provenance with no evidence fields', async () => {
     const harness = makeService({});
     expect(await harness.service.recover({
-      source: 'from_intent', recipientUserId: userId, intentId,
+      source: 'intent_creation', recipientUserId: userId, intentId,
     })).toBe('question-1');
 
     expect(harness.getGeneratorInput()).toEqual({
-      mode: 'intent', purpose: 'recovery', userId, sourceType: 'intent', sourceId: intentId,
+      mode: 'intent', userId, sourceType: 'intent', sourceId: intentId,
       triggeredByIntentId: intentId,
       context: {
-        purpose: 'recovery', intentId, payload, summary,
+        intentId, payload, summary,
         userContext: 'Owner builds climate-data products in Berlin.',
       },
     });
@@ -161,57 +159,10 @@ describe('IntentRecoveryRefinementService', () => {
       detection: {
         mode: 'intent', purpose: 'recovery', sourceType: 'intent', sourceId: intentId,
         triggeredBy: intentId,
-        recovery: { version: 1, intentFingerprint: fingerprint, completionSource: 'from_intent' },
+        recovery: { version: 1, intentFingerprint: fingerprint, completionSource: 'intent_creation' },
       },
       actors: [{ userId, role: 'subject' }],
     });
-  });
-
-  it('reduces validated rejected evidence to one aggregate integer before generation and persistence', async () => {
-    const privateArtifact = {
-      id: 'artifact-private',
-      name: 'negotiation-outcome',
-      parts: [{ kind: 'data', data: {
-        hasOpportunity: false,
-        reasoning: 'Counterparty profile, transcript, and rejection reason must stay private.',
-      } }],
-      metadata: { matchReason: 'unsafe private match reason' },
-    };
-    const harness = makeService({
-      prepared: preparation([rejectedOpportunity()]),
-      tasks: [task()],
-      artifacts: [privateArtifact],
-    });
-    await harness.service.recover({
-      source: 'discovery_run', recipientUserId: userId, intentId, runId: 'run-private',
-    });
-
-    expect(harness.getGeneratorInput()?.context).toMatchObject({ rejectedNegotiationCount: 1 });
-    const generatorJson = JSON.stringify(harness.getGeneratorInput());
-    for (const unsafe of [
-      'opportunity-rejected', 'task-private', 'conversation-private', counterpartyId,
-      networkId, 'privateTurnSummary', 'Counterparty profile', 'matchReason', 'run-private',
-    ]) expect(generatorJson).not.toContain(unsafe);
-
-    expect(harness.getPersisted()?.detection.recovery).toEqual({
-      version: 1,
-      intentFingerprint: fingerprint,
-      completionSource: 'discovery_run',
-      rejectedNegotiationCount: 1,
-      runId: 'run-private',
-    });
-    expect(JSON.stringify(harness.getPersisted())).not.toContain('Counterparty profile');
-  });
-
-  it('fails closed to source-only context when rejected evidence provenance is malformed', async () => {
-    const malformed = task();
-    malformed.metadata.intentSnapshots = [];
-    const harness = makeService({
-      prepared: preparation([rejectedOpportunity()]),
-      tasks: [malformed],
-      artifacts: [{ id: 'a', name: 'negotiation-outcome', parts: [{ kind: 'data', data: { hasOpportunity: false } }], metadata: null }],
-    });
-    await harness.service.recover({ source: 'from_intent', recipientUserId: userId, intentId });
     expect(harness.getGeneratorInput()?.context).not.toHaveProperty('rejectedNegotiationCount');
   });
 
@@ -223,7 +174,7 @@ describe('IntentRecoveryRefinementService', () => {
       }]),
     });
     expect(await harness.service.recover({
-      source: 'from_intent', recipientUserId: userId, intentId,
+      source: 'intent_creation', recipientUserId: userId, intentId,
     })).toBe('question-1');
     expect(harness.generate).toHaveBeenCalledTimes(1);
   });
@@ -231,7 +182,7 @@ describe('IntentRecoveryRefinementService', () => {
   it('skips missing, foreign, paused, archived, or same-fingerprint cadence failures before generation', async () => {
     for (const prepared of [null, { ...preparation(), hasCadenceAnchor: true }]) {
       const harness = makeService({ prepared });
-      expect(await harness.service.recover({ source: 'from_intent', recipientUserId: userId, intentId })).toBeNull();
+      expect(await harness.service.recover({ source: 'intent_creation', recipientUserId: userId, intentId })).toBeNull();
       expect(harness.generate).not.toHaveBeenCalled();
     }
   });
@@ -263,7 +214,7 @@ describe('IntentRecoveryRefinementService', () => {
     for (const unsafeQuestion of unsafeQuestions) {
       const harness = makeService({ generation: generated(unsafeQuestion) });
       expect(await harness.service.recover({
-        source: 'from_intent', recipientUserId: userId, intentId,
+        source: 'intent_creation', recipientUserId: userId, intentId,
       })).toBeNull();
       expect(harness.persistFreshRecoveryQuestion).not.toHaveBeenCalled();
     }
@@ -277,7 +228,7 @@ describe('IntentRecoveryRefinementService', () => {
     const wrapped = Object.assign(new Error('wrapped database error'), { cause: intended });
     const duplicate = makeService({ persistError: wrapped });
     expect(await duplicate.service.recover({
-      source: 'from_intent', recipientUserId: userId, intentId,
+      source: 'intent_creation', recipientUserId: userId, intentId,
     })).toBeNull();
     expect(duplicate.onCreated).not.toHaveBeenCalled();
 
@@ -287,13 +238,13 @@ describe('IntentRecoveryRefinementService', () => {
     });
     const failure = makeService({ persistError: unrelated });
     await expect(failure.service.recover({
-      source: 'from_intent', recipientUserId: userId, intentId,
+      source: 'intent_creation', recipientUserId: userId, intentId,
     })).rejects.toThrow('unrelated unique violation');
   });
 
   it('emits nothing when the final persistence gate drifts', async () => {
     const drifted = makeService({ persistResult: null });
-    expect(await drifted.service.recover({ source: 'from_intent', recipientUserId: userId, intentId })).toBeNull();
+    expect(await drifted.service.recover({ source: 'intent_creation', recipientUserId: userId, intentId })).toBeNull();
     expect(drifted.onCreated).not.toHaveBeenCalled();
   });
 
@@ -308,8 +259,6 @@ describe('IntentRecoveryRefinementService', () => {
         prepareRecoveryRefinement: async () => preparation(),
         persistFreshRecoveryQuestion: async () => 'question-current-callback',
       },
-      getNegotiationTasksForOpportunity: async () => [],
-      getArtifactsForTask: async () => [],
       getGlobalUserContext: async () => '',
       generate: async () => generated(),
     });
@@ -317,7 +266,7 @@ describe('IntentRecoveryRefinementService', () => {
 
     try {
       expect(await service.recover({
-        source: 'from_intent', recipientUserId: userId, intentId,
+        source: 'intent_creation', recipientUserId: userId, intentId,
       })).toBe('question-current-callback');
       expect(replacement).toHaveBeenCalledTimes(1);
       expect(preConstruction).not.toHaveBeenCalled();

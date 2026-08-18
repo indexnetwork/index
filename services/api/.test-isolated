@@ -80,7 +80,6 @@ src/events/tests/opportunity.event.lifecycle.isolated.ts
 src/controllers/tests/enrichment.controller.isolated.ts
 src/adapters/tests/cache.adapter.isolated.ts
 src/queues/tests/questioner.queue.isolated.ts
-src/queues/tests/recovery.shared.isolated.ts
 src/queues/outcome/tests/outcome.mining.shared.isolated.ts
 src/queues/tests/questioner-enqueue-if-enabled.isolated.ts
 src/adapters/tests/negotiator-client-dm.retrieval.isolated.ts

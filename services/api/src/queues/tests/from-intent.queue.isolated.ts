@@ -167,36 +167,6 @@ describe('FromIntentQueue', () => {
       expect(invokeOpportunityGraph).toHaveBeenCalledTimes(1);
     });
 
-    it('discover: invokes recovery only after successful exact-intent completion', async () => {
-      const order: string[] = [];
-      const recoverAfterCompletion = mock(async () => { order.push('recover'); });
-      const queue = new FromIntentQueue({
-        database: asDb({
-          getIntentForIndexing: async () => ({
-            id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
-            status: 'ACTIVE' as const, archivedAt: null,
-          }),
-        }),
-        invokeOpportunityGraph: async () => { order.push('discover'); },
-        recoverAfterCompletion,
-      });
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
-      expect(recoverAfterCompletion).toHaveBeenCalledWith({
-        source: 'from_intent', recipientUserId: 'u1', intentId: 'i1',
-      });
-      expect(order).toEqual(['discover', 'recover']);
-    });
-
-    it('discover: skips recovery when the intent is missing', async () => {
-      const recoverAfterCompletion = mock(async () => {});
-      const db = {
-        getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
-      };
-      const queue = new FromIntentQueue({ database: asDb(db), recoverAfterCompletion });
-      await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
-      expect(recoverAfterCompletion).not.toHaveBeenCalled();
-    });
-
     it('discover: stamps first-discovery success after the graph completes', async () => {
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
       const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
@@ -225,20 +195,17 @@ describe('FromIntentQueue', () => {
         throw new Error('graph failed');
       });
       const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
-      const recoverAfterCompletion = mock(async () => {});
       const queue = new FromIntentQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
           markIntentFirstDiscoverySucceeded,
         }),
         invokeOpportunityGraph,
-        recoverAfterCompletion,
       });
 
       await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
         .rejects.toThrow('graph failed');
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
-      expect(recoverAfterCompletion).not.toHaveBeenCalled();
     });
 
     it('discover: does not stamp when assignment disappears after the graph completes', async () => {
@@ -303,7 +270,6 @@ describe('FromIntentQueue', () => {
 
     it('fails closed for foreign explicit scope', async () => {
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
-      const recoverAfterCompletion = mock(async () => {});
       const queue = new FromIntentQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
@@ -311,7 +277,6 @@ describe('FromIntentQueue', () => {
           getAssignmentNetworkMembershipsForUser: async () => [{ networkId: 'idx-assigned', isPersonal: false }],
         }),
         invokeOpportunityGraph,
-        recoverAfterCompletion,
       });
 
       await queue.processJob('discover_opportunities', {
@@ -319,7 +284,6 @@ describe('FromIntentQueue', () => {
       });
 
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
-      expect(recoverAfterCompletion).not.toHaveBeenCalled();
     });
 
     it('fails closed when the intent has no network assignments', async () => {

@@ -85,4 +85,30 @@ describe('question retirement static invariants', () => {
       expect(migration).toContain("status = 'pending'");
     });
   });
+
+  describe('post-discovery recovery', () => {
+    it('no longer enqueues from any discovery-completion trigger', () => {
+      // The failure-isolated completion hook, its shared enqueue wrapper, and
+      // the dedicated recovery job are gone; the refinement service admits
+      // only the intent-creation source.
+      expect(existsSync(new URL('../../queues/questioner/recovery.shared.ts', import.meta.url))).toBe(false);
+      const fromIntent = read('../../queues/opportunity/from-intent.queue.ts');
+      expect(fromIntent).not.toContain('recoverAfterCompletion');
+      expect(fromIntent).not.toContain('maybeEnqueueIntentRecovery');
+      expect(questionerQueue).not.toContain('generate_recovery_refinement');
+      expect(questionerQueue).not.toContain('addRecoveryJob');
+      const service = read('../../services/intent-recovery-refinement.service.ts');
+      expect(service).toContain("source: 'intent_creation'");
+      expect(service).not.toContain("'from_intent'");
+      expect(service).not.toContain("'discovery_run'");
+    });
+
+    it('voids its leftover pending rows with the retired_mode marker', () => {
+      const migration = read('../../../drizzle/0134_dismiss_retired_recovery_questions.sql');
+      expect(migration).toContain("detection->>'purpose' = 'recovery'");
+      expect(migration).toContain("IN ('from_intent', 'discovery_run')");
+      expect(migration).toContain("'\"retired_mode\"'::jsonb");
+      expect(migration).toContain("status = 'pending'");
+    });
+  });
 });
