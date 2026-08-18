@@ -80,6 +80,20 @@ function negotiation(
       outcome: null,
       updatedAt: '2026-07-24T11:00:00.000Z',
     },
+    negotiationOpportunities: [{
+      intentId: `${id}-intent`,
+      opportunityId: `${id}-opportunity`,
+      title: `${counterpartName}'s opportunity`,
+      taskId: `${id}-task`,
+      state: input.state ?? 'working',
+      opportunityStatus: input.opportunityStatus ?? 'negotiating',
+      acceptedByViewer: false,
+      turnCount: input.turnCount ?? 1,
+      maxTurns: 6,
+      signalCount: 2,
+      outcome: null,
+      updatedAt: '2026-07-24T11:00:00.000Z',
+    }],
   };
 }
 
@@ -120,10 +134,10 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 const currentPath = { value: '/' };
 
 function LocationProbe() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   useEffect(() => {
-    currentPath.value = pathname;
-  }, [pathname]);
+    currentPath.value = `${pathname}${search}`;
+  }, [pathname, search]);
   return null;
 }
 
@@ -203,7 +217,7 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     expect(screen.queryByTestId('chat-negotiations-your-move-badge')).not.toBeInTheDocument();
   });
 
-  it('renders chip rows in posture order with muted resolved rows', async () => {
+  it('groups opportunities by counterparty and exposes truthful lifecycle labels', async () => {
     mocks.conversations = [];
     mocks.negotiations = [
       negotiation('resolved', 'Jonas Berg', { opportunityStatus: 'rejected', action: 'decline' }),
@@ -214,24 +228,15 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     renderSidebar();
     await openNegotiationsTab();
 
-    const names = ['Mira Chen', 'Aisha Khan', 'Tom Wolfe', 'Jonas Berg'];
-    const rows = names.map((name) => screen.getByText(name));
-    for (let i = 1; i < rows.length; i += 1) {
-      expect(rows[i - 1].compareDocumentPosition(rows[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    }
+    const mira = screen.getByRole('button', { name: /Mira Chen/ });
+    expect(mira).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(mira);
+    expect(mira).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText("Mira Chen's opportunity")).toBeInTheDocument();
+    expect(screen.getByText('Negotiating')).toBeInTheDocument();
 
-    // Chip labels come from the shared inbox projection.
-    expect(screen.getByText('Answer your agent')).toBeInTheDocument();
-    expect(screen.getByText('● Live · turn 3 of 6')).toBeInTheDocument();
-    expect(screen.getByText('Waiting on their agent')).toBeInTheDocument();
-    expect(screen.getByText('No opportunity')).toBeInTheDocument();
-
-    // Subline: N signals · last move · timeAgo.
-    expect(screen.getByText(/2 signals · your agent asked for guidance ·/)).toBeInTheDocument();
-
-    // Resolved rows are visually retired.
-    const resolvedRow = screen.getByText('Jonas Berg').closest('div[class*="opacity-80"]');
-    expect(resolvedRow).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Jonas Berg/ }));
+    expect(screen.getByText('Rejected')).toBeInTheDocument();
   });
 
   it('shows mode-aware empty copy and the persistent inbox footer link', async () => {
@@ -246,37 +251,25 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     expect(screen.queryByText('No messages yet')).not.toBeInTheDocument();
   });
 
-  it('labels the a2a row menu action Hide', async () => {
+  it('preserves the negotiation hide action on an opportunity row', async () => {
     mocks.conversations = [];
-    mocks.negotiations = [answerNegotiation];
+    mocks.negotiations = [negotiation('live', 'Aisha Khan')];
     renderSidebar();
     await openNegotiationsTab();
 
+    fireEvent.click(screen.getByRole('button', { name: /Aisha Khan/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Negotiation options' }));
     expect(screen.getByText('Hide')).toBeInTheDocument();
-    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
   });
 
-  // Answer rows used to get-or-create the negotiator DM; that surface is gone
-  // and the questions inbox is where the answer is actually given.
-  it('routes answer rows to /questions without resolving a session', async () => {
-    mocks.conversations = [];
-    mocks.negotiations = [answerNegotiation];
-    renderSidebar();
-    await openNegotiationsTab();
-
-    fireEvent.click(screen.getByText('Mira Chen'));
-    await waitFor(() => expect(currentPath.value).toBe('/questions'));
-    expect(mocks.apiGet).not.toHaveBeenCalled();
-  });
-
-  it('routes live rows to the transcript', async () => {
+  it('routes an opportunity to its exact task session', async () => {
     mocks.conversations = [];
     mocks.negotiations = [negotiation('live', 'Aisha Khan', { turnCount: 3 })];
     renderSidebar();
     await openNegotiationsTab();
 
-    fireEvent.click(screen.getByText('Aisha Khan'));
-    await waitFor(() => expect(currentPath.value).toBe('/chat/live'));
+    fireEvent.click(screen.getByRole('button', { name: /Aisha Khan/ }));
+    fireEvent.click(screen.getByText("Aisha Khan's opportunity"));
+    await waitFor(() => expect(currentPath.value).toBe('/chat/live?taskId=live-task'));
   });
 });

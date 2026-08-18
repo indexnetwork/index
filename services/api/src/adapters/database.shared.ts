@@ -710,6 +710,24 @@ export interface ConversationSummary {
   unreadCount: number;
   /** Present only when negotiation lifecycle projection was requested. */
   negotiation?: NegotiationLifecycleSummary | null;
+  /**
+   * Viewer-scoped opportunities with an addressable negotiation task. Unlike
+   * `negotiation`, this is not limited to the conversation's latest task.
+   */
+  negotiationOpportunities?: Array<{
+    intentId: string;
+    opportunityId: string;
+    title: string;
+    taskId: string;
+    state: NegotiationLifecycleSummary['state'];
+    opportunityStatus: NegotiationLifecycleSummary['opportunityStatus'];
+    acceptedByViewer: boolean;
+    turnCount: number;
+    maxTurns: number | null;
+    signalCount: number;
+    outcome: NegotiationLifecycleSummary['outcome'];
+    updatedAt: Date;
+  }>;
 }
 
 /**

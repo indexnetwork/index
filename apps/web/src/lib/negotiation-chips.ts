@@ -12,6 +12,7 @@ export const CHIP_CLASS: Record<NegotiationInboxStatus, string> = {
   started: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   rejected: 'border-red-200 bg-red-50 text-red-700',
   stalled: 'border-amber-200 bg-amber-50 text-amber-700',
+  not_sent: 'border-gray-200 bg-gray-100 text-gray-600',
 };
 
 export function statusLabel(item: NegotiationInboxItem): string {
@@ -24,5 +25,6 @@ export function statusLabel(item: NegotiationInboxItem): string {
     case 'started': return 'Chat started';
     case 'rejected': return 'No opportunity';
     case 'stalled': return 'Stalled';
+    case 'not_sent': return 'Not sent';
   }
 }

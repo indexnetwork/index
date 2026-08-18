@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { EyeOff, MoreHorizontal, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Trash2, ChevronRight } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import ConversationPreviewLine from '@/components/ConversationPreviewLine';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
-import { countNegotiationsRequiringAction, deriveNegotiationInbox, type NegotiationInboxItem } from '@/lib/negotiation-inbox';
-import { CHIP_CLASS, statusLabel } from '@/lib/negotiation-chips';
+import { countNegotiationsRequiringAction } from '@/lib/negotiation-inbox';
+import { groupNegotiationOutline, opportunityStatusPresentation } from '@/lib/negotiation-outline';
 
 interface RecentChat {
   groupId: string;
@@ -47,7 +47,7 @@ const formatConversationTime = (timestamp: number) => {
 
 export default function ChatSidebar() {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { user } = useAuthContext();
   const { conversations, negotiations, isConnected, refreshConversations, refreshNegotiations, hideConversation } = useConversation();
 
@@ -59,13 +59,7 @@ export default function ChatSidebar() {
   const [mode, setMode] = useState<'h2h' | 'a2a'>('h2h');
   const chatMenuRef = useRef<HTMLDivElement>(null);
 
-  // 30s tick keeps relative timestamps (subline timeAgo, row times) fresh
-  // instead of frozen at fetch time (IND-555).
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(interval);
-  }, []);
+  const [expandedCounterpartIds, setExpandedCounterpartIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user?.id) return;
@@ -82,24 +76,11 @@ export default function ChatSidebar() {
     () => countNegotiationsRequiringAction(negotiations, user?.id),
     [negotiations, user?.id],
   );
-  const inbox = useMemo(
-    () => (mode === 'a2a' ? deriveNegotiationInbox(negotiations, user?.id, now) : null),
-    [mode, negotiations, user?.id, now],
+  const negotiationOutline = useMemo(
+    () => groupNegotiationOutline(negotiations, user?.id),
+    [negotiations, user?.id],
   );
-  // Flat posture order — your move → live → waiting → resolved — with
-  // hairline dividers between runs. No group headers in a rail this narrow.
-  const negotiationRuns = useMemo(() => {
-    if (!inbox) return [];
-    return [
-      { key: 'your-move', items: inbox.yourMove },
-      { key: 'live', items: inbox.inProgress.filter((item) => item.status === 'live') },
-      { key: 'waiting', items: inbox.inProgress.filter((item) => item.status === 'waiting') },
-      { key: 'resolved', items: inbox.resolved },
-    ].filter((run) => run.items.length > 0);
-  }, [inbox]);
-  const negotiationCount = inbox
-    ? inbox.yourMove.length + inbox.inProgress.length + inbox.resolved.length
-    : 0;
+  const negotiationCount = negotiationOutline.reduce((count, group) => count + group.opportunities.length, 0);
 
   const recentChats: RecentChat[] = mode === 'h2h'
     ? conversations.filter(isVisibleH2HConversation).map((conv) => {
@@ -130,17 +111,8 @@ export default function ChatSidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [chatMenuOpen]);
 
-  const openNegotiation = (item: NegotiationInboxItem) => {
-    // Answer rows go to /questions — the transcript is read-only and can't
-    // take an answer. These used to get-or-create the negotiator DM; that
-    // surface is gone, and the questions inbox is where the answer lands.
-    if (item.status === 'answer') {
-      navigate('/questions');
-      return;
-    }
-    // Agreed rows land on the transcript's review affordance; live, waiting,
-    // and resolved rows open the transcript as before.
-    navigate(`/chat/${item.conversationId}`);
+  const openNegotiation = (conversationId: string, taskId: string) => {
+    navigate(`/chat/${conversationId}?taskId=${encodeURIComponent(taskId)}`);
   };
 
   const renderSkeleton = () => (
@@ -158,68 +130,7 @@ export default function ChatSidebar() {
     </div>
   );
 
-  const renderNegotiationRow = (item: NegotiationInboxItem) => {
-    const isResolved = item.group === 'resolved';
-    return (
-      <div
-        key={item.conversationId}
-        className={`relative group flex items-center py-2 px-2 -mx-2 rounded-md transition-colors hover:bg-gray-50 ${isResolved ? 'opacity-80' : ''}`}
-      >
-        <button
-          onClick={() => openNegotiation(item)}
-          className="flex-1 flex items-center gap-3 text-sm text-left pr-10 min-w-0 text-gray-700 hover:text-black"
-        >
-          <UserAvatar avatar={item.counterpart.avatar} id={item.counterpart.id} name={item.counterpart.name} size={28} className="flex-shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-black flex items-center gap-1.5">
-              <span className="truncate">{item.counterpart.name}</span>
-              <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold font-ibm-plex-mono ${CHIP_CLASS[item.status]}`}>
-                {statusLabel(item)}
-              </span>
-            </p>
-            <p className="truncate text-[11px] font-ibm-plex-mono text-gray-400">
-              {item.signalCount} signal{item.signalCount === 1 ? '' : 's'} · {item.lastAction} · {item.timeAgo}
-            </p>
-            {(item.status === 'answer' || item.status === 'agreed') && (
-              <p className="truncate text-[11px] text-gray-400">
-                {item.status === 'answer' ? 'Tap to answer in your agent chat' : 'Tap to review and start the chat'}
-              </p>
-            )}
-          </div>
-        </button>
-        <span className="absolute right-8 top-2 text-[11px] leading-none font-normal text-gray-400">
-          {formatConversationTime(item.sortTimestamp)}
-        </span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setChatMenuOpen(chatMenuOpen === item.conversationId ? null : item.conversationId);
-          }}
-          aria-label="Negotiation options"
-          className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-100 rounded transition-all flex-shrink-0"
-        >
-          <MoreHorizontal className="w-4 h-4 text-gray-400" />
-        </button>
-        {chatMenuOpen === item.conversationId && (
-          <div
-            ref={chatMenuRef}
-            className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px] z-30"
-          >
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                setChatMenuOpen(null);
-                await hideConversation(item.conversationId);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <EyeOff className="w-4 h-4" /> Hide
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const selectedTaskId = new URLSearchParams(search).get('taskId');
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -269,13 +180,82 @@ export default function ChatSidebar() {
               <p className="mt-1.5 text-[11px] leading-relaxed text-gray-400">Your agents’ connection work will appear here.</p>
             </div>
           ) : (
-            <div className="space-y-1">
-              {negotiationRuns.map((run, runIndex) => (
-                <div key={run.key}>
-                  {runIndex > 0 && <div className="mx-2 my-1 h-px bg-gray-100" aria-hidden="true" />}
-                  {run.items.map(renderNegotiationRow)}
-                </div>
-              ))}
+            <div className="space-y-1" data-testid="negotiation-outline">
+              {negotiationOutline.map((counterparty) => {
+                const expanded = expandedCounterpartIds.has(counterparty.id);
+                const regionId = `negotiations-${counterparty.id}`;
+                return (
+                  <div key={counterparty.id} className="rounded-md">
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      aria-controls={regionId}
+                      onClick={() => setExpandedCounterpartIds((previous) => {
+                        const next = new Set(previous);
+                        if (next.has(counterparty.id)) next.delete(counterparty.id);
+                        else next.add(counterparty.id);
+                        return next;
+                      })}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#4091bb]"
+                    >
+                      <ChevronRight className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                      <UserAvatar avatar={counterparty.avatar} id={counterparty.id} name={counterparty.name} size={28} className="flex-shrink-0" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-black">{counterparty.name}</span>
+                      <span className="font-ibm-plex-mono text-[10px] text-gray-400">{counterparty.opportunities.length}</span>
+                    </button>
+                    {expanded && (
+                      <div id={regionId} className="ml-5 border-l border-gray-200 pl-2" role="region" aria-label={`${counterparty.name} opportunities`}>
+                        {counterparty.opportunities.map((opportunity) => {
+                          const presentation = opportunity.status ? opportunityStatusPresentation[opportunity.status] : null;
+                          const selected = pathname === `/chat/${opportunity.conversationId}` && selectedTaskId === opportunity.taskId;
+                          const opportunityMenuId = `negotiation:${opportunity.conversationId}:${opportunity.taskId}`;
+                          return (
+                            <div key={`${opportunity.conversationId}-${opportunity.taskId}`} className={`group relative flex min-w-0 items-center rounded-md ${selected ? 'bg-[#f1f5f7]' : 'hover:bg-gray-50'}`}>
+                              <button
+                                type="button"
+                                onClick={() => openNegotiation(opportunity.conversationId, opportunity.taskId)}
+                                aria-current={selected ? 'page' : undefined}
+                                className="relative flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#4091bb]"
+                              >
+                                {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-[#041729]" aria-hidden="true" />}
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation?.dotClass ?? 'bg-gray-300'}`} aria-hidden="true" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-medium text-gray-800">{opportunity.title}</span>
+                                  <span className="block truncate font-ibm-plex-mono text-[10px] text-gray-400">
+                                    {presentation?.label ?? 'No lifecycle status'}
+                                  </span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Negotiation options"
+                                onClick={() => setChatMenuOpen(chatMenuOpen === opportunityMenuId ? null : opportunityMenuId)}
+                                className="mr-1 rounded p-1 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <MoreHorizontal className="h-4 w-4 text-gray-400" />
+                              </button>
+                              {chatMenuOpen === opportunityMenuId && (
+                                <div ref={chatMenuRef} className="absolute right-0 top-full z-30 min-w-[140px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      setChatMenuOpen(null);
+                                      await hideConversation(opportunity.conversationId);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" /> Hide
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )
         ) : recentChats.length === 0 && refreshing ? (

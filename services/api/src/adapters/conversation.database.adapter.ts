@@ -635,6 +635,7 @@ export class ConversationDatabaseAdapter {
       allMeta,
       unreadRows,
       latestNegotiationTasks,
+      negotiationTasks,
     ] = await Promise.all([
       db
         .select()
@@ -723,6 +724,43 @@ export class ConversationDatabaseAdapter {
             statusTimestamp: schema.tasks.statusTimestamp,
             metadata: schema.tasks.metadata,
             updatedAt: schema.tasks.updatedAt,
+            artifactParts: schema.artifacts.parts,
+            opportunityStatus: opportunities.status,
+            opportunityAcceptedBy: opportunities.acceptedBy,
+            currentTurnCount: sql<number>`(
+              SELECT count(*)::int
+              FROM ${schema.messages}
+              WHERE ${schema.messages.taskId} = ${schema.tasks.id}
+            )`,
+          })
+          .from(schema.tasks)
+          .leftJoin(
+            schema.artifacts,
+            and(
+              eq(schema.artifacts.taskId, schema.tasks.id),
+              eq(schema.artifacts.name, 'negotiation-outcome'),
+            ),
+          )
+          .leftJoin(opportunities, sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunities.id}`)
+          .where(and(
+            inArray(schema.tasks.conversationId, ids),
+            sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+            notArchivedNegotiationTaskWhere(),
+          ))
+          .orderBy(schema.tasks.conversationId, desc(schema.tasks.createdAt), desc(schema.tasks.id))
+        : Promise.resolve([]),
+      // All task rows are fetched in one batch so each viewer-visible
+      // opportunity can link to its own durable session. This intentionally
+      // avoids loading task history per rail row.
+      includeNegotiationLifecycle
+        ? db
+          .select({
+            conversationId: schema.tasks.conversationId,
+            taskId: schema.tasks.id,
+            state: schema.tasks.state,
+            metadata: schema.tasks.metadata,
+            updatedAt: schema.tasks.updatedAt,
+            createdAt: schema.tasks.createdAt,
             artifactParts: schema.artifacts.parts,
             opportunityStatus: opportunities.status,
             opportunityAcceptedBy: opportunities.acceptedBy,
@@ -920,6 +958,53 @@ export class ConversationDatabaseAdapter {
       });
     }
 
+    // One durable A2A conversation can carry many task sessions. Project only
+    // opportunities already visible to this viewer through match provenance,
+    // then choose the newest task for each opportunity as its session target.
+    const negotiationOpportunitiesByConv = new Map<string, NonNullable<ConversationSummary['negotiationOpportunities']>>();
+    const latestTaskByOpportunity = new Map<string, typeof negotiationTasks[number]>();
+    for (const row of negotiationTasks) {
+      const metadata = typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      const opportunityId = typeof metadata.opportunityId === 'string' ? metadata.opportunityId : null;
+      if (!opportunityId) continue;
+      const key = `${row.conversationId}:${opportunityId}`;
+      if (!latestTaskByOpportunity.has(key)) latestTaskByOpportunity.set(key, row);
+    }
+    for (const conversation of convs) {
+      const visibleByOpportunity = new Map(
+        (viaByConv.get(conversation.id) ?? []).map((entry) => [entry.opportunityId, entry]),
+      );
+      const projected = [...visibleByOpportunity.values()].flatMap((via) => {
+        const row = latestTaskByOpportunity.get(`${conversation.id}:${via.opportunityId}`);
+        if (!row) return [];
+        const metadata = typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+          ? row.metadata as Record<string, unknown>
+          : {};
+        const outcome = readNegotiationOutcome(row.artifactParts);
+        const priorTurnCount = typeof metadata.priorTurnCount === 'number' && Number.isFinite(metadata.priorTurnCount)
+          ? metadata.priorTurnCount
+          : 0;
+        const maxTurns = typeof metadata.maxTurns === 'number' && Number.isFinite(metadata.maxTurns)
+          ? metadata.maxTurns
+          : null;
+        return [{
+          ...via,
+          taskId: row.taskId,
+          state: row.state,
+          opportunityStatus: row.opportunityStatus,
+          acceptedByViewer: row.opportunityAcceptedBy === viewerUserId,
+          turnCount: priorTurnCount + (outcome?.turnCount ?? Number(row.currentTurnCount)),
+          maxTurns,
+          signalCount: readNegotiationSignalCount(metadata),
+          outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
+          updatedAt: row.updatedAt,
+        }];
+      });
+      negotiationOpportunitiesByConv.set(conversation.id, projected);
+    }
+
     return convs.map((c) => ({
       ...c,
       participants: participantsByConv.get(c.id) ?? [],
@@ -928,6 +1013,7 @@ export class ConversationDatabaseAdapter {
       via: viaByConv.get(c.id) ?? [],
       unreadCount: unreadCountByConv.get(c.id) ?? 0,
       ...(includeNegotiationLifecycle ? { negotiation: negotiationByConv.get(c.id) ?? null } : {}),
+      ...(includeNegotiationLifecycle ? { negotiationOpportunities: negotiationOpportunitiesByConv.get(c.id) ?? [] } : {}),
     }));
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -26,6 +26,7 @@ export default function NegotiationDetailPage() {
 
   const { conversationId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuthContext();
   const { negotiations, messages, loadSessionHistory, loadPreviousSessionMessages, refreshNegotiations, sessionHistory, sessionOpportunityMap } = useConversation();
   const [loading, setLoading] = useState(true);
@@ -35,7 +36,11 @@ export default function NegotiationDetailPage() {
   const conversation = negotiations.find((c) => c.id === conversationId);
   const conversationMessages = useMemo(() => messages.get(conversationId!) ?? [], [messages, conversationId]);
   const history = conversationId ? sessionHistory.get(conversationId) : undefined;
-  const lifecycle = conversation?.negotiation ?? null;
+  const selectedTaskId = searchParams.get('taskId');
+  const selectedOpportunity = conversation?.negotiationOpportunities?.find((opportunity) => opportunity.taskId === selectedTaskId) ?? null;
+  // A selected row owns the transcript's lifecycle; plain conversation links
+  // preserve the existing latest-session behavior.
+  const lifecycle = selectedOpportunity ?? conversation?.negotiation ?? null;
 
   const { handleOpportunityAction, opportunityStatusMap, opportunityActionLoading, opportunityModalElement } =
     useOpportunityActions({
@@ -45,11 +50,11 @@ export default function NegotiationDetailPage() {
   useEffect(() => {
     if (!conversationId) return;
     let cancelled = false;
-    loadSessionHistory(conversationId).finally(() => {
+    loadSessionHistory(conversationId, selectedTaskId ? { taskId: selectedTaskId } : undefined).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [conversationId, loadSessionHistory]);
+  }, [conversationId, selectedTaskId, loadSessionHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -132,9 +137,11 @@ export default function NegotiationDetailPage() {
     () => resolveGateDecision({
       turnCount: turns.length,
       outcomeReason,
-      screenDecision: lifecycle?.screenDecision ?? null,
+      // Screen decisions are intentionally only projected for the latest task
+      // and its owner; an explicitly selected opportunity cannot inherit one.
+      screenDecision: selectedOpportunity ? null : conversation?.negotiation?.screenDecision ?? null,
     }),
-    [turns.length, outcomeReason, lifecycle?.screenDecision],
+    [turns.length, outcomeReason, selectedOpportunity, conversation?.negotiation?.screenDecision],
   );
 
   return (
@@ -213,7 +220,7 @@ export default function NegotiationDetailPage() {
                   firstTurnCreatedAt: firstTurn?.createdAt ?? null,
                   opportunityTitle,
                   opportunityStatus,
-                  latestSectionTitle: conversation?.via[0]?.title ?? null,
+                  latestSectionTitle: selectedOpportunity?.title ?? conversation?.via[0]?.title ?? null,
                 });
 
                 return (
