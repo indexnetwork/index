@@ -1,25 +1,20 @@
 import { log } from '../lib/log';
 
 import type { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { AdapterQuestionAnswer, AdapterQuestionFilters, AdapterPersistedQuestion, PendingQuestionCounts } from '../adapters/questioner.adapter';
-import { stripInternalDetection } from '../lib/question/question.public';
-
-export { stripInternalDetection } from '../lib/question/question.public';
-
-// Re-export adapter types so the controller layer can reference them without
-// importing from the adapters directory directly (enforced by layer boundaries).
-export type { AdapterQuestionFilters, AdapterPersistedQuestion, AdapterQuestionAnswer, PendingQuestionCounts };
 
 const logger = log.service.from('QuestionService');
 
 /**
- * QuestionService — business logic layer for the question lifecycle.
+ * QuestionService — leftover-row settlement for the retired card questions.
  *
- * Wraps QuestionerAdapter to expose question retrieval and answer/dismiss
- * mutations through a service boundary, keeping controllers free of adapter
- * dependencies.
+ * The card generators, the Questions page, and the answer/dismiss tools are
+ * retired (conversational-questions plan, "Retirements"); questions are
+ * conversation now. What remains is the transition-window contract: a stale
+ * client contacting a leftover row must not error and must never reach a
+ * retired reaction handler, so any contact simply voids the row with the
+ * auditable `retired_mode` marker. The questions table itself drops in a
+ * separate migration once nothing reads it.
  */
-
 export class QuestionService {
   private adapter: QuestionerAdapter | null;
 
@@ -33,90 +28,17 @@ export class QuestionService {
   }
 
   /**
-   * Find pending questions for a given user, optionally filtered by detection
-   * mode, source type, source id, or selected-intent scope. Intent scope returns
-   * direct intent questions plus only negotiation-family rows whose versioned
-   * exact recipient provenance currently validates for that owned intent.
+   * Void a leftover card question on contact (answer or dismiss alike).
    *
-   * @param userId  - The user to find pending questions for.
-   * @param filters - Optional narrowing filters.
-   * @returns Pending questions ordered by creation time (oldest first).
+   * @returns `voided` when this call dismissed a pending row, `settled` when
+   *   it was already answered/dismissed, `not_found` otherwise.
    */
-  async findPending(
+  async voidLeftoverQuestion(
+    questionId: string,
     userId: string,
-    filters?: AdapterQuestionFilters,
-  ): Promise<AdapterPersistedQuestion[]> {
-    logger.verbose('Finding pending questions', { userId, filters });
-    const rows = await (await this.getAdapter()).findPending(userId, filters);
-    return rows.map(stripInternalDetection);
-  }
-
-  /**
-   * Find answered questions for the signal workspace Q&A log.
-   *
-   * @param userId - The authenticated recipient whose questions are returned.
-   * @param filters - Optional narrowing filters, including intent scope.
-   * @returns Answered questions ordered by answer time (oldest first).
-   */
-  async findAnswered(
-    userId: string,
-    filters?: AdapterQuestionFilters,
-  ): Promise<AdapterPersistedQuestion[]> {
-    logger.verbose('Finding answered questions', { userId, filters });
-    const rows = await (await this.getAdapter()).findAnswered(userId, filters);
-    return rows.map(stripInternalDetection);
-  }
-
-  /**
-   * Stamp canonical chat questions with their persisted assistant-message and
-   * durable-session provenance once a streaming turn has completed.
-   *
-   * @param input - Exact question IDs and authoritative message context.
-   */
-  async bindChatQuestionsToMessage(input: {
-    questionIds: string[];
-    userId: string;
-    conversationId: string;
-    messageId: string;
-  }): Promise<void> {
-    await (await this.getAdapter()).bindChatQuestionsToMessage(input);
-  }
-
-  /**
-   * Return canonical split counts for global and Personal Agent surfaces.
-   *
-   * @param userId - Authenticated recipient.
-   * @returns Global, delivered-pool, and summed Personal Agent counts.
-   */
-  async countPending(userId: string): Promise<PendingQuestionCounts> {
-    return (await this.getAdapter()).countPending(userId);
-  }
-
-  /**
-   * Record an answer for a question, setting its status to `answered`.
-   * Only succeeds if the user is an actor on the question.
-   *
-   * @param questionId - ID of the question to answer.
-   * @param userId     - Authenticated user; must be an actor on the question.
-   * @param answer     - The user's response data.
-   * @returns `true` if the question was answered, `false` if not found, not pending, or unauthorized.
-   */
-  async answer(questionId: string, userId: string, answer: AdapterQuestionAnswer): Promise<boolean> {
-    logger.verbose('Answering question', { questionId, answeredBy: answer.answeredBy });
-    return (await this.getAdapter()).answer(questionId, userId, answer);
-  }
-
-  /**
-   * Dismiss a question, setting its status to `dismissed`.
-   * Only succeeds if the user is an actor on the question.
-   *
-   * @param questionId - ID of the question to dismiss.
-   * @param userId     - Authenticated user; must be an actor on the question.
-   * @returns `true` if the question was dismissed, `false` if not found, not pending, or unauthorized.
-   */
-  async dismiss(questionId: string, userId: string): Promise<boolean> {
-    logger.verbose('Dismissing question', { questionId, userId });
-    return (await this.getAdapter()).dismiss(questionId, userId);
+  ): Promise<'voided' | 'settled' | 'not_found'> {
+    logger.verbose('Voiding leftover question on contact', { questionId, userId });
+    return (await this.getAdapter()).voidLeftoverQuestion(questionId, userId);
   }
 }
 

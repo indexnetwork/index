@@ -35,7 +35,6 @@ const EXPECTED_SIGNAL_TOOLS = [
   "read_networks",
   "read_network_memberships",
   "scrape_url",
-  "ask_user_question",
 ] as const;
 
 const FORBIDDEN_TOOLS = [
@@ -240,54 +239,25 @@ describe("guided New Signal intake", () => {
     expect(getSignalIntakeStage({ ...iteration(), currentMessage: feedback, recentTools: [] })).toBe("complete");
   });
 
-  it("advances through three blocking rounds and then proposal synthesis", () => {
-    expect(getSignalIntakeStage(iteration())).toBe("who");
-    expect(getSignalIntakeStage(iteration([{ name: "ask_user_question" }]))).toBe("contribution");
+  it("stays in the conversational interview until create_intent synthesizes", () => {
+    // The blocking question-card rounds are retired: the interview is plain
+    // conversation, so the only stage transition left is create_intent.
+    expect(getSignalIntakeStage(iteration())).toBe("interview");
     expect(getSignalIntakeStage(iteration([
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
-    ]))).toBe("where");
-    expect(getSignalIntakeStage(iteration([
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
-    ]))).toBe("proposal");
-    expect(getSignalIntakeStage(iteration([
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
       { name: "create_intent" },
     ]))).toBe("complete");
   });
 
-  it("instructs the live Signal Agent to ask personalized blocking questions", () => {
+  it("instructs the live Signal Agent to interview in plain conversation", () => {
     const prompt = buildSignalSystemContent(context, iteration());
     expect(prompt).toContain("NEW SIGNAL INTAKE (ACTIVE)");
-    expect(prompt).toContain("Round 1 of 3: who they want to meet");
-    expect(prompt).toContain("ask_user_question");
+    expect(prompt).toContain("plain conversation");
+    expect(prompt).not.toContain("ask_user_question");
+    expect(prompt).toContain("only communities already present in the preloaded membership list");
     expect(prompt).toContain("preloaded identity/profile context");
     expect(prompt).toContain("Product builder in Berlin");
-  });
-
-  it("moves from contribution to location and then emits the existing proposal", () => {
-    const contribution = buildSignalSystemContent(context, iteration([{ name: "ask_user_question" }]));
-    expect(contribution).toContain("what they bring and where the gap is");
-
-    const where = buildSignalSystemContent(context, iteration([
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
-    ]));
-    expect(where).toContain("Round 3 of 3: where to look");
-    expect(where).toContain("Only suggest communities already present");
-
-    const proposal = buildSignalSystemContent(context, iteration([
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
-      { name: "ask_user_question" },
-    ]));
-    expect(proposal).toContain("Call `create_intent` now");
-    expect(proposal).toContain("```intent_proposal");
-    expect(proposal).toContain("proposal-only");
+    expect(prompt).toContain("```intent_proposal");
+    expect(prompt).toContain("proposal-only");
   });
 
   it("asks the Signal Agent to return a replacement proposal when preview feedback arrives", () => {

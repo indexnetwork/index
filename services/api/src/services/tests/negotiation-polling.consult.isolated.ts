@@ -63,7 +63,7 @@ mock.module('../../queues/negotiations/timeout.queue', () => ({
 mock.module('../../queues/negotiations/claim-timeout.queue', () => ({
   negotiationClaimTimeoutQueue: { cancelTimeout: cancelClaim, enqueueTimeout: async () => {} },
 }));
-mock.module('../../queues/questioner.queue', () => ({ questionerEnqueueIfEnabled: () => enqueueQuestion }));
+mock.module('../../queues/parked-question.enqueue', () => ({ parkedQuestionEnqueue: () => enqueueQuestion }));
 mock.module('../../adapters/negotiator-memory.retrieval.adapter', () => ({
   negotiatorMemoryRetrievalAdapter: { retrieveForNegotiation: async () => [] },
 }));

@@ -89,24 +89,6 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
           );
 
-          if (deps.questionerEnqueue) {
-            const userContext = (await deps.database.getUserContext(state.userId, null))?.text ?? '';
-            deps.questionerEnqueue({
-              mode: 'intent',
-              userId: state.userId,
-              sourceType: 'intent',
-              sourceId: created.id,
-              ...scopeEnvelope,
-              context: {
-                intentId: created.id,
-                payload: sanitizedPayload,
-                userContext,
-              },
-            }).catch((err) =>
-              logger.error('Failed to enqueue intent question generation', { intentId: created.id, error: err })
-            );
-          }
-
         } else if (actionType === 'update') {
           const updateAction = action as {
             id: string;

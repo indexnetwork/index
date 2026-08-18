@@ -1,11 +1,10 @@
 import { log } from '../lib/log';
 import { Intents } from '@indexnetwork/protocol';
-import type { IntentGraphDatabase, QuestionerEnqueueFn } from '@indexnetwork/protocol';
+import type { IntentGraphDatabase } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { IntentProposalDatabaseAdapter, intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { IntentEvents } from '../events/intent.event';
 import { intentProposalAnalysisSchema } from '../lib/intent/intent-proposal';
 import { indexExistingIntentForSeed as indexSeedIntent } from '../lib/intent/seed-indexer';
@@ -79,7 +78,6 @@ export class IntentService {
   private embedder: EmbedderAdapter;
   private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
   private seedIndexQueue: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
-  private questionerEnqueue?: QuestionerEnqueueFn;
   private emitProposalCreated: (intentId: string, userId: string) => void;
 
   /**
@@ -91,7 +89,6 @@ export class IntentService {
     embedder?: EmbedderAdapter;
     proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
     seedIndexQueue?: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
-    questionerEnqueue?: QuestionerEnqueueFn;
     emitProposalCreated?: (intentId: string, userId: string) => void;
   }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
@@ -100,9 +97,8 @@ export class IntentService {
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
     this.proposalQueue = deps?.proposalQueue ?? intentQueue;
     this.seedIndexQueue = deps?.seedIndexQueue ?? intentQueue;
-    this.questionerEnqueue = deps?.questionerEnqueue ?? questionerEnqueueIfEnabled();
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
-    this.intents = new Intents({ database: this.db, embedder: this.embedder, queue: intentQueue, questionerEnqueue: this.questionerEnqueue });
+    this.intents = new Intents({ database: this.db, embedder: this.embedder, queue: intentQueue });
   }
 
   /**
@@ -418,30 +414,6 @@ export class IntentService {
       networkId: proposal.networkId,
       replay: false,
     });
-
-    if (this.questionerEnqueue) {
-      try {
-        const userContext = (await this.db.getUserContext(userId, null))?.text ?? '';
-        await this.questionerEnqueue({
-          mode: 'intent',
-          userId,
-          sourceType: 'intent',
-          sourceId: created.id,
-          ...scope,
-          context: {
-            intentId: created.id,
-            payload: proposal.description,
-            userContext,
-          },
-        });
-      } catch (err) {
-        logger.warn('Failed to enqueue intent question generation', {
-          intentId: created.id,
-          userId,
-          error: err,
-        });
-      }
-    }
 
     this.emitProposalCreated(created.id, userId);
 

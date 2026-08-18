@@ -11,24 +11,19 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
-import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
-import type { AnsweredThreadEntry, IntentRefinementOutcome } from "@/components/InjectedQuestions/AnsweredQuestionLog";
-import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import NegotiationActivity from "@/components/NegotiationActivity";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useConversations, useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
+import { useConversations, useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useQuestions } from "@/contexts/QuestionsContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { NegotiationActivityGroup } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
-import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
 import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
@@ -71,48 +66,6 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
 }
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
-const INTENT_POLL_INTERVAL_MS = 4_000;
-const INTENT_POLL_MAX_MS = 90_000;
-
-/**
- * Derive a short snippet from the updated intent description that is absent in
- * the pre-answer snapshot.  Returns `undefined` when no clean diff is found.
- */
-function deriveSnippet(before: string, after: string): string | undefined {
-  if (!after || after === before) return undefined;
-  // Split into phrases on sentence boundaries and commas.
-  const sentencePat = /[.!?]+\s+|,\s+/;
-  const beforePhrases = new Set(
-    before.split(sentencePat).map((s) => s.trim().toLowerCase()).filter(Boolean)
-  );
-  const afterPhrases = after
-    .split(sentencePat)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 8);
-  const novel = afterPhrases.find(
-    (p) => !beforePhrases.has(p.toLowerCase())
-  );
-  return novel;
-}
-
-function formatAnswer(selectedOptions: string[], freeText?: string): string {
-  return [...selectedOptions, freeText?.trim() ?? ""].filter(Boolean).join(", ");
-}
-
-function toAnsweredThreadEntry(question: PendingQuestion): AnsweredThreadEntry | null {
-  const answer: QuestionAnswer | null = question.answer;
-  if (!answer) return null;
-  return {
-    id: question.id,
-    prompt: question.payload.prompt,
-    response: formatAnswer(answer.selectedOptions, answer.freeText),
-    messageId: question.detection?.messageId,
-    createdAt: question.createdAt,
-    detectedAt: question.detection?.timestamp,
-    answeredAt: answer.answeredAt,
-  };
-}
-
 /**
  * Lifecycle statuses the radar fetches: the full pipeline except chat-only
  * drafts. This switches the home view into lifecycle mode (terminal statuses
@@ -322,13 +275,12 @@ function useIsDesktop(): boolean {
 /**
  * Intent detail view. Mirrors the Hermes dashboard intent-detail layout: a
  * detail header card with a live indicator and Pause/Edit/Archive actions, a
- * Personal Agent (or Questions) column, and a Radar panel with a status
- * filter strip. At lg+ the two columns are equal width (50/50) and the left
+ * Personal Agent column, and a Radar panel with a status filter strip. At lg+ the two columns are equal width (50/50) and the left
  * column is a plain labelled region; below lg the Radar is the primary
  * content and the left column becomes an off-canvas sheet (a modal dialog
  * with focus containment and an inert background while open). The sheet
- * stays mounted at all times, so the negotiator chat's live stream/question
- * state survives open/close and breakpoint changes.
+ * stays mounted at all times, so the negotiator chat's live stream state
+ * survives open/close and breakpoint changes.
  */
 export default function IntentDetailPage() {
   const navigate = useNavigate();
@@ -336,9 +288,7 @@ export default function IntentDetailPage() {
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
   const conversationsService = useConversations();
-  const questionsService = useQuestionsService();
   useIntentVisitPing(intentId);
-  const { refresh: refreshQuestionCounts, pendingRevision } = useQuestions();
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
   const { negotiations } = useConversation();
@@ -362,58 +312,28 @@ export default function IntentDetailPage() {
   const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
   const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
   const [negotiationActivityError, setNegotiationActivityError] = useState(false);
-  const [questions, setQuestions] = useState<PendingQuestion[]>([]);
-  // Interview-mode chaining (IND-418): after a pool_discovery answer, the
-  // backend may synchronously persist a follow-up — show a typing indicator,
-  // refetch once, and append any new pool_discovery card.
-  const [questionChainPending, setQuestionChainPending] = useState(false);
-  /** Bumps make the intent negotiator reload its stable session on pool beats. */
+  /** Bumps make the intent negotiator reload its stable session after lifecycle changes. */
   const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
-  /** Every question id ever displayed — so a chain refetch only appends new cards. */
-  const seenQuestionIdsRef = useRef<Set<string>>(new Set());
-  const chainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  /**
-   * Per-question intent-refinement poll state.  Keyed by questionId.
-   * Stored in a ref (not state) so poll callbacks can read the latest
-   * intentId without stale-closure issues; the poll writes outcome via
-   * setAnswered which re-renders without needing another ref tick.
-   */
-  const intentPollsRef = useRef<
-    Map<string, { timerId: ReturnType<typeof setInterval>; deadline: number }>
-  >(new Map());
   const clearReactionTimers = useCallback(() => {
     for (const timer of reactionTimersRef.current) clearTimeout(timer);
     reactionTimersRef.current = [];
   }, []);
   useEffect(
     () => () => {
-      if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
       clearReactionTimers();
-      for (const { timerId } of intentPollsRef.current.values()) clearInterval(timerId);
-      intentPollsRef.current.clear();
     },
     [clearReactionTimers],
   );
-  // Conversation thread: answered questions retain server anchors/timestamps so
-  // the Personal Agent can place them within chat history after reloads.
-  const [answered, setAnswered] = useState<AnsweredThreadEntry[]>([]);
-  const pendingInvalidationRef = useRef<{ intentId?: string; revision: string }>({
-    intentId,
-    revision: pendingRevision,
-  });
-  // Chat-style conversation column: scrolls internally, pinned to the bottom so
-  // the newest question is always in view above the composer.
-  const conversationRef = useRef<HTMLDivElement>(null);
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
   const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
-  // Backend-surfaced flag (features on /auth/me): when on, the static
-  // questions block becomes the negotiator chat window (P4.2/IND-403).
-  // `chatUnavailable` is the runtime fallback if the bootstrap fails.
+  // Backend-surfaced flag (features on /auth/me): when on, the left column is
+  // the negotiator chat window (P4.2/IND-403). `chatUnavailable` is the
+  // runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
   const negotiatorChatEnabled = features?.negotiatorChat === true && !chatUnavailable;
   const showNegotiatorPanel = negotiatorChatEnabled && !!intentId;
@@ -451,10 +371,6 @@ export default function IntentDetailPage() {
     setArchiveTargetId(null);
     setArchiving(false);
     clearReactionTimers();
-    if (chainTimerRef.current) {
-      clearTimeout(chainTimerRef.current);
-      chainTimerRef.current = null;
-    }
   }, [intentId, clearReactionTimers]);
 
   const scope = useMemo(
@@ -474,8 +390,6 @@ export default function IntentDetailPage() {
 
   /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);
-  const questionLoadSeqRef = useRef(0);
-  const answeredLoadSeqRef = useRef(0);
   const activityLoadSeqRef = useRef(0);
 
   const loadNegotiationActivity = useCallback(async (showLoading = false) => {
@@ -496,93 +410,6 @@ export default function IntentDetailPage() {
       }
     }
   }, [conversationsService, intentId]);
-
-  const loadQuestions = useCallback(async (appendOnly = false, passive = false) => {
-    if (!intentId) return;
-    const seq = ++questionLoadSeqRef.current;
-    try {
-      const res = await questionsService.getPending({
-        scopeType: "intent",
-        scopeId: intentId,
-        ...(passive ? { passive: true } : {}),
-      });
-      if (activeIntentIdRef.current !== intentId || questionLoadSeqRef.current !== seq) return;
-      const canonical = [...new Map(res.map((question) => [question.id, question])).values()];
-      for (const question of canonical) seenQuestionIdsRef.current.add(question.id);
-      if (!appendOnly) {
-        setQuestions(canonical);
-        return;
-      }
-      setQuestions((current) => {
-        const currentIds = new Set(current.map((question) => question.id));
-        const fresh = canonical.filter((question) => !currentIds.has(question.id));
-        return fresh.length > 0 ? [...current, ...fresh] : current;
-      });
-    } catch {
-      // Best-effort refresh; keep already-rendered questions on failure.
-    }
-  }, [intentId, questionsService]);
-
-  const loadAnswered = useCallback(async (passive = false) => {
-    if (!intentId) return;
-    const seq = ++answeredLoadSeqRef.current;
-    try {
-      const res = await questionsService.getAnswered({
-        scopeType: "intent",
-        scopeId: intentId,
-        ...(passive ? { passive: true } : {}),
-      });
-      if (activeIntentIdRef.current !== intentId || answeredLoadSeqRef.current !== seq) return;
-      const serverEntries = res
-        .map(toAnsweredThreadEntry)
-        .filter((entry): entry is AnsweredThreadEntry => entry !== null);
-      const canonical = [...new Map(serverEntries.map((entry) => [entry.id, entry])).values()]
-        .sort((left, right) => {
-          const leftTime = Date.parse(left.answeredAt ?? left.detectedAt ?? left.createdAt ?? '') || 0;
-          const rightTime = Date.parse(right.answeredAt ?? right.detectedAt ?? right.createdAt ?? '') || 0;
-          return leftTime - rightTime || left.id.localeCompare(right.id);
-        });
-      setAnswered((current) => {
-        // Entries with an active intentRefinement are optimistic live-status
-        // entries for intent-mode answers still being polled.  Preserve them
-        // if the server hasn't returned them yet (they may not be committed);
-        // and carry their refinement state forward when they do appear.
-        const pendingRefinement = current.filter(
-          (e) => e.intentRefinement && !canonical.some((c) => c.id === e.id)
-        );
-        const mergedCanonical = canonical.map((entry) => {
-          const opt = current.find((e) => e.id === entry.id && e.intentRefinement);
-          return opt ? { ...entry, mode: opt.mode, intentRefinement: opt.intentRefinement } : entry;
-        });
-        const merged = [
-          ...pendingRefinement,
-          ...mergedCanonical,
-        ].sort((a, b) => {
-          const at = Date.parse(a.answeredAt ?? a.detectedAt ?? a.createdAt ?? '') || 0;
-          const bt = Date.parse(b.answeredAt ?? b.detectedAt ?? b.createdAt ?? '') || 0;
-          return at - bt || a.id.localeCompare(b.id);
-        });
-        const unchanged =
-          merged.length === current.length &&
-          merged.every((entry, index) => {
-            const previous = current[index];
-            return (
-              previous?.id === entry.id &&
-              previous.prompt === entry.prompt &&
-              previous.response === entry.response &&
-              previous.messageId === entry.messageId &&
-              previous.createdAt === entry.createdAt &&
-              previous.detectedAt === entry.detectedAt &&
-              previous.answeredAt === entry.answeredAt &&
-              previous.intentRefinement === entry.intentRefinement
-            );
-          });
-        return unchanged ? current : merged;
-      });
-    } catch {
-      // Best-effort hydration; keep optimistic entries on failure.
-    }
-  }, [intentId, questionsService]);
 
   const loadOpportunities = useCallback(async (preserveExisting = false) => {
     if (!intentId) return;
@@ -682,59 +509,25 @@ export default function IntentDetailPage() {
       .finally(() => {
         if (active) setIntentLoading(false);
       });
-    void loadQuestions();
-    void loadAnswered();
     void loadOpportunities();
     void loadNegotiationActivity(true);
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities, loadNegotiationActivity]);
+  }, [intentId, intentsService, loadOpportunities, loadNegotiationActivity]);
 
-  // Reuse the application-wide 30s poll only as an invalidation signal. A
-  // changed authoritative pending set causes one passive exact-intent pending
-  // + answered refetch; passive requests cannot enqueue visit-time pool mining.
-  useEffect(() => {
-    const previous = pendingInvalidationRef.current;
-    if (previous.intentId !== intentId) {
-      pendingInvalidationRef.current = { intentId, revision: pendingRevision };
-      return;
-    }
-    if (!intentId || previous.revision === pendingRevision) return;
-    pendingInvalidationRef.current = { intentId, revision: pendingRevision };
-    void loadQuestions(false, true);
-    void loadAnswered(true);
-  }, [intentId, pendingRevision, loadAnswered, loadQuestions]);
-
-  const refreshWorkspaceAfterReaction = useCallback((includeQuestions: boolean) => {
+  const refreshWorkspaceAfterReaction = useCallback(() => {
     setNegotiatorRefreshVersion((version) => version + 1);
     void loadOpportunities(true);
-    if (includeQuestions) void loadQuestions(true);
-  }, [loadOpportunities, loadQuestions]);
+  }, [loadOpportunities]);
 
-  const scheduleBoundedWorkspaceRefresh = useCallback(
-    ({ includeQuestions }: { includeQuestions: boolean }) => {
-      clearReactionTimers();
-      refreshWorkspaceAfterReaction(includeQuestions);
-      reactionTimersRef.current = [1_500, 65_000, 90_000, 120_000, 180_000].map((delay) =>
-        setTimeout(() => refreshWorkspaceAfterReaction(includeQuestions), delay),
-      );
-    },
-    [clearReactionTimers, refreshWorkspaceAfterReaction],
-  );
-
-  // Keep the conversation pinned to the newest question. Scroll after paint
-  // (double rAF) so the freshly-rendered question card is measured first.
-  useEffect(() => {
-    const el = conversationRef.current;
-    if (!el) return;
-    const raf = requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight;
-      }),
+  const scheduleBoundedWorkspaceRefresh = useCallback(() => {
+    clearReactionTimers();
+    refreshWorkspaceAfterReaction();
+    reactionTimersRef.current = [1_500, 65_000, 90_000, 120_000, 180_000].map((delay) =>
+      setTimeout(() => refreshWorkspaceAfterReaction(), delay),
     );
-    return () => cancelAnimationFrame(raf);
-  }, [answered, questions]);
+  }, [clearReactionTimers, refreshWorkspaceAfterReaction]);
 
   const handleArchive = useCallback(async () => {
     if (!archiveTargetId || archiving) return;
@@ -771,7 +564,7 @@ export default function IntentDetailPage() {
             : current,
         );
         if (status === "ACTIVE" && updated.status === "ACTIVE") {
-          scheduleBoundedWorkspaceRefresh({ includeQuestions: true });
+          scheduleBoundedWorkspaceRefresh();
         }
       } catch {
         if (!isCurrentRequest()) return;
@@ -820,124 +613,6 @@ export default function IntentDetailPage() {
     }
     setRefining(false);
   }, [refining, refineText, submitRefine]);
-
-  const handleAnswer = useCallback(
-    async (questionId: string, body: AnswerBody) => {
-      const answered = questions.find((q) => q.id === questionId);
-      await questionsService.answer(questionId, body);
-      // Keep the answered exchange visible in the conversation thread.
-      if (answered) {
-        const isIntentMode = answered.detection?.mode === "intent";
-        setAnswered((prev) => [
-          ...prev.filter((entry) => entry.id !== questionId),
-          {
-            id: questionId,
-            prompt: answered.payload.prompt,
-            response: formatAnswer(body.selectedOptions, body.freeText),
-            messageId: answered.detection?.messageId,
-            createdAt: answered.createdAt,
-            detectedAt: answered.detection?.timestamp,
-            mode: answered.detection?.mode,
-            // Intent-mode answers start in 'pending' so the live outcome
-            // line shows the ⟳ spinner until the poll settles.
-            intentRefinement: isIntentMode
-              ? { status: "pending" }
-              : undefined,
-          },
-        ]);
-
-        // Start bounded intent-description poll for intent-mode answers.
-        if (isIntentMode && intentId) {
-          // Cancel any previous poll for this question.
-          const existing = intentPollsRef.current.get(questionId);
-          if (existing) clearInterval(existing.timerId);
-
-          const snapshot = intent
-            ? (intent.summary?.trim() || intent.payload || "")
-            : "";
-          const deadline = Date.now() + INTENT_POLL_MAX_MS;
-
-          const resolve = (outcome: IntentRefinementOutcome) => {
-            clearInterval(intentPollsRef.current.get(questionId)?.timerId);
-            intentPollsRef.current.delete(questionId);
-            setAnswered((prev) =>
-              prev.map((e) =>
-                e.id === questionId ? { ...e, intentRefinement: outcome } : e
-              )
-            );
-          };
-
-          const timerId = setInterval(async () => {
-            if (Date.now() >= deadline) {
-              resolve({ status: "fallback" });
-              return;
-            }
-            try {
-              const fresh = await intentsService.getIntent(intentId);
-              const freshDesc = (fresh.summary?.trim() || fresh.payload || "").trim();
-              if (freshDesc && freshDesc !== snapshot) {
-                // Intent updated — refresh the page header and resolve.
-                setIntent(fresh);
-                const snippet = deriveSnippet(snapshot, freshDesc);
-                resolve({ status: "applied", snippet });
-              }
-            } catch {
-              // Transient error — keep polling until the deadline.
-            }
-          }, INTENT_POLL_INTERVAL_MS);
-
-          intentPollsRef.current.set(questionId, { timerId, deadline });
-        }
-      }
-      setQuestions((prev) => prev.filter((q) => q.id !== questionId));
-      void loadAnswered();
-      void refreshQuestionCounts();
-      // Chain once per answer: a pool_discovery answer may have synchronously
-      // produced a follow-up question — refetch shortly and append it.
-      if (answered?.detection?.mode === "pool_discovery" && intentId) {
-        // The answer endpoint persists first and dispatches reactions
-        // asynchronously. Refresh now, shortly for Beat 1, and only at bounded
-        // Tier-1 checkpoints through three minutes for Beat 2/retries — no
-        // permanent polling.
-        scheduleBoundedWorkspaceRefresh({ includeQuestions: false });
-
-        setQuestionChainPending(true);
-        if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
-        chainTimerRef.current = setTimeout(async () => {
-          try {
-            const refreshed = await questionsService.getPending({
-              scopeType: "intent",
-              scopeId: intentId,
-            });
-            const fresh = refreshed.filter(
-              (q) =>
-                q.detection?.mode === "pool_discovery" &&
-                !seenQuestionIdsRef.current.has(q.id),
-            );
-            for (const q of fresh) seenQuestionIdsRef.current.add(q.id);
-            if (fresh.length > 0) {
-              setQuestions((current) => [...current, ...fresh]);
-            }
-          } catch {
-            // Best-effort — the follow-up will surface on the next visit.
-          } finally {
-            await refreshQuestionCounts();
-            setQuestionChainPending(false);
-          }
-        }, 1200);
-      }
-    },
-    [questions, questionsService, intentId, intent, intentsService, loadAnswered, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
-  );
-
-  const handleDismiss = useCallback(
-    async (questionId: string) => {
-      await questionsService.dismiss(questionId);
-      setQuestions((prev) => prev.filter((q) => q.id !== questionId));
-      void refreshQuestionCounts();
-    },
-    [questionsService, refreshQuestionCounts],
-  );
 
   const bucketOf = useCallback(
     // Local actions (accept/reject in this session) override the fetched status.
@@ -1089,7 +764,7 @@ export default function IntentDetailPage() {
                       </span>
                       <span>
                         background discovery is paused; existing Radar matches
-                        and questions remain available
+                        remain available
                       </span>
                     </>
                   )}
@@ -1152,15 +827,7 @@ export default function IntentDetailPage() {
                   className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  {showNegotiatorPanel ? "Personal Agent" : "Questions"}
-                  {questions.length > 0 && (
-                    <span
-                      data-testid="intent-question-count"
-                      className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center font-sans normal-case tracking-normal"
-                    >
-                      {questions.length > 99 ? "99+" : questions.length}
-                    </span>
-                  )}
+                  Personal Agent
                 </button>
               </Dialog.Trigger>
             </div>
@@ -1217,12 +884,10 @@ export default function IntentDetailPage() {
                   )}
                 >
                   <h2 id={sheetTitleId} className="sr-only">
-                    {showNegotiatorPanel ? "Personal Agent" : "Questions"}
+                    Personal Agent
                   </h2>
                   <p id={sheetDescriptionId} className="sr-only">
-                    {showNegotiatorPanel
-                      ? "Chat with your Personal Agent and answer its follow-up questions about this signal."
-                      : "Questions from your agent about this signal."}
+                    Chat with your Personal Agent about this signal.
                   </p>
                   <div className="mb-1 flex shrink-0 justify-end lg:hidden">
                     <button
@@ -1238,15 +903,6 @@ export default function IntentDetailPage() {
                   <Panel
                     title="Personal Agent"
                     description="Your Personal Agent, scoped to this signal — ask what it's doing, steer it, or answer its follow-ups."
-                    media={
-                      questions.length > 0 ? (
-                        <span
-                          className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center font-sans normal-case tracking-normal"
-                        >
-                          {questions.length > 99 ? "99+" : questions.length}
-                        </span>
-                      ) : undefined
-                    }
                     action={
                       <Link
                         to="/agent/memory"
@@ -1265,11 +921,6 @@ export default function IntentDetailPage() {
                     <IntentNegotiatorChat
                       key={intentId}
                       intentId={intentId}
-                      questions={questions}
-                      answered={answered}
-                      onAnswerQuestion={handleAnswer}
-                      onDismissQuestion={handleDismiss}
-                      questionChainPending={questionChainPending}
                       refreshVersion={negotiatorRefreshVersion}
                       opportunityStatusMap={opportunityStatusMap}
                       opportunityActionLoading={opportunityActionLoading}
@@ -1283,50 +934,31 @@ export default function IntentDetailPage() {
                   <section className="flex min-h-0 min-w-0 flex-1 flex-col">
                     <div className="mb-4 shrink-0">
                       <h3 className="flex items-center gap-2 text-base font-bold tracking-[0.2em] text-[#3D3D3D] font-ibm-plex-mono">
-                        <span>
-                          Questions{questions.length > 0 ? ` (${questions.length})` : ""}
-                        </span>
+                        <span>Personal Agent</span>
                       </h3>
                     </div>
                     <div className="flex min-h-0 flex-1 flex-col">
-                      <div
-                        ref={conversationRef}
-                        className="flex-1 overflow-y-auto pr-1"
-                      >
-                        <div className="flex min-h-full flex-col justify-end gap-5">
-                          {answered.length === 0 && questions.length === 0 && !questionChainPending && (
-                            // Nothing to answer yet — the agent is still working
-                            // the room on this signal.
-                            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-                              <video
-                                autoPlay
-                                loop
-                                muted
-                                playsInline
-                                // The clip is matted on opaque white; multiply
-                                // blends it into the page background.
-                                className="w-44 mix-blend-multiply"
-                              >
-                                <source
-                                  src="/loading-tree.m4v"
-                                  type="video/mp4"
-                                />
-                              </video>
-                              <p className="max-w-[19rem] text-[13px] leading-relaxed text-gray-400">
-                                no pending questions right now.
-                              </p>
-                            </div>
-                          )}
-                          {answered.length > 0 && <AnsweredQuestionLog entries={answered} />}
-                          {(questions.length > 0 || questionChainPending) && (
-                            <InjectedQuestions
-                              questions={questions}
-                              onAnswer={handleAnswer}
-                              onDismiss={handleDismiss}
-                              showTypingIndicator={questionChainPending}
-                              showAskedKicker
+                      <div className="flex-1 overflow-y-auto pr-1">
+                        {/* The agent chat is unavailable — the standing input
+                            below still feeds the signal's refine flow. */}
+                        <div className="flex min-h-full flex-1 flex-col items-center justify-center gap-3 text-center">
+                          <video
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            // The clip is matted on opaque white; multiply
+                            // blends it into the page background.
+                            className="w-44 mix-blend-multiply"
+                          >
+                            <source
+                              src="/loading-tree.m4v"
+                              type="video/mp4"
                             />
-                          )}
+                          </video>
+                          <p className="max-w-[19rem] text-[13px] leading-relaxed text-gray-400">
+                            your agent is working the room on this signal.
+                          </p>
                         </div>
                       </div>
                       <div className="pt-4 shrink-0">

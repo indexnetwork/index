@@ -208,12 +208,14 @@ sequencing. What carries over from the plan as originally cut:
   guess") — unchanged; the DM is now the *only* question surface, so this
   stops being a parallel face and becomes the center.
 - **Issues 11–15** (retire uptake, pool mining, recovery, intent refinement,
-  orchestrator `ask_user_question`) — unchanged; each voids its pending rows
-  with `voidedReason: 'retired_mode'`.
-- **Issues 16–17** grow: alongside the scope-filter collapse and
-  `QuestionerAgent` deletion, the questions table, its adapter surface, the
-  answer/dismiss tools, and the Questions page retire too. Last, once nothing
-  reads them.
+  orchestrator `ask_user_question`) — ✅ shipped in the retirement PR; each
+  voided its pending rows with `voidedReason: 'retired_mode'`
+  (migrations 0132–0136).
+- **Issues 16–17** grew and ✅ shipped in the same PR: alongside the
+  scope-filter collapse and `QuestionerAgent` deletion, the questions-table
+  adapter surface, the answer/dismiss tools, and the Questions page retired
+  too. The table itself drops last, once the readers named in
+  `questioner.adapter.ts`'s `TODO(questions-table drop)` are gone.
 
 ## Risks
 

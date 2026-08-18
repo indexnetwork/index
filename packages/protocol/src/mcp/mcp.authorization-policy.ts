@@ -79,7 +79,6 @@ export const HERMES_AGENT_MCP_TOOL_PERMISSIONS = defineMcpToolPermissionMap({
   create_premise: { action: 'manage:premises', reach: 'principal' },
   update_premise: { action: 'manage:premises', reach: 'principal' },
   retract_premise: { action: 'manage:premises', reach: 'principal' },
-  read_pending_questions: { action: 'manage:identity', reach: 'principal' },
   read_activity_summary: { action: 'manage:identity', reach: 'principal' },
   read_docs: { action: 'manage:identity', reach: 'principal' },
 });
@@ -161,30 +160,6 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   read_intent_indexes: { access: 'authenticated', reach: 'network' },
   create_intent_index: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
   delete_intent_index: { access: 'permission', actions: ['manage:intents'], reach: 'network' },
-
-  // Question tools inherit the exact affected object's permission in-handler.
-  read_pending_questions: {
-    access: 'permission',
-    actions: [
-      'manage:identity',
-      'manage:premises',
-      'manage:intents',
-      'manage:opportunities',
-      'manage:negotiations',
-    ],
-    reach: 'principal',
-  },
-  answer_pending_question: {
-    access: 'permission',
-    actions: [
-      'manage:identity',
-      'manage:premises',
-      'manage:intents',
-      'manage:opportunities',
-      'manage:negotiations',
-    ],
-    reach: 'principal',
-  },
 
   // Communities.
   read_networks: { access: 'authenticated', reach: 'network' },

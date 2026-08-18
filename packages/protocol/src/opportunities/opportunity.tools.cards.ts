@@ -18,7 +18,6 @@ import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../share
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { OpportunityPresenter, gatherPresenterContext, getSafePresentationOrSkip, narratorRemarkFromReasoning, safeFallbackSummary, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.presentation.js";
-import { isUptakeGuardEnabled } from "../questions/question.module.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from "./opportunity.update-admission.js";
 import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from "./opportunity.owner-approval.js";
@@ -49,8 +48,6 @@ export function stripLeadingNarratorName(remark: string, narratorName: string): 
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity } from "../shared/interfaces/database.interface.js";
-import type { PendingQuestionSummary } from "../shared/schemas/pending-question.schema.js";
-import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
 
@@ -152,38 +149,6 @@ export function attachOpportunityAppLink(
 ): void {
   const appUrl = buildOpportunityAppUrl(card.opportunityId, opts.frontendUrl);
   if (appUrl) card.appUrl = appUrl;
-}
-
-export interface PublicUptakeQuestion {
-  id: string;
-  title: string;
-  prompt: string;
-  options: Array<{ label: string; description: string }>;
-  multiSelect: boolean;
-}
-
-export function publicUptakeQuestion(question: PendingQuestionSummary): PublicUptakeQuestion {
-  return {
-    id: question.id,
-    title: question.title,
-    prompt: question.prompt,
-    options: question.options,
-    multiSelect: question.multiSelect,
-  };
-}
-
-export function uptakeAdvisory(opportunityId: string, questions: PublicUptakeQuestion[]): string {
-  return JSON.stringify({
-    success: false,
-    error: "Resolve the pending uptake questions or explicitly continue anyway.",
-    advisory: {
-      code: "unresolved_uptake_questions",
-      advisoryOnly: true,
-      opportunityId,
-      questions,
-      acknowledgedUptakeQuestionIds: questions.map((question) => question.id),
-    },
-  });
 }
 
 /**

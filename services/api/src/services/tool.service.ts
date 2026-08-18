@@ -12,15 +12,13 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { deriveAllowedNetworkIds, Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
-import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
+import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import db from '../lib/drizzle/drizzle';
 
@@ -32,7 +30,6 @@ type ToolServiceDeps = ToolDeps & {
   opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
 };
 
-const questionerAdapter = new QuestionerAdapter(db);
 
 /**
  * Manages direct HTTP invocation of chat tools.
@@ -75,58 +72,10 @@ export class ToolService {
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
-      stampNewbornOpportunities,
       // IND-593: direct authenticated-owner tool calls (REST tool controller /
       // CLI) traverse the owner-approval boundary via host attestation. Own
       // authority instance over the store shared with the MCP composition.
       opportunityOwnerApproval: getDirectOpportunityOwnerApprovalAuthority(),
-      findPendingQuestions: async (
-        userId: string,
-        filters?: {
-          sourceType?: string;
-          sourceId?: string;
-          purpose?: import('@indexnetwork/protocol').QuestionPurpose;
-          networkId?: string;
-          scopeType?: 'intent';
-          scopeId?: string;
-          modes?: Array<'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery'>;
-          limit?: number;
-        },
-      ) => {
-        const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
-          ? filters
-          : { ...filters, excludeModes: ['pool_discovery'] });
-        return rows.map((row): PendingQuestionSummary => ({
-          id: row.id,
-          title: row.payload.title,
-          prompt: row.payload.prompt,
-          options: row.payload.options,
-          multiSelect: row.payload.multiSelect,
-          mode: row.detection.mode,
-          ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
-          sourceType: row.detection.sourceType,
-          sourceId: row.detection.sourceId,
-          createdAt: row.createdAt,
-          ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-          actors: row.actors.map((actor) => ({
-            userId: actor.userId,
-            ...(actor.networkId ? { networkId: actor.networkId } : {}),
-          })),
-        }));
-      },
-      // P4.3/IND-404: conversational answers from the negotiator chat ride the
-      // exact pipeline the question cards use — atomic pending→answered flip in
-      // the adapter, then QuestionEvents.onAnswered mode dispatch.
-      answerPendingQuestion: async (
-        userId: string,
-        questionId: string,
-        answer: { selectedOptions: string[]; freeText?: string },
-      ) => questionerAdapter.answer(questionId, userId, {
-        selectedOptions: answer.selectedOptions,
-        ...(answer.freeText ? { freeText: answer.freeText } : {}),
-        answeredBy: userId,
-        answeredAt: new Date().toISOString(),
-      }),
       graphs,
     };
   }
@@ -273,7 +222,6 @@ export class ToolService {
       database,
       embedder: this.embedder,
       queue: intentQueue,
-      questionerEnqueue: questionerEnqueueIfEnabled(),
     });
     const intentGraph = intents.createGraph();
     const profileGraph = new EnrichmentGraphFactory(database, this.scraper).createGraph();
@@ -295,8 +243,8 @@ export class ToolService {
       conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       noOpDispatcher,
       undefined,
-      // Stalled negotiations enqueue follow-up questions for the source user.
-      questionerEnqueueIfEnabled(),
+      // Park payloads route to the question-message regeneration job.
+      parkedQuestionEnqueue(),
       // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
       reflectEnqueueIfEnabled(),
       // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
@@ -311,7 +259,6 @@ export class ToolService {
       negotiationGraph,
       noOpDispatcher,
       undefined,
-      stampNewbornOpportunities,
     ).createGraph();
     const networks = new Networks({ database, indexer: intents });
     const indexGraph = networks.createGraph();

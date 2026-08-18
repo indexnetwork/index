@@ -12,7 +12,6 @@ config({ path: '.env.test', override: true });
 import { describe, it, expect, mock } from 'bun:test';
 import type { Opportunity, OpportunityControllerDatabase } from '@indexnetwork/protocol';
 import { OpportunityService } from '../opportunity.service';
-import type { UptakeAcceptanceGuardLike } from '../../lib/opportunity/uptake-acceptance.guard';
 import type { OutcomeFeedbackRecorderLike } from '../../lib/opportunity/outcome-feedback.recorder';
 
 const VIEWER_ID = 'user-viewer-001';
@@ -51,7 +50,6 @@ type DbStubOverrides = Partial<Record<keyof OpportunityControllerDatabase, unkno
 function makeServiceWithDb(
   opp: Opportunity,
   overrides: DbStubOverrides = {},
-  guard: UptakeAcceptanceGuardLike = { check: async () => null },
   outcomeRecorder?: OutcomeFeedbackRecorderLike,
 ) {
   const updated = { ...opp, status: 'accepted' as const };
@@ -67,34 +65,20 @@ function makeServiceWithDb(
     ...overrides,
   } as unknown as OpportunityControllerDatabase;
 
-  return { service: new OpportunityService(db, undefined, guard, outcomeRecorder), db };
+  return { service: new OpportunityService(db, undefined, outcomeRecorder), db };
 }
 
 describe('OpportunityService.startChat', () => {
-  it('returns uptake advisory before any DM, status, contact, or unhide side effect', async () => {
+  it('starts the chat directly — the retired pre-accept uptake advisory can no longer interpose', async () => {
     const opp = makeOpportunity({ status: 'pending' });
-    const guard = {
-      check: mock(async () => ({
-        error: 'Resolve the pending uptake questions or explicitly continue anyway.',
-        status: 409 as const,
-        advisory: {
-          code: 'unresolved_uptake_questions' as const,
-          advisoryOnly: true as const,
-          opportunityId: OPP_ID,
-          questions: [{ id: 'q-1', title: 'Timing', prompt: 'Can they start now?', options: [], multiSelect: false }],
-          acknowledgedUptakeQuestionIds: [],
-        },
-      })),
-    } satisfies UptakeAcceptanceGuardLike;
-    const { service, db } = makeServiceWithDb(opp, {}, guard);
+    const { service, db } = makeServiceWithDb(opp);
 
     const result = await service.startChat(OPP_ID, VIEWER_ID);
 
-    expect(result).toMatchObject({ status: 409, advisory: { code: 'unresolved_uptake_questions' } });
-    expect(db.getOrCreateDM).not.toHaveBeenCalled();
-    expect(db.unhideConversation).not.toHaveBeenCalled();
-    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
-    expect(db.upsertContactMembership).not.toHaveBeenCalled();
+    expect('advisory' in result).toBe(false);
+    expect('error' in result).toBe(false);
+    expect(db.getOrCreateDM).toHaveBeenCalled();
+    expect(db.stampOpportunityActorAction).toHaveBeenCalled();
   });
 
   it('sanitizes unsafe reasoning in start-chat responses', async () => {
@@ -134,23 +118,6 @@ describe('OpportunityService.startChat', () => {
     expect(result.opportunity.interpretation.reasoning).toBe('Connection opportunity');
   });
 
-  it('passes acknowledgement IDs and proceeds when the current exact set is acknowledged', async () => {
-    const opp = makeOpportunity({ status: 'pending' });
-    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
-    const { service, db } = makeServiceWithDb(opp, {}, guard);
-
-    const result = await service.startChat(OPP_ID, VIEWER_ID, {
-      acknowledgedUptakeQuestionIds: ['q-1'],
-    });
-
-    expect('error' in result).toBe(false);
-    expect(guard.check).toHaveBeenCalledWith(expect.objectContaining({
-      acknowledgedUptakeQuestionIds: ['q-1'],
-      networkId: undefined,
-    }));
-    expect(db.stampOpportunityActorAction).toHaveBeenCalled();
-  });
-
   it('preserves an unscoped connect action when duplicate recipient scopes make Lens B ineligible', async () => {
     const opp = makeOpportunity({
       actors: [
@@ -163,7 +130,7 @@ describe('OpportunityService.startChat', () => {
       prepare: mock(async () => null),
       triggerMine: mock(() => {}),
     } satisfies OutcomeFeedbackRecorderLike;
-    const { service, db } = makeServiceWithDb(opp, {}, { check: async () => null }, recorder);
+    const { service, db } = makeServiceWithDb(opp, {}, recorder);
 
     const result = await service.startChat(OPP_ID, VIEWER_ID, {
       actionProvenance: 'user_session',
@@ -182,15 +149,6 @@ describe('OpportunityService.startChat', () => {
     expect(recorder.triggerMine).not.toHaveBeenCalled();
   });
 
-  it('does not gate an already accepted opportunity', async () => {
-    const opp = makeOpportunity({ status: 'accepted' });
-    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
-    const { service } = makeServiceWithDb(opp, {}, guard);
-
-    await service.startChat(OPP_ID, VIEWER_ID);
-
-    expect(guard.check).not.toHaveBeenCalled();
-  });
   it('flips pending → accepted and returns the conversation from getOrCreateDM', async () => {
     const opp = makeOpportunity({ status: 'pending' });
     const { service, db } = makeServiceWithDb(opp);

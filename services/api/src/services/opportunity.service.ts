@@ -6,7 +6,6 @@ import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportuni
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
 
@@ -62,7 +61,6 @@ interface OpportunityStatusUpdateResult {
 interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
-  acknowledgedUptakeQuestionIds?: string[];
   /** Internal clamp derived from a network-scoped API-key principal. */
   networkScopeId?: string;
   /**
@@ -231,7 +229,6 @@ export class OpportunityService {
   private readonly presenterDb: PresenterDatabase;
   private readonly gatherPresentationContext: typeof gatherPresenterContext;
   private readonly deliveryCache: RedisCacheAdapter;
-  private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
@@ -242,7 +239,6 @@ export class OpportunityService {
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
-    acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
     outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
     presentation: OpportunityPresentationDeps = {},
   ) {
@@ -253,7 +249,6 @@ export class OpportunityService {
       ?? chatDatabaseAdapter as unknown as PresenterDatabase;
     this.gatherPresentationContext = presentation.gatherContext ?? gatherPresenterContext;
     this.deliveryCache = new RedisCacheAdapter();
-    this.uptakeGuard = acceptanceGuard;
     this.outcomeRecorder = outcomeRecorder;
   }
 
@@ -585,7 +580,7 @@ export class OpportunityService {
     status: OpportunityStatus,
     userId: string,
     options?: IntentScopeOptions,
-  ): Promise<OpportunityStatusUpdateResult | UptakeAcceptanceAdvisoryResult | { error: string; status: number }> {
+  ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
     logger.verbose('Updating opportunity status', {
       opportunityId,
       status,
@@ -614,16 +609,6 @@ export class OpportunityService {
     // and they are trying to accept, block them — the other party must accept.
     if (status === 'accepted' && callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
-    }
-
-    if (status === 'accepted') {
-      const advisory = await this.uptakeGuard.check({
-        opportunityId,
-        userId,
-        networkId: options?.networkScopeId,
-        acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
-      });
-      if (advisory) return advisory;
     }
 
     const counterpart = status === 'accepted'
@@ -764,7 +749,6 @@ export class OpportunityService {
     options?: IntentScopeOptions,
   ): Promise<
     | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
-    | UptakeAcceptanceAdvisoryResult
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -833,14 +817,6 @@ export class OpportunityService {
     if (callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
-
-    const advisory = await this.uptakeGuard.check({
-      opportunityId,
-      userId,
-      networkId: options?.networkScopeId,
-      acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
-    });
-    if (advisory) return advisory;
 
     const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {

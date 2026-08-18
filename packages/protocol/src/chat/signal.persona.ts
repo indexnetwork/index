@@ -44,9 +44,8 @@ export const SIGNAL_TOOL_NAMES = [
   // Read-only community and membership context.
   "read_networks",
   "read_network_memberships",
-  // Pasted-link reading and chat clarification.
+  // Pasted-link reading.
   "scrape_url",
-  "ask_user_question",
 ] as const;
 
 const SIGNAL_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(SIGNAL_TOOL_NAMES);

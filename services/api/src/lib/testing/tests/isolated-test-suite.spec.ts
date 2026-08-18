@@ -42,10 +42,10 @@ describe('isolated test inventory', () => {
     const runner = readFileSync(path.join(apiRoot, 'scripts/test-isolated.sh'), 'utf8');
     const e2eFiles = inventory.files.filter((file) => file.includes('.e2e.')).sort();
 
+    // The ask-user and consultation card-settlement e2e files retired with
+    // the card question generators.
     expect(e2eFiles).toEqual([
       'tests/limiter.e2e.isolated.ts',
-      'tests/negotiation-polling-consultation.e2e.isolated.ts',
-      'tests/negotiation.ask-user.e2e.isolated.ts',
       'tests/negotiation.e2e.isolated.ts',
       'tests/network-resend-invite.e2e.isolated.ts',
     ]);

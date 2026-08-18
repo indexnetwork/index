@@ -24,7 +24,6 @@ import type { DefineTool } from "../shared/agent/tool.helpers.js";
 import type { IntentGraphDatabase } from "../shared/interfaces/database.interface.js";
 import type { EmbeddingGenerator } from "../shared/interfaces/embedder.interface.js";
 import type { IntentGraphQueue } from "../shared/interfaces/queue.interface.js";
-import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 
 import { IntentGraphFactory } from "./graph/intent.graph.js";
 import { IntentIndexer } from "./intent.indexer.js";
@@ -72,8 +71,6 @@ export interface IntentsDeps {
   embedder?: EmbeddingGenerator;
   /** Queue that picks up post-execution work (network assignment, discovery). */
   queue?: IntentGraphQueue;
-  /** Enqueues decision-question generation after a signal lands. */
-  questionerEnqueue?: QuestionerEnqueueFn;
   /**
    * Model-backed stages, injectable so tests can run the graph without a model.
    * Omitted stages construct their canonical implementation on first use.
@@ -112,11 +109,11 @@ export class Intents {
    * @throws If the instance was constructed without a `database`.
    */
   public createGraph() {
-    const { database, embedder, queue, questionerEnqueue, agents } = this.deps;
+    const { database, embedder, queue, agents } = this.deps;
     if (!database) {
       throw new Error("Intents.createGraph() requires a `database` dependency.");
     }
-    return new IntentGraphFactory(database, embedder, queue, questionerEnqueue, agents).createGraph();
+    return new IntentGraphFactory(database, embedder, queue, agents).createGraph();
   }
 
   // ── Verification ────────────────────────────────────────────────────────────

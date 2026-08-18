@@ -8,7 +8,6 @@ import { EnrichmentGraphFactory, PremiseGraphFactory } from '@indexnetwork/proto
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { questionerEnqueueIfEnabled } from './questioner.queue';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';

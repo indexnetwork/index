@@ -18,12 +18,7 @@ import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
-import { questionerQueue } from '../queues/questioner.queue';
-import { routeParkedQuestionEnqueue } from '../queues/question-message.queue';
-import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
-import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
+import { enqueueParkedQuestion } from '../queues/parked-question.enqueue';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -44,13 +39,12 @@ import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
-import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -71,67 +65,10 @@ type McpToolDeps = ToolDeps & {
 
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
-const questionerAdapter = new QuestionerAdapter(db);
 const negotiationSummaryService = new NegotiationSummaryService();
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
 const apiBaseUrl = resolveProtocolBaseUrl();
-
-/**
- * Host bridge for the orchestrator's blocking ask_user_question tool:
- * synchronous chat-question persistence plus the in-memory answer wait bus
- * (resolved by QuestionEvents.onAnswered/onDismissed wiring in main.ts).
- */
-const findPendingQuestionsForTools: NonNullable<ToolDeps['findPendingQuestions']> = async (userId, filters) => {
-  const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
-    ? filters
-    : { ...filters, excludeModes: ['pool_discovery'] });
-  return rows.map((row): PendingQuestionSummary => ({
-    id: row.id,
-    title: row.payload.title,
-    prompt: row.payload.prompt,
-    options: row.payload.options,
-    multiSelect: row.payload.multiSelect,
-    mode: row.detection.mode,
-    ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
-    sourceType: row.detection.sourceType,
-    sourceId: row.detection.sourceId,
-    createdAt: row.createdAt,
-    ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-    actors: row.actors.map((actor) => ({
-      userId: actor.userId,
-      ...(actor.networkId ? { networkId: actor.networkId } : {}),
-    })),
-  }));
-};
-
-const answerPendingQuestionForTools: NonNullable<ToolDeps['answerPendingQuestion']> = async (
-  userId,
-  questionId,
-  answer,
-) => questionService.answer(questionId, userId, {
-  selectedOptions: answer.selectedOptions,
-  ...(answer.freeText !== undefined ? { freeText: answer.freeText } : {}),
-  answeredBy: userId,
-  answeredAt: new Date().toISOString(),
-});
-
-const chatQuestionsHost: ChatQuestionsHost = {
-  persist: async (batch: PersistableQuestion[]): Promise<PersistedQuestion[]> => {
-    const ids = await questionerAdapter.persist(batch as AdapterPersistableQuestion[]);
-    const now = new Date().toISOString();
-    return ids.map((id, i) => ({
-      id,
-      detection: batch[i].detection,
-      actors: batch[i].actors,
-      payload: batch[i].payload,
-      status: 'pending' as const,
-      answer: null,
-      createdAt: now,
-    }));
-  },
-  awaitAnswers: (questionIds, opts) => awaitChatQuestionAnswers(questionIds, opts),
-};
 
 const protocolDeps = {
   database: chatDatabaseAdapter,
@@ -167,22 +104,12 @@ const protocolDeps = {
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
-  stampNewbornOpportunities,
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
-  questionerDatabase: questionerAdapter,
-  findPendingQuestions: findPendingQuestionsForTools,
-  answerPendingQuestion: answerPendingQuestionForTools,
   getUserContextText: ensureGlobalUserContext,
-  chatQuestions: chatQuestionsHost,
-  ...(isQuestionerEnabled() && {
-    questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
-      // Park-path payloads route to the question-message regeneration job
-      // (conversational-questions delivery spine); see questionerEnqueueIfEnabled.
-      if (await routeParkedQuestionEnqueue(input)) return;
-      await questionerQueue.addGenerateJob(input);
-    },
-  }),
+  // Park-path payloads route to the question-message regeneration job
+  // (conversational-questions delivery spine); retired families are dropped.
+  questionerEnqueue: enqueueParkedQuestion,
   // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
   // memory tools. Injected only while memory writes are enabled — when the
   // flag is off the tools are simply not registered. Consumed exclusively by
@@ -226,12 +153,10 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   logger.info('Compiling MCP graphs (first call, will be cached)');
 
   const { database, embedder, scraper } = protocolDeps;
-  const qEnqueue = protocolDeps.questionerEnqueue;
   const intents = new Intents({
     database,
     embedder,
     queue: protocolDeps.intentQueue,
-    questionerEnqueue: qEnqueue,
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
@@ -247,7 +172,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.negotiationDatabase,
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
-    qEnqueue,
+    protocolDeps.questionerEnqueue,
     // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
     reflectEnqueueIfEnabled(),
     // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
@@ -260,7 +185,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     undefined, undefined, negotiationGraph,
     protocolDeps.agentDispatcher,
     protocolDeps.queueNegotiateExisting,
-    protocolDeps.stampNewbornOpportunities,
   ).createGraph();
   const networks = new Networks({ database, indexer: intents });
   const indexGraph = networks.createGraph();
@@ -725,7 +649,6 @@ function createMcpServerInstance(): McpServer {
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
     agentDispatcher: protocolDeps.agentDispatcher,
-    stampNewbornOpportunities: protocolDeps.stampNewbornOpportunities,
     negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
@@ -753,8 +676,6 @@ function createMcpServerInstance(): McpServer {
     apiBaseUrl: protocolDeps.apiBaseUrl,
     intentProposalStore: protocolDeps.intentProposalStore,
     ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
-    findPendingQuestions: protocolDeps.findPendingQuestions,
-    answerPendingQuestion: protocolDeps.answerPendingQuestion,
     graphs,
   };
 

@@ -3,10 +3,6 @@ import { readFileSync } from 'node:fs';
 
 import { intentScopeAdvisoryLockKey } from '../intent-scope.atomic';
 
-const questionerSource = readFileSync(
-  new URL('../questioner.adapter.ts', import.meta.url),
-  'utf8',
-);
 const opportunitySource = readFileSync(
   new URL('../opportunity.database.adapter.ts', import.meta.url),
   'utf8',
@@ -27,11 +23,6 @@ const intentDatabaseSource = readFileSync(
   new URL('../intent.database.adapter.ts', import.meta.url),
   'utf8',
 );
-const answerHandlerSource = readFileSync(
-  new URL('../../events/handlers/question.answer.intent.ts', import.meta.url),
-  'utf8',
-);
-const mainSource = readFileSync(new URL('../../main.ts', import.meta.url), 'utf8');
 // The executor node is where the graph issues the locked intent write, so that
 // is the file the CAS contract below is asserted against.
 const protocolIntentGraphSource = readFileSync(
@@ -52,19 +43,13 @@ describe('intent-scope advisory lock contract', () => {
     expect(intentScopeAdvisoryLockKey('recipient-1', 'intent-1')).toBe('recipient-1:intent-1');
   });
 
-  it('serializes recovery and exact-trigger opportunity persistence with the same helper', () => {
-    const recovery = methodSlice(
-      questionerSource,
-      'async persistFreshRecoveryQuestion(',
-      'async bindChatQuestionsToMessage(',
-    );
+  it('serializes exact-trigger opportunity persistence with the shared advisory helper', () => {
     const opportunity = methodSlice(
       opportunitySource,
       'async persistIntentScopedOpportunityIfNetworkEligible(',
       'async updateOpportunityStatusIfNetworkEligible(',
     );
 
-    expect(recovery).toContain('acquireIntentScopeAdvisoryLock(tx, userId, intentId)');
     expect(opportunity).toContain('acquireIntentScopeAdvisoryLock(');
     expect(opportunity).toContain('eligibility.ownerUserId');
     expect(opportunity).toContain('eligibility.triggerIntentId');
@@ -131,11 +116,7 @@ describe('intent-scope advisory lock contract', () => {
     expect(mutation).toBeGreaterThan(task);
   });
 
-  it('threads lifecycle-aware recovery CAS data to both final locked intent writers', () => {
-    expect(answerHandlerSource).toContain(
-      'expectedIntentFingerprint: input.expectedIntentFingerprint',
-    );
-    expect(mainSource).toContain('expectedIntentFingerprint,');
+  it('threads lifecycle-aware CAS data to both final locked intent writers', () => {
     expect(protocolIntentGraphSource).toContain(
       'expectedIntentFingerprint: state.expectedIntentFingerprint',
     );
@@ -159,31 +140,4 @@ describe('intent-scope advisory lock contract', () => {
     }
   });
 
-  it('orders recovery answers and material edits as advisory, intent, then question', () => {
-    const answer = methodSlice(
-      questionerSource,
-      'async answer(questionId:',
-      'async dismiss(questionId:',
-    );
-    const answerAdvisory = answer.indexOf('acquireIntentScopeAdvisoryLock(tx, userId, intentId)');
-    const answerIntent = answer.indexOf('.from(intents)', answerAdvisory);
-    const answerQuestion = answer.indexOf('.from(questions)', answerIntent);
-    expect(answerAdvisory).toBeGreaterThanOrEqual(0);
-    expect(answerIntent).toBeGreaterThan(answerAdvisory);
-    expect(answerQuestion).toBeGreaterThan(answerIntent);
-
-    const material = methodSlice(
-      questionerSource,
-      'async handleMaterialIntentUpdate(',
-      'async listPoolQuestionLabels(',
-    );
-    const materialAdvisory = material.indexOf(
-      'acquireIntentScopeAdvisoryLock(tx, input.userId, input.intentId)',
-    );
-    const materialIntent = material.indexOf('.from(intents)', materialAdvisory);
-    const materialQuestion = material.indexOf('tx.update(questions)', materialIntent);
-    expect(materialAdvisory).toBeGreaterThanOrEqual(0);
-    expect(materialIntent).toBeGreaterThan(materialAdvisory);
-    expect(materialQuestion).toBeGreaterThan(materialIntent);
-  });
 });

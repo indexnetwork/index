@@ -13,7 +13,6 @@ import { createAgentTools } from '../../agents/agent.module.js';
 import { createNegotiationTools } from '../../negotiations/negotiation.module.js';
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premises/premise.tools.js';
-import { createQuestionerTools } from '../../questions/question.module.js';
 import type { OpportunityOwnerApprovalDeps } from '../../opportunities/opportunity.tools.port.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
 import { requestContext } from '../observability/request-context.js';
@@ -107,7 +106,6 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   createAgentTools(dt, deps);
   createNegotiationTools(dt, deps);
   createPremiseTools(dt, deps);
-  createQuestionerTools(dt, deps);
   if (deps.chatSession) {
     createChatTools(dt, deps);
   }

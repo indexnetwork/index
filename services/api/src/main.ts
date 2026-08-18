@@ -72,29 +72,13 @@ import { getRedisClient } from './adapters/cache.adapter';
 import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
-import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
-import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
+import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
 import { questionMessageQueue } from './queues/question-message.queue';
-import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
-import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
-import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
-import { uptakeQuestionService } from './services/uptake-question.service';
-import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
-import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
-import { beatTwoMessage } from './queues/pool/answer.shared';
-import { stampNewbornOpportunities } from './queues/pool/newborn.shared';
-import { computeIntentFingerprint } from './lib/intent/intent.fingerprint';
-import { emitChatQuestionResolution } from './lib/chat-question.events';
-import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
-import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
-import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
-import { QuestionerAdapter } from './adapters/questioner.adapter';
-import { questionerAdapter } from './adapters/questioner.adapter.instance';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
@@ -102,7 +86,7 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
@@ -144,10 +128,9 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
   backgroundAgentDispatcher,
   negotiationTimeoutQueue,
-  // Stalled/capped/timeout negotiations enqueue follow-up questions for the
-  // source user (mode='negotiation', sourceType='opportunity') so the intent
-  // page can surface what would unblock the next attempt.
-  questionerEnqueueIfEnabled(),
+  // Park payloads (post-stall parks, mid-flight consults) route to the
+  // question-message regeneration job for the parked side's signal DM.
+  parkedQuestionEnqueue(),
   // Finished negotiations enqueue memory distillation for both sides (P5.2,
   // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
   reflectEnqueueIfEnabled(),
@@ -161,7 +144,6 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
-  stampNewbornOpportunities,
 });
 fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -178,7 +160,6 @@ negotiationRunExistingQueue.setRuntimeDeps({
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
-  questioner: questionerAdapter,
   opportunities: notificationOpportunityAdapter,
   getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
   getIntentLabel: loadNotificationIntentLabel,
@@ -186,13 +167,11 @@ const notificationDeliveryService = new NotificationDeliveryService({
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-OpportunityEvents.onPending = ({ opportunity }) => uptakeQuestionService.handlePending(opportunity.id);
 OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
 // Exhaustion evaluator (conversational questions): every committed status
 // transition re-checks both sides' question-messages against the parked set.
 OpportunityEvents.onTransition = ({ opportunity }) =>
   evaluateOpportunityTransition({ opportunityId: opportunity.id, status: opportunity.status });
-QuestionEvents.onCreated = (payload) => { void notificationDeliveryService.publishQuestionCreated(payload); };
 
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
@@ -259,200 +238,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
 };
 
-// ─── Question answer reaction handlers ──────────────────────────────────────
-
-const profileAnswerPremiseDatabase: PremiseGraphDatabase = chatDatabaseAdapter;
-const profileAnswerPremiseGraph = new PremiseGraphFactory(
-  profileAnswerPremiseDatabase,
-  embedderAdapter,
-).createGraph();
-
-const answerQuestionerAdapter = new QuestionerAdapter(db);
-
-const appendPoolNarration = async (input: {
-  userId: string;
-  intentId: string;
-  message: string;
-}): Promise<void> => {
-  const resolved = await chatSessionService.resolveNegotiatorIntentSession(input.userId, input.intentId);
-  if ('error' in resolved) {
-    log.job.from('PoolAnswerNarration').warn('Intent negotiator session unavailable', {
-      userId: input.userId,
-      intentId: input.intentId,
-      error: resolved.error,
-    });
-    return;
-  }
-  await chatSessionService.addMessage({
-    sessionId: resolved.session.id,
-    role: 'assistant',
-    content: input.message,
-  });
-};
-
-// The delayed Tier-1 worker reads every valid answer after the debounce window,
-// so a burst coalesces into one run without dropping later preferences.
-fromIntentQueue.setRuntimeDeps({
-  getPoolAnswerContext: async (userId, intentId) => {
-    const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (!intent || intent.userId !== userId) return '';
-    const fingerprint = computeIntentFingerprint(intent.payload, intent.summary);
-    const preferences = await answerQuestionerAdapter.listAnsweredPoolPreferences(userId, intentId, fingerprint);
-    if (preferences.length === 0) return '';
-    return [
-      'User-stated matching preferences (apply when finding fresh candidates):',
-      ...preferences.map((preference) => `- ${preference.label}: ${preference.chosenSide}`),
-    ].join('\n');
-  },
-  narratePoolRerun: async ({ userId, intentId, newCandidates }) => {
-    await appendPoolNarration({
-      userId,
-      intentId,
-      message: beatTwoMessage(newCandidates),
-    });
-  },
-});
-
-// Intent graph for answer-driven refinements — same update path as the chat
-// update_intent tool. The graph owns merge, verification, sanitization,
-// re-embedding, persistence, and HyDE regeneration.
-const answerIntentGraph = new Intents({ database: chatDatabaseAdapter, embedder: embedderAdapter, queue: intentQueue }).createGraph();
-
-const enqueueIntentRefinement = enqueueIntentRefinementFactory({
-  getQuestionPrompt: async (questionId) => {
-    const question = await answerQuestionerAdapter.getById(questionId);
-    return question?.payload.prompt ?? null;
-  },
-  getUserProfile: async (userId) => {
-    const profile = await chatDatabaseAdapter.getProfile(userId);
-    return profile ? JSON.stringify(profile) : '';
-  },
-  runIntentUpdate: async ({
-    userId,
-    userProfile,
-    inputContent,
-    targetIntentIds,
-    expectedIntentFingerprint,
-  }) => {
-    const result = await answerIntentGraph.invoke(
-      {
-        userId,
-        userProfile,
-        operationMode: 'update' as const,
-        inputContent,
-        targetIntentIds,
-        expectedIntentFingerprint,
-      },
-      { recursionLimit: 100 },
-    );
-    const executionResults = (result as {
-      executionResults?: Array<{
-        actionType: 'create' | 'update' | 'expire';
-        success: boolean;
-        intentId?: string;
-        payload?: string;
-      }>;
-    }).executionResults;
-    const targetIds = new Set(targetIntentIds);
-    const appliedUpdate = executionResults?.find((execution) =>
-      execution.success
-      && execution.actionType === 'update'
-      && execution.intentId !== undefined
-      && targetIds.has(execution.intentId));
-    if (!appliedUpdate || appliedUpdate.payload === undefined) return { applied: false };
-    return { applied: true, payload: appliedUpdate.payload };
-  },
-  getIntent: async (intentId) => {
-    const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (!intent) return null;
-    return {
-      id: intent.id,
-      userId: intent.userId,
-      description: intent.payload,
-      summary: intent.summary,
-      status: (intent.status ?? 'ACTIVE').toLowerCase(),
-    };
-  },
-});
-
-const questionAnswerDeps = {
-  createPremiseFromAnswer: createPremiseFromAnswerFactory({
-    runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
-    emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-  }),
-  enqueueIntentRefinement,
-  resumeInflightNegotiation: resumeInflightNegotiationFactory({
-    enqueueResume: async (input) => {
-      await negotiationRunExistingQueue.addJob(input);
-    },
-    // P5.2: the answer is already a distilled disclosure policy — record it
-    // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
-    recordDisclosureRule: async ({ userId, questionId, selectedOptions, freeText }) => {
-      const question = await answerQuestionerAdapter.getById(questionId).catch(() => null);
-      await negotiatorMemoryWriteService.recordDisclosureRuleFromAnswer({
-        userId,
-        questionId,
-        ...(question?.payload.prompt && { questionPrompt: question.payload.prompt }),
-        selectedOptions,
-        ...(freeText !== undefined && { freeText }),
-      });
-    },
-  }),
-  resolveChatQuestionWait: ({ questionId, answer }: {
-    questionId: string;
-    answer: { selectedOptions: string[]; freeText?: string; answeredBy: string; answeredAt: string };
-  }) => {
-    emitChatQuestionResolution({ questionId, status: 'answered', answer });
-  },
-  handlePoolAnswer: handlePoolAnswerFactory({
-    adapter: answerQuestionerAdapter,
-    poolQuestionPostPersist: enqueuePoolQuestionPush,
-    refineIntent: enqueueIntentRefinement,
-    getIntentAdmission: async (userId, intentId) => {
-      const intent = await chatDatabaseAdapter.getIntentForIndexing(intentId);
-      if (!intent || intent.userId !== userId || intent.archivedAt) return 'unavailable';
-      if (intent.status === 'PAUSED') return 'paused';
-      return intent.status == null || intent.status === 'ACTIVE' ? 'active' : 'unavailable';
-    },
-    narrateBeatOne: async ({ userId, intentId, message }) => {
-      await appendPoolNarration({ userId, intentId, message });
-    },
-  }),
-};
-
-QuestionEvents.onAnswered = async (payload) => {
-  await handleQuestionAnswered(payload, questionAnswerDeps);
-};
-
-// Chat dismissals unblock the waiting turn. An authoritative inflight
-// dismissal has already conservatively closed exactly its stamped task at the
-// adapter boundary; post-commit work enqueues the deterministic continuation
-// while the original timer remains the durable recovery sweep.
-QuestionEvents.onDismissed = async (payload) => {
-  if (payload.mode === 'chat') {
-    emitChatQuestionResolution({ questionId: payload.questionId, status: 'dismissed' });
-    return;
-  }
-  if (
-    payload.mode === 'negotiation_inflight'
-    && payload.settlement?.authoritative
-    && payload.settlement.resumeClaimed
-    && payload.settlement.taskId
-    && payload.settlement.settlementId
-  ) {
-    await questionAnswerDeps.resumeInflightNegotiation({
-      userId: payload.userId,
-      opportunityId: payload.settlement.opportunityId,
-      questionId: payload.questionId,
-      selectedOptions: [],
-      taskId: payload.settlement.taskId,
-      settlementId: payload.settlement.settlementId,
-      recipientIntentId: payload.settlement.recipientIntentId,
-      networkId: payload.settlement.networkId,
-    });
-  }
-};
-
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
 fromIntroducerQueue.startWorker();
@@ -503,13 +288,7 @@ negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
-if (isQuestionerEnabled()) {
-  questionerQueue.startWorker();
-}
 questionMessageQueue.startWorker();
-poolQuestionPushQueue.startWorker();
-poolQuestionPushQueue.startRecoveryScheduler();
-poolVisitMiningQueue.startWorker();
 premiseQueue.startWorker();
 userContextQueue.startWorker();
 premiseQueue.startCrons();
@@ -528,14 +307,6 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
 
 IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {
   log.job.from('IntentEvents').verbose('Intent paused', { intentId, userId, lifecycleVersionMs });
-};
-
-IntentEvents.onMaterialUpdated = async (event) => {
-  const result = await answerQuestionerAdapter.handleMaterialIntentUpdate(event);
-  log.job.from('IntentEvents').verbose('Material intent update reconciled pool lifecycle', {
-    ...event,
-    ...result,
-  });
 };
 
 IntentEvents.onResumed = async (intentId: string, userId: string, lifecycleVersionMs: number) => {
@@ -981,10 +752,7 @@ const shutdown = async () => {
     emailQueue.close(),
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
-    questionerQueue.close(),
     questionMessageQueue.close(),
-    poolQuestionPushQueue.close(),
-    poolVisitMiningQueue.close(),
     premiseQueue.close(),
     userContextQueue.close(),
     frameDriftQueue.close(),

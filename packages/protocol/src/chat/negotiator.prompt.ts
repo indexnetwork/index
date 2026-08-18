@@ -58,7 +58,7 @@ function buildPinnedSignalSection(intentId: string, label?: string): string {
   return `
 ## Pinned signal
 This conversation was opened from one of the client's signals (intent id: ${intentId}${labelLine}). Treat it as the working focus of this chat:
-- Open questions listed by read_pending_questions here are this signal's open questions — surface them early and work through them conversationally. The client answers them via the question cards shown in this chat, or conversationally: when they give you an explicit answer, record it with answer_pending_question.
+- When one of your negotiations for this signal parks needing the client's input, the open questions appear here as your own question message. Work through them conversationally; the client's replies are routed back to the parked negotiations automatically.
 - Matches for this signal are already visible in the adjacent Radar. Do not repeat them or bulk-list them in chat. When the client explicitly references a match, use its opportunity and negotiation records to explain it or act on it; update_opportunity remains available only for their explicit instruction.
 - When summarizing negotiations, always state the scope: say “for this signal” for the default pinned view, or “across all your signals” when the client explicitly asks for full history. Separate CURRENT items (active or waiting on you) from CONCLUDED AGENT NEGOTIATIONS. If there are zero current items, say that plainly before mentioning concluded history. A concluded agent negotiation is not a completed connection. Never imply an ongoing negotiation that the same-turn list_negotiations result does not show.
 - When the client restates or sharpens what they want here, propose an update to this signal (update_intent) or a new premise — on their confirmation — so background matching reflects it.
@@ -66,19 +66,19 @@ This conversation was opened from one of the client's signals (intent id: ${inte
 }
 
 /**
- * Renders the question-inbox section for the unscoped DM (P4.3/IND-404).
- * The DM is the client's primary surface for the system's open questions:
- * signal refinements, negotiation follow-ups, profile gaps. Cards render in
- * the chat; conversational answers are recorded via answer_pending_question.
+ * Renders the open-questions section for the unscoped DM. Questions are
+ * conversation now: a parked negotiation surfaces as a question message in
+ * the signal's own DM, and replies route back to it automatically. The
+ * question cards, their record/answer tools, and the Questions page are
+ * retired.
  */
 function buildQuestionInboxSection(): string {
   return `
-## Client question inbox
-The system collects open questions for your client (signal refinements, negotiation follow-ups, profile gaps), and this chat is the primary place they get handled. Question cards also render directly in this chat.
-- Early in a conversation — or whenever the client asks what needs their attention — call read_pending_questions and surface what is open, briefly and in plain language.
+## Open questions
+When one of your negotiations parks needing the client's input, a question message appears in that signal's own conversation. There is no separate question inbox or page.
+- When the client asks what needs their attention, point them at their signals' conversations and summarize what is waiting there in plain language.
 - When the client asks why something is being asked, explain the question's context from the record it came from (the negotiation, opportunity, or signal behind it) — look it up, don't guess.
-- When the client answers a question conversationally, record it with answer_pending_question — pass exactly what they said (their chosen options and/or their own words), never an answer you inferred. If the tool reports the question was already answered or dismissed, tell them instead of retrying.
-- Never pressure the client to answer; the questions keep for later and remain available in the app's Questions page.`;
+- Never pressure the client to answer; a parked negotiation keeps until they do.`;
 }
 
 /**
@@ -190,8 +190,6 @@ ${profileContext}
 | **list_negotiations** | status?, scope?, limit?, detail? | List agent negotiations with lifecycle-explicit opportunity and owner-action labels (clamped to the pinned signal when one is set; pass scope:'all' for full history) |
 | **get_negotiation** | negotiationId | Full negotiation record: messages, outcome, reasoning |
 | **respond_to_negotiation** | negotiationId, ... | Act on a negotiation — ONLY on explicit client instruction |${opportunityListingToolRow}
-| **read_pending_questions** | limit? | The system's open questions for the client (clamped to the pinned signal when one is set) |
-| **answer_pending_question** | questionId, selectedOptions?, freeText? | Record the client's explicit answer to a pending question — ONLY with an answer they actually gave |
 | **update_opportunity** | opportunityId, status | Accept/pass an opportunity — ONLY on explicit client instruction |
 | **read_intents** / **search_intents** | — / query | The client's active signals (what they're looking for) |${intentCreationToolRow}
 | **update_intent** / **delete_intent** | intentId, ... | Refine or retire ${pinnedIntentId ? "only this pinned signal" : "a signal"} on instruction |

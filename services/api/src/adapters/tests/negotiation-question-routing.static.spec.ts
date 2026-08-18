@@ -6,37 +6,20 @@ const migration = readFileSync(new URL('../../../drizzle/0106_add_negotiation_qu
 const recoveryMigration = readFileSync(new URL('../../../drizzle/0105_add_recovery_question_uniqueness.sql', import.meta.url), 'utf8');
 const continuationMigration = readFileSync(new URL('../../../drizzle/0107_add_negotiation_continuation_successor_uniqueness.sql', import.meta.url), 'utf8');
 const continuationAtomic = readFileSync(new URL('../negotiation-continuation.atomic.ts', import.meta.url), 'utf8');
-const uptakeGuard = readFileSync(new URL('../../lib/opportunity/uptake-acceptance.guard.ts', import.meta.url), 'utf8');
 const readiness = readFileSync(new URL('../../lib/drizzle/test-database-readiness.ts', import.meta.url), 'utf8');
-const publicProjection = readFileSync(new URL('../../lib/question/question.public.ts', import.meta.url), 'utf8');
-const controller = readFileSync(new URL('../../controllers/question.controller.ts', import.meta.url), 'utf8');
-const inflightHandler = readFileSync(new URL('../../events/handlers/question.answer.negotiation-inflight.ts', import.meta.url), 'utf8');
 const runExisting = readFileSync(new URL('../../queues/negotiations/run-existing.queue.ts', import.meta.url), 'utf8');
 const negotiationGraph = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.ts', import.meta.url), 'utf8');
-const questionerQueue = readFileSync(new URL('../../queues/questioner.queue.ts', import.meta.url), 'utf8');
-const uptakeService = readFileSync(new URL('../../services/uptake-question.service.ts', import.meta.url), 'utf8');
+const negotiationGraphFinalize = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.finalize.ts', import.meta.url), 'utf8');
 const opportunityService = readFileSync(new URL('../../services/opportunity.service.ts', import.meta.url), 'utf8');
-const baseTriggerContract = JSON.parse(readFileSync(
-  new URL('./fixtures/negotiation-question-trigger.base.json', import.meta.url),
-  'utf8',
-)) as {
-  sourceCommit: string;
-  ordinaryProducerModeOccurrences: number;
-  inflightProducerModeOccurrences: number;
-  requiresPriorAskUserGuard: boolean;
-  requiresOrdinaryStallGuard: boolean;
-  maximumGeneratorQuestionsBeforeInd507: number;
-  maximumUptakeQuestionsBeforeInd507: number;
-  opportunityServiceNegotiationGraphImports: number;
-};
 
 describe('negotiation question routing static invariants', () => {
-  it('splits negotiation intent scope from broad actor/trigger inference', () => {
-    expect(source).toContain("NOT IN ('negotiation', 'negotiation_inflight')");
-    expect(source).toContain("->'negotiation'->>'recipientUserId'");
-    expect(source).toContain("->'negotiation'->>'recipientIntentId'");
-    expect(source).toContain("->'negotiation'->>'version' = '1'");
-    expect(source).toContain("question.detection.sourceId !== provenance.opportunityId");
+  it('drops the per-generator intent-scope disjunction with the read surface', () => {
+    // The findByStatus scope disjunction (one SQL branch per retired
+    // generator) went with the pending-question reads; the surviving
+    // settlement paths bind rows by exact task provenance only.
+    expect(source).not.toContain("NOT IN ('negotiation', 'negotiation_inflight')");
+    expect(source).not.toContain('findByStatus');
+    expect(source).toContain("->'negotiation'->>'taskId'");
   });
 
   it('revalidates exact owner, lifecycle, assignment, membership, actor, and task bindings', () => {
@@ -62,37 +45,11 @@ describe('negotiation question routing static invariants', () => {
     expect(readiness).not.toContain("'public.questions_uptake_recipient_source_uniq'");
   });
 
-  it('preserves the recorded origin/dev producer trigger frequency and does not raise cardinality', () => {
-    expect(baseTriggerContract.sourceCommit).toBe('417c710de160bce0fadafd73f3bce0fc2d5e8deb');
-    expect(negotiationGraph.match(/mode: 'negotiation'/g)).toHaveLength(baseTriggerContract.ordinaryProducerModeOccurrences);
-    expect(negotiationGraph.match(/mode: 'negotiation_inflight'/g)).toHaveLength(baseTriggerContract.inflightProducerModeOccurrences);
-    expect(negotiationGraph.includes('!hasPriorAskUser(state.messages, ownUser.id)')).toBe(baseTriggerContract.requiresPriorAskUserGuard);
-    expect(negotiationGraph.includes('!hasOpportunity && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0')).toBe(baseTriggerContract.requiresOrdinaryStallGuard);
-    expect(negotiationGraph).not.toContain('|| turn.message');
-    expect(negotiationGraph).not.toContain('|| turn.assessment.reasoning');
-    expect(questionerQueue).toContain("data.purpose === 'uptake'\n      ? result.questions.slice(0, 1)");
-    expect(questionerQueue).toContain("? result.questions.slice(0, 2)");
-    expect(2).toBeLessThanOrEqual(baseTriggerContract.maximumGeneratorQuestionsBeforeInd507);
-    expect(1).toBe(baseTriggerContract.maximumUptakeQuestionsBeforeInd507);
-    expect(uptakeService).toContain('NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY');
-    expect(uptakeService).not.toContain('counterpartyIntent.summary?.trim()');
-    expect(uptakeService).not.toContain('counterpartyIntent.payload.trim()');
-    expect(opportunityService.match(/NegotiationGraph/g) ?? []).toHaveLength(baseTriggerContract.opportunityServiceNegotiationGraphImports);
-  });
-
-  it('keeps passive exact-intent refetches out of visit-time pool mining', () => {
-    expect(controller).toContain("rawPassive === 'true' && scope.scopeType !== 'intent'");
-    expect(controller).toContain("rawPassive !== 'true'");
-    expect(controller).toContain('maybeEnqueueVisitPoolMining');
-  });
-
   it('settles only exact task cohorts and never looks up the latest task', () => {
-    expect(source).toContain("->'negotiation'->>'taskId' = ${provenance.taskId}");
-    expect(source).toContain("eq(tasks.updatedAt, new Date(provenance.taskUpdatedAt!))");
+    expect(source).toContain('eq(tasks.id, candidate.taskId!)');
+    expect(source).toContain('eq(tasks.state, expectedTaskState)');
     expect(source).toContain('expireInflightQuestion');
     expect(source).not.toContain('getNegotiationTaskForOpportunity');
-    expect(inflightHandler).not.toContain('getNegotiationTaskForOpportunity');
-    expect(inflightHandler).not.toContain('updateOpportunityMetadata');
   });
 
   it('settles zero-row/final-reject/expiry-before-persist paths through the task binding', () => {
@@ -101,7 +58,7 @@ describe('negotiation question routing static invariants', () => {
     expect(expiry).toContain("task.state !== 'input_required'");
     expect(expiry).not.toContain('if (rows.length === 0) return null');
     expect(expiry).toContain("state: 'canceled'");
-    expect(source).toContain('resolveNegotiationAdmission(first');
+    expect(source).toContain('resolveNegotiationAdmission(candidate');
   });
 
   it('uses fenced exact-successor settlements and keeps timeout recovery armed', () => {
@@ -112,8 +69,7 @@ describe('negotiation question routing static invariants', () => {
     expect(runExisting).toContain('negotiationContinuation: execution');
     expect(runExisting).toContain('no positive successor receipt');
     expect(negotiationGraph).toContain('state.continuationExecution');
-    expect(negotiationGraph).toContain('continuationReceipt');
-    expect(inflightHandler).not.toContain('cancelAskUserExpiry');
+    expect(negotiationGraphFinalize).toContain('continuationReceipt');
   });
 
   it('uses a database-enforced successor identity plus a token/fence guard for every continuation effect', () => {
@@ -132,24 +88,11 @@ describe('negotiation question routing static invariants', () => {
     );
   });
 
-  it('uses canonical filtered reads for uptake acceptance and persists exact counterparty provenance', () => {
-    expect(uptakeGuard).toContain('new QuestionerAdapter(db).findPending');
-    expect(uptakeGuard).toContain("purpose: 'uptake'");
-    expect(source).toContain('candidate.counterpartyUserId');
-    expect(source).toContain('counterparty_intent.id');
-    expect(source).toContain('counterparty_intent.felicity_authority');
-    expect(source).toContain('currentUptakeAuthorityThreshold()');
-    expect(source).toContain('counterparty_assignment');
-    expect(uptakeService).toContain('counterpartyUserId');
-    expect(uptakeService).toContain('counterpartyIntentId');
-  });
-
   it('locks the whole stable cohort before provenance rows for sibling-answer and answer-timeout races', () => {
     const body = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
     for (const section of [
-      body('async answer(', 'async dismiss('),
-      body('async dismiss(', 'async expireInflightQuestion('),
-      body('async expireInflightQuestion(', 'async claimNegotiationContinuationExecution'),
+      body('async expireInflightQuestion(', 'async settleInflightNegotiationAnswerFromDm('),
+      body('async settleInflightNegotiationAnswerFromDm(', 'async recordOpportunityUserAnswer('),
     ]) {
       const advisory = section.indexOf('lockNegotiationQuestionAdvisory');
       const cohort = section.indexOf('lockNegotiationQuestionCohort', advisory);
@@ -158,42 +101,24 @@ describe('negotiation question routing static invariants', () => {
       expect(cohort).toBeGreaterThan(advisory);
       expect(provenance).toBeGreaterThan(cohort);
     }
-    expect(source).toContain('.orderBy(questions.id)');
+
   });
 
-  it('validates unscoped pending rows/counts and separates historical inflight validation', () => {
-    expect(source).toContain("status === 'pending'");
-    expect(source).toContain('validateHistoricalNegotiationQuestion(question, userId)');
-    expect(source).toContain("const rows = await this.findPending(userId, { noConversation: true })");
-    expect(source).toContain('return derivePendingQuestionCounts(rows)');
-    expect(source).toContain('isExpectedHistoricalNegotiationSettlement(question.status, question.id, settlement)');
+  it('keeps only the settlement, evidence, and void-on-contact reads over the questions table', () => {
+    // The pending/answered read surface is retired; the remaining table
+    // touches are the leftover-row void, the settlement paths' leftover
+    // dismissals, and the Lens C answered-history read.
+    expect(source).toContain('voidLeftoverQuestion');
+    expect(source).toContain('getAnsweredNegotiationQuestionsForOpportunity');
+    expect(source).not.toContain('findPending');
+    expect(source).not.toContain('findAnswered');
+    expect(source).not.toContain('countPending');
   });
 
-  it('preserves IND-506 recovery locks, migration, producer isolation, and privacy beside IND-507', () => {
+  it('keeps the historical uniqueness constraints in place while the table survives', () => {
     expect(recoveryMigration).toContain('questions_recovery_recipient_intent_fingerprint_uniq');
     expect(migration).not.toContain('questions_recovery_recipient_intent_fingerprint_uniq');
     expect(readiness).toContain("'public.questions_recovery_recipient_intent_fingerprint_uniq'");
     expect(readiness).toContain("'public.questions_negotiation_provenance_uniq'");
-    expect(publicProjection).toContain('recovery: _recovery');
-    expect(publicProjection).toContain('negotiation: _negotiation');
-
-    const answer = source.slice(source.indexOf('async answer('), source.indexOf('async dismiss('));
-    const recoveryBranch = answer.indexOf("initialDetection.purpose === 'recovery'");
-    const recoveryAdvisory = answer.indexOf('acquireIntentScopeAdvisoryLock', recoveryBranch);
-    const recoveryIntent = answer.indexOf('.from(intents)', recoveryAdvisory);
-    const recoveryQuestion = answer.indexOf('.from(questions)', recoveryIntent);
-    const negotiationAdvisory = answer.indexOf('lockNegotiationQuestionAdvisory', recoveryQuestion);
-    const negotiationCohort = answer.indexOf('lockNegotiationQuestionCohort', negotiationAdvisory);
-    expect(recoveryBranch).toBeGreaterThan(-1);
-    expect(recoveryAdvisory).toBeGreaterThan(recoveryBranch);
-    expect(recoveryIntent).toBeGreaterThan(recoveryAdvisory);
-    expect(recoveryQuestion).toBeGreaterThan(recoveryIntent);
-    expect(negotiationAdvisory).toBeGreaterThan(recoveryQuestion);
-    expect(negotiationCohort).toBeGreaterThan(negotiationAdvisory);
-
-    const recoveryGuard = questionerQueue.indexOf("data.purpose === 'recovery'");
-    const negotiationContract = questionerQueue.indexOf('isValidQuestionerInputContract(data)', recoveryGuard);
-    expect(recoveryGuard).toBeGreaterThan(-1);
-    expect(negotiationContract).toBeGreaterThan(recoveryGuard);
   });
 });

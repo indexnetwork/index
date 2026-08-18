@@ -20,7 +20,6 @@ import { enrichmentRunQueue } from '../queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { enrichmentQueue } from '../queues/enrichment.queue';
 import { emailQueue } from '../queues/email.queue';
-import { poolQuestionPushQueue } from '../queues/pool/questionpush.queue';
 import { questionMessageQueue } from '../queues/question-message.queue';
 import { log } from '../lib/log';
 
@@ -44,7 +43,6 @@ createBullBoard({
     new BullMQAdapter(negotiationRunExistingQueue.queue),
     new BullMQAdapter(enrichmentQueue.queue),
     new BullMQAdapter(emailQueue.queue),
-    new BullMQAdapter(poolQuestionPushQueue.queue),
     new BullMQAdapter(questionMessageQueue.queue),
   ],
   serverAdapter,

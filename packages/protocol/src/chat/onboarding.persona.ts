@@ -25,7 +25,6 @@ export const ONBOARDING_TOOL_NAMES = [
   "read_user_contexts",
   "preview_user_context",
   "confirm_user_context",
-  "ask_user_question",
   "create_intent",
   "complete_onboarding",
 ] as const;

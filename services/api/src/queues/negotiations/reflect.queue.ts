@@ -325,7 +325,7 @@ export const negotiationReflectQueue = new NegotiationReflectQueue();
  *
  * Use at every negotiation-graph composition site (main.ts background graph,
  * negotiation/tool services, MCP composition root) — mirrors
- * `questionerEnqueueIfEnabled` so no path silently drops reflection.
+ * `parkedQuestionEnqueue` so no path silently drops reflection.
  */
 export function reflectEnqueueIfEnabled(): ReflectEnqueueFn | undefined {
   if (!isNegotiatorMemoryWriteEnabled()) return undefined;

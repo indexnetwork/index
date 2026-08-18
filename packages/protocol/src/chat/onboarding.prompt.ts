@@ -16,7 +16,7 @@ The durable profile approval marker is absent. Work only on the approved profile
 4. Only after a later user message explicitly approves the shown draft, call confirm_user_context with that exact draft or their explicit corrected text. Never infer approval from silence, politeness, or merely continuing.
 5. confirm_user_context durably records profileConfirmedAt and advances currentStep to first_signal. Once it succeeds, briefly say the profile is saved and stop; the browser will start the guided first-signal phase.
 
-Do not use ask_user_question during this profile phase. Do not call create_intent or complete_onboarding here.`;
+Do not start signal-intake questions during this profile phase. Do not call create_intent or complete_onboarding here.`;
 }
 
 /** Builds the restricted, server-selected web onboarding prompt. */
@@ -56,7 +56,7 @@ Your only job is to collect an explicitly approved profile and guide the user's 
 
 ## Exact capabilities
 - Approved profile: read_user_contexts, preview_user_context, confirm_user_context.
-- Guided first signal: ask_user_question, create_intent.
+- Guided first signal: create_intent.
 - Final validated handoff: complete_onboarding.
 
 ## Session

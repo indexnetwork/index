@@ -27,7 +27,6 @@ import { createContactTools } from "../../contacts/contact.module.js";
 import { createAgentTools } from "../../agents/agent.tools.js";
 import { createNegotiationTools } from "../../negotiations/negotiation.module.js";
 import { createPremiseTools } from "../../premises/premise.tools.js";
-import { createQuestionerTools, createAskUserQuestionTools } from "../../questions/question.module.js";
 import type { OpportunityOwnerApprovalDeps } from "../../opportunities/opportunity.tools.port.js";
 import { bindOwnerApprovalProvenance } from "../../opportunities/opportunity.owner-provenance.js";
 
@@ -133,14 +132,15 @@ export async function createChatTools(
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
 
-  // Wrap questionerEnqueue to include scoped/session context when available.
+  // Wrap questionerEnqueue to include scoped context when available. (The
+  // chat-session conversationId defaulting went with the retired chat-mode
+  // generator; park payloads carry their own recipient routing.)
   const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
     ? (input) => deps.questionerEnqueue!({
         ...input,
         ...(resolvedContext.scopeType && resolvedContext.scopeId && !input.scopeId
           ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
           : {}),
-        ...(resolvedContext.sessionId && !input.conversationId ? { conversationId: resolvedContext.sessionId } : {}),
       })
     : undefined;
 
@@ -148,7 +148,6 @@ export async function createChatTools(
     database,
     embedder,
     queue: deps.intentQueue,
-    questionerEnqueue: sessionAwareEnqueue,
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
@@ -223,10 +222,7 @@ export async function createChatTools(
     apiBaseUrl: deps.apiBaseUrl,
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
-    ...(deps.findPendingQuestions && { findPendingQuestions: deps.findPendingQuestions }),
-    ...(deps.answerPendingQuestion && { answerPendingQuestion: deps.answerPendingQuestion }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
-    ...(deps.chatQuestions && { chatQuestions: deps.chatQuestions }),
     ...(deps.chatSession && { chatSession: deps.chatSession }),
     ...(deps.getUserContextText && { getUserContextText: deps.getUserContextText }),
     ...(deps.intentProposalStore && { intentProposalStore: deps.intentProposalStore }),
@@ -259,12 +255,6 @@ export async function createChatTools(
     ? createNegotiationTools(defineTool, toolDeps)
     : [];
   const premiseTools = createPremiseTools(defineTool, toolDeps);
-  const questionerTools = createQuestionerTools(defineTool, toolDeps);
-  // Blocking mid-conversation questions — chat-only (never in the MCP registry),
-  // and only when the host provides the ChatQuestionsHost bridge.
-  const askUserQuestionTools = deps.chatQuestions
-    ? createAskUserQuestionTools(defineTool, toolDeps)
-    : [];
 
   // confirm_opportunity_delivery is an OpenClaw-delivery ledger write and must not be
   // callable from regular chat sessions.
@@ -285,8 +275,6 @@ export async function createChatTools(
     ...agentTools,
     ...negotiationTools,
     ...premiseTools,
-    ...questionerTools,
-    ...askUserQuestionTools,
   ];
 }
 

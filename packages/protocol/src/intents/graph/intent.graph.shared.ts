@@ -21,7 +21,6 @@ import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../agents/agent.module.js";
-import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
 
 /** The graph's channel state, as every node sees it. */
 export type IntentState = typeof IntentGraphState.State;
@@ -31,7 +30,6 @@ export interface IntentGraphDeps {
   database: IntentGraphDatabase;
   embedder?: EmbeddingGenerator;
   intentQueue?: IntentGraphQueue;
-  questionerEnqueue?: QuestionerEnqueueFn;
   inferrer: Pick<ExplicitIntentInferrer, 'invoke'>;
   verifier: Pick<SemanticVerifier, 'invoke'>;
   reconciler: Pick<IntentReconciler, 'invoke'>;

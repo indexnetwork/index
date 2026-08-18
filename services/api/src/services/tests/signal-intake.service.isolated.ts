@@ -390,24 +390,6 @@ describe('SignalIntakeService.prepare run reuse', () => {
     { prompt: 'What do you bring?', answer: { selectedOptions: ['Engineering depth'] } },
   ];
 
-  it('records every follow-up round with its client-sent prompt', async () => {
-    const recordAnsweredQuestion = mock(async () => undefined);
-    const service = new SignalIntakeService(makeDeps({ recordAnsweredQuestion }));
-
-    await service.prepare('u1', {
-      rounds: [
-        { prompt: 'Who?', answer: { selectedOptions: ['A'] } },
-        { prompt: 'Bring?', answer: { selectedOptions: ['B'] } },
-        { prompt: 'When?', answer: { selectedOptions: [], freeText: 'Now' } },
-      ],
-    });
-
-    const stages = recordAnsweredQuestion.mock.calls.map((call) => (call[0] as { stage: string }).stage);
-    expect(stages).toEqual(['followup-2', 'followup-3']);
-    const prompts = recordAnsweredQuestion.mock.calls.map((call) => (call[0] as { prompt: string }).prompt);
-    expect(prompts).toEqual(['Bring?', 'When?']);
-  });
-
   function readyRun(proposalId: string | null = 'prop-1') {
     return {
       id: 'run-1', userId: 'u1', answersHash: 'h', status: 'ready', proposalId,

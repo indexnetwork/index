@@ -222,7 +222,6 @@ vi.mock('@/contexts/AIChatContext', () => {
     pendingQueue: [],
     cancelQueuedMessage: vi.fn(),
     submitMidStreamMessage: vi.fn(),
-    liveQuestions: [],
   } satisfies AIChatContextContract;
   return {
     AIChatProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,

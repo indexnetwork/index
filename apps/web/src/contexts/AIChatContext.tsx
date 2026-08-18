@@ -5,7 +5,6 @@ import { apiClient } from "@/lib/api";
 import { AuthSessionError, clearJwtToken } from "@/lib/auth-client";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import type { Question } from "@/components/DecisionQuestions/types";
-import type { PendingQuestion } from "@/services/questions";
 import { log } from "@/lib/logger";
 
 const logger = log.context.from("AIChatContext");
@@ -231,13 +230,6 @@ interface AIChatContextType {
   pendingQueue: QueuedMessage[];
   cancelQueuedMessage: (id: string) => void;
   submitMidStreamMessage: (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => void;
-  /**
-   * Questions streamed live by a chat persona's ask_user_question tool
-   * (`user_question` SSE event). The turn is blocked server-side until they
-   * are answered/dismissed or the wait times out. ChatContent and guided
-   * Signal intake surfaces consume these from the same stream state.
-   */
-  liveQuestions: PendingQuestion[];
 }
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
@@ -390,8 +382,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   /** Messages submitted while the first web stream is creating its session. */
   const preSessionQueueRef = useRef<QueuedMessage[]>([]);
   const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
-  /** Live questions from any chat persona's ask_user_question tool (user_question SSE event). */
-  const [liveQuestions, setLiveQuestions] = useState<PendingQuestion[]>([]);
   type SendAbortReason = "clear" | "load" | "steer" | "stopped" | "superseded" | "unmount";
   type SendOperation = {
     token: symbol;
@@ -1034,36 +1024,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     break;
                   }
-                  case "user_question": {
-                    // `user_question` carries opaque IDs only. Resolve cards
-                    // through the conversation-scoped canonical read so model
-                    // output can never forge question content or provenance.
-                    const eventSessionId =
-                      (typeof event.sessionId === "string" && event.sessionId) ||
-                      newSessionId ||
-                      sessionId ||
-                      "";
-                    const requestedIds = new Set(
-                      (event.questions ?? [])
-                        .map((question: { id?: unknown }) => question.id)
-                        .filter((id): id is string => typeof id === "string"),
-                    );
-                    if (!eventSessionId || requestedIds.size === 0) break;
-                    void apiClient.get<{ questions: PendingQuestion[] }>(
-                      `/questions?conversationId=${encodeURIComponent(eventSessionId)}&mode=chat`,
-                    ).then(({ questions }) => {
-                      const incoming = questions.filter((question) => requestedIds.has(question.id));
-                      if (incoming.length === 0) return;
-                      setLiveQuestions((previous) => {
-                        const byId = new Map(previous.map((question) => [question.id, question]));
-                        for (const question of incoming) byId.set(question.id, question);
-                        return [...byId.values()];
-                      });
-                    }).catch((error: unknown) => {
-                      logger.error("Failed to resolve streamed chat question", { error, eventSessionId });
-                    });
-                    break;
-                  }
                   case "decision_questions": {
                     const incoming = (event.questions ?? []) as Question[];
                     setMessages((prev) =>
@@ -1329,7 +1289,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setPreviousSessionCursor(null);
     setIsLoadingPreviousMessages(false);
     setSuggestions([]);
-    setLiveQuestions([]);
     setSessionId(null);
     setSessionTitle(null);
     setSessionPersona(null);
@@ -1374,7 +1333,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     preSessionQueueRef.current = [];
     steerPendingRef.current = [];
     setPendingQueue([]);
-    setLiveQuestions([]);
     setTurnBlock(null);
 
     try {
@@ -1601,7 +1559,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         pendingQueue,
         cancelQueuedMessage,
         submitMidStreamMessage,
-        liveQuestions,
       }}
     >
       {children}

@@ -3,7 +3,7 @@ import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/databa
 import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
@@ -42,8 +42,8 @@ export class NegotiationService {
       conversationDatabaseAdapter as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       noOpDispatcher,
       undefined,
-      // Stalled negotiations enqueue follow-up questions for the source user.
-      questionerEnqueueIfEnabled(),
+      // Park payloads route to the question-message regeneration job.
+      parkedQuestionEnqueue(),
       // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
       reflectEnqueueIfEnabled(),
       // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).

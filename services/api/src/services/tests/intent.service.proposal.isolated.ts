@@ -83,7 +83,6 @@ function makeHarness(options: {
   proposal?: ReturnType<typeof proposal> | null;
   confirmation?: 'created' | 'replay' | 'membership_required' | 'analysis_missing';
   isMember?: boolean;
-  questionerThrows?: boolean;
 } = {}) {
   const authoritativeProposal = options.proposal === undefined ? proposal() : options.proposal;
   const getProposalForOwner = mock(async () => authoritativeProposal);
@@ -105,9 +104,6 @@ function makeHarness(options: {
   const generate = mock(async () => [0.5, 0.5]);
   const getUserContext = mock(async () => ({ text: 'Climate founder operator' }));
   const addGenerateHydeJob = mock(async () => 'job-id');
-  const questionerEnqueue = mock(async () => {
-    if (options.questionerThrows) throw new Error('questioner unavailable');
-  });
   const emitProposalCreated = mock(() => {});
 
   const service = new IntentService({
@@ -123,7 +119,6 @@ function makeHarness(options: {
     } as never,
     embedder: { generate } as never,
     proposalQueue: { addGenerateHydeJob } as never,
-    questionerEnqueue,
     emitProposalCreated,
   });
 
@@ -136,7 +131,6 @@ function makeHarness(options: {
       confirmProposalIntent,
       generate,
       addGenerateHydeJob,
-      questionerEnqueue,
       emitProposalCreated,
     },
   };
@@ -161,19 +155,6 @@ describe('IntentService.createFromProposal authoritative confirmation', () => {
       embedding: [0.5, 0.5],
     });
     expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledTimes(1);
-    expect(harness.calls.questionerEnqueue).toHaveBeenCalledWith({
-      mode: 'intent',
-      userId: USER_ID,
-      sourceType: 'intent',
-      sourceId: INTENT_ID,
-      scopeType: 'network',
-      scopeId: NETWORK_ID,
-      context: {
-        intentId: INTENT_ID,
-        payload: DESCRIPTION,
-        userContext: 'Climate founder operator',
-      },
-    });
     expect(harness.calls.emitProposalCreated).toHaveBeenCalledTimes(1);
   });
 
@@ -197,17 +178,6 @@ describe('IntentService.createFromProposal authoritative confirmation', () => {
     expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledWith({
       intentId: INTENT_ID,
       userId: USER_ID,
-    });
-    expect(harness.calls.questionerEnqueue).toHaveBeenCalledWith({
-      mode: 'intent',
-      userId: USER_ID,
-      sourceType: 'intent',
-      sourceId: INTENT_ID,
-      context: {
-        intentId: INTENT_ID,
-        payload: DESCRIPTION,
-        userContext: 'Climate founder operator',
-      },
     });
   });
 
@@ -257,7 +227,7 @@ describe('IntentService.createFromProposal authoritative confirmation', () => {
       .rejects.toMatchObject({ code: 'proposal_analysis_missing' });
   });
 
-  it('retries queue admission for a committed replay without embedding, question, or event side effects', async () => {
+  it('retries queue admission for a committed replay without embedding or event side effects', async () => {
     const harness = makeHarness({
       proposal: proposal({ status: 'consumed', consumedIntentId: INTENT_ID }),
     });
@@ -271,7 +241,6 @@ describe('IntentService.createFromProposal authoritative confirmation', () => {
       scopeType: 'network',
       scopeId: NETWORK_ID,
     });
-    expect(harness.calls.questionerEnqueue).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
   });
 
@@ -284,26 +253,7 @@ describe('IntentService.createFromProposal authoritative confirmation', () => {
     await expect(harness.service.createFromProposal(USER_ID, DESCRIPTION, proposal().id, NETWORK_ID))
       .rejects.toBeInstanceOf(IntentAdmissionEnqueueError);
     expect(harness.calls.confirmProposalIntent).toHaveBeenCalledTimes(1);
-    expect(harness.calls.questionerEnqueue).not.toHaveBeenCalled();
     expect(harness.calls.emitProposalCreated).not.toHaveBeenCalled();
-  });
-
-  it('keeps a confirmed intent when optional question refinement enqueue fails', async () => {
-    const harness = makeHarness({
-      proposal: proposal({ networkId: null }),
-      questionerThrows: true,
-    });
-
-    const result = await harness.service.createFromProposal(
-      USER_ID,
-      DESCRIPTION,
-      proposal().id,
-    );
-
-    expect(result.id).toBe(INTENT_ID);
-    expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledTimes(1);
-    expect(harness.calls.questionerEnqueue).toHaveBeenCalledTimes(1);
-    expect(harness.calls.emitProposalCreated).toHaveBeenCalledWith(INTENT_ID, USER_ID);
   });
 
   it('maps the authoritative membership race without queue or event side effects', async () => {
@@ -339,7 +289,6 @@ describe('IntentService.createFromProposal authoritative confirmation', () => {
     ]);
     expect(results.map((result) => result.id)).toEqual([INTENT_ID, INTENT_ID]);
     expect(harness.calls.addGenerateHydeJob).toHaveBeenCalledTimes(1);
-    expect(harness.calls.questionerEnqueue).toHaveBeenCalledTimes(1);
     expect(harness.calls.emitProposalCreated).toHaveBeenCalledTimes(1);
   });
 

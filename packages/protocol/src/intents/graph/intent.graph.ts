@@ -13,7 +13,6 @@ import { IntentReconciler } from "../intent.reconciler.js";
 import type { IntentGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { EmbeddingGenerator } from "../../shared/interfaces/embedder.interface.js";
 import type { IntentGraphQueue } from "../../shared/interfaces/queue.interface.js";
-import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
 import { IntentGraphState } from "./intent.graph.state.js";
 import { logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 import { inferenceNode, prepNode } from "./intent.graph.infer.js";
@@ -31,7 +30,6 @@ export class IntentGraphFactory {
     database: IntentGraphDatabase,
     embedder?: EmbeddingGenerator,
     intentQueue?: IntentGraphQueue,
-    questionerEnqueue?: QuestionerEnqueueFn,
     agents?: {
       inferrer?: Pick<ExplicitIntentInferrer, 'invoke'>;
       verifier?: Pick<SemanticVerifier, 'invoke'>;
@@ -42,7 +40,6 @@ export class IntentGraphFactory {
       database,
       embedder,
       intentQueue,
-      questionerEnqueue,
       inferrer: agents?.inferrer ?? new ExplicitIntentInferrer(),
       verifier: agents?.verifier ?? new SemanticVerifier(),
       reconciler: agents?.reconciler ?? new IntentReconciler(),

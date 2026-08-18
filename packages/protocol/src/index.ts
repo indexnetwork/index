@@ -34,7 +34,6 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 export type { McpAuthResolver } from "./shared/interfaces/auth.interface.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./shared/interfaces/cache.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
-export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters, ChatQuestionsHost } from "./questions/question.module.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer } from "./negotiations/negotiation.module.js";
@@ -90,7 +89,6 @@ export {
   type QuestionPoolPushRequestStatus,
   type QuestionPoolPushRequestReason,
 } from "./questions/question.module.js";
-export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export { McpApiKeyMetadataSchema } from "./shared/schemas/mcp-auth.schema.js";
 export type {
   McpAuthInput,
@@ -202,10 +200,8 @@ export { NegotiationReflector } from "./negotiations/negotiation.module.js";
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiations/negotiation.module.js";
 export type { NegotiatorMemoryEntry } from "./negotiations/negotiation.module.js";
 export type { NegotiatorClientDmMessage, NegotiatorClientDmQuery, NegotiatorClientDmRetrieveFn } from "./negotiations/negotiation.module.js";
-export { QuestionerAgent } from "./questions/question.module.js";
-export { isValidQuestionerInputContract } from "./questions/question.module.js";
-export type { QuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questions/question.module.js";
-export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./questions/question.module.js";
+export type { QuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn } from "./questions/question.module.js";
+export { INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./questions/question.module.js";
 export { PoolDiscriminatorMiner } from "./opportunities/opportunity.module.js";
 export { PoolDiscriminatorAssigner } from "./opportunities/opportunity.module.js";
 export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunities/opportunity.module.js";

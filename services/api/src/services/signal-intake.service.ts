@@ -15,10 +15,8 @@ import { chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database
 import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database.adapter';
 import { computeAnswersHash, signalIntakeRunAdapter, SIGNAL_INTAKE_RUN_TTL_MS } from '../adapters/signal-intake-run.database.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
-import { questionerAdapter } from '../adapters/questioner.adapter.instance';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { getSignalIntakeConfig, type SignalIntakeQuestionMode } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 
@@ -84,18 +82,6 @@ export interface SignalIntakeServiceDeps {
     userProfile: string;
     inputContent: string;
   }) => Promise<{ verifiedIntents?: Array<Record<string, unknown>> }>;
-  recordAnsweredQuestion?: (input: {
-    userId: string;
-    prompt: string;
-    answer: IntakeAnswer;
-    stage: string;
-    /**
-     * The real question offered to the user, when it is in scope at the
-     * call site. Optional because follow-up rounds carry only their prompt;
-     * when absent, the recorder falls back to a derived proxy.
-     */
-    question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
-  }) => Promise<void>;
   now?: () => Date;
 }
 
@@ -195,18 +181,6 @@ export class SignalIntakeService {
     const started = Date.now();
     const { maxQuestions, mode } = this.deps.intakeConfig?.() ?? getSignalIntakeConfig();
     const { brief, question: round1 } = await this.getOrCreatePack(userId);
-    if (input.rounds.length === 1) {
-      // Round 1's answer is recorded against the pack's authoritative question
-      // payload, never the client-echoed prompt.
-      this.record({
-        userId,
-        prompt: round1.prompt,
-        answer: input.rounds[0].answer,
-        stage: 'who',
-        question: { title: round1.title, options: round1.options, multiSelect: round1.multiSelect },
-      });
-    }
-
     const remaining = Math.max(0, maxQuestions - input.rounds.length);
     if (remaining === 0) {
       logger.info('signal_intake_stage', {
@@ -254,12 +228,6 @@ export class SignalIntakeService {
   ): Promise<{ runId: string }> {
     const started = Date.now();
     await this.deps.runStore.sweepStaleRuns(userId, new Date(this.now.getTime() - SIGNAL_INTAKE_RUN_TTL_MS));
-    // Follow-up rounds arrive with their real prompts from the client; round 1
-    // was already recorded by followUpQuestions against the pack payload.
-    input.rounds.slice(1).forEach((round, index) => {
-      this.record({ userId, prompt: round.prompt, answer: round.answer, stage: `followup-${index + 2}` });
-    });
-
     const answersHash = computeAnswersHash({ rounds: input.rounds });
     const { run, claimed } = await this.deps.runStore.claimRun(userId, answersHash);
 
@@ -531,16 +499,6 @@ export class SignalIntakeService {
     return null;
   }
 
-  /** Fire-and-forget analytics mirror; never blocks or fails a request. */
-  private record(input: {
-    userId: string;
-    prompt: string;
-    answer: IntakeAnswer;
-    stage: string;
-    question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
-  }): void {
-    void this.deps.recordAnsweredQuestion?.(input).catch(() => undefined);
-  }
 }
 
 // -----------------------------------------------------------------------------
@@ -553,7 +511,6 @@ const productionIntents = new Intents({
   database: intentDatabaseAdapter,
   embedder: new EmbedderAdapter(),
   queue: intentQueue,
-  questionerEnqueue: questionerEnqueueIfEnabled(),
 });
 const compiledIntentGraph = productionIntents.createGraph();
 
@@ -590,67 +547,6 @@ async function getGlobalContextProduction(userId: string): Promise<string | null
   return context?.text ?? null;
 }
 
-/**
- * Mirrors an intake round's answer into the `questions` table so it is
- * visible to the same analytics/eval surfaces as chat-driven
- * `ask_user_question` rounds. Writes through the exact same
- * `QuestionerAdapter` singleton `chatQuestions.persist` (the orchestrator's
- * ask_user_question host bridge) delegates to — first inserting a pending row
- * via `persist`, then settling it to `answered` via `answer`, the same two
- * primitives the live chat-answer flow composes. There is no bulk
- * "insert-already-answered" primitive on the adapter, so this issues both
- * calls back to back rather than inventing a new write path.
- *
- * The fast funnel has no chat session, so `conversationId` is left unset
- * (stored as `null`). The `who` stage's real round-1 question (`title`,
- * `options`, `multiSelect`) is in scope at its call site and is threaded
- * through via `input.question`, so `payload` mirrors the actual menu the
- * user was offered. Follow-up rounds carry only their prompt, so when
- * `input.question` is absent, `payload.title` and `payload.options` fall
- * back to a proxy derived from the stage name and the user's actual
- * selections rather than the original option set.
- *
- * @param input - Stage, prompt, answer, owner, and (when available) the real
- * question offered.
- */
-async function recordAnsweredQuestionProduction(input: {
-  userId: string;
-  prompt: string;
-  answer: IntakeAnswer;
-  stage: string;
-  question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
-}): Promise<void> {
-  const now = new Date().toISOString();
-  const [questionId] = await questionerAdapter.persist([{
-    detection: {
-      mode: 'chat',
-      sourceType: 'conversation',
-      sourceId: `intake:${input.stage}`,
-      timestamp: now,
-    },
-    actors: [{ userId: input.userId, role: 'subject' }],
-    payload: input.question ? {
-      title: input.question.title,
-      prompt: input.prompt,
-      options: input.question.options,
-      multiSelect: input.question.multiSelect,
-    } : {
-      title: input.stage === 'who' ? 'Who' : 'Follow-up',
-      prompt: input.prompt,
-      options: input.answer.selectedOptions.map((label) => ({ label, description: label })),
-      multiSelect: input.answer.selectedOptions.length > 1,
-    },
-    strategy: input.stage === 'who' ? 'refine_intent' : 'surface_missing_detail',
-  }]);
-  if (!questionId) return;
-  await questionerAdapter.answer(questionId, input.userId, {
-    selectedOptions: input.answer.selectedOptions,
-    ...(input.answer.freeText !== undefined ? { freeText: input.answer.freeText } : {}),
-    answeredBy: input.userId,
-    answeredAt: now,
-  });
-}
-
 /** Production singleton wired to the real adapters, compiled intent graph, and
  * context readers. Task 7's controller consumes this directly. */
 export const signalIntakeService = new SignalIntakeService({
@@ -663,6 +559,5 @@ export const signalIntakeService = new SignalIntakeService({
   getNetworkTitles: getNetworkTitlesProduction,
   getGlobalContext: getGlobalContextProduction,
   invokeIntentGraph: invokeIntentGraphProduction,
-  recordAnsweredQuestion: recordAnsweredQuestionProduction,
   intakeConfig: getSignalIntakeConfig,
 });
