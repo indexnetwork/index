@@ -240,28 +240,36 @@ plus the serialized queue make this tractable, but the resume step should
 require the reference, not a guess — free-text replies that match nothing
 get a clarifying follow-up, not a speculative resume.
 
-**Flag state is not the in-code default.** `QUESTIONER_ENABLED`,
-`NEGOTIATION_CONSULTATION_POLICY_MODE`, and the ask-user flag decide what is
-live. Check Railway before assuming any of this runs.
+**Flag state is not the in-code default.** `NEGOTIATION_CONSULTATION_POLICY_MODE`
+and the ask-user flag decide what is live — check Railway before assuming any
+of this runs. The `QUESTIONER_*` and `POOL_QUESTIONS_*` generator flags are
+retired with the card generators: the park routing ships on with no flag, and
+startup warns when a stale name is still set (clear them from Railway
+post-merge).
 
 ## What is left
 
-Two items. Everything else in this plan is on `dev`. The exhaustion
-evaluator shipped as [#1437](https://github.com/indexnetwork/index/pull/1437);
-two follow-ups it surfaced: regenerate the open message to a closed state
-when the parked set empties (folds into notifications), and the MCP
+One item. Everything else in this plan is on `dev`. The exhaustion evaluator
+shipped as [#1437](https://github.com/indexnetwork/index/pull/1437); two
+follow-ups it surfaced: regenerate the open message to a closed state when
+the parked set empties (folds into notifications), and the MCP
 `respond_to_negotiation` terminal branch never writes `opportunities.status`
 (pre-existing, independent fix).
 
 **1. Notifications.** The policy (create → notify; update with new
 questions → notify; otherwise silent) is designed but unimplemented.
 
-**2. Retirements.** The spine silences both old generator enqueues but leaves
-the machinery standing. Sequence after answer wiring — both touch
-`questioner.queue.ts` and the adapter layer. Retire: `QuestionerAgent`, its
-presets and input union, the queue's mode dispatch, the four dead generators
-(uptake, pool mining, recovery, intent refinement), the chat
-`ask_user_question` tool, the questions table and its adapter surface, and the
-Questions page. Then collapse the intent-scope disjunction
-(`questioner.adapter.ts:1435`) to a single branch. In-flight rows void with
-`voidedReason: 'retired_mode'`; the table drops last, once nothing reads it.
+**Retirements: shipped.** The five card generators (pre-accept uptake,
+pool-discriminator mining with its push cycle and answer chaining,
+post-discovery recovery, intent refinement, the chat `ask_user_question`
+tool), the `QuestionerAgent` with its presets and input union, the queue and
+its mode dispatch, the read surface (Questions page, DM input panel, the
+answer/dismiss REST and MCP tools), and the questions-table adapter surface
+are all retired; each generator's leftover pending rows were voided with
+`voidedReason: 'retired_mode'` (migrations 0132–0136), and the intent-scope
+disjunction went with the read path. Leftover rows contacted by stale
+clients void gracefully. The questions TABLE still exists for those leftover
+rows — it drops in a dedicated migration once the readers named in
+`questioner.adapter.ts`'s `TODO(questions-table drop)` are retired or
+repointed (the leftover void, the settlement paths' leftover dismissals, the
+Lens C answered-history read, and the activity-summary pending counts).
