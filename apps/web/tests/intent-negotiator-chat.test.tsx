@@ -69,7 +69,22 @@ vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
 }));
 
 vi.mock('@/components/chat/AssistantMessageContent', () => ({
-  default: ({ content }: { content: string }) => <div data-testid="assistant-content">{content}</div>,
+  default: ({
+    content,
+    onQuestionQuote,
+  }: {
+    content: string;
+    onQuestionQuote?: (prompt: string) => void;
+  }) => (
+    <div data-testid="assistant-content">
+      {content}
+      {onQuestionQuote && (
+        <button type="button" onClick={() => onQuestionQuote('Which equity range works for you?')}>
+          quote-question
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock('@/components/chat/ToolCallsDisplay', () => ({
@@ -322,6 +337,32 @@ describe('IntentNegotiatorChat', () => {
 
     unmount();
     expect(mocks.chat.clearChat).toHaveBeenCalledWith({ abortStream: false });
+  });
+
+  test('shows the agent-working indicator while a question-message regeneration is pending', async () => {
+    renderChat({ questionRegenerationPending: true });
+
+    expect(await screen.findByTestId('question-regeneration-indicator')).toBeInTheDocument();
+  });
+
+  test('hides the regeneration indicator when the prop is absent', async () => {
+    renderChat();
+
+    await screen.findByTestId('negotiator-chat-input');
+    expect(screen.queryByTestId('question-regeneration-indicator')).toBeNull();
+  });
+
+  test('tap-to-quote prefills the input with the question being answered', async () => {
+    mocks.chat.messages = [
+      { id: 'm1', role: 'assistant', content: 'Some questions for you.', timestamp: new Date() },
+    ];
+    renderChat();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'quote-question' }));
+
+    const input = screen.getByTestId('negotiator-chat-input') as HTMLInputElement;
+    expect(input.value).toBe('"Which equity range works for you?" — ');
+    expect(document.activeElement).toBe(input);
   });
 
   test('renders streamed messages from the shared context', async () => {
