@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
+import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnswerWindowMs, DEFAULT_ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../negotiation.protocol.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
@@ -320,6 +321,14 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
   const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
 
+  // Post-stall parking authors a gap at finalize, which is its own model call
+  // and its own ask_user message. This spec is about the mid-flight
+  // consultation policy, so it holds parking to "no gap" throughout —
+  // otherwise every unconcluded case here would consume a scripted turn and
+  // emit an ask_user message that has nothing to do with what is under test.
+  // Parking itself is covered by negotiation.park-on-stall.spec.ts.
+  let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
+
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput) {
@@ -328,10 +337,15 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       if (!turn) throw new Error("agent script exhausted");
       return turn;
     };
+    origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
+    NegotiationStallGapAuthor.prototype.author = async function () {
+      return null;
+    };
   });
 
   afterAll(() => {
     IndexNegotiator.prototype.invoke = origAgentInvoke;
+    NegotiationStallGapAuthor.prototype.author = origStallGapAuthor;
   });
 
   beforeEach(() => {
@@ -835,6 +849,29 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     agentScript = [{ ...declineTurn, action: "withdraw" }];
     await runGraph(stubs2);
     expect(agentInputs[0].canAskUser).toBeUndefined();
+  });
+
+  it("caps ask rounds negotiation-wide: parks from EITHER side count against NEGOTIATION_ASK_ROUNDS_CAP", async () => {
+    const origCap = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
+    process.env.NEGOTIATION_ASK_ROUNDS_CAP = "1";
+    try {
+      // Same seed as the per-side rationing case: u-src consulted, u-cand
+      // never did. Under the default cap the candidate keeps the option
+      // (pinned above); at cap 1 the negotiation as a whole is out of rounds.
+      const stubs = mkStubs({
+        priorMessages: [
+          priorMsg("u-src", "outreach", 0),
+          priorMsg("u-cand", "counter", 1),
+          priorMsg("u-src", "ask_user", 2),
+          priorMsg("u-src", "counter", 3),
+        ],
+      });
+      agentScript = [declineTurn];
+      await runGraph(stubs);
+      expect(agentInputs[0].canAskUser).toBeUndefined();
+    } finally {
+      if (origCap === undefined) delete process.env.NEGOTIATION_ASK_ROUNDS_CAP; else process.env.NEGOTIATION_ASK_ROUNDS_CAP = origCap;
+    }
   });
 
   it("coerces an unavailable ask_user to the conservative fallback before persisting", async () => {

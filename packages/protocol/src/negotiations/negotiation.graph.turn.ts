@@ -7,7 +7,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
@@ -19,7 +19,7 @@ import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { buildAttributedDialogue, countNegotiationAskRounds, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -58,6 +58,12 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // against), v2 non-final non-opening turn, and this side's one client
     // consultation not yet spent (rationing). Shadow is observational and
     // must preserve this legacy path byte-for-byte except for telemetry.
+    //
+    // The negotiation-wide ask-rounds cap reads the same message substrate
+    // as the per-side ration. It cannot bind on mid-flight consults alone
+    // (one per side < default cap); it exists so post-stall parks — which
+    // also persist `ask_user` messages — count against the same budget,
+    // and a negotiation near its cap cannot spend a further round here.
     const policyMode = negotiationConsultationPolicyMode();
     const askUserAvailable =
       version === 'v2'
@@ -69,7 +75,8 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       && !!ownIntentId
       && !!state.indexContext.networkId
       && !(state.turnCount === 0 && !state.isContinuation)
-      && !hasPriorAskUser(state.messages, ownUser.id);
+      && !hasPriorAskUser(state.messages, ownUser.id)
+      && countNegotiationAskRounds(state.messages) < negotiationAskRoundsCap();
 
     // ─── Deadlock detection → persuasion→bargaining stance (IND-428) ──────
     // Deterministic trailing-run inspection of the persisted history — no

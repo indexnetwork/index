@@ -27,6 +27,7 @@ import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
 import type { NegotiatorClientDmMessage, NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
+import type { NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
@@ -53,6 +54,8 @@ export interface NegotiationGraphDeps {
   clientDmRetrieve?: NegotiatorClientDmRetrieveFn;
   /** In-process negotiator used when no personal agent answers. */
   systemAgent: IndexNegotiator;
+  /** Authors the post-stall gap question at finalize (park-on-stall). */
+  stallGapAuthor?: NegotiationStallGapAuthor;
   /** Outreach gate for fresh negotiations. */
   screener: NegotiationScreener;
 }
@@ -74,6 +77,16 @@ export function turnsFromMessages(messages: Array<{ parts: unknown[] }>): Negoti
     .filter(Boolean);
 }
 
+/** Sender ids of every persisted `ask_user` park in this negotiation's messages. */
+function askUserSenderIds(messages: Array<{ senderId: string; parts: unknown[] }>): string[] {
+  return messages
+    .filter((m) => {
+      const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string } }>).find((p) => p.kind === "data");
+      return dataPart?.data?.action === "ask_user";
+    })
+    .map((m) => m.senderId);
+}
+
 /**
  * Whether `userId`'s side has already spent its one `ask_user` client
  * consultation in THIS negotiation (P3.2 rationing: max one per negotiation per
@@ -86,12 +99,23 @@ export function hasPriorAskUser(
   messages: Array<{ senderId: string; parts: unknown[] }>,
   userId: string,
 ): boolean {
-  const sender = `agent:${userId}`;
-  return messages.some((m) => {
-    if (m.senderId !== sender) return false;
-    const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string } }>).find((p) => p.kind === "data");
-    return dataPart?.data?.action === "ask_user";
-  });
+  return askUserSenderIds(messages).includes(`agent:${userId}`);
+}
+
+/**
+ * How many ask rounds this negotiation has already spent, BOTH sides combined.
+ * A round is one persisted `ask_user` park — a mid-flight client consultation
+ * or a post-stall park — each of which suspends the negotiation on a human
+ * answer. Same substrate as {@link hasPriorAskUser} (the negotiation's own
+ * message record, spanning all of its sessions), read negotiation-wide rather
+ * than per side: the cap this feeds bounds the park → answer → resume loop for
+ * the negotiation as a whole, so two agents cannot ping-pong their humans
+ * indefinitely.
+ */
+export function countNegotiationAskRounds(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+): number {
+  return askUserSenderIds(messages).length;
 }
 
 /**

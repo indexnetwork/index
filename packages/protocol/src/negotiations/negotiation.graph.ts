@@ -13,6 +13,7 @@ import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-e
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
+import { NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 import { blocksNegotiationBeforeFirstTurn, NegotiationScreener } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { isTerminalAction } from "./negotiation.protocol.js";
@@ -57,6 +58,7 @@ export class NegotiationGraphFactory {
       memoryRetrieve,
       clientDmRetrieve,
       systemAgent: new IndexNegotiator(),
+      stallGapAuthor: new NegotiationStallGapAuthor(),
       screener: new NegotiationScreener(),
     };
   }

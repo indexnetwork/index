@@ -23,15 +23,20 @@ export type { NegotiationDigest } from "./insight.generator.js";
 
 export {
   ASK_USER_LOCK_SLACK_MS,
+  DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP,
   allowedActionsFor,
   askUserAnswerWindowMs,
   configuredAskUserEnabled,
   isRejectLikeAction,
   isTerminalAction,
+  negotiationAskRoundsCap,
   readProtocolVersion,
   resolveSeat,
   seatViolationMessage,
 } from "./negotiation.protocol.js";
+export { countNegotiationAskRounds } from "./negotiation.graph.shared.js";
+export { NEGOTIATION_PARK_REASONING, NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
+export type { NegotiationStallGap, NegotiationStallReason, StallGapAuthorInput } from "./negotiation.stall-gap.js";
 export {
   HERMES_OWNER_DIRECTIVE,
   HERMES_SHARED_MESSAGE_TEMPLATES,
