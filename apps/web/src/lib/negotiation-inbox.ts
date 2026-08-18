@@ -13,9 +13,15 @@ export type NegotiationInboxStatus =
   /** IND-610: the owner's own agent declined before any contact. Owner-only. */
   | 'not_sent';
 
+export interface NegotiationCounterpart {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
+
 export interface NegotiationInboxItem {
   conversationId: string;
-  counterpart: { id: string; name: string; avatar: string | null };
+  counterpart: NegotiationCounterpart;
   group: NegotiationInboxGroup;
   status: NegotiationInboxStatus;
   signalCount: number;
@@ -129,6 +135,51 @@ function classifyConversation(conversation: ConversationSummary, action: string 
     : { group: 'in_progress', status: 'waiting' };
 }
 
+/**
+ * Resolve the non-viewer seat of an A2A conversation. Shared with the chat
+ * rail's outline so both surfaces name a counterparty the same way.
+ */
+export function resolveNegotiationCounterpart(
+  conversation: ConversationSummary,
+  viewerUserId: string | undefined,
+): NegotiationCounterpart | null {
+  const ownAgentId = viewerUserId ? `agent:${viewerUserId}` : null;
+  const counterpart = conversation.participants.find((participant) => participant.participantId !== ownAgentId);
+  if (!counterpart) return null;
+  return {
+    id: counterpart.participantId.replace(/^agent:/, ''),
+    name: counterpart.ownerName ?? conversation.metadata?.title ?? counterpart.name ?? 'Unknown user',
+    avatar: counterpart.avatar,
+  };
+}
+
+/**
+ * The one rule for "does this negotiation conversation exist for this viewer".
+ *
+ * Zero-turn rows are normally invisible (abandoned task shells). The one
+ * exception is the viewer's OWN outreach gate decision: it has no messages by
+ * definition, so this filter is what made the IND-610 gate card reachable only
+ * by direct link.
+ *
+ * The owner boundary is NOT re-derived here. `negotiation.screenDecision` is
+ * projected by the API only when `initiatorUserId === viewerUserId`
+ * (services/api/src/adapters/negotiation-lifecycle.projection.ts), so its mere
+ * presence IS the owner proof. A counterparty never receives the field and
+ * therefore never gets this row.
+ *
+ * Both the inbox (which feeds the your-move badge) and the chat rail's outline
+ * enumerate conversations through this predicate. Anything the badge can count
+ * is therefore something the rail must be able to render — a negotiation the
+ * badge advertises can never be missing from the list.
+ */
+export function isVisibleNegotiationConversation(
+  conversation: ConversationSummary,
+  viewerUserId: string | undefined,
+): boolean {
+  if (!resolveNegotiationCounterpart(conversation, viewerUserId)) return false;
+  return Boolean(conversation.lastMessage) || Boolean(conversation.negotiation?.screenDecision);
+}
+
 /** Derive user-facing inbox groups without exposing raw task or opportunity states. */
 export function deriveNegotiationInbox(
   negotiations: ConversationSummary[],
@@ -137,23 +188,13 @@ export function deriveNegotiationInbox(
 ): NegotiationInboxGroups {
   const ownAgentId = viewerUserId ? `agent:${viewerUserId}` : null;
   const items = negotiations.flatMap<NegotiationInboxItem>((conversation) => {
-    const counterpart = conversation.participants.find((participant) => participant.participantId !== ownAgentId);
+    // Visibility and counterparty naming come from the shared helpers above so
+    // the rail's outline enumerates exactly the same conversations.
+    if (!isVisibleNegotiationConversation(conversation, viewerUserId)) return [];
+    const counterpart = resolveNegotiationCounterpart(conversation, viewerUserId);
     if (!counterpart) return [];
 
-    // Zero-turn rows are normally invisible (abandoned task shells), matching
-    // ChatSidebar's A2A rule. The one exception is the viewer's OWN outreach
-    // gate decision: it has no messages by definition, so this filter is what
-    // made the IND-610 gate card reachable only by direct link.
-    //
-    // The owner boundary is NOT re-derived here. `negotiation.screenDecision`
-    // is projected by the API only when `initiatorUserId === viewerUserId`
-    // (services/api/src/adapters/negotiation-lifecycle.projection.ts), so its
-    // mere presence IS the owner proof. A counterparty never receives the
-    // field and therefore never gets this row.
     if (!conversation.lastMessage) {
-      const gateDecision = conversation.negotiation?.screenDecision;
-      if (!gateDecision) return [];
-
       const gateTimestamp = new Date(
         conversation.negotiation?.updatedAt ?? conversation.lastMessageAt ?? conversation.createdAt,
       ).getTime();
@@ -161,11 +202,7 @@ export function deriveNegotiationInbox(
 
       return [{
         conversationId: conversation.id,
-        counterpart: {
-          id: counterpart.participantId.replace(/^agent:/, ''),
-          name: counterpart.ownerName ?? conversation.metadata?.title ?? counterpart.name ?? 'Unknown user',
-          avatar: counterpart.avatar,
-        },
+        counterpart,
         group: 'resolved',
         status: 'not_sent',
         signalCount: Math.max(conversation.negotiation?.signalCount ?? 0, conversation.via.length),
@@ -191,11 +228,7 @@ export function deriveNegotiationInbox(
 
     return [{
       conversationId: conversation.id,
-      counterpart: {
-        id: counterpart.participantId.replace(/^agent:/, ''),
-        name: counterpart.ownerName ?? conversation.metadata?.title ?? counterpart.name ?? 'Unknown user',
-        avatar: counterpart.avatar,
-      },
+      counterpart,
       group: classification.group,
       status: classification.status,
       signalCount: Math.max(lifecycle?.signalCount ?? 0, conversation.via.length),
