@@ -55,7 +55,7 @@ function outcomeArtifact(
 function buildDb(overrides: Partial<NegotiationContextDatabase> = {}): NegotiationContextDatabase {
   return {
     getNegotiationTaskForOpportunity: async () => null,
-    getMessagesForConversation: async () => [],
+    getNegotiationMessages: async () => [],
     getArtifactsForTask: async () => [],
     ...overrides,
   };
@@ -106,7 +106,7 @@ describe("loadNegotiationContext", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      getMessagesForConversation: async () => [
+      getNegotiationMessages: async () => [
         turnMessage("propose", "Start with a pitch."),
         turnMessage("counter", "Suggest a different angle."),
       ],
@@ -138,7 +138,7 @@ describe("loadNegotiationContext", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      getMessagesForConversation: async () => [
+      getNegotiationMessages: async () => [
         turnMessage("propose", "Pitch the alignment."),
         turnMessage("accept", "Looks good."),
       ],
@@ -166,7 +166,7 @@ describe("loadNegotiationContext", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      getMessagesForConversation: async () => [
+      getNegotiationMessages: async () => [
         turnMessage("propose", "Pitch."),
         turnMessage("counter", "Counter."),
         turnMessage("counter", "Counter again."),
@@ -191,7 +191,7 @@ describe("loadNegotiationContext", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      getMessagesForConversation: async () => [],
+      getNegotiationMessages: async () => [],
       getArtifactsForTask: async () => [outcomeArtifact(false, "screened_out")],
     });
 
@@ -210,7 +210,7 @@ describe("loadNegotiationContext", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      getMessagesForConversation: async () => [turnMessage("propose", "pitch")],
+      getNegotiationMessages: async () => [turnMessage("propose", "pitch")],
       getArtifactsForTask: async () => [outcomeArtifact(true)],
     });
 
@@ -229,7 +229,7 @@ describe("loadNegotiationContext", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      getMessagesForConversation: async () => [turnMessage("propose", "pitch")],
+      getNegotiationMessages: async () => [turnMessage("propose", "pitch")],
       getArtifactsForTask: async () => [],
     });
 

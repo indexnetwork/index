@@ -18,7 +18,7 @@ import { assessExternalConsultationEligibility, buildExternalConsultationQuestio
 import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import type { AtomicHermesResponseInput, AtomicHermesResponseResult, HermesRunMutationAuthority } from '../adapters/conversation.database.adapter';
 import { remainingDeadlineDelayMs } from '../lib/negotiation/timeout-execution';
-import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
+import { expectedNegotiationSpeaker, readNegotiationMessages } from '../lib/negotiation/expected-speaker';
 import { hermesRuntimeTelemetry, type HermesRuntimeTelemetry } from '../lib/agent/hermes-runtime-telemetry';
 import { logNegotiationPickupConflict } from '../lib/agent/negotiation-polling.log';
 
@@ -232,11 +232,29 @@ function hermesResponseIdentity(taskId: string, capability: string): AtomicHerme
 export type HermesResponsePersistence = Pick<typeof conversationDatabaseAdapter,
   | 'getTask'
   | 'getMessagesForConversation'
+  | 'getNegotiationMessages'
   | 'getPendingHermesResponseOutboxes'
   | 'getHermesResponseReplay'
   | 'respondHermesNegotiationAtomically'
   | 'markHermesResponseOutboxDelivered'
 >;
+
+/**
+ * This negotiation's own messages — turn numbers, floor checks and turn caps all
+ * describe one match, while the pair's DM accumulates every match they share.
+ */
+function negotiationMessagesFor(
+  reader: Pick<typeof conversationDatabaseAdapter, 'getNegotiationMessages' | 'getMessagesForConversation'>,
+  task: { conversationId: string; metadata: unknown },
+) {
+  return readNegotiationMessages({
+    byNegotiation: (id) => reader.getNegotiationMessages(id),
+    byConversation: (id) => reader.getMessagesForConversation(id),
+  }, {
+    conversationId: task.conversationId,
+    metadata: task.metadata as { opportunityId?: unknown } | null,
+  });
+}
 
 /** Durable successor markers require a current continuation fence; never downgrade to generic CAS. */
 function hasContinuationIdentity(metadata: unknown): boolean {
@@ -336,7 +354,7 @@ export class NegotiationPollingService {
     const claimed = pickup.task;
     const claimedAt = claimed.claimedAt?.toISOString();
     if (!claimedAt) throw new Error(`Claimed negotiation ${claimed.id} has no claim generation`);
-    const messages = await conversationDatabaseAdapter.getMessagesForConversation(claimed.conversationId);
+    const messages = await negotiationMessagesFor(conversationDatabaseAdapter, claimed);
     const turnNumber = messages.length;
     const remainingMs = computeRemainingBudgetMs(pickup.parkStartTime, AMBIENT_PARK_WINDOW_MS);
     const execution = (claimed.metadata as {
@@ -426,7 +444,7 @@ export class NegotiationPollingService {
       throw new NotFoundError(`Negotiation ${negotiationId} not found`);
     }
 
-    const messages = await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId);
+    const messages = await negotiationMessagesFor(conversationDatabaseAdapter, task);
     const persistedTurns = this.persistedTurns(messages);
     const questionerEnqueue = questionerEnqueueIfEnabled();
     const policyMode = negotiationConsultationPolicyMode();
@@ -639,7 +657,7 @@ export class NegotiationPollingService {
     }
     const protocolVersion = (readProtocolVersion(metadata) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, metadata);
-    const messages = await this.responsePersistence.getMessagesForConversation(preflight.conversationId);
+    const messages = await negotiationMessagesFor(this.responsePersistence, preflight);
     if (expectedNegotiationSpeaker(metadata, messages) !== userId) {
       throw new SeatViolationError('It is not this owner\'s turn to respond in the negotiation');
     }
@@ -781,7 +799,7 @@ export class NegotiationPollingService {
     }
     const protocolVersion = (readProtocolVersion(preflightMeta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, preflightMeta);
-    const preflightMessages = await conversationDatabaseAdapter.getMessagesForConversation(preflight.conversationId);
+    const preflightMessages = await negotiationMessagesFor(conversationDatabaseAdapter, preflight);
     if (expectedNegotiationSpeaker(preflightMeta, preflightMessages) !== userId) {
       throw new SeatViolationError('It is not this owner\'s turn to respond in the negotiation');
     }
@@ -840,7 +858,7 @@ export class NegotiationPollingService {
 
     // 4. The caller IS the current speaker (they claimed the turn) — attribute
     //    the message to them directly rather than deriving from turn parity.
-    const messages = await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId);
+    const messages = await negotiationMessagesFor(conversationDatabaseAdapter, task);
     const currentTurnCount = messages.length;
     const currentSpeaker: 'source' | 'candidate' = meta.sourceUserId === userId ? 'source' : 'candidate';
     const senderId = `agent:${userId}`;
@@ -1032,8 +1050,8 @@ export class NegotiationPollingService {
       }
     }
 
-    // Load turn history
-    const messages = await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId);
+    // Load turn history — this negotiation's own turns
+    const messages = await negotiationMessagesFor(conversationDatabaseAdapter, task);
     const turnNumber = messages.length;
 
     const history: PickupResult['turn']['history'] = messages.map((m, idx) => {

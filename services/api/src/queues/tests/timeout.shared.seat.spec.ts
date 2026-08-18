@@ -26,6 +26,7 @@ const invokeNegotiator = async (input: Record<string, unknown>) => {
 function makeDb() {
   return {
     getMessagesForConversation: mock(async () => []),
+    getNegotiationMessages: mock(async () => []),
     createMessage: mock(async () => ({ id: 'm-new' })),
     updateTaskState: mock(async () => {}),
     createArtifact: mock(async () => {}),

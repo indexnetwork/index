@@ -282,6 +282,31 @@ export type NegotiationGraphDatabase = Pick<
     taskId?: string | null;
   }>>;
 
+  /**
+   * Gets the messages belonging to ONE negotiation — those written by tasks
+   * carrying `type: 'negotiation'` and the given `opportunityId` — ordered by
+   * creation time.
+   *
+   * A negotiation is keyed by opportunity, not by task: an `ask_user` pause
+   * parks its task and resumes into a pre-claimed successor, so one negotiation
+   * spans several tasks. This is the read behind every question ABOUT a
+   * negotiation (whose turn it is, whether it has opened, how many turns it has
+   * run). `getMessagesForConversation` remains the read for conversation-wide
+   * CONTEXT — prior matches between the same pair — which must never determine
+   * a negotiation's own state.
+   *
+   * Messages with no `taskId`, or whose task carries no opportunityId, are not
+   * part of any negotiation and are never returned here.
+   */
+  getNegotiationMessages(opportunityId: string): Promise<Array<{
+    id: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    createdAt: Date;
+    taskId?: string | null;
+  }>>;
+
   /** Gets artifacts for a task (e.g. negotiation outcome). */
   getArtifactsForTask(taskId: string): Promise<Array<{
     id: string;

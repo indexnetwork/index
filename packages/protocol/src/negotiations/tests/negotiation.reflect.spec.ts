@@ -153,6 +153,7 @@ function mkStubs() {
     createArtifact: async () => {},
     setTaskTurnContext: async () => {},
     getMessagesForConversation: async () => [],
+    getNegotiationMessages: async () => [],
     getOpportunityUserAnswers: async () => [],
     getNegotiationTaskForOpportunity: async () => null,
     getLatestNegotiationTaskForConversation: async () => null,

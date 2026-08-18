@@ -52,6 +52,7 @@ function createMockDb(opportunities: Opportunity[] = []): RadarGraphDatabase {
     getUser: (id: string) => Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null, socials: [] }),
     getNegotiationTaskForOpportunity: () => Promise.resolve(null),
     getMessagesForConversation: () => Promise.resolve([]),
+    getNegotiationMessages: () => Promise.resolve([]),
     getArtifactsForTask: () => Promise.resolve([]),
   };
 }
@@ -853,6 +854,7 @@ function createIntroMockDb(opportunities: Opportunity[]): RadarGraphDatabase {
     getUser: (id: string) => Promise.resolve(USER_MAP[id] ?? { id, name: 'Unknown User', email: '', avatar: null, socials: [] }),
     getNegotiationTaskForOpportunity: () => Promise.resolve(null),
     getMessagesForConversation: () => Promise.resolve([]),
+    getNegotiationMessages: () => Promise.resolve([]),
     getArtifactsForTask: () => Promise.resolve([]),
   };
 }

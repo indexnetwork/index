@@ -139,6 +139,7 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
     negotiationDatabase: {
       getNegotiationTaskForOpportunity,
       getMessagesForConversation: mock(async () => []),
+      getNegotiationMessages: mock(async () => []),
       getArtifactsForTask: mock(async () => []),
     } as unknown as ToolDeps["negotiationDatabase"],
     graphs: {

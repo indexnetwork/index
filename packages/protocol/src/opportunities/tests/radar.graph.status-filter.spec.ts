@@ -60,6 +60,7 @@ function createMockDb(
     getUser: (id: string) => Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null, socials: [] }),
     getNegotiationTaskForOpportunity: () => Promise.resolve(null),
     getMessagesForConversation: () => Promise.resolve([]),
+    getNegotiationMessages: () => Promise.resolve([]),
     getArtifactsForTask: () => Promise.resolve([]),
   };
 }

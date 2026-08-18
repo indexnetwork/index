@@ -106,6 +106,7 @@ const markDelivered = mock(async () => true);
 const responsePersistence = {
   getTask,
   getMessagesForConversation: getMessages,
+  getNegotiationMessages: getMessages,
   getPendingHermesResponseOutboxes: async () => [],
   getHermesResponseReplay: getReplay,
   respondHermesNegotiationAtomically: commit,

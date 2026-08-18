@@ -47,7 +47,14 @@ function priorMsg(senderUserId: string, action: string, idx: number): FakeMessag
 }
 
 function mkStubs(opts?: {
+  /** The pair's whole shared DM. */
   priorMessages?: FakeMessage[];
+  /**
+   * This negotiation's own turns. Defaults to the whole DM (same-match
+   * resume); pass `[]` to model a FRESH match in a DM that already holds
+   * concluded negotiations for other matches.
+   */
+  negotiationMessages?: FakeMessage[];
   userContextText?: string;
   omitSetTaskScreenDecision?: boolean;
 }) {
@@ -80,6 +87,7 @@ function mkStubs(opts?: {
       },
     }),
     getMessagesForConversation: async () => opts?.priorMessages ?? [],
+    getNegotiationMessages: async () => opts?.negotiationMessages ?? opts?.priorMessages ?? [],
     getOpportunityUserAnswers: async () => [],
     getNegotiationTaskForOpportunity: async () => null,
     getLatestNegotiationTaskForConversation: async () => null,
@@ -205,22 +213,37 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome).not.toBeNull();
   });
 
-  it("shadow: regular continuations screen once but still proceed (IND-563)", async () => {
+  it("shadow: a fresh match in an established DM screens with the pair's history as context (IND-563)", async () => {
     process.env.NEGOTIATION_SCREEN_MODE = "shadow";
     const stubs = mkStubs({
+      // The pair has talked before — on a DIFFERENT, concluded match.
       priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
+      negotiationMessages: [],
     });
 
-    const result = await runGraph(stubs);
+    // A real fresh match carries its own opportunity; that is what scopes it
+    // apart from the concluded negotiation already in this DM.
+    const result = await runGraph(stubs, { opportunityId: "opp-fresh" });
 
-    // IND-563: the continuation is screened (prior dialogue forwarded), but a
-    // shadow decision never blocks — the negotiation proceeds to a turn.
+    // The gate still runs before re-engaging the counterparty, and a shadow
+    // decision never blocks.
     expect(screenerInputs.length).toBe(1);
-    expect(screenerInputs[0].isContinuation).toBe(true);
-    expect(screenerInputs[0].priorDialogue?.length).toBe(2);
     expect(stubs.screenWrites.length).toBe(1);
     expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
     expect(result.outcome).not.toBeNull();
+
+    // This negotiation has not spoken, so it is NOT a continuation and has no
+    // turns of its own — the pair's earlier match reaches the screener through
+    // the labelled attributed channel instead, as context.
+    expect(screenerInputs[0].isContinuation).toBe(false);
+    expect(screenerInputs[0].priorDialogue).toBeUndefined();
+    const attributed = screenerInputs[0].priorDialogueAttributed;
+    expect(attributed).toBeDefined();
+    expect([
+      ...attributed!.unattributed,
+      ...attributed!.earlier.flatMap((g) => g.turns),
+    ].length).toBe(2);
+    expect(attributed!.current.length).toBe(0);
   });
 
   it("shadow: screen failure fails OPEN — proceeds with failedOpen reach_out recorded", async () => {

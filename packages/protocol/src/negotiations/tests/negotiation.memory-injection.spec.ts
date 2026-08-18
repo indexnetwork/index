@@ -33,6 +33,7 @@ function mkStubs() {
   const database = {
     getOrCreateDM: async () => ({ id: "conv-1" }),
     getMessagesForConversation: async () => [],
+    getNegotiationMessages: async () => [],
     getNegotiationTaskForOpportunity: async () => null,
     getLatestNegotiationTaskForConversation: async () => null,
     createTask: async (conversationId: string, metadata: Record<string, unknown>) => {

@@ -240,6 +240,7 @@ function mkStubs(opts?: {
       return bindingFor(input.recipientUserId as string, input);
     },
     getMessagesForConversation: async () => opts?.priorMessages ?? [],
+    getNegotiationMessages: async () => opts?.priorMessages ?? [],
     getOpportunityUserAnswers: async () => [],
     getNegotiationTaskForOpportunity: async () => {
       opportunityTaskReads += 1;

@@ -745,7 +745,9 @@ export class DebugController {
         const sourceUserId = typeof taskMeta.sourceUserId === 'string' ? taskMeta.sourceUserId : '';
         const candidateUserId = typeof taskMeta.candidateUserId === 'string' ? taskMeta.candidateUserId : '';
 
-        // Fetch turn messages for this negotiation conversation
+        // Fetch THIS negotiation's turns. Scoped by opportunity, not by
+        // conversation: the pair's DM holds every negotiation they have run, so
+        // a conversation-wide read shows each entry the union of all of them.
         const TURN_LIMIT = 20;
         const negMessages = await db
           .select({
@@ -755,8 +757,12 @@ export class DebugController {
             createdAt: messages.createdAt,
           })
           .from(messages)
-          .where(eq(messages.conversationId, task.conversationId))
-          .orderBy(asc(messages.createdAt))
+          .innerJoin(tasks, eq(messages.taskId, tasks.id))
+          .where(and(
+            sql`${tasks.metadata}->>'type' = 'negotiation'`,
+            sql`${tasks.metadata}->>'opportunityId' = ${oppId}`,
+          ))
+          .orderBy(asc(messages.createdAt), asc(messages.id))
           .limit(TURN_LIMIT + 1);
 
         const turnsTruncated = negMessages.length > TURN_LIMIT;

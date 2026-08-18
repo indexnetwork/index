@@ -26,6 +26,7 @@ function createMockDatabase(overrides: Partial<Record<string, unknown>> = {}) {
     getTasksForUser: async () => [],
     getTask: async () => null,
     getMessagesForConversation: async () => [],
+    getNegotiationMessages: async () => [],
     getArtifactsForTask: async () => [],
     updateOpportunityStatus: async () => ({ id: "opp-1", status: "negotiating" }),
     ...overrides,
@@ -281,8 +282,10 @@ describe("Negotiation continuation telemetry", () => {
       return { action: "accept", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
     };
 
+    // Same match, earlier session: the prior turn belongs to THIS opportunity.
     const db = createMockDatabase({
       getMessagesForConversation: async () => priorMessages,
+      getNegotiationMessages: async () => priorMessages,
     });
     const dispatcher = createMockDispatcher();
     const graph = new NegotiationGraphFactory(db, dispatcher).createGraph();
@@ -292,12 +295,59 @@ describe("Negotiation continuation telemetry", () => {
       candidateUser,
       indexContext,
       seedAssessment: seed,
+      opportunityId: "opp-same",
       maxTurns: 2,
     } as Partial<typeof NegotiationGraphState.State>);
 
     expect(result.isContinuation).toBe(true);
     expect(result.priorTurnCount).toBe(1);
     expect(result.outcome).not.toBeNull();
+
+    IndexNegotiator.prototype.invoke = origInvoke;
+  }, 30_000);
+
+  it("fresh match in an established conversation is NOT a continuation", async () => {
+    // The pair's DM holds a concluded negotiation for a DIFFERENT match. That
+    // is context, not state: this negotiation has not spoken, so it still owes
+    // an opening and its turn counters start at zero.
+    const priorTurn = {
+      action: "accept",
+      assessment: { reasoning: "other match", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
+    };
+    const priorMessages = [{
+      id: "msg-other-1",
+      senderId: `agent:${sourceUser.id}`,
+      role: "agent" as const,
+      taskId: "task-other",
+      parts: [{ kind: "data" as const, data: priorTurn }],
+      createdAt: new Date(Date.now() - 60_000),
+    }];
+
+    IndexNegotiator.prototype.invoke = async function () {
+      return { action: "accept", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+    };
+
+    const db = createMockDatabase({
+      getMessagesForConversation: async () => priorMessages,
+      // Nothing has been said about THIS match yet.
+      getNegotiationMessages: async () => [],
+    });
+    const graph = new NegotiationGraphFactory(db, createMockDispatcher()).createGraph();
+
+    const result = await graph.invoke({
+      sourceUser,
+      candidateUser,
+      indexContext,
+      seedAssessment: seed,
+      opportunityId: "opp-fresh",
+      maxTurns: 2,
+    } as Partial<typeof NegotiationGraphState.State>);
+
+    expect(result.isContinuation).toBe(false);
+    expect(result.priorTurnCount).toBe(0);
+    // The initiator opened rather than the counterparty closing on turn 0.
+    const created = (db as unknown as { _messages: Array<{ senderId: string }> })._messages;
+    expect(created[0].senderId).toBe(`agent:${sourceUser.id}`);
 
     IndexNegotiator.prototype.invoke = origInvoke;
   }, 30_000);
@@ -328,6 +378,7 @@ describe("Negotiation continuation telemetry", () => {
 
     const db = createMockDatabase({
       getMessagesForConversation: async () => priorMessages,
+      getNegotiationMessages: async () => priorMessages,
       getOpportunityUserAnswers: async () => mockAnswers,
     });
     const dispatcher = createMockDispatcher();

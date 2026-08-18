@@ -38,6 +38,7 @@ function createDeps() {
     getTasksForUser: mock(() => Promise.resolve([])),
     getTask: mock(() => Promise.resolve(null)),
     getMessagesForConversation: mock(() => Promise.resolve([])),
+    getNegotiationMessages: mock(() => Promise.resolve([])),
     getArtifactsForTask: mock(() => Promise.resolve([])),
     getNegotiationTaskForOpportunity: mock(() => Promise.resolve(null)),
     getOpportunityUserAnswers: mock(() => Promise.resolve([])),

@@ -61,6 +61,7 @@ export class ChatDatabaseAdapter {
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
   async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
+  async getNegotiationMessages(opportunityId: string) { return _convDb().getNegotiationMessages(opportunityId); }
   async getMessagesByTaskIds(taskIds: string[]) { return _convDb().getMessagesByTaskIds(taskIds); }
   async getArtifactsForTask(taskId: string) { return _convDb().getArtifactsForTask(taskId); }
 

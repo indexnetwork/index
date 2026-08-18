@@ -11,12 +11,45 @@ import type { ContinuationExecutionFence, ContinuationReceipt } from './negotiat
 import { negotiationTimeoutExecutionId, parseNegotiationTimeoutExecution, timeoutExecutionMatches } from '../lib/negotiation/timeout-execution';
 import type { AcquiredNegotiationTimeoutExecution, NegotiationTimeoutAtomicStep, NegotiationTimeoutCompletionPlan, NegotiationTimeoutExecutionIdentity, NegotiationTimeoutExecutionRecord } from '../lib/negotiation/timeout-execution';
 import { deriveLegacyNegotiationParkOrigin, type TimeoutUpgradeJobIntent } from '../lib/negotiation/timeout-upgrade-reconciliation';
-import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
+import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 import { consultationActorSetMatchesBinding, externalConsultationCoordinatesFor } from '../lib/negotiation/consultation';
 import { authorizeNegotiationMutationInTransaction } from '../lib/agent/negotiation-runtime-authority';
 import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import { digestHermesRunId, issueHermesRunCapability, parseHermesRunCapabilityBinding, verifyHermesRunCapability, type HermesRunOutcome } from '../lib/agent/hermes-negotiation-run';
+
+/**
+ * In-transaction read of ONE negotiation's turn history, for the locked floor
+ * checks below.
+ *
+ * Mirrors `getNegotiationMessages`, but must run inside the caller's `tx` so
+ * the check and the write it guards observe the same snapshot. A task with no
+ * opportunity has no identity apart from its conversation, so the conversation
+ * is its scope.
+ */
+async function selectNegotiationTurnHistoryInTransaction(
+  tx: { select: typeof db.select },
+  scope: { conversationId: string; metadata: Record<string, unknown> | null },
+): Promise<Array<{ id: string; senderId: string; parts: unknown }>> {
+  const opportunityId = negotiationScopeKey(scope.metadata);
+  const columns = {
+    id: schema.messages.id,
+    senderId: schema.messages.senderId,
+    parts: schema.messages.parts,
+  };
+  if (!opportunityId) {
+    return tx.select(columns).from(schema.messages)
+      .where(eq(schema.messages.conversationId, scope.conversationId))
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+  }
+  return tx.select(columns).from(schema.messages)
+    .innerJoin(schema.tasks, eq(schema.messages.taskId, schema.tasks.id))
+    .where(and(
+      sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+      sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+    ))
+    .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+}
 
 export type AtomicNegotiationPickupResult =
   | { kind: 'unauthorized' }
@@ -2230,9 +2263,10 @@ export class ConversationDatabaseAdapter {
       )).limit(1).for('update');
       if (!current) return null;
       if (ownerId) {
-        const history = await tx.select({ senderId: schema.messages.senderId, parts: schema.messages.parts }).from(schema.messages)
-          .where(eq(schema.messages.conversationId, current.conversationId))
-          .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+        const history = await selectNegotiationTurnHistoryInTransaction(tx, {
+          conversationId: current.conversationId,
+          metadata: metadataRecord(current.metadata),
+        });
         if (expectedNegotiationSpeaker(metadataRecord(current.metadata), history) !== ownerId) return null;
       }
 
@@ -2291,8 +2325,14 @@ export class ConversationDatabaseAdapter {
       )).limit(1).for('update');
       if (!current) return null;
 
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped: the arming side counts THIS negotiation's turns
+      // (`payload.history.length`), so a conversation-wide count would never
+      // agree in a DM that already holds another negotiation, and the parked
+      // turn would never get its fallback.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
 
       const hasContinuation = hasNegotiationContinuationIdentity(current.metadata);
@@ -2404,8 +2444,14 @@ export class ConversationDatabaseAdapter {
         current.state !== 'waiting_for_agent'
         || metadataRecord(current.metadata).negotiationParkGeneration !== input.parkGeneration
       ) return null;
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped: the arming side counts THIS negotiation's turns
+      // (`payload.history.length`), so a conversation-wide count would never
+      // agree in a DM that already holds another negotiation and the parked
+      // turn would never receive its system-agent fallback.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
 
       const hasContinuation = hasNegotiationContinuationIdentity(current.metadata);
@@ -2523,8 +2569,12 @@ export class ConversationDatabaseAdapter {
         || current.claimedByAgentId !== input.claimedByAgentId
         || current.claimedAt?.getTime() !== input.claimedAt.getTime()
       ) return null;
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped, as above: pickup arms this timer with the negotiation's
+      // own turn count.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
       const hasContinuation = hasNegotiationContinuationIdentity(current.metadata);
       let continuationExecution: ContinuationExecutionFence | null = null;
@@ -2667,10 +2717,10 @@ export class ConversationDatabaseAdapter {
       // The orchestration plan includes the exact model turn but sender identity
       // is derived from locked authoritative history, never trusted from a
       // provider response.
-      const bilateralHistory = await tx.select({ senderId: schema.messages.senderId, parts: schema.messages.parts })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, task.conversationId))
-        .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+      const bilateralHistory = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: task.conversationId,
+        metadata: taskMetadata,
+      });
       const speakerUserId = expectedNegotiationSpeaker(taskMetadata, bilateralHistory);
       if (!speakerUserId) throw new Error('Timeout execution has malformed bilateral speaker metadata');
       await tx.insert(schema.messages).values({
@@ -2868,8 +2918,12 @@ export class ConversationDatabaseAdapter {
         const deadlineAt = priorOutbox?.generation === generation && typeof priorOutbox.deadlineAt === 'string'
           ? priorOutbox.deadlineAt
           : new Date(parkStartedAt.getTime() + input.parkWindowMs).toISOString();
-        const messageRows = await tx.select({ id: schema.messages.id }).from(schema.messages)
-          .where(eq(schema.messages.conversationId, row.conversationId));
+        // Arms `turnNumber` for the acquire CAS above, which is match-scoped;
+        // a conversation-wide count here would never satisfy it.
+        const messageRows = await selectNegotiationTurnHistoryInTransaction(tx, {
+          conversationId: row.conversationId,
+          metadata,
+        });
         const rawContinuation = metadata.continuationExecution && typeof metadata.continuationExecution === 'object'
           && !Array.isArray(metadata.continuationExecution)
           ? metadata.continuationExecution as Record<string, unknown>
@@ -3038,10 +3092,10 @@ export class ConversationDatabaseAdapter {
         || (metadata.sourceUserId !== input.ownerId && metadata.candidateUserId !== input.ownerId)
       ) return { kind: 'not_found' } as const;
 
-      const messages = await tx.select({ id: schema.messages.id, senderId: schema.messages.senderId, parts: schema.messages.parts })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId))
-        .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+      const messages = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadata as Record<string, unknown> | null,
+      });
       if (
         messages.length !== input.expectedTurnCount
         || expectedNegotiationSpeaker(metadata, messages) !== input.ownerId
@@ -3412,8 +3466,11 @@ export class ConversationDatabaseAdapter {
         sql`COALESCE(${schema.tasks.metadata}->'continuationExecution'->>'status', '') <> 'parked'`,
       )).limit(1).for('update');
       if (!current) return null;
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped, matching how this turnNumber was armed.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
       const now = new Date();
       const [task] = await tx.update(schema.tasks).set({
@@ -3611,10 +3668,13 @@ export class ConversationDatabaseAdapter {
         || boundCoordinates.counterpartyIntentId !== input.expectedMaterial.counterpartyIntentId
       ) return null;
 
-      const [{ value: turnCount }] = await tx.select({ value: count() })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, task.conversationId));
-      if (Number(turnCount) !== input.expectedTurnCount || input.expectedTurnCount < 1) return null;
+      // Match-scoped: the caller derives `expectedTurnCount` from this
+      // negotiation's messages.
+      const turnRows = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: task.conversationId,
+        metadata,
+      });
+      if (turnRows.length !== input.expectedTurnCount || input.expectedTurnCount < 1) return null;
       const [intent] = await tx.select({
         userId: schema.intents.userId,
         payload: schema.intents.payload,
@@ -3669,11 +3729,14 @@ export class ConversationDatabaseAdapter {
         ));
       if (new Set(members.map((member) => member.userId)).size !== 2) return null;
 
-      const [precedingMessage] = await tx.select({ senderId: schema.messages.senderId, parts: schema.messages.parts })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, task.conversationId))
-        .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
-        .limit(1);
+      // The turn being paused after must belong to THIS negotiation: the last
+      // message in the shared DM may be the tail of an entirely different match,
+      // which would validate the counterparty check against the wrong exchange.
+      const precedingTurns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: task.conversationId,
+        metadata,
+      });
+      const precedingMessage = precedingTurns[precedingTurns.length - 1];
       const precedingData = Array.isArray(precedingMessage?.parts)
         ? (precedingMessage.parts as Array<{ kind?: unknown; data?: unknown }>).find((part) => part.kind === 'data')?.data
         : null;
@@ -4414,6 +4477,55 @@ export class ConversationDatabaseAdapter {
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))
       .orderBy(asc(schema.messages.createdAt));
+
+    return rows.map((r) => ({
+      ...r,
+      parts: (r.parts as unknown[]) ?? [],
+    }));
+  }
+
+  /**
+   * Gets the messages belonging to ONE negotiation, ordered by creation time.
+   *
+   * Keyed on opportunity rather than task: an `ask_user` pause parks its task
+   * and resumes into a pre-claimed successor, so a single negotiation spans
+   * several tasks. Messages with no `taskId` — or whose task carries no
+   * opportunityId — belong to no negotiation and are excluded; they remain
+   * visible through `getMessagesForConversation` as context.
+   *
+   * Served by `tasks_metadata_opportunity_id_idx` (partial, on
+   * `metadata->>'opportunityId'` where type = negotiation) and
+   * `messages_task_id_idx`.
+   *
+   * @param opportunityId - The negotiation's opportunity
+   * @returns Array of message records
+   */
+  async getNegotiationMessages(opportunityId: string): Promise<Array<{
+    id: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    createdAt: Date;
+    taskId?: string | null;
+  }>> {
+    const rows = await db
+      .select({
+        id: schema.messages.id,
+        senderId: schema.messages.senderId,
+        role: schema.messages.role,
+        parts: schema.messages.parts,
+        createdAt: schema.messages.createdAt,
+        taskId: schema.messages.taskId,
+      })
+      .from(schema.messages)
+      .innerJoin(schema.tasks, eq(schema.messages.taskId, schema.tasks.id))
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+        ),
+      )
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     return rows.map((r) => ({
       ...r,

@@ -49,6 +49,7 @@ const getMaterial = mock(async () => material);
 const adapter = {
   getTask: mock(async () => task),
   getMessagesForConversation: mock(async () => messages),
+  getNegotiationMessages: mock(async () => messages),
   getClaimedNegotiationConsultationMaterial: getMaterial,
   pauseClaimedNegotiationForConsultation: pause,
   transitionClaimedTaskToWorking: transition,

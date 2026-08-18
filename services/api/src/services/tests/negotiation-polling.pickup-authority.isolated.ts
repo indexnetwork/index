@@ -47,6 +47,7 @@ const markOutboxDelivered = mock(async () => true);
 const adapter = {
   pickupNegotiationAtomically: atomicPickup,
   getMessagesForConversation: getMessages,
+  getNegotiationMessages: getMessages,
   getPendingHermesResponseOutboxes: pendingOutboxes,
   markHermesResponseOutboxDelivered: markOutboxDelivered,
 };

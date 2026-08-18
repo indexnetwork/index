@@ -121,6 +121,7 @@ function mkStubs(opts?: { priorMessages?: FakeMessage[]; exact?: boolean }) {
     getNegotiationTaskForOpportunity: async () => null,
     getOpportunityUserAnswers: async () => [],
     getMessagesForConversation: async () => opts?.priorMessages ?? [],
+    getNegotiationMessages: async () => opts?.priorMessages ?? [],
     getLatestNegotiationTaskForConversation: async () => null,
     getUserContext: async () => ({ text: "Bob builds ML systems." }),
     getTask: async (id: string) => tasksById.get(id) ?? null,

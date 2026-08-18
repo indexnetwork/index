@@ -259,6 +259,7 @@ function createWiringDatabase() {
     getTask: async (id: string) => tasks[id] ?? null,
     getArtifactsForTask: async (id: string) => artifacts[id] ?? [],
     getMessagesForConversation: async () => priorMessages,
+    getNegotiationMessages: async () => priorMessages,
     getUserContext: async () => ({ text: "" }),
     updateOpportunityStatus: async () => ({ id: "opp-current", status: "negotiating" }),
   } as unknown as NegotiationGraphDatabase;
