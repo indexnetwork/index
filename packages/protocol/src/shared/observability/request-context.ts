@@ -14,16 +14,8 @@ export type TraceEmitter = (
         summary?: string;
       }
     | {
-        // Emitted by the ask_user_question tool: structured questions were
-        // persisted and the turn is now blocked awaiting the user's answer.
-        // Carries persisted question ids so the frontend can answer them
-        // through the questions REST endpoints while the stream is live.
-        type: "user_question";
-        questions: Array<{ id: string }>;
-      }
-    | {
         // Lightweight keep-alive/status line. Used by long-blocking tools
-        // (ask_user_question wait loop) so SSE transports do not idle out.
+        // so SSE transports do not idle out.
         type: "status";
         message: string;
       }

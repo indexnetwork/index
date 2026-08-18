@@ -19,10 +19,8 @@ import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.ad
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
 import { routeParkedQuestionEnqueue } from '../queues/question-message.queue';
-import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -49,7 +47,7 @@ import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
 import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -115,23 +113,6 @@ const answerPendingQuestionForTools: NonNullable<ToolDeps['answerPendingQuestion
   answeredAt: new Date().toISOString(),
 });
 
-const chatQuestionsHost: ChatQuestionsHost = {
-  persist: async (batch: PersistableQuestion[]): Promise<PersistedQuestion[]> => {
-    const ids = await questionerAdapter.persist(batch as AdapterPersistableQuestion[]);
-    const now = new Date().toISOString();
-    return ids.map((id, i) => ({
-      id,
-      detection: batch[i].detection,
-      actors: batch[i].actors,
-      payload: batch[i].payload,
-      status: 'pending' as const,
-      answer: null,
-      createdAt: now,
-    }));
-  },
-  awaitAnswers: (questionIds, opts) => awaitChatQuestionAnswers(questionIds, opts),
-};
-
 const protocolDeps = {
   database: chatDatabaseAdapter,
   embedder: embedderAdapter,
@@ -172,7 +153,6 @@ const protocolDeps = {
   findPendingQuestions: findPendingQuestionsForTools,
   answerPendingQuestion: answerPendingQuestionForTools,
   getUserContextText: ensureGlobalUserContext,
-  chatQuestions: chatQuestionsHost,
   ...(isQuestionerEnabled() && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
       // Park-path payloads route to the question-message regeneration job

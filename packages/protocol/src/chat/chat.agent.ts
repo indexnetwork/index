@@ -107,12 +107,6 @@ export type AgentStreamEvent =
       reasoning?: string;
       agreedRoles?: { ownUser?: string; otherUser?: string };
     }
-  | {
-      // Emitted by the ask_user_question tool after persisting chat-mode
-      // questions: the turn is blocked awaiting the user's inline answer.
-      type: "user_question";
-      questions: Array<{ id: string }>;
-    }
   | { type: "status"; message: string }
   | { type: "decision_questions"; questions: Question[] }
   | { type: "chat_summarizer_start"; payload: { sessionId: string } }

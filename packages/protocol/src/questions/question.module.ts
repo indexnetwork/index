@@ -32,7 +32,6 @@
  */
 export { QuestionerAgent } from "./question.agent.js";
 
-export { createAskUserQuestionTools } from "./question.ask.tool.js";
 export { createQuestionerTools } from "./question.tools.js";
 
 export {
@@ -54,13 +53,12 @@ export type {
 } from "./question.input.js";
 
 export type {
-  ChatQuestionsHost,
   PersistableQuestion,
   PersistedQuestion,
   QuestionerDatabase,
   QuestionFilters,
 } from "./question.persistence.port.js";
-export type { AskUserQuestionToolDeps, QuestionerToolDeps } from "./question.tools.port.js";
+export type { QuestionerToolDeps } from "./question.tools.port.js";
 
 export {
   NegotiationQuestionCandidateSchema,

@@ -82,7 +82,6 @@ import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
-import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
 import { QuestionerAdapter } from './adapters/questioner.adapter';
@@ -281,27 +280,17 @@ const questionAnswerDeps = {
       });
     },
   }),
-  resolveChatQuestionWait: ({ questionId, answer }: {
-    questionId: string;
-    answer: { selectedOptions: string[]; freeText?: string; answeredBy: string; answeredAt: string };
-  }) => {
-    emitChatQuestionResolution({ questionId, status: 'answered', answer });
-  },
 };
 
 QuestionEvents.onAnswered = async (payload) => {
   await handleQuestionAnswered(payload, questionAnswerDeps);
 };
 
-// Chat dismissals unblock the waiting turn. An authoritative inflight
-// dismissal has already conservatively closed exactly its stamped task at the
-// adapter boundary; post-commit work enqueues the deterministic continuation
-// while the original timer remains the durable recovery sweep.
+// An authoritative inflight dismissal has already conservatively closed
+// exactly its stamped task at the adapter boundary; post-commit work enqueues
+// the deterministic continuation while the original timer remains the durable
+// recovery sweep.
 QuestionEvents.onDismissed = async (payload) => {
-  if (payload.mode === 'chat') {
-    emitChatQuestionResolution({ questionId: payload.questionId, status: 'dismissed' });
-    return;
-  }
   if (
     payload.mode === 'negotiation_inflight'
     && payload.settlement?.authoritative

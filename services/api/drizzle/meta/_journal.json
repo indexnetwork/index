@@ -946,6 +946,13 @@
       "when": 1786886087815,
       "tag": "0135_dismiss_retired_intent_questions",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1786886087816,
+      "tag": "0136_dismiss_retired_chat_questions",
+      "breakpoints": true
     }
   ]
 }

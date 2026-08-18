@@ -110,8 +110,6 @@ src/lib/mcp/tests/owner-approval.isolated.ts
 src/controllers/tests/opportunity.owner-approval.isolated.ts
 src/services/tests/intent.service.seed-index.isolated.ts
 src/services/tests/signal-intake.service.isolated.ts
-src/services/tests/signal-intake.writeback.isolated.ts
-src/services/tests/signal-intake.writeback-wiring.isolated.ts
 src/services/tests/signal-intake.confirm-seam.isolated.ts
 src/queues/tests/usercontext.intake-pack.isolated.ts
 src/lib/tests/staff.isolated.ts

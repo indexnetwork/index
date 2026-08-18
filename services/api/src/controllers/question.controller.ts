@@ -4,7 +4,6 @@ import { questionService } from '../services/question.service';
 import { chatSessionService } from '../services/chat.service';
 import type { AdapterQuestionFilters } from '../services/question.service';
 
-import { hasChatQuestionWaiter } from '../lib/chat-question.events';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import { resolveAgentNetworkScope } from '../guards/agent-scope.guard';
@@ -187,9 +186,7 @@ export class QuestionController {
    * @param req    - Request with JSON body `{ selectedOptions, freeText? }`.
    * @param user   - Authenticated user from AuthGuard.
    * @param params - Route params; `id` is the question ID.
-   * @returns JSON `{ success: true, resumed }` on success — `resumed` is true
-   *   when a live chat turn was blocked on this question (ask_user_question)
-   *   and will now continue streaming with the answer.
+   * @returns JSON `{ success: true }` on success.
    */
   @Post('/:id/answer')
   @UseGuards(RateLimit('write'), AuthGuard)
@@ -218,10 +215,6 @@ export class QuestionController {
       );
     }
 
-    // Snapshot before answering: the waiter unsubscribes once resolved, so
-    // checking afterwards would always report false.
-    const hadWaiter = hasChatQuestionWaiter(questionId);
-
     const updated = await questionService.answer(questionId, user.id, {
       ...parsed.data,
       answeredBy: user.id,
@@ -232,8 +225,8 @@ export class QuestionController {
       return Response.json({ error: 'Question not found' }, { status: 404 });
     }
 
-    logger.info('Question answered', { questionId, userId: user.id, resumed: hadWaiter });
-    return Response.json({ success: true, resumed: hadWaiter });
+    logger.info('Question answered', { questionId, userId: user.id });
+    return Response.json({ success: true });
   }
 
   /**

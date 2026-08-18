@@ -3,7 +3,7 @@ import { BaseCheckpointSaver } from "@langchain/langgraph";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { ChatStreamEvent, DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
-import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent, createUserQuestionEvent } from "./chat-streaming.types.js";
+import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent } from "./chat-streaming.types.js";
 import type { AgentStreamEvent } from "./chat.agent.js";
 
 const logger = protocolLogger("ChatStreamer");
@@ -272,13 +272,9 @@ export class ChatStreamer {
             yield createDecisionQuestionsEvent(sessionId, { questions: event.questions });
           }
 
-          if (event.type === "user_question") {
-            yield createUserQuestionEvent(sessionId, { questions: event.questions });
-          }
-
           if (event.type === "status") {
-            // Keep-alive/status line from long-blocking tools (e.g. the
-            // ask_user_question wait loop) so SSE transports do not idle out.
+            // Keep-alive/status line from long-blocking tools so SSE
+            // transports do not idle out.
             yield createStatusEvent(sessionId, event.message);
           }
 

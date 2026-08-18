@@ -48,8 +48,6 @@ export type ChatStreamEventType =
   | "chat_summarizer_start"
   | "chat_summarizer_end"
   | "decision_questions"
-  // Blocking mid-turn user question (ask_user_question tool)
-  | "user_question"
   | "steer_or_queue";
 
 /**
@@ -533,25 +531,6 @@ export interface DecisionQuestionsEvent extends ChatStreamEventBase {
 }
 
 /**
- * One persisted question streamed by the ask_user_question tool. Carries the
- * DB id so the frontend can answer/dismiss it via the questions endpoints
- * while the turn is still blocked.
- */
-export interface UserQuestionPayload {
-  /** Opaque canonical question reference; resolve display content server-side. */
-  id: string;
-}
-
-/**
- * User question event — a persona's ask_user_question tool persisted
- * chat-mode questions and is blocking the turn awaiting the user's answer.
- */
-export interface UserQuestionEvent extends ChatStreamEventBase {
-  type: "user_question";
-  questions: UserQuestionPayload[];
-}
-
-/**
  * Steer-or-queue event — injected by /chat/interrupt onto the active SSE stream.
  */
 export interface SteerOrQueueEvent extends ChatStreamEventBase {
@@ -602,7 +581,6 @@ export type ChatStreamEvent =
   | ChatSummarizerStartEvent
   | ChatSummarizerEndEvent
   | DecisionQuestionsEvent
-  | UserQuestionEvent
   | SteerOrQueueEvent;
 
 /**
@@ -1054,13 +1032,6 @@ export function createDecisionQuestionsEvent(
   payload: { questions: Question[] },
 ): DecisionQuestionsEvent {
   return createStreamEvent<DecisionQuestionsEvent>("decision_questions", sessionId, payload);
-}
-
-export function createUserQuestionEvent(
-  sessionId: string,
-  payload: { questions: UserQuestionPayload[] },
-): UserQuestionEvent {
-  return createStreamEvent<UserQuestionEvent>("user_question", sessionId, payload);
 }
 
 export function createSteerOrQueueEvent(

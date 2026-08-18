@@ -5,7 +5,6 @@ function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswe
   return {
     createPremiseFromAnswer: mock(async () => {}),
     resumeInflightNegotiation: mock(async () => {}),
-    resolveChatQuestionWait: mock(() => {}),
     ...overrides,
   };
 }
@@ -72,18 +71,13 @@ describe("handleQuestionAnswered", () => {
     expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
 
-  it("resolves the chat wait bus for chat mode", async () => {
+  it("treats a stray chat answer as the default no-op (retired generator)", async () => {
     await handleQuestionAnswered(
       { ...basePayload, mode: "chat", sourceType: "conversation", sourceId: "sess-1" },
       deps,
     );
-    expect(deps.resolveChatQuestionWait).toHaveBeenCalledTimes(1);
-    const call = (deps.resolveChatQuestionWait as ReturnType<typeof mock>).mock.calls[0];
-    expect(call[0]).toEqual({
-      questionId: "q-1",
-      answer: basePayload.answer,
-    });
     expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
+    expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
 
   it("does not perform negotiation mutation outside the authoritative adapter boundary", async () => {
@@ -138,7 +132,6 @@ describe("handleQuestionAnswered", () => {
       deps,
     );
     expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
-    expect(deps.resolveChatQuestionWait).not.toHaveBeenCalled();
   });
 
   it("resumes only the exact DB-claimed inflight task", async () => {

@@ -12,7 +12,6 @@ const EXPECTED_TOOLS = [
   "read_user_contexts",
   "preview_user_context",
   "confirm_user_context",
-  "ask_user_question",
   "create_intent",
   "complete_onboarding",
 ] as const;
@@ -128,7 +127,7 @@ describe("buildOnboardingSystemContent", () => {
     });
     expect(prompt).toContain("PROFILE PHASE (ACTIVE)");
     expect(prompt).toContain("explicitly ask the user to approve it or provide corrections");
-    expect(prompt).toContain("Do not use ask_user_question during this profile phase");
+    expect(prompt).toContain("Do not start signal-intake questions during this profile phase");
   });
 
   it("reuses the shipped live guided intake only after durable profile approval", () => {
@@ -142,7 +141,7 @@ describe("buildOnboardingSystemContent", () => {
       ctx,
     });
     expect(prompt).toContain("NEW SIGNAL INTAKE (ACTIVE)");
-    expect(prompt).toContain("Round 1 of 3: who they want to meet");
+    expect(prompt).toContain("plain conversation");
     expect(prompt).toContain("Climate Builders");
     expect(prompt).toContain("proposal-only");
     expect(prompt).toContain("browser confirms the proposal");

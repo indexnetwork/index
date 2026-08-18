@@ -21,7 +21,7 @@ import type { AgentDatabase } from "../../agents/agent.repository.port.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
-import type { ChatQuestionsHost, QuestionerDatabase } from "../../questions/question.persistence.port.js";
+import type { QuestionerDatabase } from "../../questions/question.persistence.port.js";
 import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
 import type { QuestionerEnqueueFn } from "../../questions/question.input.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
@@ -196,12 +196,6 @@ interface ToolContextBindings {
   ) => Promise<boolean>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
-  /**
-   * Host bridge for the orchestrator's blocking `ask_user_question` tool
-   * (synchronous chat-question persist + in-stream answer wait). Injected by
-   * the backend composition root; when absent the tool is not registered.
-   */
-  chatQuestions?: ChatQuestionsHost;
   /** Durable host persistence for verified intent proposals shown in chat. */
   intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   /**
@@ -547,12 +541,6 @@ interface ToolDepsBindings {
   ) => Promise<boolean>;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
-  /**
-   * Host bridge for the orchestrator's blocking `ask_user_question` tool
-   * (synchronous chat-question persist + in-stream answer wait). Injected by
-   * the backend composition root; when absent the tool is not registered.
-   */
-  chatQuestions?: ChatQuestionsHost;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
   negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */

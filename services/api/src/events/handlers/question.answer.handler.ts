@@ -19,8 +19,8 @@
  *              ordinary shared context already committed)
  * - negotiation_inflight: after authoritative exact-task settlement, enqueue
  *              the durable run-existing continuation; its timer remains recovery
- * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
- *              tool call resumes the paused chat turn with the answer
+ * - chat:      retired generator (rows voided by migration 0136); any stray
+ *              answer falls through to the default no-op
  * - pool_discovery: retired generator (rows voided by migration 0133); any
  *              stray answer falls through to the default no-op
  */
@@ -88,15 +88,6 @@ export interface QuestionAnswerHandlerDeps {
     networkId: string;
   }) => Promise<void>;
 
-  /**
-   * Resolve a chat turn blocked on this question (ask_user_question wait bus).
-   * No-op when no turn is waiting — the answer stays on the question row and
-   * the frontend feeds it back into the conversation as a new turn.
-   */
-  resolveChatQuestionWait: (input: {
-    questionId: string;
-    answer: QuestionAnsweredPayload['answer'];
-  }) => void;
 
 }
 
@@ -152,10 +143,6 @@ export async function handleQuestionAnswered(
           recipientIntentId: payload.settlement.recipientIntentId,
           networkId: payload.settlement.networkId,
         });
-        break;
-
-      case 'chat':
-        deps.resolveChatQuestionWait({ questionId, answer });
         break;
 
       default:

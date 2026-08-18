@@ -138,4 +138,30 @@ describe('question retirement static invariants', () => {
       expect(migration).toContain("status = 'pending'");
     });
   });
+
+  describe('chat ask_user_question', () => {
+    it('no longer mints chat-mode rows from any chat or intake surface', () => {
+      // The blocking tool, its wait bus, the host bridge, and the fast-intake
+      // analytics mirror are gone; personas ask in plain conversation.
+      expect(existsSync(new URL('../../lib/chat-question.events.ts', import.meta.url))).toBe(false);
+      expect(existsSync(new URL(
+        '../../../../../packages/protocol/src/questions/question.ask.tool.ts',
+        import.meta.url,
+      ))).toBe(false);
+      expect(read('../../controllers/mcp.controller.ts')).not.toContain('chatQuestions');
+      expect(read('../../services/signal-intake.service.ts')).not.toContain('recordAnsweredQuestion');
+      for (const persona of ['signal', 'onboarding']) {
+        expect(read(
+          `../../../../../packages/protocol/src/chat/${persona}.persona.ts`,
+        )).not.toContain('ask_user_question');
+      }
+    });
+
+    it('voids its leftover pending rows with the retired_mode marker', () => {
+      const migration = read('../../../drizzle/0136_dismiss_retired_chat_questions.sql');
+      expect(migration).toContain("detection->>'mode' = 'chat'");
+      expect(migration).toContain("'\"retired_mode\"'::jsonb");
+      expect(migration).toContain("status = 'pending'");
+    });
+  });
 });
