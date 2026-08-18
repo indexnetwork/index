@@ -2,12 +2,14 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { useNavigate, useParams } from "react-router";
 import { ArrowUp, Brain, ChevronLeft, Loader2, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { Link } from "react-router";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Dialog from "@radix-ui/react-dialog";
 import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { FocusScope } from "@radix-ui/react-focus-scope";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
+import { Button } from "@/components/ui/button";
 import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
 import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import type { AnsweredThreadEntry, IntentRefinementOutcome } from "@/components/InjectedQuestions/AnsweredQuestionLog";
@@ -406,6 +408,8 @@ export default function IntentDetailPage() {
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
+  const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
   // Backend-surfaced flag (features on /auth/me): when on, the static
   // questions block becomes the negotiator chat window (P4.2/IND-403).
@@ -444,6 +448,8 @@ export default function IntentDetailPage() {
     activeIntentIdRef.current = intentId;
     lifecycleGenerationRef.current += 1;
     lifecycleMutationRef.current = null;
+    setArchiveTargetId(null);
+    setArchiving(false);
     clearReactionTimers();
     if (chainTimerRef.current) {
       clearTimeout(chainTimerRef.current);
@@ -731,15 +737,18 @@ export default function IntentDetailPage() {
   }, [answered, questions]);
 
   const handleArchive = useCallback(async () => {
-    if (!intentId) return;
-    if (!window.confirm("Archive this signal? It will stop matching.")) return;
+    if (!archiveTargetId || archiving) return;
+    setArchiving(true);
     try {
-      await intentsService.archiveIntent(intentId);
+      await intentsService.archiveIntent(archiveTargetId);
+      setArchiveTargetId(null);
       navigate("/");
     } catch {
       showError("Failed to archive signal");
+    } finally {
+      setArchiving(false);
     }
-  }, [intentId, intentsService, navigate, showError]);
+  }, [archiveTargetId, archiving, intentsService, navigate, showError]);
 
   const handleSetIntentStatus = useCallback(
     async (status: MutableIntentLifecycleStatus) => {
@@ -1056,7 +1065,7 @@ export default function IntentDetailPage() {
                       icon={<Trash2 />}
                       title="Archive"
                       tone="text-red-400 hover:text-red-500 hover:bg-red-50"
-                      onClick={handleArchive}
+                      onClick={() => intentId && setArchiveTargetId(intentId)}
                     />
                   </div>
                 </div>
@@ -1448,6 +1457,39 @@ export default function IntentDetailPage() {
               </div>
           )}
           </Dialog.Root>
+
+          <AlertDialog.Root
+            open={archiveTargetId !== null}
+            onOpenChange={(open) => {
+              if (!open && !archiving) setArchiveTargetId(null);
+            }}
+          >
+            <AlertDialog.Portal>
+              <AlertDialog.Overlay className="fixed inset-0 z-[110] bg-black/50" />
+              <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[110] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white p-6 shadow-lg focus:outline-none">
+                <AlertDialog.Title className="mb-2 text-lg font-bold text-gray-900">
+                  Archive this signal? It will stop matching.
+                </AlertDialog.Title>
+                <AlertDialog.Description className="mb-6 text-sm text-gray-600">
+                  You can keep its existing history, but it will no longer find new opportunities.
+                </AlertDialog.Description>
+                <div className="flex justify-end gap-3">
+                  <AlertDialog.Cancel asChild>
+                    <Button variant="outline" disabled={archiving}>Cancel</Button>
+                  </AlertDialog.Cancel>
+                  <Button
+                    type="button"
+                    onClick={() => void handleArchive()}
+                    disabled={archiving}
+                    aria-busy={archiving || undefined}
+                    className="bg-red-600 text-white hover:bg-red-700"
+                  >
+                    {archiving ? "Archiving..." : "Archive signal"}
+                  </Button>
+                </div>
+              </AlertDialog.Content>
+            </AlertDialog.Portal>
+          </AlertDialog.Root>
         </ContentContainer>
       </div>
     </ClientLayout>

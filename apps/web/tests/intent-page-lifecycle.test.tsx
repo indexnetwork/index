@@ -193,6 +193,7 @@ describe('Intent detail lifecycle', () => {
       lifecycleVersionMs: 100,
       changed: true,
     });
+    mocks.archiveIntent.mockResolvedValue({ success: true });
   });
 
   afterEach(() => {
@@ -280,6 +281,54 @@ describe('Intent detail lifecycle', () => {
 
     expect(await screen.findByText('live')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
+  });
+
+  test('uses an in-app confirmation dialog before archiving', async () => {
+    renderIntentPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Archive this signal? It will stop matching.');
+    expect(dialog).toHaveTextContent('it will no longer find new opportunities.');
+    expect(mocks.archiveIntent).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(mocks.archiveIntent).not.toHaveBeenCalled();
+  });
+
+  test('archives from the in-app dialog without relying on window.confirm', async () => {
+    let resolveArchive!: () => void;
+    mocks.archiveIntent.mockReturnValue(new Promise<void>((resolve) => {
+      resolveArchive = resolve;
+    }));
+    renderIntentPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archive signal' }));
+
+    expect(mocks.archiveIntent).toHaveBeenCalledWith('intent-1');
+    expect(screen.getByRole('button', { name: 'Archiving...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+
+    await act(async () => resolveArchive());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  test('keeps the archive dialog available when the request fails', async () => {
+    mocks.archiveIntent.mockRejectedValue(new Error('network failed'));
+    renderIntentPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archive signal' }));
+
+    await waitFor(() => {
+      expect(mocks.notificationError).toHaveBeenCalledWith('Failed to archive signal');
+    });
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Archive signal' })).toBeEnabled();
   });
 
   test.each([
