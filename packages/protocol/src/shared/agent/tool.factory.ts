@@ -27,7 +27,6 @@ import { createContactTools } from "../../contacts/contact.module.js";
 import { createAgentTools } from "../../agents/agent.tools.js";
 import { createNegotiationTools } from "../../negotiations/negotiation.module.js";
 import { createPremiseTools } from "../../premises/premise.tools.js";
-import { createQuestionerTools } from "../../questions/question.module.js";
 import type { OpportunityOwnerApprovalDeps } from "../../opportunities/opportunity.tools.port.js";
 import { bindOwnerApprovalProvenance } from "../../opportunities/opportunity.owner-provenance.js";
 
@@ -223,8 +222,6 @@ export async function createChatTools(
     apiBaseUrl: deps.apiBaseUrl,
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
-    ...(deps.findPendingQuestions && { findPendingQuestions: deps.findPendingQuestions }),
-    ...(deps.answerPendingQuestion && { answerPendingQuestion: deps.answerPendingQuestion }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     ...(deps.chatSession && { chatSession: deps.chatSession }),
     ...(deps.getUserContextText && { getUserContextText: deps.getUserContextText }),
@@ -258,7 +255,6 @@ export async function createChatTools(
     ? createNegotiationTools(defineTool, toolDeps)
     : [];
   const premiseTools = createPremiseTools(defineTool, toolDeps);
-  const questionerTools = createQuestionerTools(defineTool, toolDeps);
 
   // confirm_opportunity_delivery is an OpenClaw-delivery ledger write and must not be
   // callable from regular chat sessions.
@@ -279,7 +275,6 @@ export async function createChatTools(
     ...agentTools,
     ...negotiationTools,
     ...premiseTools,
-    ...questionerTools,
   ];
 }
 

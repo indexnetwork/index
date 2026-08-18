@@ -1286,89 +1286,14 @@ describe('MCP Server Factory', () => {
     expect(resourceCalls.get).toBe(3);
   });
 
-  it('enforces exact question affected-domain inheritance on answer_pending_question at tools/call', async () => {
-    // The canonical matrix admits answer_pending_question with a UNION of domain
-    // actions, so a global manage:intents agent passes capability policy and
-    // reaches the handler. The handler must then deny answering a NEGOTIATION
-    // question (wrong affected domain) and write nothing.
-    const negotiationQuestion = {
-      id: 'neg-1',
-      title: 'Negotiation question',
-      prompt: 'Prompt',
-      options: [],
-      multiSelect: false,
-      mode: 'negotiation',
-      sourceType: 'negotiation',
-      sourceId: 'task-1',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    };
-    let answerWrites = 0;
-    const answerCalls: Array<{ userId: string; questionId: string }> = [];
-    const questionDeps: Partial<ToolDeps> = {
-      findPendingQuestions: (async (userId: string) => {
-        void userId;
-        return [negotiationQuestion];
-      }) as unknown as ToolDeps['findPendingQuestions'],
-      answerPendingQuestion: (async (userId: string, questionId: string) => {
-        answerWrites += 1;
-        answerCalls.push({ userId, questionId });
-        return true;
-      }) as unknown as ToolDeps['answerPendingQuestion'],
-    };
-
-    // Wrong-domain global agent: admitted by policy, denied by the handler gate,
-    // nothing written.
-    const denied = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-q' },
-      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
-      extraDeps: questionDeps,
-      toolName: 'answer_pending_question',
-      arguments: { questionId: 'neg-1', freeText: 'the client\u2019s explicit answer' },
+  it('does not list the retired question tools for any principal', async () => {
+    // read_pending_questions / answer_pending_question retired with the card
+    // question surface (conversational-questions plan, "Retirements").
+    const names = await listToolNamesFor({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
     });
-    // Reached the handler (not a capability denial), but refused with no write.
-    expect(denied.code).not.toBe('MCP_CAPABILITY_DENIED');
-    const deniedPayload = JSON.parse(denied.text) as { success: boolean; error?: string };
-    expect(deniedPayload.success).toBe(false);
-    expect(deniedPayload.error).toMatch(/not authorized to answer this question/i);
-    expect(answerWrites).toBe(0);
-
-    // Matching-domain agent: admitted and the write is threaded with the
-    // authenticated caller userId (provenance).
-    const allowed = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-q' },
-      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:negotiations'] }),
-      extraDeps: questionDeps,
-      toolName: 'answer_pending_question',
-      arguments: { questionId: 'neg-1', freeText: 'the client\u2019s explicit answer' },
-    });
-    const allowedPayload = JSON.parse(allowed.text) as { success: boolean; data?: Record<string, unknown> };
-    expect(allowedPayload.success).toBe(true);
-    expect(answerWrites).toBe(1);
-    expect(answerCalls).toEqual([{ userId: 'test-user-id', questionId: 'neg-1' }]);
-  });
-
-  it('projects read_pending_questions by exact affected domain at tools/call', async () => {
-    // A global manage:intents agent sees intent questions but never negotiation
-    // questions, even though the tool is union-admitted.
-    const questions = [
-      { id: 'intent-q', title: 'I', prompt: 'p', options: [], multiSelect: false, mode: 'intent', sourceType: 'intent', sourceId: 'i1', createdAt: '2026-01-01T00:00:00.000Z' },
-      { id: 'neg-q', title: 'N', prompt: 'p', options: [], multiSelect: false, mode: 'negotiation', sourceType: 'negotiation', sourceId: 't1', createdAt: '2026-01-01T00:00:00.000Z' },
-    ];
-    const questionDeps: Partial<ToolDeps> = {
-      findPendingQuestions: (async () => questions) as unknown as ToolDeps['findPendingQuestions'],
-    };
-
-    const result = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-q' },
-      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
-      extraDeps: questionDeps,
-      toolName: 'read_pending_questions',
-      arguments: {},
-    });
-    const payload = JSON.parse(result.text) as { success: boolean; data?: { questions?: Array<{ id: string }> } };
-    expect(payload.success).toBe(true);
-    const ids = (payload.data?.questions ?? []).map((q) => q.id);
-    expect(ids).toEqual(['intent-q']);
+    expect(names).not.toContain('read_pending_questions');
+    expect(names).not.toContain('answer_pending_question');
   });
 
   it('omits complete_onboarding from tools/list for every principal', async () => {

@@ -7,9 +7,6 @@ const recoveryMigration = readFileSync(new URL('../../../drizzle/0105_add_recove
 const continuationMigration = readFileSync(new URL('../../../drizzle/0107_add_negotiation_continuation_successor_uniqueness.sql', import.meta.url), 'utf8');
 const continuationAtomic = readFileSync(new URL('../negotiation-continuation.atomic.ts', import.meta.url), 'utf8');
 const readiness = readFileSync(new URL('../../lib/drizzle/test-database-readiness.ts', import.meta.url), 'utf8');
-const publicProjection = readFileSync(new URL('../../lib/question/question.public.ts', import.meta.url), 'utf8');
-const controller = readFileSync(new URL('../../controllers/question.controller.ts', import.meta.url), 'utf8');
-const inflightHandler = readFileSync(new URL('../../events/handlers/question.answer.negotiation-inflight.ts', import.meta.url), 'utf8');
 const runExisting = readFileSync(new URL('../../queues/negotiations/run-existing.queue.ts', import.meta.url), 'utf8');
 const negotiationGraph = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.ts', import.meta.url), 'utf8');
 const negotiationGraphFinalize = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.finalize.ts', import.meta.url), 'utf8');
@@ -52,8 +49,6 @@ describe('negotiation question routing static invariants', () => {
     expect(source).toContain("eq(tasks.updatedAt, new Date(provenance.taskUpdatedAt!))");
     expect(source).toContain('expireInflightQuestion');
     expect(source).not.toContain('getNegotiationTaskForOpportunity');
-    expect(inflightHandler).not.toContain('getNegotiationTaskForOpportunity');
-    expect(inflightHandler).not.toContain('updateOpportunityMetadata');
   });
 
   it('settles zero-row/final-reject/expiry-before-persist paths through the task binding', () => {
@@ -74,7 +69,6 @@ describe('negotiation question routing static invariants', () => {
     expect(runExisting).toContain('no positive successor receipt');
     expect(negotiationGraph).toContain('state.continuationExecution');
     expect(negotiationGraphFinalize).toContain('continuationReceipt');
-    expect(inflightHandler).not.toContain('cancelAskUserExpiry');
   });
 
   it('uses a database-enforced successor identity plus a token/fence guard for every continuation effect', () => {
@@ -123,8 +117,6 @@ describe('negotiation question routing static invariants', () => {
     expect(migration).not.toContain('questions_recovery_recipient_intent_fingerprint_uniq');
     expect(readiness).toContain("'public.questions_recovery_recipient_intent_fingerprint_uniq'");
     expect(readiness).toContain("'public.questions_negotiation_provenance_uniq'");
-    expect(publicProjection).toContain('recovery: _recovery');
-    expect(publicProjection).toContain('negotiation: _negotiation');
 
     const answer = source.slice(source.indexOf('async answer('), source.indexOf('async dismiss('));
     const recoveryBranch = answer.indexOf("initialDetection.purpose === 'recovery'");

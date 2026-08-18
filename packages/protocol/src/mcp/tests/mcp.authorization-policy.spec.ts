@@ -296,7 +296,6 @@ describe('dedicated Hermes agent MCP profile', () => {
     create_premise: 'manage:premises',
     update_premise: 'manage:premises',
     retract_premise: 'manage:premises',
-    read_pending_questions: 'manage:identity',
     read_activity_summary: 'manage:identity',
     read_docs: 'manage:identity',
   } as const;

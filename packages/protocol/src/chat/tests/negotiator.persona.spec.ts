@@ -142,11 +142,12 @@ describe("buildNegotiatorSystemContent — pinned signal (intent scope)", () => 
       "list_negotiations",
       "get_negotiation",
       "respond_to_negotiation",
-      "read_pending_questions",
-      "answer_pending_question",
     ]) {
       expect(prompt).toContain(retainedTool);
     }
+    // Question guidance is conversational now: parked negotiations surface as
+    // the negotiator's own question message; no record/answer tools remain.
+    expect(prompt).toContain("routed back to the parked negotiations automatically");
   });
 
   it("includes the human-readable label when provided", () => {
@@ -177,22 +178,23 @@ describe("buildNegotiatorSystemContent — pinned signal (intent scope)", () => 
 
 // ─── Question inbox (P4.3 / IND-404) ─────────────────────────────────────────
 
-describe("buildNegotiatorSystemContent — client question inbox (DM)", () => {
-  it("renders the inbox section for the unscoped DM", () => {
+describe("buildNegotiatorSystemContent — open questions (DM)", () => {
+  it("renders the open-questions section for the unscoped DM", () => {
     const prompt = buildNegotiatorSystemContent(makeCtx(), AGENT_OPTS);
-    expect(prompt).toContain("## Client question inbox");
-    expect(prompt).toContain("answer_pending_question");
-    // Explicit-answer contract: never record inferred answers.
-    expect(prompt).toContain("never an answer you inferred");
+    expect(prompt).toContain("## Open questions");
+    expect(prompt).toContain("question message appears in that signal's own conversation");
+    // The retired card tools must not resurface.
+    expect(prompt).not.toContain("read_pending_questions");
+    expect(prompt).not.toContain("answer_pending_question");
+    expect(prompt).not.toContain("Questions page");
   });
 
-  it("does not render the inbox section in intent-pinned sessions (pin guidance replaces it)", () => {
+  it("does not render the open-questions section in intent-pinned sessions (pin guidance replaces it)", () => {
     const scopedCtx = makeCtx({ scopeType: "intent", scopeId: "intent-42" } as Partial<ResolvedToolContext>);
     const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
-    expect(prompt).not.toContain("## Client question inbox");
+    expect(prompt).not.toContain("## Open questions");
     expect(prompt).toContain("## Pinned signal");
-    // The pin section still teaches conversational answering.
-    expect(prompt).toContain("answer_pending_question");
+    expect(prompt).toContain("routed back to the parked negotiations automatically");
   });
 });
 
@@ -255,8 +257,6 @@ const FULL_REGISTRY_NAMES = [
   "read_premises",
   "update_premise",
   "retract_premise",
-  "read_pending_questions",
-  "answer_pending_question",
   "ask_user_question",
 ];
 
@@ -267,8 +267,6 @@ describe("filterNegotiatorToolsForContext", () => {
     "list_negotiations",
     "get_negotiation",
     "respond_to_negotiation",
-    "read_pending_questions",
-    "answer_pending_question",
   ].map((name) => ({ name }));
 
   it("removes only opportunity listing from intent-scoped negotiator tools", () => {
@@ -283,8 +281,6 @@ describe("filterNegotiatorToolsForContext", () => {
       "list_negotiations",
       "get_negotiation",
       "respond_to_negotiation",
-      "read_pending_questions",
-      "answer_pending_question",
     ]);
   });
 
@@ -308,8 +304,6 @@ describe("filterNegotiatorTools", () => {
 
   it("keeps the P4.5 capability groups (signals, knowledge writes, joins, contacts)", () => {
     for (const allowed of [
-      "read_pending_questions",
-      "answer_pending_question",
       "create_intent",
       "update_intent",
       "delete_intent",

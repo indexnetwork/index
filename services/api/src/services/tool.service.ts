@@ -12,7 +12,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { deriveAllowedNetworkIds, Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
@@ -78,53 +78,6 @@ export class ToolService {
       // CLI) traverse the owner-approval boundary via host attestation. Own
       // authority instance over the store shared with the MCP composition.
       opportunityOwnerApproval: getDirectOpportunityOwnerApprovalAuthority(),
-      findPendingQuestions: async (
-        userId: string,
-        filters?: {
-          sourceType?: string;
-          sourceId?: string;
-          purpose?: import('@indexnetwork/protocol').QuestionPurpose;
-          networkId?: string;
-          scopeType?: 'intent';
-          scopeId?: string;
-          modes?: Array<'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery'>;
-          limit?: number;
-        },
-      ) => {
-        const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
-          ? filters
-          : { ...filters, excludeModes: ['pool_discovery'] });
-        return rows.map((row): PendingQuestionSummary => ({
-          id: row.id,
-          title: row.payload.title,
-          prompt: row.payload.prompt,
-          options: row.payload.options,
-          multiSelect: row.payload.multiSelect,
-          mode: row.detection.mode,
-          ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
-          sourceType: row.detection.sourceType,
-          sourceId: row.detection.sourceId,
-          createdAt: row.createdAt,
-          ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-          actors: row.actors.map((actor) => ({
-            userId: actor.userId,
-            ...(actor.networkId ? { networkId: actor.networkId } : {}),
-          })),
-        }));
-      },
-      // P4.3/IND-404: conversational answers from the negotiator chat ride the
-      // exact pipeline the question cards use — atomic pending→answered flip in
-      // the adapter, then QuestionEvents.onAnswered mode dispatch.
-      answerPendingQuestion: async (
-        userId: string,
-        questionId: string,
-        answer: { selectedOptions: string[]; freeText?: string },
-      ) => questionerAdapter.answer(questionId, userId, {
-        selectedOptions: answer.selectedOptions,
-        ...(answer.freeText ? { freeText: answer.freeText } : {}),
-        answeredBy: userId,
-        answeredAt: new Date().toISOString(),
-      }),
       graphs,
     };
   }

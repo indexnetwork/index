@@ -90,7 +90,6 @@ export {
   type QuestionPoolPushRequestStatus,
   type QuestionPoolPushRequestReason,
 } from "./questions/question.module.js";
-export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
 export { McpApiKeyMetadataSchema } from "./shared/schemas/mcp-auth.schema.js";
 export type {
   McpAuthInput,

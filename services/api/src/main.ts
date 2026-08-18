@@ -72,20 +72,13 @@ import { getRedisClient } from './adapters/cache.adapter';
 import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
-import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
 import { questionMessageQueue } from './queues/question-message.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
-import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
-import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
-import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
-import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
-import { QuestionerAdapter } from './adapters/questioner.adapter';
-import { questionerAdapter } from './adapters/questioner.adapter.instance';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
@@ -167,7 +160,6 @@ negotiationRunExistingQueue.setRuntimeDeps({
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
-  questioner: questionerAdapter,
   opportunities: notificationOpportunityAdapter,
   getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
   getIntentLabel: loadNotificationIntentLabel,
@@ -180,7 +172,6 @@ OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publis
 // transition re-checks both sides' question-messages against the parked set.
 OpportunityEvents.onTransition = ({ opportunity }) =>
   evaluateOpportunityTransition({ opportunityId: opportunity.id, status: opportunity.status });
-QuestionEvents.onCreated = (payload) => { void notificationDeliveryService.publishQuestionCreated(payload); };
 
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
@@ -245,69 +236,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
   premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_expired' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
-};
-
-// ─── Question answer reaction handlers ──────────────────────────────────────
-
-const profileAnswerPremiseDatabase: PremiseGraphDatabase = chatDatabaseAdapter;
-const profileAnswerPremiseGraph = new PremiseGraphFactory(
-  profileAnswerPremiseDatabase,
-  embedderAdapter,
-).createGraph();
-
-const answerQuestionerAdapter = new QuestionerAdapter(db);
-
-const questionAnswerDeps = {
-  createPremiseFromAnswer: createPremiseFromAnswerFactory({
-    runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
-    emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-  }),
-  resumeInflightNegotiation: resumeInflightNegotiationFactory({
-    enqueueResume: async (input) => {
-      await negotiationRunExistingQueue.addJob(input);
-    },
-    // P5.2: the answer is already a distilled disclosure policy — record it
-    // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
-    recordDisclosureRule: async ({ userId, questionId, selectedOptions, freeText }) => {
-      const question = await answerQuestionerAdapter.getById(questionId).catch(() => null);
-      await negotiatorMemoryWriteService.recordDisclosureRuleFromAnswer({
-        userId,
-        questionId,
-        ...(question?.payload.prompt && { questionPrompt: question.payload.prompt }),
-        selectedOptions,
-        ...(freeText !== undefined && { freeText }),
-      });
-    },
-  }),
-};
-
-QuestionEvents.onAnswered = async (payload) => {
-  await handleQuestionAnswered(payload, questionAnswerDeps);
-};
-
-// An authoritative inflight dismissal has already conservatively closed
-// exactly its stamped task at the adapter boundary; post-commit work enqueues
-// the deterministic continuation while the original timer remains the durable
-// recovery sweep.
-QuestionEvents.onDismissed = async (payload) => {
-  if (
-    payload.mode === 'negotiation_inflight'
-    && payload.settlement?.authoritative
-    && payload.settlement.resumeClaimed
-    && payload.settlement.taskId
-    && payload.settlement.settlementId
-  ) {
-    await questionAnswerDeps.resumeInflightNegotiation({
-      userId: payload.userId,
-      opportunityId: payload.settlement.opportunityId,
-      questionId: payload.questionId,
-      selectedOptions: [],
-      taskId: payload.settlement.taskId,
-      settlementId: payload.settlement.settlementId,
-      recipientIntentId: payload.settlement.recipientIntentId,
-      networkId: payload.settlement.networkId,
-    });
-  }
 };
 
 intentQueue.startWorker();

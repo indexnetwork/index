@@ -2493,6 +2493,45 @@ export class QuestionerAdapter {
     return row ? toPersistedQuestion(row) : null;
   }
 
+  /**
+   * Void-on-contact for leftover rows of the retired card generators
+   * (conversational-questions plan, "Retirements"). Answering or dismissing a
+   * leftover card must not error and must never invoke a retired reaction
+   * handler, so contact simply voids the row with the same auditable
+   * `retired_mode` marker the one-time migrations use. No settlement, no
+   * events, no negotiation writes — the parked negotiation (when one exists)
+   * stays the durable record and resurfaces through the DM question-message.
+   *
+   * @returns `voided` when this call dismissed a pending row, `settled` when
+   *   the row was already answered/dismissed, `not_found` when no row exists
+   *   for this user.
+   */
+  async voidLeftoverQuestion(
+    questionId: string,
+    userId: string,
+  ): Promise<'voided' | 'settled' | 'not_found'> {
+    const [updated] = await this.db.update(questions)
+      .set({
+        status: 'dismissed',
+        detection: sql`jsonb_set(${questions.detection}, '{voidedReason}', '"retired_mode"'::jsonb, true)`,
+      })
+      .where(and(
+        eq(questions.id, questionId),
+        eq(questions.status, 'pending'),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      ))
+      .returning({ id: questions.id });
+    if (updated) return 'voided';
+
+    const [existing] = await this.db.select({ id: questions.id }).from(questions)
+      .where(and(
+        eq(questions.id, questionId),
+        sql`${questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      ))
+      .limit(1);
+    return existing ? 'settled' : 'not_found';
+  }
+
   /** Serialize generation and every settlement path for one exact cohort. */
   private async lockNegotiationQuestionAdvisory(
     database: DrizzleDB,

@@ -1,8 +1,6 @@
 import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
 import { db, eq } from '../adapters/database.shared';
 import type { OpportunityDatabaseAdapter } from '../adapters/opportunity.database.adapter';
-import type { AdapterPersistedQuestion, QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { QuestionCreatedPayload } from '../events/question.event';
 import type { OpportunityActionablePayload } from '../events/opportunity.event';
 import { log } from '../lib/log';
 import type { NotificationStreamEvent, NotificationStreamPublisher } from '../lib/notification-stream-events';
@@ -13,26 +11,10 @@ import { actionableRecipientIds, boundedNotificationLabel, buildOpportunityNotif
 const logger = log.service.from('NotificationDelivery');
 
 export interface NotificationDeliveryDependencies {
-  questioner: Pick<QuestionerAdapter, 'getById' | 'findPending'>;
   opportunities: Pick<OpportunityDatabaseAdapter, 'getOpportunity' | 'getNotificationSnapshotOpportunities'>;
   getIdentity: (userId: string) => Promise<UserIdentity | null>;
   getIntentLabel: (intentId: string) => Promise<string | undefined>;
   publish: NotificationStreamPublisher;
-}
-
-function questionIntentId(question: AdapterPersistedQuestion): string | undefined {
-  return question.detection.triggeredBy
-    ?? (question.detection.sourceType === 'intent' ? question.detection.sourceId : undefined)
-    ?? question.detection.negotiation?.recipientIntentId;
-}
-
-function standardQuestionTitle(
-  intentLabel: string | undefined,
-  opportunityLabel: string | undefined,
-): string {
-  if (opportunityLabel) return `Your agent has a question about ${opportunityLabel}'s fit`;
-  if (intentLabel) return `Your agent has a question about your ${intentLabel}`;
-  return 'Your agent has a question';
 }
 
 export async function loadNotificationIntentLabel(intentId: string): Promise<string | undefined> {
@@ -57,38 +39,6 @@ export class NotificationDeliveryService {
     return boundedNotificationLabel(identity?.identity.name);
   }
 
-  private async projectQuestion(
-    question: AdapterPersistedQuestion,
-    recipientId: string,
-  ): Promise<NotificationStreamEvent> {
-    const opportunity = question.detection.sourceType === 'opportunity'
-      ? await this.deps.opportunities.getOpportunity(question.detection.sourceId)
-      : null;
-    const opportunityLabel = opportunity
-      ? await this.opportunityCounterpartLabel(opportunity, recipientId)
-      : undefined;
-
-    if (question.detection.mode === 'negotiation_inflight') {
-      return {
-        type: 'question.new',
-        id: question.id,
-        title: 'Your agent needs your input',
-        body: `A negotiation with ${opportunityLabel ?? 'someone'} is waiting for your answer.`,
-      };
-    }
-
-    const intentId = questionIntentId(question);
-    const intentLabel = intentId
-      ? boundedNotificationLabel(await this.deps.getIntentLabel(intentId))
-      : undefined;
-    return {
-      type: 'question.new',
-      id: question.id,
-      title: standardQuestionTitle(intentLabel, opportunityLabel),
-      body: question.payload.prompt?.trim() || 'Open Index to answer.',
-    };
-  }
-
   private async projectOpportunity(
     opportunity: OpportunityRow,
     recipientId: string,
@@ -111,21 +61,6 @@ export class NotificationDeliveryService {
       title: projection.headline,
       body: projection.summary,
     };
-  }
-
-  async publishQuestionCreated(payload: QuestionCreatedPayload): Promise<void> {
-    try {
-      const question = await this.deps.questioner.getById(payload.questionId);
-      if (!question || question.status !== 'pending') return;
-      const event = await this.projectQuestion(question, payload.userId);
-      await this.deps.publish(payload.userId, event);
-    } catch (error) {
-      logger.error('Failed to publish question notification', {
-        questionId: payload.questionId,
-        userId: payload.userId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
   }
 
   async publishOpportunityActionable(payload: OpportunityActionablePayload): Promise<void> {
@@ -154,17 +89,9 @@ export class NotificationDeliveryService {
   }
 
   async snapshot(userId: string): Promise<NotificationStreamEvent[]> {
-    const [questions, opportunities] = await Promise.all([
-      this.deps.questioner.findPending(userId),
-      this.deps.opportunities.getNotificationSnapshotOpportunities(userId),
-    ]);
-    const pendingQuestions = questions.filter(({ status }) => status === 'pending');
+    const opportunities = await this.deps.opportunities.getNotificationSnapshotOpportunities(userId);
     const actionableOpportunities = opportunities.filter((opportunity) =>
       actionableRecipientIds(opportunity).includes(userId));
-    const [questionEvents, opportunityEvents] = await Promise.all([
-      Promise.all(pendingQuestions.map((question) => this.projectQuestion(question, userId))),
-      Promise.all(actionableOpportunities.map((opportunity) => this.projectOpportunity(opportunity, userId))),
-    ]);
-    return [...questionEvents, ...opportunityEvents];
+    return Promise.all(actionableOpportunities.map((opportunity) => this.projectOpportunity(opportunity, userId)));
   }
 }

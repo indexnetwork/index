@@ -26,8 +26,6 @@
  * barrel — never from runtime/, host implementations, or other capability
  * internals.
  */
-export { createQuestionerTools } from "./question.tools.js";
-
 export {
   INTENT_QUESTION_DAILY_CAP_DEFAULT,
   INTENT_QUESTION_DAILY_WINDOW_HOURS,
@@ -47,7 +45,6 @@ export type {
   QuestionerDatabase,
   QuestionFilters,
 } from "./question.persistence.port.js";
-export type { QuestionerToolDeps } from "./question.tools.port.js";
 
 export {
   NegotiationQuestionCandidateSchema,
