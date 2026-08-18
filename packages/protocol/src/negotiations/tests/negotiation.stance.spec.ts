@@ -16,6 +16,13 @@ import GOLDEN from "./fixtures/negotiator-advocate-prompts.golden.json" with { t
  * self-comparison: if any stance fragment leaks into the default rendering, the
  * matrix comparison below fails.
  *
+ * Only the two `canAskUser` entries have been recaptured since: `ASK_USER_RULE`
+ * was rewritten to have the negotiator author its own consultation question.
+ * That rewrite is deliberately invisible without the grant — every other entry
+ * in the golden is still the `6175f8d13` capture, byte for byte, which is what
+ * makes the ungranted prompt's byte-identity a checked claim rather than an
+ * assertion.
+ *
  * The rest pins the additive, gated fragments per stance, and that the seat
  * invariants pinned by `negotiation.initiator-withdraw-rule.spec.ts` and
  * `negotiation.seat-rules.spec.ts` continue to hold under EVERY stance —

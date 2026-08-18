@@ -61,9 +61,28 @@ const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side sur
  * v2 client-consult pause rule (P3.2). Appended to either seat's rules only
  * when the caller granted `canAskUser` — the action never appears in the
  * prompt (or the schema) otherwise.
+ *
+ * The agent also authors the question it wants to ask. A user's own personal
+ * agent is the only thing that has read this negotiation, so it is the only
+ * thing in a position to ask about what is actually stuck; the rule therefore
+ * asks for BOTH the closed admission category and the question text. `reason` stays a closed enum — it is what the deterministic
+ * consultation policy admits on, not copy — and the authored question rides in
+ * the optional `askUser.question` opened by `AskUserPayloadSchema`. The field
+ * constraints below are the renderer's, mirrored from
+ * `shared/schemas/structured-question.schema.ts`; keep them in step with it.
+ *
+ * Grounding is this negotiation's own exchange. Nothing else is offered to the
+ * agent as source material here.
  */
 const ASK_USER_RULE = `
-- "ask_user" if you need {userName}'s OWN input before you can proceed. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation. Set askUser to exactly one closed server category: { reason: "unresolved_owner_constraint" | "consequential_disclosure_permission" | "repeated_non_convergence" | "insufficient_commitment_authority" }. Never write question text or instructions in askUser; the server owns all owner-facing copy. Use "question" (not "ask_user") when clarification should come from the other side.`;
+- "ask_user" if you need {userName}'s OWN input before you can proceed. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation. Use "question" (not "ask_user") when the clarification should come from the OTHER side.
+- On an "ask_user" turn, set askUser.reason to exactly one closed server category: "unresolved_owner_constraint" | "consequential_disclosure_permission" | "repeated_non_convergence" | "insufficient_commitment_authority". The reason records WHY the pause is warranted; it is not the wording {userName} sees.
+- Write the question yourself in askUser.question. You are {userName}'s own agent and the only one who has read this negotiation, so ask about the specific thing that is actually stuck here, in {userName}'s own terms, grounded in the exchange above. Never a generic template.
+  - title: at most 12 characters — a noun for the decision domain, e.g. "Stage", "Timing", "Budget", "Scope".
+  - prompt: at most 2 sentences and 400 characters, ending in a question mark.
+  - options: 2–4 of {userName}'s real decision options. Each label at most 120 characters; each description at most 280 characters, stating the CONSEQUENCE of choosing that option — what you would do next in this negotiation — not what it means. Never add an "Other" option; clients provide a free-text fallback automatically.
+  - multiSelect: true ONLY when the options are not mutually exclusive (e.g. several priorities at once); false for a single either/or decision.
+  - Do not name, quote, or describe the counterparty. {userName} can read the transcript, but the question itself must stand on its own without their identity or profile in it.`;
 
 /** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
 const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
