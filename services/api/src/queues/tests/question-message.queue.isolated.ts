@@ -9,11 +9,12 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { parseQuestionMessage } from '@indexnetwork/protocol';
-import type { QuestionerEnqueuePayload } from '@indexnetwork/protocol';
+import { negotiationParkAnswerId, negotiationQuestionSettlementId, parseQuestionMessage } from '@indexnetwork/protocol';
+import type { NegotiationAnswerConsumptionPorts, QuestionerEnqueuePayload, RoutedAnswer } from '@indexnetwork/protocol';
 import { questionBlockFixture, questionMessageFixture, questionProseFixture } from '@indexnetwork/protocol/question-block/fixture';
 
-import { QuestionMessageQueue, parkedQuestionMessageTarget, questionMessageJobId } from '../question-message.queue';
+import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId } from '../question-message.queue';
+import type { QuestionAnswerJobData } from '../question-message.queue';
 import type { ParkedNegotiation } from '../../adapters/parked-negotiation.reader.adapter';
 
 const USER_ID = 'user-1';
@@ -230,5 +231,290 @@ describe('questionRegenerationPending lookup', () => {
     expect(await queue.isRegenerationPending(USER_ID, INTENT_ID)).toBe(true);
     // Scoped to its own (user, intent): a sibling scope stays not-pending.
     expect(await queue.isRegenerationPending(USER_ID, 'other-intent')).toBe(false);
+  });
+});
+
+// ─── Answer consumption (conversational-questions answer wiring) ─────────────
+
+/**
+ * Duplicated post-stall park literal (the same duplication the reader makes;
+ * adapters may not import the protocol package). The classifier convergence
+ * spec pins writer and readers to the same value.
+ */
+const PARK_REASONING = "Negotiation parked pending the client's answer.";
+
+interface AnswerHarnessOptions {
+  /** Which refs currently hold a live park, and of which flavour. */
+  parks: Record<string, 'inflight' | 'post_stall'>;
+  routed: { addressesQuestions: boolean; answers: RoutedAnswer[] };
+}
+
+function buildAnswerHarness(options: AnswerHarnessOptions) {
+  const calls = {
+    routerInputs: [] as Array<{ replyText: string }>,
+    settled: [] as Array<{ opportunityId: string; freeText?: string; answeredAt: string }>,
+    inflightResumes: [] as Array<{ opportunityId: string; settlementId: string }>,
+    recorded: [] as Array<{ opportunityId: string; questionId: string; freeText?: string }>,
+    stalledRetries: [] as Array<{ opportunityId: string; parkTaskId: string }>,
+    delivered: [] as DeliveredMessage[],
+  };
+  const taskIdFor = (opportunityId: string) => `task-${opportunityId}`;
+  const ports: NegotiationAnswerConsumptionPorts = {
+    database: {
+      getNegotiationTaskForOpportunity: async (opportunityId: string) => {
+        const park = options.parks[opportunityId];
+        if (!park) return null;
+        if (park === 'inflight') {
+          return {
+            id: taskIdFor(opportunityId),
+            conversationId: 'conv-1',
+            state: 'input_required',
+            metadata: {
+              turnContext: {
+                askUserBinding: {
+                  settlementId: negotiationQuestionSettlementId(taskIdFor(opportunityId)),
+                  recipientUserId: USER_ID,
+                  recipientIntentId: INTENT_ID,
+                  networkId: 'network-1',
+                  opportunityId,
+                },
+              },
+            },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }
+        return {
+          id: taskIdFor(opportunityId),
+          conversationId: 'conv-1',
+          state: 'completed',
+          metadata: {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      },
+      getNegotiationMessages: async (opportunityId: string) =>
+        options.parks[opportunityId] === 'post_stall'
+          ? [{
+              id: 'message-1',
+              senderId: `agent:${USER_ID}`,
+              role: 'agent' as const,
+              parts: [{ kind: 'data', data: {
+                action: 'ask_user',
+                message: null,
+                assessment: { reasoning: PARK_REASONING, suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+                askUser: { reason: 'unresolved_owner_constraint' },
+              } }],
+              createdAt: new Date(),
+              taskId: taskIdFor(opportunityId),
+            }]
+          : [],
+    },
+    settleInflightAnswer: async (input) => {
+      calls.settled.push({
+        opportunityId: input.opportunityId,
+        ...(input.answer.freeText !== undefined ? { freeText: input.answer.freeText } : {}),
+        answeredAt: input.answer.answeredAt,
+      });
+      return 'settled';
+    },
+    enqueueInflightResume: async (input) => {
+      calls.inflightResumes.push({ opportunityId: input.opportunityId, settlementId: input.settlementId });
+    },
+    recordOpportunityAnswer: async ({ opportunityId, answer }) => {
+      calls.recorded.push({
+        opportunityId,
+        questionId: answer.questionId,
+        ...(answer.freeText !== undefined ? { freeText: answer.freeText } : {}),
+      });
+    },
+    enqueueStalledRetry: async (input) => {
+      calls.stalledRetries.push({ opportunityId: input.opportunityId, parkTaskId: input.parkTaskId });
+    },
+  };
+  const queue = new QuestionMessageQueue({
+    answerPorts: ports,
+    answerRouter: {
+      route: async (input) => {
+        calls.routerInputs.push({ replyText: input.replyText });
+        return options.routed;
+      },
+    },
+    chatSessions: {
+      resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-1' } }),
+      addMessage: async (params) => {
+        calls.delivered.push(params);
+        return `message-${calls.delivered.length}`;
+      },
+    },
+  });
+  return { queue, calls };
+}
+
+function answerJob(replyText: string): QuestionAnswerJobData {
+  return {
+    userId: USER_ID,
+    intentId: INTENT_ID,
+    sessionId: 'session-1',
+    replyText,
+    replyMessageId: 'reply-1',
+    questionMessageId: 'question-message-1',
+    questionMessageBody: questionMessageFixture,
+    repliedAt: '2026-08-18T12:00:00.000Z',
+  };
+}
+
+describe('QuestionMessageQueue answer-consumption job', () => {
+  it('routes a reply onto an inflight park and resumes the primary and every alsoUnblocks ref', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: { [FIXTURE_PRIMARY_1]: 'inflight', [FIXTURE_ALSO_1]: 'inflight' },
+      routed: {
+        addressesQuestions: true,
+        answers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'Yes — share the budget range.' }],
+      },
+    });
+
+    await queue.processJob('consume_question_answers', answerJob('Yes, share the budget range.'));
+
+    expect(calls.settled.map((settle) => settle.opportunityId)).toEqual([FIXTURE_PRIMARY_1, FIXTURE_ALSO_1]);
+    // The answered timestamp is the reply's, fixed at enqueue.
+    expect(calls.settled.every((settle) => settle.answeredAt === '2026-08-18T12:00:00.000Z')).toBe(true);
+    expect(calls.settled.every((settle) => settle.freeText === 'Yes — share the budget range.')).toBe(true);
+    expect(calls.inflightResumes).toHaveLength(2);
+    expect(calls.delivered).toHaveLength(0);
+  });
+
+  it('routes a reply onto a post-stall park: records the answer, enqueues the retry', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: { [FIXTURE_PRIMARY_2]: 'post_stall' },
+      routed: {
+        addressesQuestions: true,
+        answers: [{ ref: FIXTURE_PRIMARY_2, answerText: 'March at the earliest.' }],
+      },
+    });
+
+    await queue.processJob('consume_question_answers', answerJob('March at the earliest.'));
+
+    expect(calls.recorded).toEqual([{
+      opportunityId: FIXTURE_PRIMARY_2,
+      questionId: negotiationParkAnswerId(`task-${FIXTURE_PRIMARY_2}`),
+      freeText: 'March at the earliest.',
+    }]);
+    expect(calls.stalledRetries).toEqual([{
+      opportunityId: FIXTURE_PRIMARY_2,
+      parkTaskId: `task-${FIXTURE_PRIMARY_2}`,
+    }]);
+    expect(calls.settled).toHaveLength(0);
+    expect(calls.delivered).toHaveLength(0);
+  });
+
+  it('sends the clarifying follow-up when the reply tried to answer but nothing routed', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: { [FIXTURE_PRIMARY_1]: 'inflight' },
+      routed: { addressesQuestions: true, answers: [] },
+    });
+
+    await queue.processJob('consume_question_answers', answerJob('It depends on the thing I mentioned?'));
+
+    expect(calls.settled).toHaveLength(0);
+    expect(calls.stalledRetries).toHaveLength(0);
+    expect(calls.delivered).toEqual([{
+      sessionId: 'session-1',
+      role: 'assistant',
+      content: QUESTION_ANSWER_CLARIFICATION_MESSAGE,
+    }]);
+  });
+
+  it('stays silent for a reply that does not attempt to answer — never a speculative resume', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: { [FIXTURE_PRIMARY_1]: 'inflight' },
+      routed: { addressesQuestions: false, answers: [] },
+    });
+
+    await queue.processJob('consume_question_answers', answerJob('Thanks! What have you been up to?'));
+
+    expect(calls.routerInputs).toHaveLength(1);
+    expect(calls.settled).toHaveLength(0);
+    expect(calls.recorded).toHaveLength(0);
+    expect(calls.delivered).toHaveLength(0);
+  });
+
+  it('treats a block with no still-parked ref as closed — no routing, no clarification', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: {},
+      routed: { addressesQuestions: true, answers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'Late answer.' }] },
+    });
+
+    await queue.processJob('consume_question_answers', answerJob('Late answer.'));
+
+    expect(calls.routerInputs).toHaveLength(0);
+    expect(calls.settled).toHaveLength(0);
+    expect(calls.delivered).toHaveLength(0);
+  });
+});
+
+describe('enqueueQuestionAnswerReply detection', () => {
+  const reply = {
+    userId: USER_ID,
+    intentId: INTENT_ID,
+    sessionId: 'session-1',
+    replyText: 'March works.',
+    replyMessageId: 'reply-1',
+  };
+
+  it('enqueues consumption when the newest agent message carries a question block', async () => {
+    const enqueued: QuestionAnswerJobData[] = [];
+    const result = await enqueueQuestionAnswerReply(reply, {
+      getSessionMessages: async () => [
+        { id: 'm1', role: 'user', content: 'hello' },
+        { id: 'm2', role: 'assistant', content: questionMessageFixture },
+      ],
+      addConsumeAnswerJob: async (data) => { enqueued.push(data); },
+    });
+
+    expect(result).toBe(true);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]).toMatchObject({
+      userId: USER_ID,
+      intentId: INTENT_ID,
+      sessionId: 'session-1',
+      replyText: 'March works.',
+      replyMessageId: 'reply-1',
+      questionMessageId: 'm2',
+      questionMessageBody: questionMessageFixture,
+    });
+  });
+
+  it('does nothing when the newest agent message is plain conversation', async () => {
+    const enqueued: QuestionAnswerJobData[] = [];
+    const result = await enqueueQuestionAnswerReply(reply, {
+      // The question-message exists but the negotiator has spoken since: the
+      // newest agent message is the open-message anchor, and it has moved on.
+      getSessionMessages: async () => [
+        { id: 'm1', role: 'assistant', content: questionMessageFixture },
+        { id: 'm2', role: 'user', content: 'earlier reply' },
+        { id: 'm3', role: 'assistant', content: 'Got it — I will keep you posted.' },
+      ],
+      addConsumeAnswerJob: async (data) => { enqueued.push(data); },
+    });
+
+    expect(result).toBe(false);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  it('does nothing when the conversation has no agent message at all', async () => {
+    const result = await enqueueQuestionAnswerReply(reply, {
+      getSessionMessages: async () => [{ id: 'm1', role: 'user', content: 'hello?' }],
+      addConsumeAnswerJob: async () => { throw new Error('must not enqueue'); },
+    });
+    expect(result).toBe(false);
+  });
+
+  it('never throws — a detection failure logs and leaves the chat turn intact', async () => {
+    const result = await enqueueQuestionAnswerReply(reply, {
+      getSessionMessages: async () => { throw new Error('database unavailable'); },
+      addConsumeAnswerJob: async () => { throw new Error('must not enqueue'); },
+    });
+    expect(result).toBe(false);
   });
 });

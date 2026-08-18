@@ -53,6 +53,8 @@ interface StoredSettlement {
   counterpartyIntentId: string;
   kind: 'answer' | 'dismiss' | 'timeout';
   questionId?: string;
+  /** Row-less DM-path settlements store the client's answer inline instead of on a QUESTIONS row. */
+  answer?: { selectedOptions: string[]; freeText?: string; answeredAt: string };
   continuationStatus: 'requested' | 'completed';
 }
 
@@ -90,6 +92,18 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function parseInlineAnswer(value: unknown): StoredSettlement['answer'] | null {
+  const raw = record(value);
+  if (
+    !raw
+    || !Array.isArray(raw.selectedOptions)
+    || !raw.selectedOptions.every((option) => typeof option === 'string')
+    || (raw.freeText !== undefined && typeof raw.freeText !== 'string')
+    || typeof raw.answeredAt !== 'string'
+  ) return null;
+  return raw as StoredSettlement['answer'];
+}
+
 function parseSettlement(value: unknown): StoredSettlement | null {
   const raw = record(value);
   if (
@@ -107,7 +121,10 @@ function parseSettlement(value: unknown): StoredSettlement | null {
     || typeof raw.counterpartyIntentId !== 'string'
     || !['answer', 'dismiss', 'timeout'].includes(String(raw.kind))
     || (raw.questionId !== undefined && typeof raw.questionId !== 'string')
-    || (raw.kind === 'answer' && typeof raw.questionId !== 'string')
+    || (raw.answer !== undefined && parseInlineAnswer(raw.answer) === null)
+    // An answer settlement carries its content either on a question row
+    // (card path, questionId) or inline (row-less DM path) — never neither.
+    || (raw.kind === 'answer' && typeof raw.questionId !== 'string' && raw.answer === undefined)
     || (raw.continuationStatus !== 'requested' && raw.continuationStatus !== 'completed')
   ) return null;
   return raw as unknown as StoredSettlement;
@@ -248,6 +265,18 @@ async function loadPrivateConsultation(
   database: DrizzleDB,
   settlement: StoredSettlement,
 ): Promise<ContinuationConsultation | null> {
+  if (settlement.kind === 'answer' && settlement.answer) {
+    // Row-less DM-path settlement: the answer was stored inline by the
+    // adapter settle, under the same recipient validation the card path
+    // performs on its question row. There is no QUESTIONS row to consult.
+    return {
+      recipientUserId: settlement.recipientUserId,
+      recipientIntentId: settlement.recipientIntentId,
+      kind: 'answer',
+      selectedOptions: settlement.answer.selectedOptions,
+      ...(typeof settlement.answer.freeText === 'string' ? { freeText: settlement.answer.freeText } : {}),
+    };
+  }
   if (settlement.kind === 'answer') {
     const [row] = await database.select({ answer: questions.answer, actors: questions.actors, status: questions.status })
       .from(questions)

@@ -149,6 +149,12 @@ interface AdapterNegotiationQuestionSettlement {
   counterpartyIntentId: string;
   kind: 'answer' | 'dismiss' | 'timeout';
   questionId?: string;
+  /**
+   * Row-less DM-path settlement only: the client's answer stored inline so the
+   * continuation claim can read its private consultation without a QUESTIONS
+   * row. Card-path settlements keep the answer on the question row instead.
+   */
+  answer?: { selectedOptions: string[]; freeText?: string; answeredAt: string };
   continuationStatus: 'requested' | 'completed';
   settledAt: string;
   completedAt?: string;
@@ -498,6 +504,19 @@ function parseAskUserBinding(value: unknown): {
   return binding as ReturnType<typeof parseAskUserBinding>;
 }
 
+function parseInlineSettlementAnswer(value: unknown): { selectedOptions: string[]; freeText?: string; answeredAt: string } | null {
+  if (!value || typeof value !== 'object') return null;
+  const answer = value as Record<string, unknown>;
+  if (
+    !Array.isArray(answer.selectedOptions)
+    || !answer.selectedOptions.every((option) => typeof option === 'string')
+    || (answer.freeText !== undefined && typeof answer.freeText !== 'string')
+    || !isNonEmptyString(answer.answeredAt)
+    || Number.isNaN(Date.parse(answer.answeredAt))
+  ) return null;
+  return answer as { selectedOptions: string[]; freeText?: string; answeredAt: string };
+}
+
 function parseNegotiationQuestionSettlement(value: unknown): AdapterNegotiationQuestionSettlement | null {
   if (!value || typeof value !== 'object') return null;
   const settlement = value as Record<string, unknown>;
@@ -522,7 +541,10 @@ function parseNegotiationQuestionSettlement(value: unknown): AdapterNegotiationQ
     || !isNonEmptyString(settlement.settledAt)
     || Number.isNaN(Date.parse(settlement.settledAt))
     || (settlement.questionId !== undefined && !isNonEmptyString(settlement.questionId))
-    || (settlement.kind === 'answer' && !isNonEmptyString(settlement.questionId))
+    || (settlement.answer !== undefined && parseInlineSettlementAnswer(settlement.answer) === null)
+    // An answer settlement carries its content either on a question row
+    // (card path, questionId) or inline (row-less DM path) — never neither.
+    || (settlement.kind === 'answer' && !isNonEmptyString(settlement.questionId) && settlement.answer === undefined)
   ) return null;
   return settlement as unknown as AdapterNegotiationQuestionSettlement;
 }
@@ -3059,6 +3081,156 @@ export class QuestionerAdapter {
       ));
       return input;
     });
+  }
+
+  /**
+   * Row-less analogue of the card answer settle for the conversational DM
+   * path (docs/plans/2026-08-18-conversational-questions.md): CAS the exact
+   * `input_required` task closed under the same advisory/cohort/settlement
+   * locks and stamped ask-user binding checks as `answer`/`expireInflightQuestion`,
+   * but with no QUESTIONS row — the answer is stored INLINE on the
+   * questionSettlement, where `loadPrivateConsultation` reads it for the
+   * continuation claim. Any pending question-card rows for the task are
+   * dismissed; the DM answer supersedes them.
+   *
+   * Returns 'settled' when this call closed the task, 'already_settled' when
+   * an earlier delivery stored an answer settlement for the same consult (the
+   * settlement-keyed continuation enqueue is idempotent, so re-enqueueing is
+   * correct), and 'lost' when the admission gate refuses — the task is no
+   * longer `input_required`, or a dismiss/timeout settlement won the race.
+   */
+  async settleInflightNegotiationAnswerFromDm(input: {
+    taskId: string;
+    settlementId: string;
+    opportunityId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    networkId: string;
+    answer: { selectedOptions: string[]; freeText?: string; answeredAt: string };
+  }): Promise<'settled' | 'already_settled' | 'lost'> {
+    if (input.settlementId !== settlementIdForTask(input.taskId)) return 'lost';
+    const candidate: AdapterNegotiationQuestionCandidate = {
+      purpose: 'inflight_consultation',
+      recipientUserId: input.recipientUserId,
+      recipientIntentId: input.recipientIntentId,
+      opportunityId: input.opportunityId,
+      taskId: input.taskId,
+      networkId: input.networkId,
+    };
+    return this.db.transaction(async (tx) => {
+      await this.lockNegotiationQuestionAdvisory(tx as unknown as DrizzleDB, candidate);
+      const cohort = await this.lockNegotiationQuestionCohort(tx as unknown as DrizzleDB, candidate);
+      await this.lockNegotiationSettlementRows(tx as unknown as DrizzleDB, candidate);
+      const [task] = await tx.select({ state: tasks.state, metadata: tasks.metadata })
+        .from(tasks)
+        .where(eq(tasks.id, input.taskId))
+        .limit(1);
+      if (!task) return 'lost';
+      const metadata = task.metadata as Record<string, unknown> | null;
+      const existingSettlement = parseNegotiationQuestionSettlement(metadata?.questionSettlement);
+      if (existingSettlement) {
+        return existingSettlement.kind === 'answer'
+          && existingSettlement.settlementId === input.settlementId
+          && existingSettlement.recipientUserId === input.recipientUserId
+          && existingSettlement.opportunityId === input.opportunityId
+          ? 'already_settled'
+          : 'lost';
+      }
+      const binding = parseAskUserBinding(
+        (metadata?.turnContext as Record<string, unknown> | undefined)?.askUserBinding,
+      );
+      if (
+        task.state !== 'input_required'
+        || metadata?.type !== 'negotiation'
+        || metadata.opportunityId !== input.opportunityId
+        || metadata.networkId !== input.networkId
+        || !binding
+        || binding.settlementId !== input.settlementId
+        || binding.recipientUserId !== input.recipientUserId
+        || binding.recipientIntentId !== input.recipientIntentId
+        || binding.opportunityId !== input.opportunityId
+        || binding.networkId !== input.networkId
+      ) return 'lost';
+      // Same live revalidation as the card path: the stamped binding must
+      // still describe the current intent/opportunity, or the consult is
+      // stale and the answer must not resume it.
+      const current = await this.resolveNegotiationAdmission(candidate, tx as unknown as DrizzleDB);
+      if (
+        current?.intentFingerprint !== binding.intentFingerprint
+        || current.opportunityStatus !== binding.opportunityStatus
+        || current.opportunityUpdatedAt !== binding.opportunityUpdatedAt
+      ) return 'lost';
+
+      const durableSettlement: AdapterNegotiationQuestionSettlement = {
+        version: 1,
+        settlementId: binding.settlementId,
+        taskId: input.taskId,
+        ...(binding.consultationAttemptId ? { consultationAttemptId: binding.consultationAttemptId } : {}),
+        recipientUserId: input.recipientUserId,
+        recipientIntentId: input.recipientIntentId,
+        opportunityId: input.opportunityId,
+        networkId: input.networkId,
+        intentFingerprint: binding.intentFingerprint,
+        opportunityStatus: binding.opportunityStatus,
+        opportunityUpdatedAt: binding.opportunityUpdatedAt,
+        counterpartyUserId: binding.counterpartyUserId,
+        counterpartyIntentId: binding.counterpartyIntentId,
+        kind: 'answer',
+        answer: {
+          selectedOptions: input.answer.selectedOptions,
+          ...(input.answer.freeText !== undefined ? { freeText: input.answer.freeText } : {}),
+          answeredAt: input.answer.answeredAt,
+        },
+        continuationStatus: 'requested',
+        settledAt: input.answer.answeredAt,
+      };
+      const [claimed] = await tx.update(tasks)
+        .set({
+          state: 'canceled',
+          statusMessage: { reason: 'ask_user_answered', settlementId: durableSettlement.settlementId },
+          metadata: sql`jsonb_set(COALESCE(${tasks.metadata}, '{}'::jsonb), '{questionSettlement}', ${JSON.stringify(durableSettlement)}::jsonb, true)`,
+          statusTimestamp: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(tasks.id, input.taskId), eq(tasks.state, 'input_required')))
+        .returning({ id: tasks.id });
+      if (!claimed) return 'lost';
+      for (const row of cohort) {
+        if (row.status === 'pending') {
+          await tx.update(questions).set({ status: 'dismissed' })
+            .where(and(eq(questions.id, row.id), eq(questions.status, 'pending')));
+        }
+      }
+      return 'settled';
+    });
+  }
+
+  /**
+   * Append one routed DM answer to `opportunity.metadata.userAnswers`, where
+   * continuation prompts read between-session context. Idempotent per
+   * `questionId`: an append whose key is already present is ignored, so a
+   * redelivered reply records nothing twice.
+   */
+  async recordOpportunityUserAnswer(
+    opportunityId: string,
+    entry: { questionId: string; selectedOptions: string[]; freeText?: string; answeredAt: string },
+  ): Promise<void> {
+    await this.db.update(opportunities)
+      .set({
+        metadata: sql`jsonb_set(
+          COALESCE(${opportunities.metadata}, '{}'::jsonb),
+          '{userAnswers}',
+          COALESCE(${opportunities.metadata}->'userAnswers', '[]'::jsonb) || ${JSON.stringify([entry])}::jsonb,
+          true
+        )`,
+      })
+      .where(and(
+        eq(opportunities.id, opportunityId),
+        sql`NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(COALESCE(${opportunities.metadata}->'userAnswers', '[]'::jsonb)) existing
+          WHERE existing->>'questionId' = ${entry.questionId}
+        )`,
+      ));
   }
 
   /** Atomically validate material binding, create/reuse the exact successor, and acquire its fenced lease. */

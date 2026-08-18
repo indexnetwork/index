@@ -25,12 +25,13 @@
  */
 import { Job } from 'bullmq';
 
-import { serializeQuestionMessage } from '@indexnetwork/protocol';
-import type { QuestionerEnqueuePayload } from '@indexnetwork/protocol';
+import { classifyParkedNegotiation, consumeQuestionBlockAnswers, parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
+import type { NegotiationAnswerConsumptionPorts, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { QuestionMessageAuthor } from '../lib/question/question-message.author';
+import { QuestionAnswerRouter } from '../lib/question/question-answer.router';
 import type { ParkedNegotiationReaderAdapter } from '../adapters/parked-negotiation.reader.adapter';
 import type { NegotiatorClientDmRetrieveFn } from '../adapters/negotiator-client-dm.retrieval.adapter';
 
@@ -40,6 +41,36 @@ export interface QuestionMessageJobData {
   userId: string;
   intentId: string;
 }
+
+/** One DM reply to consume against the question-message it answers. */
+export interface QuestionAnswerJobData {
+  userId: string;
+  intentId: string;
+  sessionId: string;
+  /** The client's reply, verbatim. */
+  replyText: string;
+  /** Persisted id of the reply message; keys the job's redelivery dedup. */
+  replyMessageId: string;
+  /** The open question-message the reply answers, captured at reply time. */
+  questionMessageId: string;
+  /**
+   * The question-message's body as delivered. Carried in the payload rather
+   * than re-read: the spine is create-only (no content update exists), so the
+   * body is immutable, and the reply answers the message the client saw.
+   */
+  questionMessageBody: string;
+  /** ISO timestamp of the reply; fixed at enqueue so retries are stable. */
+  repliedAt: string;
+}
+
+/**
+ * Server-owned clarifying follow-up for a reply that tried to answer but
+ * could not be routed to any question. Fixed copy, never model text — same
+ * rule as the fallback prose above.
+ */
+export const QUESTION_ANSWER_CLARIFICATION_MESSAGE =
+  'I could not confidently match that reply to the questions above. '
+  + 'Could you say which question you are answering, or restate the answer together with it?';
 
 /**
  * Singleton job id per scope: while a regeneration is queued for a signal,
@@ -71,18 +102,21 @@ export interface QuestionMessageQueueDeps {
   chatSessions?: QuestionMessageChatSessions;
   /** Signal text for grounding; null when unavailable. */
   getIntentText?: (intentId: string) => Promise<string | null>;
+  /** Answer-consumption seams (#1432); production builds them from the adapters. */
+  answerPorts?: NegotiationAnswerConsumptionPorts;
+  answerRouter?: Pick<QuestionAnswerRouter, 'route'>;
 }
 
 export class QuestionMessageQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<QuestionMessageJobData>(QUEUE_NAME);
+  readonly queue = QueueFactory.createQueue<QuestionMessageJobData | QuestionAnswerJobData>(QUEUE_NAME);
 
   private readonly logger = log.job.from('QuestionMessageJob');
   private readonly queueLogger = log.queue.from('QuestionMessageQueue');
   private readonly deps: QuestionMessageQueueDeps | undefined;
   private author: Pick<QuestionMessageAuthor, 'author'> | null;
-  private worker: ReturnType<typeof QueueFactory.createWorker<QuestionMessageJobData>> | null = null;
+  private worker: ReturnType<typeof QueueFactory.createWorker<QuestionMessageJobData | QuestionAnswerJobData>> | null = null;
 
   constructor(deps?: QuestionMessageQueueDeps) {
     this.deps = deps;
@@ -94,9 +128,26 @@ export class QuestionMessageQueue {
    * job id dedups triggers while a job is queued; completed and failed jobs
    * are removed immediately so the id is reusable for the next park.
    */
-  addRegenerateJob(data: QuestionMessageJobData): Promise<Job<QuestionMessageJobData>> {
+  addRegenerateJob(data: QuestionMessageJobData): Promise<Job<QuestionMessageJobData | QuestionAnswerJobData>> {
     return this.queue.add('regenerate_question_message', data, {
       jobId: questionMessageJobId(data.userId, data.intentId),
+      removeOnComplete: true,
+      removeOnFail: true,
+    });
+  }
+
+  /**
+   * Enqueue consumption of one DM reply against its open question-message.
+   * Runs on THIS queue deliberately: the worker processes one job at a time,
+   * so answer consumption is serialized against regeneration under the same
+   * `question-message.${userId}.${intentId}` path — an answer and a
+   * regeneration for the same signal can never interleave. The job id is the
+   * reply message's id, so a redelivered request coalesces instead of
+   * consuming the same reply twice.
+   */
+  addConsumeAnswerJob(data: QuestionAnswerJobData): Promise<Job<QuestionMessageJobData | QuestionAnswerJobData>> {
+    return this.queue.add('consume_question_answers', data, {
+      jobId: `question-message-answer.${data.replyMessageId}`,
       removeOnComplete: true,
       removeOnFail: true,
     });
@@ -127,10 +178,13 @@ export class QuestionMessageQueue {
   }
 
   /** Run a job handler (used by the worker and by tests with injected deps). */
-  async processJob(name: string, data: QuestionMessageJobData): Promise<void> {
+  async processJob(name: string, data: QuestionMessageJobData | QuestionAnswerJobData): Promise<void> {
     switch (name) {
       case 'regenerate_question_message':
-        await this.handleRegenerate(data);
+        await this.handleRegenerate(data as QuestionMessageJobData);
+        break;
+      case 'consume_question_answers':
+        await this.handleConsumeAnswers(data as QuestionAnswerJobData);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });
@@ -140,11 +194,11 @@ export class QuestionMessageQueue {
   /** Start the BullMQ worker. Idempotent; call from the protocol server only. */
   startWorker(): void {
     if (this.worker) return;
-    const processor = async (job: Job<QuestionMessageJobData>) => {
+    const processor = async (job: Job<QuestionMessageJobData | QuestionAnswerJobData>) => {
       this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
       await this.processJob(job.name, job.data);
     };
-    this.worker = QueueFactory.createWorker<QuestionMessageJobData>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<QuestionMessageJobData | QuestionAnswerJobData>(QUEUE_NAME, processor);
   }
 
   /** Close the worker and queue connections (graceful shutdown). */
@@ -223,6 +277,87 @@ export class QuestionMessageQueue {
     });
   }
 
+  /**
+   * Consume one DM reply against its question-message: verify the message is
+   * still open (≥1 ref still parked on this user's side), route the reply's
+   * content onto block refs via the negotiator, and hand the routed answers
+   * to the resume seam (#1432). A reply that matches nothing resumes
+   * NOTHING — unmatched or empty routing gets a clarifying follow-up in the
+   * DM, never a speculative resume.
+   */
+  private async handleConsumeAnswers(data: QuestionAnswerJobData): Promise<void> {
+    const { userId, intentId, sessionId } = data;
+
+    const parsed = parseQuestionMessage(data.questionMessageBody);
+    if (!parsed) {
+      // Enqueue-time detection parsed this same body; a failure here means a
+      // malformed payload, not a malformed message. Nothing to consume.
+      this.queueLogger.warn('question_answer_unparseable_block', { userId, intentId, questionMessageId: data.questionMessageId });
+      return;
+    }
+    const block = parsed.block;
+
+    const ports = this.deps?.answerPorts
+      ?? (await import('../lib/question/negotiation-answer.ports')).negotiationAnswerConsumptionPorts();
+
+    // Open-message check, re-derived at consumption time: the message is
+    // answerable iff at least one referenced negotiation is still parked
+    // awaiting THIS user. A block whose parks all resolved since the reply
+    // landed is closed — the reply is ordinary conversation, not an answer.
+    let hasParkedRef = false;
+    for (const question of block.questions) {
+      for (const ref of [question.opportunityId, ...(question.alsoUnblocks ?? [])]) {
+        const classification = await classifyParkedNegotiation(ports.database, { opportunityId: ref, userId });
+        if (classification.kind === 'inflight' || classification.kind === 'post_stall') {
+          hasParkedRef = true;
+          break;
+        }
+      }
+      if (hasParkedRef) break;
+    }
+    if (!hasParkedRef) {
+      this.logger.info('question_answer_message_closed', { userId, intentId, questionMessageId: data.questionMessageId });
+      return;
+    }
+
+    // Routing is interpretive (an LLM maps text onto refs) and has no safe
+    // fallback; a hard routing failure throws so the queue's retry policy
+    // covers a transient model outage.
+    const router = this.deps?.answerRouter ?? new QuestionAnswerRouter();
+    const routed = await router.route({ block, replyText: data.replyText });
+    if (!routed.addressesQuestions) {
+      // Ordinary conversation in a DM with an open question-message. The
+      // negotiator's chat reply handles it; consumption stays silent.
+      this.logger.info('question_answer_not_an_answer', { userId, intentId, questionMessageId: data.questionMessageId });
+      return;
+    }
+
+    const result = await consumeQuestionBlockAnswers(ports, {
+      block,
+      userId,
+      answers: routed.answers,
+      answeredAt: data.repliedAt,
+    });
+    this.logger.info('question_answer_consumed', {
+      userId,
+      intentId,
+      questionMessageId: data.questionMessageId,
+      resumed: result.resumed.length,
+      skipped: result.skipped.length,
+      unmatched: result.unmatched.length,
+      needsClarification: result.needsClarification,
+    });
+
+    if (result.needsClarification) {
+      const chatSessions = this.deps?.chatSessions ?? (await import('../services/chat.service')).chatSessionService;
+      await chatSessions.addMessage({
+        sessionId,
+        role: 'assistant',
+        content: QUESTION_ANSWER_CLARIFICATION_MESSAGE,
+      });
+    }
+  }
+
   private getAuthor(): Pick<QuestionMessageAuthor, 'author'> {
     if (!this.author) this.author = new QuestionMessageAuthor();
     return this.author;
@@ -259,4 +394,68 @@ export async function routeParkedQuestionEnqueue(input: QuestionerEnqueuePayload
   if (!target) return false;
   await questionMessageQueue.addRegenerateJob(target);
   return true;
+}
+
+/** Injectable seams for {@link enqueueQuestionAnswerReply}; production uses the real collaborators. */
+export interface QuestionAnswerReplyDetectionDeps {
+  getSessionMessages?: (sessionId: string) => Promise<Array<{ id: string; role: string; content: string }>>;
+  addConsumeAnswerJob?: (data: QuestionAnswerJobData) => Promise<unknown>;
+}
+
+/**
+ * Reply detection for the negotiator DM: when a user message lands in a
+ * ('negotiator-intent', intentId) session, check whether the conversation has
+ * an open question-message — the newest AGENT message, when it carries a
+ * parseable question block — and if so enqueue consumption of the reply
+ * against it. Runs after the reply is persisted and BEFORE the negotiator's
+ * streamed response is, so "newest agent message" is still the message the
+ * client was answering. The still-parked half of the open-message predicate
+ * is deliberately left to the serialized job: it is authoritative there, and
+ * a block whose parks all resolved simply consumes to nothing.
+ *
+ * Returns whether a consumption job was enqueued. Never throws — reply
+ * detection must not break the chat turn.
+ */
+export async function enqueueQuestionAnswerReply(
+  input: {
+    userId: string;
+    intentId: string;
+    sessionId: string;
+    replyText: string;
+    replyMessageId: string;
+  },
+  deps?: QuestionAnswerReplyDetectionDeps,
+): Promise<boolean> {
+  const detectionLogger = log.lib.from('question-answer.reply-detection');
+  try {
+    const getSessionMessages = deps?.getSessionMessages
+      ?? (async (sessionId: string) => (await import('../services/chat.service')).chatSessionService.getSessionMessages(sessionId));
+    const messages = await getSessionMessages(input.sessionId);
+    const newestAgentMessage = [...messages].reverse().find((message) => message.role === 'assistant');
+    if (!newestAgentMessage) return false;
+    const parsed = parseQuestionMessage(newestAgentMessage.content);
+    if (!parsed) return false;
+
+    const addConsumeAnswerJob = deps?.addConsumeAnswerJob
+      ?? ((data: QuestionAnswerJobData) => questionMessageQueue.addConsumeAnswerJob(data));
+    await addConsumeAnswerJob({
+      userId: input.userId,
+      intentId: input.intentId,
+      sessionId: input.sessionId,
+      replyText: input.replyText,
+      replyMessageId: input.replyMessageId,
+      questionMessageId: newestAgentMessage.id,
+      questionMessageBody: newestAgentMessage.content,
+      repliedAt: new Date().toISOString(),
+    });
+    return true;
+  } catch (err) {
+    detectionLogger.error('Question-answer reply detection failed; reply not consumed', {
+      userId: input.userId,
+      intentId: input.intentId,
+      sessionId: input.sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
 }

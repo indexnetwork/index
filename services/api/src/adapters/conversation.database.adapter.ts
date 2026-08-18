@@ -333,11 +333,17 @@ function readNegotiationSignalCount(metadata: unknown): number {
 type PersistedOpportunity = typeof opportunities.$inferSelect;
 type PersistedOpportunityStatus = PersistedOpportunity['status'];
 
+// 'stalled' admits the post-stall retry: answering a parked negotiation's
+// question re-enters through negotiate-existing, which reads the current
+// opportunity row and passes its status as `expectedStatus`. The exact
+// status + updatedAt CAS below still applies, so only a caller that observed
+// the stalled row claims the attempt; terminal statuses stay refused.
 const NEGOTIATION_START_STATUSES = new Set<PersistedOpportunityStatus>([
   'latent',
   'draft',
   'pending',
   'negotiating',
+  'stalled',
 ]);
 
 export interface CreateNegotiationTaskForAttemptInput {

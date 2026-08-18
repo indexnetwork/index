@@ -13,7 +13,7 @@ import { userService } from "../services/user.service";
 import { questionService } from "../services/question.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { questionMessageQueue } from "../queues/question-message.queue";
+import { enqueueQuestionAnswerReply, questionMessageQueue } from "../queues/question-message.queue";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
@@ -605,10 +605,27 @@ export class ChatController {
             }
           }
 
+          // A user message in the signal's negotiator DM may be an answer to
+          // the open question-message. Detection runs after the reply is
+          // persisted and BEFORE the assistant response is, so the newest
+          // agent message is still the one the client was answering; the
+          // serialized question-message queue owns everything after that.
+          const detectQuestionAnswerReply = async (replyMessageId: string) => {
+            if (sessionPersona !== NEGOTIATOR_PERSONA_ID || effectiveScope?.scopeType !== 'intent') return;
+            await enqueueQuestionAnswerReply({
+              userId: user.id,
+              intentId: effectiveScope.scopeId,
+              sessionId,
+              replyText: messageContent,
+              replyMessageId,
+            });
+          };
+
           // Steer-interrupted: persist partial turn and bail (no done event emitted)
           if (streamInterruptedBySteer) {
             try {
-              await chatSessionService.addMessage({ sessionId, role: 'user', content: messageContent });
+              const interruptedUserMessageId = await chatSessionService.addMessage({ sessionId, role: 'user', content: messageContent });
+              await detectQuestionAnswerReply(interruptedUserMessageId);
               // Use authoritative fullResponse when available; fall back to accumulated
               // partial tokens when the stream was cut before response_complete fired.
               const interruptedContent = (fullResponse || partialResponse).trim();
@@ -638,11 +655,12 @@ export class ChatController {
           }
 
           // Persist user message and assistant response
-          await chatSessionService.addMessage({
+          const userMessageId = await chatSessionService.addMessage({
             sessionId,
             role: "user",
             content: messageContent,
           });
+          await detectQuestionAnswerReply(userMessageId);
           let assistantMessageId: string | undefined;
           if (fullResponse) {
             assistantMessageId = await chatSessionService.addMessage({
