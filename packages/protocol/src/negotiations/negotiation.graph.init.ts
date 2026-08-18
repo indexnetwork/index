@@ -18,6 +18,7 @@ import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.j
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
+import { readNegotiationMessages } from "./negotiation.scope.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
 import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
@@ -85,13 +86,18 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
     }
 
     // --- Load this negotiation's own prior turns ---
-    // A negotiation is keyed by opportunity, not task: an ask_user pause resumes
-    // into a successor task, and both tasks' turns are the same negotiation.
-    // Without an opportunity there is no negotiation identity to scope to, so
-    // the run is by definition unopened.
-    const negotiationMessages = state.opportunityId
-      ? await deps.database.getNegotiationMessages(state.opportunityId)
-      : [];
+    // Resolved through the shared scope rule, not a local copy of it: the graph
+    // and the respond/polling surfaces must agree on what "this negotiation's
+    // messages" means, or an external agent can be told it is not its turn
+    // forever. That rule also owns the unkeyed case — a run with no opportunity
+    // has no identity apart from its conversation.
+    const negotiationMessages = await readNegotiationMessages({
+      byNegotiation: (id) => deps.database.getNegotiationMessages(id),
+      byConversation: async () => conversationMessages,
+    }, {
+      conversationId: conversation.id,
+      metadata: { opportunityId: state.opportunityId },
+    });
     const priorTurns: NegotiationTurn[] = turnsFromMessages(negotiationMessages);
 
     // `isContinuation` means THIS negotiation has already spoken — not that the

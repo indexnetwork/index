@@ -221,7 +221,9 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
       negotiationMessages: [],
     });
 
-    const result = await runGraph(stubs);
+    // A real fresh match carries its own opportunity; that is what scopes it
+    // apart from the concluded negotiation already in this DM.
+    const result = await runGraph(stubs, { opportunityId: "opp-fresh" });
 
     // The gate still runs before re-engaging the counterparty, and a shadow
     // decision never blocks.

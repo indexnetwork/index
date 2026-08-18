@@ -2325,8 +2325,14 @@ export class ConversationDatabaseAdapter {
       )).limit(1).for('update');
       if (!current) return null;
 
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped: the arming side counts THIS negotiation's turns
+      // (`payload.history.length`), so a conversation-wide count would never
+      // agree in a DM that already holds another negotiation, and the parked
+      // turn would never get its fallback.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
 
       const hasContinuation = hasNegotiationContinuationIdentity(current.metadata);
@@ -2438,8 +2444,14 @@ export class ConversationDatabaseAdapter {
         current.state !== 'waiting_for_agent'
         || metadataRecord(current.metadata).negotiationParkGeneration !== input.parkGeneration
       ) return null;
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped: the arming side counts THIS negotiation's turns
+      // (`payload.history.length`), so a conversation-wide count would never
+      // agree in a DM that already holds another negotiation and the parked
+      // turn would never receive its system-agent fallback.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
 
       const hasContinuation = hasNegotiationContinuationIdentity(current.metadata);
@@ -2557,8 +2569,12 @@ export class ConversationDatabaseAdapter {
         || current.claimedByAgentId !== input.claimedByAgentId
         || current.claimedAt?.getTime() !== input.claimedAt.getTime()
       ) return null;
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped, as above: pickup arms this timer with the negotiation's
+      // own turn count.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
       const hasContinuation = hasNegotiationContinuationIdentity(current.metadata);
       let continuationExecution: ContinuationExecutionFence | null = null;
@@ -2902,8 +2918,12 @@ export class ConversationDatabaseAdapter {
         const deadlineAt = priorOutbox?.generation === generation && typeof priorOutbox.deadlineAt === 'string'
           ? priorOutbox.deadlineAt
           : new Date(parkStartedAt.getTime() + input.parkWindowMs).toISOString();
-        const messageRows = await tx.select({ id: schema.messages.id }).from(schema.messages)
-          .where(eq(schema.messages.conversationId, row.conversationId));
+        // Arms `turnNumber` for the acquire CAS above, which is match-scoped;
+        // a conversation-wide count here would never satisfy it.
+        const messageRows = await selectNegotiationTurnHistoryInTransaction(tx, {
+          conversationId: row.conversationId,
+          metadata,
+        });
         const rawContinuation = metadata.continuationExecution && typeof metadata.continuationExecution === 'object'
           && !Array.isArray(metadata.continuationExecution)
           ? metadata.continuationExecution as Record<string, unknown>
@@ -3446,8 +3466,11 @@ export class ConversationDatabaseAdapter {
         sql`COALESCE(${schema.tasks.metadata}->'continuationExecution'->>'status', '') <> 'parked'`,
       )).limit(1).for('update');
       if (!current) return null;
-      const turns = await tx.select({ id: schema.messages.id }).from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId));
+      // Match-scoped, matching how this turnNumber was armed.
+      const turns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadataRecord(current.metadata),
+      });
       if (turns.length !== input.turnNumber) return null;
       const now = new Date();
       const [task] = await tx.update(schema.tasks).set({
@@ -3645,10 +3668,13 @@ export class ConversationDatabaseAdapter {
         || boundCoordinates.counterpartyIntentId !== input.expectedMaterial.counterpartyIntentId
       ) return null;
 
-      const [{ value: turnCount }] = await tx.select({ value: count() })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, task.conversationId));
-      if (Number(turnCount) !== input.expectedTurnCount || input.expectedTurnCount < 1) return null;
+      // Match-scoped: the caller derives `expectedTurnCount` from this
+      // negotiation's messages.
+      const turnRows = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: task.conversationId,
+        metadata,
+      });
+      if (turnRows.length !== input.expectedTurnCount || input.expectedTurnCount < 1) return null;
       const [intent] = await tx.select({
         userId: schema.intents.userId,
         payload: schema.intents.payload,
@@ -3703,11 +3729,14 @@ export class ConversationDatabaseAdapter {
         ));
       if (new Set(members.map((member) => member.userId)).size !== 2) return null;
 
-      const [precedingMessage] = await tx.select({ senderId: schema.messages.senderId, parts: schema.messages.parts })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, task.conversationId))
-        .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
-        .limit(1);
+      // The turn being paused after must belong to THIS negotiation: the last
+      // message in the shared DM may be the tail of an entirely different match,
+      // which would validate the counterparty check against the wrong exchange.
+      const precedingTurns = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: task.conversationId,
+        metadata,
+      });
+      const precedingMessage = precedingTurns[precedingTurns.length - 1];
       const precedingData = Array.isArray(precedingMessage?.parts)
         ? (precedingMessage.parts as Array<{ kind?: unknown; data?: unknown }>).find((part) => part.kind === 'data')?.data
         : null;

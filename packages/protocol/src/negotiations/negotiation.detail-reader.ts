@@ -141,7 +141,10 @@ export async function readAuthorizedNegotiationDetail(
     isUsersTurn,
     isContinuation: metadata.isContinuation ?? false,
     priorTurnCount,
-    turnsAdded: turnCount - priorTurnCount,
+    // Clamped: `turnCount` is match-scoped, but a task stamped before that
+    // change carries a conversation-wide `priorTurnCount`, which would other-
+    // wise report a negative delta for negotiations in flight across the deploy.
+    turnsAdded: Math.max(0, turnCount - priorTurnCount),
     turns,
     outcome,
     lifecycle: buildLifecycleNarration(

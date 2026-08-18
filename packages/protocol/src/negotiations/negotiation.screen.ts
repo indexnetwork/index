@@ -134,10 +134,14 @@ export class NegotiationScreener {
 
     // IND-569: prefer the attributed rendering (labeled per-opportunity blocks)
     // when the graph supplies it; otherwise fall back to the flat prior-turn list.
-    const hasAttributed = input.isContinuation
-      && input.priorDialogueAttributed != null
+    //
+    // Deliberately NOT gated on `isContinuation`, which means "this negotiation
+    // has already spoken". The gate this section exists for is the opposite
+    // case — a FRESH signal against a counterparty the client has prior dialogue
+    // with (IND-563), which is precisely when duplicate outreach must be caught.
+    const hasAttributed = input.priorDialogueAttributed != null
       && !attributedDialogueIsEmpty(input.priorDialogueAttributed);
-    const flatPriorDialogue = input.isContinuation && input.priorDialogue && input.priorDialogue.length > 0
+    const flatPriorDialogue = input.priorDialogue && input.priorDialogue.length > 0
       ? input.priorDialogue
       : [];
     const priorDialogueBody = hasAttributed

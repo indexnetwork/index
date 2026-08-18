@@ -187,19 +187,35 @@ describe("NegotiationScreener.invoke", () => {
     expect(user).toContain("on its own merits");
   });
 
-  it("omits the prior-dialogue section when not a continuation (byte-identical path)", async () => {
+  it("renders the prior-dialogue section for a FRESH signal against a known counterparty (IND-563)", async () => {
     const screener = new SeamScreener({
       decision: "pass",
       reasoning: "r",
       evidence: { counterpartyPremiseFit: "", intentAlignment: "" },
     });
-    // priorDialogue present but isContinuation not set → still omitted.
+    // `isContinuation` means "this negotiation has already spoken", so it is
+    // false here — a NEW signal against a counterparty the client has prior
+    // dialogue with. That is exactly the case this gate exists to catch, so the
+    // section must render rather than be suppressed.
     await screener.invoke({
       ...baseInput,
       priorDialogue: [
         { action: "outreach", assessment: { reasoning: "x", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: null },
       ],
     });
+
+    const user = screener.capturedMessages.find((m) => m.role === "user")!.content;
+    expect(user).toContain("Prior dialogue with");
+    expect(user).toContain("Do NOT reach out again on generic overlap");
+  });
+
+  it("omits the prior-dialogue section when there is no prior dialogue at all", async () => {
+    const screener = new SeamScreener({
+      decision: "pass",
+      reasoning: "r",
+      evidence: { counterpartyPremiseFit: "", intentAlignment: "" },
+    });
+    await screener.invoke({ ...baseInput });
 
     const user = screener.capturedMessages.find((m) => m.role === "user")!.content;
     expect(user).not.toContain("Prior dialogue with");
