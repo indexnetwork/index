@@ -1,7 +1,9 @@
 # Conversational questions
 
-**Status:** shipped 2026-08-18. Every part of this plan is on `dev`; what
-remains is listed under [What is left](#what-is-left) at the end.
+**Status:** core loop shipped 2026-08-18 (create-only delivery). On `dev`:
+park → question-message in the DM → steps render. Not yet built: answer
+wiring, the edit rule, the exhaustion evaluator, notifications, and the
+retirements — see [What is left](#what-is-left) at the end.
 
 | PR | What landed |
 | --- | --- |
@@ -193,8 +195,10 @@ and the Questions page join the list.
 
 ## New machinery
 
-> All of it is built — see the PR table at the top. This section records what
-> the model demanded, not outstanding work.
+> Partially built — see the PR table at the top. The block format, the
+> regeneration queue, the ask cap, and the trigger reroutes are on `dev`. The
+> chat-message content update (edit rule) and the exhaustion evaluator are
+> NOT built; they are items in [What is left](#what-is-left).
 
 - **Chat message content update.** `conversation.database.adapter.ts` has
   `createChatMessage` (`:5212`) and metadata upsert (`:5397`) but no content
@@ -241,7 +245,7 @@ live. Check Railway before assuming any of this runs.
 
 ## What is left
 
-Two items, in order. Everything else in this plan is on `dev`.
+Five items, in order. Everything else in this plan is on `dev`.
 
 **1. Answer wiring.** [#1432](https://github.com/indexnetwork/index/pull/1432)
 landed the protocol seam — `routeAnswerRef` / `classifyParkedNegotiation` /
@@ -264,7 +268,24 @@ unconditionally at `main.ts:504`), so this is reachable today. Carries:
 - The reader ↔ `classifyParkedNegotiation` contract test. The routing predicate
   is agreed verbatim across lanes and nothing currently pins it.
 
-**2. Retirements.** The spine silences both old generator enqueues but leaves
+**2. Edit rule + content-update seam.** The spine is create-only: a park
+while a message is already open creates a second message. Build the
+agent-scoped chat-message content update in
+`conversation.database.adapter.ts`, apply the newest-message-only
+regeneration rule, and land the live `questionRegenerationPending` flip
+deferred from #1434 — the mutation and the signal that guards it belong in
+the same PR.
+
+**3. Exhaustion evaluator.** The own-intent trigger does not exist: nothing
+batches the first message at "no ongoing negotiations on this intent."
+Today a message only appears when an individual negotiation parks. Hook the
+state-transition evaluator, subsume answer wiring's continuation re-park
+stopgap.
+
+**4. Notifications.** The policy (create → notify; update with new
+questions → notify; otherwise silent) is designed but unimplemented.
+
+**5. Retirements.** The spine silences both old generator enqueues but leaves
 the machinery standing. Sequence after answer wiring — both touch
 `questioner.queue.ts` and the adapter layer. Retire: `QuestionerAgent`, its
 presets and input union, the queue's mode dispatch, the four dead generators
