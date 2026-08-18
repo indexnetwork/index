@@ -1,6 +1,20 @@
 # Conversational questions
 
-**Status:** proposed
+**Status:** shipped 2026-08-18. Every part of this plan is on `dev`; what
+remains is listed under [What is left](#what-is-left) at the end.
+
+| PR | What landed |
+| --- | --- |
+| [#1429](https://github.com/indexnetwork/index/pull/1429) | The question block contract — `shared/schemas/question-block.schema.ts` |
+| [#1430](https://github.com/indexnetwork/index/pull/1430) | Post-stall parking with an authored gap, bounded by the ask cap |
+| [#1433](https://github.com/indexnetwork/index/pull/1433) | Delivery spine — the regeneration job writing question-messages into the signal's DM |
+| [#1432](https://github.com/indexnetwork/index/pull/1432) | Answer consumption — the protocol seam routing a reply to its parked negotiations |
+| [#1431](https://github.com/indexnetwork/index/pull/1431) | Question-messages rendered as steps in the negotiator DM |
+| [#1434](https://github.com/indexnetwork/index/pull/1434) | Regeneration surfaced as a pending signal in the DM |
+
+Built on [#1428](https://github.com/indexnetwork/index/pull/1428), the authoring
+half of the superseded plan.
+
 **Date:** 2026-08-18
 **Supersedes:** the delivery half (PRs 2–5) of
 [2026-08-17-personal-agent-authored-questions](2026-08-17-personal-agent-authored-questions.md).
@@ -179,6 +193,9 @@ and the Questions page join the list.
 
 ## New machinery
 
+> All of it is built — see the PR table at the top. This section records what
+> the model demanded, not outstanding work.
+
 - **Chat message content update.** `conversation.database.adapter.ts` has
   `createChatMessage` (`:5212`) and metadata upsert (`:5397`) but no content
   update; the edit rule needs one, scoped to agent-authored messages.
@@ -221,3 +238,38 @@ get a clarifying follow-up, not a speculative resume.
 **Flag state is not the in-code default.** `QUESTIONER_ENABLED`,
 `NEGOTIATION_CONSULTATION_POLICY_MODE`, and the ask-user flag decide what is
 live. Check Railway before assuming any of this runs.
+
+## What is left
+
+Two items, in order. Everything else in this plan is on `dev`.
+
+**1. Answer wiring.** [#1432](https://github.com/indexnetwork/index/pull/1432)
+landed the protocol seam — `routeAnswerRef` / `classifyParkedNegotiation` /
+`resumeParkedNegotiation` / `consumeQuestionBlockAnswers` over
+`NegotiationAnswerConsumptionPorts` — but the four port implementations are
+not written, so **the loop is open in production**: a user can receive a
+question-message, answer it, and nothing resumes. The delivery spine is
+ungated (`question-message.queue.ts` reads no env; its worker starts
+unconditionally at `main.ts:504`), so this is reachable today. Carries:
+
+- The four ports: row-less inflight settle, run-existing enqueues,
+  `userAnswers` append deduped by questionId.
+- Reply detection, and the `needsClarification` follow-up for a reply matching
+  no reference. A misroute is worse than asking again.
+- `'stalled'` added to `NEGOTIATION_START_STATUSES`
+  (`conversation.database.adapter.ts:336`). Without it the post-stall retry
+  claim no-ops and the ports resume nothing.
+- A stopgap trigger for the continuation re-park gap: finalize's enqueue skips
+  continuation sessions, so a post-stall re-park after a resume has no trigger.
+- The reader ↔ `classifyParkedNegotiation` contract test. The routing predicate
+  is agreed verbatim across lanes and nothing currently pins it.
+
+**2. Retirements.** The spine silences both old generator enqueues but leaves
+the machinery standing. Sequence after answer wiring — both touch
+`questioner.queue.ts` and the adapter layer. Retire: `QuestionerAgent`, its
+presets and input union, the queue's mode dispatch, the four dead generators
+(uptake, pool mining, recovery, intent refinement), the chat
+`ask_user_question` tool, the questions table and its adapter surface, and the
+Questions page. Then collapse the intent-scope disjunction
+(`questioner.adapter.ts:1435`) to a single branch. In-flight rows void with
+`voidedReason: 'retired_mode'`; the table drops last, once nothing reads it.

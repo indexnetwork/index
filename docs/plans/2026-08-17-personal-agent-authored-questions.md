@@ -1,7 +1,8 @@
 # Personal-agent-authored questions
 
-**Status:** in progress — PR 1 (issues 1-5) complete, awaiting merge.
-Delivery (PRs 2–5) superseded by
+**Status:** done — PR 1 (issues 1–5) shipped as
+[#1428](https://github.com/indexnetwork/index/pull/1428), squash-merged
+2026-08-18. Delivery (PRs 2–5) superseded by
 [2026-08-18-conversational-questions](2026-08-18-conversational-questions.md):
 questions are delivered as messages in the signal's A2H DM, not persisted as
 question rows. PR 1's authoring path is the foundation of that plan and
@@ -171,21 +172,23 @@ conversational-questions plan. That is the PR boundary.
 
 ### PR 1 — authoring (inert) ✅ complete
 
-| # | Issue | Status |
-| --- | --- | --- |
-| 1 | Turn payload carries the authored question | ✅ `d0f46c0649` |
-| 2 | Negotiator authors it from the transcript | ✅ `2384452c1e` |
-| 3 | A2H reader seam, keyed `(userId, intentId)` | ✅ `77f3fb41fe` |
-| — | Validate the three documented-but-unchecked env vars (drive-by) | ✅ `7cef37f706` |
-| 4 | Ground authoring in the signal's client DM | ✅ `87d82cb430` |
-| 5 | Guard the authored question | ✅ `8fc57f4a35` |
+All five shipped in [#1428](https://github.com/indexnetwork/index/pull/1428).
+The branch's per-issue commits are not referenced by SHA: the PR was
+squash-merged, so they survive on no ref. Read them from the PR.
 
-Ready to merge. Rebase-check `origin/dev` first — it moved once mid-stream
-(`db38187754` landed after this branch was cut).
+| # | Issue |
+| --- | --- |
+| 1 | Turn payload carries the authored question |
+| 2 | Negotiator authors it from the transcript |
+| 3 | A2H reader seam, keyed `(userId, intentId)` |
+| — | Validate the three documented-but-unchecked env vars (drive-by) |
+| 4 | Ground authoring in the signal's client DM |
+| 5 | Guard the authored question |
 
-The agent now writes a grounded, guarded question into a field that is dropped
-on the floor. Nothing reads it; the turn node still calls `questionerEnqueue`
-and the blind `QuestionerAgent` still writes what the client sees.
+At the time it merged the agent wrote a grounded, guarded question into a field
+that was dropped on the floor — nothing read it. That was the point: the
+authoring path landed complete and inert, and the conversational-questions
+plan connected it afterwards.
 
 ### PRs 2–5 — superseded ⛔
 
