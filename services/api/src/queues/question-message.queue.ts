@@ -102,6 +102,30 @@ export class QuestionMessageQueue {
     });
   }
 
+  /**
+   * True iff the signal's regeneration job is queued or running — the
+   * `questionRegenerationPending` loading-state contract with the web steps
+   * UI (#1431): while true, the DM shows a pending indicator instead of a
+   * half-stale message. Fails open to false; a Redis hiccup must not break
+   * session resolution.
+   */
+  async isRegenerationPending(userId: string, intentId: string): Promise<boolean> {
+    try {
+      const job = await this.queue.getJob(questionMessageJobId(userId, intentId));
+      if (!job) return false;
+      const state = await job.getState();
+      return state === 'waiting' || state === 'delayed' || state === 'active'
+        || state === 'prioritized' || state === 'waiting-children';
+    } catch (err) {
+      this.queueLogger.warn('Regeneration-pending lookup failed; reporting not pending', {
+        userId,
+        intentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+  }
+
   /** Run a job handler (used by the worker and by tests with injected deps). */
   async processJob(name: string, data: QuestionMessageJobData): Promise<void> {
     switch (name) {

@@ -13,6 +13,7 @@ import { userService } from "../services/user.service";
 import { questionService } from "../services/question.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
+import { questionMessageQueue } from "../queues/question-message.queue";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
@@ -854,10 +855,16 @@ export class ChatController {
       return Response.json({ error: result.error }, { status: result.status });
     }
 
+    // Loading-state contract with the steps UI (#1431): true iff this
+    // scope's singleton regeneration job is queued or running, so the DM can
+    // show a pending indicator instead of a half-stale question-message.
+    const questionRegenerationPending = await questionMessageQueue.isRegenerationPending(user.id, intentId);
+
     return Response.json({
       session: result.session,
       created: result.created,
       agent: { id: agent.id, name: agent.name, description: agent.description },
+      questionRegenerationPending,
     });
   }
 

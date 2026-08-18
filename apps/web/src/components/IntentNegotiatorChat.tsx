@@ -45,10 +45,11 @@ export interface IntentNegotiatorChatProps {
   /**
    * A question-message regeneration is queued or running for this
    * conversation — show an agent-working indicator so the user doesn't
-   * answer a message that's about to be replaced. Contract agreed with the
-   * delivery spine: the API exposes `questionRegenerationPending` on the
-   * POST /chat/negotiator/session response (wired by a follow-up there);
-   * until the parent passes it through, this stays absent and inert.
+   * answer a message that's about to be replaced. The component seeds this
+   * from `questionRegenerationPending` on the POST /chat/negotiator/session
+   * bootstrap response (the contract agreed with the delivery spine); pass
+   * the prop only to override with a fresher signal than the bootstrap
+   * snapshot.
    */
   questionRegenerationPending?: boolean;
   /** Monotonic signal to reload server-appended Beat narration. */
@@ -109,6 +110,7 @@ export default function IntentNegotiatorChat({
   } = useAIChat();
 
   const [agentName, setAgentName] = useState<string | null>(null);
+  const [bootstrapRegenerationPending, setBootstrapRegenerationPending] = useState(false);
   const [ready, setReady] = useState(false);
   const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
@@ -124,6 +126,9 @@ export default function IntentNegotiatorChat({
   const [proposalStatusMap, setProposalStatusMap] = useState<Record<string, "pending" | "created" | "rejected">>({});
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
 
+  // The prop overrides the bootstrap snapshot when the parent has a fresher signal.
+  const regenerationPending = questionRegenerationPending ?? bootstrapRegenerationPending;
+
   // Bootstrap: get-or-create the per-intent negotiator session, then load it
   // into the shared chat context. One session per (user, intent, persona) —
   // repeat visits land in the same conversation. The parent remounts this
@@ -135,10 +140,12 @@ export default function IntentNegotiatorChat({
         session: { id: string };
         created: boolean;
         agent: { id: string; name: string; description: string | null };
+        questionRegenerationPending?: boolean;
       }>("/chat/negotiator/session", { intentId })
-      .then(async ({ session, created, agent }) => {
+      .then(async ({ session, created, agent, questionRegenerationPending: pendingAtBootstrap }) => {
         if (!active) return;
         setAgentName(agent.name);
+        setBootstrapRegenerationPending(Boolean(pendingAtBootstrap));
         const historyLoaded = await loadSession(session.id);
         if (active) {
           if (!created && historyLoaded) setRestoredHistoryLoaded(true);
@@ -171,7 +178,7 @@ export default function IntentNegotiatorChat({
   // Follow the stream.
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [answered.length, messages, questions.length, questionChainPending, questionRegenerationPending, ready]);
+  }, [answered.length, messages, questions.length, questionChainPending, regenerationPending, ready]);
 
   // Tap-to-quote from a question step: prefill the input with the question
   // being answered so the agent can route the reply. The answer itself stays
@@ -386,7 +393,7 @@ export default function IntentNegotiatorChat({
                 questionChainPending,
               )}
 
-            {questionRegenerationPending && <QuestionRegenerationIndicator />}
+            {regenerationPending && <QuestionRegenerationIndicator />}
           </>
         )}
         <div ref={scrollRef} />
