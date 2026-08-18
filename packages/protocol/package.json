@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "21.0.0",
+  "version": "21.1.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -8,6 +8,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./question-block": {
+      "types": "./dist/shared/schemas/question-block.schema.d.ts",
+      "import": "./dist/shared/schemas/question-block.schema.js"
+    },
+    "./question-block/fixture": {
+      "types": "./dist/shared/schemas/question-block.fixture.d.ts",
+      "import": "./dist/shared/schemas/question-block.fixture.js"
     }
   },
   "files": [

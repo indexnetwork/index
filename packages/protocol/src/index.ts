@@ -97,6 +97,17 @@ export type {
   McpResolvedIdentity,
 } from "./shared/schemas/mcp-auth.schema.js";
 export type { DiscoveryNegotiation } from "./shared/schemas/discovery-question.schema.js";
+export {
+  QUESTION_BLOCK_MARKER,
+  QUESTION_BLOCK_VERSION,
+  QuestionBlockSchema,
+  QuestionBlockQuestionSchema,
+  parseQuestionMessage,
+  serializeQuestionMessage,
+  type QuestionBlock,
+  type QuestionBlockQuestion,
+  type ParsedQuestionMessage,
+} from "./shared/schemas/question-block.schema.js";
 export type { NetworkAssignmentMetadata } from "./shared/schemas/network-assignment.schema.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
 
