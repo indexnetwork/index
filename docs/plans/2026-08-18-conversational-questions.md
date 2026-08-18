@@ -1,7 +1,7 @@
 # Conversational questions
 
 **Status:** core loop shipped 2026-08-18 (create-only delivery). On `dev`:
-park → question-message in the DM → steps render. Not yet built: the exhaustion evaluator, notifications, and the
+park → question-message in the DM → steps render. Not yet built: notifications and the
 retirements — see [What is left](#what-is-left) at the end.
 
 | PR | What landed |
@@ -14,6 +14,7 @@ retirements — see [What is left](#what-is-left) at the end.
 | [#1434](https://github.com/indexnetwork/index/pull/1434) | Regeneration surfaced as a pending signal in the DM |
 | [#1435](https://github.com/indexnetwork/index/pull/1435) | Answer wiring — DM replies routed to parked-negotiation resume; `'stalled'` retry claims admitted; continuation re-park stopgap |
 | [#1436](https://github.com/indexnetwork/index/pull/1436) | The edit rule — in-place regeneration of the open message, guarded update seam, live pending flip |
+| [#1437](https://github.com/indexnetwork/index/pull/1437) | Exhaustion evaluator — transition-driven regeneration; unpark-prune and exhaustion regrouping; stopgap subsumed |
 
 Built on [#1428](https://github.com/indexnetwork/index/pull/1428), the authoring
 half of the superseded plan.
@@ -245,20 +246,17 @@ live. Check Railway before assuming any of this runs.
 
 ## What is left
 
-Three items, in order. Everything else in this plan is on `dev`. The edit
-rule shipped as [#1436](https://github.com/indexnetwork/index/pull/1436),
-including the live pending flip deferred from #1434.
+Two items. Everything else in this plan is on `dev`. The exhaustion
+evaluator shipped as [#1437](https://github.com/indexnetwork/index/pull/1437);
+two follow-ups it surfaced: regenerate the open message to a closed state
+when the parked set empties (folds into notifications), and the MCP
+`respond_to_negotiation` terminal branch never writes `opportunities.status`
+(pre-existing, independent fix).
 
-**1. Exhaustion evaluator.** The own-intent trigger does not exist: nothing
-batches the first message at "no ongoing negotiations on this intent."
-Today a message only appears when an individual negotiation parks. Hook the
-state-transition evaluator, subsume answer wiring's continuation re-park
-stopgap.
-
-**2. Notifications.** The policy (create → notify; update with new
+**1. Notifications.** The policy (create → notify; update with new
 questions → notify; otherwise silent) is designed but unimplemented.
 
-**3. Retirements.** The spine silences both old generator enqueues but leaves
+**2. Retirements.** The spine silences both old generator enqueues but leaves
 the machinery standing. Sequence after answer wiring — both touch
 `questioner.queue.ts` and the adapter layer. Retire: `QuestionerAgent`, its
 presets and input union, the queue's mode dispatch, the four dead generators
