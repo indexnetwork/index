@@ -5372,6 +5372,75 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * The newest message in a chat conversation, by the same (createdAt, id)
+   * order every conversation read uses, or null when it has none. This is the
+   * edit-rule anchor read: the question-message regeneration job uses it to
+   * decide between rewriting the open question-message and appending a fresh
+   * one.
+   *
+   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
+   * @returns The newest chat message, or null for an empty conversation.
+   */
+  async getNewestChatMessage(sessionId: string): Promise<ChatMessage | null> {
+    const [row] = await db.select()
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, sessionId))
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
+      .limit(1);
+    return row ? this.toChatMessages(sessionId, [row])[0] : null;
+  }
+
+  /**
+   * Content update for the question-message edit rule (conversational
+   * questions): rewrite one agent-authored message inside the caller's
+   * ('negotiator-intent', intentId) session, but only while it is still the
+   * newest message in its conversation.
+   *
+   * All three guards — agent-authored, negotiator-intent scope, still-newest —
+   * live in the UPDATE statement itself, so a user reply racing the
+   * regeneration wins: once the reply row is visible, the newest check fails,
+   * the statement no-ops, and the caller falls back to appending a fresh
+   * message instead of rewriting text above an answer.
+   *
+   * @returns Whether the update was applied.
+   */
+  async updateNewestAgentQuestionMessage(params: {
+    userId: string;
+    intentId: string;
+    messageId: string;
+    content: string;
+    regeneratedAt: Date;
+  }): Promise<boolean> {
+    const regeneratedMeta = JSON.stringify({ regeneratedAt: params.regeneratedAt.toISOString() });
+    const updated = await db
+      .update(schema.messages)
+      .set({
+        parts: [{ type: 'text', text: params.content }],
+        metadata: sql`coalesce(${schema.messages.metadata}, '{}'::jsonb) || ${regeneratedMeta}::jsonb`,
+      })
+      .where(and(
+        eq(schema.messages.id, params.messageId),
+        eq(schema.messages.role, 'agent'),
+        sql`EXISTS (
+          SELECT 1 FROM ${schema.chatSessionScopes}
+          WHERE ${schema.chatSessionScopes.conversationId} = ${schema.messages.conversationId}
+            AND ${schema.chatSessionScopes.userId} = ${params.userId}
+            AND ${schema.chatSessionScopes.scopeType} = ${NEGOTIATOR_INTENT_SCOPE_TYPE}
+            AND ${schema.chatSessionScopes.scopeId} = ${params.intentId}
+        )`,
+        // The alias hides the inner table, so the qualified "messages" columns
+        // inside resolve to the UPDATE target: newer-than-this-row.
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${schema.messages} newer
+          WHERE newer.conversation_id = ${schema.messages.conversationId}
+            AND (newer.created_at, newer.id) > (${schema.messages.createdAt}, ${schema.messages.id})
+        )`,
+      ))
+      .returning({ id: schema.messages.id });
+    return updated.length > 0;
+  }
+
+  /**
    * Get chat messages for a conversation in chronological order.
    *
    * @param sessionId - Conversation identifier retained for the legacy chat-session API.

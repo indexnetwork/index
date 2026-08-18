@@ -18,10 +18,18 @@
  * these two payload families stop reaching it (retirements are a later
  * phase).
  *
- * Create-only for now: a regeneration always appends a fresh message. The
- * edit rule (update the newest message in place) is the next change, so a
- * second park while a message is already open produces a second message —
- * known and accepted.
+ * Delivery follows the edit rule: regenerate in place only while the
+ * question-message is still the newest message in the conversation; anything
+ * else (user replied since, no prior message, unparseable block) appends a
+ * fresh message. The open message is the newest message in the conversation
+ * when it is agent-authored and references ≥1 still-parked negotiation. The
+ * newest check is re-enforced inside the update statement itself, so a reply
+ * racing the update wins and the job falls back to create.
+ *
+ * Each regeneration also flips the `questionRegenerationPending` signal on
+ * the owner's conversation SSE channel — true at enqueue, false when the job
+ * finishes — so an open DM shows the indicator and reloads instead of letting
+ * the message change silently under the viewer.
  */
 import { Job } from 'bullmq';
 
@@ -29,7 +37,7 @@ import { classifyParkedNegotiation, consumeQuestionBlockAnswers, parseQuestionMe
 import type { NegotiationAnswerConsumptionPorts, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
-import { QueueFactory } from '../lib/bullmq/bullmq';
+import { QueueFactory, useHermeticRedis } from '../lib/bullmq/bullmq';
 import { QuestionMessageAuthor } from '../lib/question/question-message.author';
 import { QuestionAnswerRouter } from '../lib/question/question-answer.router';
 import type { ParkedNegotiationReaderAdapter } from '../adapters/parked-negotiation.reader.adapter';
@@ -55,8 +63,9 @@ export interface QuestionAnswerJobData {
   questionMessageId: string;
   /**
    * The question-message's body as delivered. Carried in the payload rather
-   * than re-read: the spine is create-only (no content update exists), so the
-   * body is immutable, and the reply answers the message the client saw.
+   * than re-read: the reply answers the message the client saw at reply time,
+   * and the edit rule cannot rewrite it afterwards (the reply itself became
+   * the newest message), so the captured body stays authoritative.
    */
   questionMessageBody: string;
   /** ISO timestamp of the reply; fixed at enqueue so retries are stable. */
@@ -92,6 +101,19 @@ export interface QuestionMessageChatSessions {
     | { error: string; status: 400 | 403 | 404 | 500 }
   >;
   addMessage(params: { sessionId: string; role: 'user' | 'assistant' | 'system'; content: string }): Promise<string>;
+  /** Newest message in the conversation — the edit rule's anchor read. */
+  getNewestMessage(sessionId: string): Promise<{ id: string; role: 'user' | 'assistant' | 'system'; content: string } | null>;
+  /**
+   * In-place rewrite of the open question-message. Returns false when the
+   * data layer's newest-message guard rejected the write (a reply raced the
+   * regeneration) and the caller must append a fresh message instead.
+   */
+  updateQuestionMessageInPlace(params: {
+    userId: string;
+    intentId: string;
+    messageId: string;
+    content: string;
+  }): Promise<boolean>;
 }
 
 /** Optional deps for testing; production resolves the real collaborators lazily. */
@@ -105,6 +127,8 @@ export interface QuestionMessageQueueDeps {
   /** Answer-consumption seams (#1432); production builds them from the adapters. */
   answerPorts?: NegotiationAnswerConsumptionPorts;
   answerRouter?: Pick<QuestionAnswerRouter, 'route'>;
+  /** SSE flip for the live `questionRegenerationPending` signal; production publishes to the owner's conversation channel. */
+  publishRegenerationEvent?: (userId: string, event: { intentId: string; pending: boolean }) => Promise<void>;
 }
 
 export class QuestionMessageQueue {
@@ -127,13 +151,18 @@ export class QuestionMessageQueue {
    * Enqueue a regeneration for one signal's question-message. The singleton
    * job id dedups triggers while a job is queued; completed and failed jobs
    * are removed immediately so the id is reusable for the next park.
+   *
+   * Also flips the live pending signal on: an open DM shows the regeneration
+   * indicator from enqueue, not from the next bootstrap.
    */
-  addRegenerateJob(data: QuestionMessageJobData): Promise<Job<QuestionMessageJobData | QuestionAnswerJobData>> {
-    return this.queue.add('regenerate_question_message', data, {
+  async addRegenerateJob(data: QuestionMessageJobData): Promise<Job<QuestionMessageJobData | QuestionAnswerJobData>> {
+    const job = await this.queue.add('regenerate_question_message', data, {
       jobId: questionMessageJobId(data.userId, data.intentId),
       removeOnComplete: true,
       removeOnFail: true,
     });
+    await this.publishRegenerationPending(data.userId, data.intentId, true);
+    return job;
   }
 
   /**
@@ -182,6 +211,10 @@ export class QuestionMessageQueue {
     switch (name) {
       case 'regenerate_question_message':
         await this.handleRegenerate(data as QuestionMessageJobData);
+        // Flip the live pending signal off only on success: a throw leaves the
+        // job queued for retry, and pending stays true with it. A client stuck
+        // on true after a terminal failure recovers on its next bootstrap.
+        await this.publishRegenerationPending(data.userId, data.intentId, false);
         break;
       case 'consume_question_answers':
         await this.handleConsumeAnswers(data as QuestionAnswerJobData);
@@ -263,6 +296,43 @@ export class QuestionMessageQueue {
       return;
     }
 
+    // The edit rule: regenerate in place only while the question-message is
+    // still the newest message in the conversation; otherwise send a fresh
+    // one. Open = newest + agent-authored + references ≥1 still-parked
+    // negotiation (the parked set just read IS this user's still-parked side).
+    const openMessage = this.findOpenQuestionMessage(
+      await chatSessions.getNewestMessage(resolved.session.id),
+      parked,
+    );
+    if (openMessage) {
+      const updated = await chatSessions.updateQuestionMessageInPlace({
+        userId,
+        intentId,
+        messageId: openMessage.id,
+        content: body,
+      });
+      if (updated) {
+        this.logger.info('question_message_regenerated_in_place', {
+          userId,
+          intentId,
+          sessionId: resolved.session.id,
+          messageId: openMessage.id,
+          parked: parked.length,
+          questions: authored.questions.length,
+        });
+        return;
+      }
+      // The data layer's newest guard rejected the write: a reply landed
+      // between the anchor read and the update. The reply wins — fall through
+      // to a fresh message below it.
+      this.logger.info('question_message_update_lost_newest_race', {
+        userId,
+        intentId,
+        sessionId: resolved.session.id,
+        messageId: openMessage.id,
+      });
+    }
+
     await chatSessions.addMessage({
       sessionId: resolved.session.id,
       role: 'assistant',
@@ -275,6 +345,52 @@ export class QuestionMessageQueue {
       parked: parked.length,
       questions: authored.questions.length,
     });
+  }
+
+  /**
+   * The open question-message, per the plan's definition: the newest message
+   * in the conversation, when it is agent-authored, carries a parseable
+   * question block, and that block references at least one negotiation in
+   * the current parked set. Anything else — user replied since, plain agent
+   * prose, an unparseable block, refs all resolved — is not open, and the
+   * regeneration appends instead.
+   */
+  private findOpenQuestionMessage(
+    newest: { id: string; role: 'user' | 'assistant' | 'system'; content: string } | null,
+    parked: ReadonlyArray<{ opportunityId: string }>,
+  ): { id: string } | null {
+    if (!newest || newest.role !== 'assistant') return null;
+    const parsed = parseQuestionMessage(newest.content);
+    if (!parsed) return null;
+    const parkedRefs = new Set(parked.map((negotiation) => negotiation.opportunityId));
+    const referencesParked = parsed.block.questions.some((question) =>
+      [question.opportunityId, ...(question.alsoUnblocks ?? [])].some((ref) => parkedRefs.has(ref)));
+    return referencesParked ? { id: newest.id } : null;
+  }
+
+  /**
+   * Best-effort flip of the live `questionRegenerationPending` signal on the
+   * owner's conversation SSE channel. Never throws — the signal is a UX
+   * enhancement over the bootstrap snapshot, and a Redis hiccup must not
+   * break the enqueue path or fail a finished job. Skipped entirely under
+   * hermetic tests unless a publisher is injected.
+   */
+  private async publishRegenerationPending(userId: string, intentId: string, pending: boolean): Promise<void> {
+    try {
+      const publish = this.deps?.publishRegenerationEvent
+        ?? (useHermeticRedis()
+          ? null
+          : (await import('../lib/conversation-events')).publishQuestionRegenerationEvent);
+      if (!publish) return;
+      await publish(userId, { intentId, pending });
+    } catch (err) {
+      this.queueLogger.warn('question_regeneration_pending_publish_failed', {
+        userId,
+        intentId,
+        pending,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**

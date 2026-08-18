@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
@@ -47,9 +48,10 @@ export interface IntentNegotiatorChatProps {
    * conversation — show an agent-working indicator so the user doesn't
    * answer a message that's about to be replaced. The component seeds this
    * from `questionRegenerationPending` on the POST /chat/negotiator/session
-   * bootstrap response (the contract agreed with the delivery spine); pass
-   * the prop only to override with a fresher signal than the bootstrap
-   * snapshot.
+   * bootstrap response and then tracks the live SSE flips published by the
+   * regeneration queue (reloading the session when a regeneration finishes,
+   * so an in-place rewrite never lands silently); pass the prop only to
+   * override both with an even fresher signal.
    */
   questionRegenerationPending?: boolean;
   /** Monotonic signal to reload server-appended Beat narration. */
@@ -108,9 +110,13 @@ export default function IntentNegotiatorChat({
     clearChat,
     sessionId,
   } = useAIChat();
+  const { subscribeQuestionRegeneration } = useConversation();
 
   const [agentName, setAgentName] = useState<string | null>(null);
   const [bootstrapRegenerationPending, setBootstrapRegenerationPending] = useState(false);
+  const [liveRegenerationPending, setLiveRegenerationPending] = useState<boolean | null>(null);
+  const [regenerationReloadToken, setRegenerationReloadToken] = useState(0);
+  const appliedRegenerationReloadRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
@@ -126,8 +132,34 @@ export default function IntentNegotiatorChat({
   const [proposalStatusMap, setProposalStatusMap] = useState<Record<string, "pending" | "created" | "rejected">>({});
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
 
-  // The prop overrides the bootstrap snapshot when the parent has a fresher signal.
-  const regenerationPending = questionRegenerationPending ?? bootstrapRegenerationPending;
+  // The prop overrides everything; otherwise the live SSE flip supersedes the
+  // bootstrap snapshot once the first event for this intent arrives.
+  const regenerationPending = questionRegenerationPending ?? liveRegenerationPending ?? bootstrapRegenerationPending;
+
+  // Live regeneration flips from the shared conversation SSE stream: pending
+  // true shows the indicator immediately; pending false means the job wrote
+  // (possibly rewriting the open question-message in place), so the session
+  // reloads to render the current content. The component remounts per intent
+  // (key={intentId}), so the live state resets structurally.
+  useEffect(() => {
+    return subscribeQuestionRegeneration((event) => {
+      if (event.intentId !== intentId) return;
+      setLiveRegenerationPending(event.pending);
+      if (!event.pending) setRegenerationReloadToken((token) => token + 1);
+    });
+  }, [intentId, subscribeQuestionRegeneration]);
+
+  // Apply the reload outside the active stream: while the negotiator is
+  // streaming, the shared context owns the message list, so wait for
+  // isLoading to settle (the effect re-runs) before pulling fresh history.
+  useEffect(() => {
+    if (!ready || !sessionId || regenerationReloadToken === appliedRegenerationReloadRef.current) return;
+    if (isLoading) return;
+    appliedRegenerationReloadRef.current = regenerationReloadToken;
+    void loadSession(sessionId).catch((error) => {
+      logger.warn("Failed to reload after question-message regeneration", { error, intentId });
+    });
+  }, [intentId, isLoading, loadSession, ready, regenerationReloadToken, sessionId]);
 
   // Bootstrap: get-or-create the per-intent negotiator session, then load it
   // into the shared chat context. One session per (user, intent, persona) —
