@@ -87,7 +87,7 @@ vi.mock('@/contexts/APIContext', () => ({
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
-  useConversation: () => ({ negotiations: [] }),
+  useConversation: () => ({ negotiations: [], subscribeQuestionRegeneration: () => () => {} }),
 }));
 
 vi.mock('@/contexts/QuestionsContext', () => ({

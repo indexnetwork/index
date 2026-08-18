@@ -6,7 +6,7 @@
  * pending questions as opening turns (existing questions pipeline), send
  * flow, unavailable fallback, and context release on unmount.
  */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentNegotiatorChat from '@/components/IntentNegotiatorChat';
@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
     isLoadingPreviousMessages: false,
     clearChat: vi.fn(),
   },
+  regenerationHandlers: new Set<(event: { intentId: string; pending: boolean }) => void>(),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -41,6 +42,24 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/contexts/AIChatContext', () => ({
   useAIChat: () => mocks.chat,
 }));
+
+vi.mock('@/contexts/ConversationContext', () => ({
+  useConversation: () => ({
+    subscribeQuestionRegeneration: (handler: (event: { intentId: string; pending: boolean }) => void) => {
+      mocks.regenerationHandlers.add(handler);
+      return () => {
+        mocks.regenerationHandlers.delete(handler);
+      };
+    },
+  }),
+}));
+
+/** Emit a live SSE regeneration flip to every mounted subscriber. */
+function emitRegeneration(event: { intentId: string; pending: boolean }) {
+  act(() => {
+    mocks.regenerationHandlers.forEach((handler) => handler(event));
+  });
+}
 
 vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
   InjectedQuestions: ({
@@ -138,6 +157,7 @@ function renderChat(overrides: Partial<Parameters<typeof IntentNegotiatorChat>[0
 describe('IntentNegotiatorChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.regenerationHandlers.clear();
     mocks.chat.messages = [];
     mocks.chat.isLoading = false;
     mocks.chat.sessionId = null;
@@ -350,6 +370,67 @@ describe('IntentNegotiatorChat', () => {
 
     await screen.findByTestId('negotiator-chat-input');
     expect(screen.queryByTestId('question-regeneration-indicator')).toBeNull();
+  });
+
+  test('shows the indicator on a live pending flip and reloads the session when it completes', async () => {
+    mocks.chat.sessionId = 'neg-intent-sess-1';
+    renderChat();
+    await screen.findByTestId('negotiator-chat-input');
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1));
+
+    // A regeneration starts while the user is viewing: indicator, no reload.
+    emitRegeneration({ intentId: 'intent-1', pending: true });
+    expect(await screen.findByTestId('question-regeneration-indicator')).toBeInTheDocument();
+    expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1);
+
+    // It finishes: the indicator clears and the session reloads so an
+    // in-place rewrite of the open question-message renders.
+    emitRegeneration({ intentId: 'intent-1', pending: false });
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(2));
+    expect(mocks.chat.loadSession).toHaveBeenLastCalledWith('neg-intent-sess-1');
+    expect(screen.queryByTestId('question-regeneration-indicator')).toBeNull();
+  });
+
+  test('the live flip supersedes a stale bootstrap pending snapshot', async () => {
+    mocks.chat.sessionId = 'neg-intent-sess-1';
+    mocks.apiClient.post.mockResolvedValue({ ...SESSION_RESPONSE, questionRegenerationPending: true });
+    renderChat();
+
+    expect(await screen.findByTestId('question-regeneration-indicator')).toBeInTheDocument();
+
+    emitRegeneration({ intentId: 'intent-1', pending: false });
+    await waitFor(() => expect(screen.queryByTestId('question-regeneration-indicator')).toBeNull());
+  });
+
+  test('ignores live regeneration flips for other signals', async () => {
+    mocks.chat.sessionId = 'neg-intent-sess-1';
+    renderChat();
+    await screen.findByTestId('negotiator-chat-input');
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1));
+
+    emitRegeneration({ intentId: 'someone-elses-intent', pending: true });
+    expect(screen.queryByTestId('question-regeneration-indicator')).toBeNull();
+
+    emitRegeneration({ intentId: 'someone-elses-intent', pending: false });
+    expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('defers the completion reload while a response is streaming, then applies it', async () => {
+    mocks.chat.sessionId = 'neg-intent-sess-1';
+    const { rerender, props } = renderChat();
+    await screen.findByTestId('negotiator-chat-input');
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1));
+
+    // Regeneration completes while the negotiator is mid-stream: hold the reload.
+    mocks.chat.isLoading = true;
+    rerender(<IntentNegotiatorChat {...props} />);
+    emitRegeneration({ intentId: 'intent-1', pending: false });
+    expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1);
+
+    // The stream settles: the held reload applies.
+    mocks.chat.isLoading = false;
+    rerender(<IntentNegotiatorChat {...props} />);
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(2));
   });
 
   test('tap-to-quote prefills the input with the question being answered', async () => {

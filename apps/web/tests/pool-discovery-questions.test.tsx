@@ -80,7 +80,7 @@ vi.mock('@/contexts/APIContext', () => ({
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
-  useConversation: () => ({ negotiations: [] }),
+  useConversation: () => ({ negotiations: [], subscribeQuestionRegeneration: () => () => {} }),
 }));
 
 function primePageServices() {

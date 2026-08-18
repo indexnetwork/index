@@ -9,12 +9,13 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { negotiationParkAnswerId, negotiationQuestionSettlementId, parseQuestionMessage } from '@indexnetwork/protocol';
+import { negotiationParkAnswerId, negotiationQuestionSettlementId, parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
 import type { NegotiationAnswerConsumptionPorts, QuestionerEnqueuePayload, RoutedAnswer } from '@indexnetwork/protocol';
 import { questionBlockFixture, questionMessageFixture, questionProseFixture } from '@indexnetwork/protocol/question-block/fixture';
 
-import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId } from '../question-message.queue';
+import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QUEUE_NAME, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId } from '../question-message.queue';
 import type { QuestionAnswerJobData } from '../question-message.queue';
+import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { ParkedNegotiation } from '../../adapters/parked-negotiation.reader.adapter';
 
 const USER_ID = 'user-1';
@@ -54,12 +55,31 @@ interface DeliveredMessage {
   content: string;
 }
 
+interface UpdatedMessage {
+  userId: string;
+  intentId: string;
+  messageId: string;
+  content: string;
+}
+
+interface PublishedPendingFlip {
+  userId: string;
+  intentId: string;
+  pending: boolean;
+}
+
 function buildQueue(options: {
   parked: ParkedNegotiation[];
   authorResult?: { prose: string; questions: typeof questionBlockFixture.questions } | null;
   resolveResult?: { session: { id: string } } | { error: string; status: 400 | 403 | 404 | 500 };
+  /** Newest message in the conversation at regeneration time (default: empty conversation). */
+  newestMessage?: { id: string; role: 'user' | 'assistant' | 'system'; content: string } | null;
+  /** What the update seam reports; false simulates the in-statement newest check failing. */
+  updateResult?: boolean;
 }) {
   const delivered: DeliveredMessage[] = [];
+  const updated: UpdatedMessage[] = [];
+  const published: PublishedPendingFlip[] = [];
   const calls = { author: 0, resolve: 0 };
   const queue = new QuestionMessageQueue({
     parkedSet: { readParkedNegotiations: async () => options.parked },
@@ -82,9 +102,17 @@ function buildQueue(options: {
         delivered.push(params);
         return `message-${delivered.length}`;
       },
+      getNewestMessage: async () => options.newestMessage ?? null,
+      updateQuestionMessageInPlace: async (params) => {
+        updated.push(params);
+        return options.updateResult ?? true;
+      },
+    },
+    publishRegenerationEvent: async (userId, event) => {
+      published.push({ userId, ...event });
     },
   });
-  return { queue, delivered, calls };
+  return { queue, delivered, updated, published, calls };
 }
 
 describe('QuestionMessageQueue regeneration job', () => {
@@ -154,6 +182,132 @@ describe('QuestionMessageQueue regeneration job', () => {
       queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID }),
     ).rejects.toThrow('database unavailable');
     expect(delivered).toHaveLength(0);
+  });
+});
+
+// ─── The edit rule (regenerate in place vs fresh message) ─────────────────────
+
+/** A previously delivered question-message over the same block refs. */
+const OPEN_MESSAGE_BODY = serializeQuestionMessage(
+  'An earlier rendering of these questions.',
+  questionBlockFixture,
+);
+
+describe('QuestionMessageQueue edit rule', () => {
+  it('regenerates the open question-message in place — same id, fresh valid block, no new message', async () => {
+    const { queue, delivered, updated } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+      newestMessage: { id: 'open-1', role: 'assistant', content: OPEN_MESSAGE_BODY },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(delivered).toHaveLength(0);
+    expect(updated).toHaveLength(1);
+    expect(updated[0]).toEqual({
+      userId: USER_ID,
+      intentId: INTENT_ID,
+      messageId: 'open-1',
+      content: questionMessageFixture,
+    });
+    // The rewritten body is a valid question-message in its own right.
+    const parsed = parseQuestionMessage(updated[0].content);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.block).toEqual(questionBlockFixture);
+  });
+
+  it('creates a fresh message when the user replied since — the old message is untouched', async () => {
+    const { queue, delivered, updated } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+      newestMessage: { id: 'reply-1', role: 'user', content: 'March at the earliest.' },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(0);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].content).toBe(questionMessageFixture);
+  });
+
+  it('creates a fresh message when the newest agent message carries no parseable block', async () => {
+    const { queue, delivered, updated } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+      newestMessage: { id: 'prose-1', role: 'assistant', content: 'Got it — I will keep you posted.' },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(0);
+    expect(delivered).toHaveLength(1);
+  });
+
+  it('creates a fresh message when the newest block references no still-parked negotiation', async () => {
+    // The old message's refs all resolved; the new park is a different
+    // negotiation. The old message is closed, so it is preserved as history.
+    const { queue, delivered, updated } = buildQueue({
+      parked: [parkedNegotiation('opportunity-parked-elsewhere', 0)],
+      newestMessage: { id: 'closed-1', role: 'assistant', content: OPEN_MESSAGE_BODY },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(0);
+    expect(delivered).toHaveLength(1);
+  });
+
+  it('falls back to create when the data layer rejects the update (reply raced the newest check)', async () => {
+    const { queue, delivered, updated } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+      newestMessage: { id: 'open-1', role: 'assistant', content: OPEN_MESSAGE_BODY },
+      updateResult: false,
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(1);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].content).toBe(questionMessageFixture);
+  });
+});
+
+// ─── Live pending flips on the conversation SSE channel ──────────────────────
+
+describe('questionRegenerationPending live flips', () => {
+  it('publishes pending: true at enqueue and pending: false when the job finishes', async () => {
+    const { queue, published } = buildQueue({ parked: [] });
+
+    await queue.addRegenerateJob({ userId: 'flip-user', intentId: 'flip-intent' });
+    expect(published).toEqual([{ userId: 'flip-user', intentId: 'flip-intent', pending: true }]);
+
+    await queue.processJob('regenerate_question_message', { userId: 'flip-user', intentId: 'flip-intent' });
+    expect(published).toEqual([
+      { userId: 'flip-user', intentId: 'flip-intent', pending: true },
+      { userId: 'flip-user', intentId: 'flip-intent', pending: false },
+    ]);
+  });
+
+  it('does not flip pending off when the job throws — the retry still owns the scope', async () => {
+    const { queue, published } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+      resolveResult: { error: 'database unavailable', status: 500 },
+    });
+
+    await expect(
+      queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID }),
+    ).rejects.toThrow('database unavailable');
+    expect(published).toHaveLength(0);
+  });
+
+  it('never breaks the enqueue path on a publish failure', async () => {
+    const queue = new QuestionMessageQueue({
+      parkedSet: { readParkedNegotiations: async () => [] },
+      publishRegenerationEvent: async () => {
+        throw new Error('redis unavailable');
+      },
+    });
+
+    const job = await queue.addRegenerateJob({ userId: 'flip-user-2', intentId: 'flip-intent-2' });
+    expect(job).toBeTruthy();
   });
 });
 
@@ -346,6 +500,10 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
         calls.delivered.push(params);
         return `message-${calls.delivered.length}`;
       },
+      getNewestMessage: async () => null,
+      updateQuestionMessageInPlace: async () => {
+        throw new Error('answer consumption must never rewrite the question-message');
+      },
     },
   });
   return { queue, calls };
@@ -516,5 +674,131 @@ describe('enqueueQuestionAnswerReply detection', () => {
       addConsumeAnswerJob: async () => { throw new Error('must not enqueue'); },
     });
     expect(result).toBe(false);
+  });
+});
+
+// ─── Regeneration ↔ answer serialization through the shared queue ────────────
+
+describe('regeneration ↔ answer serialization', () => {
+  it('an answer arriving mid-regeneration waits for the regeneration to finish — no interleave', async () => {
+    const RACE_USER = 'race-user';
+    const RACE_INTENT = 'race-intent';
+    const events: string[] = [];
+    let releaseAuthor!: () => void;
+    const authorGate = new Promise<void>((resolve) => {
+      releaseAuthor = resolve;
+    });
+
+    const queue = new QuestionMessageQueue({
+      parkedSet: { readParkedNegotiations: async () => [parkedNegotiation(FIXTURE_PRIMARY_1, 0)] },
+      clientDm: async () => [],
+      getIntentText: async () => 'A signal about finding a technical co-founder',
+      author: {
+        author: async () => {
+          events.push('regenerate:author_start');
+          await authorGate;
+          return { prose: questionProseFixture, questions: questionBlockFixture.questions };
+        },
+      },
+      chatSessions: {
+        resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-race' } }),
+        addMessage: async () => {
+          events.push('regenerate:delivered');
+          return 'message-race-1';
+        },
+        getNewestMessage: async () => null,
+        updateQuestionMessageInPlace: async () => {
+          throw new Error('no open message in this scenario');
+        },
+      },
+      answerPorts: {
+        database: {
+          getNegotiationTaskForOpportunity: async (opportunityId: string) => {
+            events.push('consume:classify');
+            if (opportunityId !== FIXTURE_PRIMARY_1) return null;
+            return {
+              id: `task-${opportunityId}`,
+              conversationId: 'conv-race',
+              state: 'input_required',
+              metadata: {
+                turnContext: {
+                  askUserBinding: {
+                    settlementId: negotiationQuestionSettlementId(`task-${opportunityId}`),
+                    recipientUserId: RACE_USER,
+                    recipientIntentId: RACE_INTENT,
+                    networkId: 'network-1',
+                    opportunityId,
+                  },
+                },
+              },
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+          },
+          getNegotiationMessages: async () => [],
+        },
+        settleInflightAnswer: async () => {
+          events.push('consume:settled');
+          return 'settled';
+        },
+        enqueueInflightResume: async () => {
+          events.push('consume:resumed');
+        },
+        recordOpportunityAnswer: async () => {
+          events.push('consume:recorded');
+        },
+        enqueueStalledRetry: async () => {
+          events.push('consume:retried');
+        },
+      },
+      answerRouter: {
+        route: async () => {
+          events.push('consume:routed');
+          return { addressesQuestions: true, answers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'Yes.' }] };
+        },
+      },
+      publishRegenerationEvent: async (_userId, event) => {
+        events.push(`pending:${event.pending}`);
+      },
+    });
+
+    // The hermetic broker is shared per queue name: drain jobs left waiting by
+    // earlier tests so the worker only sees this scenario's two jobs.
+    for (const staleJob of await queue.queue.getJobs(['waiting', 'delayed'])) {
+      await staleJob.remove();
+    }
+
+    queue.startWorker();
+    const queueEvents = QueueFactory.createQueueEvents(QUEUE_NAME);
+    try {
+      const regenerateJob = await queue.addRegenerateJob({ userId: RACE_USER, intentId: RACE_INTENT });
+      const consumeJob = await queue.addConsumeAnswerJob({
+        ...answerJob('Yes.'),
+        userId: RACE_USER,
+        intentId: RACE_INTENT,
+      });
+      events.push('enqueue:consume');
+      releaseAuthor();
+
+      await regenerateJob.waitUntilFinished(queueEvents, 5_000);
+      await consumeJob.waitUntilFinished(queueEvents, 5_000);
+    } finally {
+      await queueEvents.close();
+      await queue.close();
+    }
+
+    // The answer really did arrive while the regeneration was in flight…
+    const deliveredAt = events.indexOf('regenerate:delivered');
+    expect(events.indexOf('enqueue:consume')).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf('enqueue:consume')).toBeLessThan(deliveredAt);
+    // …and every consumption step ran only after the regeneration's write.
+    const firstConsume = events.findIndex((event) => event.startsWith('consume:'));
+    expect(firstConsume).toBeGreaterThan(deliveredAt);
+    expect(events).toContain('consume:settled');
+    expect(events).toContain('consume:resumed');
+    // The pending flip bracketed the regeneration, not the answer.
+    expect(events.indexOf('pending:true')).toBeLessThan(deliveredAt);
+    expect(events.indexOf('pending:false')).toBeGreaterThan(deliveredAt);
+    expect(events.indexOf('pending:false')).toBeLessThan(firstConsume);
   });
 });

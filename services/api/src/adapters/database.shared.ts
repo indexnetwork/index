@@ -437,6 +437,11 @@ export interface ChatMessageMeta {
   discoveries?: unknown;
   /** Set to true when the assistant message was partially generated before a steer interrupt. */
   interrupted?: boolean;
+  /**
+   * ISO timestamp of the last in-place question-message regeneration (the
+   * conversational-questions edit rule). Absent on messages never edited.
+   */
+  regeneratedAt?: string;
   [key: string]: unknown;
 }
 
