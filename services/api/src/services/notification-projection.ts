@@ -1,6 +1,7 @@
 import { isActionableForViewer, safeFallbackSummary } from '@indexnetwork/protocol';
 
 import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
+import type { NotificationStreamEvent } from '../lib/notification-stream-events';
 
 const OPPORTUNITY_NOTIFICATION_HEADLINE = 'A promising connection';
 const OPPORTUNITY_NOTIFICATION_EMPTY_SUMMARY = 'A new match that might be relevant to you.';
@@ -84,6 +85,36 @@ export function buildQuestionMessageNotification(input: {
     headline: QUESTION_NOTIFICATION_HEADLINE,
     summary: `${count} ${count === 1 ? 'question' : 'questions'} about ${signal}.`,
     link: questionMessageDeepLink(input.intentId, input.webAppUrl),
+  };
+}
+
+/**
+ * The wire frame for one question-message, built once and used by both
+ * deliveries: the live `question.new` publish when the message lands, and the
+ * `/notifications/snapshot` projection a client offline at that moment reads
+ * on connect. Same id (the message), same server-owned copy, same deep link —
+ * so a client that saw the live frame recognizes the snapshot entry as the
+ * same notification rather than a second one.
+ */
+export function buildQuestionMessageStreamEvent(input: {
+  messageId: string;
+  intentId: string;
+  questionCount: number;
+  signalLabel?: string;
+  webAppUrl: string;
+}): NotificationStreamEvent {
+  const projection = buildQuestionMessageNotification({
+    intentId: input.intentId,
+    questionCount: input.questionCount,
+    ...(input.signalLabel ? { signalLabel: input.signalLabel } : {}),
+    webAppUrl: input.webAppUrl,
+  });
+  return {
+    type: 'question.new',
+    id: input.messageId,
+    title: projection.headline,
+    body: projection.summary,
+    link: projection.link,
   };
 }
 

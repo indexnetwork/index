@@ -10,7 +10,7 @@ import { emitOpportunityNotification, emitTelegramNotification } from '../lib/no
 import { publishNotificationStreamEvent, type NotificationStreamPublisher } from '../lib/notification-stream-events';
 import { getRedisClient } from '../adapters/cache.adapter';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
-import { buildQuestionMessageNotification } from '../services/notification-projection';
+import { buildQuestionMessageStreamEvent } from '../services/notification-projection';
 import { loadNotificationIntentLabel } from '../services/notification-delivery.service';
 
 /** BullMQ queue name for opportunity notification jobs. */
@@ -227,19 +227,13 @@ export class NotificationQueue {
       return undefined;
     });
 
-    const projection = buildQuestionMessageNotification({
+    await this.publishStreamEvent(userId, buildQuestionMessageStreamEvent({
+      messageId,
       intentId,
       questionCount,
       ...(signalLabel ? { signalLabel } : {}),
       webAppUrl: WEB_APP_URL,
-    });
-    await this.publishStreamEvent(userId, {
-      type: 'question.new',
-      id: messageId,
-      title: projection.headline,
-      body: projection.summary,
-      link: projection.link,
-    });
+    }));
     this.logger.info('Published question-message notification', {
       userId,
       intentId,

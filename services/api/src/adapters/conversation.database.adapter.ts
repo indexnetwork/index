@@ -258,6 +258,18 @@ function intentRegistryScopeType(persona: string): string {
  */
 const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
 
+/**
+ * The chat-visible text of a stored message: chat writes a single text part,
+ * so this is the one place that flattens `parts` back to a string for every
+ * chat read.
+ */
+function chatMessageText(parts: unknown): string {
+  const list = parts as Array<{ type?: string; text?: string }> | null | undefined;
+  return list?.find((part) => part?.type === 'text' && typeof part.text === 'string')?.text
+    ?? list?.find((part) => typeof part?.text === 'string')?.text
+    ?? '';
+}
+
 const DEFAULT_CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
 
 function getChatSessionGapMs(): number {
@@ -5192,6 +5204,54 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * The newest agent-authored message in each of the user's
+   * ('negotiator-intent', intentId) DMs — one row per signal that has one.
+   *
+   * The anchor read behind the notification snapshot's question frames: an
+   * open question-message is the newest agent message in the signal's DM whose
+   * block still references a parked negotiation, and this returns the first
+   * half of that. Deliberately no body filtering here — parsing the question
+   * block and re-deriving the parked set are the caller's job, so this stays
+   * one indexed read instead of a per-signal fan-out.
+   *
+   * @param userId - The signal owner
+   * @returns Newest agent message per negotiator-intent DM, content flattened
+   */
+  async getNewestAgentMessagesForNegotiatorIntents(
+    userId: string,
+  ): Promise<Array<{ intentId: string; sessionId: string; messageId: string; content: string }>> {
+    if (!userId) return [];
+    const rows = await db
+      .selectDistinctOn([schema.chatSessionScopes.scopeId], {
+        intentId: schema.chatSessionScopes.scopeId,
+        sessionId: schema.messages.conversationId,
+        messageId: schema.messages.id,
+        parts: schema.messages.parts,
+      })
+      .from(schema.chatSessionScopes)
+      .innerJoin(
+        schema.messages,
+        eq(schema.messages.conversationId, schema.chatSessionScopes.conversationId),
+      )
+      .where(and(
+        eq(schema.chatSessionScopes.userId, userId),
+        eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_INTENT_SCOPE_TYPE),
+        eq(schema.messages.role, 'agent'),
+      ))
+      .orderBy(
+        schema.chatSessionScopes.scopeId,
+        desc(schema.messages.createdAt),
+        desc(schema.messages.id),
+      );
+    return rows.map((row) => ({
+      intentId: row.intentId,
+      sessionId: row.sessionId,
+      messageId: row.messageId,
+      content: chatMessageText(row.parts),
+    }));
+  }
+
+  /**
    * Content update for the question-message edit rule (conversational
    * questions): rewrite one agent-authored message inside the caller's
    * ('negotiator-intent', intentId) session, but only while it is still the
@@ -5325,11 +5385,7 @@ export class ConversationDatabaseAdapter {
     rows: Array<typeof schema.messages.$inferSelect>,
   ): ChatMessage[] {
     return rows.map((msg) => {
-      const parts = msg.parts as Array<{ type?: string; text?: string }>;
-      const content =
-        parts?.find((p) => p?.type === 'text' && typeof p.text === 'string')?.text
-        ?? parts?.find((p) => typeof p?.text === 'string')?.text
-        ?? '';
+      const content = chatMessageText(msg.parts);
       const meta = (msg.metadata ?? {}) as ChatMessageMeta;
 
       // Map role back: 'agent' -> 'assistant'

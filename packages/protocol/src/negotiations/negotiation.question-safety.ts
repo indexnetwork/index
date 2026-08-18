@@ -4,7 +4,6 @@ import { hasUnsupportedOpportunityClaim } from '../shared/utils/claim-safety.js'
 /** Fixed prompt-safe labels; producers must not replace them with raw network/counterparty text. */
 export const NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY = 'the other participant';
 export const NEGOTIATION_QUESTION_GENERIC_NETWORK = 'the selected network';
-export const NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY = 'a potential collaboration that may require clarification before you decide';
 
 const INTERNAL_ID_PATTERN = /\b(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|(?:task|intent|network|opportunity|user|match)[_-]?id)\b/i;
 const PRIVATE_SOURCE_PATTERN = /\b(?:private transcript|raw transcript|assessment(?:\.reasoning)?|seed assessment|evaluator reasoning|match reason|matchReason|internal metadata|counterparty profile)\b/i;

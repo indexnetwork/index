@@ -256,10 +256,32 @@ post-merge).
 
 ## What is left
 
-Nothing from this plan. Notifications and the empty-set close-out shipped
-last; the one open item is unrelated to the question loop: the MCP
-`respond_to_negotiation` terminal branch never writes `opportunities.status`
-(pre-existing, independent fix).
+Nothing. Notifications and the empty-set close-out shipped last, and the two
+recorded follow-ups are now closed too: the MCP conclude writes the
+opportunity status, and the notification snapshot projects question frames.
+
+**MCP conclude → opportunity status: shipped.** Every branch of
+`respond_to_negotiation` that finalizes a negotiation — the caller's own
+terminal action, the counterparty's, the user's agent's, and each turn-cap —
+now advances the opportunity through `updateOpportunityStatus`, the same waist
+the graph's finalize node uses and the one that carries the post-commit
+transition emit. Before, the task completed and the outcome artifact landed
+while the row stayed `negotiating`: the transition hook never fired there (no
+question-message regeneration or prune on either side), radar buckets kept
+counting it, and the expiry sweep saw a phantom active opportunity. Mapping is
+the version-independent one: accept → `pending`, reject-like → `rejected`,
+turn cap → `stalled`. The write is best-effort — the conclude has already
+committed, so a failed flip is logged rather than returned as a tool error.
+
+**Snapshot question frames: shipped.** `/notifications/snapshot` now projects
+one `question.new` frame per signal with an open question-message, with the
+same id, server-owned copy and `/i/:intentId` link as the live frame (both are
+built by one projection helper), so a client offline at delivery finds the
+question without opening the DM. Open is re-derived at snapshot time — the
+newest agent message in the signal's DM whose block still references a parked
+negotiation, over the same reader and predicate the regeneration job uses — so
+answering and the close-out remove the frame by themselves. Still no stored
+read/unread state anywhere.
 
 **Notifications: shipped.** The regeneration job compares the outgoing
 block's negotiation refs against the refs of the message it replaces — a

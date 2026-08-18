@@ -43,9 +43,10 @@
 import { Job } from 'bullmq';
 
 import { classifyParkedNegotiation, consumeQuestionBlockAnswers, parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
-import type { NegotiationAnswerConsumptionPorts, QuestionBlock, QuestionBlockQuestion, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
+import type { NegotiationAnswerConsumptionPorts, QuestionBlock, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
+import { openQuestionBlock, questionBlockRefs } from '../lib/question/open-question-message';
 import { QueueFactory, useHermeticRedis } from '../lib/bullmq/bullmq';
 import { QuestionMessageAuthor } from '../lib/question/question-message.author';
 import { QuestionAnswerRouter } from '../lib/question/question-answer.router';
@@ -159,16 +160,6 @@ export interface QuestionMessageQueueDeps {
   publishRegenerationEvent?: (userId: string, event: { intentId: string; pending: boolean }) => Promise<void>;
   /** Notification seam; production enqueues onto the notification queue. */
   notify?: (data: QuestionMessageNotificationJobData) => Promise<unknown>;
-}
-
-/**
- * Every negotiation a block's questions reference — primaries plus each
- * question's `alsoUnblocks`. This set IS the message's identity for
- * notification purposes: the block carries no question ids, and a rewritten
- * prompt over the same negotiation is the same ask.
- */
-function questionBlockRefs(questions: ReadonlyArray<QuestionBlockQuestion>): Set<string> {
-  return new Set(questions.flatMap((question) => [question.opportunityId, ...(question.alsoUnblocks ?? [])]));
 }
 
 export class QuestionMessageQueue {
@@ -510,6 +501,10 @@ export class QuestionMessageQueue {
    * prose, an unparseable block, refs all resolved — is not open, and the
    * regeneration appends instead.
    *
+   * The edit rule owns the first half (newest AND agent-authored); the
+   * openness test itself is `openQuestionBlock`, shared with the notification
+   * snapshot, which anchors on the newest agent message instead.
+   *
    * Returns the block along with the id: it is the message this delivery
    * replaces, so its refs are what the notification decision compares against.
    */
@@ -518,12 +513,7 @@ export class QuestionMessageQueue {
     parked: ReadonlyArray<{ opportunityId: string }>,
   ): { id: string; block: QuestionBlock } | null {
     if (!newest || newest.role !== 'assistant') return null;
-    const parsed = parseQuestionMessage(newest.content);
-    if (!parsed) return null;
-    const parkedRefs = new Set(parked.map((negotiation) => negotiation.opportunityId));
-    const referencesParked = parsed.block.questions.some((question) =>
-      [question.opportunityId, ...(question.alsoUnblocks ?? [])].some((ref) => parkedRefs.has(ref)));
-    return referencesParked ? { id: newest.id, block: parsed.block } : null;
+    return openQuestionBlock({ id: newest.id, content: newest.content }, parked);
   }
 
   /**

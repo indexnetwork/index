@@ -80,6 +80,7 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       getIdentity: async (userId) => identities.get(userId) ?? null,
       getIntentLabel: async (intentId) => intentId === 'intent-1' ? 'privacy collaboration' : undefined,
+      listOpenQuestionMessages: async () => [],
       publish: async (userId, event) => { published.push({ userId, event }); },
     });
 
@@ -140,6 +141,7 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       getIdentity: async (userId) => identities.get(userId) ?? null,
       getIntentLabel: async () => undefined,
+      listOpenQuestionMessages: async () => [],
       publish: async (userId, event) => { published.push({ userId, event }); },
     });
 
@@ -175,11 +177,91 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       getIdentity: async () => null,
       getIntentLabel: async () => undefined,
+      listOpenQuestionMessages: async () => [],
       publish: async () => { throw new Error('publisher unavailable'); },
     });
 
     await expect(service.publishOpportunityActionable({
       opportunity: { id: failingOpportunity.id, status: 'pending' },
     })).resolves.toBeUndefined();
+  });
+});
+
+describe('NotificationDeliveryService question-message snapshot', () => {
+  const WEB_APP_URL = 'https://app.example';
+
+  function service(input: {
+    open: Array<{ intentId: string; messageId: string; questionCount: number }> | (() => Promise<never>);
+    label?: string;
+  }) {
+    return new NotificationDeliveryService({
+      opportunities: {
+        getOpportunity: async () => null,
+        getNotificationSnapshotOpportunities: async () => [],
+      },
+      getIdentity: async () => null,
+      getIntentLabel: async () => input.label,
+      listOpenQuestionMessages: typeof input.open === 'function'
+        ? input.open
+        : async () => input.open as Array<{ intentId: string; messageId: string; questionCount: number }>,
+      webAppUrl: WEB_APP_URL,
+      publish: async () => {},
+    });
+  }
+
+  test('an open question-message projects one frame carrying the live copy and deep link', async () => {
+    const snapshot = await service({
+      open: [{ intentId: 'intent-1', messageId: 'message-1', questionCount: 2 }],
+      label: 'technical co-founder',
+    }).snapshot('viewer');
+
+    expect(snapshot).toEqual([{
+      type: 'question.new',
+      id: 'message-1',
+      title: 'Your agent needs an answer',
+      body: '2 questions about “technical co-founder”.',
+      link: `${WEB_APP_URL}/i/intent-1`,
+    }]);
+  });
+
+  test('answered or closed-out question-messages leave nothing behind', async () => {
+    // Both cases reach the service the same way: the reader derives openness
+    // from the parked set, so a resolved question is simply not in the list.
+    expect(await service({ open: [] }).snapshot('viewer')).toEqual([]);
+  });
+
+  test('a signal with no negotiator DM contributes no frame', async () => {
+    expect(await service({ open: [] }).snapshot('viewer')).toEqual([]);
+  });
+
+  test('a question-message read failure still returns the opportunity half', async () => {
+    const failing = new NotificationDeliveryService({
+      opportunities: {
+        getOpportunity: async () => null,
+        getNotificationSnapshotOpportunities: async () => [opportunity({
+          id: 'opportunity-actionable',
+          actors: [
+            { userId: 'viewer', networkId: 'network-1', role: 'patient' },
+            { userId: 'peer', networkId: 'network-1', role: 'agent' },
+          ],
+        })],
+      },
+      getIdentity: async () => null,
+      getIntentLabel: async () => undefined,
+      listOpenQuestionMessages: async () => { throw new Error('reader unavailable'); },
+      webAppUrl: WEB_APP_URL,
+      publish: async () => {},
+    });
+
+    expect((await failing.snapshot('viewer')).map(({ id }) => id)).toEqual(['opportunity-actionable']);
+  });
+
+  test('an unlabelled signal degrades the copy, never the frame', async () => {
+    const [frame] = await service({
+      open: [{ intentId: 'intent-1', messageId: 'message-1', questionCount: 1 }],
+    }).snapshot('viewer');
+
+    expect(frame.body).toBe('1 question about one of your signals.');
+    expect(frame.link).toBe(`${WEB_APP_URL}/i/intent-1`);
   });
 });

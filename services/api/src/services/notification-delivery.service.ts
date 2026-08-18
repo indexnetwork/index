@@ -5,8 +5,9 @@ import type { OpportunityActionablePayload } from '../events/opportunity.event';
 import { log } from '../lib/log';
 import type { NotificationStreamEvent, NotificationStreamPublisher } from '../lib/notification-stream-events';
 import { intents } from '../schemas/database.schema';
+import { readOpenQuestionMessages, type OpenQuestionMessage } from '../lib/question/open-question-message';
 // eslint-disable-next-line boundaries/dependencies -- task-owned pure projection shared by realtime and snapshots.
-import { actionableRecipientIds, boundedNotificationLabel, buildOpportunityNotificationEvent, counterpartForRecipient } from './notification-projection';
+import { actionableRecipientIds, boundedNotificationLabel, buildOpportunityNotificationEvent, buildQuestionMessageStreamEvent, counterpartForRecipient } from './notification-projection';
 
 const logger = log.service.from('NotificationDelivery');
 
@@ -15,7 +16,18 @@ export interface NotificationDeliveryDependencies {
   getIdentity: (userId: string) => Promise<UserIdentity | null>;
   getIntentLabel: (intentId: string) => Promise<string | undefined>;
   publish: NotificationStreamPublisher;
+  /**
+   * The user's open question-messages, one per signal. Derived at snapshot
+   * time from the parked set — the question loop stores no read/unread state,
+   * so "still open" is the only thing that decides whether a frame is in the
+   * snapshot. Defaults to the real reader.
+   */
+  listOpenQuestionMessages?: (userId: string) => Promise<OpenQuestionMessage[]>;
+  /** Origin the question deep link is built against. */
+  webAppUrl?: string;
 }
+
+const DEFAULT_WEB_APP_URL = 'https://index.network';
 
 export async function loadNotificationIntentLabel(intentId: string): Promise<string | undefined> {
   const [row] = await db
@@ -88,10 +100,52 @@ export class NotificationDeliveryService {
     }
   }
 
+  /**
+   * One frame per open question-message. The live `question.new` frame reaches
+   * connected clients only, so a client offline when a question landed would
+   * otherwise find it solely by opening the DM. Nothing here is stored or
+   * marked read: the frames are re-derived from the parked set on every
+   * snapshot, so answering (or the close-out) removes them by itself.
+   */
+  private async projectQuestionMessages(userId: string): Promise<NotificationStreamEvent[]> {
+    const listOpenQuestionMessages = this.deps.listOpenQuestionMessages
+      ?? ((id: string) => readOpenQuestionMessages(id));
+    let open: OpenQuestionMessage[];
+    try {
+      open = await listOpenQuestionMessages(userId);
+    } catch (error) {
+      // The opportunity half of the snapshot is still worth returning.
+      logger.error('Failed to project question-message notifications', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+
+    return Promise.all(open.map(async (question) => {
+      // A missing label degrades the copy, never the frame — same rule the
+      // live delivery follows.
+      const signalLabel = await this.deps.getIntentLabel(question.intentId).catch(() => undefined);
+      return buildQuestionMessageStreamEvent({
+        messageId: question.messageId,
+        intentId: question.intentId,
+        questionCount: question.questionCount,
+        ...(signalLabel ? { signalLabel } : {}),
+        webAppUrl: this.deps.webAppUrl ?? DEFAULT_WEB_APP_URL,
+      });
+    }));
+  }
+
   async snapshot(userId: string): Promise<NotificationStreamEvent[]> {
-    const opportunities = await this.deps.opportunities.getNotificationSnapshotOpportunities(userId);
+    const [opportunities, questionEvents] = await Promise.all([
+      this.deps.opportunities.getNotificationSnapshotOpportunities(userId),
+      this.projectQuestionMessages(userId),
+    ]);
     const actionableOpportunities = opportunities.filter((opportunity) =>
       actionableRecipientIds(opportunity).includes(userId));
-    return Promise.all(actionableOpportunities.map((opportunity) => this.projectOpportunity(opportunity, userId)));
+    const opportunityEvents = await Promise.all(
+      actionableOpportunities.map((opportunity) => this.projectOpportunity(opportunity, userId)),
+    );
+    return [...opportunityEvents, ...questionEvents];
   }
 }
