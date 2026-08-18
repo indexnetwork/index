@@ -34,7 +34,6 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 export type { McpAuthResolver } from "./shared/interfaces/auth.interface.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./shared/interfaces/cache.interface.js";
 export type { ChatSummaryReader } from "./shared/interfaces/chat-summary.interface.js";
-export type { QuestionerDatabase, PersistableQuestion, PersistedQuestion, QuestionFilters } from "./questions/question.module.js";
 export type { NegotiationSummaryReader } from "./shared/interfaces/negotiation-summary.interface.js";
 export type { DiscoveryNegotiationDigest } from "./shared/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer } from "./negotiations/negotiation.module.js";

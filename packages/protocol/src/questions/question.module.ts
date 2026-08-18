@@ -13,8 +13,6 @@
  * - **question.env** — leftover question env constants.
  * - **question.tools** — foreground adapters: the authenticated MCP
  *   read/answer tools.
- * - **question.persistence.port** / **question.tools.port** — the injected
- *   host contracts (question CRUD, tool host capabilities).
  *
  * The QuestionerAgent, its presets, and the per-mode generation envelope are
  * retired (conversational-questions plan): a park payload now routes to the
@@ -39,12 +37,6 @@ export type {
   QuestionerInput,
 } from "./question.input.js";
 
-export type {
-  PersistableQuestion,
-  PersistedQuestion,
-  QuestionerDatabase,
-  QuestionFilters,
-} from "./question.persistence.port.js";
 
 export {
   NegotiationQuestionCandidateSchema,

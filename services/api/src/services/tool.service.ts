@@ -19,7 +19,6 @@ import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import db from '../lib/drizzle/drizzle';
 
@@ -31,7 +30,6 @@ type ToolServiceDeps = ToolDeps & {
   opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
 };
 
-const questionerAdapter = new QuestionerAdapter(db);
 
 /**
  * Manages direct HTTP invocation of chat tools.

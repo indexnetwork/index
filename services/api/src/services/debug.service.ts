@@ -3,8 +3,6 @@ import { eq, and, sql, ne, isNull, isNotNull, count, inArray } from 'drizzle-orm
 import db from '../lib/drizzle/drizzle';
 import { intents, intentNetworks, networks, networkMembers, userContexts } from '../schemas/database.schema';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { PendingQuestionCounts, QuestionFunnelStage } from '../adapters/questioner.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
@@ -63,12 +61,6 @@ export interface DiscoveryResult {
  * Aggregate question-funnel diagnostics (IND-439 visibility audit).
  * Counts and dates only — the shape is enforced at the adapter projection.
  */
-export interface QuestionFunnelDebug {
-  /** Whole-funnel counts grouped by (mode, status, expired-past-TTL). */
-  funnel: QuestionFunnelStage[];
-  /** The authenticated caller's own canonical pending splits. */
-  viewerPending: PendingQuestionCounts;
-}
 
 /** Raised when the debug runner is asked to discover from an inactive intent. */
 export class DebugIntentDiscoveryBlockedError extends Error {
@@ -118,24 +110,7 @@ export interface DiscoveryDebugResponse {
  * controller, keeping the controller thin (HTTP only).
  */
 export class DebugService {
-  private readonly questioner = new QuestionerAdapter(db);
 
-  /**
-   * Aggregate question-funnel telemetry (IND-439): whole-funnel counts by
-   * (mode, status, expired) plus the caller's own pending splits. Counts and
-   * dates only — no question content or foreign user IDs ever enter the
-   * response shape.
-   *
-   * @param userId - The authenticated user (scopes only the pending splits)
-   * @returns Funnel aggregate + viewer pending counts
-   */
-  async getQuestionFunnel(userId: string): Promise<QuestionFunnelDebug> {
-    const [funnel, viewerPending] = await Promise.all([
-      this.questioner.aggregateQuestionFunnel(),
-      this.questioner.countPending(userId),
-    ]);
-    return { funnel, viewerPending };
-  }
 
   /**
    * Gather preflight diagnostics for an intent: index assignments, user indexes,

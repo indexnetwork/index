@@ -16,7 +16,6 @@ config({ path: '.env.test', override: true });
 import { describe, test, expect, beforeAll as bunBeforeAll, afterAll as bunAfterAll } from "bun:test";
 import { inArray } from "drizzle-orm/sql";
 import { QuestionController } from "../question.controller";
-import { QuestionerAdapter, type AdapterPersistableQuestion } from "../../adapters/questioner.adapter";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
 import { QuestionEvents } from "../../events/question.event";
 import db from "../../lib/drizzle/drizzle";
@@ -31,7 +30,6 @@ const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
 describe("Leftover card questions void on contact", () => {
   const userAdapter = new UserDatabaseAdapter();
-  const questionerAdapter = new QuestionerAdapter(db);
   const controller = new QuestionController();
   let testUserId: string;
   let otherUserId: string;
@@ -46,10 +44,14 @@ describe("Leftover card questions void on contact", () => {
     name: "Test Leftover User",
   });
 
-  /** Persist a leftover pending row shaped like a retired generator's output. */
-  async function persistLeftover(overrides?: Partial<AdapterPersistableQuestion>): Promise<string> {
-    const batch: AdapterPersistableQuestion[] = [{
-      detection: {
+  /**
+   * Persist a leftover pending row shaped like a retired generator's output.
+   * Raw insert: the adapter's persist surface retired with the generators, so
+   * leftover rows can only predate this build.
+   */
+  async function persistLeftover(overrides?: { detection?: Record<string, unknown> }): Promise<string> {
+    const [row] = await db.insert(questions).values({
+      detection: overrides?.detection ?? {
         mode: 'pool_discovery',
         sourceType: 'intent',
         sourceId: crypto.randomUUID(),
@@ -65,12 +67,10 @@ describe("Leftover card questions void on contact", () => {
         ],
         multiSelect: false,
       },
-      strategy: 'surface_missing_detail',
-      ...overrides,
-    }];
-    const [id] = await questionerAdapter.persist(batch);
-    createdQuestionIds.push(id);
-    return id;
+      status: 'pending',
+    }).returning({ id: questions.id });
+    createdQuestionIds.push(row.id);
+    return row.id;
   }
 
   const postReq = () =>

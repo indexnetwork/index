@@ -29,30 +29,6 @@ const logger = log.controller.from('debug');
  */
 @Controller('/debug')
 export class DebugController {
-  /**
-   * Returns aggregate question-funnel telemetry (IND-439 visibility audit):
-   * counts of all questions grouped by (mode, status, expired-past-TTL) with
-   * per-group date bounds, plus the caller's own canonical pending splits.
-   *
-   * Aggregate-only by construction — the adapter projection contains counts
-   * and timestamps only; no question text, payloads, answers, evidence, or
-   * user IDs of other users can appear in the response.
-   *
-   * @param _req - Incoming request (unused beyond guard processing)
-   * @param user - Authenticated user from AuthGuard
-   * @returns Aggregate funnel JSON payload
-   */
-  @Get('/questions/funnel')
-  @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
-  async getQuestionFunnelDebug(_req: Request, user: AuthenticatedUser) {
-    logger.verbose('Question funnel debug request', { userId: user.id });
-    const { funnel, viewerPending } = await debugService.getQuestionFunnel(user.id);
-    return Response.json({
-      exportedAt: new Date().toISOString(),
-      funnel,
-      viewerPending,
-    });
-  }
 
   /**
    * Returns a full diagnostic snapshot for a single intent.

@@ -37,7 +37,6 @@ tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts
 tests/experiment-signup-lookup.isolated.ts
 tests/pending-candidates-introducer.isolated.ts
-tests/questioner.adapter.isolated.ts
 tests/frame-drift-execution-attempt.database.adapter.isolated.ts
 tests/accepted-opportunity.isolated.ts
 src/controllers/tests/intent.controller.isolated.ts
@@ -66,7 +65,6 @@ tests/limiter.e2e.isolated.ts
 src/services/tests/integration.service.telegram.isolated.ts
 tests/negotiation.agents.isolated.ts
 tests/frame-drift.database.adapter.isolated.ts
-tests/negotiation-polling-consultation.e2e.isolated.ts
 src/services/tests/negotiation-polling.memory.isolated.ts
 src/services/tests/negotiation-polling.max-turns.isolated.ts
 src/services/tests/negotiation-polling.consult.isolated.ts

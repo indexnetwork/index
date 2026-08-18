@@ -13,12 +13,13 @@ const negotiationGraphFinalize = readFileSync(new URL('../../../../../packages/p
 const opportunityService = readFileSync(new URL('../../services/opportunity.service.ts', import.meta.url), 'utf8');
 
 describe('negotiation question routing static invariants', () => {
-  it('splits negotiation intent scope from broad actor/trigger inference', () => {
-    expect(source).toContain("NOT IN ('negotiation', 'negotiation_inflight')");
-    expect(source).toContain("->'negotiation'->>'recipientUserId'");
-    expect(source).toContain("->'negotiation'->>'recipientIntentId'");
-    expect(source).toContain("->'negotiation'->>'version' = '1'");
-    expect(source).toContain("question.detection.sourceId !== provenance.opportunityId");
+  it('drops the per-generator intent-scope disjunction with the read surface', () => {
+    // The findByStatus scope disjunction (one SQL branch per retired
+    // generator) went with the pending-question reads; the surviving
+    // settlement paths bind rows by exact task provenance only.
+    expect(source).not.toContain("NOT IN ('negotiation', 'negotiation_inflight')");
+    expect(source).not.toContain('findByStatus');
+    expect(source).toContain("->'negotiation'->>'taskId'");
   });
 
   it('revalidates exact owner, lifecycle, assignment, membership, actor, and task bindings', () => {
@@ -45,8 +46,8 @@ describe('negotiation question routing static invariants', () => {
   });
 
   it('settles only exact task cohorts and never looks up the latest task', () => {
-    expect(source).toContain("->'negotiation'->>'taskId' = ${provenance.taskId}");
-    expect(source).toContain("eq(tasks.updatedAt, new Date(provenance.taskUpdatedAt!))");
+    expect(source).toContain('eq(tasks.id, candidate.taskId!)');
+    expect(source).toContain('eq(tasks.state, expectedTaskState)');
     expect(source).toContain('expireInflightQuestion');
     expect(source).not.toContain('getNegotiationTaskForOpportunity');
   });
@@ -57,7 +58,7 @@ describe('negotiation question routing static invariants', () => {
     expect(expiry).toContain("task.state !== 'input_required'");
     expect(expiry).not.toContain('if (rows.length === 0) return null');
     expect(expiry).toContain("state: 'canceled'");
-    expect(source).toContain('resolveNegotiationAdmission(first');
+    expect(source).toContain('resolveNegotiationAdmission(candidate');
   });
 
   it('uses fenced exact-successor settlements and keeps timeout recovery armed', () => {
@@ -90,9 +91,8 @@ describe('negotiation question routing static invariants', () => {
   it('locks the whole stable cohort before provenance rows for sibling-answer and answer-timeout races', () => {
     const body = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
     for (const section of [
-      body('async answer(', 'async dismiss('),
-      body('async dismiss(', 'async expireInflightQuestion('),
-      body('async expireInflightQuestion(', 'async claimNegotiationContinuationExecution'),
+      body('async expireInflightQuestion(', 'async settleInflightNegotiationAnswerFromDm('),
+      body('async settleInflightNegotiationAnswerFromDm(', 'async recordOpportunityUserAnswer('),
     ]) {
       const advisory = section.indexOf('lockNegotiationQuestionAdvisory');
       const cohort = section.indexOf('lockNegotiationQuestionCohort', advisory);
@@ -101,35 +101,24 @@ describe('negotiation question routing static invariants', () => {
       expect(cohort).toBeGreaterThan(advisory);
       expect(provenance).toBeGreaterThan(cohort);
     }
-    expect(source).toContain('.orderBy(questions.id)');
+
   });
 
-  it('validates unscoped pending rows/counts and separates historical inflight validation', () => {
-    expect(source).toContain("status === 'pending'");
-    expect(source).toContain('validateHistoricalNegotiationQuestion(question, userId)');
-    expect(source).toContain("const rows = await this.findPending(userId, { noConversation: true })");
-    expect(source).toContain('return derivePendingQuestionCounts(rows)');
-    expect(source).toContain('isExpectedHistoricalNegotiationSettlement(question.status, question.id, settlement)');
+  it('keeps only the settlement, evidence, and void-on-contact reads over the questions table', () => {
+    // The pending/answered read surface is retired; the remaining table
+    // touches are the leftover-row void, the settlement paths' leftover
+    // dismissals, and the Lens C answered-history read.
+    expect(source).toContain('voidLeftoverQuestion');
+    expect(source).toContain('getAnsweredNegotiationQuestionsForOpportunity');
+    expect(source).not.toContain('findPending');
+    expect(source).not.toContain('findAnswered');
+    expect(source).not.toContain('countPending');
   });
 
-  it('preserves IND-506 recovery locks, migration, producer isolation, and privacy beside IND-507', () => {
+  it('keeps the historical uniqueness constraints in place while the table survives', () => {
     expect(recoveryMigration).toContain('questions_recovery_recipient_intent_fingerprint_uniq');
     expect(migration).not.toContain('questions_recovery_recipient_intent_fingerprint_uniq');
     expect(readiness).toContain("'public.questions_recovery_recipient_intent_fingerprint_uniq'");
     expect(readiness).toContain("'public.questions_negotiation_provenance_uniq'");
-
-    const answer = source.slice(source.indexOf('async answer('), source.indexOf('async dismiss('));
-    const recoveryBranch = answer.indexOf("initialDetection.purpose === 'recovery'");
-    const recoveryAdvisory = answer.indexOf('acquireIntentScopeAdvisoryLock', recoveryBranch);
-    const recoveryIntent = answer.indexOf('.from(intents)', recoveryAdvisory);
-    const recoveryQuestion = answer.indexOf('.from(questions)', recoveryIntent);
-    const negotiationAdvisory = answer.indexOf('lockNegotiationQuestionAdvisory', recoveryQuestion);
-    const negotiationCohort = answer.indexOf('lockNegotiationQuestionCohort', negotiationAdvisory);
-    expect(recoveryBranch).toBeGreaterThan(-1);
-    expect(recoveryAdvisory).toBeGreaterThan(recoveryBranch);
-    expect(recoveryIntent).toBeGreaterThan(recoveryAdvisory);
-    expect(recoveryQuestion).toBeGreaterThan(recoveryIntent);
-    expect(negotiationAdvisory).toBeGreaterThan(recoveryQuestion);
-    expect(negotiationCohort).toBeGreaterThan(negotiationAdvisory);
   });
 });

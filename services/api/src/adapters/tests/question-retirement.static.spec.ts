@@ -198,4 +198,42 @@ describe('question retirement static invariants', () => {
       expect(parkedEnqueue).toContain('routeParkedQuestionEnqueue');
     });
   });
+
+  describe('adapter surface', () => {
+    it('keeps only the settlement core and names the table drop', () => {
+      const adapter = read('../questioner.adapter.ts');
+      // Survivors: park/resume settlement, the DM answer settle, Lens C
+      // evidence reads, and the leftover-row void.
+      for (const survivor of [
+        'settleInflightNegotiationAnswerFromDm',
+        'expireInflightQuestion',
+        'recordOpportunityUserAnswer',
+        'claimNegotiationContinuationExecution',
+        'getAnsweredNegotiationQuestionsForOpportunity',
+        'voidLeftoverQuestion',
+        'TODO(questions-table drop)',
+      ]) {
+        expect(adapter).toContain(survivor);
+      }
+      // The generation/read/card-answer surface is gone.
+      for (const retired of [
+        'prepareNegotiationQuestion',
+        'persistFreshNegotiationQuestions',
+        'prepareRecoveryRefinement',
+        'bindChatQuestionsToMessage',
+        'persistFreshPoolQuestion',
+        'findPending',
+        'findAnswered',
+        'countPending',
+        'aggregateQuestionFunnel',
+        'handleMaterialIntentUpdate',
+        'claimPoolQuestionPush',
+        'async answer(',
+        'async dismiss(',
+        'async persist(',
+      ]) {
+        expect(adapter).not.toContain(retired);
+      }
+    });
+  });
 });
