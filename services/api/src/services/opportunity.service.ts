@@ -3,10 +3,11 @@ import { log } from '../lib/log';
 import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
 
-import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
+import { readAskingFirstStates, type AskingFirstTaskReader } from '../lib/opportunity/asking-first.projection';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
 
 const logger = log.service.from("OpportunityService");
@@ -231,6 +232,8 @@ export class OpportunityService {
   private readonly deliveryCache: RedisCacheAdapter;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
+  /** Negotiation-task read path behind the radar's "asking you first" state. */
+  private readonly askingFirstTasks: AskingFirstTaskReader;
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
@@ -241,6 +244,7 @@ export class OpportunityService {
     cache?: OpportunityCache,
     outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
     presentation: OpportunityPresentationDeps = {},
+    askingFirstTasks: AskingFirstTaskReader = conversationDatabaseAdapter,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
@@ -250,6 +254,7 @@ export class OpportunityService {
     this.gatherPresentationContext = presentation.gatherContext ?? gatherPresenterContext;
     this.deliveryCache = new RedisCacheAdapter();
     this.outcomeRecorder = outcomeRecorder;
+    this.askingFirstTasks = askingFirstTasks;
   }
 
   private getPresenter(): OpportunityPresenter {
@@ -305,6 +310,34 @@ export class OpportunityService {
   }
 
   /**
+   * Stamps the radar's "asking you first" state onto the cards it belongs to.
+   *
+   * A pre-contact park (#1445) leaves the opportunity `negotiating`, so without
+   * this the card claims the agents are talking when nothing has been sent and
+   * the only thing outstanding is the viewer's own answer. Derived from the
+   * park, never stored: it resolves when the park does.
+   *
+   * Fails OPEN — a radar that renders without the state is degraded; one that
+   * fails to render because a task query blipped is broken. The question also
+   * still reaches the client through the signal's DM and its notification,
+   * which do not depend on this path.
+   */
+  private async decorateWithAskingFirst(userId: string, items: unknown[]): Promise<unknown[]> {
+    if (items.length === 0) return items;
+    const states = await readAskingFirstStates(this.askingFirstTasks, userId)
+      .catch((e) => {
+        logger.warn('Asking-first projection failed; radar renders without it', { userId, error: e });
+        return null;
+      });
+    if (!states || states.size === 0) return items;
+    return items.map((item) => {
+      const opportunityId = (item as { opportunityId?: unknown }).opportunityId;
+      const askingFirst = typeof opportunityId === 'string' ? states.get(opportunityId) : undefined;
+      return askingFirst ? { ...(item as Record<string, unknown>), askingFirst } : item;
+    });
+  }
+
+  /**
    * Get radar view: a flat list of opportunity cards with presenter text,
    * optionally scoped to one intent. Clients bucket by lifecycle status.
    */
@@ -329,7 +362,7 @@ export class OpportunityService {
       if (result.error) {
         return { error: result.error };
       }
-      const items = result.items ?? [];
+      const items = await this.decorateWithAskingFirst(userId, result.items ?? []);
       const meta: { totalOpportunities: number; maintenanceTriggered: boolean } = {
         ...(result.meta ?? { totalOpportunities: 0 }),
         maintenanceTriggered: false,

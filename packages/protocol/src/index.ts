@@ -311,6 +311,12 @@ export { isNegotiationTurnCapReached, expectedNegotiationSpeaker, negotiationSco
 export type { NegotiationSpeakerParticipants, NegotiationSpeakerMessage, NegotiationScopeMetadata } from "./negotiations/negotiation.module.js";
 export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "./negotiations/negotiation.module.js";
 export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode } from "./negotiations/negotiation.module.js";
+// The pre-contact park predicate (#1445), re-exported for the radar read path:
+// the "asking you first" state is the same open-consult recognition the
+// per-signal cap performs, so both sides must read the stamp through one
+// function rather than two copies of the same JSON walk.
+export { countOpenPreContactConsults } from "./negotiations/negotiation.module.js";
+export type { PreContactConsultTaskRow } from "./negotiations/negotiation.module.js";
 export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,

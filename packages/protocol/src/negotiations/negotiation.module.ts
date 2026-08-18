@@ -72,6 +72,7 @@ export { negotiationScopeKey, readNegotiationMessages } from "./negotiation.scop
 export {
   assessConsultationEligibility,
   consultationPromptFor,
+  countOpenPreContactConsults,
   negotiationConsultationPolicyMode,
 } from "./negotiation.consultation-policy.js";
 export {
@@ -88,6 +89,7 @@ export type {
   ConsultationEligibilityInput,
   NegotiationConsultationPolicyMode,
   NegotiationConsultationReason,
+  PreContactConsultTaskRow,
 } from "./negotiation.consultation-policy.js";
 export type {
   HermesNegotiationAction,
