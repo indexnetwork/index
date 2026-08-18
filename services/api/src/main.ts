@@ -74,6 +74,7 @@ import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval
 import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
+import { questionMessageQueue } from './queues/question-message.queue';
 import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
 import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
@@ -500,6 +501,7 @@ negotiationReflectQueue.startCrons();
 if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
+questionMessageQueue.startWorker();
 poolQuestionPushQueue.startWorker();
 poolQuestionPushQueue.startRecoveryScheduler();
 poolVisitMiningQueue.startWorker();
@@ -975,6 +977,7 @@ const shutdown = async () => {
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
     questionerQueue.close(),
+    questionMessageQueue.close(),
     poolQuestionPushQueue.close(),
     poolVisitMiningQueue.close(),
     premiseQueue.close(),

@@ -21,6 +21,7 @@ import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
 import { questionerQueue } from '../queues/questioner.queue';
+import { routeParkedQuestionEnqueue } from '../queues/question-message.queue';
 import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
@@ -176,6 +177,9 @@ const protocolDeps = {
   chatQuestions: chatQuestionsHost,
   ...(isQuestionerEnabled() && {
     questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
+      // Park-path payloads route to the question-message regeneration job
+      // (conversational-questions delivery spine); see questionerEnqueueIfEnabled.
+      if (await routeParkedQuestionEnqueue(input)) return;
       await questionerQueue.addGenerateJob(input);
     },
   }),

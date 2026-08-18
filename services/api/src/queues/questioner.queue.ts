@@ -13,6 +13,7 @@ import type { PoolQuestionPostPersist } from './pool/question.shared';
 import { isPoolArtifactFresh } from './pool/poolquestions.constants';
 import { isSafeNegotiationQuestionPayload } from '../lib/question/negotiation-question.contract';
 import { emitConsultationDeliveredTelemetry } from '../lib/question/consultation-policy.telemetry';
+import { routeParkedQuestionEnqueue } from './question-message.queue';
 
 /** BullMQ queue name for question generation jobs. */
 export const QUEUE_NAME = 'questioner-queue';
@@ -547,6 +548,12 @@ export const questionerQueue = new QuestionerQueue();
 export function questionerEnqueueIfEnabled(): QuestionerEnqueueFn | undefined {
   if (!isQuestionerEnabled()) return undefined;
   return async (input) => {
+    // Park-path payloads (mid-flight consults, post-stall parks) no longer
+    // generate QuestionerAgent rows: the parked negotiation is the durable
+    // record, and the question-message regeneration job renders it into the
+    // signal's DM (conversational-questions delivery spine). The generator's
+    // machinery stays for the remaining modes; retirements come later.
+    if (await routeParkedQuestionEnqueue(input)) return;
     await questionerQueue.addGenerateJob(input);
   };
 }

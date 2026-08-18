@@ -36,6 +36,28 @@ export function isSafeNegotiationQuestionPayload(payload: AdapterQuestionPayload
   return payload.options.length >= 2 && payload.options.length <= 4;
 }
 
+/**
+ * Text-level gate for negotiator-authored question-message content (the
+ * conversational-questions delivery spine). Prose renders as chat copy, so it
+ * is held to the internal-leak and unsupported-claim patterns; the
+ * named-person pattern is skipped because ordinary sentences ("This is …")
+ * trip it, and the message author never receives counterparty identity.
+ */
+export function isSafeQuestionMessageProse(text: string): boolean {
+  return Boolean(text.trim())
+    && !INTERNAL_OR_PRIVATE_PATTERN.test(text)
+    && !hasUnsupportedOpportunityClaim(text);
+}
+
+/**
+ * Question prompts additionally reject named-person claims — a prompt is one
+ * short question, so the pattern's false-positive surface is small, and a
+ * prompt naming a person is exactly the leak the park-time gate closes.
+ */
+export function isSafeQuestionMessagePrompt(text: string): boolean {
+  return isSafeQuestionMessageProse(text) && !NAMED_PERSON_CLAIM_PATTERN.test(text);
+}
+
 /** Pure terminal-state contract for answered/dismissed historical rows. */
 export function derivePendingQuestionCounts(rows: Array<{
   detection: { mode: string; pushedAt?: string };
