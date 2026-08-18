@@ -4,6 +4,7 @@
  * LangGraph Annotation.Root stays in the domain file.
  */
 import { z } from "zod";
+import { StructuredQuestionSchema } from "./structured-question.schema.js";
 
 // ─── Zod schemas (available for runtime validation) ───────────────────────────
 
@@ -41,12 +42,31 @@ export const NegotiationConsultationReasonSchema = z.enum(NEGOTIATION_CONSULTATI
 export type NegotiationConsultationReason = z.infer<typeof NegotiationConsultationReasonSchema>;
 
 /**
- * Payload for a v2 `ask_user` action. Agents may choose only a closed reason;
- * disclosure subjects and question wording are always rendered by fixed
- * server templates and can never carry model-authored instructions.
+ * Payload for a v2 `ask_user` action.
+ *
+ * `reason` stays the closed enum it has always been: it is admission metadata
+ * for the deterministic consultation policy, not copy. `question` is the
+ * channel through which the user's own personal agent — the only thing that
+ * should be writing questions — hands over the question it authored from the
+ * negotiation it is actually having. Free-form keys beyond these two are still
+ * rejected by `.strict()`.
  */
 export const AskUserPayloadSchema = z.object({
   reason: NegotiationConsultationReasonSchema,
+  /**
+   * The question the negotiating agent wrote, in the structured shape the UI
+   * already renders. Optional: v1 turns, external agents, and the existing
+   * enum-only path must all keep validating, so a payload of `{ reason }`
+   * alone stays byte-identical in and out.
+   *
+   * Declared `.nullable().optional()` (not bare `.optional()`) so the enclosing
+   * turn schemas survive OpenAI/OpenRouter strict structured-output conversion,
+   * which rejects optional-without-nullable fields — the same constraint
+   * documented on `QuestionSchema.evidence`. The `.transform()` normalizes an
+   * LLM-returned `null` back to `undefined`, so a null is never persisted and
+   * `null` and omitted read as absent identically downstream.
+   */
+  question: StructuredQuestionSchema.nullable().optional().transform((value) => value ?? undefined),
 }).strict();
 export type AskUserPayload = z.infer<typeof AskUserPayloadSchema>;
 
