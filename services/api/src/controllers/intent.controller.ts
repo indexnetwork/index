@@ -255,6 +255,13 @@ export class IntentController {
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
         archivedAt: r.archivedAt?.toISOString() ?? null,
+        discoveryProgress: r.discoveryProgress && {
+          ...r.discoveryProgress,
+          queuedAt: r.discoveryProgress.queuedAt?.toISOString() ?? null,
+          startedAt: r.discoveryProgress.startedAt?.toISOString() ?? null,
+          completedAt: r.discoveryProgress.completedAt?.toISOString() ?? null,
+          updatedAt: r.discoveryProgress.updatedAt?.toISOString() ?? null,
+        },
       },
     });
   }

@@ -585,8 +585,10 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId);
+    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId, false);
     return {
+      // Progress is intentionally a single-signal owner detail contract; keep
+      // the existing list payload stable and inexpensive for dashboards.
       rows: withExtras,
       total: Number(totalResult[0]?.count ?? 0),
       totalWaitingOpportunities,
@@ -612,13 +614,15 @@ export class IntentDatabaseAdapter {
       firstDiscoverySucceededAt: Date | null;
     })[],
     userId: string,
+    includeDiscoveryProgress = true,
   ): Promise<{ rows: IntentListRow[]; totalWaitingOpportunities: number }> {
     if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [networks, countResult] = await Promise.all([
+    const [networks, countResult, progress] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
+      includeDiscoveryProgress ? this.discoveryProgressByIntent(intentIds, userId) : Promise.resolve(new Map()),
     ]);
     return {
       rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
@@ -628,9 +632,44 @@ export class IntentDatabaseAdapter {
         waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
         warming: r.createdAt > warmingCutoff
           && firstDiscoverySucceededAt == null,
+        ...(includeDiscoveryProgress ? { discoveryProgress: progress.get(r.id) ?? {
+          // Legacy signals have no durable worker row. Do not infer a run from
+          // freshness; report the absence honestly, except known historical success.
+          status: firstDiscoverySucceededAt ? 'completed' : 'unknown',
+          attempt: 0, maxAttempts: 3, assignedCommunityCount: (networks.get(r.id) ?? []).length,
+          processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+          queuedAt: null, startedAt: null, completedAt: firstDiscoverySucceededAt, updatedAt: null,
+        }} : {}),
       })),
       totalWaitingOpportunities: countResult.totalWaitingOpportunities,
     };
+  }
+
+  private async discoveryProgressByIntent(intentIds: string[], userId: string): Promise<Map<string, NonNullable<IntentListRow['discoveryProgress']>>> {
+    const result = new Map<string, NonNullable<IntentListRow['discoveryProgress']>>();
+    if (!intentIds.length) return result;
+    const rows = await db.select().from(schema.intentDiscoveryProgress).where(and(
+      inArray(schema.intentDiscoveryProgress.intentId, intentIds),
+      eq(schema.intentDiscoveryProgress.userId, userId),
+    ));
+    for (const row of rows) {
+      // A worker heartbeat is the durable row's update time. Do not present a
+      // retained/dead BullMQ job as active after a worker crash or redelivery
+      // gap; its precise state is no longer knowable.
+      const stale = (row.status === 'queued' || row.status === 'running')
+        && Date.now() - row.updatedAt.getTime() > 30 * 60 * 1000;
+      result.set(row.intentId, {
+        status: stale ? 'unknown' : row.status === 'succeeded' ? 'completed' : row.status === 'failed'
+          ? (row.attempt < row.maxAttempts ? 'retrying' : 'failed') : row.status,
+        attempt: row.attempt, maxAttempts: row.maxAttempts,
+        assignedCommunityCount: row.assignedCommunityCount,
+        processedCommunityCount: row.processedCommunityCount,
+        possibleOverlapCount: row.possibleOverlapCount,
+        conversationsStartedCount: row.conversationsStartedCount,
+        queuedAt: row.queuedAt, startedAt: row.startedAt, completedAt: row.completedAt, updatedAt: row.updatedAt,
+      });
+    }
+    return result;
   }
 
 

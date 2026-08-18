@@ -29,7 +29,7 @@ export default function NegotiationActivity({
     return <p role="status" className="text-xs text-red-600">Agent messages could not be loaded. Radar will retry automatically.</p>;
   }
   if (groups.length === 0) {
-    return <p className="text-xs text-gray-500">Your agent is still talking with theirs. Messages will appear here as they are persisted.</p>;
+    return <p className="text-xs text-gray-500">No agent conversations have started yet.</p>;
   }
 
   return (

@@ -23,7 +23,7 @@ import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { NegotiationActivityGroup } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
-import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
+import type { DiscoveryProgress, IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
 import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
@@ -63,6 +63,36 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
     return status;
   }
   return "ACTIVE";
+}
+
+function DiscoveryWarmup({ progress, communities }: { progress?: DiscoveryProgress; communities: Array<{ id: string; title: string }> }) {
+  const status = progress?.status ?? "unknown";
+  const active = status === "queued" || status === "running" || status === "retrying";
+  const assignmentLabel = status === "blocked" || communities.length === 0
+    ? "Needs attention"
+    : `${progress?.assignedCommunityCount ?? communities.length} ${communities.length === 1 ? "community" : "communities"}`;
+  const findingLabel: Record<string, string> = {
+    queued: "Queued", running: "Finding", retrying: "Retrying", completed: "Completed", failed: "Needs attention", blocked: "Needs attention", unknown: "Status unavailable",
+  };
+  return (
+    <section className="rounded-lg border border-dashed border-gray-300 bg-gray-50/60 p-4" aria-label="Conversation preparation status" data-testid="discovery-warmup">
+      <h4 className="text-sm font-semibold text-gray-900">Preparing your first conversations</h4>
+      <dl className="mt-3 space-y-2 text-xs text-gray-600">
+        <div className="flex justify-between gap-3"><dt>Signal created</dt><dd className="font-medium text-gray-800">✓</dd></div>
+        <div className="flex justify-between gap-3"><dt>Shared with communities</dt><dd className="text-right font-medium text-gray-800">{assignmentLabel}</dd></div>
+        <div className="flex justify-between gap-3"><dt>Finding relevant signals</dt><dd className="font-medium text-gray-800">{findingLabel[status]}</dd></div>
+        <div className="flex justify-between gap-3"><dt>Agent conversations</dt><dd className="font-medium text-gray-800">{progress?.conversationsStartedCount ? `${progress.conversationsStartedCount} started` : "Next"}</dd></div>
+      </dl>
+      {status === "blocked" || communities.length === 0 ? (
+        <p className="mt-3 text-xs text-gray-600">Matching cannot begin until this signal is shared with an active community.</p>
+      ) : status === "completed" ? (
+        <p className="mt-3 text-xs text-gray-600">We completed this search with no promising conversations yet.</p>
+      ) : (
+        <p className="mt-3 text-xs text-gray-600">We’ll show conversations here once a promising overlap is found.</p>
+      )}
+      {active && <p className="mt-1 text-xs text-gray-500">You can leave this page—matching continues in the background.</p>}
+    </section>
+  );
 }
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
@@ -488,6 +518,16 @@ export default function IntentDetailPage() {
     void loadNegotiationActivity();
   }, [loadNegotiationActivity, loadOpportunities]);
 
+  // Refresh only the owner-scoped progress snapshot while work is non-terminal;
+  // this intentionally leaves the negotiator chat mounted and untouched.
+  useEffect(() => {
+    if (!intentId || !intent || !["queued", "running", "retrying"].includes(intent.discoveryProgress?.status ?? "")) return;
+    const timer = window.setInterval(() => {
+      void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [intentId, intent, intentsService]);
+
   useRadarLiveRefresh({
     intentId,
     activityRevision: negotiationActivityRevision,
@@ -634,6 +674,8 @@ export default function IntentDetailPage() {
     () => opportunities.filter((item) => bucketOf(item) === selectedBucket),
     [opportunities, bucketOf, selectedBucket],
   );
+  const hasActualNegotiationActivity = negotiationActivity.length > 0
+    || opportunities.some((item) => bucketOf(item) === "negotiating");
 
   const title = (
     intent?.summary && intent.summary.trim().length > 0
@@ -1022,11 +1064,10 @@ export default function IntentDetailPage() {
                   <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
                   {selectedBucket === "negotiating" && (
                     <div className="mb-3">
-                      <NegotiationActivity
-                        groups={negotiationActivity}
-                        loading={negotiationActivityLoading}
-                        error={negotiationActivityError}
-                      />
+                      {negotiationActivity.length === 0 && !hasActualNegotiationActivity && !negotiationActivityLoading && !negotiationActivityError
+                        && (intent?.warming || intent?.discoveryProgress) ? (
+                          <DiscoveryWarmup progress={intent?.discoveryProgress} communities={intent?.networks ?? []} />
+                        ) : <NegotiationActivity groups={negotiationActivity} loading={negotiationActivityLoading} error={negotiationActivityError} />}
                     </div>
                   )}
                   {opportunitiesLoading ? (

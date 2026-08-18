@@ -17,6 +17,7 @@ export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node',
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
+export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
 export interface HistoricalQualityBaseAttestation {
@@ -1020,6 +1021,29 @@ export const files = pgTable('files', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 });
+
+/**
+ * Owner-visible, aggregate-only observability for the ordinary from-intent
+ * worker. Unlike BullMQ retention this survives completed, failed and stale
+ * jobs and deliberately has no error payload or candidate-level data.
+ */
+export const intentDiscoveryProgress = pgTable('intent_discovery_progress', {
+  intentId: text('intent_id').primaryKey().references(() => intents.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: intentDiscoveryProgressStatusEnum('status').notNull().default('queued'),
+  attempt: integer('attempt').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  assignedCommunityCount: integer('assigned_community_count').notNull().default(0),
+  processedCommunityCount: integer('processed_community_count').notNull().default(0),
+  possibleOverlapCount: integer('possible_overlap_count').notNull().default(0),
+  conversationsStartedCount: integer('conversations_started_count').notNull().default(0),
+  queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userUpdatedIdx: index('intent_discovery_progress_user_updated_idx').on(table.userId, table.updatedAt),
+}));
 
 export const intentNetworks = pgTable('intent_networks', {
   intentId: text('intent_id').notNull().references(() => intents.id),
