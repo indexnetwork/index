@@ -217,3 +217,18 @@ describe('park-path trigger routing', () => {
     expect(questionMessageJobId(USER_ID, INTENT_ID)).not.toContain(':');
   });
 });
+
+describe('questionRegenerationPending lookup', () => {
+  it('reports pending while the scope job is queued and false otherwise', async () => {
+    const queue = new QuestionMessageQueue({
+      parkedSet: { readParkedNegotiations: async () => [] },
+    });
+
+    expect(await queue.isRegenerationPending(USER_ID, INTENT_ID)).toBe(false);
+
+    await queue.addRegenerateJob({ userId: USER_ID, intentId: INTENT_ID });
+    expect(await queue.isRegenerationPending(USER_ID, INTENT_ID)).toBe(true);
+    // Scoped to its own (user, intent): a sibling scope stays not-pending.
+    expect(await queue.isRegenerationPending(USER_ID, 'other-intent')).toBe(false);
+  });
+});
