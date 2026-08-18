@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { OpportunityRow, UserIdentity } from '../../adapters/database.shared';
-import { actionableRecipientIds, buildOpportunityNotificationEvent, counterpartForRecipient } from '../notification-projection';
+import { actionableRecipientIds, buildOpportunityNotificationEvent, buildQuestionMessageNotification, counterpartForRecipient, questionMessageDeepLink } from '../notification-projection';
 
 const now = new Date('2026-08-10T12:00:00.000Z');
 
@@ -125,5 +125,43 @@ describe('authoritative opportunity notification projection', () => {
     expect(event.summary).toContain('Casey builds privacy-preserving tools.');
     expect(event.summary).not.toContain('internal scoring');
     expect(event.summary).not.toContain('Ivy Introducer');
+  });
+});
+
+describe('question-message notification copy', () => {
+  const webAppUrl = 'https://index.network';
+
+  test('counts the questions and names the signal, deep-linked to its DM', () => {
+    const projection = buildQuestionMessageNotification({
+      intentId: 'intent-1',
+      questionCount: 2,
+      signalLabel: 'Finding a technical co-founder',
+      webAppUrl,
+    });
+
+    expect(projection.headline).toBe('Your agent needs an answer');
+    expect(projection.summary).toBe('2 questions about \u201cFinding a technical co-founder\u201d.');
+    expect(projection.link).toBe('https://index.network/i/intent-1');
+  });
+
+  test('reads naturally for a single question and for a signal with no label', () => {
+    expect(buildQuestionMessageNotification({ intentId: 'intent-1', questionCount: 1, webAppUrl }).summary)
+      .toBe('1 question about one of your signals.');
+  });
+
+  test('bounds a long signal label the way every other notification does', () => {
+    const projection = buildQuestionMessageNotification({
+      intentId: 'intent-1',
+      questionCount: 1,
+      signalLabel: 'x'.repeat(200),
+      webAppUrl,
+    });
+
+    expect(projection.summary.length).toBeLessThan(120);
+  });
+
+  test('never breaks the link on a trailing slash or an odd intent id', () => {
+    expect(questionMessageDeepLink('intent-1', 'https://index.network/')).toBe('https://index.network/i/intent-1');
+    expect(questionMessageDeepLink('a b', webAppUrl)).toBe('https://index.network/i/a%20b');
   });
 });

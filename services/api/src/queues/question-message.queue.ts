@@ -9,7 +9,9 @@
  * (grounded in the parked transcripts and the signal's client-DM excerpt),
  * serialize the question block, deliver into the signal's A2H DM — the
  * conversation keyed ('negotiator-intent', intentId). An empty parked set
- * means there is nothing to say and the job is done.
+ * means there is nothing left to ask: if the DM still shows an open
+ * question-message, the job rewrites it to a closed state (prose, no block)
+ * so no stale question lingers; otherwise the job is done.
  *
  * This queue also owns the trigger routing: the payloads with which the park
  * paths used to enqueue the QuestionerAgent (`negotiation_inflight` consults
@@ -30,11 +32,18 @@
  * the owner's conversation SSE channel — true at enqueue, false when the job
  * finishes — so an open DM shows the indicator and reloads instead of letting
  * the message change silently under the viewer.
+ *
+ * Notification hangs off the delivered MESSAGE, never off its questions: a
+ * delivery notifies iff its block references a negotiation the previous
+ * question-message did not (a plain set difference over the block's refs —
+ * nothing about "asked" or "answered" is stored anywhere). Creation compares
+ * against the empty set and therefore always notifies; a regeneration that
+ * only prunes, regroups, or rewrites prose, and a close-out, stay silent.
  */
 import { Job } from 'bullmq';
 
 import { classifyParkedNegotiation, consumeQuestionBlockAnswers, parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
-import type { NegotiationAnswerConsumptionPorts, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
+import type { NegotiationAnswerConsumptionPorts, QuestionBlock, QuestionBlockQuestion, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory, useHermeticRedis } from '../lib/bullmq/bullmq';
@@ -42,6 +51,7 @@ import { QuestionMessageAuthor } from '../lib/question/question-message.author';
 import { QuestionAnswerRouter } from '../lib/question/question-answer.router';
 import type { ParkedNegotiationReaderAdapter } from '../adapters/parked-negotiation.reader.adapter';
 import type { NegotiatorClientDmRetrieveFn } from '../adapters/negotiator-client-dm.retrieval.adapter';
+import type { QuestionMessageNotificationJobData } from './notification.queue';
 
 export const QUEUE_NAME = 'question-message-queue';
 
@@ -73,6 +83,17 @@ export interface QuestionAnswerJobData {
 }
 
 /**
+ * Server-owned close-out prose for an open question-message whose parked set
+ * emptied — the questions were answered, withdrawn, or expired while the
+ * message sat there. Fixed copy, never model text: the close-out is a
+ * bookkeeping rewrite, not something worth a model call, and it carries no
+ * question block, so the message stops being open the moment it lands.
+ */
+export const QUESTION_MESSAGE_CLOSED_BODY =
+  'Those questions are settled — the negotiations they were holding up have '
+  + 'moved on, so there is nothing here for you to answer right now.';
+
+/**
  * Server-owned clarifying follow-up for a reply that tried to answer but
  * could not be routed to any question. Fixed copy, never model text — same
  * rule as the fallback prose above.
@@ -100,6 +121,13 @@ export interface QuestionMessageChatSessions {
     | { session: { id: string } }
     | { error: string; status: 400 | 403 | 404 | 500 }
   >;
+  /**
+   * The signal's DM if it exists, without creating one — the close-out's
+   * anchor read. A close-out only ever rewrites a message that is already
+   * there, so it must not conjure a conversation for a signal whose parks
+   * resolved before the job ran.
+   */
+  findNegotiatorIntentSession(userId: string, intentId: string): Promise<{ id: string } | null>;
   addMessage(params: { sessionId: string; role: 'user' | 'assistant' | 'system'; content: string }): Promise<string>;
   /** Newest message in the conversation — the edit rule's anchor read. */
   getNewestMessage(sessionId: string): Promise<{ id: string; role: 'user' | 'assistant' | 'system'; content: string } | null>;
@@ -129,6 +157,18 @@ export interface QuestionMessageQueueDeps {
   answerRouter?: Pick<QuestionAnswerRouter, 'route'>;
   /** SSE flip for the live `questionRegenerationPending` signal; production publishes to the owner's conversation channel. */
   publishRegenerationEvent?: (userId: string, event: { intentId: string; pending: boolean }) => Promise<void>;
+  /** Notification seam; production enqueues onto the notification queue. */
+  notify?: (data: QuestionMessageNotificationJobData) => Promise<unknown>;
+}
+
+/**
+ * Every negotiation a block's questions reference — primaries plus each
+ * question's `alsoUnblocks`. This set IS the message's identity for
+ * notification purposes: the block carries no question ids, and a rewritten
+ * prompt over the same negotiation is the same ask.
+ */
+function questionBlockRefs(questions: ReadonlyArray<QuestionBlockQuestion>): Set<string> {
+  return new Set(questions.flatMap((question) => [question.opportunityId, ...(question.alsoUnblocks ?? [])]));
 }
 
 export class QuestionMessageQueue {
@@ -250,8 +290,11 @@ export class QuestionMessageQueue {
     const parked = await parkedSet.readParkedNegotiations(userId, intentId);
     if (parked.length === 0) {
       // Normal, not exceptional: the trigger may have raced an unpark, or the
-      // stall it fired for was terminal (no gap).
+      // stall it fired for was terminal (no gap). Nothing left to ask, but an
+      // open message from the last round would still be showing questions
+      // nobody can answer — close it out.
       this.logger.info('question_message_empty_parked_set', { userId, intentId });
+      await this.closeOutOpenQuestionMessage(userId, intentId);
       return;
     }
 
@@ -304,6 +347,15 @@ export class QuestionMessageQueue {
       await chatSessions.getNewestMessage(resolved.session.id),
       parked,
     );
+
+    // The notification decision, taken once for this delivery: which
+    // negotiations does the outgoing block ask about that the message it
+    // replaces did not? No prior open message means nothing has been asked
+    // yet, so every ref is new and the creation notifies.
+    const outgoingRefs = questionBlockRefs(authored.questions);
+    const priorRefs = openMessage ? questionBlockRefs(openMessage.block.questions) : new Set<string>();
+    const newRefs = [...outgoingRefs].filter((ref) => !priorRefs.has(ref));
+
     if (openMessage) {
       const updated = await chatSessions.updateQuestionMessageInPlace({
         userId,
@@ -319,7 +371,14 @@ export class QuestionMessageQueue {
           messageId: openMessage.id,
           parked: parked.length,
           questions: authored.questions.length,
+          newRefs: newRefs.length,
         });
+        await this.notifyIfAsksSomethingNew({
+          userId,
+          intentId,
+          messageId: openMessage.id,
+          questionCount: authored.questions.length,
+        }, newRefs);
         return;
       }
       // The data layer's newest guard rejected the write: a reply landed
@@ -333,7 +392,7 @@ export class QuestionMessageQueue {
       });
     }
 
-    await chatSessions.addMessage({
+    const messageId = await chatSessions.addMessage({
       sessionId: resolved.session.id,
       role: 'assistant',
       content: body,
@@ -342,9 +401,105 @@ export class QuestionMessageQueue {
       userId,
       intentId,
       sessionId: resolved.session.id,
+      messageId,
       parked: parked.length,
       questions: authored.questions.length,
+      newRefs: newRefs.length,
     });
+    await this.notifyIfAsksSomethingNew({
+      userId,
+      intentId,
+      messageId,
+      questionCount: authored.questions.length,
+    }, newRefs);
+  }
+
+  /**
+   * Close out an open question-message whose parked set emptied: rewrite it
+   * to prose with no block, through the same guarded update seam the edit
+   * rule uses. Silent by policy — nothing is being asked — and bounded by the
+   * same newest-message rule: if the client replied since, the reply wins and
+   * the message is left exactly as it is (the block simply stops being open,
+   * because none of its refs is parked any more).
+   *
+   * Never throws: the parked set is already empty, so there is no delivery to
+   * retry for and a failed tidy-up must not fail the job.
+   */
+  private async closeOutOpenQuestionMessage(userId: string, intentId: string): Promise<void> {
+    try {
+      const chatSessions = this.deps?.chatSessions ?? (await import('../services/chat.service')).chatSessionService;
+      const session = await chatSessions.findNegotiatorIntentSession(userId, intentId);
+      if (!session) return;
+
+      const newest = await chatSessions.getNewestMessage(session.id);
+      // Deliberately looser than the edit rule's open-message predicate: with
+      // an empty parked set no block can reference a parked negotiation, so
+      // "newest, agent-authored, parseable block" IS the message to close.
+      if (!newest || newest.role !== 'assistant' || !parseQuestionMessage(newest.content)) return;
+
+      const updated = await chatSessions.updateQuestionMessageInPlace({
+        userId,
+        intentId,
+        messageId: newest.id,
+        content: QUESTION_MESSAGE_CLOSED_BODY,
+      });
+      this.logger.info(updated ? 'question_message_closed_out' : 'question_message_close_out_lost_newest_race', {
+        userId,
+        intentId,
+        sessionId: session.id,
+        messageId: newest.id,
+      });
+    } catch (err) {
+      this.logger.warn('question_message_close_out_failed', {
+        userId,
+        intentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Notify iff this delivery asks about a negotiation the message it replaces
+   * did not — the plan's policy in one place: create → notify (empty prior
+   * set), new questions → notify, pruning/regrouping/prose rewrites and
+   * answer-driven shrinkage → silent.
+   *
+   * Best-effort: the message is already delivered, and a failed enqueue must
+   * not throw the job back onto the retry path where it would deliver again.
+   */
+  private async notifyIfAsksSomethingNew(
+    data: QuestionMessageNotificationJobData,
+    newRefs: ReadonlyArray<string>,
+  ): Promise<void> {
+    if (newRefs.length === 0) {
+      this.logger.info('question_message_notification_suppressed', {
+        userId: data.userId,
+        intentId: data.intentId,
+        messageId: data.messageId,
+      });
+      return;
+    }
+    try {
+      const notify = this.deps?.notify ?? (async (payload: QuestionMessageNotificationJobData) => {
+        const { notificationQueue } = await import('./notification.queue');
+        return notificationQueue.queueQuestionMessageNotification(payload);
+      });
+      await notify(data);
+      this.logger.info('question_message_notification_enqueued', {
+        userId: data.userId,
+        intentId: data.intentId,
+        messageId: data.messageId,
+        questions: data.questionCount,
+        newRefs: newRefs.length,
+      });
+    } catch (err) {
+      this.logger.warn('question_message_notification_enqueue_failed', {
+        userId: data.userId,
+        intentId: data.intentId,
+        messageId: data.messageId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -354,18 +509,21 @@ export class QuestionMessageQueue {
    * the current parked set. Anything else — user replied since, plain agent
    * prose, an unparseable block, refs all resolved — is not open, and the
    * regeneration appends instead.
+   *
+   * Returns the block along with the id: it is the message this delivery
+   * replaces, so its refs are what the notification decision compares against.
    */
   private findOpenQuestionMessage(
     newest: { id: string; role: 'user' | 'assistant' | 'system'; content: string } | null,
     parked: ReadonlyArray<{ opportunityId: string }>,
-  ): { id: string } | null {
+  ): { id: string; block: QuestionBlock } | null {
     if (!newest || newest.role !== 'assistant') return null;
     const parsed = parseQuestionMessage(newest.content);
     if (!parsed) return null;
     const parkedRefs = new Set(parked.map((negotiation) => negotiation.opportunityId));
     const referencesParked = parsed.block.questions.some((question) =>
       [question.opportunityId, ...(question.alsoUnblocks ?? [])].some((ref) => parkedRefs.has(ref)));
-    return referencesParked ? { id: newest.id } : null;
+    return referencesParked ? { id: newest.id, block: parsed.block } : null;
   }
 
   /**

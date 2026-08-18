@@ -10,11 +10,12 @@
 import { describe, expect, it } from 'bun:test';
 
 import { negotiationParkAnswerId, negotiationQuestionSettlementId, parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
-import type { NegotiationAnswerConsumptionPorts, QuestionerEnqueuePayload, RoutedAnswer } from '@indexnetwork/protocol';
+import type { NegotiationAnswerConsumptionPorts, QuestionBlockQuestion, QuestionerEnqueuePayload, RoutedAnswer } from '@indexnetwork/protocol';
 import { questionBlockFixture, questionMessageFixture, questionProseFixture } from '@indexnetwork/protocol/question-block/fixture';
 
-import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QUEUE_NAME, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId } from '../question-message.queue';
+import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QUESTION_MESSAGE_CLOSED_BODY, QUEUE_NAME, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId } from '../question-message.queue';
 import type { QuestionAnswerJobData } from '../question-message.queue';
+import type { QuestionMessageNotificationJobData } from '../notification.queue';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { ParkedNegotiation } from '../../adapters/parked-negotiation.reader.adapter';
 
@@ -70,17 +71,20 @@ interface PublishedPendingFlip {
 
 function buildQueue(options: {
   parked: ParkedNegotiation[];
-  authorResult?: { prose: string; questions: typeof questionBlockFixture.questions } | null;
+  authorResult?: { prose: string; questions: QuestionBlockQuestion[] } | null;
   resolveResult?: { session: { id: string } } | { error: string; status: 400 | 403 | 404 | 500 };
   /** Newest message in the conversation at regeneration time (default: empty conversation). */
   newestMessage?: { id: string; role: 'user' | 'assistant' | 'system'; content: string } | null;
   /** What the update seam reports; false simulates the in-statement newest check failing. */
   updateResult?: boolean;
+  /** The signal's DM as the read-only close-out lookup finds it (default: it exists). */
+  existingSession?: { id: string } | null;
 }) {
   const delivered: DeliveredMessage[] = [];
   const updated: UpdatedMessage[] = [];
   const published: PublishedPendingFlip[] = [];
-  const calls = { author: 0, resolve: 0 };
+  const notified: QuestionMessageNotificationJobData[] = [];
+  const calls = { author: 0, resolve: 0, findSession: 0 };
   const queue = new QuestionMessageQueue({
     parkedSet: { readParkedNegotiations: async () => options.parked },
     clientDm: async () => [],
@@ -98,6 +102,10 @@ function buildQueue(options: {
         calls.resolve += 1;
         return options.resolveResult ?? { session: { id: 'session-1' } };
       },
+      findNegotiatorIntentSession: async () => {
+        calls.findSession += 1;
+        return options.existingSession === undefined ? { id: 'session-1' } : options.existingSession;
+      },
       addMessage: async (params) => {
         delivered.push(params);
         return `message-${delivered.length}`;
@@ -111,8 +119,11 @@ function buildQueue(options: {
     publishRegenerationEvent: async (userId, event) => {
       published.push({ userId, ...event });
     },
+    notify: async (data) => {
+      notified.push(data);
+    },
   });
-  return { queue, delivered, updated, published, calls };
+  return { queue, delivered, updated, published, notified, calls };
 }
 
 describe('QuestionMessageQueue regeneration job', () => {
@@ -139,14 +150,17 @@ describe('QuestionMessageQueue regeneration job', () => {
     expect(parsed!.block).toEqual(questionBlockFixture);
   });
 
-  it('does nothing on an empty parked set — no authoring, no session, no message', async () => {
-    const { queue, delivered, calls } = buildQueue({ parked: [] });
+  it('does nothing on an empty parked set with nothing open — no authoring, no session create, no message', async () => {
+    const { queue, delivered, updated, calls } = buildQueue({ parked: [] });
 
     await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
 
     expect(calls.author).toBe(0);
+    // The close-out looks, but only through the read-only lookup: an empty
+    // parked set must never conjure a DM for a signal that has none.
     expect(calls.resolve).toBe(0);
     expect(delivered).toHaveLength(0);
+    expect(updated).toHaveLength(0);
   });
 
   it('skips delivery when the author has nothing renderable', async () => {
@@ -267,6 +281,231 @@ describe('QuestionMessageQueue edit rule', () => {
     expect(updated).toHaveLength(1);
     expect(delivered).toHaveLength(1);
     expect(delivered[0].content).toBe(questionMessageFixture);
+  });
+});
+
+// ─── Notification policy (create/new questions notify, everything else silent) ─
+
+/** A block over an explicit subset of the fixture's questions. */
+function openMessageOver(questions: QuestionBlockQuestion[], prose = 'An earlier rendering of these questions.'): string {
+  return serializeQuestionMessage(prose, { version: 1, questions });
+}
+
+const [FIXTURE_QUESTION_1, FIXTURE_QUESTION_2] = questionBlockFixture.questions;
+
+describe('QuestionMessageQueue notification policy', () => {
+  it('notifies once when the question-message is created — one notification per message, never per question', async () => {
+    const { queue, delivered, notified } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(delivered).toHaveLength(1);
+    // Two questions over three negotiation refs; exactly one notification,
+    // naming the delivered message and the signal whose DM carries it.
+    expect(notified).toEqual([{
+      userId: USER_ID,
+      intentId: INTENT_ID,
+      messageId: 'message-1',
+      questionCount: 2,
+    }]);
+  });
+
+  it('notifies on a regeneration that adds a negotiation the open message did not ask about', async () => {
+    const { queue, updated, notified } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0), parkedNegotiation(FIXTURE_PRIMARY_2, 2)],
+      // The open message asked about the equity gap only; the Berlin lab
+      // parked since and joins the regenerated block.
+      newestMessage: { id: 'open-1', role: 'assistant', content: openMessageOver([FIXTURE_QUESTION_1]) },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(1);
+    expect(notified).toEqual([{
+      userId: USER_ID,
+      intentId: INTENT_ID,
+      messageId: 'open-1',
+      questionCount: 2,
+    }]);
+  });
+
+  it('stays silent when a regeneration only drops refs — pruning is not a new ask', async () => {
+    const { queue, updated, notified } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+      newestMessage: { id: 'open-1', role: 'assistant', content: openMessageOver(questionBlockFixture.questions) },
+      authorResult: { prose: 'The Berlin lab withdrew; one thing left.', questions: [FIXTURE_QUESTION_1] },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(1);
+    expect(notified).toHaveLength(0);
+  });
+
+  it('stays silent when a regeneration only regroups the same refs and rewrites the prose', async () => {
+    const { queue, updated, notified } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0), parkedNegotiation(FIXTURE_PRIMARY_2, 2)],
+      newestMessage: { id: 'open-1', role: 'assistant', content: openMessageOver(questionBlockFixture.questions) },
+      // Same three negotiations, merged into one question under new prose.
+      authorResult: {
+        prose: 'Both of these come down to the same thing.',
+        questions: [{
+          prompt: 'What equity range and on-site cadence can you commit to?',
+          opportunityId: FIXTURE_PRIMARY_1,
+          alsoUnblocks: [FIXTURE_ALSO_1, FIXTURE_PRIMARY_2],
+        }],
+      },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(1);
+    expect(notified).toHaveLength(0);
+  });
+
+  it('stays silent when an answer-driven resume leaves a fresh message that re-states known questions', async () => {
+    // The client replied, so the update loses the newest check and the
+    // remaining question goes into a fresh message below the answer. It is a
+    // new message, but it asks nothing the client has not already seen.
+    const { queue, delivered, updated, notified } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_1, 0)],
+      newestMessage: { id: 'open-1', role: 'assistant', content: openMessageOver(questionBlockFixture.questions) },
+      updateResult: false,
+      authorResult: { prose: 'Thanks — one thing still open.', questions: [FIXTURE_QUESTION_1] },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(1);
+    expect(delivered).toHaveLength(1);
+    expect(notified).toHaveLength(0);
+  });
+
+  it('notifies for a fresh message that asks about a negotiation the old message never named', async () => {
+    // The old message's refs all resolved (it is closed), and the new park is
+    // a different negotiation: a created message asking something new.
+    const { queue, delivered, notified } = buildQueue({
+      parked: [parkedNegotiation(FIXTURE_PRIMARY_2, 2)],
+      newestMessage: { id: 'closed-1', role: 'assistant', content: openMessageOver([FIXTURE_QUESTION_1]) },
+      authorResult: { prose: 'One new thing.', questions: [FIXTURE_QUESTION_2] },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(delivered).toHaveLength(1);
+    expect(notified).toEqual([{
+      userId: USER_ID,
+      intentId: INTENT_ID,
+      messageId: 'message-1',
+      questionCount: 1,
+    }]);
+  });
+
+  it('delivers even when the notification enqueue fails — the message is not retried for it', async () => {
+    const delivered: DeliveredMessage[] = [];
+    const queue = new QuestionMessageQueue({
+      parkedSet: { readParkedNegotiations: async () => [parkedNegotiation(FIXTURE_PRIMARY_1, 0)] },
+      clientDm: async () => [],
+      getIntentText: async () => null,
+      author: { author: async () => ({ prose: questionProseFixture, questions: questionBlockFixture.questions }) },
+      chatSessions: {
+        resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-1' } }),
+        findNegotiatorIntentSession: async () => ({ id: 'session-1' }),
+        addMessage: async (params) => {
+          delivered.push(params);
+          return 'message-1';
+        },
+        getNewestMessage: async () => null,
+        updateQuestionMessageInPlace: async () => true,
+      },
+      publishRegenerationEvent: async () => {},
+      notify: async () => {
+        throw new Error('redis unavailable');
+      },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(delivered).toHaveLength(1);
+  });
+});
+
+// ─── Close-out: the parked set emptied under an open question-message ─────────
+
+describe('QuestionMessageQueue close-out', () => {
+  it('rewrites the open message to a closed state — prose, no block, no notification', async () => {
+    const { queue, delivered, updated, notified } = buildQueue({
+      parked: [],
+      newestMessage: { id: 'open-1', role: 'assistant', content: questionMessageFixture },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toEqual([{
+      userId: USER_ID,
+      intentId: INTENT_ID,
+      messageId: 'open-1',
+      content: QUESTION_MESSAGE_CLOSED_BODY,
+    }]);
+    // The rewritten body carries no block, so the message stops being open
+    // and the steps UI renders it as plain prose.
+    expect(parseQuestionMessage(updated[0].content)).toBeNull();
+    expect(delivered).toHaveLength(0);
+    expect(notified).toHaveLength(0);
+  });
+
+  it('leaves the message untouched when the client replied since — the reply owns the thread', async () => {
+    const { queue, delivered, updated, notified } = buildQueue({
+      parked: [],
+      newestMessage: { id: 'reply-1', role: 'user', content: 'March at the earliest.' },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(0);
+    expect(delivered).toHaveLength(0);
+    expect(notified).toHaveLength(0);
+  });
+
+  it('leaves an already-closed message alone', async () => {
+    const { queue, updated } = buildQueue({
+      parked: [],
+      newestMessage: { id: 'closed-1', role: 'assistant', content: QUESTION_MESSAGE_CLOSED_BODY },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(updated).toHaveLength(0);
+  });
+
+  it('does not touch the DM when the signal has none', async () => {
+    const { queue, updated, calls } = buildQueue({
+      parked: [],
+      existingSession: null,
+      newestMessage: { id: 'open-1', role: 'assistant', content: questionMessageFixture },
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    expect(calls.findSession).toBe(1);
+    expect(calls.resolve).toBe(0);
+    expect(updated).toHaveLength(0);
+  });
+
+  it('swallows a close-out that loses the newest-message race inside the update', async () => {
+    const { queue, delivered, notified } = buildQueue({
+      parked: [],
+      newestMessage: { id: 'open-1', role: 'assistant', content: questionMessageFixture },
+      updateResult: false,
+    });
+
+    await queue.processJob('regenerate_question_message', { userId: USER_ID, intentId: INTENT_ID });
+
+    // The reply that raced it wins; nothing else is written to the DM.
+    expect(delivered).toHaveLength(0);
+    expect(notified).toHaveLength(0);
   });
 });
 
@@ -411,6 +650,7 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
     recorded: [] as Array<{ opportunityId: string; questionId: string; freeText?: string }>,
     stalledRetries: [] as Array<{ opportunityId: string; parkTaskId: string }>,
     delivered: [] as DeliveredMessage[],
+    notified: [] as QuestionMessageNotificationJobData[],
   };
   const taskIdFor = (opportunityId: string) => `task-${opportunityId}`;
   const ports: NegotiationAnswerConsumptionPorts = {
@@ -496,6 +736,7 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
     },
     chatSessions: {
       resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-1' } }),
+      findNegotiatorIntentSession: async () => ({ id: 'session-1' }),
       addMessage: async (params) => {
         calls.delivered.push(params);
         return `message-${calls.delivered.length}`;
@@ -504,6 +745,9 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
       updateQuestionMessageInPlace: async () => {
         throw new Error('answer consumption must never rewrite the question-message');
       },
+    },
+    notify: async (data) => {
+      calls.notified.push(data);
     },
   });
   return { queue, calls };
@@ -609,6 +853,21 @@ describe('QuestionMessageQueue answer-consumption job', () => {
     expect(calls.settled).toHaveLength(0);
     expect(calls.delivered).toHaveLength(0);
   });
+
+  it('never notifies for an answer-driven resume — the client is already in the conversation', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: { [FIXTURE_PRIMARY_1]: 'inflight', [FIXTURE_ALSO_1]: 'inflight' },
+      routed: {
+        addressesQuestions: true,
+        answers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'Up to two percent.' }],
+      },
+    });
+
+    await queue.processJob('consume_question_answers', answerJob('Up to two percent.'));
+
+    expect(calls.inflightResumes).toHaveLength(2);
+    expect(calls.notified).toHaveLength(0);
+  });
 });
 
 describe('enqueueQuestionAnswerReply detection', () => {
@@ -702,6 +961,7 @@ describe('regeneration ↔ answer serialization', () => {
       },
       chatSessions: {
         resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-race' } }),
+        findNegotiatorIntentSession: async () => ({ id: 'session-race' }),
         addMessage: async () => {
           events.push('regenerate:delivered');
           return 'message-race-1';
@@ -710,6 +970,9 @@ describe('regeneration ↔ answer serialization', () => {
         updateQuestionMessageInPlace: async () => {
           throw new Error('no open message in this scenario');
         },
+      },
+      notify: async () => {
+        events.push('regenerate:notified');
       },
       answerPorts: {
         database: {

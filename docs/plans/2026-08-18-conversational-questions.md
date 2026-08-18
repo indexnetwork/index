@@ -1,8 +1,9 @@
 # Conversational questions
 
-**Status:** core loop shipped 2026-08-18 (create-only delivery). On `dev`:
-park → question-message in the DM → steps render. Not yet built: notifications and the
-retirements — see [What is left](#what-is-left) at the end.
+**Status:** shipped 2026-08-18. On `dev`: park → question-message in the DM →
+steps render → notification → answer → resume. Nothing in this plan is
+outstanding; see [What is left](#what-is-left) for the one unrelated fix it
+surfaced.
 
 | PR | What landed |
 | --- | --- |
@@ -15,6 +16,8 @@ retirements — see [What is left](#what-is-left) at the end.
 | [#1435](https://github.com/indexnetwork/index/pull/1435) | Answer wiring — DM replies routed to parked-negotiation resume; `'stalled'` retry claims admitted; continuation re-park stopgap |
 | [#1436](https://github.com/indexnetwork/index/pull/1436) | The edit rule — in-place regeneration of the open message, guarded update seam, live pending flip |
 | [#1437](https://github.com/indexnetwork/index/pull/1437) | Exhaustion evaluator — transition-driven regeneration; unpark-prune and exhaustion regrouping; stopgap subsumed |
+| [#1439](https://github.com/indexnetwork/index/pull/1439) | Retirements — card generators, `QuestionerAgent`, read surface, questions-table adapter |
+| [#1440](https://github.com/indexnetwork/index/pull/1440) | Notifications — new-question detection, deep-linked delivery, empty-set close-out |
 
 Built on [#1428](https://github.com/indexnetwork/index/pull/1428), the authoring
 half of the superseded plan.
@@ -174,6 +177,13 @@ question on it without any dedicated write-back.
 The message is the notification unit. This is the difference between batched
 and spam-with-extra-steps.
 
+Shipped as a set difference over the block's negotiation refs: the outgoing
+block against the block it replaces, which is the notification's only input.
+The two silent clauses fall out of it — pruning and regrouping add no ref,
+and an answer only ever removes one. It follows that a delivery is silent
+whenever it asks nothing new, including a fresh message that re-states known
+questions below a client reply.
+
 ## Revisions to the 2026-08-17 plan
 
 PR 1 (authoring: payload, grounding seam, DM excerpt, safety guard) is the
@@ -197,10 +207,7 @@ and the Questions page join the list.
 
 ## New machinery
 
-> Partially built — see the PR table at the top. The block format, the
-> regeneration queue, the ask cap, and the trigger reroutes are on `dev`. The
-> chat-message content update (edit rule) and the exhaustion evaluator are
-> NOT built; they are items in [What is left](#what-is-left).
+> All built — see the PR table at the top.
 
 - **Chat message content update.** Shipped in #1436:
   `updateNewestAgentQuestionMessage`, all guards inside the single UPDATE.
@@ -249,15 +256,25 @@ post-merge).
 
 ## What is left
 
-One item. Everything else in this plan is on `dev`. The exhaustion evaluator
-shipped as [#1437](https://github.com/indexnetwork/index/pull/1437); two
-follow-ups it surfaced: regenerate the open message to a closed state when
-the parked set empties (folds into notifications), and the MCP
+Nothing from this plan. Notifications and the empty-set close-out shipped
+last; the one open item is unrelated to the question loop: the MCP
 `respond_to_negotiation` terminal branch never writes `opportunities.status`
 (pre-existing, independent fix).
 
-**1. Notifications.** The policy (create → notify; update with new
-questions → notify; otherwise silent) is designed but unimplemented.
+**Notifications: shipped.** The regeneration job compares the outgoing
+block's negotiation refs against the refs of the message it replaces — a
+plain set difference, no stored state — and enqueues one notification-stream
+frame (`question.new`, deep-linked to `/i/:intentId`) when the delivery names
+a negotiation the client has not been asked about. Creation compares against
+the empty set and therefore always notifies; pruning, regrouping, prose
+rewrites, answer-driven shrinkage, and the close-out stay silent. One frame
+per message, never per question.
+
+**Close-out: shipped.** A regeneration that finds the parked set empty under
+an open question-message rewrites it to fixed prose with no block, through
+the same guarded update seam — so no stale question lingers. Silent, and
+bounded by the same newest-message rule: if the client replied since, the
+reply wins and the message is left alone (its block simply stops being open).
 
 **Retirements: shipped.** The five card generators (pre-accept uptake,
 pool-discriminator mining with its push cycle and answer chaining,

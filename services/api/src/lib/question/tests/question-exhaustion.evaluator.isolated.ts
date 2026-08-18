@@ -250,6 +250,7 @@ describe('evaluator → regeneration job composition', () => {
       },
       chatSessions: {
         resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-1' } }),
+        findNegotiatorIntentSession: async () => ({ id: 'session-1' }),
         addMessage: async (params) => {
           delivered.push(params);
           return `message-${delivered.length}`;
@@ -261,6 +262,7 @@ describe('evaluator → regeneration job composition', () => {
         },
       },
       publishRegenerationEvent: async () => {},
+      notify: async () => {},
     });
     return { queue, delivered, updated };
   }
