@@ -20,6 +20,27 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 21.1.0 - 2026-08-18
+
+### Added
+
+- The **question block contract** for conversational questions
+  (`docs/plans/2026-08-18-conversational-questions.md`):
+  `QuestionBlockSchema`, `QuestionBlockQuestionSchema`,
+  `parseQuestionMessage`, `serializeQuestionMessage`,
+  `QUESTION_BLOCK_MARKER`, `QUESTION_BLOCK_VERSION` and the
+  `QuestionBlock`/`QuestionBlockQuestion`/`ParsedQuestionMessage` types.
+  The block is the rendering contract embedded as a terminal
+  ` ```index-questions ` fenced section in the negotiator's question-message;
+  the parser fails closed (malformed → `null` → render as plain text), and a
+  question's identity is its primary `opportunityId` ref (negotiations have
+  no table of their own) — there are no question ids and no block-level state.
+- First package **subpath exports**, `@indexnetwork/protocol/question-block`
+  and `.../question-block/fixture`, so the browser client can import the
+  contract (and its canonical fixture) without pulling the node-only package
+  root into a bundle. STABILITY.md now documents browser-safe subpaths as part
+  of the public contract.
+
 ## 21.0.0 - 2026-08-17
 
 ### Removed

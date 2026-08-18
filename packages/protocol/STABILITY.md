@@ -7,8 +7,16 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
 
 ## The public contract
 
-- The **only** supported entry point is the package root:
-  `import { ... } from "@indexnetwork/protocol"`.
+- The supported entry points are the package root:
+  `import { ... } from "@indexnetwork/protocol"` — and the **browser-safe
+  subpaths** listed in `package.json` `exports` (as of 21.1.0:
+  `@indexnetwork/protocol/question-block` and
+  `@indexnetwork/protocol/question-block/fixture`). A browser-safe subpath
+  exposes one shared-schema module whose only runtime dependency is `zod`, for
+  consumers (the web client) that cannot load the node-only package root. The
+  schema module's symbols are also re-exported from the root (the fixture is
+  subpath-only, to keep test data out of the runtime barrel), and the subpaths
+  carry the Stable tier.
 - Deep imports (`@indexnetwork/protocol/dist/...` or `/src/...`) are **not** part
   of the contract and may change or disappear in any release — do not rely on them.
 - The contract is exactly the set of symbols re-exported from `src/index.ts`.
