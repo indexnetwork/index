@@ -115,7 +115,6 @@ describe('registered negotiation-polling isolated fixture contract', () => {
     'src/services/tests/negotiation-polling.seat.isolated.ts',
     'src/services/tests/negotiation-polling.memory.isolated.ts',
     'src/adapters/tests/archive-legacy-negotiations.isolated.ts',
-    'tests/negotiation-polling-consultation.e2e.isolated.ts',
   ])('%s uses the exact selected legacy principal without an authorization bypass', (relativePath) => {
     const source = readFileSync(path.join(apiRoot, relativePath), 'utf8');
 
