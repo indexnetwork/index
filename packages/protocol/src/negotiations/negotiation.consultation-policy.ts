@@ -42,7 +42,6 @@ export function negotiationConsultationPolicyMode(): NegotiationConsultationPoli
 export function assessConsultationEligibility(input: ConsultationEligibilityInput): ConsultationEligibility {
   if (
     input.protocolVersion !== "v2"
-    || input.isOpeningTurn
     || input.isFinalTurn
     || input.screenedOut
     || input.previouslyConsulted
@@ -50,6 +49,41 @@ export function assessConsultationEligibility(input: ConsultationEligibilityInpu
     || !input.lifecycleValid
     || isObviousTerminal(input.action)
   ) return { eligible: false };
+
+  // ─── Pre-contact consultation (the opening turn) ──────────────────────────
+  // Before this branch the opening turn was a blanket exclusion, so the
+  // initiator's turn-0 vocabulary was binary: reach out, or pass with the
+  // counterparty never contacted. A third verdict is admissible when the
+  // blocking doubt is one only the client can settle — how their own criteria
+  // bound the search — and the pause costs the counterparty nothing, because
+  // nothing has been sent.
+  //
+  // The admission is deliberately NARROW, and narrower than the mid-flight
+  // rules below:
+  //
+  //  - INITIATOR ONLY. A turn-0 counterparty seat (tie-break inheritance) is
+  //    responding to an outreach, so its client's criteria are not what is
+  //    blocking; there is no pre-contact position to protect either.
+  //  - A MODEL-AUTHORED `ask_user` ONLY. Every rule below infers a
+  //    consultation from a draft that asked for something else, which needs
+  //    history to be a safe inference — and at turn 0 there is none. The
+  //    acting agent is the only party that has read the client's own signal,
+  //    so the pre-contact case is the one where volunteering the pause is the
+  //    evidence, not a substitute for it. This also keeps the distinction the
+  //    graph prompt draws — client-resolvable scope doubt consults;
+  //    counterparty evidence that contradicts the match passes silently —
+  //    resolvable HERE only as "the agent did not ask", which is exactly what
+  //    a contradiction-shaped doubt produces.
+  //
+  // The category is fixed rather than read off the draft: a pre-contact pause
+  // is by construction an unresolved constraint the OWNER controls. The
+  // consult counts as an ordinary ask round (the graph reads the same
+  // `negotiationAskRoundsCap` substrate before granting the action at all).
+  if (input.isOpeningTurn) {
+    return input.seat === "initiator" && input.action === "ask_user"
+      ? { eligible: true, reason: "unresolved_owner_constraint" }
+      : { eligible: false };
+  }
 
   // A patient-side counter is a schema-constrained, source-safe signal that
   // the owner must decide whether a consequential disclosure or permission is
@@ -104,4 +138,75 @@ export function consultationPromptFor(reason: NegotiationConsultationReason): {
 
 function isObviousTerminal(action: NegotiationAction): boolean {
   return action === "accept" || action === "reject" || action === "withdraw" || action === "decline";
+}
+
+// ─── Pre-contact consultation: bounds and recognition ────────────────────────
+
+/**
+ * How many pre-contact consultations one intent may hold OPEN at once.
+ *
+ * A vague signal can surface many candidates in a batch, and the doubt that
+ * blocks the first ("does 'academic linguistics' strictly bound this, or is
+ * adjacent depth in scope?") is usually the same doubt that blocks all of
+ * them. One answer generalizes: it lands in the signal's DM, and the DM is
+ * injected into every later turn-0 decision on that signal. The cap exists
+ * for the agent that does not internalize that and would interrogate its
+ * client candidate-by-candidate.
+ *
+ * Two, not one: a second genuinely different question about the same signal
+ * is plausible, a third is a pattern. Past the cap the action is simply not
+ * offered and the seat falls back to today's binary reach-out-or-pass.
+ */
+export const MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT = 2;
+
+/**
+ * Whether a negotiation's own turns show it has never contacted the
+ * counterparty — every turn it holds is a client-consultation park.
+ *
+ * This is what makes a post-consult resume still-the-opening. A mid-flight
+ * consult always has an `outreach` behind it (the counterparty seat cannot
+ * even speak before one), so this is false for every park the pre-contact
+ * verdict did not create, and the resume rules it gates stay off the
+ * mid-flight path by construction rather than by a flag.
+ */
+export function isPreContactConsultResume(turns: readonly { action: NegotiationAction }[]): boolean {
+  return turns.length > 0 && turns.every((turn) => turn.action === "ask_user");
+}
+
+/**
+ * Turn-context key stamped on a pre-contact park. Written at park time beside
+ * the ask-user binding, read back by {@link countOpenPreContactConsults} — the
+ * park row is the only durable record of the consultation, so the marker lives
+ * with it rather than in a separate counter that could drift.
+ */
+export const PRE_CONTACT_CONSULT_MARKER = "preContactConsult";
+
+/** Minimal task shape the open-consult count reads; matches `getTasksForUser`. */
+export interface PreContactConsultTaskRow {
+  id: string;
+  state: string;
+  metadata: Record<string, unknown> | null;
+}
+
+/**
+ * Count the pre-contact consultations currently open for one `(user, intent)`
+ * scope, from the user's own negotiation tasks.
+ *
+ * "Open" is derived from the durable park itself — an `input_required` task
+ * whose captured ask-user binding names this recipient pair and whose turn
+ * context carries the pre-contact stamp — so answering, expiry, and resume all
+ * retire a park from the count with no counter to keep in step. Mid-flight
+ * consults carry no stamp and never count.
+ */
+export function countOpenPreContactConsults(
+  tasks: readonly PreContactConsultTaskRow[],
+  scope: { userId: string; intentId: string; excludeTaskId?: string },
+): number {
+  return tasks.filter((task) => {
+    if (task.state !== "input_required" || task.id === scope.excludeTaskId) return false;
+    const turnContext = task.metadata?.turnContext as Record<string, unknown> | undefined;
+    if (turnContext?.[PRE_CONTACT_CONSULT_MARKER] !== true) return false;
+    const binding = turnContext.askUserBinding as Record<string, unknown> | undefined;
+    return binding?.recipientUserId === scope.userId && binding.recipientIntentId === scope.intentId;
+  }).length;
 }
