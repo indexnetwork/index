@@ -2,9 +2,11 @@ import type { ComponentType, ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Loader2 } from "lucide-react";
+import { parseQuestionMessage } from "@indexnetwork/protocol/question-block";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import IntentProposalCard, { type IntentProposalData, IntentProposalSkeleton } from "@/components/chat/IntentProposalCard";
 import NetworksPanel from "@/components/chat/NetworksPanel";
+import { QuestionSteps } from "@/components/chat/QuestionSteps";
 import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 
@@ -167,6 +169,11 @@ export interface AssistantMessageContentProps {
   OAuthLink?: ComponentType<ComponentPropsWithoutRef<"a">>;
   onNetworkJoin?: (networkId: string, networkTitle: string) => void;
   networkPanelPendingJoinIds?: Set<string>;
+  /**
+   * Tap-to-quote for question-message steps: prefill the surface's chat input
+   * with the question being answered. Answers are plain chat replies.
+   */
+  onQuestionQuote?: (prompt: string) => void;
 }
 
 /**
@@ -189,7 +196,32 @@ export default function AssistantMessageContent({
   OAuthLink,
   onNetworkJoin,
   networkPanelPendingJoinIds,
+  onQuestionQuote,
 }: AssistantMessageContentProps) {
+  // Question-message: a body whose terminal section is a valid ```index-questions
+  // block renders as prose + steps. parseQuestionMessage fails closed — on any
+  // malformed block it returns null and the whole body falls through to the
+  // normal rendering path unchanged (the fence shows as a plain code block).
+  const parsedQuestions = parseQuestionMessage(content);
+  if (parsedQuestions) {
+    const prose = normalizeBlockquotes(mentionsToMarkdownLinks(parsedQuestions.prose));
+    return (
+      <div>
+        {prose.trim() && (
+          <div className="chat-markdown max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={OAuthLink ? { a: OAuthLink } : undefined}
+            >
+              {prose}
+            </ReactMarkdown>
+          </div>
+        )}
+        <QuestionSteps block={parsedQuestions.block} onQuote={onQuestionQuote} />
+      </div>
+    );
+  }
+
   const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
 
   if (!displayedContent && isStreaming) {

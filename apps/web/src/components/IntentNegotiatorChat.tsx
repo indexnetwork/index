@@ -7,6 +7,7 @@ import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/Answere
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
+import { QuestionRegenerationIndicator } from "@/components/chat/QuestionSteps";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { buildIntentQuestionTimeline } from "@/components/intent-question.timeline";
 import type { PendingQuestion, AnswerBody } from "@/services/questions";
@@ -41,6 +42,15 @@ export interface IntentNegotiatorChatProps {
    * be incoming — render a typing indicator below the question cards.
    */
   questionChainPending?: boolean;
+  /**
+   * A question-message regeneration is queued or running for this
+   * conversation — show an agent-working indicator so the user doesn't
+   * answer a message that's about to be replaced. Contract agreed with the
+   * delivery spine: the API exposes `questionRegenerationPending` on the
+   * POST /chat/negotiator/session response (wired by a follow-up there);
+   * until the parent passes it through, this stays absent and inert.
+   */
+  questionRegenerationPending?: boolean;
   /** Monotonic signal to reload server-appended Beat narration. */
   refreshVersion?: number;
   /** Opportunity card plumbing shared with the page's Radar panel. */
@@ -78,6 +88,7 @@ export default function IntentNegotiatorChat({
   onAnswerQuestion,
   onDismissQuestion,
   questionChainPending,
+  questionRegenerationPending,
   refreshVersion = 0,
   opportunityStatusMap,
   opportunityActionLoading,
@@ -102,6 +113,7 @@ export default function IntentNegotiatorChat({
   const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const clearChatRef = useRef(clearChat);
   const appliedRefreshVersionRef = useRef(0);
   useEffect(() => {
@@ -159,7 +171,16 @@ export default function IntentNegotiatorChat({
   // Follow the stream.
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [answered.length, messages, questions.length, questionChainPending, ready]);
+  }, [answered.length, messages, questions.length, questionChainPending, questionRegenerationPending, ready]);
+
+  // Tap-to-quote from a question step: prefill the input with the question
+  // being answered so the agent can route the reply. The answer itself stays
+  // a plain chat message through the normal send path.
+  const handleQuestionQuote = useCallback((prompt: string) => {
+    const quoted = prompt.length > 140 ? `${prompt.slice(0, 139).trimEnd()}…` : prompt;
+    setInput(`"${quoted}" — `);
+    inputRef.current?.focus();
+  }, []);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -343,6 +364,7 @@ export default function IntentNegotiatorChat({
                         onIntentProposalReject={handleProposalReject}
                         onIntentProposalUndo={handleProposalUndo}
                         intentProposalStatusMap={proposalStatusMap}
+                        onQuestionQuote={handleQuestionQuote}
                       />
                     </div>
                   )}
@@ -363,6 +385,8 @@ export default function IntentNegotiatorChat({
                 "trailing-pending",
                 questionChainPending,
               )}
+
+            {questionRegenerationPending && <QuestionRegenerationIndicator />}
           </>
         )}
         <div ref={scrollRef} />
@@ -370,6 +394,7 @@ export default function IntentNegotiatorChat({
 
       <div className="mt-2 flex shrink-0 items-center gap-2 border-t border-gray-100 pt-2">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
