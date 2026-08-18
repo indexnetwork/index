@@ -19,7 +19,7 @@ import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -181,6 +181,28 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     } else {
       // No personal agent or timeout — run system agent
       const agentPriorDialogue = buildAttributedDialogue(state);
+
+      // ─── A2H: the acting user's own negotiator DM for this signal ──────
+      // Retrieved HERE, inside the system-agent branch, rather than beside
+      // `ownMemory` above. Two reasons, and the first is the constraint:
+      //
+      // 1. `payload` is built and dispatched before this point, so the
+      //    excerpt cannot reach an external agent by a later edit — the
+      //    value does not exist in that scope. Memory is safe to forward
+      //    (distilled standing rules); a verbatim excerpt of the client's
+      //    private thread with their own negotiator is not, and an external
+      //    registered agent can hold the personal-agent seat.
+      // 2. A dispatched turn never reads it, so it never pays for the query.
+      //
+      // Gated on `askUserAvailable`: the grant is settled before the model
+      // runs, so the DM is present on exactly the turns where the agent may
+      // consult its client — the turns where knowing what they already said
+      // changes what it asks. Fetching it on every turn would move the
+      // prompt for every negotiation, not just the consulting ones.
+      // `askUserAvailable` already requires a non-empty `ownIntentId`.
+      const clientDm = askUserAvailable
+        ? await retrieveClientDm(deps, ownUser.id, ownIntentId!)
+        : [];
       turn = await deps.systemAgent.invoke({
         ownUser,
         otherUser,
@@ -198,6 +220,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         ...(askUserAvailable && { canAskUser: true }),
         ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
         ...(ownMemory.length > 0 && { memory: ownMemory }),
+        ...(clientDm.length > 0 && { clientDm }),
         ...(state.privateConsultation?.recipientUserId === ownUser.id
           ? { privateConsultation: state.privateConsultation }
           : {}),

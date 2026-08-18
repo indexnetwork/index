@@ -5,6 +5,7 @@ import { turnSchemaFor, fallbackActionFor } from "./negotiation.protocol.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
+import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage } from "./negotiation.client-dm.js";
 import { renderBargainingShiftSection } from "./negotiation.deadlock.js";
 import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stanceQuerySatisfiedRule } from "./negotiation.stance.contracts.js";
 import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "./negotiation.attribution.js";
@@ -71,8 +72,10 @@ const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side sur
  * constraints below are the renderer's, mirrored from
  * `shared/schemas/structured-question.schema.ts`; keep them in step with it.
  *
- * Grounding is this negotiation's own exchange. Nothing else is offered to the
- * agent as source material here.
+ * Grounding is this negotiation's own exchange. The agent's other source — the
+ * client's own DM with it about this signal — is offered separately, by
+ * `ASK_USER_DM_GROUNDING_RULE` below, and only on turns that actually carry an
+ * excerpt.
  */
 const ASK_USER_RULE = `
 - "ask_user" if you need {userName}'s OWN input before you can proceed. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation. Use "question" (not "ask_user") when the clarification should come from the OTHER side.
@@ -83,6 +86,21 @@ const ASK_USER_RULE = `
   - options: 2–4 of {userName}'s real decision options. Each label at most 120 characters; each description at most 280 characters, stating the CONSEQUENCE of choosing that option — what you would do next in this negotiation — not what it means. Never add an "Other" option; clients provide a free-text fallback automatically.
   - multiSelect: true ONLY when the options are not mutually exclusive (e.g. several priorities at once); false for a single either/or decision.
   - Do not name, quote, or describe the counterparty. {userName} can read the transcript, but the question itself must stand on its own without their identity or profile in it.`;
+
+/**
+ * Appended to `ASK_USER_RULE` only when this turn actually carries a client-DM
+ * excerpt (see `negotiation.client-dm.ts`). Deliberately a separate fragment
+ * rather than folded into the rule above: a turn with no DM must render the
+ * pre-A2H prompt byte-for-byte, and telling the model not to re-ask what the
+ * client already answered would dangle anyway when there is no conversation in
+ * the prompt to check it against.
+ *
+ * This is the half of question authoring the transcript cannot supply. The
+ * exchange shows what is stuck; the DM shows what the client has already
+ * settled about this signal and what they call it.
+ */
+const ASK_USER_DM_GROUNDING_RULE = `
+- Ground the question in your conversation with {userName} about this signal (shown below) as well as in the exchange above. Do NOT ask what they have already answered there: if their own words settle the point, act on them and spend your one consultation on what is genuinely still open. Use their terms for the thing at stake — the words, numbers, and framing they used, not your paraphrase of them.`;
 
 /** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
 const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
@@ -144,6 +162,18 @@ export interface NegotiationAgentInput {
    * advisory hints. Absent/empty → the prompt is byte-identical to before.
    */
   memory?: NegotiatorMemoryEntry[];
+  /**
+   * Recent excerpt of the acting user's own negotiator DM for this signal
+   * (A2H read path), most recent last. Rendered among the client-context
+   * blocks of the user message and, when `canAskUser` is granted, pointed at
+   * by the ask_user authoring rule. Absent/empty → the prompt is
+   * byte-identical to before.
+   *
+   * Only ever populated for THIS in-process system agent: the graph withholds
+   * it from `NegotiationTurnPayload`, so an external agent holding the
+   * personal-agent seat never receives it.
+   */
+  clientDm?: NegotiatorClientDmMessage[];
   /**
    * Prior dialogue with this counterparty grouped and labeled per opportunity
    * (IND-569). When present on a continuation it replaces the flat prior-turn
@@ -226,6 +256,14 @@ export class IndexNegotiator {
     // Deadlock→bargaining stance (IND-428): v2 only — defense in depth on top
     // of the graph-side gating, mirroring the canAskUser guard above.
     const bargainingActive = input.bargaining != null && version === "v2";
+    // A2H client DM. Gated on the RESOLVED `canAskUser` — defense in depth on
+    // top of the graph, which retrieves it only when the ask_user grant is
+    // live. The resolved flag, not `input.canAskUser`, because it also folds
+    // in v2-only and non-final: `ASK_USER_DM_GROUNDING_RULE` points at this
+    // section from inside `ASK_USER_RULE`, so a v1 or final turn would
+    // otherwise render the client's private thread with no rule explaining
+    // what it is for.
+    const clientDm = canAskUser ? input.clientDm ?? [] : [];
     // Negotiator stance (IND-611). Resolved from the environment once per turn
     // via the domain contract, exactly like `configuredScreenMode()`. Under the
     // `advocate` default every stance fragment below is the legacy string, so
@@ -242,7 +280,8 @@ export class IndexNegotiator {
     const networkContext = input.indexContext.prompt || "General discovery";
     const actionRules = (version === "v2"
       ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
-      : V1_ACTION_RULES) + stanceActionRules(stance) + (canAskUser ? ASK_USER_RULE : "");
+      : V1_ACTION_RULES) + stanceActionRules(stance)
+      + (canAskUser ? ASK_USER_RULE + (clientDm.length > 0 ? ASK_USER_DM_GROUNDING_RULE : "") : "");
     const finalTurnInstruction = input.isFinalTurn
       ? (version === "v2"
           ? (seat === "initiator"
@@ -337,6 +376,12 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
         }).filter(Boolean).join("\n")}\n`
       : '';
 
+    // The client's standing conversation about this signal. It sits with the
+    // other client-context blocks and FIRST among them: it is the background
+    // the between-session answers and the private consultation are replies
+    // within, so it reads in the order it happened.
+    const clientDmContext = renderNegotiatorClientDmSection(clientDm, userName);
+
     const privateConsultationContext = input.privateConsultation
       ? `\n\n--- ${userName}'s private consultation (not shared with the counterparty) ---\n${input.privateConsultation.selectedOptions.join(', ')}${input.privateConsultation.freeText ? ` — ${input.privateConsultation.freeText}` : ''}\nUse this only to represent ${userName}'s preferences; do not disclose it unless they explicitly authorized that in their answer.\n`
       : '';
@@ -359,7 +404,7 @@ Skills: ${input.otherUser.profile.skills?.join(", ") ?? "N/A"}
 Intents:
 ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n")}
 
-Why this match was suggested: ${input.seedAssessment.reasoning}${hasPriorDialogue ? priorDialogueContext : historyText}${userAnswersContext}${privateConsultationContext}
+Why this match was suggested: ${input.seedAssessment.reasoning}${hasPriorDialogue ? priorDialogueContext : historyText}${clientDmContext}${userAnswersContext}${privateConsultationContext}
 ${discoveryQueryReminder}
 ${input.history.length === 0 && !input.isContinuation ? (version === "v2" && seat === "initiator" ? "This is the opening turn. Make the outreach case." : "This is the opening turn. Propose the connection case.") : "Evaluate the latest arguments and respond."}`;
 
