@@ -44,6 +44,7 @@ export {
 } from "./negotiation.hermes-contract.js";
 export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 export { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
+export { negotiationScopeKey, readNegotiationMessages } from "./negotiation.scope.js";
 export {
   assessConsultationEligibility,
   consultationPromptFor,
@@ -77,5 +78,6 @@ export type {
   UserNegotiationContext,
 } from "./negotiation.state.js";
 export type { NegotiationSpeakerMessage, NegotiationSpeakerParticipants } from "./negotiation.expected-speaker.js";
+export type { NegotiationScopeMetadata } from "./negotiation.scope.js";
 export type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 export type { NegotiationToolDeps } from "./negotiation.tools.port.js";

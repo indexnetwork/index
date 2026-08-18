@@ -69,9 +69,11 @@ export function turnsFromMessages(messages: Array<{ parts: unknown[] }>): Negoti
 
 /**
  * Whether `userId`'s side has already spent its one `ask_user` client
- * consultation in this conversation (P3.2 rationing: max one per negotiation
- * per side, checked against the full message history so continuations count
- * prior sessions' consultations too).
+ * consultation in THIS negotiation (P3.2 rationing: max one per negotiation per
+ * side). Callers pass `state.messages`, which carries this negotiation's turns
+ * across all of its sessions — so an earlier session of the same negotiation
+ * counts, while a consultation spent on a different match with the same
+ * counterparty does not.
  */
 export function hasPriorAskUser(
   messages: Array<{ senderId: string; parts: unknown[] }>,
@@ -175,7 +177,9 @@ try {
 export function buildAttributedDialogue(
   state: NegotiationState,
 ): AttributedPriorDialogue | null {
-  if (!state.isContinuation || !state.priorAttribution) return null;
+  // Not gated on `isContinuation`: that now means "this negotiation has spoken",
+  // and the pair's earlier matches are context worth carrying into a fresh one.
+  if (!state.priorAttribution) return null;
   const currentSessionTurns = turnsFromMessages(
     state.messages.filter((m) => (m as { taskId?: string | null }).taskId === state.taskId),
   );

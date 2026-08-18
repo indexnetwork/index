@@ -58,6 +58,7 @@ function makeDb(messages: unknown[]) {
     acquireClaimedNegotiationTimeoutExecution,
     acquireWaitingNegotiationTimeoutExecution: mock(async () => null),
     getMessagesForConversation: mock(async () => messages),
+    getNegotiationMessages: mock(async () => messages),
     recordNegotiationTimeoutInvocation: mock(async (input: { turn: never }) => {
       if (!current || !execution) return null;
       execution = { ...execution, status: 'invoked', turn: input.turn, invokedAt: '2026-08-07T00:00:03.000Z' };

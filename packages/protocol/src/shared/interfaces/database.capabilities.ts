@@ -369,6 +369,6 @@ export type RadarGraphDatabase = Pick<
 > & Pick<
   NegotiationGraphDatabase,
   | 'getNegotiationTaskForOpportunity'
-  | 'getMessagesForConversation'
+  | 'getNegotiationMessages'
   | 'getArtifactsForTask'
 >;

@@ -62,7 +62,10 @@ function mkQueue(opts?: {
 
   const queue = new NegotiationReflectQueue({
     conversations: {
-      getMessagesForConversation: async () => [
+      // Reflection distils ONE negotiation, so the worker reads that
+      // negotiation's turns rather than the pair's whole shared DM.
+      getMessagesForConversation: async () => [],
+      getNegotiationMessages: async () => [
         turnMessage('u-alice', 'outreach', 'hello'),
         turnMessage('u-bob', 'accept', 'deal'),
       ],

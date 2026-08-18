@@ -25,6 +25,7 @@ import { NegotiationReflector, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/proto
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
+import { readNegotiationMessages } from '../../lib/negotiation/expected-speaker';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
 import { chatSessionService } from '../../services/chat.service';
@@ -54,6 +55,12 @@ type ReflectQueueJobData = ReflectJobData | ChatReflectJobData;
 export interface ReflectQueueDeps {
   conversations?: {
     getMessagesForConversation: (conversationId: string) => Promise<Array<{
+      id: string;
+      senderId: string;
+      parts: unknown[];
+      createdAt: Date;
+    }>>;
+    getNegotiationMessages: (opportunityId: string) => Promise<Array<{
       id: string;
       senderId: string;
       parts: unknown[];
@@ -178,7 +185,15 @@ export class NegotiationReflectQueue {
 
     const conversations: NonNullable<ReflectQueueDeps['conversations']> =
       this.deps?.conversations ?? conversationDatabaseAdapter;
-    const messages = await conversations.getMessagesForConversation(data.conversationId);
+    // Reflect on THIS negotiation only. Distilling the pair's whole DM would
+    // attribute turns from other matches to this one's memories.
+    const messages = await readNegotiationMessages({
+      byNegotiation: (id) => conversations.getNegotiationMessages(id),
+      byConversation: (id) => conversations.getMessagesForConversation(id),
+    }, {
+      conversationId: data.conversationId,
+      metadata: { opportunityId: data.opportunityId },
+    });
 
     // Extract turn data parts (same projection the graph uses).
     const turns = messages

@@ -6,7 +6,7 @@ import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
 import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 
-import { runResumableTimeoutFallback, type NegotiationTaskMeta, type ResumableTimeoutFaultStep, type TimeoutNegotiatorInvoke } from './timeout.shared';
+import { negotiationMessagesFor, runResumableTimeoutFallback, type NegotiationTaskMeta, type ResumableTimeoutFaultStep, type TimeoutNegotiatorInvoke } from './timeout.shared';
 import type { NegotiationTimeoutExecutionStore } from '../../lib/negotiation/timeout-execution';
 
 /** BullMQ queue name for negotiation timeout jobs. */
@@ -309,7 +309,7 @@ export class NegotiationTimeoutQueue {
       this.logger.warn('Task is not a negotiation, skipping', { negotiationId });
       return;
     }
-    const messages = await database.getMessagesForConversation(acquired.task.conversationId);
+    const messages = await negotiationMessagesFor(database, acquired.task);
     const parkWindowMs = this.deps?.parkWindowMs
       ?? (await import('@indexnetwork/protocol')).AMBIENT_PARK_WINDOW_MS;
     await runResumableTimeoutFallback({

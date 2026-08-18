@@ -15,6 +15,7 @@ import { readAuthorizedNegotiationDetail } from './negotiation.detail-reader.js'
 import { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
 import { isNegotiationTurnCapReached } from './negotiation.turn-cap.js';
 import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
+import { readNegotiationMessages } from './negotiation.scope.js';
 
 export { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
 
@@ -189,8 +190,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           const isSource = meta.sourceUserId === context.userId;
           const counterpartyId = isSource ? meta.candidateUserId : meta.sourceUserId;
 
-          // Get messages for preview (and turns when narrative detail requested)
-          const messages = await negotiationDatabase.getMessagesForConversation(task.conversationId);
+          // This negotiation's own turns: the preview, turn count and floor all
+          // describe THIS match, and the pair's DM also holds other matches.
+          const messages = await readNegotiationMessages({
+            byNegotiation: (id) => negotiationDatabase.getNegotiationMessages(id),
+            byConversation: (id) => negotiationDatabase.getMessagesForConversation(id),
+          }, { conversationId: task.conversationId, metadata: meta });
           const lastMessage = messages[messages.length - 1];
           const lastTurnData = lastMessage
             ? ((lastMessage.parts as Array<{ kind?: string; data?: unknown }>)?.find(p => p.kind === 'data')?.data as { action?: string; assessment?: { reasoning?: string }; message?: string | null } | undefined)
@@ -371,7 +376,10 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           metadata: meta,
           callerUserId: context.userId,
           callerRole: isSource ? 'source' : 'candidate',
-          readMessages: (conversationId) => negotiationDatabase.getMessagesForConversation(conversationId),
+          readMessages: (conversationId) => readNegotiationMessages({
+            byNegotiation: (id) => negotiationDatabase.getNegotiationMessages(id),
+            byConversation: (id) => negotiationDatabase.getMessagesForConversation(id),
+          }, { conversationId, metadata: meta }),
           readArtifacts: (taskId) => negotiationDatabase.getArtifactsForTask(taskId),
           readLifecycleEvidence: (opportunityIds, ownerUserId) =>
             readOpportunityLifecycles(negotiationDatabase, opportunityIds, ownerUserId),
@@ -428,6 +436,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           sourceUserId?: string;
           candidateUserId?: string;
           initiatorUserId?: string;
+          opportunityId?: string;
           protocolVersion?: string;
           type?: string;
           maxTurns?: number;
@@ -486,7 +495,10 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           return error(seatViolationMessage(query.action, seat, protocolVersion));
         }
 
-        const messages = await negotiationDatabase.getMessagesForConversation(task.conversationId);
+        const messages = await readNegotiationMessages({
+          byNegotiation: (id) => negotiationDatabase.getNegotiationMessages(id),
+          byConversation: (id) => negotiationDatabase.getMessagesForConversation(id),
+        }, { conversationId: task.conversationId, metadata: meta });
         const turnCount = messages.length;
         const expectedSpeaker = expectedNegotiationSpeaker(meta, messages);
 

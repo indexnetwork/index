@@ -3,9 +3,26 @@ import { isNegotiationTurnCapReached, type NegotiationContinuationTimeoutIdentit
 import { log } from '../../lib/log';
 import type { ContinuationExecutionFence } from '../../adapters/negotiation-continuation.atomic';
 import { remainingDeadlineDelayMs, type AcquiredNegotiationTimeoutExecution, type NegotiationTimeoutAtomicStep, type NegotiationTimeoutCompletionPlan, type NegotiationTimeoutExecutionStore } from '../../lib/negotiation/timeout-execution';
-import { expectedNegotiationSpeaker } from '../../lib/negotiation/expected-speaker';
+import { expectedNegotiationSpeaker, readNegotiationMessages } from '../../lib/negotiation/expected-speaker';
 
 type TimeoutLogger = ReturnType<typeof log.job.from>;
+
+/**
+ * The parked negotiation's own messages. A timeout resumes ONE match; the pair's
+ * shared DM also holds the negotiations they ran for every other match.
+ */
+export function negotiationMessagesFor(
+  database: Pick<NegotiationGraphDatabase, 'getNegotiationMessages' | 'getMessagesForConversation'>,
+  task: { conversationId: string; metadata: unknown },
+) {
+  return readNegotiationMessages({
+    byNegotiation: (id) => database.getNegotiationMessages(id),
+    byConversation: (id) => database.getMessagesForConversation(id),
+  }, {
+    conversationId: task.conversationId,
+    metadata: task.metadata as { opportunityId?: unknown } | null,
+  });
+}
 
 type NegotiationSeat = 'initiator' | 'counterparty';
 
@@ -343,8 +360,9 @@ export async function runTimeoutFallback(params: {
     continuationExecution,
   } = params;
 
-  // Determine the bilateral speaker from authoritative participant history.
-  // Unrelated/system senders do not move the seat; no history means source.
+  // Determine the bilateral speaker from this negotiation's own turn history.
+  // Unrelated/system senders do not move the seat; no history means the
+  // negotiation has not opened, so the floor sits with its initiator.
   const expectedSpeaker = expectedNegotiationSpeaker(meta, messages);
   if (!expectedSpeaker) throw new Error('Timeout fallback has malformed bilateral speaker metadata');
   const currentSpeaker = expectedSpeaker === meta.sourceUserId ? 'source' : 'candidate';

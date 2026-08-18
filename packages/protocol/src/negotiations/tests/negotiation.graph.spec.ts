@@ -22,6 +22,7 @@ function mkStubs() {
     createArtifact: async () => {},
     setTaskTurnContext: async () => {},
     getMessagesForConversation: async () => [],
+    getNegotiationMessages: async () => [],
     getNegotiationTaskForOpportunity: async () => null,
   } as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0];
 

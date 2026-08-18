@@ -53,6 +53,7 @@ function mkStubs(opts?: {
       },
     }),
     getMessagesForConversation: async () => [],
+    getNegotiationMessages: async () => [],
     getOpportunityUserAnswers: async () => [],
     getNegotiationTaskForOpportunity: async () => null,
     getLatestNegotiationTaskForConversation: async () => null,
@@ -362,6 +363,7 @@ describe("get_negotiation — deadlockShift metadata privacy (IND-428)", () => {
       negotiationDatabase: {
         getTask: async () => task,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getArtifactsForTask: async () => [],
       },
     } as never);

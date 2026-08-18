@@ -45,6 +45,7 @@ function mkStubs(opts?: {
     createArtifact: async () => {},
     setTaskTurnContext: async () => {},
     getMessagesForConversation: async () => [],
+    getNegotiationMessages: async () => [],
     getOpportunityUserAnswers: async () => [],
     getNegotiationTaskForOpportunity: async () => opts?.priorOpportunityTask ?? null,
     ...(opts?.omitConversationLookup

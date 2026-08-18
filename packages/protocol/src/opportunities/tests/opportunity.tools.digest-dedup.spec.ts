@@ -144,6 +144,7 @@ function makeDeps(opts: {
     negotiationDatabase: {
       getNegotiationTaskForOpportunity: async () => null,
       getMessagesForConversation: async () => [],
+      getNegotiationMessages: async () => [],
       getArtifactsForTask: async () => [],
     } as unknown as ToolDeps['negotiationDatabase'],
     deliveryLedger: deliveryLedger as unknown as ToolDeps['deliveryLedger'],

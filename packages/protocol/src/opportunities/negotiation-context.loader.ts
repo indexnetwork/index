@@ -31,7 +31,7 @@ const logger = protocolLogger('NegotiationContextLoader');
  */
 export type NegotiationContextDatabase = Pick<
   NegotiationGraphDatabase,
-  'getNegotiationTaskForOpportunity' | 'getMessagesForConversation' | 'getArtifactsForTask'
+  'getNegotiationTaskForOpportunity' | 'getNegotiationMessages' | 'getArtifactsForTask'
 >;
 
 /**
@@ -86,7 +86,9 @@ export async function loadNegotiationContext(
 
   const turnCap = readNumber(task.metadata, 'maxTurns') ?? 0;
 
-  const messages = await db.getMessagesForConversation(task.conversationId);
+  // Scoped to this opportunity: `turnCount`/`turns` describe THIS negotiation,
+  // and the pair's shared DM also holds concluded negotiations for other matches.
+  const messages = await db.getNegotiationMessages(opportunityId);
   const turns = extractTurns(messages);
   const turnCount = turns.length;
 

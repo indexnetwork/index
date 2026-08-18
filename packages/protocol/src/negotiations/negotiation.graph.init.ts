@@ -35,7 +35,12 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
       : await deps.database.getOrCreateDM(agentIdA, agentIdB, 'agent');
 
     // --- Lock gate: check for an active task on this conversation ---
-    const priorMessages = await deps.database.getMessagesForConversation(conversation.id);
+    // Two reads with two jobs. `conversationMessages` is the pair's whole shared
+    // DM — CONTEXT, including negotiations for other matches, which reaches the
+    // agent only as labelled prior dialogue. `negotiationMessages` is THIS
+    // match's own turns, and is the sole input to this negotiation's state:
+    // whether it has opened, whose turn it is, how far it has run.
+    const conversationMessages = await deps.database.getMessagesForConversation(conversation.id);
 
     if (
       Boolean(state.resumeFromTaskId) !== Boolean(state.continuationSettlementId)
@@ -79,19 +84,20 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
       return { error: 'busy' };
     }
 
-    // --- Load prior messages and determine continuation ---
-    const priorTurns: NegotiationTurn[] = turnsFromMessages(priorMessages);
+    // --- Load this negotiation's own prior turns ---
+    // A negotiation is keyed by opportunity, not task: an ask_user pause resumes
+    // into a successor task, and both tasks' turns are the same negotiation.
+    // Without an opportunity there is no negotiation identity to scope to, so
+    // the run is by definition unopened.
+    const negotiationMessages = state.opportunityId
+      ? await deps.database.getNegotiationMessages(state.opportunityId)
+      : [];
+    const priorTurns: NegotiationTurn[] = turnsFromMessages(negotiationMessages);
 
+    // `isContinuation` means THIS negotiation has already spoken — not that the
+    // pair has history. A fresh match in a long-running DM is not a
+    // continuation, and must still open.
     const isContinuation = priorTurns.length > 0;
-
-    const expectedSpeaker = expectedNegotiationSpeaker({
-      sourceUserId: state.sourceUser.id,
-      candidateUserId: state.candidateUser.id,
-    }, priorMessages);
-    if (!expectedSpeaker) return { error: 'invalid negotiation participants' };
-    const currentSpeaker: 'source' | 'candidate' = expectedSpeaker === state.sourceUser.id
-      ? 'source'
-      : 'candidate';
 
     // Determine scenario-based maxTurns
     const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
@@ -138,6 +144,19 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
         }
       }
     }
+
+    // --- Floor: derived from this negotiation's turns, after the seat is known ---
+    // Resolved here rather than above because an unopened negotiation starts
+    // with its initiator, which the tie-break may only just have settled.
+    const expectedSpeaker = expectedNegotiationSpeaker({
+      sourceUserId: state.sourceUser.id,
+      candidateUserId: state.candidateUser.id,
+      initiatorUserId,
+    }, negotiationMessages);
+    if (!expectedSpeaker) return { error: 'invalid negotiation participants' };
+    const currentSpeaker: 'source' | 'candidate' = expectedSpeaker === state.sourceUser.id
+      ? 'source'
+      : 'candidate';
 
     // --- Protocol version: pinned per negotiation, re-stamped per match ---
     // A prior task for this same negotiation (exact continuation resume or
@@ -212,24 +231,28 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
         })
       : [];
 
-    // Seed messages with prior turns (additive reducer appends new turns on top).
-    // taskId is preserved so the turn/screen nodes can separate this
-    // session's turns from seeded prior-task turns (IND-569).
-    const seedMessages = isContinuation ? priorMessages.map((m) => ({
+    // Seed messages with THIS negotiation's prior turns (additive reducer
+    // appends new turns on top). taskId is preserved so the turn/screen nodes
+    // can separate this session's turns from earlier sessions of the same
+    // negotiation (IND-569).
+    const seedMessages = negotiationMessages.map((m) => ({
       id: m.id,
       senderId: m.senderId,
       role: 'agent' as const,
       parts: m.parts,
       createdAt: m.createdAt,
       taskId: (m as { taskId?: string | null }).taskId ?? null,
-    })) : [];
+    }));
 
-    // IND-569: attribute seeded prior turns to their originating opportunity
-    // once, up front. Earlier-opportunity and legacy unattributed blocks are
-    // immutable for the session; the current block is composed per turn.
-    const priorAttribution = isContinuation
+    // IND-569: attribute the pair's whole shared DM to its originating
+    // negotiations, once, up front. Earlier-match and legacy unattributed
+    // blocks are immutable for the session; the current block is composed per
+    // turn. Keyed on the conversation, not on `isContinuation`: a fresh match
+    // has no turns of its own but the pair's history is exactly the context
+    // worth carrying into it.
+    const priorAttribution = conversationMessages.length > 0
       ? await buildSeededAttribution(
-          priorMessages
+          conversationMessages
             .map((m) => ({ taskId: (m as { taskId?: string | null }).taskId ?? null, turn: turnsFromMessages([m])[0] }))
             .filter((e): e is { taskId: string | null; turn: NegotiationTurn } => Boolean(e.turn)),
           state.opportunityId,

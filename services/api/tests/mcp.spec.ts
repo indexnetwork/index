@@ -2585,6 +2585,7 @@ describe('MCP Server Factory', () => {
       getIntentIdsForOpportunities: async () => ({}),
       getOpportunityLifecyclesForNegotiations: async () => ({}),
       getMessagesForConversation: async () => [],
+      getNegotiationMessages: async () => [],
       getArtifactsForTask: async () => [],
     } as unknown as ToolDeps['negotiationDatabase'];
 

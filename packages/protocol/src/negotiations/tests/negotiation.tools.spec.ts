@@ -86,6 +86,7 @@ describe("list_negotiations — isUsersTurn", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [msg],
+        getNegotiationMessages: async () => [msg],
       },
     };
 
@@ -105,6 +106,7 @@ describe("list_negotiations — isUsersTurn", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -152,6 +154,7 @@ describe("list_negotiations — latestMessagePreview", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [msg],
+        getNegotiationMessages: async () => [msg],
       },
     };
 
@@ -173,6 +176,7 @@ describe("list_negotiations — latestMessagePreview", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [msg],
+        getNegotiationMessages: async () => [msg],
       },
     };
 
@@ -201,6 +205,7 @@ describe("list_negotiations — pagination", () => {
       negotiationDatabase: {
         getTasksForUser: async () => tasks,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -222,6 +227,7 @@ describe("list_negotiations — pagination", () => {
       negotiationDatabase: {
         getTasksForUser: async () => tasks,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -241,6 +247,7 @@ describe("list_negotiations — pagination", () => {
       negotiationDatabase: {
         getTasksForUser: async () => tasks,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -261,6 +268,7 @@ describe("list_negotiations — pagination", () => {
       negotiationDatabase: {
         getTasksForUser: async () => tasks,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -295,6 +303,7 @@ describe("list_negotiations — intent scope", () => {
         getTasksForUser: async () => [matching, differentIntent, withoutOpportunity, withoutIntent],
         getIntentIdsForOpportunities,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -316,6 +325,7 @@ describe("list_negotiations — intent scope", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [first, second],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -337,6 +347,7 @@ describe("list_negotiations — intent scope", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -361,6 +372,7 @@ describe("get_negotiation — isUsersTurn", () => {
       negotiationDatabase: {
         getTask: async () => task,
         getMessagesForConversation: async () => [msg],
+        getNegotiationMessages: async () => [msg],
         getArtifactsForTask: async () => [],
       },
     };
@@ -754,6 +766,7 @@ describe("list_negotiations — network scope", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [inScope, outOfScope],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -775,6 +788,7 @@ describe("list_negotiations — network scope", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [t1, t2],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -797,6 +811,7 @@ describe("list_negotiations — network scope", () => {
       negotiationDatabase: {
         getTasksForUser: async () => [legacy],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -847,6 +862,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -870,6 +886,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -890,6 +907,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
       },
     };
 
@@ -915,6 +933,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => messages,
+        getNegotiationMessages: async () => messages,
       },
     };
 
@@ -941,6 +960,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => messages,
+        getNegotiationMessages: async () => messages,
       },
     };
 
@@ -969,6 +989,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => messages,
+        getNegotiationMessages: async () => messages,
       },
     };
 
@@ -990,6 +1011,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getArtifactsForTask: async () => { artifactsCalled = true; return []; },
       },
     };
@@ -1015,6 +1037,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getArtifactsForTask: async () => [artifact],
       },
     };
@@ -1037,6 +1060,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => [task],
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getArtifactsForTask: async () => [],
       },
     };
@@ -1063,6 +1087,9 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => tasks,
         getMessagesForConversation: async () => [
+          makeMessage('accept', 'Agent-side assessment.', 'I accept this potential match.'),
+        ],
+        getNegotiationMessages: async () => [
           makeMessage('accept', 'Agent-side assessment.', 'I accept this potential match.'),
         ],
         getArtifactsForTask: async () => [{
@@ -1125,6 +1152,7 @@ describe('list_negotiations — detail:"narrative"', () => {
       negotiationDatabase: {
         getTasksForUser: async () => tasks,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getOpportunityLifecyclesForNegotiations: async () => ({
           'opp-owner': { status: 'accepted', acceptedByOwner: true },
           'opp-other': { status: 'accepted', acceptedByOwner: false },
@@ -1181,6 +1209,7 @@ describe("get_negotiation — network scope", () => {
       negotiationDatabase: {
         getTask: async () => task,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getArtifactsForTask: async () => [],
       },
     };
@@ -1204,6 +1233,7 @@ describe("get_negotiation — network scope", () => {
       negotiationDatabase: {
         getTask: async () => task,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getArtifactsForTask: async () => [],
       },
     };
@@ -1232,6 +1262,7 @@ describe("get_negotiation — participant-only A2A visibility (IND-608)", () => 
       negotiationDatabase: {
         getTask: async () => task,
         getMessagesForConversation: async () => { messageReads += 1; return []; },
+        getNegotiationMessages: async () => { messageReads += 1; return []; },
         getArtifactsForTask: async () => { artifactReads += 1; return []; },
       },
     };
@@ -1258,6 +1289,7 @@ describe("get_negotiation — participant-only A2A visibility (IND-608)", () => 
       negotiationDatabase: {
         getTask: async () => task,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         getArtifactsForTask: async () => [],
       },
     };
@@ -1285,6 +1317,7 @@ describe("respond_to_negotiation — network scope", () => {
       negotiationDatabase: {
         getTask: async () => outOfScope,
         getMessagesForConversation: async () => [],
+        getNegotiationMessages: async () => [],
         createMessage: async () => { throw new Error("must not be called"); },
         updateTaskState: async () => { throw new Error("must not be called"); },
         createArtifact: async () => { throw new Error("must not be called"); },

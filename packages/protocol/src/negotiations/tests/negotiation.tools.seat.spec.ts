@@ -69,6 +69,7 @@ function makeDeps(task: unknown, messages: unknown[]) {
       negotiationDatabase: {
         getTask: async () => task,
         getMessagesForConversation: async () => messages,
+        getNegotiationMessages: async () => messages,
         createMessage: async (m: { senderId: string; parts: Array<{ data: { action: string } }> }) => {
           createdMessages.push(m);
           return { id: "msg-new", senderId: m.senderId, role: "agent", parts: m.parts, createdAt: new Date() };

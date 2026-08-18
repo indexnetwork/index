@@ -292,12 +292,20 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
       ? ' Prior turns from OTHER opportunities are background only — do not treat their conclusions as decisions about this opportunity.'
       : '';
 
-    const continuationHasHistory = hasAttributedDialogue || input.history.length > 0;
-    const continuationContext = input.isContinuation && continuationHasHistory
+    // The pair's shared DM carries every negotiation they have ever had. It is
+    // rendered whenever it exists — NOT only on continuations — because a fresh
+    // match in a long-running DM is exactly the case where that context is
+    // worth having. What it may not do is stand in for this negotiation's own
+    // exchange, so the policy line differs by whether this one has opened.
+    const hasPriorDialogue = hasAttributedDialogue || input.history.length > 0;
+    const priorDialoguePolicy = input.isContinuation
+      ? 'Policy: You are continuing a prior dialogue. If this signal is materially the same as one you previously evaluated, you may resolve quickly. If materially different, evaluate on its own merits.'
+      : 'Policy: This signal is NEW — you have not negotiated it before. The dialogue above concluded on other signals and is background only. Evaluate this one on its own merits and make your own case for it.';
+    const priorDialogueContext = hasPriorDialogue
       ? `\n\n--- Prior dialogue with this counterparty ---\n${attributionPreamble}${priorDialogueBody}\n\n--- New signal under evaluation ---\n${input.discoveryQuery
   ? `Discovery query: "${input.discoveryQuery}"`
   : `Seed assessment: ${input.seedAssessment.reasoning}`
-}\n\nPolicy: You are continuing a prior dialogue. If this signal is materially the same as one you previously evaluated, you may resolve quickly. If materially different, evaluate on its own merits.${attributionPolicy}`
+}\n\n${priorDialoguePolicy}${attributionPolicy}`
       : '';
 
     const userAnswersContext = input.userAnswers && input.userAnswers.length > 0
@@ -332,7 +340,7 @@ Skills: ${input.otherUser.profile.skills?.join(", ") ?? "N/A"}
 Intents:
 ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n")}
 
-Why this match was suggested: ${input.seedAssessment.reasoning}${input.isContinuation ? continuationContext : historyText}${userAnswersContext}${privateConsultationContext}
+Why this match was suggested: ${input.seedAssessment.reasoning}${hasPriorDialogue ? priorDialogueContext : historyText}${userAnswersContext}${privateConsultationContext}
 ${discoveryQueryReminder}
 ${input.history.length === 0 && !input.isContinuation ? (version === "v2" && seat === "initiator" ? "This is the opening turn. Make the outreach case." : "This is the opening turn. Propose the connection case.") : "Evaluate the latest arguments and respond."}`;
 

@@ -11,12 +11,45 @@ import type { ContinuationExecutionFence, ContinuationReceipt } from './negotiat
 import { negotiationTimeoutExecutionId, parseNegotiationTimeoutExecution, timeoutExecutionMatches } from '../lib/negotiation/timeout-execution';
 import type { AcquiredNegotiationTimeoutExecution, NegotiationTimeoutAtomicStep, NegotiationTimeoutCompletionPlan, NegotiationTimeoutExecutionIdentity, NegotiationTimeoutExecutionRecord } from '../lib/negotiation/timeout-execution';
 import { deriveLegacyNegotiationParkOrigin, type TimeoutUpgradeJobIntent } from '../lib/negotiation/timeout-upgrade-reconciliation';
-import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
+import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 import { consultationActorSetMatchesBinding, externalConsultationCoordinatesFor } from '../lib/negotiation/consultation';
 import { authorizeNegotiationMutationInTransaction } from '../lib/agent/negotiation-runtime-authority';
 import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import { digestHermesRunId, issueHermesRunCapability, parseHermesRunCapabilityBinding, verifyHermesRunCapability, type HermesRunOutcome } from '../lib/agent/hermes-negotiation-run';
+
+/**
+ * In-transaction read of ONE negotiation's turn history, for the locked floor
+ * checks below.
+ *
+ * Mirrors `getNegotiationMessages`, but must run inside the caller's `tx` so
+ * the check and the write it guards observe the same snapshot. A task with no
+ * opportunity has no identity apart from its conversation, so the conversation
+ * is its scope.
+ */
+async function selectNegotiationTurnHistoryInTransaction(
+  tx: { select: typeof db.select },
+  scope: { conversationId: string; metadata: Record<string, unknown> | null },
+): Promise<Array<{ id: string; senderId: string; parts: unknown }>> {
+  const opportunityId = negotiationScopeKey(scope.metadata);
+  const columns = {
+    id: schema.messages.id,
+    senderId: schema.messages.senderId,
+    parts: schema.messages.parts,
+  };
+  if (!opportunityId) {
+    return tx.select(columns).from(schema.messages)
+      .where(eq(schema.messages.conversationId, scope.conversationId))
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+  }
+  return tx.select(columns).from(schema.messages)
+    .innerJoin(schema.tasks, eq(schema.messages.taskId, schema.tasks.id))
+    .where(and(
+      sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+      sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+    ))
+    .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+}
 
 export type AtomicNegotiationPickupResult =
   | { kind: 'unauthorized' }
@@ -2230,9 +2263,10 @@ export class ConversationDatabaseAdapter {
       )).limit(1).for('update');
       if (!current) return null;
       if (ownerId) {
-        const history = await tx.select({ senderId: schema.messages.senderId, parts: schema.messages.parts }).from(schema.messages)
-          .where(eq(schema.messages.conversationId, current.conversationId))
-          .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+        const history = await selectNegotiationTurnHistoryInTransaction(tx, {
+          conversationId: current.conversationId,
+          metadata: metadataRecord(current.metadata),
+        });
         if (expectedNegotiationSpeaker(metadataRecord(current.metadata), history) !== ownerId) return null;
       }
 
@@ -2667,10 +2701,10 @@ export class ConversationDatabaseAdapter {
       // The orchestration plan includes the exact model turn but sender identity
       // is derived from locked authoritative history, never trusted from a
       // provider response.
-      const bilateralHistory = await tx.select({ senderId: schema.messages.senderId, parts: schema.messages.parts })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, task.conversationId))
-        .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+      const bilateralHistory = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: task.conversationId,
+        metadata: taskMetadata,
+      });
       const speakerUserId = expectedNegotiationSpeaker(taskMetadata, bilateralHistory);
       if (!speakerUserId) throw new Error('Timeout execution has malformed bilateral speaker metadata');
       await tx.insert(schema.messages).values({
@@ -3038,10 +3072,10 @@ export class ConversationDatabaseAdapter {
         || (metadata.sourceUserId !== input.ownerId && metadata.candidateUserId !== input.ownerId)
       ) return { kind: 'not_found' } as const;
 
-      const messages = await tx.select({ id: schema.messages.id, senderId: schema.messages.senderId, parts: schema.messages.parts })
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, current.conversationId))
-        .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+      const messages = await selectNegotiationTurnHistoryInTransaction(tx, {
+        conversationId: current.conversationId,
+        metadata: metadata as Record<string, unknown> | null,
+      });
       if (
         messages.length !== input.expectedTurnCount
         || expectedNegotiationSpeaker(metadata, messages) !== input.ownerId
@@ -4414,6 +4448,55 @@ export class ConversationDatabaseAdapter {
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))
       .orderBy(asc(schema.messages.createdAt));
+
+    return rows.map((r) => ({
+      ...r,
+      parts: (r.parts as unknown[]) ?? [],
+    }));
+  }
+
+  /**
+   * Gets the messages belonging to ONE negotiation, ordered by creation time.
+   *
+   * Keyed on opportunity rather than task: an `ask_user` pause parks its task
+   * and resumes into a pre-claimed successor, so a single negotiation spans
+   * several tasks. Messages with no `taskId` — or whose task carries no
+   * opportunityId — belong to no negotiation and are excluded; they remain
+   * visible through `getMessagesForConversation` as context.
+   *
+   * Served by `tasks_metadata_opportunity_id_idx` (partial, on
+   * `metadata->>'opportunityId'` where type = negotiation) and
+   * `messages_task_id_idx`.
+   *
+   * @param opportunityId - The negotiation's opportunity
+   * @returns Array of message records
+   */
+  async getNegotiationMessages(opportunityId: string): Promise<Array<{
+    id: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    createdAt: Date;
+    taskId?: string | null;
+  }>> {
+    const rows = await db
+      .select({
+        id: schema.messages.id,
+        senderId: schema.messages.senderId,
+        role: schema.messages.role,
+        parts: schema.messages.parts,
+        createdAt: schema.messages.createdAt,
+        taskId: schema.messages.taskId,
+      })
+      .from(schema.messages)
+      .innerJoin(schema.tasks, eq(schema.messages.taskId, schema.tasks.id))
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+        ),
+      )
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     return rows.map((r) => ({
       ...r,

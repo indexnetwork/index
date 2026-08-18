@@ -90,6 +90,7 @@ const adapter = {
   })),
   getTask: mock(async () => task()),
   getMessagesForConversation: mock(async () => messages),
+  getNegotiationMessages: mock(async () => messages),
   getPendingHermesResponseOutboxes: mock(async () => []),
   getHermesResponseReplay: mock(async () => null),
   respondHermesNegotiationAtomically: commitHermesResponse,
