@@ -7,7 +7,7 @@
  * refine input. The old static questions block is retired with the card
  * questions (conversational-questions plan, "Retirements").
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -154,5 +154,41 @@ describe('Intent page — negotiator chat gating', () => {
     expect(
       await screen.findByPlaceholderText(/tell the agent anything about this signal/i),
     ).toBeInTheDocument();
+  });
+
+  test('shows truthful discovery preparation instead of claiming agents are talking', async () => {
+    mocks.intentsService.getIntent.mockResolvedValue({
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: true,
+      networks: [{ id: 'community-1', title: 'Builders' }],
+      discoveryProgress: {
+        status: 'retrying', attempt: 2, maxAttempts: 3, assignedCommunityCount: 1,
+        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: null, startedAt: null, completedAt: null, updatedAt: null,
+      },
+    });
+    renderIntentPage();
+    await screen.findByText('Looking for a technical co-founder');
+    fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+    expect(await screen.findByText('Preparing your first conversations')).toBeInTheDocument();
+    expect(screen.getByText('Retrying')).toBeInTheDocument();
+    expect(screen.queryByText(/still talking with theirs/i)).toBeNull();
+  });
+
+  test('reports a completed search with no conversations distinctly from failure', async () => {
+    mocks.intentsService.getIntent.mockResolvedValue({
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: false,
+      networks: [{ id: 'community-1', title: 'Builders' }],
+      discoveryProgress: {
+        status: 'completed', attempt: 1, maxAttempts: 3, assignedCommunityCount: 1,
+        processedCommunityCount: 1, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: null, startedAt: null, completedAt: new Date().toISOString(), updatedAt: null,
+      },
+    });
+    renderIntentPage();
+    await screen.findByText('Looking for a technical co-founder');
+    fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+    expect(await screen.findByText(/completed this search with no promising conversations/i)).toBeInTheDocument();
   });
 });

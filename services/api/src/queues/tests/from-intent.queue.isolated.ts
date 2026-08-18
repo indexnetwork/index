@@ -55,6 +55,7 @@ const asDb = (db: FromIntentDatabaseOverrides): FromIntentDatabase => ({
     db.getAssignmentNetworkMembershipsForUser
     ?? (async () => [{ networkId: 'idx1', isPersonal: false }]),
   markIntentFirstDiscoverySucceeded: db.markIntentFirstDiscoverySucceeded ?? (async () => {}),
+  recordIntentDiscoveryProgress: db.recordIntentDiscoveryProgress ?? (async () => {}),
 });
 
 describe('FromIntentQueue', () => {
@@ -118,6 +119,20 @@ describe('FromIntentQueue', () => {
   });
 
   describe('processJob', () => {
+    it('records aggregate queued, running, and completed lifecycle states without candidate data', async () => {
+      const recordIntentDiscoveryProgress = mock(async () => {});
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          recordIntentDiscoveryProgress,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 2);
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', attempt: 2, assignedCommunityCount: 1 }));
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded', attempt: 2 }));
+    });
+
     it('unknown job name logs warning and does not throw', async () => {
       const queue = new FromIntentQueue();
       await expect(

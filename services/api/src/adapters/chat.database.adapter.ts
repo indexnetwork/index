@@ -1020,6 +1020,24 @@ export class ChatDatabaseAdapter {
       .where(and(eq(intents.id, intentId), isNull(intents.firstDiscoverySucceededAt)));
   }
 
+  /** Persist aggregate-only worker lifecycle data; safe to expose to the owner. */
+  async recordIntentDiscoveryProgress(input: {
+    intentId: string; userId: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked'; attempt: number; assignedCommunityCount?: number;
+  }): Promise<void> {
+    const now = new Date();
+    await db.insert(schema.intentDiscoveryProgress).values({
+      ...input, ...(input.assignedCommunityCount != null ? { assignedCommunityCount: input.assignedCommunityCount } : {}),
+      ...(input.status === 'queued' ? { queuedAt: now, completedAt: null, startedAt: null } : {}),
+      ...(input.status === 'running' ? { startedAt: now } : {}),
+      ...(input.status === 'succeeded' || input.status === 'blocked' ? { completedAt: now } : {}), updatedAt: now,
+    }).onConflictDoUpdate({ target: schema.intentDiscoveryProgress.intentId, set: {
+      status: input.status, attempt: input.attempt, ...(input.assignedCommunityCount != null ? { assignedCommunityCount: input.assignedCommunityCount } : {}), updatedAt: now,
+      ...(input.status === 'queued' ? { queuedAt: now, completedAt: null, startedAt: null } : {}),
+      ...(input.status === 'running' ? { startedAt: now } : {}),
+      ...(input.status === 'succeeded' || input.status === 'blocked' ? { completedAt: now } : {}),
+    }});
+  }
+
   async getNetworkMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({

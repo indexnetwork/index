@@ -23,7 +23,7 @@ export interface FromIntentJobData {
 
 export type FromIntentDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded'
+  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded' | 'recordIntentDiscoveryProgress'
 >;
 
 export interface FromIntentDeps {
@@ -66,6 +66,7 @@ export class FromIntentQueue {
       deduplication?: DeduplicationOptions;
     },
   ): Promise<Job<FromIntentJobData>> {
+    await this.recordProgress(data, 'queued', 0);
     return this.queue.add('discover_opportunities', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
@@ -80,17 +81,27 @@ export class FromIntentQueue {
     });
   }
 
-  async processJob(name: string, data: FromIntentJobData): Promise<void> {
+  private async recordProgress(data: FromIntentJobData, status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked', attempt: number, assignedCommunityCount?: number): Promise<void> {
+    const record = (this.database as Partial<FromIntentDatabase>).recordIntentDiscoveryProgress;
+    // Isolated queue tests and a rolling deploy may run a worker before its
+    // adapter has been updated. Production adapters always provide this.
+    if (!record) return;
+    await record.call(this.database, {
+      intentId: data.intentId, userId: data.userId, status, attempt, assignedCommunityCount,
+    });
+  }
+
+  async processJob(name: string, data: FromIntentJobData, attempt = 1): Promise<void> {
     switch (name) {
       case 'discover_opportunities':
-        await this.handleDiscover(data);
+        await this.handleDiscover(data, attempt);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
-  private async handleDiscover(data: FromIntentJobData): Promise<void> {
+  private async handleDiscover(data: FromIntentJobData, attempt: number): Promise<void> {
     const { intentId, userId, networkIds } = data;
     // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
@@ -124,6 +135,7 @@ export class FromIntentQueue {
     // scope is narrowing-only. Any empty intersection must stop before the graph
     // or the evidence shadow can observe an unscoped run.
     if (validNetworkIds.length === 0) {
+      await this.recordProgress(data, 'blocked', 0, 0);
       this.logger.warn('Intent has no valid discovery networks, skipping fail-closed', {
         intentId,
         userId,
@@ -131,6 +143,8 @@ export class FromIntentQueue {
       });
       return;
     }
+
+    await this.recordProgress(data, 'running', attempt, validNetworkIds.length);
 
     this.logger.info('Starting discovery', { intentId, userId, networkIds: validNetworkIds });
 
@@ -183,6 +197,7 @@ export class FromIntentQueue {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    await this.recordProgress(data, 'succeeded', attempt, stampNetworkIds.length);
 
     // Lens C negotiation-evidence shadow (IND-433): fire-and-forget on its
     // own flag. Formerly triggered through the pool-discriminator mining hook;
@@ -213,7 +228,13 @@ export class FromIntentQueue {
     if (this.worker) return;
     const processor = async (job: Job<FromIntentJobData>) => {
       this.queueLogger.info('Processing job', { jobId: job.id });
-      await this.processJob(job.name, job.data);
+      try {
+        await this.processJob(job.name, job.data, job.attemptsMade + 1);
+      } catch (error) {
+        const attempt = job.attemptsMade + 1;
+        await this.recordProgress(job.data, 'failed', attempt);
+        throw error;
+      }
     };
     this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor);
   }

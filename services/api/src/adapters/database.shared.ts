@@ -184,6 +184,19 @@ export interface IntentListRow {
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;
+  discoveryProgress?: {
+    status: 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | 'blocked' | 'unknown';
+    attempt: number;
+    maxAttempts: number;
+    assignedCommunityCount: number;
+    processedCommunityCount: number;
+    possibleOverlapCount: number;
+    conversationsStartedCount: number;
+    queuedAt: Date | null;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    updatedAt: Date | null;
+  };
 }
 // UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
 // locally to honor the adapter layering rule of not importing protocol interfaces).
