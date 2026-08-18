@@ -7,6 +7,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+- Remove the retired `read_pending_questions` MCP wrapper from the standalone
+  Hermes surface, matching Protocol 22.0.0.
+
 ## [0.24.0] - 2026-08-17
 ### Added
 - Pending pickup injects one Hermes chat turn so the model can reply with `index_respond_to_negotiation` and a real shared message. Empty pickup stays a seat heartbeat. Gateway injection needs `plugins.entries.index-network.allow_gateway_injection`.

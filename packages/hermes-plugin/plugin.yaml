@@ -30,7 +30,6 @@ provides_tools:
   - index_read_premises
   - index_update_premise
   - index_retract_premise
-  - index_read_pending_questions
   - index_read_activity_summary
   - index_read_docs
   - index_agent_me

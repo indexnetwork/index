@@ -233,8 +233,8 @@ def main() -> None:
         "read_network_memberships", "create_network", "update_network",
         "create_network_membership", "list_opportunities", "update_opportunity",
         "confirm_opportunity_delivery", "read_premises", "create_premise",
-        "update_premise", "retract_premise", "read_pending_questions",
-        "read_activity_summary", "read_docs",
+        "update_premise", "retract_premise", "read_activity_summary",
+        "read_docs",
     )
     denied_wrappers = {
         "register_agent", "list_agents", "update_agent", "delete_agent",
@@ -243,20 +243,20 @@ def main() -> None:
         "delete_network_membership", "list_conversations", "get_conversation",
     }
     plugin_mcp_tools = ("read_intents", *plugin.schemas.FORWARDED_MCP_TOOLS)
-    assert len(plugin_mcp_tools) == 31
+    assert len(plugin_mcp_tools) == 30
     assert set(plugin_mcp_tools) == set(canonical_mcp_tools)
     assert denied_wrappers.isdisjoint(plugin_mcp_tools)
 
     protocol_path = ROOT.parent / "protocol/src/mcp/mcp.authorization-policy.ts"
     # The monorepo CI proves parity with the protocol policy. The public plugin
     # subtree does not contain its protocol sibling, so its self-test retains
-    # the exact local 31-name assertion above without reading absent siblings.
+    # the exact local 30-name assertion above without reading absent siblings.
     if protocol_path.exists():
         protocol_source = protocol_path.read_text()
         policy_block = protocol_source.split("HERMES_AGENT_MCP_TOOL_PERMISSIONS =", 1)[1].split("});", 1)[0]
         protocol_tools = re.findall(r"^  ([a-z_]+): \{", policy_block, re.MULTILINE)
         assert set(protocol_tools) == set(canonical_mcp_tools)
-        assert len(protocol_tools) == 31
+        assert len(protocol_tools) == 30
 
     tool_names = [entry["name"] for entry in ctx.tools]
     expected_tool_names = (
