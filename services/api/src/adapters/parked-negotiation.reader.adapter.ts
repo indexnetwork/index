@@ -25,12 +25,13 @@
  * side's park is `classifyParkedNegotiation`'s `wrong_recipient` case, which
  * must never enter this user's message).
  *
- * TODO(#1432): `classifyParkedNegotiation` in the protocol package is the
- * canonical per-negotiation park predicate; this reader mirrors its
- * semantics set-wise (adapters may not import the protocol package). When
- * the answer-wiring PR lands, converge the two — either by lifting this
- * reader's predicate checks to a layer that can import the classifier, or by
- * a contract test asserting they agree.
+ * `classifyParkedNegotiation` in the protocol package is the canonical
+ * per-negotiation park predicate; this reader mirrors its semantics set-wise
+ * (adapters may not import the protocol package). The two are held together
+ * by the convergence contract test
+ * `tests/parked-negotiation.classifier-convergence.spec.ts`, which runs
+ * both over shared fixtures (mid-flight, post-stall, wrong-recipient,
+ * terminal-stall-without-gap) and asserts they agree.
  */
 import { and, asc, db, eq, inArray, schema, sql } from './database.shared';
 import { notArchivedNegotiationTaskWhere } from './negotiation-attempt.atomic';
