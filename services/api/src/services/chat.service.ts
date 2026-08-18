@@ -481,6 +481,21 @@ export class ChatSessionService {
   }
 
   /**
+   * The user's negotiator session for an intent if it already exists — the
+   * read-only companion to {@link resolveNegotiatorIntentSession}. Background
+   * work that only wants to rewrite what is already in the DM (the
+   * question-message close-out) uses this so it never conjures an empty
+   * conversation for a signal the client has never opened.
+   *
+   * @param userId - The client user
+   * @param intentId - The pinned intent
+   * @returns The session, or null when the DM does not exist yet
+   */
+  async findNegotiatorIntentSession(userId: string, intentId: string) {
+    return this.db.getNegotiatorIntentChatSession(userId, intentId.trim());
+  }
+
+  /**
    * True when the error (or any error in its `cause` chain) is a Postgres
    * unique violation. Drizzle wraps driver errors in `DrizzleQueryError`
    * with the pg error on `cause`, so checking only the top level misses the

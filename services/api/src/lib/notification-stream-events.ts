@@ -11,6 +11,13 @@ export interface NotificationStreamEvent {
   id: string;
   title: string;
   body: string;
+  /**
+   * Absolute deep link to the surface that resolves the notification, when
+   * the frame has one. Optional: `opportunity.new` frames are routed by the
+   * client from (type, id), while `question.new` names the signal's DM
+   * explicitly — the question lives in a conversation, not on a card.
+   */
+  link?: string;
 }
 
 /** Injectable delivery boundary shared by realtime publication and isolated tests. */

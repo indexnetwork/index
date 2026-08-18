@@ -6,6 +6,23 @@ const OPPORTUNITY_NOTIFICATION_HEADLINE = 'A promising connection';
 const OPPORTUNITY_NOTIFICATION_EMPTY_SUMMARY = 'A new match that might be relevant to you.';
 export const NOTIFICATION_LABEL_MAX_CHARS = 80;
 
+/**
+ * Question-message notification copy (conversational questions,
+ * docs/plans/2026-08-18-conversational-questions.md). The message is the
+ * notification unit, so the frame counts questions and names the signal —
+ * it never renders the agent-authored question text itself, which belongs in
+ * the DM behind the deep link.
+ */
+const QUESTION_NOTIFICATION_HEADLINE = 'Your agent needs an answer';
+const QUESTION_NOTIFICATION_UNLABELLED_SIGNAL = 'one of your signals';
+
+export interface QuestionMessageNotificationProjection {
+  headline: string;
+  summary: string;
+  /** Absolute deep link to the signal's DM. */
+  link: string;
+}
+
 export interface OpportunityNotificationProjection {
   headline: string;
   summary: string;
@@ -38,6 +55,36 @@ export function counterpartForRecipient(
 ): OpportunityRow['actors'][number] | undefined {
   const otherActors = opportunity.actors.filter(({ userId }) => userId !== recipientId);
   return otherActors.find(({ role }) => role !== 'introducer') ?? otherActors[0];
+}
+
+/**
+ * The signal's DM as a link: the web app renders the
+ * ('negotiator-intent', intentId) conversation in the Personal Agent panel of
+ * the signal page, so the DM's address is the signal's address.
+ */
+export function questionMessageDeepLink(intentId: string, webAppUrl: string): string {
+  return `${webAppUrl.replace(/\/+$/, '')}/i/${encodeURIComponent(intentId)}`;
+}
+
+/**
+ * One question-message → one notification frame, whatever it asks. The count
+ * is copy, not a fan-out: batching is the whole point of hanging the
+ * notification off the message rather than off its questions.
+ */
+export function buildQuestionMessageNotification(input: {
+  intentId: string;
+  questionCount: number;
+  signalLabel?: string;
+  webAppUrl: string;
+}): QuestionMessageNotificationProjection {
+  const count = Math.max(1, Math.trunc(input.questionCount));
+  const label = boundedNotificationLabel(input.signalLabel);
+  const signal = label ? `“${label}”` : QUESTION_NOTIFICATION_UNLABELLED_SIGNAL;
+  return {
+    headline: QUESTION_NOTIFICATION_HEADLINE,
+    summary: `${count} ${count === 1 ? 'question' : 'questions'} about ${signal}.`,
+    link: questionMessageDeepLink(input.intentId, input.webAppUrl),
+  };
 }
 
 export function buildOpportunityNotificationEvent(
