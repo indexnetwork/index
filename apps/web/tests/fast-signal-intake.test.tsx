@@ -385,14 +385,12 @@ describe("fast signal intake", () => {
     expect(screen.getAllByText("A design partner", { selector: "p" }).length).toBeGreaterThanOrEqual(2);
   });
 
-  test("falls back to the legacy chat path when the flag is off", async () => {
+  test("always uses the deterministic funnel — the legacy chat fallback is retired", async () => {
     mocks.fastSignalIntake = false;
     renderPage();
 
-    await waitFor(() => expect(mocks.sendWebMessage).toHaveBeenCalledWith(
-      "new-signal-kickoff", undefined, undefined, expect.objectContaining({ hidden: true, persona: "signal" }),
-    ));
-    expect(mocks.start).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+    expect(mocks.sendWebMessage).not.toHaveBeenCalled();
   });
 
   test("skipping a proposal rejects it server-side and lands on the terminal state", async () => {

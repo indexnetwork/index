@@ -26,12 +26,6 @@ const mocks = vi.hoisted(() => ({
   authState: {
     features: null as Record<string, unknown> | null,
   },
-  questionsService: {
-    getPending: vi.fn(),
-    getAnswered: vi.fn(),
-    answer: vi.fn(),
-    dismiss: vi.fn(),
-  },
   intentsService: {
     getIntent: vi.fn(),
     archiveIntent: vi.fn(),
@@ -53,10 +47,6 @@ vi.mock('@/components/ClientLayout', () => ({
 vi.mock('@/components/chat/OpportunityCardInChat', () => ({
   default: () => null,
   OpportunitySkeleton: () => null,
-}));
-
-vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
-  InjectedQuestions: () => <div data-testid="injected-questions" />,
 }));
 
 vi.mock('@/components/IntentNegotiatorChat', () => ({
@@ -83,15 +73,10 @@ vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
   useConversations: () => mocks.conversationsService,
-  useQuestionsService: () => mocks.questionsService,
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({ negotiations: [], subscribeQuestionRegeneration: () => () => {} }),
-}));
-
-vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({ refresh: vi.fn(async () => {}) }),
 }));
 
 vi.mock('@/contexts/NotificationContext', () => ({
@@ -123,20 +108,6 @@ function renderIntentPage() {
   );
 }
 
-function makeQuestion(id: string) {
-  return {
-    id,
-    title: `Question ${id}?`,
-    prompt: `Question ${id}?`,
-    payload: { prompt: `Question ${id}?`, title: `Question ${id}?`, options: [], multiSelect: false },
-    options: [],
-    multiSelect: false,
-    mode: 'intent',
-    sourceType: 'intent',
-    sourceId: 'intent-1',
-    createdAt: new Date().toISOString(),
-  };
-}
 
 /** Stubs window.matchMedia so useIsDesktop() resolves `desktop` (jsdom lacks it). */
 function stubMatchMedia(desktop: boolean) {
@@ -162,11 +133,6 @@ function primeServices() {
   mocks.intentsService.visitIntent.mockResolvedValue(undefined);
   mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
   mocks.conversationsService.getNegotiationActivity.mockResolvedValue([]);
-  mocks.questionsService.getPending.mockResolvedValue([
-    makeQuestion('q-1'),
-    makeQuestion('q-2'),
-  ]);
-  mocks.questionsService.getAnswered.mockResolvedValue([]);
 }
 
 describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', () => {
@@ -210,14 +176,11 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     ).toBeTruthy();
   });
 
-  test('mobile trigger carries the pending-question count badge', async () => {
+  test('mobile trigger carries no pending-question badge (cards retired)', async () => {
     renderIntentPage();
     const trigger = await screen.findByTestId('personal-agent-trigger');
     expect(trigger).toHaveTextContent('Personal Agent');
-
-    const badge = await screen.findByTestId('intent-question-count');
-    expect(badge).toHaveTextContent('2');
-    expect(trigger.contains(badge)).toBe(true);
+    expect(screen.queryByTestId('intent-question-count')).toBeNull();
   });
 
   test('mobile open: focus moves into the sheet and Tab/Shift+Tab stay contained; background is inert', async () => {
@@ -411,8 +374,8 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     expect(screen.getByTestId('page-background')).not.toHaveAttribute('inert');
   });
 
-  test('questions-fallback branch gets the same drawer treatment', async () => {
-    mocks.authState.features = null; // flag off → static questions block
+  test('fallback branch (negotiator chat off) gets the same drawer treatment', async () => {
+    mocks.authState.features = null; // flag off → static fallback panel
     const user = userEvent.setup();
     renderIntentPage();
 
@@ -421,12 +384,10 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     expect(sheet.getAttribute('role')).toBe('dialog');
 
     const trigger = await screen.findByTestId('personal-agent-trigger');
-    expect(trigger).toHaveTextContent('Questions');
-    expect(trigger.contains(await screen.findByTestId('intent-question-count'))).toBe(true);
+    expect(trigger).toHaveTextContent('Personal Agent');
 
     await user.click(trigger);
     await waitFor(() => expect(sheet.getAttribute('data-state')).toBe('open'));
     expect(sheet).toHaveAttribute('aria-modal', 'true');
-    expect(await screen.findByTestId('injected-questions')).toBeInTheDocument();
   });
 });

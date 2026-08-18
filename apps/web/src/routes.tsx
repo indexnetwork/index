@@ -6,7 +6,6 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { DiscoveryFilterProvider } from "@/contexts/DiscoveryFilterContext";
 import { AIChatSessionsProvider } from "@/contexts/AIChatSessionsContext";
 import { AIChatProvider } from "@/contexts/AIChatContext";
-import { QuestionsProvider } from "@/contexts/QuestionsContext";
 
 import ClientWrapper from "@/components/ClientWrapper";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
@@ -24,12 +23,10 @@ function RootLayout() {
           <DiscoveryFilterProvider>
             <AIChatSessionsProvider>
               <AIChatProvider>
-                <QuestionsProvider>
-                  <ClientWrapper>
-                    <ScrollRestoration />
-                    <Outlet />
-                  </ClientWrapper>
-                </QuestionsProvider>
+                <ClientWrapper>
+                  <ScrollRestoration />
+                  <Outlet />
+                </ClientWrapper>
               </AIChatProvider>
             </AIChatSessionsProvider>
           </DiscoveryFilterProvider>
@@ -151,10 +148,6 @@ export const router = createBrowserRouter([
       {
         path: "/settings",
         lazy: lazyRoute("/settings", () => import("@/app/settings/page")),
-      },
-      {
-        path: "/questions",
-        lazy: lazyRoute("/questions", () => import("@/app/questions/page")),
       },
       {
         path: "/profile",

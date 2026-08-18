@@ -3,53 +3,17 @@ import { ChevronLeft } from "lucide-react";
 import { Navigate, useNavigate } from "react-router";
 
 import { FastSignalIntake } from "@/components/signals/FastSignalIntake";
-import { GuidedSignalIntake, type GuidedSignalConfirmation } from "@/components/signals/GuidedSignalIntake";
+import { type GuidedSignalConfirmation } from "@/components/signals/GuidedSignalIntake";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient } from "@/lib/api";
-import { isAuthSessionError } from "@/lib/auth-client";
 
 export default function NewSignalPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, features, openLoginModal, signOut } = useAuthContext();
-  const { addNotification, error: showError } = useNotifications();
-  const { startSignalSession, sendWebMessage, clearChat } = useAIChat();
-  const fastSignalIntakeEnabled = features?.fastSignalIntake === true;
-
-  const sendKickoff = useCallback(async () => {
-    let sendError: unknown;
-    await sendWebMessage(
-      "new-signal-kickoff",
-      undefined,
-      undefined,
-      {
-        hidden: true,
-        persona: "signal",
-        onError: (error) => { sendError = error; },
-      },
-    );
-    if (sendError) throw sendError;
-  }, [sendWebMessage]);
-
-  const sendFollowup = useCallback(
-    (message: string) => sendWebMessage(message),
-    [sendWebMessage],
-  );
-
-  const handleKickoffError = useCallback((error: unknown) => {
-    if (!isAuthSessionError(error)) return;
-    const callbackURL = typeof window === "undefined"
-      ? "/i/new"
-      : new URL("/i/new", window.location.origin).href;
-    showError("Session expired", "Please sign in again to start your signal.");
-    void signOut()
-      .catch(() => undefined)
-      .finally(() => {
-        navigate("/");
-        openLoginModal(callbackURL);
-      });
-  }, [navigate, openLoginModal, showError, signOut]);
+  const { isAuthenticated } = useAuthContext();
+  const { addNotification } = useNotifications();
+  const { clearChat } = useAIChat();
 
   const handleConfirmed = useCallback(async ({
     intentId,
@@ -87,17 +51,7 @@ export default function NewSignalPage() {
         <p className="mt-10 text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Start a new signal</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#041729] sm:text-4xl">Make what you’re looking for legible.</h1>
 
-        {fastSignalIntakeEnabled ? (
-          <FastSignalIntake onConfirmed={handleConfirmed} />
-        ) : (
-          <GuidedSignalIntake
-            prepareSession={startSignalSession}
-            sendKickoff={sendKickoff}
-            sendFollowup={sendFollowup}
-            onKickoffError={handleKickoffError}
-            onConfirmed={handleConfirmed}
-          />
-        )}
+        <FastSignalIntake onConfirmed={handleConfirmed} />
       </main>
     </div>
   );

@@ -8,23 +8,16 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { useLocation, useNavigate } from 'react-router';
-import { useEffect, type ComponentType, type ReactNode, type Ref } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import ChatContent from '@/components/ChatContent';
 import { AIChatProvider } from '@/contexts/AIChatContext';
 import { renderWithRouter } from '@/test/test-utils';
-import type { PendingQuestion } from '@/services/questions';
 
 const mocks = vi.hoisted(() => {
-  const questionsService = {
-    getPending: vi.fn(),
-    getByConversation: vi.fn(),
-    answer: vi.fn(),
-    dismiss: vi.fn(),
-  };
   const chat = {
     messages: [] as Array<Record<string, unknown>>,
     isLoading: false,
@@ -57,10 +50,8 @@ const mocks = vi.hoisted(() => {
     pendingQueue: [] as unknown[],
     cancelQueuedMessage: vi.fn(),
     submitMidStreamMessage: vi.fn(),
-    liveQuestions: [] as unknown[],
   };
   return {
-    questionsService,
     chat,
     auth: { features: { signalAgent: false } },
     notifications: { success: vi.fn(), error: vi.fn(), addNotification: vi.fn() },
@@ -77,10 +68,6 @@ const mocks = vi.hoisted(() => {
       agentActionConfirm?: (proposalId: string) => unknown;
     },
     proposalStatuses: {} as Record<string, string>,
-    injectedCallbacks: {} as {
-      answer?: (questionId: string, body: { selectedOptions: string[] }) => unknown;
-      dismiss?: (questionId: string) => unknown;
-    },
     decisionSubmit: undefined as undefined | ((answer: string) => void),
     streamingDraftStart: undefined as undefined | ((opportunityId: string, userId: string) => unknown),
     opportunityAction: vi.fn(),
@@ -103,7 +90,6 @@ vi.mock('@/contexts/APIContext', () => {
   const noopService = new Proxy({}, { get: () => vi.fn().mockResolvedValue([]) });
   return {
     useOpportunities: () => noopService,
-    useQuestionsService: () => mocks.questionsService,
     useNetworks: () => noopService,
   };
 });
@@ -150,36 +136,6 @@ vi.mock('@/hooks/useOpportunityActions', () => ({
   }),
 }));
 
-vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
-  InjectedQuestions: ({
-    questions,
-    onAnswer,
-    onDismiss,
-    readOnly,
-  }: {
-    questions: PendingQuestion[];
-    onAnswer: (questionId: string, body: { selectedOptions: string[] }) => unknown;
-    onDismiss: (questionId: string) => unknown;
-    readOnly?: boolean;
-  }) => {
-    mocks.injectedCallbacks = { answer: onAnswer, dismiss: onDismiss };
-    return (
-      <div data-testid="injected-questions">
-        {questions.map((q) => (
-          <div key={q.id}>
-            {q.payload?.title ?? q.id}
-            {!readOnly && (
-              <>
-                <button type="button" onClick={() => void onAnswer(q.id, { selectedOptions: ['Yes'] })}>answer injected</button>
-                <button type="button" onClick={() => void onDismiss(q.id)}>dismiss injected</button>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  },
-}));
 
 vi.mock('@/components/chat/ToolCallsDisplay', () => ({ ToolCallsDisplay: () => null }));
 vi.mock('@/components/chat/SuggestionChips', () => ({ SuggestionChips: () => null }));
@@ -216,38 +172,7 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>;
 }
 
-function RoutedChatContent() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const sessionId = location.pathname.startsWith('/d/')
-    ? location.pathname.slice('/d/'.length)
-    : null;
-  return (
-    <>
-      <ChatContent sessionIdParam={sessionId} />
-      <button type="button" onClick={() => navigate('/d/session-a')}>switch to session A</button>
-      <button type="button" onClick={() => navigate('/d/session-b')}>switch to session B</button>
-      <LocationProbe />
-    </>
-  );
-}
 
-const INBOX_QUESTION = {
-  id: 'q-inbox-1',
-  detection: { mode: 'negotiation', sourceType: 'opportunity', sourceId: 'opp-1' },
-  actors: [],
-  payload: {
-    title: 'Timeline check',
-    prompt: 'When could you start?',
-    options: [],
-    multiSelect: false,
-  },
-  status: 'pending',
-  answer: null,
-  expiresAt: null,
-  createdAt: new Date().toISOString(),
-  conversationId: null,
-} as unknown as PendingQuestion;
 
 
 describe('persisted opportunity history hydration', () => {
@@ -255,7 +180,6 @@ describe('persisted opportunity history hydration', () => {
     mocks.apiClient.get.mockReset();
     mocks.apiClient.post.mockReset();
     mocks.apiClient.post.mockResolvedValue({});
-    mocks.questionsService.getPending.mockResolvedValue([]);
   });
 
   test('has no live draft-ready event in stream contracts while retaining historical draft hydration', () => {

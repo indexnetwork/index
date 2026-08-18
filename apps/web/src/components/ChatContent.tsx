@@ -7,9 +7,7 @@ import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useUploadServiceV2 } from "@/services/v2/upload.service";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useOpportunities, useQuestionsService } from "@/contexts/APIContext";
-import { InjectedQuestions } from '@/components/InjectedQuestions/InjectedQuestions';
-import type { PendingQuestion, AnswerBody } from '@/services/questions';
+import { useOpportunities } from "@/contexts/APIContext";
 import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
 import { DecisionQuestions } from "@/components/DecisionQuestions";
@@ -85,7 +83,6 @@ export default function ChatContent({
     updateSessionTitle,
     cancelQueuedMessage,
     submitMidStreamMessage,
-    liveQuestions,
   } = useAIChat();
   const routedSessionReady = !sessionIdFromUrl
     || isSessionReady(sessionIdFromUrl)
@@ -229,96 +226,6 @@ export default function ChatContent({
   // Networks panel join tracking
   const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
 
-  const questionsService = useQuestionsService();
-  const [injectedQuestions, setInjectedQuestions] = useState<PendingQuestion[]>([]);
-  /**
-   * Ids of live ask_user_question cards already answered/dismissed locally.
-   * Never reset: question ids are unique UUIDs, so stale entries are harmless.
-   */
-  const [resolvedLiveQuestionIds, setResolvedLiveQuestionIds] = useState<Set<string>>(new Set());
-
-  // Fetch conversation-linked questions on session load. In intent-scoped
-  // sessions, also include pending questions derived from that selected intent,
-  // its opportunities, and their negotiations. The unscoped negotiator DM used
-  // to inject the client's full question inbox here (P4.3/IND-404); that
-  // surface is gone — every negotiator session is intent-pinned — and the full
-  // inbox lives on /questions.
-  useEffect(() => {
-    if (!sessionId) {
-      setInjectedQuestions([]);
-      return;
-    }
-    let active = true;
-    const scopeQuestionPromise = chatScope?.type === "intent"
-      ? questionsService.getPending({ scopeType: "intent", scopeId: chatScope.id })
-      : Promise.resolve([] as PendingQuestion[]);
-    Promise.all([
-      questionsService.getByConversation(sessionId),
-      scopeQuestionPromise,
-    ]).then(([conversationQuestions, scopeQuestions]) => {
-      if (!active) return;
-      const deduped = new Map<string, PendingQuestion>();
-      for (const question of [...conversationQuestions, ...scopeQuestions]) {
-        deduped.set(question.id, question);
-      }
-      setInjectedQuestions([...deduped.values()]);
-    }).catch(() => {});
-    return () => { active = false; };
-  }, [sessionId, questionsService, chatScope]);
-
-  // Merge live ask_user_question cards (streamed via the user_question SSE
-  // event) into the inline injected-questions list at render time. The
-  // server-side turn is blocked on these until answered/dismissed or the
-  // wait times out. Locally-resolved live cards are filtered out.
-  const mergedInjectedQuestions = useMemo(() => {
-    const byId = new Map(injectedQuestions.map((q) => [q.id, q]));
-    for (const q of liveQuestions) {
-      if (!byId.has(q.id)) byId.set(q.id, q);
-    }
-    return [...byId.values()].filter((q) => !resolvedLiveQuestionIds.has(q.id));
-  }, [injectedQuestions, liveQuestions, resolvedLiveQuestionIds]);
-
-  // Group injected questions by messageId
-  const injectedByMessageId = useMemo(() => {
-    const map = new Map<string | null, PendingQuestion[]>();
-    for (const q of mergedInjectedQuestions) {
-      const key = q.detection.messageId ?? null;
-      const existing = map.get(key) ?? [];
-      existing.push(q);
-      map.set(key, existing);
-    }
-    return map;
-  }, [mergedInjectedQuestions]);
-
-  const handleInjectedAnswer = useCallback(async (questionId: string, body: AnswerBody) => {
-    if (mutationsBlockedRef.current) return;
-    const question = mergedInjectedQuestions.find((q) => q.id === questionId);
-    const res = await questionsService.answer(questionId, body);
-    setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
-    setResolvedLiveQuestionIds((prev) => new Set([...prev, questionId]));
-    // Chat-mode questions come from the orchestrator's blocking
-    // ask_user_question tool. If no live turn consumed the answer (stream
-    // already ended — e.g. the wait timed out or the page was reloaded),
-    // feed it back as a new turn so the conversation continues.
-    if (
-      question?.detection.mode === 'chat' &&
-      !res.resumed &&
-      !isLoading
-    ) {
-      const parts = [...body.selectedOptions];
-      if (body.freeText?.trim()) parts.push(body.freeText.trim());
-      if (parts.length > 0) {
-        void sendWebMessage(`Re: "${question.payload.prompt}" — ${parts.join('; ')}`);
-      }
-    }
-  }, [questionsService, mergedInjectedQuestions, isLoading, sendWebMessage]);
-
-  const handleInjectedDismiss = useCallback(async (questionId: string) => {
-    if (mutationsBlockedRef.current) return;
-    await questionsService.dismiss(questionId);
-    setInjectedQuestions((prev) => prev.filter((q) => q.id !== questionId));
-    setResolvedLiveQuestionIds((prev) => new Set([...prev, questionId]));
-  }, [questionsService]);
 
   // Index filter state (needed before stream-end effect so refreshIndexes is in scope)
   const { indexes, refreshIndexes } = useNetworksState();
@@ -1514,24 +1421,8 @@ export default function ChatContent({
                       }}
                     />
                   )}
-                {msg.role === "assistant" &&
-                  !legacyOrchestratorReadOnly &&
-                  injectedByMessageId.has(msg.id) && (
-                    <InjectedQuestions
-                      questions={injectedByMessageId.get(msg.id)!}
-                      onAnswer={handleInjectedAnswer}
-                      onDismiss={handleInjectedDismiss}
-                    />
-                  )}
               </div>
             ))}
-            {!legacyOrchestratorReadOnly && injectedByMessageId.has(null) && (
-              <InjectedQuestions
-                questions={injectedByMessageId.get(null)!}
-                onAnswer={handleInjectedAnswer}
-                onDismiss={handleInjectedDismiss}
-              />
-            )}
             <div ref={scrollRef} />
           </div>
         </ContentContainer>

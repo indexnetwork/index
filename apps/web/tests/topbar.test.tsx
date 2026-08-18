@@ -5,16 +5,14 @@
  * item when the Personal Agent inbox has open questions, caps at 99+, and
  * disappears at zero.
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import TopBar from '@/components/TopBar';
 import type { ConversationSummary } from '@/services/conversation';
-import type { PendingQuestion } from '@/services/questions';
 
 const mocks = vi.hoisted(() => ({
-  questionsState: { personalAgentPending: 0, questions: [] as PendingQuestion[] },
   features: { negotiatorChat: true } as { negotiatorChat?: boolean },
   apiGet: vi.fn(),
   conversations: [] as Array<ConversationSummary & { persona: string }>,
@@ -55,13 +53,6 @@ vi.mock('@/contexts/IndexFilterContext', () => ({
   useNetworkFilter: () => ({ setSelectedNetworkIds: vi.fn() }),
 }));
 
-vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({
-    personalAgentPending: mocks.questionsState.personalAgentPending,
-    questions: mocks.questionsState.questions,
-  }),
-}));
-
 vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({ conversations: mocks.conversations, negotiations: mocks.negotiations }),
 }));
@@ -94,24 +85,6 @@ function conversationSummary(
   };
 }
 
-function consultationQuestion(id = 'q-consultation'): PendingQuestion {
-  return {
-    id,
-    detection: {
-      mode: 'negotiation_inflight',
-      sourceType: 'opportunity',
-      sourceId: 'opportunity-1',
-      timestamp: new Date().toISOString(),
-    },
-    actors: [{ userId: 'user-1', role: 'subject' }],
-    payload: { title: 'Consultation', prompt: 'What should I say?', options: [], multiSelect: false },
-    status: 'pending',
-    answer: null,
-    expiresAt: null,
-    createdAt: new Date().toISOString(),
-    conversationId: null,
-  };
-}
 
 function renderTopBar(initialPath = '/') {
   return render(
@@ -124,8 +97,6 @@ function renderTopBar(initialPath = '/') {
 describe('TopBar Personal Agent badge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.questionsState.personalAgentPending = 0;
-    mocks.questionsState.questions = [];
     mocks.conversations = [];
     mocks.negotiations = [];
   });
@@ -196,37 +167,16 @@ describe('TopBar Personal Agent badge', () => {
     expect(screen.getByTestId('negotiations-your-move-badge')).toHaveTextContent('1');
   });
 
-  test('pending-question badge renders on the Agent entry when the inbox has open questions', () => {
-    mocks.questionsState.personalAgentPending = 3;
-    renderTopBar();
-    expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('3');
-  });
-
-  test('badge caps at 99+', () => {
-    mocks.questionsState.personalAgentPending = 120;
-    renderTopBar();
-    expect(screen.getByTestId('negotiator-question-badge')).toHaveTextContent('99+');
-  });
-
-  test('badge disappears at zero', () => {
-    renderTopBar();
-    expect(screen.queryByTestId('negotiator-question-badge')).toBeNull();
-  });
-
   test('Agent click clears chat state and navigates to /agent', () => {
     renderTopBar();
     screen.getByRole('button', { name: /^Agent$/ }).click();
     expect(mocks.navigate).toHaveBeenCalledWith('/agent');
   });
 
-  // A pending consultation used to deep-link the negotiator DM; that surface
-  // is gone, so the questions inbox is the sole destination.
-  test('Agent click routes to /questions when a consultation is pending', () => {
-    mocks.questionsState.personalAgentPending = 1;
-    mocks.questionsState.questions = [consultationQuestion()];
+  // The question inbox and its badge are retired: questions are conversation
+  // in the signal's DM, and the Agent entry always routes home.
+  test('renders no question badge anywhere', () => {
     renderTopBar();
-    screen.getByRole('button', { name: /Agent/ }).click();
-    expect(mocks.navigate).toHaveBeenCalledWith('/questions');
-    expect(mocks.apiGet).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('negotiator-question-badge')).toBeNull();
   });
 });

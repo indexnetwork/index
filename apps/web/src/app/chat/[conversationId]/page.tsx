@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-import { useQuestionsService } from '@/contexts/APIContext';
 import { useOpportunityActions } from '@/hooks/useOpportunityActions';
 import TurnRail from '@/components/negotiations/TurnRail';
 import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
@@ -17,7 +16,14 @@ import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySessio
 
 const STALL_REASONS = new Set(['turn_cap', 'timeout']);
 
+/* eslint-disable react-hooks/preserve-manual-memoization --
+   The React Compiler cannot preserve this page's manual memoization (it
+   assumes the imported turn-grouping helpers may mutate their inputs) and
+   previously skipped this component silently behind a since-retired
+   questions-service effect. Keep the manual memos and opt out of the rule
+   rather than restructure the transcript pipeline in the retirement PR. */
 export default function NegotiationDetailPage() {
+
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
@@ -95,38 +101,6 @@ export default function NegotiationDetailPage() {
   );
   const latestTaskTurnCount = latestSessionTurns.length > 0 ? latestSessionTurns.length : null;
 
-  // The viewer's last ask_user turn — anchor for the missed-window decay line.
-  // Scoped to the latest session (the active task) only.
-  const lastAskUserTurnId = useMemo(() => {
-    for (let i = latestSessionTurns.length - 1; i >= 0; i -= 1) {
-      if (latestSessionTurns[i].action === 'ask_user' && latestSessionTurns[i].senderId === ownAgentId) {
-        return latestSessionTurns[i].id;
-      }
-    }
-    return null;
-  }, [latestSessionTurns, ownAgentId]);
-
-  // Missed-window decay (IND-559): the negotiation left input_required after
-  // an ask_user pause with no answered consultation — the window lapsed (or
-  // the question was dismissed) and the negotiator continued without an answer.
-  const questionsService = useQuestionsService();
-  const [windowMissed, setWindowMissed] = useState(false);
-  useEffect(() => {
-    if (!opportunityId || !lastAskUserTurnId || lifecycle?.state === 'input_required') {
-      setWindowMissed(false);
-      return;
-    }
-    let cancelled = false;
-    questionsService.getAnswered({
-      mode: 'negotiation_inflight',
-      sourceType: 'opportunity',
-      sourceId: opportunityId,
-    }).then((answered) => {
-      if (!cancelled) setWindowMissed(answered.length === 0);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [questionsService, opportunityId, lastAskUserTurnId, lifecycle?.state]);
-
   // Resolved-state banner derivation, mirroring lib/negotiation-inbox classification.
   const resolvedVariant = useMemo<ResolvedBannerVariant | null>(() => {
     if (!lifecycle) return null;
@@ -162,13 +136,6 @@ export default function NegotiationDetailPage() {
     }),
     [turns.length, outcomeReason, lifecycle?.screenDecision],
   );
-
-  // Revival CTA routes to the questions inbox. It used to route through the
-  // negotiator DM, falling back here when no such session existed; with the
-  // DM removed the fallback is the only path.
-  const handleRevive = useCallback(() => {
-    navigate('/questions');
-  }, [navigate]);
 
   return (
     <>
@@ -283,7 +250,7 @@ export default function NegotiationDetailPage() {
                       participantInfo={participantInfo}
                       counterpartName={counterpartName}
                       now={now}
-                      missedWindowTurnId={isLatest && windowMissed ? lastAskUserTurnId : null}
+                      missedWindowTurnId={null}
                     />
                     {/* Outcome banners are scoped to the latest section (IND-566). */}
                     {isLatest && showOutcomeBanner && opportunityId && (
@@ -303,7 +270,6 @@ export default function NegotiationDetailPage() {
                         reason={outcomeReason}
                         turnCount={latestTaskTurnCount}
                         maxTurns={lifecycle?.maxTurns ?? null}
-                        onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
                         onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                       />
                     )}
@@ -321,7 +287,7 @@ export default function NegotiationDetailPage() {
                   participantInfo={participantInfo}
                   counterpartName={counterpartName}
                   now={now}
-                  missedWindowTurnId={windowMissed ? lastAskUserTurnId : null}
+                  missedWindowTurnId={null}
                 />
                 {showOutcomeBanner && opportunityId && (
                   <OutcomeBanner
@@ -340,7 +306,6 @@ export default function NegotiationDetailPage() {
                     reason={outcomeReason}
                     turnCount={latestTaskTurnCount}
                     maxTurns={lifecycle?.maxTurns ?? null}
-                    onRevive={resolvedVariant === 'stalled' ? () => void handleRevive() : undefined}
                     onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                   />
                 )}

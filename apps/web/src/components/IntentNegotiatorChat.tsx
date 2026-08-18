@@ -3,15 +3,9 @@ import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useConversation } from "@/contexts/ConversationContext";
-import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
-import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
-import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
-import { QuestionsEmptyState } from "@/components/InjectedQuestions/QuestionsEmptyState";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
 import { QuestionRegenerationIndicator } from "@/components/chat/QuestionSteps";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
-import { buildIntentQuestionTimeline } from "@/components/intent-question.timeline";
-import type { PendingQuestion, AnswerBody } from "@/services/questions";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/logger";
@@ -32,17 +26,6 @@ function formatRelativeTimestamp(timestamp: Date | undefined): string | null {
 export interface IntentNegotiatorChatProps {
   /** The intent this chat is pinned to. */
   intentId: string;
-  /** Pending questions for the intent, placed at their message anchor or the current end. */
-  questions: PendingQuestion[];
-  /** Answered question exchanges interleaved with the conversation timeline. */
-  answered: AnsweredThreadEntry[];
-  onAnswerQuestion: (questionId: string, body: AnswerBody) => Promise<void>;
-  onDismissQuestion: (questionId: string) => Promise<void>;
-  /**
-   * A pool-discovery answer was just submitted and a chained follow-up may
-   * be incoming — render a typing indicator below the question cards.
-   */
-  questionChainPending?: boolean;
   /**
    * A question-message regeneration is queued or running for this
    * conversation — show an agent-working indicator so the user doesn't
@@ -68,8 +51,8 @@ export interface IntentNegotiatorChatProps {
   ) => void;
   /**
    * Called when the negotiator chat cannot be bootstrapped (e.g. the backend
-   * flag turned off between /auth/me and now). The parent falls back to the
-   * static questions block.
+   * flag turned off between /auth/me and now). The parent falls back to a
+   * static panel.
    */
   onUnavailable: () => void;
 }
@@ -77,20 +60,15 @@ export interface IntentNegotiatorChatProps {
 /**
  * Intent-pinned negotiator chat (P4.2 / IND-403).
  *
- * Replaces the static questions block on the intent page with a chat window
- * to the user's personal negotiator, pinned to this intent. Pending intent
- * questions render at their triggering assistant-message anchor, or at the
- * current end when unanchored (cards still use the existing questions
- * pipeline); everything conversational streams through the shared
- * AIChatContext against the per-intent negotiator session.
+ * A chat window to the user's personal negotiator, pinned to this intent.
+ * Questions are conversation: parked negotiations surface as the agent's own
+ * question-messages in this thread (rendered as steps by
+ * AssistantMessageContent), and replies route back automatically. Everything
+ * streams through the shared AIChatContext against the per-intent negotiator
+ * session.
  */
 export default function IntentNegotiatorChat({
   intentId,
-  questions,
-  answered,
-  onAnswerQuestion,
-  onDismissQuestion,
-  questionChainPending,
   questionRegenerationPending,
   refreshVersion = 0,
   opportunityStatusMap,
@@ -210,7 +188,7 @@ export default function IntentNegotiatorChat({
   // Follow the stream.
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [answered.length, messages, questions.length, questionChainPending, regenerationPending, ready]);
+  }, [messages, regenerationPending, ready]);
 
   // Tap-to-quote from a question step: prefill the input with the question
   // being answered so the agent can route the reply. The answer itself stays
@@ -257,35 +235,6 @@ export default function IntentNegotiatorChat({
   const restoredHistoryLastActive = hasRestoredHistory
     ? formatRelativeTimestamp(messages[messages.length - 1]?.timestamp)
     : null;
-  const questionTimeline = useMemo(
-    () => buildIntentQuestionTimeline(messages, questions, answered),
-    [answered, messages, questions],
-  );
-
-  const renderAnswered = (entries: AnsweredThreadEntry[], key: string) => (
-    <div key={key} data-testid="negotiator-answered-exchange">
-      <AnsweredQuestionLog entries={entries} />
-    </div>
-  );
-
-  const renderPending = (
-    pendingQuestions: PendingQuestion[],
-    key: string,
-    showTypingIndicator = false,
-  ) => (
-    <div key={key} data-testid="negotiator-pending-questions">
-      <p className="mb-2 text-xs uppercase tracking-wider text-gray-500 font-ibm-plex-mono">
-        Your Personal Agent needs your input
-      </p>
-      <InjectedQuestions
-        questions={pendingQuestions}
-        onAnswer={onAnswerQuestion}
-        onDismiss={onDismissQuestion}
-        showTypingIndicator={showTypingIndicator}
-      />
-    </div>
-  );
-
   return (
     <div
       className="flex h-[520px] flex-col lg:h-auto lg:min-h-0 lg:flex-1"
@@ -326,7 +275,7 @@ export default function IntentNegotiatorChat({
                 </button>
               </div>
             )}
-            {messages.length === 0 && (answered.length > 0 || questions.length === 0) && (
+            {messages.length === 0 && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-start gap-2 text-sm text-gray-600 font-ibm-plex-mono">
                   <BotMessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
@@ -336,7 +285,6 @@ export default function IntentNegotiatorChat({
                     behalf.
                   </p>
                 </div>
-                {answered.length === 0 && !questionChainPending && <QuestionsEmptyState />}
               </div>
             )}
 
@@ -351,18 +299,10 @@ export default function IntentNegotiatorChat({
               </div>
             )}
 
-            {questionTimeline.items.map((item) => {
-              if (item.type === "answered") {
-                return renderAnswered([item.entry], `answered-${item.entry.id}`);
-              }
-
-              const msg = item.message;
-              const messageIndex = messages.findIndex((message) => message.id === msg.id);
+            {messages.map((msg, messageIndex) => {
               const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
               const startsSession = previousMessage !== undefined
                 && previousMessage.conversationSessionId !== msg.conversationSessionId;
-              const anchoredAnswered = questionTimeline.answeredByMessageId.get(msg.id) ?? [];
-              const anchoredPending = questionTimeline.pendingByMessageId.get(msg.id) ?? [];
               return (
                 <Fragment key={`message-${msg.id}`}>
                   {startsSession && (
@@ -407,23 +347,9 @@ export default function IntentNegotiatorChat({
                       />
                     </div>
                   )}
-                  {anchoredAnswered.length > 0 &&
-                    renderAnswered(anchoredAnswered, `answered-for-${msg.id}`)}
-                  {anchoredPending.length > 0 &&
-                    renderPending(anchoredPending, `pending-for-${msg.id}`)}
                 </Fragment>
               );
             })}
-
-            {questionTimeline.trailingAnswered.length > 0 &&
-              renderAnswered(questionTimeline.trailingAnswered, "trailing-answered")}
-
-            {(questionTimeline.trailingPending.length > 0 || questionChainPending) &&
-              renderPending(
-                questionTimeline.trailingPending,
-                "trailing-pending",
-                questionChainPending,
-              )}
 
             {regenerationPending && <QuestionRegenerationIndicator />}
           </>
