@@ -74,7 +74,6 @@ src/services/tests/negotiation-polling.consult.isolated.ts
 src/services/tests/negotiation-polling.respond-atomic.isolated.ts
 src/services/tests/negotiation-polling.pickup-authority.isolated.ts
 src/services/tests/negotiation-polling.seat.isolated.ts
-src/services/tests/uptake-question.service.isolated.ts
 src/services/tests/negotiator-memory.service.isolated.ts
 src/services/tests/opportunity.service.enrichedReplacement.isolated.ts
 src/events/handlers/tests/question.answer.pool.isolated.ts
@@ -83,7 +82,6 @@ src/controllers/tests/enrichment.controller.isolated.ts
 src/adapters/tests/cache.adapter.isolated.ts
 src/queues/tests/questioner.queue.isolated.ts
 src/queues/tests/recovery.shared.isolated.ts
-src/adapters/tests/questioner.uptake.isolated.ts
 src/queues/outcome/tests/outcome.mining.shared.isolated.ts
 src/queues/pool/tests/mining.shared.isolated.ts
 src/queues/tests/questioner-enqueue-if-enabled.isolated.ts

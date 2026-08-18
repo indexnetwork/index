@@ -1,5 +1,5 @@
 import '../src/startup.env';
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, mock } from 'bun:test';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { createMcpServer, clearMcpToolMetadataCacheForTests, getCachedMcpToolMetadata } from '../../../packages/protocol/src/mcp/mcp.server';
@@ -1559,7 +1559,7 @@ describe('MCP Server Factory', () => {
   // scoped-deps/handler seam (scopedCreateArgs); forged denial is proven by an
   // MCP_CAPABILITY_DENIED code with zero chat-DB reads and zero scoped-deps
   // construction. Resource-level behavior (bound-community roster/mutation
-  // clamps, opportunity actor/lifecycle/scope + uptake interlock, discovery-run
+  // clamps, opportunity actor/lifecycle/scope, discovery-run
   // exact-principal ownership + coalescing partition, negotiation participation
   // + A2A transcript boundary + agent-vs-owner narration) is proven directly
   // against the handlers in the protocol package specs; these transport tests
@@ -1785,7 +1785,7 @@ describe('MCP Server Factory', () => {
   });
 
   // ── IND-593: opportunity-state capability gate (actor/lifecycle/scope + ──────
-  // uptake interlock proven in update-opportunity.spec.ts). ───────────────────
+  // retired uptake interlock covered in update-opportunity.spec.ts). ─────────
 
   /**
    * Faithful in-memory contract double for the injected owner-approval
@@ -2335,52 +2335,31 @@ describe('MCP Server Factory', () => {
     expect(fx.graph.calls).toBe(0);
   });
 
-  it('binds acceptance to a fresh, in-interaction owner approval at the transport seam (rejects unapproved/forged/replayed, persists only on exact ack)', async () => {
-    // Production-reachable proof of the fresh-approval interlock over MCP. An
-    // admitted manage:opportunities agent tries to ACCEPT on the owner's behalf.
-    // The tool's uptake interlock demands the exact, still-pending preparatory
-    // approval be acknowledged IN THIS call, bound to the exact opportunity +
-    // accepted action + owner principal (actor) + current interaction. An
-    // unacknowledged, forged, or replayed (wrong-id) acknowledgment yields a
-    // structured advisory and NEVER runs the opportunity mutation graph; only
-    // the exact acknowledgment persists the owner acceptance.
-    //
-    // The IND-593 owner-proof gate runs before this interlock; an attesting
-    // authority is injected so each call carries a valid owner proof and the
-    // advisory behavior is exercised in isolation.
+  it('accepts through the transport seam without the retired uptake advisory interposing', async () => {
+    // The pre-accept uptake interlock is retired (conversational-questions
+    // plan, "Retirements"). Even with the legacy flags set and a leftover
+    // pending uptake row visible to findPendingQuestions, an owner-approved
+    // acceptance runs the opportunity mutation graph directly: no advisory,
+    // no acknowledgment round-trip. The IND-593 owner-proof gate itself is
+    // covered by the surrounding tests.
     const OPP = '00000000-0000-4000-8000-0000000000aa';
-    const QUESTION_ID = 'uptake-question-1';
     const opportunity = {
       id: OPP,
       status: 'pending',
       actors: [{ userId: 'test-user-id', role: 'party', networkId: NETWORK_1 }],
     };
-    const uptakeQuestion = {
-      id: QUESTION_ID,
-      title: 'Prep',
-      prompt: 'Confirm timing?',
-      options: [],
-      multiSelect: false,
-      mode: 'negotiation',
-      sourceType: 'opportunity',
-      sourceId: OPP,
-      purpose: 'uptake',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      actors: [{ userId: 'test-user-id', networkId: NETWORK_1 }],
-    };
-    let opportunityGraphCalls = 0;
+    let opportunityMutations = 0;
     const scopedSystemDb = {
       getOpportunity: async () => opportunity,
     } as unknown as ToolDeps['systemDb'];
-    const graphs = {
-      ...mockDeps.graphs,
-      opportunity: {
-        invoke: async () => {
-          opportunityGraphCalls += 1;
-          return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
-        },
-      },
-    } as unknown as ToolDeps['graphs'];
+    const mutate = async () => {
+      opportunityMutations += 1;
+      return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
+    };
+    const opportunityOperations = {
+      sendOpportunity: mutate,
+      updateOpportunityStatus: mutate,
+    } as unknown as ToolDeps['opportunityOperations'];
     const proofAuthority = {
       consumeAgentProof: async (proof: string | undefined): Promise<OwnerApprovalVerdict> =>
         proof === 'owner-proof'
@@ -2392,9 +2371,10 @@ describe('MCP Server Factory', () => {
             },
       attestOwnerInteraction: async (): Promise<OwnerApprovalVerdict> => ({ kind: 'admitted' }),
     };
+    const findPendingQuestions = mock(async () => [{ id: 'uptake-question-1' }]);
     const extraDeps: Partial<ToolDeps> = {
-      graphs,
-      findPendingQuestions: (async () => [uptakeQuestion]) as unknown as ToolDeps['findPendingQuestions'],
+      opportunityOperations,
+      findPendingQuestions: findPendingQuestions as unknown as ToolDeps['findPendingQuestions'],
       opportunityOwnerApproval: proofAuthority as never,
     };
     const memberDb = {
@@ -2409,40 +2389,17 @@ describe('MCP Server Factory', () => {
     process.env.QUESTIONER_ENABLED = 'true';
     process.env.QUESTIONER_UPTAKE_ENABLED = 'true';
     try {
-      // (1) No acknowledgment: advisory, no owner acceptance persisted.
-      const unapproved = await callTool({
+      const approved = await callTool({
         identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
         toolName: 'update_opportunity',
         arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof' },
       });
-      expect(unapproved.code).not.toBe('MCP_CAPABILITY_DENIED');
-      const unapprovedPayload = JSON.parse(unapproved.text) as { success: boolean; advisory?: { code?: string; advisoryOnly?: boolean; opportunityId?: string } };
-      expect(unapprovedPayload.success).toBe(false);
-      expect(unapprovedPayload.advisory?.code).toBe('unresolved_uptake_questions');
-      expect(unapprovedPayload.advisory?.advisoryOnly).toBe(true);
-      expect(unapprovedPayload.advisory?.opportunityId).toBe(OPP);
-      expect(opportunityGraphCalls).toBe(0);
-
-      // (2) Forged/replayed acknowledgment (a different id): still advisory, still no mutation.
-      const forged = await callTool({
-        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
-        toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof', acknowledgedUptakeQuestionIds: ['some-other-id'] },
-      });
-      const forgedPayload = JSON.parse(forged.text) as { success: boolean; advisory?: { code?: string } };
-      expect(forgedPayload.success).toBe(false);
-      expect(forgedPayload.advisory?.code).toBe('unresolved_uptake_questions');
-      expect(opportunityGraphCalls).toBe(0);
-
-      // (3) Exact acknowledgment in this interaction: owner acceptance is persisted.
-      const approved = await callTool({
-        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
-        toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof', acknowledgedUptakeQuestionIds: [QUESTION_ID] },
-      });
-      const approvedPayload = JSON.parse(approved.text) as { success: boolean; data?: Record<string, unknown> };
+      expect(approved.code).not.toBe('MCP_CAPABILITY_DENIED');
+      const approvedPayload = JSON.parse(approved.text) as { success: boolean; advisory?: unknown };
       expect(approvedPayload.success).toBe(true);
-      expect(opportunityGraphCalls).toBe(1);
+      expect(approvedPayload.advisory).toBeUndefined();
+      expect(findPendingQuestions).not.toHaveBeenCalled();
+      expect(opportunityMutations).toBe(1);
     } finally {
       if (prevEnabled === undefined) delete process.env.QUESTIONER_ENABLED; else process.env.QUESTIONER_ENABLED = prevEnabled;
       if (prevUptake === undefined) delete process.env.QUESTIONER_UPTAKE_ENABLED; else process.env.QUESTIONER_UPTAKE_ENABLED = prevUptake;

@@ -18,7 +18,6 @@ import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../share
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { OpportunityPresenter, gatherPresenterContext, getSafePresentationOrSkip, narratorRemarkFromReasoning, safeFallbackSummary, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
 import { buildOpportunityPresentation } from "./opportunity.presentation.js";
-import { isUptakeGuardEnabled } from "../questions/question.module.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from "./opportunity.update-admission.js";
 import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from "./opportunity.owner-approval.js";
@@ -29,7 +28,7 @@ export { buildOpportunityPresentation } from "./opportunity.presentation.js";
 
 import { sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
 import { createListOpportunitiesTool } from "./opportunity.tools.list.js";
-import { confirmDeliveryError, logger, ownerApprovalDenial, publicUptakeQuestion, uptakeAdvisory } from "./opportunity.tools.cards.js";
+import { confirmDeliveryError, logger, ownerApprovalDenial } from "./opportunity.tools.cards.js";
 
 export { attachOpportunityAppLink, attachProfileLink, buildMinimalOpportunityCard, buildNegotiationUrl, buildOpportunityAppUrl, buildProfileUrl } from "./opportunity.tools.cards.js";
 
@@ -54,13 +53,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       "- `rejected`: Decline a received opportunity.\n" +
       "- `expired`: Mark as expired (typically done by the system after timeout).\n\n" +
       "**When to use:** After list_opportunities returns persisted opportunity cards. " +
-      "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool. " +
-      "An accepted transition may first return a non-success uptake advisory with preparatory questions. Surface those questions, then retry with all returned question ids in acknowledgedUptakeQuestionIds; acknowledgement confirms presentation, not an answer.\n\n" +
+      "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool.\n\n" +
       "**Owner approval (agents):** Agent-driven send/accept/reject transitions require an explicit owner-issued approval proof. " +
       "Call without ownerApprovalProof first: the denial returns an approval challenge (interactionId, expiresAt) bound to the exact opportunity, action, owner, and agent. " +
       "Relay that challenge to the owner for explicit approval, then retry once with the issued ownerApprovalProof. " +
-      "Proofs are single-use and expire; acknowledgedUptakeQuestionIds, negotiation approvals, and advisory values are never substitutes.\n\n" +
-      "**Returns:** Confirmation with the new status and notification details (who was notified), or a structured uptake advisory without mutation.",
+      "Proofs are single-use and expire; negotiation approvals and advisory values are never substitutes.\n\n" +
+      "**Returns:** Confirmation with the new status and notification details (who was notified).",
     querySchema: z.object({
       opportunityId: z
         .string()
@@ -80,10 +78,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
           "explicitly approves the interaction challenge returned by a proof-less call. The opportunity, action, " +
           "owner, agent, and interaction binding is always derived server-side; only this token is presented.",
         ),
-      acknowledgedUptakeQuestionIds: z
-        .array(z.string().min(1))
-        .optional()
-        .describe("On an acknowledged retry after an uptake advisory, include every question id returned by that advisory."),
       scopeType: z
         .enum(['intent'])
         .optional()
@@ -159,65 +153,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
               })
             : { kind: 'denied' as const, reason: 'untrusted_provenance' as const };
         if (verdict.kind === 'denied') return ownerApprovalDenial(opportunityId, ownerAction, verdict);
-      }
-
-      // The caller actor's own network is the exact question lookup boundary,
-      // even for an otherwise unscoped request. A focused network may only be
-      // equal to this after the guard above.
-      // Unscoped callers query all of their exact opportunity questions; a
-      // network-scoped caller is clamped to the bound network. Selecting the
-      // first duplicate actor row would miss a valid question on another
-      // shared network.
-      const uptakeNetworkId = scopedNetworkId;
-
-      // Soft uptake interlock: only acceptance is advisory-gated. All existing
-      // actor/scope/privacy guards run first so the question lookup cannot be
-      // used to probe opportunities or networks the caller cannot access.
-      if (query.status === "accepted" && isUptakeGuardEnabled() && deps.findPendingQuestions) {
-        try {
-          const pending = await deps.findPendingQuestions(context.userId, {
-            sourceType: "opportunity",
-            sourceId: opportunityId,
-            modes: ["negotiation"],
-            purpose: "uptake",
-            ...(uptakeNetworkId ? { networkId: uptakeNetworkId } : {}),
-          });
-          // Defense in depth if a host overlooks one or more filters. Actor
-          // internals are checked here and never serialized into the advisory.
-          const exactPending = pending.filter((question) => {
-            if (
-              question.sourceType !== "opportunity" ||
-              question.sourceId !== opportunityId ||
-              question.mode !== "negotiation" ||
-              question.purpose !== "uptake"
-            ) {
-              return false;
-            }
-            if (!question.actors?.some((actor) => actor.userId === context.userId)) return false;
-            if (uptakeNetworkId && !question.actors.some(
-              (actor) => actor.userId === context.userId && actor.networkId === uptakeNetworkId,
-            )) {
-              return false;
-            }
-            return true;
-          });
-          const acknowledged = new Set(query.acknowledgedUptakeQuestionIds ?? []);
-          if (exactPending.some((question) => !acknowledged.has(question.id))) {
-            return uptakeAdvisory(opportunityId, exactPending.map(publicUptakeQuestion));
-          }
-        } catch (err) {
-          logger.warn("update_opportunity: uptake question lookup failed open", {
-            opportunityId,
-            userId: context.userId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          deps.reportToolError?.(err, {
-            subsystem: "opportunity",
-            operation: "opportunity.uptake_lookup",
-            toolName: "update_opportunity",
-            userId: context.userId,
-          });
-        }
       }
 
       const isSend = query.status === "pending";

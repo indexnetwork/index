@@ -40,8 +40,6 @@ export {
   INTENT_QUESTION_DAILY_WINDOW_HOURS,
   intentQuestionDailyCap,
   isQuestionerEnabled,
-  isUptakeGuardEnabled,
-  uptakeAuthorityThreshold,
 } from "./question.env.js";
 
 export { isValidQuestionerInputContract } from "./question.input.js";

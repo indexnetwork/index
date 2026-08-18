@@ -205,7 +205,7 @@ export type { NegotiatorClientDmMessage, NegotiatorClientDmQuery, NegotiatorClie
 export { QuestionerAgent } from "./questions/question.module.js";
 export { isValidQuestionerInputContract } from "./questions/question.module.js";
 export type { QuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questions/question.module.js";
-export { isQuestionerEnabled, isUptakeGuardEnabled, uptakeAuthorityThreshold, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./questions/question.module.js";
+export { isQuestionerEnabled, intentQuestionDailyCap, INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./questions/question.module.js";
 export { PoolDiscriminatorMiner } from "./opportunities/opportunity.module.js";
 export { PoolDiscriminatorAssigner } from "./opportunities/opportunity.module.js";
 export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunities/opportunity.module.js";

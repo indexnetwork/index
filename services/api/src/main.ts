@@ -83,7 +83,6 @@ import { PremiseEvents } from './events/premise.event';
 import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
-import { uptakeQuestionService } from './services/uptake-question.service';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
 import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
 import { beatTwoMessage } from './queues/pool/answer.shared';
@@ -186,7 +185,6 @@ const notificationDeliveryService = new NotificationDeliveryService({
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-OpportunityEvents.onPending = ({ opportunity }) => uptakeQuestionService.handlePending(opportunity.id);
 OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
 // Exhaustion evaluator (conversational questions): every committed status
 // transition re-checks both sides' question-messages against the parked set.

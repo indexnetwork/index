@@ -23,7 +23,6 @@ const answerBodySchema = z.object({
 });
 
 const statusQuerySchema = z.enum(['pending', 'answered', 'dismissed']).default('pending');
-const purposeQuerySchema = z.enum(['uptake']);
 const modeQuerySchema = z.enum(['intent', 'negotiation', 'negotiation_inflight', 'chat', 'pool_discovery']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
@@ -89,7 +88,6 @@ export class QuestionController {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
     const rawMode = url.searchParams.get('mode');
-    const rawPurpose = url.searchParams.get('purpose');
     const sourceType = url.searchParams.get('sourceType');
     const sourceId = url.searchParams.get('sourceId');
     const conversationId = url.searchParams.get('conversationId');
@@ -140,13 +138,6 @@ export class QuestionController {
         );
       }
       filters.mode = modeResult.data;
-    }
-    if (rawPurpose) {
-      const purposeResult = purposeQuerySchema.safeParse(rawPurpose);
-      if (!purposeResult.success) {
-        return Response.json({ error: 'Invalid purpose; use: uptake' }, { status: 400 });
-      }
-      filters.purpose = purposeResult.data;
     }
     if (rawExcludeModes) {
       const parsed = rawExcludeModes.split(',').map((m) => modeQuerySchema.safeParse(m.trim()));

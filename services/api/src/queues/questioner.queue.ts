@@ -41,7 +41,7 @@ function uniqueConstraintName(error: unknown): string | null {
 type QuestionerQueueAdapter = Pick<
   QuestionerAdapter,
   'persist' | 'persistFreshPoolQuestion' | 'isPoolQuestionFreshForDelivery' | 'findPending' | 'listPoolQuestionLabels'
-> & Partial<Pick<QuestionerAdapter, 'existsForRecipientSourcePurpose' | 'prepareNegotiationQuestion' | 'persistFreshNegotiationQuestions'>>;
+> & Partial<Pick<QuestionerAdapter, 'prepareNegotiationQuestion' | 'persistFreshNegotiationQuestions'>>;
 
 export interface QuestionerQueueDeps {
   adapter?: QuestionerQueueAdapter;
@@ -308,30 +308,6 @@ export class QuestionerQueue {
       sourceId: data.sourceId,
     });
 
-    // Re-check exact uptake dedup at worker time before invoking the LLM. This
-    // covers retries and events racing after a question has already persisted.
-    if (data.purpose === 'uptake') {
-      const existing = adapter.existsForRecipientSourcePurpose
-        ? await adapter.existsForRecipientSourcePurpose(
-            data.userId,
-            data.sourceType,
-            data.sourceId,
-            'uptake',
-          )
-        : (await adapter.findPending(data.userId, {
-            purpose: 'uptake',
-            sourceType: data.sourceType,
-            sourceId: data.sourceId,
-          })).length > 0;
-      if (existing) {
-        this.logger.info('Uptake question skipped: exact question already exists', {
-          userId: data.userId,
-          sourceId: data.sourceId,
-        });
-        return;
-      }
-    }
-
     // pool_discovery questions are synthesized deterministically from mined
     // discriminators — no generator LLM (IND-418). Budget + dedup live here
     // so every producer (mining hook, future paths) hits one choke point.
@@ -357,11 +333,9 @@ export class QuestionerQueue {
     const triggeredByIntentId = data.triggeredByIntentId?.trim()
       || (data.scopeType === 'intent' && data.scopeId?.trim() ? data.scopeId.trim() : undefined);
 
-    const generatedQuestions = data.purpose === 'uptake'
-      ? result.questions.slice(0, 1)
-      : (data.mode === 'negotiation' || data.mode === 'negotiation_inflight')
-        ? result.questions.slice(0, 2)
-        : result.questions;
+    const generatedQuestions = (data.mode === 'negotiation' || data.mode === 'negotiation_inflight')
+      ? result.questions.slice(0, 2)
+      : result.questions;
     if (
       negotiationAdmission
       && (

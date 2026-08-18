@@ -6,29 +6,15 @@ const migration = readFileSync(new URL('../../../drizzle/0106_add_negotiation_qu
 const recoveryMigration = readFileSync(new URL('../../../drizzle/0105_add_recovery_question_uniqueness.sql', import.meta.url), 'utf8');
 const continuationMigration = readFileSync(new URL('../../../drizzle/0107_add_negotiation_continuation_successor_uniqueness.sql', import.meta.url), 'utf8');
 const continuationAtomic = readFileSync(new URL('../negotiation-continuation.atomic.ts', import.meta.url), 'utf8');
-const uptakeGuard = readFileSync(new URL('../../lib/opportunity/uptake-acceptance.guard.ts', import.meta.url), 'utf8');
 const readiness = readFileSync(new URL('../../lib/drizzle/test-database-readiness.ts', import.meta.url), 'utf8');
 const publicProjection = readFileSync(new URL('../../lib/question/question.public.ts', import.meta.url), 'utf8');
 const controller = readFileSync(new URL('../../controllers/question.controller.ts', import.meta.url), 'utf8');
 const inflightHandler = readFileSync(new URL('../../events/handlers/question.answer.negotiation-inflight.ts', import.meta.url), 'utf8');
 const runExisting = readFileSync(new URL('../../queues/negotiations/run-existing.queue.ts', import.meta.url), 'utf8');
 const negotiationGraph = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.ts', import.meta.url), 'utf8');
+const negotiationGraphFinalize = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.finalize.ts', import.meta.url), 'utf8');
 const questionerQueue = readFileSync(new URL('../../queues/questioner.queue.ts', import.meta.url), 'utf8');
-const uptakeService = readFileSync(new URL('../../services/uptake-question.service.ts', import.meta.url), 'utf8');
 const opportunityService = readFileSync(new URL('../../services/opportunity.service.ts', import.meta.url), 'utf8');
-const baseTriggerContract = JSON.parse(readFileSync(
-  new URL('./fixtures/negotiation-question-trigger.base.json', import.meta.url),
-  'utf8',
-)) as {
-  sourceCommit: string;
-  ordinaryProducerModeOccurrences: number;
-  inflightProducerModeOccurrences: number;
-  requiresPriorAskUserGuard: boolean;
-  requiresOrdinaryStallGuard: boolean;
-  maximumGeneratorQuestionsBeforeInd507: number;
-  maximumUptakeQuestionsBeforeInd507: number;
-  opportunityServiceNegotiationGraphImports: number;
-};
 
 describe('negotiation question routing static invariants', () => {
   it('splits negotiation intent scope from broad actor/trigger inference', () => {
@@ -60,24 +46,6 @@ describe('negotiation question routing static invariants', () => {
     expect(migration).toContain("->'negotiation'->>'questionOrdinal'");
     expect(readiness).toContain("'public.questions_negotiation_provenance_uniq'");
     expect(readiness).not.toContain("'public.questions_uptake_recipient_source_uniq'");
-  });
-
-  it('preserves the recorded origin/dev producer trigger frequency and does not raise cardinality', () => {
-    expect(baseTriggerContract.sourceCommit).toBe('417c710de160bce0fadafd73f3bce0fc2d5e8deb');
-    expect(negotiationGraph.match(/mode: 'negotiation'/g)).toHaveLength(baseTriggerContract.ordinaryProducerModeOccurrences);
-    expect(negotiationGraph.match(/mode: 'negotiation_inflight'/g)).toHaveLength(baseTriggerContract.inflightProducerModeOccurrences);
-    expect(negotiationGraph.includes('!hasPriorAskUser(state.messages, ownUser.id)')).toBe(baseTriggerContract.requiresPriorAskUserGuard);
-    expect(negotiationGraph.includes('!hasOpportunity && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0')).toBe(baseTriggerContract.requiresOrdinaryStallGuard);
-    expect(negotiationGraph).not.toContain('|| turn.message');
-    expect(negotiationGraph).not.toContain('|| turn.assessment.reasoning');
-    expect(questionerQueue).toContain("data.purpose === 'uptake'\n      ? result.questions.slice(0, 1)");
-    expect(questionerQueue).toContain("? result.questions.slice(0, 2)");
-    expect(2).toBeLessThanOrEqual(baseTriggerContract.maximumGeneratorQuestionsBeforeInd507);
-    expect(1).toBe(baseTriggerContract.maximumUptakeQuestionsBeforeInd507);
-    expect(uptakeService).toContain('NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY');
-    expect(uptakeService).not.toContain('counterpartyIntent.summary?.trim()');
-    expect(uptakeService).not.toContain('counterpartyIntent.payload.trim()');
-    expect(opportunityService.match(/NegotiationGraph/g) ?? []).toHaveLength(baseTriggerContract.opportunityServiceNegotiationGraphImports);
   });
 
   it('keeps passive exact-intent refetches out of visit-time pool mining', () => {
@@ -112,7 +80,7 @@ describe('negotiation question routing static invariants', () => {
     expect(runExisting).toContain('negotiationContinuation: execution');
     expect(runExisting).toContain('no positive successor receipt');
     expect(negotiationGraph).toContain('state.continuationExecution');
-    expect(negotiationGraph).toContain('continuationReceipt');
+    expect(negotiationGraphFinalize).toContain('continuationReceipt');
     expect(inflightHandler).not.toContain('cancelAskUserExpiry');
   });
 
@@ -130,18 +98,6 @@ describe('negotiation question routing static invariants', () => {
     expect(continuationAtomic.indexOf('const consultation = await loadPrivateConsultation')).toBeLessThan(
       continuationAtomic.indexOf('const successors = await tx.select()'),
     );
-  });
-
-  it('uses canonical filtered reads for uptake acceptance and persists exact counterparty provenance', () => {
-    expect(uptakeGuard).toContain('new QuestionerAdapter(db).findPending');
-    expect(uptakeGuard).toContain("purpose: 'uptake'");
-    expect(source).toContain('candidate.counterpartyUserId');
-    expect(source).toContain('counterparty_intent.id');
-    expect(source).toContain('counterparty_intent.felicity_authority');
-    expect(source).toContain('currentUptakeAuthorityThreshold()');
-    expect(source).toContain('counterparty_assignment');
-    expect(uptakeService).toContain('counterpartyUserId');
-    expect(uptakeService).toContain('counterpartyIntentId');
   });
 
   it('locks the whole stable cohort before provenance rows for sibling-answer and answer-timeout races', () => {

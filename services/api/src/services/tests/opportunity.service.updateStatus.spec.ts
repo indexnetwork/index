@@ -6,7 +6,6 @@ import { describe, it, expect, mock } from "bun:test";
 
 import type { Opportunity, OpportunityControllerDatabase } from '@indexnetwork/protocol';
 import { OpportunityService } from "../opportunity.service";
-import type { UptakeAcceptanceGuardLike } from "../../lib/opportunity/uptake-acceptance.guard";
 import type { OutcomeFeedbackRecorderLike, PreparedOutcomeCapture } from "../../lib/opportunity/outcome-feedback.recorder";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,30 +73,15 @@ function createMockDb(opportunity: Opportunity | null) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("OpportunityService.updateOpportunityStatus", () => {
-  it("returns the uptake advisory before creating a DM, mutating status, or adding contacts", async () => {
+  it("accepts directly — the retired pre-accept uptake advisory can no longer interpose", async () => {
     const db = createMockDb(twoActorOpportunity);
-    const guard = {
-      check: mock(async () => ({
-        error: "Resolve the pending uptake questions or explicitly continue anyway.",
-        status: 409 as const,
-        advisory: {
-          code: "unresolved_uptake_questions" as const,
-          advisoryOnly: true as const,
-          opportunityId: OPP_ID,
-          questions: [{ id: "q-1", title: "Capacity", prompt: "Can they deliver?", options: [], multiSelect: false }],
-          acknowledgedUptakeQuestionIds: [],
-        },
-      })),
-    } satisfies UptakeAcceptanceGuardLike;
-    const service = new OpportunityService(db, undefined, guard);
+    const service = new OpportunityService(db);
 
     const result = await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A);
 
-    expect(result).toMatchObject({ status: 409, advisory: { code: "unresolved_uptake_questions" } });
-    expect(guard.check).toHaveBeenCalledWith({ opportunityId: OPP_ID, userId: USER_A, networkId: undefined, acknowledgedUptakeQuestionIds: undefined });
-    expect(db.getOrCreateDM).not.toHaveBeenCalled();
-    expect(db.stampOpportunityActorAction).not.toHaveBeenCalled();
-    expect(db.upsertContactMembership).not.toHaveBeenCalled();
+    expect('advisory' in result).toBe(false);
+    expect('error' in result).toBe(false);
+    expect(db.stampOpportunityActorAction).toHaveBeenCalled();
   });
 
   it('sanitizes unsafe reasoning in mutation responses', async () => {
@@ -118,30 +102,6 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(result.opportunity.interpretation.reasoning).toBe('Connection opportunity');
   });
 
-  it("passes acknowledgement IDs into the acceptance guard", async () => {
-    const db = createMockDb(twoActorOpportunity);
-    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
-    const service = new OpportunityService(db, undefined, guard);
-
-    await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
-      acknowledgedUptakeQuestionIds: ["q-1", "q-2"],
-    });
-
-    expect(guard.check).toHaveBeenCalledWith(expect.objectContaining({
-      acknowledgedUptakeQuestionIds: ["q-1", "q-2"],
-    }));
-    expect(db.stampOpportunityActorAction).toHaveBeenCalled();
-  });
-
-  it("does not run the uptake guard for non-accepted status changes", async () => {
-    const db = createMockDb(twoActorOpportunity);
-    const guard = { check: mock(async () => null) } satisfies UptakeAcceptanceGuardLike;
-    const service = new OpportunityService(db, undefined, guard);
-
-    await service.updateOpportunityStatus(OPP_ID, "rejected", USER_A);
-
-    expect(guard.check).not.toHaveBeenCalled();
-  });
   it("creates DM and adds contacts both ways when accepting a 2-actor opportunity", async () => {
     const db = createMockDb(twoActorOpportunity);
     const service = new OpportunityService(db);
@@ -310,7 +270,7 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
       outbox!.result.inserted = true; // adapter reports NEW same-txn insert
       return { ...twoActorOpportunity, status: "accepted" };
     });
-    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+    const service = new OpportunityService(db, undefined, recorder);
 
     const result = await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
       actionProvenance: "user_session",
@@ -331,7 +291,7 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
       outbox!.result.inserted = true;
       return { ...twoActorOpportunity, status: "rejected" };
     });
-    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+    const service = new OpportunityService(db, undefined, recorder);
 
     const result = await service.updateOpportunityStatus(OPP_ID, "rejected", USER_A, {
       actionProvenance: "user_session",
@@ -360,7 +320,7 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
       outbox!.result.inserted = true;
       return { ...scopedOpportunity, status: "accepted" };
     });
-    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+    const service = new OpportunityService(db, undefined, recorder);
 
     await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
       scopeType: "intent",
@@ -383,7 +343,7 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
       outbox!.result.inserted = false; // unique idempotency key already exists
       return { ...twoActorOpportunity, status: "accepted" };
     });
-    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+    const service = new OpportunityService(db, undefined, recorder);
 
     await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
       actionProvenance: "user_session",
@@ -400,7 +360,7 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
       // Simulate the same transaction throwing: status + event both roll back.
       throw new Error("transaction rolled back");
     });
-    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+    const service = new OpportunityService(db, undefined, recorder);
 
     await expect(service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
       actionProvenance: "user_session",
@@ -412,7 +372,7 @@ describe("OpportunityService.updateOpportunityStatus — atomic Lens B capture",
     const recorder = recorderStub();
     recorder.prepare = mock(async (input) => input.provenance === "user_session" ? preparedCapture : null);
     const db = createMockDb(twoActorOpportunity);
-    const service = new OpportunityService(db, undefined, { check: async () => null }, recorder);
+    const service = new OpportunityService(db, undefined, recorder);
 
     await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A, {
       actionProvenance: "api_key",

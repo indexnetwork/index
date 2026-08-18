@@ -247,55 +247,6 @@ describe('QuestionerQueue', () => {
     expect(invoked).toBe(false);
   });
 
-  it('copies uptake purpose, scopes the actor, and caps generator output to one', async () => {
-    let captured: PersistableQuestion[] = [];
-    let invoked = 0;
-    const generated = {
-      title: 'Readiness',
-      prompt: 'Is the practical setup clear?',
-      options: [{ label: 'Yes', description: 'Proceed' }, { label: 'No', description: 'Clarify' }],
-      multiSelect: false,
-    };
-    const queue = new QuestionerQueue({
-      adapter: {
-        findPending: async () => [],
-        persist: async () => [],
-        prepareNegotiationQuestion: async () => uptakeAdmission,
-        persistFreshNegotiationQuestions: async (batch) => { captured = batch; return ['question-1']; },
-      },
-      agent: {
-        invoke: async () => {
-          invoked += 1;
-          return {
-            questions: [generated, generated],
-            strategies: ['surface_missing_detail', 'surface_missing_detail'],
-            underspecificationTypes: [null, 'missing_constraint'],
-          };
-        },
-      },
-    });
-    queues.push(queue);
-
-    await queue.processJob('generate_questions', {
-      mode: 'negotiation', purpose: 'uptake', userId: 'user-1',
-      sourceType: 'opportunity', sourceId: 'opp-1',
-      scopeType: 'network', scopeId: 'network-1',
-      negotiation: uptakeCandidate,
-      context: {
-        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
-        indexContext: 'the selected network',
-        proposedActivity: 'a potential collaboration that may require clarification before you decide',
-      },
-    });
-
-    expect(invoked).toBe(1);
-    expect(captured).toHaveLength(1);
-    expect(captured[0].detection.purpose).toBe('uptake');
-    expect(captured[0].detection.negotiation).toEqual({ ...uptakeAdmission, questionOrdinal: 0 });
-    expect(captured[0].underspecificationType).toBeNull();
-    expect(captured[0].actors).toEqual([{ userId: 'user-1', role: 'subject', networkId: 'network-1' }]);
-  });
-
   it('stamps task-backed follow-up provenance on every generated ordinal without changing cardinality', async () => {
     const captured: PersistableQuestion[][] = [];
     const candidate = {
@@ -502,31 +453,6 @@ describe('QuestionerQueue', () => {
     await expect(unrelated.processJob('generate_questions', input)).rejects.toMatchObject({
       constraint_name: 'some_other_unique_constraint',
     });
-  });
-
-  it('deduplicates uptake before invoking the generator', async () => {
-    let invoked = 0;
-    const queue = new QuestionerQueue({
-      adapter: {
-        findPending: async () => [{ id: 'existing' } as never],
-        persist: async () => [],
-        prepareNegotiationQuestion: async () => uptakeAdmission,
-        persistFreshNegotiationQuestions: async () => [],
-      },
-      agent: { invoke: async () => { invoked += 1; return null; } },
-    });
-    queues.push(queue);
-    await queue.processJob('generate_questions', {
-      mode: 'negotiation', purpose: 'uptake', userId: 'user-1',
-      sourceType: 'opportunity', sourceId: 'opp-1',
-      negotiation: uptakeCandidate,
-      context: {
-        purpose: 'uptake', negotiationId: 'opp-1', counterpartyHint: 'the other participant',
-        indexContext: 'the selected network',
-        proposedActivity: 'a potential collaboration that may require clarification before you decide',
-      },
-    });
-    expect(invoked).toBe(0);
   });
 
   it('delegates privacy-minimal recovery jobs to the dedicated service', async () => {

@@ -45,21 +45,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeId?: string; acknowledgedUptakeQuestionIds?: string[] } | Response {
+function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeId?: string } | Response {
   if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   const rawScopeType = typeof body.scopeType === 'string' ? body.scopeType : undefined;
   const rawScopeId = typeof body.scopeId === 'string' ? body.scopeId : undefined;
   const rawIntentId = typeof body.intentId === 'string' ? body.intentId : undefined;
-  const rawAcknowledgedIds = body.acknowledgedUptakeQuestionIds;
-  if (rawAcknowledgedIds !== undefined && (
-    !Array.isArray(rawAcknowledgedIds)
-    || rawAcknowledgedIds.some((id) => typeof id !== 'string' || !id.trim())
-  )) {
-    return Response.json({ error: 'acknowledgedUptakeQuestionIds must be an array of non-empty strings' }, { status: 400 });
-  }
-  const acknowledgedUptakeQuestionIds = Array.isArray(rawAcknowledgedIds)
-    ? [...new Set(rawAcknowledgedIds.map((id) => (id as string).trim()))]
-    : undefined;
 
   if (rawScopeType || rawScopeId) {
     const parsedScopeType = scopeTypeQuerySchema.safeParse(rawScopeType);
@@ -67,16 +57,16 @@ function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeI
     const parsedScopeId = uuidQuerySchema.safeParse(rawScopeId);
     if (!parsedScopeId.success) return Response.json({ error: 'Invalid scopeId; must be a UUID' }, { status: 400 });
     if (rawIntentId && rawIntentId !== rawScopeId) return Response.json({ error: 'intentId must match scopeId when both are provided' }, { status: 400 });
-    return { scopeType: 'intent', scopeId: rawScopeId, acknowledgedUptakeQuestionIds };
+    return { scopeType: 'intent', scopeId: rawScopeId };
   }
 
   if (rawIntentId) {
     const parsedIntentId = uuidQuerySchema.safeParse(rawIntentId);
     if (!parsedIntentId.success) return Response.json({ error: 'Invalid intentId; must be a UUID' }, { status: 400 });
-    return { scopeType: 'intent', scopeId: rawIntentId, acknowledgedUptakeQuestionIds };
+    return { scopeType: 'intent', scopeId: rawIntentId };
   }
 
-  return { acknowledgedUptakeQuestionIds };
+  return {};
 }
 
 /** Route params when path has :id or :networkId */

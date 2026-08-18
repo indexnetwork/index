@@ -128,8 +128,6 @@ const envSchema = z.object({
   // a typo must never disable discovery, so startup validation stays permissive.
   DISCOVERY_PROFILE_SOURCE: z.string().optional(),
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
-  QUESTIONER_UPTAKE_ENABLED: optionalBoolean,
-  QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: optionalInt,
   QUESTIONER_CHAT_WAIT_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
