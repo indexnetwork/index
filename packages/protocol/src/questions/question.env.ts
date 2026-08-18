@@ -1,14 +1,10 @@
 /**
- * questions/question.env — centralized question-generation env accessors.
+ * questions/question.env — leftover question env constants.
  *
- * Naming scheme (one prefix, hierarchical):
- *
- *   QUESTIONER_ENABLED                  master switch — QuestionerQueue worker +
- *                                       enqueue closures at every composition site.
- *
- * All reads go through this module — do not read these variables via
- * `process.env` elsewhere. Values are read on every call (no caching) so tests
- * and long-lived processes observe changes.
+ * The QUESTIONER_* runtime flags are retired with the card generators
+ * (conversational-questions plan); park-path routing is always on. What
+ * remains are the historical budget constants still referenced by the
+ * questions-table adapter until its surface drops.
  */
 
 
@@ -33,9 +29,5 @@ export const INTENT_QUESTION_DAILY_CAP_DEFAULT = 2;
  */
 export const INTENT_QUESTION_DAILY_WINDOW_HOURS = 24;
 
-/** Master switch: is any background question generation enabled? */
-export function isQuestionerEnabled(): boolean {
-  return process.env.QUESTIONER_ENABLED === "true";
-}
 
 

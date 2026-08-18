@@ -13,7 +13,6 @@ const inflightHandler = readFileSync(new URL('../../events/handlers/question.ans
 const runExisting = readFileSync(new URL('../../queues/negotiations/run-existing.queue.ts', import.meta.url), 'utf8');
 const negotiationGraph = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.ts', import.meta.url), 'utf8');
 const negotiationGraphFinalize = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.finalize.ts', import.meta.url), 'utf8');
-const questionerQueue = readFileSync(new URL('../../queues/questioner.queue.ts', import.meta.url), 'utf8');
 const opportunityService = readFileSync(new URL('../../services/opportunity.service.ts', import.meta.url), 'utf8');
 
 describe('negotiation question routing static invariants', () => {
@@ -140,10 +139,5 @@ describe('negotiation question routing static invariants', () => {
     expect(recoveryQuestion).toBeGreaterThan(recoveryIntent);
     expect(negotiationAdvisory).toBeGreaterThan(recoveryQuestion);
     expect(negotiationCohort).toBeGreaterThan(negotiationAdvisory);
-
-    const recoveryGuard = questionerQueue.indexOf("data.purpose === 'recovery'");
-    const negotiationContract = questionerQueue.indexOf('isValidQuestionerInputContract(data)', recoveryGuard);
-    expect(recoveryGuard).toBeGreaterThan(-1);
-    expect(negotiationContract).toBeGreaterThan(recoveryGuard);
   });
 });

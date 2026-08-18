@@ -15,7 +15,7 @@ import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
@@ -292,8 +292,8 @@ export class ToolService {
       conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       noOpDispatcher,
       undefined,
-      // Stalled negotiations enqueue follow-up questions for the source user.
-      questionerEnqueueIfEnabled(),
+      // Park payloads route to the question-message regeneration job.
+      parkedQuestionEnqueue(),
       // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
       reflectEnqueueIfEnabled(),
       // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).

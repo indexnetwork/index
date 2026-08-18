@@ -73,7 +73,7 @@ import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negot
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
-import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
+import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
 import { questionMessageQueue } from './queues/question-message.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
@@ -93,7 +93,7 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
@@ -135,10 +135,9 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
   backgroundAgentDispatcher,
   negotiationTimeoutQueue,
-  // Stalled/capped/timeout negotiations enqueue follow-up questions for the
-  // source user (mode='negotiation', sourceType='opportunity') so the intent
-  // page can surface what would unblock the next attempt.
-  questionerEnqueueIfEnabled(),
+  // Park payloads (post-stall parks, mid-flight consults) route to the
+  // question-message regeneration job for the parked side's signal DM.
+  parkedQuestionEnqueue(),
   // Finished negotiations enqueue memory distillation for both sides (P5.2,
   // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
   reflectEnqueueIfEnabled(),
@@ -361,9 +360,6 @@ negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
-if (isQuestionerEnabled()) {
-  questionerQueue.startWorker();
-}
 questionMessageQueue.startWorker();
 premiseQueue.startWorker();
 userContextQueue.startWorker();
@@ -828,7 +824,6 @@ const shutdown = async () => {
     emailQueue.close(),
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
-    questionerQueue.close(),
     questionMessageQueue.close(),
     premiseQueue.close(),
     userContextQueue.close(),

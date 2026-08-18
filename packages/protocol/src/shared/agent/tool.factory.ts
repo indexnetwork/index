@@ -133,14 +133,15 @@ export async function createChatTools(
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
 
-  // Wrap questionerEnqueue to include scoped/session context when available.
+  // Wrap questionerEnqueue to include scoped context when available. (The
+  // chat-session conversationId defaulting went with the retired chat-mode
+  // generator; park payloads carry their own recipient routing.)
   const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
     ? (input) => deps.questionerEnqueue!({
         ...input,
         ...(resolvedContext.scopeType && resolvedContext.scopeId && !input.scopeId
           ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
           : {}),
-        ...(resolvedContext.sessionId && !input.conversationId ? { conversationId: resolvedContext.sessionId } : {}),
       })
     : undefined;
 

@@ -128,7 +128,6 @@ const envSchema = z.object({
   // a typo must never disable discovery, so startup validation stays permissive.
   DISCOVERY_PROFILE_SOURCE: z.string().optional(),
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
-  QUESTIONER_CHAT_WAIT_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
   NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
   NEGOTIATION_MAX_TURNS_AMBIENT: optionalInt,
@@ -152,16 +151,7 @@ const envSchema = z.object({
   NEGOTIATOR_CHAT_REFLECT_DELAY_MS: optionalInt,
   NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
   NEGOTIATOR_CLIENT_DM_INJECT: optionalBoolean,
-  QUESTIONER_ENABLED: optionalBoolean,
-  // Zero is meaningful (disables background refinement without touching
-  // QUESTIONER_ENABLED), so this is optionalInt rather than optionalPositiveInt.
-  QUESTIONER_INTENT_DAILY_CAP: optionalInt,
-  POOL_QUESTIONS_MINING: z.union([z.literal(''), z.enum(['off', 'shadow'])]).optional(),
-  POOL_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
-  POOL_QUESTIONS_PUSH: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
-  POOL_QUESTIONS_STAMP_NEWBORN: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
-  POOL_QUESTIONS_VISIT_TRIGGER: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   NEGOTIATION_EVIDENCE_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
   OUTCOME_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
 
@@ -176,7 +166,6 @@ const envSchema = z.object({
   MCP_TOOL_TIMEOUT_FAST_MS: optionalInt,
   MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS: optionalInt,
   MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS: optionalInt,
-  MCP_TOOL_TIMEOUT_INTERACTIVE_MS: optionalInt,
   MCP_TOOL_MAX_OUTPUT_BYTES: optionalInt,
 
   // 10. Rate limiting
@@ -279,15 +268,26 @@ function collectEnvWarnings(): string[] {
   if (hasValue('TELEGRAM_BOT_TOKEN') && !hasValue('TELEGRAM_BOT_USERNAME')) {
     warnings.push('TELEGRAM_BOT_USERNAME: set the bot username so Telegram integration links can be generated.');
   }
-  // Question-related env vars were consolidated under the QUESTIONER_ prefix
-  // (clean cutover — old names are ignored). Warn loudly when a stale name is
-  // still set so operators notice the silent behavior change.
-  const renamedQuestionVars: Array<[oldName: string, newName: string]> = [
-    ['CHAT_QUESTION_WAIT_TIMEOUT_MS', 'QUESTIONER_CHAT_WAIT_TIMEOUT_MS'],
-  ];
-  for (const [oldName, newName] of renamedQuestionVars) {
-    if (hasValue(oldName)) {
-      warnings.push(`${oldName}: renamed to ${newName} — the old name is ignored; update the environment.`);
+  // Retired with the QuestionerAgent card generators (conversational
+  // questions): questions are parked negotiations rendered into the signal's
+  // DM, and the park routing ships on with no flag. These names are read by
+  // nothing now — warn so they get cleared from the environment.
+  for (const retired of [
+    'QUESTIONER_ENABLED',
+    'QUESTIONER_UPTAKE_ENABLED',
+    'QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD',
+    'QUESTIONER_INTENT_DAILY_CAP',
+    'QUESTIONER_CHAT_WAIT_TIMEOUT_MS',
+    'CHAT_QUESTION_WAIT_TIMEOUT_MS',
+    'MCP_TOOL_TIMEOUT_INTERACTIVE_MS',
+    'POOL_QUESTIONS_MINING',
+    'POOL_QUESTIONS_MODE',
+    'POOL_QUESTIONS_PUSH',
+    'POOL_QUESTIONS_STAMP_NEWBORN',
+    'POOL_QUESTIONS_VISIT_TRIGGER',
+  ]) {
+    if (hasValue(retired)) {
+      warnings.push(`${retired}: retired with the card question generators — the value is ignored; remove it from the environment.`);
     }
   }
 

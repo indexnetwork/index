@@ -13,7 +13,7 @@ import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.
 import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
 import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isRejectLikeAction, isTerminalAction, negotiationConsultationPolicyMode, negotiationQuestionSettlementId, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, type ExternalConsultationPersistedTurn } from '../lib/negotiation/consultation';
 import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import type { AtomicHermesResponseInput, AtomicHermesResponseResult, HermesRunMutationAuthority } from '../adapters/conversation.database.adapter';
@@ -446,7 +446,7 @@ export class NegotiationPollingService {
 
     const messages = await negotiationMessagesFor(conversationDatabaseAdapter, task);
     const persistedTurns = this.persistedTurns(messages);
-    const questionerEnqueue = questionerEnqueueIfEnabled();
+    const questionerEnqueue = parkedQuestionEnqueue();
     const policyMode = negotiationConsultationPolicyMode();
     const eligibility = assessExternalConsultationEligibility({
       task: {
@@ -576,7 +576,7 @@ export class NegotiationPollingService {
       coordinates: eligibility.coordinates,
       reason: eligibility.policy.reason,
     });
-    await questionerEnqueue!(payload).catch((error) => {
+    await questionerEnqueue(payload).catch((error) => {
       logger.error('Failed to enqueue external owner consultation; expiry recovery remains armed', {
         negotiationId,
         consultationAttemptId,
@@ -1105,7 +1105,7 @@ export class NegotiationPollingService {
     const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, meta);
     const isFinalTurn = isNegotiationTurnCapReached(turnNumber + 1, meta.maxTurns);
-    const questionerEnqueue = questionerEnqueueIfEnabled();
+    const questionerEnqueue = parkedQuestionEnqueue();
     const consultation = assessExternalConsultationEligibility({
       task: {
         id: task.id,

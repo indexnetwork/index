@@ -79,9 +79,8 @@ src/services/tests/opportunity.service.enrichedReplacement.isolated.ts
 src/events/tests/opportunity.event.lifecycle.isolated.ts
 src/controllers/tests/enrichment.controller.isolated.ts
 src/adapters/tests/cache.adapter.isolated.ts
-src/queues/tests/questioner.queue.isolated.ts
 src/queues/outcome/tests/outcome.mining.shared.isolated.ts
-src/queues/tests/questioner-enqueue-if-enabled.isolated.ts
+src/queues/tests/parked-question.enqueue.isolated.ts
 src/adapters/tests/negotiator-client-dm.retrieval.isolated.ts
 src/adapters/tests/negotiator-memory.retrieval.isolated.ts
 src/queues/tests/reflect.queue.isolated.ts

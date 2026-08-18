@@ -18,7 +18,7 @@ const read = (relative: string): string =>
 const main = read('../../main.ts');
 const opportunityService = read('../../services/opportunity.service.ts');
 const opportunityTools = read('../../../../../packages/protocol/src/opportunities/opportunity.tools.ts');
-const questionerQueue = read('../../queues/questioner.queue.ts');
+const parkedEnqueue = read('../../queues/parked-question.enqueue.ts');
 
 describe('question retirement static invariants', () => {
   describe('pre-accept uptake', () => {
@@ -30,7 +30,7 @@ describe('question retirement static invariants', () => {
       expect(existsSync(new URL('../../adapters/uptake-question.database.adapter.ts', import.meta.url))).toBe(false);
       expect(main).not.toContain('uptakeQuestionService');
       expect(main).not.toContain('OpportunityEvents.onPending');
-      expect(questionerQueue).not.toContain('uptake');
+      expect(existsSync(new URL('../../queues/questioner.queue.ts', import.meta.url))).toBe(false);
     });
 
     it('acceptance paths carry no advisory interlock', () => {
@@ -66,7 +66,7 @@ describe('question retirement static invariants', () => {
       const fromIntent = read('../../queues/opportunity/from-intent.queue.ts');
       expect(fromIntent).not.toContain('minePoolDiscriminators');
       expect(fromIntent).not.toContain('pool_answer');
-      expect(questionerQueue).not.toContain('pool_discovery');
+      expect(parkedEnqueue).not.toContain('pool_discovery');
       expect(main).not.toContain('poolQuestionPushQueue');
       expect(main).not.toContain('handlePoolAnswer');
       expect(main).not.toContain('handleMaterialIntentUpdate');
@@ -95,8 +95,7 @@ describe('question retirement static invariants', () => {
       const fromIntent = read('../../queues/opportunity/from-intent.queue.ts');
       expect(fromIntent).not.toContain('recoverAfterCompletion');
       expect(fromIntent).not.toContain('maybeEnqueueIntentRecovery');
-      expect(questionerQueue).not.toContain('generate_recovery_refinement');
-      expect(questionerQueue).not.toContain('addRecoveryJob');
+      expect(parkedEnqueue).not.toContain('recovery');
       // The whole refinement service retired with intent refinement (next
       // block); nothing remains that could consume a recovery completion.
       expect(existsSync(new URL('../../services/intent-recovery-refinement.service.ts', import.meta.url))).toBe(false);
@@ -128,7 +127,6 @@ describe('question retirement static invariants', () => {
       const intentGraphExecute = read('../../../../../packages/protocol/src/intents/graph/intent.graph.execute.ts');
       expect(intentGraphExecute).not.toContain('questionerEnqueue');
       expect(main).not.toContain('enqueueIntentRefinement');
-      expect(questionerQueue).toContain("if (data.mode === 'intent') {");
     });
 
     it('voids its leftover pending rows with the retired_mode marker', () => {
@@ -162,6 +160,42 @@ describe('question retirement static invariants', () => {
       expect(migration).toContain("detection->>'mode' = 'chat'");
       expect(migration).toContain("'\"retired_mode\"'::jsonb");
       expect(migration).toContain("status = 'pending'");
+    });
+  });
+
+  describe('generation half', () => {
+    it('deletes the QuestionerAgent, its presets, and the generation envelope', () => {
+      for (const relative of [
+        '../../../../../packages/protocol/src/questions/question.agent.ts',
+        '../../../../../packages/protocol/src/questions/question.presets.ts',
+        '../../../../../packages/protocol/src/questions/question.ask.tool.ts',
+        '../../queues/questioner.queue.ts',
+      ]) {
+        expect(existsSync(new URL(relative, import.meta.url))).toBe(false);
+      }
+      // The input union admits only the two park families; the generator's
+      // per-mode envelope, its runtime contract, and the master switch died
+      // with the queue.
+      const input = read('../../../../../packages/protocol/src/questions/question.input.ts');
+      expect(input).toContain('PostStallQuestionerInput');
+      expect(input).toContain('InflightQuestionerInput');
+      for (const retired of [
+        'isValidQuestionerInputContract',
+        'UptakeQuestionerInput',
+        'RecoveryQuestionerInput',
+        'ChatContext',
+        'PoolDiscoveryContext',
+        'StandardQuestionerInput',
+      ]) {
+        expect(input).not.toContain(retired);
+      }
+      expect(read('../../../../../packages/protocol/src/questions/question.env.ts'))
+        .not.toContain('QUESTIONER_ENABLED');
+      expect(main).not.toContain('QUESTIONER_ENABLED');
+      // The park routing is unconditional: composition sites inject
+      // parkedQuestionEnqueue, which drops retired families.
+      expect(main).toContain('parkedQuestionEnqueue');
+      expect(parkedEnqueue).toContain('routeParkedQuestionEnqueue');
     });
   });
 });

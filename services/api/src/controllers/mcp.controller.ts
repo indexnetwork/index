@@ -19,8 +19,7 @@ import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.ad
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import { questionerQueue } from '../queues/questioner.queue';
-import { routeParkedQuestionEnqueue } from '../queues/question-message.queue';
+import { enqueueParkedQuestion } from '../queues/parked-question.enqueue';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -46,8 +45,8 @@ import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -153,14 +152,9 @@ const protocolDeps = {
   findPendingQuestions: findPendingQuestionsForTools,
   answerPendingQuestion: answerPendingQuestionForTools,
   getUserContextText: ensureGlobalUserContext,
-  ...(isQuestionerEnabled() && {
-    questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
-      // Park-path payloads route to the question-message regeneration job
-      // (conversational-questions delivery spine); see questionerEnqueueIfEnabled.
-      if (await routeParkedQuestionEnqueue(input)) return;
-      await questionerQueue.addGenerateJob(input);
-    },
-  }),
+  // Park-path payloads route to the question-message regeneration job
+  // (conversational-questions delivery spine); retired families are dropped.
+  questionerEnqueue: enqueueParkedQuestion,
   // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
   // memory tools. Injected only while memory writes are enabled — when the
   // flag is off the tools are simply not registered. Consumed exclusively by

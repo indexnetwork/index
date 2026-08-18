@@ -20,6 +20,32 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 22.0.0 - 2026-08-18
+
+### Removed
+
+- **The QuestionerAgent generation half** (conversational-questions plan,
+  "Retirements"). Questions are conversation: the parked negotiation is the
+  durable record and the question-message in the signal's DM is its
+  rendering, so the card generators go. Removed: `QuestionerAgent`,
+  `question.presets`, the blocking chat `ask_user_question` tool and its
+  `ChatQuestionsHost` bridge (with the `user_question` stream event and the
+  `interactive` tool-timeout class), the per-mode generation envelope in
+  `question.input` (the `QuestionerInput` union now admits only the two park
+  families — `PostStallQuestionerInput` and `InflightQuestionerInput`) and
+  `isValidQuestionerInputContract`, the pre-accept uptake interlock in
+  `update_opportunity`, the intent graph's create-branch question enqueue,
+  and the retired env accessors (`isQuestionerEnabled`,
+  `isUptakeGuardEnabled`, `uptakeAuthorityThreshold`,
+  `intentQuestionDailyCap`, `chatQuestionWaitTimeoutMs`).
+
+### Changed
+
+- The signal and onboarding personas interview in plain conversation: the
+  guided New Signal intake drops its blocking question-card rounds, and its
+  stage machine reduces to interview → complete (`create_intent` is the only
+  remaining stage marker).
+
 ## 21.1.0 - 2026-08-18
 
 ### Added
