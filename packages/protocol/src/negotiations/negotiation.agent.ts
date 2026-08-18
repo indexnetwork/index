@@ -356,9 +356,18 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
     // worth having. What it may not do is stand in for this negotiation's own
     // exchange, so the policy line differs by whether this one has opened.
     const hasPriorDialogue = hasAttributedDialogue || input.history.length > 0;
+    // Three states, not two. `isContinuation` only says whether this
+    // negotiation spoke in an EARLIER session; on any turn after the opening
+    // it is still false while this negotiation is visibly mid-exchange. Under
+    // the old two-way split such a turn was told the signal was new and to
+    // "make your own case for it" — which, for the initiator seat, reads as
+    // an instruction to re-open, and produced a fresh outreach on every one
+    // of its turns instead of a reply.
     const priorDialoguePolicy = input.isContinuation
       ? 'Policy: You are continuing a prior dialogue. If this signal is materially the same as one you previously evaluated, you may resolve quickly. If materially different, evaluate on its own merits.'
-      : 'Policy: This signal is NEW — you have not negotiated it before. The dialogue above concluded on other signals and is background only. Evaluate this one on its own merits and make your own case for it.';
+      : input.history.length > 0
+        ? 'Policy: This negotiation is already under way — the turns above under the current opportunity are THIS exchange. Respond to the counterparty\'s latest turn; do not restate or re-pitch your opening.'
+        : 'Policy: This signal is NEW — you have not negotiated it before. The dialogue above concluded on other signals and is background only. Evaluate this one on its own merits and make your own case for it.';
     const priorDialogueContext = hasPriorDialogue
       ? `\n\n--- Prior dialogue with this counterparty ---\n${attributionPreamble}${priorDialogueBody}\n\n--- New signal under evaluation ---\n${input.discoveryQuery
   ? `Discovery query: "${input.discoveryQuery}"`
