@@ -542,6 +542,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           role: "agent" as const,
           parts: message.parts,
           createdAt: message.createdAt,
+          taskId: state.taskId,
         }],
         turnCount: state.turnCount + 1,
         lastTurn: turn,
@@ -568,12 +569,20 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     }
 
     return {
+      // `taskId` is what makes this turn part of THIS session's block in the
+      // attributed prior dialogue (IND-569). Persisted with the current task
+      // id above; carried onto the state message so `buildAttributedDialogue`
+      // can match it. Dropping it silently emptied the "[Current opportunity —
+      // under negotiation now]" block, which — because the attributed
+      // rendering replaces the flat history in the prompt — left every turn
+      // after the opening blind to the exchange it was answering.
       messages: [{
         id: message.id,
         senderId: message.senderId,
         role: "agent" as const,
         parts: message.parts,
         createdAt: message.createdAt,
+        taskId: state.taskId,
       }],
       turnCount: state.turnCount + 1,
       currentSpeaker: (isSource ? "candidate" : "source") as "source" | "candidate",
