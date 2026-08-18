@@ -57,6 +57,15 @@ export interface ConversationNegotiationLifecycle {
   } | null;
 }
 
+/** A viewer-visible opportunity and the exact negotiation task that owns its session. */
+export interface ConversationNegotiationOpportunity extends Omit<ConversationNegotiationLifecycle, 'taskId' | 'opportunityId' | 'opportunityStatus' | 'statusTimestamp' | 'screenDecision'> {
+  intentId: string;
+  title: string;
+  taskId: string;
+  opportunityId: string;
+  opportunityStatus: NegotiationOpportunityStatus | null;
+}
+
 export interface ConversationSummary {
   id: string;
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
@@ -70,6 +79,7 @@ export interface ConversationSummary {
   createdAt: string;
   /** Latest task and opportunity lifecycle for A2A negotiation summaries. */
   negotiation?: ConversationNegotiationLifecycle | null;
+  negotiationOpportunities?: ConversationNegotiationOpportunity[];
 }
 
 export interface ConversationMessage {

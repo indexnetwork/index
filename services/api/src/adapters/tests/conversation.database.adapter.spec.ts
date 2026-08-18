@@ -518,6 +518,62 @@ describe('ConversationDatabaseAdapter', () => {
     }, 30000);
   });
 
+  describe('getConversationsForUser — opportunity session projection', () => {
+    it('projects every viewer-visible opportunity with its newest task without exposing the counterpart intent', async () => {
+      const run = crypto.randomUUID();
+      const viewerId = `outline-viewer-${run}`;
+      const counterpartId = `outline-counterpart-${run}`;
+      const viewerIntentId = `outline-intent-${run}`;
+      const counterpartIntentId = `outline-private-${run}`;
+      const firstOpportunityId = `outline-opportunity-a-${run}`;
+      const secondOpportunityId = `outline-opportunity-b-${run}`;
+      createdUserIds.push(viewerId, counterpartId);
+      createdIntentIds.push(viewerIntentId, counterpartIntentId);
+      createdOpportunityIds.push(firstOpportunityId, secondOpportunityId);
+
+      await db.insert(schema.users).values([
+        { id: viewerId, email: `${viewerId}@test.com`, name: 'Outline Viewer' },
+        { id: counterpartId, email: `${counterpartId}@test.com`, name: 'Outline Counterpart' },
+      ]);
+      await db.insert(schema.intents).values([
+        { id: viewerIntentId, userId: viewerId, payload: 'Need a design partner', summary: 'Design partner' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Private counterpart intent', summary: 'Private signal' },
+      ]);
+      await db.insert(schema.opportunities).values([firstOpportunityId, secondOpportunityId].map((id, index) => ({
+        id,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [{ networkId: 'outline-network', userId: viewerId, role: 'peer' }, { networkId: 'outline-network', userId: counterpartId, role: 'peer' }],
+        interpretation: { category: 'test', reasoning: 'Projection test', confidence: 0.8 },
+        context: {}, confidence: '0.8', status: index === 0 ? 'negotiating' as const : 'accepted' as const,
+      })));
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${viewerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+      for (const opportunityId of [firstOpportunityId, secondOpportunityId]) {
+        await adapter.appendMatchProvenance(conversation.id, {
+          opportunityId,
+          intents: [{ userId: viewerId, intentId: viewerIntentId }, { userId: counterpartId, intentId: counterpartIntentId }],
+          recordedAt: new Date().toISOString(),
+        });
+      }
+      const olderTask = await adapter.createTask(conversation.id, { type: 'negotiation', sourceUserId: viewerId, candidateUserId: counterpartId, opportunityId: firstOpportunityId });
+      const newestTask = await adapter.createTask(conversation.id, { type: 'negotiation', sourceUserId: viewerId, candidateUserId: counterpartId, opportunityId: firstOpportunityId });
+      const secondTask = await adapter.createTask(conversation.id, { type: 'negotiation', sourceUserId: viewerId, candidateUserId: counterpartId, opportunityId: secondOpportunityId });
+      await db.update(schema.tasks).set({ createdAt: new Date(Date.now() - 1_000) }).where(eq(schema.tasks.id, olderTask.id));
+
+      const summary = (await adapter.getConversationsForUser(`agent:${viewerId}`, viewerId, true))
+        .find((candidate) => candidate.id === conversation.id);
+      expect(summary?.negotiationOpportunities).toEqual(expect.arrayContaining([
+        expect.objectContaining({ intentId: viewerIntentId, opportunityId: firstOpportunityId, title: 'Design partner', taskId: newestTask.id, opportunityStatus: 'negotiating' }),
+        expect.objectContaining({ intentId: viewerIntentId, opportunityId: secondOpportunityId, title: 'Design partner', taskId: secondTask.id, opportunityStatus: 'accepted' }),
+      ]));
+      expect(summary?.negotiationOpportunities?.some((item) => item.taskId === olderTask.id)).toBeFalse();
+      expect(JSON.stringify(summary?.negotiationOpportunities)).not.toContain(counterpartIntentId);
+    }, 30000);
+  });
+
   describe('getConversationsForUser — screenDecision privacy (IND-610)', () => {
     it('projects named screenDecision fields to the initiator only, never to the non-owner counterparty, even for a mutually-visible negotiation', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
