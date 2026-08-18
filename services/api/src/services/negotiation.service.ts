@@ -6,6 +6,7 @@ import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/prot
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
 
 const logger = log.service.from('NegotiationService');
 
@@ -47,6 +48,8 @@ export class NegotiationService {
       reflectEnqueueIfEnabled(),
       // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
       negotiatorMemoryRetrieve(),
+      // A2H client-DM read path (gated on NEGOTIATOR_CLIENT_DM_INJECT).
+      negotiatorClientDmRetrieve(),
     ).createGraph();
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });

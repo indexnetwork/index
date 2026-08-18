@@ -7,25 +7,20 @@
  */
 import { z } from "zod";
 import { UnderspecificationTypeSchema, type UnderspecificationType } from "../shared/schemas/underspecification.schema.js";
+import { QuestionOptionSchema, StructuredQuestionSchema, type QuestionOption } from "../shared/schemas/structured-question.schema.js";
 
 export { UnderspecificationTypeSchema };
 
-export const QuestionOptionSchema = z.object({
-  /** Display text. Suffix " (Recommended)" on the safest path; list it first. */
-  label: z.string().min(1).max(120),
-  /** Explains the consequence of choosing this option, not just its definition. */
-  description: z.string().min(1).max(280),
-});
+/**
+ * The renderer-facing quartet (title/prompt/options/multiSelect) lives in
+ * `shared/schemas/structured-question.schema.ts` so the negotiator can author a
+ * question without `shared/` importing this capability. Re-exported here so
+ * `questions/question.schema.js` stays the import site every caller already uses.
+ */
+export { QuestionOptionSchema, StructuredQuestionSchema };
+export type { StructuredQuestion } from "../shared/schemas/structured-question.schema.js";
 
-export const QuestionSchema = z.object({
-  /** ≤12 chars. Noun of the decision domain — e.g. "Stage", "Timing", "Role". */
-  title: z.string().min(1).max(12),
-  /** ≤2 sentences, ≤400 chars. Ends in a question mark. */
-  prompt: z.string().min(1).max(400),
-  /** 2–4 options. No explicit "Other" — clients provide that automatically. */
-  options: z.array(QuestionOptionSchema).min(2).max(4),
-  /** True when options are not mutually exclusive (priorities, bundles). */
-  multiSelect: z.boolean(),
+export const QuestionSchema = StructuredQuestionSchema.extend({
   /**
    * Optional provenance line rendered as a muted chip above the prompt
    * (e.g. "based on 18 people matching this intent"). Aggregate counts only —
@@ -63,7 +58,7 @@ export const QuestionGeneratorResponseSchema = z.object({
   questions: z.array(QuestionWithStrategySchema).max(3),
 });
 
-export type QuestionOption = z.infer<typeof QuestionOptionSchema>;
+export type { QuestionOption };
 export type Question = z.infer<typeof QuestionSchema>;
 export type { UnderspecificationType };
 export type QuestionStrategy = z.infer<typeof QuestionStrategySchema>;

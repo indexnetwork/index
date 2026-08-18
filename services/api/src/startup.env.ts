@@ -111,6 +111,8 @@ const envSchema = z.object({
   COMPOSIO_API_KEY: z.string().optional(),
   UNSTRUCTURED_API_URL: optionalUrl,
   PARALLELS_API_KEY: z.string().optional(),
+  UNAVATAR_TOKEN: z.string().optional(),
+  UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
   AUTO_JOIN_INDEX_IDS: z.string().optional(),
@@ -151,7 +153,11 @@ const envSchema = z.object({
   NEGOTIATOR_MEMORY_WRITE_ENABLED: optionalBoolean,
   NEGOTIATOR_CHAT_REFLECT_DELAY_MS: optionalInt,
   NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
+  NEGOTIATOR_CLIENT_DM_INJECT: optionalBoolean,
   QUESTIONER_ENABLED: optionalBoolean,
+  // Zero is meaningful (disables background refinement without touching
+  // QUESTIONER_ENABLED), so this is optionalInt rather than optionalPositiveInt.
+  QUESTIONER_INTENT_DAILY_CAP: optionalInt,
   POOL_QUESTIONS_MINING: z.union([z.literal(''), z.enum(['off', 'shadow'])]).optional(),
   POOL_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
   POOL_QUESTIONS_PUSH: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),

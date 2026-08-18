@@ -71,6 +71,7 @@ import { RedisTimeoutUpgradeLease, TimeoutUpgradeReconciler } from './lib/negoti
 import { getRedisClient } from './adapters/cache.adapter';
 import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
+import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
@@ -151,6 +152,9 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   // Screen/turn prompts read the speaker's own negotiator memories (P5.3,
   // gated on NEGOTIATOR_MEMORY_INJECT).
   negotiatorMemoryRetrieve(),
+  // The acting user's own negotiator DM for this signal (A2H read path,
+  // gated on NEGOTIATOR_CLIENT_DM_INJECT). System-agent grounding only.
+  negotiatorClientDmRetrieve(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,

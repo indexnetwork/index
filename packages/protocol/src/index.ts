@@ -190,6 +190,7 @@ export { NegotiationScreener } from "./negotiations/negotiation.module.js";
 export { NegotiationReflector } from "./negotiations/negotiation.module.js";
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiations/negotiation.module.js";
 export type { NegotiatorMemoryEntry } from "./negotiations/negotiation.module.js";
+export type { NegotiatorClientDmMessage, NegotiatorClientDmQuery, NegotiatorClientDmRetrieveFn } from "./negotiations/negotiation.module.js";
 export { QuestionerAgent } from "./questions/question.module.js";
 export { isValidQuestionerInputContract } from "./questions/question.module.js";
 export type { QuestionerInput, UptakeQuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn, PoolDiscoveryContext } from "./questions/question.module.js";

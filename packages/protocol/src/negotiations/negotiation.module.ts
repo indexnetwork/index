@@ -54,6 +54,7 @@ export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,
   NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY,
+  isSafeAuthoredNegotiationQuestion,
   isSafeNegotiationQuestionText,
   negotiationQuestionSettlementId,
   validateInflightAskUserFields,
@@ -80,4 +81,9 @@ export type {
 export type { NegotiationSpeakerMessage, NegotiationSpeakerParticipants } from "./negotiation.expected-speaker.js";
 export type { NegotiationScopeMetadata } from "./negotiation.scope.js";
 export type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
+export type {
+  NegotiatorClientDmMessage,
+  NegotiatorClientDmQuery,
+  NegotiatorClientDmRetrieveFn,
+} from "./negotiation.client-dm.js";
 export type { NegotiationToolDeps } from "./negotiation.tools.port.js";

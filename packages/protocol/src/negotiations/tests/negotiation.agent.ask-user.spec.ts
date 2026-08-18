@@ -12,6 +12,10 @@ import type { NegotiationAgentInput } from "../negotiation.agent.js";
  * - without the grant an ask_user output is schema-invalid → conservative
  *   fallback after the retry,
  * - v1 and final turns never gain the action even with canAskUser set.
+ *
+ * Plus the authoring contract: with the grant the rule asks for a reason AND a
+ * question the agent wrote itself, and it no longer tells the model the server
+ * owns the copy. Without the grant none of that is visible.
  */
 
 class CapturingNegotiator extends IndexNegotiator {
@@ -96,5 +100,114 @@ describe("IndexNegotiator — canAskUser (IND-401)", () => {
     const turn = await agent.invoke({ ...baseInput, isFinalTurn: true, canAskUser: true });
     expect(turn.action).toBe("withdraw");
     expect(agent.systemPrompts[0]).not.toContain('"ask_user"');
+  });
+});
+
+describe("IndexNegotiator — the negotiator authors its own consultation question", () => {
+  async function grantedPrompt(overrides: Partial<NegotiationAgentInput> = {}): Promise<string> {
+    const agent = new CapturingNegotiator([askUserOutput]);
+    await agent.invoke({ ...baseInput, canAskUser: true, ...overrides });
+    return agent.systemPrompts[0];
+  }
+
+  it("asks for the question text, not just the admission category", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).toContain("Write the question yourself in askUser.question");
+    expect(prompt).toContain("set askUser.reason to exactly one closed server category");
+    // All four closed categories still enumerated verbatim.
+    for (const reason of [
+      "unresolved_owner_constraint",
+      "consequential_disclosure_permission",
+      "repeated_non_convergence",
+      "insufficient_commitment_authority",
+    ]) {
+      expect(prompt).toContain(reason);
+    }
+  });
+
+  it("no longer tells the model the server owns the owner-facing copy", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).not.toContain("Never write question text");
+    expect(prompt).not.toContain("the server owns all owner-facing copy");
+  });
+
+  it("carries the renderer constraints the structured question schema enforces", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).toContain("title: at most 12 characters");
+    expect(prompt).toContain("at most 2 sentences and 400 characters, ending in a question mark");
+    expect(prompt).toContain("2–4 of Alice's real decision options");
+    expect(prompt).toContain("label at most 120 characters");
+    expect(prompt).toContain("description at most 280 characters");
+    expect(prompt).toContain("stating the CONSEQUENCE of choosing that option");
+    expect(prompt).toContain("multiSelect: true ONLY when the options are not mutually exclusive");
+    expect(prompt).toContain('Never add an "Other" option');
+  });
+
+  it("grounds the question in this negotiation and keeps the counterparty out of it", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).toContain("grounded in the exchange above");
+    expect(prompt).toContain("Never a generic template");
+    expect(prompt).toContain("Do not name, quote, or describe the counterparty");
+    // Grounding is the transcript only for now — the signal's DM lands later.
+    expect(prompt).not.toContain("direct message");
+  });
+
+  it("keeps the pause economics and the question/ask_user split intact", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).toContain("PAUSES the negotiation until they answer (up to 24h)");
+    expect(prompt).toContain("AT MOST ONE client consultation per negotiation");
+    expect(prompt).toContain('Use "question" (not "ask_user") when the clarification should come from the OTHER side');
+  });
+
+  it("substitutes {userName} inside the authoring rule", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).toContain("Alice's OWN input");
+    expect(prompt).toContain("You are Alice's own agent");
+    expect(prompt).toContain("in Alice's own terms");
+    expect(prompt).not.toContain("{userName}");
+  });
+
+  it("stays entirely invisible without the grant, on both seats", async () => {
+    for (const seat of ["initiator", "counterparty"] as const) {
+      const agent = new CapturingNegotiator([validTurn("counter"), validTurn("counter")]);
+      await agent.invoke({ ...baseInput, seat });
+      const prompt = agent.systemPrompts[0];
+      expect(prompt).not.toContain("askUser");
+      expect(prompt).not.toContain("ask_user");
+      expect(prompt).not.toContain("multiSelect");
+      expect(prompt).not.toContain("at most 12 characters");
+    }
+  });
+
+  it("still accepts a reason-only payload — external agents will not author one", async () => {
+    const agent = new CapturingNegotiator([askUserOutput]);
+    const turn = await agent.invoke({ ...baseInput, canAskUser: true });
+    expect(turn.action).toBe("ask_user");
+    expect(turn.askUser).toEqual({ reason: "consequential_disclosure_permission" });
+    expect(agent.calls).toBe(1);
+  });
+
+  it("accepts a turn that fills the authored question in", async () => {
+    const authored = {
+      ...askUserOutput,
+      askUser: {
+        reason: "unresolved_owner_constraint",
+        question: {
+          title: "Timing",
+          prompt: "Should I commit you to an intro call in the next two weeks?",
+          options: [
+            { label: "Yes (Recommended)", description: "I book the call while their interest is warm." },
+            { label: "Not yet", description: "I keep the thread open without promising your calendar." },
+          ],
+          multiSelect: false,
+        },
+      },
+    };
+    const agent = new CapturingNegotiator([authored]);
+    const turn = await agent.invoke({ ...baseInput, canAskUser: true });
+    expect(turn.action).toBe("ask_user");
+    expect(turn.askUser?.question?.title).toBe("Timing");
+    expect(turn.askUser?.question?.options).toHaveLength(2);
+    expect(agent.calls).toBe(1);
   });
 });

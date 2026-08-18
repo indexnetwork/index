@@ -87,6 +87,7 @@ src/adapters/tests/questioner.uptake.isolated.ts
 src/queues/outcome/tests/outcome.mining.shared.isolated.ts
 src/queues/pool/tests/mining.shared.isolated.ts
 src/queues/tests/questioner-enqueue-if-enabled.isolated.ts
+src/adapters/tests/negotiator-client-dm.retrieval.isolated.ts
 src/adapters/tests/negotiator-memory.retrieval.isolated.ts
 src/queues/pool/tests/visitmining.queue.isolated.ts
 src/queues/tests/reflect.queue.isolated.ts

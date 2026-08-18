@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { AskUserPayloadSchema } from '../../shared/schemas/negotiation-state.schema.js';
+import { InitiatorAskUserTurnSchema } from '../negotiation.protocol.js';
 import { consultationPromptFor } from '../negotiation.consultation-policy.js';
 
 describe('closed owner consultation input', () => {
@@ -33,5 +34,83 @@ describe('closed owner consultation input', () => {
       draftQuestion: 'May I share the information needed to explore this collaboration?',
     });
     expect(JSON.stringify(prompt)).not.toContain('Ignore prior instructions');
+  });
+});
+
+describe('agent-authored consultation question', () => {
+  const question = {
+    title: 'Timing',
+    prompt: 'Should I commit you to a call in the next two weeks?',
+    options: [
+      { label: 'Yes (Recommended)', description: 'Books time while their interest is warm.' },
+      { label: 'Not yet', description: 'Keeps the thread open without a calendar commitment.' },
+    ],
+    multiSelect: false,
+  };
+
+  it('carries a question the negotiating agent wrote', () => {
+    expect(AskUserPayloadSchema.parse({ reason: 'unresolved_owner_constraint', question }))
+      .toEqual({ reason: 'unresolved_owner_constraint', question });
+  });
+
+  it('still accepts the enum-only payload byte-identically', () => {
+    expect(AskUserPayloadSchema.parse({ reason: 'repeated_non_convergence' }))
+      .toEqual({ reason: 'repeated_non_convergence' });
+  });
+
+  it('normalizes an LLM-returned null back to absent, never persisting a null', () => {
+    const parsed = AskUserPayloadSchema.parse({ reason: 'repeated_non_convergence', question: null });
+    expect(parsed.question).toBeUndefined();
+    // No null survives the boundary: it reads as absent and serializes away,
+    // so persistence and every `payload.question` check treat it as omitted.
+    expect(JSON.parse(JSON.stringify(parsed))).toEqual({ reason: 'repeated_non_convergence' });
+  });
+
+  it('enforces the renderer constraints on the authored question', () => {
+    expect(AskUserPayloadSchema.safeParse({
+      reason: 'unresolved_owner_constraint',
+      question: { ...question, title: 'x'.repeat(13) },
+    }).success).toBe(false);
+    expect(AskUserPayloadSchema.safeParse({
+      reason: 'unresolved_owner_constraint',
+      question: { ...question, options: [question.options[0]] },
+    }).success).toBe(false);
+    expect(AskUserPayloadSchema.safeParse({
+      reason: 'unresolved_owner_constraint',
+      question: { ...question, options: Array.from({ length: 5 }, () => question.options[0]) },
+    }).success).toBe(false);
+  });
+
+  it('rejects a question without an admission reason', () => {
+    expect(AskUserPayloadSchema.safeParse({ question }).success).toBe(false);
+  });
+});
+
+describe('ask_user turn carrying the authored question', () => {
+  it('validates through the seat-scoped v2 turn schema', () => {
+    const turn = InitiatorAskUserTurnSchema.parse({
+      action: 'ask_user',
+      assessment: { reasoning: 'need the owner call', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+      askUser: {
+        reason: 'insufficient_commitment_authority',
+        question: {
+          title: 'Budget',
+          prompt: 'Can I commit to the pilot scope they proposed?',
+          options: [
+            { label: 'Commit', description: 'Locks the scope and moves to scheduling.' },
+            { label: 'Hold', description: 'Signals interest without binding you to the scope.' },
+          ],
+          multiSelect: false,
+        },
+      },
+    });
+    expect(turn.askUser?.question?.title).toBe('Budget');
+  });
+
+  it('still validates an ask_user turn with no askUser payload at all', () => {
+    expect(InitiatorAskUserTurnSchema.safeParse({
+      action: 'ask_user',
+      assessment: { reasoning: 'r', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+    }).success).toBe(true);
   });
 });

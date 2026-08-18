@@ -13,13 +13,13 @@ import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecis
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
-import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
+import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -181,6 +181,28 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     } else {
       // No personal agent or timeout — run system agent
       const agentPriorDialogue = buildAttributedDialogue(state);
+
+      // ─── A2H: the acting user's own negotiator DM for this signal ──────
+      // Retrieved HERE, inside the system-agent branch, rather than beside
+      // `ownMemory` above. Two reasons, and the first is the constraint:
+      //
+      // 1. `payload` is built and dispatched before this point, so the
+      //    excerpt cannot reach an external agent by a later edit — the
+      //    value does not exist in that scope. Memory is safe to forward
+      //    (distilled standing rules); a verbatim excerpt of the client's
+      //    private thread with their own negotiator is not, and an external
+      //    registered agent can hold the personal-agent seat.
+      // 2. A dispatched turn never reads it, so it never pays for the query.
+      //
+      // Gated on `askUserAvailable`: the grant is settled before the model
+      // runs, so the DM is present on exactly the turns where the agent may
+      // consult its client — the turns where knowing what they already said
+      // changes what it asks. Fetching it on every turn would move the
+      // prompt for every negotiation, not just the consulting ones.
+      // `askUserAvailable` already requires a non-empty `ownIntentId`.
+      const clientDm = askUserAvailable
+        ? await retrieveClientDm(deps, ownUser.id, ownIntentId!)
+        : [];
       turn = await deps.systemAgent.invoke({
         ownUser,
         otherUser,
@@ -198,6 +220,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         ...(askUserAvailable && { canAskUser: true }),
         ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
         ...(ownMemory.length > 0 && { memory: ownMemory }),
+        ...(clientDm.length > 0 && { clientDm }),
         ...(state.privateConsultation?.recipientUserId === ownUser.id
           ? { privateConsultation: state.privateConsultation }
           : {}),
@@ -344,6 +367,47 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           consecutiveNonConvergent: deadlockShiftRecord.consecutiveNonConvergent,
           threshold: deadlockShiftRecord.threshold,
         });
+      }
+    }
+
+    // ─── Authored ask_user question: identifier-aware safety gate ─────────
+    // The agent now writes the question its client reads verbatim (the
+    // pre-A2H `disclosureSubject` was only an input to server-templated copy),
+    // and an external registered agent can hold the personal-agent seat — so
+    // this runs on every turn, dispatched or system, not just our own.
+    //
+    // Placed BEFORE persistence deliberately. The turn is about to become a
+    // message in the shared conversation, so a rejected question must not
+    // survive there either; and issue 6 reads the field back off the persisted
+    // turn, which means dropping it here is what makes that read safe by
+    // construction rather than by remembering to re-check.
+    //
+    // Rejection is a DOWNGRADE, never a failure: the turn, its action, and
+    // `askUser.reason` all stand, so the consultation proceeds on today's
+    // enum-only path — the same shape a v1 turn or an older agent produces.
+    // A guard that could fail a turn would let malformed model output stall a
+    // negotiation, which is strictly worse than asking a generic question.
+    //
+    // The two inputs are exactly what the api-side payload guard can never
+    // have: it sees the question at the DB boundary with no idea who the
+    // counterparty is or what the evaluator wrote, so it cannot tell that a
+    // well-formed question is naming them or paraphrasing it.
+    if (turn.askUser?.question) {
+      const counterpartyName = otherUser.profile?.name?.trim();
+      const seedReasoning = state.seedAssessment?.reasoning?.trim();
+      const safeAuthoredQuestion = isSafeAuthoredNegotiationQuestion(turn.askUser.question, {
+        ...(counterpartyName ? { forbiddenIdentifiers: [counterpartyName] } : {}),
+        ...(seedReasoning ? { forbiddenSourceText: [seedReasoning] } : {}),
+      });
+      if (!safeAuthoredQuestion) {
+        turnLog.warn('Dropping unsafe authored ask_user question; consultation continues without it', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          handledExternally: dispatchResult.handled,
+        });
+        const { question: _rejected, ...askUserWithoutQuestion } = turn.askUser;
+        turn = { ...turn, askUser: askUserWithoutQuestion };
       }
     }
 
