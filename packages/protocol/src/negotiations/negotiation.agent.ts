@@ -220,7 +220,7 @@ function isValidTimeoutMs(n: number): boolean {
   return Number.isFinite(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER;
 }
 
-function resolveTurnTimeoutMs(override?: number): number {
+export function resolveTurnTimeoutMs(override?: number): number {
   if (typeof override === "number" && isValidTimeoutMs(override)) return override;
   const envValue = process.env.NEGOTIATOR_TURN_TIMEOUT_MS;
   if (envValue) {

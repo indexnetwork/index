@@ -210,6 +210,29 @@ export function configuredAskUserEnabled(): boolean {
   return process.env.NEGOTIATION_ASK_USER_ENABLED === "true";
 }
 
+/**
+ * Default per-negotiation ask cap: total client-consultation rounds (mid-flight
+ * `ask_user` pauses and post-stall parks, both sides combined) before the
+ * negotiation stalls terminally instead of parking again. Three admits one
+ * post-stall park even after each side has spent its one mid-flight consult.
+ */
+export const DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP = 3;
+
+/**
+ * Per-negotiation ask cap, overridable via `NEGOTIATION_ASK_ROUNDS_CAP`.
+ * Invalid or non-positive values fall back to the default — zero is not an
+ * off switch here; the cap exists so two agents cannot ping-pong their humans
+ * indefinitely. It tunes the bound, it does not gate the behaviour.
+ */
+export function negotiationAskRoundsCap(): number {
+  const raw = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP;
+}
+
 /** Default answer window for a paused `ask_user` negotiation: 24 hours. */
 export const DEFAULT_ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
