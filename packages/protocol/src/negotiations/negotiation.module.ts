@@ -38,6 +38,25 @@ export { countNegotiationAskRounds } from "./negotiation.graph.shared.js";
 export { NEGOTIATION_PARK_REASONING, NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 export type { NegotiationStallGap, NegotiationStallReason, StallGapAuthorInput } from "./negotiation.stall-gap.js";
 export {
+  classifyParkedNegotiation,
+  consumeQuestionBlockAnswers,
+  negotiationParkAnswerId,
+  resumeParkedNegotiation,
+  routeAnswerRef,
+} from "./negotiation.answer-consumption.js";
+export type {
+  AnswerRoute,
+  InflightAnswerSettlementInput,
+  InflightAnswerSettlementResult,
+  NegotiationAnswerConsumptionPorts,
+  NegotiationAnswerInput,
+  NegotiationAnswerResumeOutcome,
+  ParkClassification,
+  QuestionBlockAnswerConsumptionInput,
+  QuestionBlockAnswerConsumptionResult,
+  RoutedAnswer,
+} from "./negotiation.answer-consumption.js";
+export {
   HERMES_OWNER_DIRECTIVE,
   HERMES_SHARED_MESSAGE_TEMPLATES,
   HermesNegotiationActionSchema,
