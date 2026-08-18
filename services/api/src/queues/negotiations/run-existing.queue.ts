@@ -44,9 +44,6 @@ export interface RunExistingDeps {
     negotiationContinuationReceipt?: NegotiationContinuationReceipt;
   } | void>;
   continuationAdapter?: ContinuationAdapter;
-  /** Stopgap seams (see handleContinuationStalled); production resolves the real collaborators lazily. */
-  classifyPostStallPark?: (input: { opportunityId: string; userId: string }) => Promise<{ kind: string }>;
-  enqueueQuestionMessageRegeneration?: (data: { userId: string; intentId: string }) => Promise<unknown>;
 }
 
 export class NegotiationRunExistingQueue {
@@ -152,7 +149,7 @@ export class NegotiationRunExistingQueue {
     const options = execution ? { negotiationContinuation: execution } : {};
 
     if (this.deps?.invokeOpportunityGraph) {
-      const receipt = await this.runClaimedContinuation(execution, continuationAdapter, async () => {
+      await this.runClaimedContinuation(execution, continuationAdapter, async () => {
         const result = await this.deps!.invokeOpportunityGraph!({
           userId,
           operationMode: 'negotiate_existing',
@@ -162,9 +159,6 @@ export class NegotiationRunExistingQueue {
         return result?.negotiationContinuationReceipt;
       });
       this.logger.info('Negotiation complete', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence });
-      if (execution && exact && receipt?.outcome === 'stalled') {
-        await this.handleContinuationStalled(data, exact.recipientIntentId);
-      }
       return;
     }
 
@@ -185,7 +179,7 @@ export class NegotiationRunExistingQueue {
     );
 
     try {
-      const receipt = await this.runClaimedContinuation(execution, continuationAdapter, async () => {
+      await this.runClaimedContinuation(execution, continuationAdapter, async () => {
         const result = await opportunityOperations.negotiateExisting({
           userId: userId as Id<'users'>,
           opportunityId,
@@ -194,54 +188,9 @@ export class NegotiationRunExistingQueue {
         return result.negotiationContinuationReceipt;
       });
       this.logger.info('Negotiation complete', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence });
-      if (execution && exact && receipt?.outcome === 'stalled') {
-        await this.handleContinuationStalled(data, exact.recipientIntentId);
-      }
     } catch (err) {
       this.logger.error('Graph failed', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence, error: err });
       throw err;
-    }
-  }
-
-  /**
-   * STOPGAP (conversational-questions, docs/plans/2026-08-18): finalize skips
-   * its `stalled_followup` questioner enqueue for continuation executions
-   * (`!state.continuationExecution`), so a negotiation that resumed from a
-   * client's answer and re-parked post-stall would sit invisible — no
-   * question-message regeneration would ever fire for it. Until the
-   * exhaustion evaluator owns this trigger on negotiation state transitions,
-   * detect the narrow case here: a continuation whose terminal receipt is
-   * 'stalled' AND whose negotiation re-resolved to a post-stall park on this
-   * user's side enqueues the regeneration job for the answered signal's
-   * scope. Best-effort: the park itself is durable, and a failure here must
-   * not fail a negotiation that completed.
-   */
-  private async handleContinuationStalled(data: RunExistingJobData, recipientIntentId: string): Promise<void> {
-    try {
-      const classify = this.deps?.classifyPostStallPark
-        ?? (async (input: { opportunityId: string; userId: string }) => {
-          const { classifyParkedNegotiation } = await import('@indexnetwork/protocol');
-          return classifyParkedNegotiation(this.database, input);
-        });
-      const classification = await classify({ opportunityId: data.opportunityId, userId: data.userId });
-      if (classification.kind !== 'post_stall') return;
-      const enqueue = this.deps?.enqueueQuestionMessageRegeneration
-        ?? (async (target: { userId: string; intentId: string }) => {
-          const { questionMessageQueue } = await import('../question-message.queue');
-          return questionMessageQueue.addRegenerateJob(target);
-        });
-      await enqueue({ userId: data.userId, intentId: recipientIntentId });
-      this.logger.info('continuation_repark_question_message_enqueued', {
-        opportunityId: data.opportunityId,
-        userId: data.userId,
-        intentId: recipientIntentId,
-      });
-    } catch (err) {
-      this.logger.error('Failed to enqueue question-message regeneration for a re-parked continuation', {
-        opportunityId: data.opportunityId,
-        userId: data.userId,
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
   }
 

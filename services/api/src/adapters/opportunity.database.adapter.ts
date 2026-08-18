@@ -1,5 +1,5 @@
 import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
-import { emitOpportunityLifecycleBestEffort } from '../events/opportunity.event';
+import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
@@ -663,7 +663,10 @@ export class OpportunityDatabaseAdapter {
 
       return await validateEligibility() ? reactivate() : null;
     });
-    if (updated) emitOpportunityLifecycleBestEffort(updated);
+    if (updated) {
+      emitOpportunityLifecycleBestEffort(updated);
+      emitOpportunityTransitionBestEffort(updated);
+    }
     return updated;
   }
 
@@ -1021,7 +1024,10 @@ export class OpportunityDatabaseAdapter {
         .returning();
     }
     const updated = row ? toOpportunityRow(row) : null;
-    if (updated) emitOpportunityLifecycleBestEffort(updated);
+    if (updated) {
+      emitOpportunityLifecycleBestEffort(updated);
+      emitOpportunityTransitionBestEffort(updated);
+    }
     return updated;
   }
 
@@ -1215,7 +1221,10 @@ export class OpportunityDatabaseAdapter {
       },
       outbox,
     );
-    if (updated) emitOpportunityLifecycleBestEffort(updated);
+    if (updated) {
+      emitOpportunityLifecycleBestEffort(updated);
+      emitOpportunityTransitionBestEffort(updated);
+    }
     return updated;
   }
 
@@ -1372,7 +1381,7 @@ export class OpportunityDatabaseAdapter {
     counterpartUserId: string,
     excludeOpportunityId: string
   ): Promise<string[]> {
-    return db.transaction(async (tx) => {
+    const ids = await db.transaction(async (tx) => {
       const siblingRows = await tx
         .select({ id: opportunities.id })
         .from(opportunities)
@@ -1383,15 +1392,17 @@ export class OpportunityDatabaseAdapter {
             ne(opportunities.id, excludeOpportunityId)
           )
         );
-      const ids = siblingRows.map((r) => r.id);
-      if (ids.length === 0) return [];
+      const siblingIds = siblingRows.map((r) => r.id);
+      if (siblingIds.length === 0) return [];
       const now = new Date();
       await tx
         .update(opportunities)
         .set({ status: 'accepted', updatedAt: now })
-        .where(inArray(opportunities.id, ids));
-      return ids;
+        .where(inArray(opportunities.id, siblingIds));
+      return siblingIds;
     });
+    for (const id of ids) emitOpportunityTransitionBestEffort({ id, status: 'accepted' });
+    return ids;
   }
 
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
@@ -1503,6 +1514,21 @@ export class OpportunityDatabaseAdapter {
     return [...matched];
   }
 
+  /**
+   * Statuses of every opportunity where (userId, intentId) is an actor side —
+   * the input of the own-intent exhaustion predicate
+   * (`lib/question/intent-exhaustion.ts`).
+   */
+  async getOpportunityStatusesForIntentActor(userId: string, intentId: string): Promise<OpportunityRow['status'][]> {
+    const rows = await db
+      .select({ status: opportunities.status })
+      .from(opportunities)
+      .where(
+        sql`${opportunities.actors} @> ${JSON.stringify([{ userId, intent: intentId }])}::jsonb`
+      );
+    return rows.map((row) => row.status);
+  }
+
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
     const rows = await db
       .select({ id: opportunities.id })
@@ -1520,6 +1546,7 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }
 
@@ -1534,6 +1561,7 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }
 
@@ -1551,6 +1579,7 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }
 

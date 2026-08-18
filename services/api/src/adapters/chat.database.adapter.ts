@@ -2587,6 +2587,9 @@ export class ChatDatabaseAdapter {
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
   }
+  async getOpportunityStatusesForIntentActor(userId: string, intentId: string): Promise<OpportunityRow['status'][]> {
+    return this.opportunityAdapter.getOpportunityStatusesForIntentActor(userId, intentId);
+  }
   async findEnrichedReplacementOpportunities(opportunityId: string): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.findEnrichedReplacementOpportunities(opportunityId);
   }

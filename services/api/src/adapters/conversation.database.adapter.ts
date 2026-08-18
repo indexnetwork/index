@@ -1,7 +1,7 @@
 import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
-import { emitOpportunityLifecycleBestEffort } from '../events/opportunity.event';
+import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { log } from '../lib/log';
@@ -2671,7 +2671,7 @@ export class ConversationDatabaseAdapter {
       || (process.env.API_TEST_DATABASE_READY !== '1' && process.env.API_TEST_REQUIRE_DATABASE !== '1')
     )) throw new Error('Timeout execution fault injection requires the guarded disposable database test gate');
     const fault = async (step: NegotiationTimeoutAtomicStep) => faultAfterStep?.(step);
-    return db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const database = tx as unknown as typeof db;
       const [task] = await tx.select().from(schema.tasks)
         .where(eq(schema.tasks.id, plan.taskId)).limit(1).for('update');
@@ -2835,6 +2835,13 @@ export class ConversationDatabaseAdapter {
       await fault('receipt');
       return updated ? { task: updated, execution: completed } : null;
     });
+    // Post-commit, outside the transaction: this atomic writer bypasses
+    // updateOpportunityStatus, so it fires the transition hook itself. A
+    // replay re-fires; the subscriber is idempotent by contract.
+    if (result && plan.opportunity) {
+      emitOpportunityTransitionBestEffort({ id: plan.opportunity.id, status: plan.opportunity.status });
+    }
+    return result;
   }
 
   /** Acknowledge the deterministic re-arm outbox after Bull accepted it. */
@@ -3038,7 +3045,7 @@ export class ConversationDatabaseAdapter {
       await input.faultAfterStep?.(step);
     };
 
-    return db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const database = tx as unknown as typeof db;
       if (!await authorizeNegotiationMutationInTransaction(database, input.ownerId, input.principal)) {
         return { kind: 'unauthorized' } as const;
@@ -3285,6 +3292,13 @@ export class ConversationDatabaseAdapter {
 
       return { kind: 'committed', receipt, queueIntent, outboxDelivered: false } as const;
     });
+    // Post-commit, outside the transaction: this atomic writer bypasses
+    // updateOpportunityStatus, so it fires the transition hook itself. A
+    // replay does not re-fire — the transition already fired when it committed.
+    if (result.kind === 'committed' && input.opportunity) {
+      emitOpportunityTransitionBestEffort({ id: input.opportunity.id, status: input.opportunity.status });
+    }
+    return result;
   }
 
   /**
@@ -5707,7 +5721,10 @@ export class ConversationDatabaseAdapter {
         .returning({ id: opportunities.id, status: opportunities.status });
       return updated ?? null;
     });
-    if (row) emitOpportunityLifecycleBestEffort(row);
+    if (row) {
+      emitOpportunityLifecycleBestEffort(row);
+      emitOpportunityTransitionBestEffort(row);
+    }
     return row;
   }
 
