@@ -7,7 +7,6 @@ function makeDeps(overrides?: Partial<QuestionAnswerHandlerDeps>): QuestionAnswe
     enqueueIntentRefinement: mock(async () => ({ applied: true })),
     resumeInflightNegotiation: mock(async () => {}),
     resolveChatQuestionWait: mock(() => {}),
-    handlePoolAnswer: mock(async () => {}),
     ...overrides,
   };
 }
@@ -210,25 +209,19 @@ describe("handleQuestionAnswered", () => {
     expect(deps.resumeInflightNegotiation).toHaveBeenCalledTimes(1);
   });
 
-  it("routes pool_discovery through the complete pool-answer reaction", async () => {
+  it("treats a stray pool_discovery answer as the default no-op (retired generator)", async () => {
     await handleQuestionAnswered(
       {
         ...basePayload,
         mode: "pool_discovery",
         sourceType: "intent",
         sourceId: "intent-1",
-        answer: { ...basePayload.answer, freeText: "Prefer a short engagement" },
       },
       deps,
     );
-    expect(deps.handlePoolAnswer).toHaveBeenCalledTimes(1);
-    expect((deps.handlePoolAnswer as ReturnType<typeof mock>).mock.calls[0]?.[0]).toEqual({
-      userId: "u-1",
-      questionId: "q-1",
-      intentId: "intent-1",
-      selectedOptions: ["Option A"],
-      freeText: "Prefer a short engagement",
-    });
+    expect(deps.createPremiseFromAnswer).not.toHaveBeenCalled();
+    expect(deps.enqueueIntentRefinement).not.toHaveBeenCalled();
+    expect(deps.resumeInflightNegotiation).not.toHaveBeenCalled();
   });
 
   it("handles unknown mode gracefully", async () => {

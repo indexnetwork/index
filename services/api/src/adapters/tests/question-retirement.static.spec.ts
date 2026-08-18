@@ -46,4 +46,43 @@ describe('question retirement static invariants', () => {
       expect(migration).toContain("status = 'pending'");
     });
   });
+
+  describe('pool-discriminator mining', () => {
+    it('no longer enqueues from any discovery-completion or visit trigger', () => {
+      // The mining hook, its deterministic question synthesis, the proactive
+      // push cycle (worker + minutely recovery sweep), the visit-triggered
+      // re-mine, and the answer-reaction chaining are all gone.
+      for (const relative of [
+        '../../queues/pool/mining.shared.ts',
+        '../../queues/pool/question.shared.ts',
+        '../../queues/pool/questionpush.queue.ts',
+        '../../queues/pool/visitmining.queue.ts',
+        '../../queues/pool/answer.shared.ts',
+        '../../queues/pool/newborn.shared.ts',
+        '../../events/handlers/question.answer.pool.ts',
+      ]) {
+        expect(existsSync(new URL(relative, import.meta.url))).toBe(false);
+      }
+      const fromIntent = read('../../queues/opportunity/from-intent.queue.ts');
+      expect(fromIntent).not.toContain('minePoolDiscriminators');
+      expect(fromIntent).not.toContain('pool_answer');
+      expect(questionerQueue).not.toContain('pool_discovery');
+      expect(main).not.toContain('poolQuestionPushQueue');
+      expect(main).not.toContain('handlePoolAnswer');
+      expect(main).not.toContain('handleMaterialIntentUpdate');
+      expect(read('../../controllers/question.controller.ts')).not.toContain('VisitPoolMining');
+    });
+
+    it('keeps the Lens C evidence shadow alive on its own flag', () => {
+      const fromIntent = read('../../queues/opportunity/from-intent.queue.ts');
+      expect(fromIntent).toContain('maybeRunNegotiationEvidenceShadow');
+    });
+
+    it('voids its leftover pending rows with the retired_mode marker', () => {
+      const migration = read('../../../drizzle/0133_dismiss_retired_pool_questions.sql');
+      expect(migration).toContain("detection->>'mode' = 'pool_discovery'");
+      expect(migration).toContain("'\"retired_mode\"'::jsonb");
+      expect(migration).toContain("status = 'pending'");
+    });
+  });
 });

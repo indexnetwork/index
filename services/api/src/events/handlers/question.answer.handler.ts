@@ -20,9 +20,8 @@
  *              the durable run-existing continuation; its timer remains recovery
  * - chat:      resolve the in-memory wait bus so a blocked ask_user_question
  *              tool call resumes the paused chat turn with the answer
- * - pool_discovery: deterministically re-rank the live pool, narrate the
- *              delta, enqueue answer-conditioned re-discovery, and chain the
- *              next stored discriminator (IND-418/419)
+ * - pool_discovery: retired generator (rows voided by migration 0133); any
+ *              stray answer falls through to the default no-op
  */
 
 import { log } from '../../lib/log';
@@ -109,14 +108,6 @@ export interface QuestionAnswerHandlerDeps {
     answer: QuestionAnsweredPayload['answer'];
   }) => void;
 
-  /** Complete pool_discovery answer reaction (Tier 0 + Tier 1 + chaining). */
-  handlePoolAnswer: (input: {
-    userId: string;
-    questionId: string;
-    intentId: string;
-    selectedOptions: string[];
-    freeText?: string;
-  }) => Promise<void>;
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
@@ -188,16 +179,6 @@ export async function handleQuestionAnswered(
 
       case 'chat':
         deps.resolveChatQuestionWait({ questionId, answer });
-        break;
-
-      case 'pool_discovery':
-        await deps.handlePoolAnswer({
-          userId,
-          questionId,
-          intentId: sourceId,
-          selectedOptions: answer.selectedOptions,
-          freeText: answer.freeText,
-        });
         break;
 
       default:

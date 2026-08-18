@@ -424,7 +424,6 @@ function installContinuationExecution() {
     enqueueIntentRefinement: async () => ({ applied: true as const }),
     resumeInflightNegotiation: resume,
     resolveChatQuestionWait: () => undefined,
-    handlePoolAnswer: async () => undefined,
   };
   QuestionEvents.onAnswered = async (payload) => {
     await handleQuestionAnswered(payload, answerDeps);

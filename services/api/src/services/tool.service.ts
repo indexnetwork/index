@@ -16,7 +16,6 @@ import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceA
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
-import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
@@ -75,7 +74,6 @@ export class ToolService {
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
-      stampNewbornOpportunities,
       // IND-593: direct authenticated-owner tool calls (REST tool controller /
       // CLI) traverse the owner-approval boundary via host attestation. Own
       // authority instance over the store shared with the MCP composition.
@@ -311,7 +309,6 @@ export class ToolService {
       negotiationGraph,
       noOpDispatcher,
       undefined,
-      stampNewbornOpportunities,
     ).createGraph();
     const networks = new Networks({ database, indexer: intents });
     const indexGraph = networks.createGraph();

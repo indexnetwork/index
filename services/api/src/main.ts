@@ -75,8 +75,6 @@ import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retr
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { questionMessageQueue } from './queues/question-message.queue';
-import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
-import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
@@ -84,10 +82,6 @@ import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
 import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
-import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
-import { beatTwoMessage } from './queues/pool/answer.shared';
-import { stampNewbornOpportunities } from './queues/pool/newborn.shared';
-import { computeIntentFingerprint } from './lib/intent/intent.fingerprint';
 import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
@@ -160,7 +154,6 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
-  stampNewbornOpportunities,
 });
 fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -267,50 +260,6 @@ const profileAnswerPremiseGraph = new PremiseGraphFactory(
 
 const answerQuestionerAdapter = new QuestionerAdapter(db);
 
-const appendPoolNarration = async (input: {
-  userId: string;
-  intentId: string;
-  message: string;
-}): Promise<void> => {
-  const resolved = await chatSessionService.resolveNegotiatorIntentSession(input.userId, input.intentId);
-  if ('error' in resolved) {
-    log.job.from('PoolAnswerNarration').warn('Intent negotiator session unavailable', {
-      userId: input.userId,
-      intentId: input.intentId,
-      error: resolved.error,
-    });
-    return;
-  }
-  await chatSessionService.addMessage({
-    sessionId: resolved.session.id,
-    role: 'assistant',
-    content: input.message,
-  });
-};
-
-// The delayed Tier-1 worker reads every valid answer after the debounce window,
-// so a burst coalesces into one run without dropping later preferences.
-fromIntentQueue.setRuntimeDeps({
-  getPoolAnswerContext: async (userId, intentId) => {
-    const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (!intent || intent.userId !== userId) return '';
-    const fingerprint = computeIntentFingerprint(intent.payload, intent.summary);
-    const preferences = await answerQuestionerAdapter.listAnsweredPoolPreferences(userId, intentId, fingerprint);
-    if (preferences.length === 0) return '';
-    return [
-      'User-stated matching preferences (apply when finding fresh candidates):',
-      ...preferences.map((preference) => `- ${preference.label}: ${preference.chosenSide}`),
-    ].join('\n');
-  },
-  narratePoolRerun: async ({ userId, intentId, newCandidates }) => {
-    await appendPoolNarration({
-      userId,
-      intentId,
-      message: beatTwoMessage(newCandidates),
-    });
-  },
-});
-
 // Intent graph for answer-driven refinements — same update path as the chat
 // update_intent tool. The graph owns merge, verification, sanitization,
 // re-embedding, persistence, and HyDE regeneration.
@@ -402,20 +351,6 @@ const questionAnswerDeps = {
   }) => {
     emitChatQuestionResolution({ questionId, status: 'answered', answer });
   },
-  handlePoolAnswer: handlePoolAnswerFactory({
-    adapter: answerQuestionerAdapter,
-    poolQuestionPostPersist: enqueuePoolQuestionPush,
-    refineIntent: enqueueIntentRefinement,
-    getIntentAdmission: async (userId, intentId) => {
-      const intent = await chatDatabaseAdapter.getIntentForIndexing(intentId);
-      if (!intent || intent.userId !== userId || intent.archivedAt) return 'unavailable';
-      if (intent.status === 'PAUSED') return 'paused';
-      return intent.status == null || intent.status === 'ACTIVE' ? 'active' : 'unavailable';
-    },
-    narrateBeatOne: async ({ userId, intentId, message }) => {
-      await appendPoolNarration({ userId, intentId, message });
-    },
-  }),
 };
 
 QuestionEvents.onAnswered = async (payload) => {
@@ -505,9 +440,6 @@ if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
 questionMessageQueue.startWorker();
-poolQuestionPushQueue.startWorker();
-poolQuestionPushQueue.startRecoveryScheduler();
-poolVisitMiningQueue.startWorker();
 premiseQueue.startWorker();
 userContextQueue.startWorker();
 premiseQueue.startCrons();
@@ -526,14 +458,6 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
 
 IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {
   log.job.from('IntentEvents').verbose('Intent paused', { intentId, userId, lifecycleVersionMs });
-};
-
-IntentEvents.onMaterialUpdated = async (event) => {
-  const result = await answerQuestionerAdapter.handleMaterialIntentUpdate(event);
-  log.job.from('IntentEvents').verbose('Material intent update reconciled pool lifecycle', {
-    ...event,
-    ...result,
-  });
 };
 
 IntentEvents.onResumed = async (intentId: string, userId: string, lifecycleVersionMs: number) => {
@@ -981,8 +905,6 @@ const shutdown = async () => {
     negotiationClaimTimeoutQueue.close(),
     questionerQueue.close(),
     questionMessageQueue.close(),
-    poolQuestionPushQueue.close(),
-    poolVisitMiningQueue.close(),
     premiseQueue.close(),
     userContextQueue.close(),
     frameDriftQueue.close(),

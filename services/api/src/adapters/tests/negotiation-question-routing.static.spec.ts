@@ -48,12 +48,6 @@ describe('negotiation question routing static invariants', () => {
     expect(readiness).not.toContain("'public.questions_uptake_recipient_source_uniq'");
   });
 
-  it('keeps passive exact-intent refetches out of visit-time pool mining', () => {
-    expect(controller).toContain("rawPassive === 'true' && scope.scopeType !== 'intent'");
-    expect(controller).toContain("rawPassive !== 'true'");
-    expect(controller).toContain('maybeEnqueueVisitPoolMining');
-  });
-
   it('settles only exact task cohorts and never looks up the latest task', () => {
     expect(source).toContain("->'negotiation'->>'taskId' = ${provenance.taskId}");
     expect(source).toContain("eq(tasks.updatedAt, new Date(provenance.taskUpdatedAt!))");

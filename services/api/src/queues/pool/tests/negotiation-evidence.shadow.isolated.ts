@@ -7,9 +7,9 @@ import { computeIntentFingerprint } from '../../../lib/intent/intent.fingerprint
 import { hasValidatedRejectedNoOpportunityEvidence } from '../../../lib/questioner/recovery-evidence';
 import { canonicalizeNegotiationSender, collectNegotiationEvidenceSegments, deriveTaskNetworkBinding, getValidatedCounterpartyUserId, maybeRunNegotiationEvidenceShadow, toBoundedErrorTelemetry } from '../negotiation-evidence.shadow';
 import type { NegotiationEvidenceShadowDeps } from '../negotiation-evidence.shadow';
-import type { PoolMiningTrigger } from '../mining.shared';
+import type { EvidenceShadowTrigger } from '../negotiation-evidence.shadow';
 
-const TRIGGER: PoolMiningTrigger = {
+const TRIGGER: EvidenceShadowTrigger = {
   source: 'discovery_run',
   userId: 'owner-1',
   intentId: 'intent-1',

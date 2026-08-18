@@ -1,16 +1,13 @@
 import { Job } from 'bullmq';
 
-import { NegotiationQuestionCandidateSchema, POOL_QUESTION_MAX_PENDING_PER_INTENT, QuestionerAgent, isQuestionerEnabled, isValidQuestionerInputContract, poolQuestionCycleKey, poolQuestionsMode } from '@indexnetwork/protocol';
-import type { NegotiationConsultationReason, NegotiationQuestionProvenance, PersistableQuestion, PoolDiscoveryContext, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
+import { NegotiationQuestionCandidateSchema, QuestionerAgent, isQuestionerEnabled, isValidQuestionerInputContract } from '@indexnetwork/protocol';
+import type { NegotiationConsultationReason, NegotiationQuestionProvenance, PersistableQuestion, QuestionGenerationResult, QuestionerEnqueueFn, QuestionerInput } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import type { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { QuestionEvents } from '../events/question.event';
 import { IntentRecoveryRefinementService, type IntentRecoveryCompletion } from '../services/intent-recovery-refinement.service';
-import { buildPoolQuestion, dedupDiscriminators, persistPoolQuestion } from './pool/question.shared';
-import type { PoolQuestionPostPersist } from './pool/question.shared';
-import { isPoolArtifactFresh } from './pool/poolquestions.constants';
 import { isSafeNegotiationQuestionPayload } from '../lib/question/negotiation-question.contract';
 import { emitConsultationDeliveredTelemetry } from '../lib/question/consultation-policy.telemetry';
 import { routeParkedQuestionEnqueue } from './question-message.queue';
@@ -40,7 +37,7 @@ function uniqueConstraintName(error: unknown): string | null {
  */
 type QuestionerQueueAdapter = Pick<
   QuestionerAdapter,
-  'persist' | 'persistFreshPoolQuestion' | 'isPoolQuestionFreshForDelivery' | 'findPending' | 'listPoolQuestionLabels'
+  'persist' | 'findPending'
 > & Partial<Pick<QuestionerAdapter, 'prepareNegotiationQuestion' | 'persistFreshNegotiationQuestions'>>;
 
 export interface QuestionerQueueDeps {
@@ -50,8 +47,6 @@ export interface QuestionerQueueDeps {
   agent?: Pick<QuestionerAgent, 'invoke'>;
   /** Lifecycle lookup used to gate intent-scoped jobs before generation. */
   getIntentLifecycle?: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
-  /** Post-persist delivery enqueue; injected so tests never touch Redis. */
-  poolQuestionPostPersist?: PoolQuestionPostPersist;
   /** Recovery policy/generation service; injected so queue tests remain hermetic. */
   recoveryService?: Pick<IntentRecoveryRefinementService, 'recover'>;
 }
@@ -75,7 +70,6 @@ export class QuestionerQueue {
   private readonly queueLogger = log.queue.from('QuestionerQueue');
   private adapter: QuestionerQueueAdapter | null;
   private readonly getIntentLifecycle: Pick<QuestionerAdapter, 'getIntentLifecycle'>['getIntentLifecycle'];
-  private readonly poolQuestionPostPersist?: PoolQuestionPostPersist;
   private readonly recoveryService: Pick<IntentRecoveryRefinementService, 'recover'>;
   private readonly onConsultationTelemetry: (event: { stage: 'delivered'; reason: NegotiationConsultationReason }) => void;
   private agent: Pick<QuestionerAgent, 'invoke'> | null;
@@ -90,12 +84,6 @@ export class QuestionerQueue {
       ?? (deps
         ? async (intentId) => ({ id: intentId, status: 'ACTIVE' as const, archivedAt: null })
         : async (intentId, userId) => (await this.getAdapter()).getIntentLifecycle!(intentId, userId));
-    this.poolQuestionPostPersist = deps
-      ? deps.poolQuestionPostPersist
-      : async (questionId, userId) => {
-          const { enqueuePoolQuestionPush } = await import('./pool/questionpush.queue');
-          await enqueuePoolQuestionPush(questionId, userId);
-        };
     this.recoveryService = deps?.recoveryService ?? new IntentRecoveryRefinementService();
     this.onConsultationTelemetry = deps?.onConsultationTelemetry
       ?? ((event) => this.logger.info('negotiation_consultation_policy', event));
@@ -222,10 +210,7 @@ export class QuestionerQueue {
     const adapter = await this.getAdapter();
     const intentId = data.triggeredByIntentId?.trim()
       || (data.scopeType === 'intent' ? data.scopeId?.trim() : undefined)
-      || (data.mode === 'intent' ? data.sourceId?.trim() : undefined)
-      || (data.mode === 'pool_discovery'
-        ? (data.context as PoolDiscoveryContext).intentId?.trim()
-        : undefined);
+      || (data.mode === 'intent' ? data.sourceId?.trim() : undefined);
     if (intentId) {
       const lifecycle = await this.getIntentLifecycle(intentId, data.userId);
       if (!lifecycle || lifecycle.archivedAt || (lifecycle.status != null && lifecycle.status !== 'ACTIVE')) {
@@ -240,8 +225,7 @@ export class QuestionerQueue {
     }
 
     // Ordinary intent questions from intent creation and post-discovery
-    // refinement share one fingerprint-deduplicated persistence path. This
-    // makes the intent-page Personal Agent symmetric with pool questions:
+    // refinement share one fingerprint-deduplicated persistence path:
     // creation can surface the clarification immediately, while completion
     // hooks safely retry the same material intent version without duplicates.
     if (
@@ -307,14 +291,6 @@ export class QuestionerQueue {
       sourceType: data.sourceType,
       sourceId: data.sourceId,
     });
-
-    // pool_discovery questions are synthesized deterministically from mined
-    // discriminators — no generator LLM (IND-418). Budget + dedup live here
-    // so every producer (mining hook, future paths) hits one choke point.
-    if (data.mode === 'pool_discovery') {
-      await this.handlePoolDiscovery(data);
-      return;
-    }
 
     const result: QuestionGenerationResult | null = await this.getAgent().invoke(data);
 
@@ -421,89 +397,6 @@ export class QuestionerQueue {
     }
   }
 
-  /**
-   * Deterministic pool_discovery arm: enforce the unattended budget
-   * (≤1 pending pool_discovery per intent, ≤{@link POOL_QUESTION_MAX_PENDING_PER_INTENT}
-   * pending total per intent), dedup against already-asked axes, then
-   * synthesize + persist the top discriminator.
-   */
-  private async handlePoolDiscovery(data: QuestionerInput): Promise<void> {
-    const adapter = await this.getAdapter();
-    const context = data.context as PoolDiscoveryContext & { opportunityIds?: string[] };
-    const intentId = context.intentId;
-
-    const pending = await adapter.findPending(data.userId, {
-      scopeType: 'intent',
-      scopeId: intentId,
-    });
-    const existingPoolQuestion = pending.find((q) => q.detection.mode === 'pool_discovery');
-    if (existingPoolQuestion) {
-      const existingPool = existingPoolQuestion.detection.pool;
-      const incomingCycle = poolQuestionCycleKey({ runId: context.runId, minedAt: context.minedAt });
-      if (
-        existingPool
-        && poolQuestionCycleKey(existingPool) === incomingCycle
-        && this.poolQuestionPostPersist
-        && poolQuestionsMode() === 'on'
-        && await adapter.isPoolQuestionFreshForDelivery(
-          existingPoolQuestion.id,
-          data.userId,
-          isPoolArtifactFresh,
-        )
-      ) {
-        await this.poolQuestionPostPersist(existingPoolQuestion.id, data.userId);
-        this.logger.info('Re-enqueued existing same-cycle pool question', {
-          intentId,
-          questionId: existingPoolQuestion.id,
-          cycleKey: incomingCycle,
-        });
-      } else {
-        this.logger.info('Pool question skipped: one already pending for intent', { intentId });
-      }
-      return;
-    }
-    const budgetPending = pending.filter((question) => question.detection.purpose !== 'recovery');
-    if (budgetPending.length >= POOL_QUESTION_MAX_PENDING_PER_INTENT) {
-      this.logger.info('Pool question skipped: intent question budget exhausted', {
-        intentId,
-        pending: budgetPending.length,
-      });
-      return;
-    }
-
-    const askedLabels = await adapter.listPoolQuestionLabels(data.userId, intentId, {
-      ...(context.intentFingerprint ? { currentIntentFingerprint: context.intentFingerprint } : {}),
-      currentIntentText: context.intentText,
-    });
-    const fresh = dedupDiscriminators(context.discriminators, askedLabels);
-    const question = buildPoolQuestion({
-      userId: data.userId,
-      intentId,
-      poolSize: context.poolSize,
-      opportunityIds: context.opportunityIds ?? [],
-      minedAt: context.minedAt,
-      ...(context.runId ? { runId: context.runId } : {}),
-      ...(context.intentText ? { intentText: context.intentText } : {}),
-      ...(context.intentFingerprint ? { intentFingerprint: context.intentFingerprint } : {}),
-      discriminators: fresh,
-    });
-    if (!question) {
-      this.logger.info('Pool question skipped: no fresh discriminator', { intentId });
-      return;
-    }
-
-    const id = await persistPoolQuestion(
-      adapter,
-      question,
-      data.userId,
-      this.poolQuestionPostPersist,
-    );
-    if (!id) {
-      this.logger.info('Pool question skipped by final freshness gate', { intentId });
-      return;
-    }
-    this.logger.info('Persisted pool question', { intentId, questionId: id });
-  }
 }
 
 /** Singleton questioner queue instance. Use for adding jobs and starting the worker. */

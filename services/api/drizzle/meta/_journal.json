@@ -925,6 +925,13 @@
       "when": 1786886087812,
       "tag": "0132_dismiss_retired_uptake_questions",
       "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1786886087813,
+      "tag": "0133_dismiss_retired_pool_questions",
+      "breakpoints": true
     }
   ]
 }

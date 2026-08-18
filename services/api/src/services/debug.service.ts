@@ -9,7 +9,6 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
 import type { OpportunityGraphDatabase, HydeGraphDatabase } from '@indexnetwork/protocol';
-import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 
 /** Preflight diagnostics gathered before running discovery. */
 export interface DiscoveryPreflight {

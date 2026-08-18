@@ -38,7 +38,21 @@ import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { POOL_TERMINAL_STATUSES } from '../../adapters/poolquery.shared';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { log } from '../../lib/log';
-import type { PoolMiningTrigger } from './mining.shared';
+
+/**
+ * One discovery-completion event. Formerly `PoolMiningTrigger` from the
+ * retired pool-discriminator mining hook; the shadow keeps the same shape so
+ * its log dimensions stay comparable across the retirement.
+ */
+export interface EvidenceShadowTrigger {
+  source: 'from_intent' | 'intent_visit';
+  userId: string;
+  intentId?: string;
+  runId?: string;
+  sessionId?: string;
+  isIntroducerFlow?: boolean;
+  searchQuery?: string;
+}
 
 /** Greppable logger (IND-433): search deploy logs for "NegotiationEvidenceShadow". */
 const logger = log.job.from('NegotiationEvidenceShadow');
@@ -542,7 +556,7 @@ function isFinalIntentValid(
  * triggering intent's pool. Never throws; never persists; never enqueues.
  */
 export async function maybeRunNegotiationEvidenceShadow(
-  trigger: PoolMiningTrigger,
+  trigger: EvidenceShadowTrigger,
   deps: NegotiationEvidenceShadowDeps = DEFAULT_DEPS,
 ): Promise<void> {
   if (negotiationEvidenceQuestionsMode() === 'off') return;

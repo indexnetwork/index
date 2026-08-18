@@ -4,12 +4,12 @@ import type { DeduplicationOptions } from 'bullmq';
 import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import type { NegotiationGraphLike, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
+import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 import { buildIntentDiscoveryTrigger, type FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
 export type { FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
-import { maybeMinePoolDiscriminators, minePoolDiscriminatorsOnCompletion, type PoolMiningTrigger } from '../pool/mining.shared';
+import { maybeRunNegotiationEvidenceShadow } from '../pool/negotiation-evidence.shadow';
 import { maybeEnqueueIntentRecovery } from '../questioner/recovery.shared';
 import type { RecoveryQuestionerJobData } from '../questioner.queue';
 
@@ -19,12 +19,8 @@ export interface FromIntentJobData {
   intentId: string;
   userId: string;
   networkIds?: string[];
-  /**
-   * What enqueued this run. `pool_answer` marks Tier-1 answer-triggered
-   * re-discovery; `intent_resume` identifies lifecycle resume runs while
-   * retaining the ordinary discovery/mining path.
-   */
-  trigger?: 'pool_answer' | 'intent_resume';
+  /** What enqueued this run. `intent_resume` identifies lifecycle resume runs. */
+  trigger?: 'intent_resume';
 }
 
 export type FromIntentDatabase = Pick<
@@ -37,13 +33,6 @@ export interface FromIntentDeps {
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Pool-discriminator mining hook (IND-417/418). Defaults to the shared fire-and-forget implementation; injectable for tests. */
-  minePoolDiscriminators?: (trigger: PoolMiningTrigger) => void | Promise<void>;
-  /** Answer context appended to Tier-1 discovery input after the debounce window. */
-  getPoolAnswerContext?: (userId: string, intentId: string) => Promise<string>;
-  /** Beat-2 narration for pool-answer re-runs (IND-419); injectable for tests. */
-  narratePoolRerun?: (input: { userId: string; intentId: string; newCandidates: number | null }) => Promise<void>;
   /** Post-success no-opportunity recovery hook; failure-isolated by this queue. */
   recoverAfterCompletion?: (input: RecoveryQuestionerJobData) => Promise<unknown>;
 }
@@ -66,7 +55,7 @@ export class FromIntentQueue {
     this.graphDb = createOpportunityGraphDb(this.database);
   }
 
-  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher' | 'stampNewbornOpportunities' | 'getPoolAnswerContext' | 'narratePoolRerun'>): void {
+  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
@@ -136,8 +125,8 @@ export class FromIntentQueue {
 
     // A trigger intent is authoritative for admission: omitted scope means all
     // of its still-valid assignments, never all owner memberships. Explicit
-    // scope is narrowing-only. Any empty intersection must stop before the graph,
-    // pool mining, or narration can observe an unscoped run.
+    // scope is narrowing-only. Any empty intersection must stop before the graph
+    // or the evidence shadow can observe an unscoped run.
     if (validNetworkIds.length === 0) {
       this.logger.warn('Intent has no valid discovery networks, skipping fail-closed', {
         intentId,
@@ -149,21 +138,7 @@ export class FromIntentQueue {
 
     this.logger.info('Starting discovery', { intentId, userId, networkIds: validNetworkIds });
 
-    let searchQuery = intent.payload;
-    if (data.trigger === 'pool_answer' && this.deps?.getPoolAnswerContext) {
-      try {
-        const answerContext = await this.deps.getPoolAnswerContext(userId, intentId);
-        if (answerContext.trim()) searchQuery = `${searchQuery}\n\n${answerContext.trim()}`;
-      } catch (error) {
-        // The run still provides a useful pool refresh if answer-context lookup
-        // fails; Tier 0 already applied the deterministic preference locally.
-        this.logger.warn('Pool answer context unavailable; running base intent', {
-          intentId,
-          userId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    const searchQuery = intent.payload;
 
     const invokeOpts = buildIntentDiscoveryTrigger({
       userId,
@@ -172,7 +147,7 @@ export class FromIntentQueue {
       triggerIntentId: intentId,
     });
 
-    const summary = await runOpportunityDiscovery({
+    await runOpportunityDiscovery({
       graphDb: this.graphDb,
       deps: this.deps,
       invokeOpts,
@@ -216,8 +191,6 @@ export class FromIntentQueue {
     // Intent refinement is an independent, failure-isolated post-success
     // effect. It shares a material-fingerprint cadence with the creation-time
     // intent Questioner, so this completion retry cannot duplicate a question.
-    // Run it before pool mining/narration so every intent-page question family
-    // gets the same completion opportunity.
     try {
       await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
         source: 'from_intent',
@@ -234,29 +207,15 @@ export class FromIntentQueue {
       });
     }
 
-    // Pool-discriminator mining + question enqueue (IND-417/418): web intent
-    // creation/edit is the frontend's discovery path — without this hook only
-    // MCP-triggered runs would ever produce pool questions. Normal runs stay
-    // fire-and-forget; pool-answer runs await failure-isolated mining so the
-    // next question is ready before Beat 2. Flags off = no-op.
-    const miningTrigger: PoolMiningTrigger = {
+    // Lens C negotiation-evidence shadow (IND-433): fire-and-forget on its
+    // own flag. Formerly triggered through the pool-discriminator mining hook;
+    // the mining pass and its question enqueue are retired
+    // (conversational-questions plan, "Retirements").
+    void maybeRunNegotiationEvidenceShadow({
       source: 'from_intent',
       userId,
       intentId,
-    };
-    if (data.trigger === 'pool_answer') {
-      await (this.deps?.minePoolDiscriminators ?? minePoolDiscriminatorsOnCompletion)(miningTrigger);
-    } else {
-      (this.deps?.minePoolDiscriminators ?? maybeMinePoolDiscriminators)(miningTrigger);
-    }
-
-    if (data.trigger === 'pool_answer' && this.deps?.narratePoolRerun) {
-      await this.deps.narratePoolRerun({
-        userId,
-        intentId,
-        newCandidates: summary?.opportunitiesCreated ?? null,
-      });
-    }
+    }).catch(() => {});
   }
 
   /** Resolve the assignment + current-membership intersection used for both admission and stamping. */
