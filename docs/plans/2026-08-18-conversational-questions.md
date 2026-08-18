@@ -17,7 +17,7 @@ surfaced.
 | [#1436](https://github.com/indexnetwork/index/pull/1436) | The edit rule — in-place regeneration of the open message, guarded update seam, live pending flip |
 | [#1437](https://github.com/indexnetwork/index/pull/1437) | Exhaustion evaluator — transition-driven regeneration; unpark-prune and exhaustion regrouping; stopgap subsumed |
 | [#1439](https://github.com/indexnetwork/index/pull/1439) | Retirements — card generators, `QuestionerAgent`, read surface, questions-table adapter |
-| [#1440](https://github.com/indexnetwork/index/pull/1440) | Notifications — new-question detection, deep-linked delivery, empty-set close-out |
+| [#1441](https://github.com/indexnetwork/index/pull/1441) | Notifications — new-question detection, deep-linked delivery, empty-set close-out |
 
 Built on [#1428](https://github.com/indexnetwork/index/pull/1428), the authoring
 half of the superseded plan.
@@ -124,8 +124,8 @@ already use (e.g. `enrichment.queue.ts:99`), keyed
 `question-message.${userId}.${intentId}`. The job:
 
 1. Reads the current parked set for the intent (this user's side only).
-2. If empty → nothing to do (a regeneration triggered by the last unpark may
-   find the message already closed).
+2. If empty → close out an open message if there is one (rewrite it to prose
+   with no block), otherwise nothing to do.
 3. Authors the message via the negotiator, grounded exactly as PR 1 built:
    transcripts of the parked negotiations plus the signal's DM excerpt.
 4. Applies the edit rule: update in place or create.
