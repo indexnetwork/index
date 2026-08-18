@@ -9,11 +9,11 @@
  *
  * `NEGOTIATOR_STANCE` makes that stance configurable instead of hard-coded:
  *
- * | stance      | framing                              | value bar        | query rule              | consult propensity      | deadlock  |
- * |-------------|--------------------------------------|------------------|-------------------------|-------------------------|-----------|
- * | `advocate`  | argue the case (today)               | none             | mandate (today)         | none (today)            | bargain   |
- * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | bargain   |
- * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | stalemate |
+ * | stance      | framing                              | value bar        | query rule              | consult propensity      | responder check          | deadlock  |
+ * |-------------|--------------------------------------|------------------|-------------------------|-------------------------|--------------------------|-----------|
+ * | `advocate`  | argue the case (today)               | none             | mandate (today)         | none (today)            | none (today)             | bargain   |
+ * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | verify the opening       | bargain   |
+ * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | + probe before accepting | stalemate |
  *
  * Design constraints (hard):
  * - **`advocate` is byte-identical.** Every fragment below is additive and
@@ -35,7 +35,17 @@
  * Fragments deliberately never contain the literal `ask_user` or a quoted
  * `"withdraw"`: they render into every seat and protocol version, and the seat
  * specs pin that those tokens appear only where the seat legally holds them.
+ *
+ * One family of fragments is the exception to that seat-blindness by
+ * construction rather than by accident: the responder verification rules
+ * (`stanceVerifiesResponderFit`) address a duty only the RESPONDING seat has —
+ * reading someone else's opening — so `stanceActionRules` takes the seat and
+ * renders them only there. They still name no action and no mechanism, so the
+ * seat's own rules and the graph's grants stay the sole authority on what this
+ * turn may actually do.
  */
+
+import type { NegotiationSeat } from "../shared/schemas/negotiation-state.schema.js";
 
 export const NEGOTIATOR_STANCES = ["advocate", "evaluator", "skeptic"] as const;
 
@@ -67,6 +77,14 @@ export function stanceAppliesValueBar(stance: NegotiatorStance): boolean {
  * continuing to evaluate rather than as a mandate to connect.
  */
 export function stanceQueryMatchIsNecessaryNotSufficient(stance: NegotiatorStance): boolean {
+  return stance !== "advocate";
+}
+
+/**
+ * Whether this stance asks the RESPONDING seat to verify the opening's account
+ * of the fit before accepting it, rather than reading that account as evidence.
+ */
+export function stanceVerifiesResponderFit(stance: NegotiatorStance): boolean {
   return stance !== "advocate";
 }
 
@@ -158,15 +176,66 @@ const CONSULT_PROPENSITY_RULE = `
 const SKEPTIC_CONSULT_SHARPENING = ` For you this is a gate, not a preference: an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed, and consulting {userName} is how that assumption gets verified.`;
 
 /**
+ * Responder verification — assessing stances, RESPONDING seat only.
+ *
+ * Two structural gaps this closes, both visible in the failure it was written
+ * for: a first-contact outreach accepted in one exchange, on reasoning that
+ * restated the opening's own fit claim back as the reason for accepting.
+ *
+ * 1. The opening enters the prompt as if it were evidence. It is not: it is
+ *    advocacy authored by the counterparty's agent, and its most load-bearing
+ *    move is characterizing what THIS client wants. Nothing else in the prompt
+ *    tells the responding seat to treat that characterization as a claim.
+ * 2. `VALUE_BAR_RULE` has no bite in this seat. "Most matches are not worth
+ *    making" reads as being about MAKING matches, and a responder frames its
+ *    decision as "would my client be open to connecting?" — nearly costless,
+ *    nearly certain to be yes. So the same opportunity-cost currency is
+ *    restated in the terms this seat actually spends it: accepting puts a
+ *    connection in front of the client for approval.
+ *
+ * Conditional by construction: the steer applies where the fit case RESTS on
+ * the initiator's interpretation. A match the client's own criteria and the
+ * counterparty's own evidence support independently may still be accepted on
+ * first contact — which is why no "always"/"never accept" wording appears here
+ * and a spec pins its absence.
+ *
+ * Names no action and no mechanism, like every other fragment in this module:
+ * "one more exchange" and "consulting {userName}" describe the move, and the
+ * seat's own rules decide which token carries it (and whether the grant for it
+ * is even live this turn).
+ */
+const RESPONDER_VERIFICATION_RULE = `
+- THE OPENING IS ADVOCACY, NOT EVIDENCE: what reached {userName} was written by the other side's agent to make this match sound worth taking, and its account of the fit — what {userName} is looking for, why the two sides line up — is that agent's CLAIM about {userName}, not a fact you have checked. Test it against {userName}'s OWN intent and against what the counterparty's own profile and intents actually show. Restating the opening's fit claim back as your reason is agreement, not verification.
+- WHAT ACCEPTING SPENDS: accepting is not the free or agreeable option — it puts a connection in front of {userName} for approval and spends the same finite attention the bar above governs. "Would {userName} be open to connecting?" is a bar almost anything clears, and it is not the bar. An accept on the first exchange has to be grounded in what {userName} themselves stated they were looking for, met by evidence about the counterparty that stands up without the opening's reading of it. Where the case for fit still rests on how the other agent characterized {userName}'s needs, the cheap move is one more exchange — put the specific gap to them, or counter with what would have to be true — and where the doubt is about {userName}'s own criteria rather than the counterparty's evidence, consulting {userName} settles it instead.`;
+
+/**
+ * `skeptic` sharpening of the responder rule, appended to the same bullet (the
+ * same additive pattern as `SKEPTIC_CONSULT_SHARPENING`): under the
+ * not-worth-making prior, closing on the opening alone is the exception rather
+ * than the default. The escape hatch is restated explicitly here because this
+ * is where the pressure is highest and an over-read would turn a lean into a
+ * ban on first-contact accepts.
+ */
+const SKEPTIC_RESPONDER_SHARPENING = ` For you an accept on the first exchange is the exception, not the default: where the fit case still rests on the opening's own characterization, probe once before accepting — one exchange costs the counterparty nothing and {userName} very little, while an accept you cannot ground spends their attention on a match no one has checked. Where {userName}'s stated criteria and the counterparty's own evidence carry the fit without that characterization, accepting straight away is still the right call.`;
+
+/**
  * Extra action-rule lines contributed by the stance, appended after the seat's
  * own rules. Empty under `advocate` → byte-identical.
+ *
+ * `seat` scopes the responder verification rules to the seat that did NOT
+ * open. Everything else here is seat-blind: the value bar and the consult
+ * propensity are duties of both seats, and the seat parameter must not become
+ * a reason to fork them.
  */
-export function stanceActionRules(stance: NegotiatorStance): string {
+export function stanceActionRules(stance: NegotiatorStance, seat: NegotiationSeat): string {
   if (!stanceAppliesValueBar(stance)) return "";
   const consultRule = stance === "skeptic"
     ? CONSULT_PROPENSITY_RULE + SKEPTIC_CONSULT_SHARPENING
     : CONSULT_PROPENSITY_RULE;
-  return VALUE_BAR_RULE + consultRule;
+  const responderRule = seat === "counterparty" && stanceVerifiesResponderFit(stance)
+    ? RESPONDER_VERIFICATION_RULE + (stance === "skeptic" ? SKEPTIC_RESPONDER_SHARPENING : "")
+    : "";
+  return VALUE_BAR_RULE + consultRule + responderRule;
 }
 
 /**

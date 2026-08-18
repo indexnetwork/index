@@ -305,6 +305,12 @@ export class IndexNegotiator {
     // via the domain contract, exactly like `configuredScreenMode()`. Under the
     // `advocate` default every stance fragment below is the legacy string, so
     // the rendered prompt is byte-identical to the pre-IND-611 build.
+    //
+    // `stanceActionRules` also takes the resolved `seat`: the responder
+    // verification rules are a duty of the seat that did NOT open, so they
+    // render only there. The resolved seat, not `input.seat`, so the v1
+    // `isDiscoverer` fallback decides it there too — under v1 the discoverer
+    // is likewise the side that opens.
     const stance = configuredNegotiatorStance();
     const schema = turnSchemaFor(version, seat, isFinalTurn, {
       system: SystemNegotiationTurnSchema,
@@ -317,7 +323,7 @@ export class IndexNegotiator {
     const networkContext = input.indexContext.prompt || "General discovery";
     const actionRules = (version === "v2"
       ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
-      : V1_ACTION_RULES) + stanceActionRules(stance)
+      : V1_ACTION_RULES) + stanceActionRules(stance, seat)
       + (canAskUser
         ? ASK_USER_RULE
           + (preContactConsult ? PRE_CONTACT_ASK_USER_RULE + stancePreContactConsultRule(stance) : "")
