@@ -273,6 +273,127 @@ describe("evaluator / skeptic — additive, gated fragments", () => {
 });
 
 /**
+ * Evidence provenance — the agent's own record is its decisions, not its
+ * client's evidence.
+ *
+ * The failure it exists for is the responder verification duty being formally
+ * obeyed and substantively evaded: an accept grounded in the responder's OWN
+ * side's record, where that record was the same negotiator's earlier
+ * acceptances, recalled through memory and prior dialogue. Circular
+ * verification survives every check the previous fragment makes.
+ *
+ * Seat-blind by choice: an initiator can cite its own prior openings' claims
+ * just as readily, so the rule renders in the shared prefix. That makes the
+ * strict-prefix invariant below the load-bearing pin — it is what keeps this
+ * fragment out of the responder-only tail.
+ */
+const PROVENANCE_MARKER = "YOUR OWN RECORD IS DECISIONS, NOT EVIDENCE";
+
+describe("evidence provenance — prior decisions are not the client's evidence", () => {
+  it("renders on EVERY prompt in the matrix under evaluator and skeptic", async () => {
+    for (const stance of ["evaluator", "skeptic"]) {
+      const rendered = await renderMatrix(stance);
+      for (const entry of PROMPT_MATRIX) {
+        const prompt = rendered[entry.id];
+        expect(prompt).toContain(PROVENANCE_MARKER);
+        // The three sources that get mistaken for evidence, all named.
+        expect(prompt).toContain("your earlier turns");
+        expect(prompt).toContain("the connections you proposed or accepted on Alice's behalf");
+        expect(prompt).toContain("the conclusions you carry in memory");
+      }
+    }
+  });
+
+  it("distinguishes the agent's decisions from the client's evidence", async () => {
+    const rendered = await renderMatrix("skeptic");
+    const prompt = rendered["v2-counterparty"];
+    // Decisions side: authored by the agent, under whatever bar applied then.
+    expect(prompt).toContain("decisions you made for them, reached under whatever bar you applied at the time");
+    // The circular move, named as the thing it is.
+    expect(prompt).toContain("re-asserts a judgment instead of checking it");
+    expect(prompt).toContain("reads your own past eagerness back as Alice's interest");
+    // Evidence side: authored by a person, on either side of the table.
+    expect(prompt).toContain("Ground the fit in what a person stated for themselves");
+    // Grounds named are the client-authored sections this prompt actually
+    // renders — intents, profile, and Alice's own answers between sessions.
+    expect(prompt).toContain("Alice's own intents, profile, and the answers they gave you directly");
+    expect(prompt).toContain("the counterparty's own intents and profile on theirs");
+    // The closing principle.
+    expect(prompt).toContain(
+      "A fit that was not verified does not become verified by having been asserted before",
+    );
+  });
+
+  it("does not ban memory or prior dialogue — it re-scopes what they establish", () => {
+    for (const stance of ["evaluator", "skeptic"] as const)
+    for (const seat of ["initiator", "counterparty"] as const) {
+      const rules = stanceActionRules(stance, seat);
+      // Memory keeps its job: this fragment changes what counts as
+      // verification, not what gets injected (`renderNegotiatorMemorySection`
+      // is untouched), so no wording may tell the negotiator to drop it.
+      expect(rules).toContain("Prior dialogue and memory keep their job");
+      expect(rules).toContain("what has already been asked");
+      expect(rules).toContain("the history of the argument, not grounds for it");
+      expect(rules).not.toMatch(/ignore (your |the )?(prior |negotiator )?(dialogue|memory|memories)/i);
+      expect(rules).not.toMatch(/disregard/i);
+      expect(rules).not.toMatch(/do not use (your )?memory/i);
+    }
+  });
+
+  it("never renders under advocate — on either seat", async () => {
+    for (const stance of [undefined, "advocate", "nonsense-stance"]) {
+      const rendered = await renderMatrix(stance);
+      for (const entry of PROMPT_MATRIX) {
+        expect(rendered[entry.id]).not.toContain(PROVENANCE_MARKER);
+      }
+    }
+    expect(stanceActionRules("advocate", "initiator")).not.toContain(PROVENANCE_MARKER);
+    expect(stanceActionRules("advocate", "counterparty")).not.toContain(PROVENANCE_MARKER);
+  });
+
+  it("lives in the seat-blind prefix, not in the responder-only tail", () => {
+    for (const stance of ["evaluator", "skeptic"] as const) {
+      // Both seats hold the duty...
+      expect(stanceActionRules(stance, "initiator")).toContain(PROVENANCE_MARKER);
+      expect(stanceActionRules(stance, "counterparty")).toContain(PROVENANCE_MARKER);
+      // ...so it is absent from the responder-only portion, and the strict
+      // prefix invariant (asserted inside `responderPortion`) still holds.
+      expect(responderPortion(stance)).not.toContain(PROVENANCE_MARKER);
+    }
+  });
+
+  it("is identical under evaluator and skeptic — no sharpening was forced", () => {
+    const provenanceOf = (stance: NegotiatorStance) => {
+      const rules = stanceActionRules(stance, "initiator");
+      return rules.slice(rules.indexOf(PROVENANCE_MARKER));
+    };
+    expect(provenanceOf("skeptic")).toBe(provenanceOf("evaluator"));
+  });
+
+  it("sits immediately before the responder rules, so it qualifies them", () => {
+    const rules = stanceActionRules("skeptic", "counterparty");
+    expect(rules.indexOf(PROVENANCE_MARKER)).toBeGreaterThan(rules.indexOf("CONSULT, DON'T ASSUME"));
+    expect(rules.indexOf(PROVENANCE_MARKER)).toBeLessThan(rules.indexOf(OPENING_MARKER));
+  });
+
+  it("names no action and no mechanism", () => {
+    for (const stance of ["evaluator", "skeptic"] as const) {
+      const rules = stanceActionRules(stance, "initiator");
+      const provenance = rules.slice(rules.indexOf(PROVENANCE_MARKER));
+      expect(provenance).not.toContain("ask_user");
+      expect(provenance).not.toContain('"withdraw"');
+      expect(provenance).not.toContain('"accept"');
+      expect(provenance).not.toContain('"counter"');
+      expect(provenance).not.toContain('"decline"');
+      expect(provenance).not.toContain('"question"');
+      expect(provenance).not.toContain('"outreach"');
+    }
+    // And no stance leaks those tokens into a seat that has no grant for them.
+    // (The matrix-wide sweep lives in the seat-invariants block below.)
+  });
+});
+
+/**
  * Responder verification (the sibling of the consult-propensity fragment).
  *
  * The failure it exists for: a first-contact outreach accepted in one
