@@ -84,16 +84,21 @@ describe('ChatSidebar unread indicators', () => {
     expect(screen.queryByTestId('chat-unread-conv-1')).toBeNull();
   });
 
-  test('suppresses unread counts on negotiation rows while preserving status and action guidance', () => {
+  test('suppresses unread counts on negotiation rows while still listing the negotiation', () => {
     mocks.negotiations = [negotiationSummary(4)];
     render(<MemoryRouter><ChatSidebar /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole('button', { name: /Negotiations/ }));
 
-    expect(screen.getAllByText('Agent negotiation').length).toBeGreaterThan(0);
-    expect(screen.getByText(/their agent recommended moving forward/)).toBeInTheDocument();
-    expect(screen.getByText('Agents agreed')).toBeInTheDocument();
-    expect(screen.getByText('Tap to review and start the chat')).toBeInTheDocument();
+    // #1444 replaced the inbox-style rows with the counterparty outline, so the
+    // rail no longer renders last-action guidance — but the negotiation must
+    // still be reachable. This summary projects no opportunities, so it lands
+    // in the fallback bucket rather than disappearing.
+    const counterparty = screen.getByRole('button', { name: /Agent negotiation/ });
+    expect(counterparty).toBeInTheDocument();
+    fireEvent.click(counterparty);
+    expect(screen.getByText('No lifecycle status')).toBeInTheDocument();
+
     expect(screen.queryByTestId('chat-unread-neg-1')).toBeNull();
     expect(screen.queryByLabelText('4 unread messages')).toBeNull();
   });

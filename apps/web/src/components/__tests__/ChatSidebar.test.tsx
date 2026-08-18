@@ -103,6 +103,37 @@ const answerNegotiation = negotiation('question', 'Mira Chen', {
   senderId: 'agent:me',
 });
 
+/**
+ * The dev shape that made the badge and the list disagree after #1444: the API
+ * projected no `negotiationOpportunities` (the conversation carries no match
+ * provenance for this viewer) while `negotiation` still describes a pending
+ * opportunity the your-move badge counts.
+ */
+const ungroupableNegotiation: ConversationSummary = {
+  ...negotiation('ungrouped', 'Dana Okafor', { state: 'completed', opportunityStatus: 'pending' }),
+  via: [],
+  negotiationOpportunities: [],
+};
+
+/** A zero-message screened-out shell: owner-only, and never grouped. */
+const screenedOutNegotiation: ConversationSummary = {
+  ...negotiation('screened', 'Ilya Roth', { state: 'completed', opportunityStatus: 'rejected' }),
+  lastMessage: null,
+  lastMessageAt: null,
+  negotiationOpportunities: [],
+  negotiation: {
+    ...negotiation('screened', 'Ilya Roth', { state: 'completed', opportunityStatus: 'rejected' }).negotiation!,
+    screenDecision: {
+      source: 'screen',
+      decision: 'pass',
+      reasoning: 'not enough mutual value',
+      counterpartyPremiseFit: null,
+      intentAlignment: null,
+      screenedAt: '2026-07-24T11:00:00.000Z',
+    },
+  },
+};
+
 const mocks = vi.hoisted(() => ({
   conversations: [] as ConversationSummary[],
   negotiations: [] as ConversationSummary[],
@@ -271,5 +302,49 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Aisha Khan/ }));
     fireEvent.click(screen.getByText("Aisha Khan's opportunity"));
     await waitFor(() => expect(currentPath.value).toBe('/chat/live?taskId=live-task'));
+  });
+
+  it('never advertises a badge count over an empty list', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [ungroupableNegotiation, screenedOutNegotiation];
+    renderSidebar();
+
+    // The badge counts the pending negotiation…
+    expect(screen.getByTestId('chat-negotiations-your-move-badge')).toHaveTextContent('1');
+
+    // …and the list must be able to show it. Before the fallback bucket, both
+    // conversations projected zero opportunities and the rail rendered
+    // "No negotiations yet" underneath a badge reading 1.
+    await openNegotiationsTab();
+    expect(screen.queryByText('No negotiations yet')).not.toBeInTheDocument();
+    expect(screen.getByTestId('negotiation-outline')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Dana Okafor/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ilya Roth/ })).toBeInTheDocument();
+  });
+
+  it('opens a fallback row on its lifecycle task and labels its lifecycle status', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [ungroupableNegotiation];
+    renderSidebar();
+    await openNegotiationsTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /Dana Okafor/ }));
+    // No opportunity title survives the projection, so the row is generic —
+    // but its lifecycle status is still truthful.
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Negotiation'));
+    await waitFor(() => expect(currentPath.value).toBe('/chat/ungrouped?taskId=ungrouped-task'));
+  });
+
+  it('opens a fallback row with no addressable task on the latest session', async () => {
+    mocks.conversations = [];
+    mocks.negotiations = [{ ...ungroupableNegotiation, negotiation: null }];
+    renderSidebar();
+    await openNegotiationsTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /Dana Okafor/ }));
+    expect(screen.getByText('No lifecycle status')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Negotiation'));
+    await waitFor(() => expect(currentPath.value).toBe('/chat/ungrouped'));
   });
 });

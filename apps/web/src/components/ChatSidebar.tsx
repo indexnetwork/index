@@ -111,8 +111,10 @@ export default function ChatSidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [chatMenuOpen]);
 
-  const openNegotiation = (conversationId: string, taskId: string) => {
-    navigate(`/chat/${conversationId}?taskId=${encodeURIComponent(taskId)}`);
+  // A fallback row has no addressable task; the detail page then falls back to
+  // the conversation's latest session, which is the pre-#1444 behavior.
+  const openNegotiation = (conversationId: string, taskId: string | null) => {
+    navigate(taskId ? `/chat/${conversationId}?taskId=${encodeURIComponent(taskId)}` : `/chat/${conversationId}`);
   };
 
   const renderSkeleton = () => (
@@ -207,10 +209,11 @@ export default function ChatSidebar() {
                       <div id={regionId} className="ml-5 border-l border-gray-200 pl-2" role="region" aria-label={`${counterparty.name} opportunities`}>
                         {counterparty.opportunities.map((opportunity) => {
                           const presentation = opportunity.status ? opportunityStatusPresentation[opportunity.status] : null;
-                          const selected = pathname === `/chat/${opportunity.conversationId}` && selectedTaskId === opportunity.taskId;
-                          const opportunityMenuId = `negotiation:${opportunity.conversationId}:${opportunity.taskId}`;
+                          const selected = pathname === `/chat/${opportunity.conversationId}`
+                            && selectedTaskId === (opportunity.taskId ?? null);
+                          const opportunityMenuId = `negotiation:${opportunity.conversationId}:${opportunity.taskId ?? 'latest'}`;
                           return (
-                            <div key={`${opportunity.conversationId}-${opportunity.taskId}`} className={`group relative flex min-w-0 items-center rounded-md ${selected ? 'bg-[#f1f5f7]' : 'hover:bg-gray-50'}`}>
+                            <div key={`${opportunity.conversationId}-${opportunity.taskId ?? 'latest'}`} className={`group relative flex min-w-0 items-center rounded-md ${selected ? 'bg-[#f1f5f7]' : 'hover:bg-gray-50'}`}>
                               <button
                                 type="button"
                                 onClick={() => openNegotiation(opportunity.conversationId, opportunity.taskId)}
