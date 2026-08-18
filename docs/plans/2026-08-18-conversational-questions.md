@@ -1,8 +1,7 @@
 # Conversational questions
 
 **Status:** core loop shipped 2026-08-18 (create-only delivery). On `dev`:
-park → question-message in the DM → steps render. Not yet built: answer
-wiring, the edit rule, the exhaustion evaluator, notifications, and the
+park → question-message in the DM → steps render. Not yet built: the edit rule, the exhaustion evaluator, notifications, and the
 retirements — see [What is left](#what-is-left) at the end.
 
 | PR | What landed |
@@ -13,6 +12,7 @@ retirements — see [What is left](#what-is-left) at the end.
 | [#1432](https://github.com/indexnetwork/index/pull/1432) | Answer consumption — the protocol seam routing a reply to its parked negotiations |
 | [#1431](https://github.com/indexnetwork/index/pull/1431) | Question-messages rendered as steps in the negotiator DM |
 | [#1434](https://github.com/indexnetwork/index/pull/1434) | Regeneration surfaced as a pending signal in the DM |
+| [#1435](https://github.com/indexnetwork/index/pull/1435) | Answer wiring — DM replies routed to parked-negotiation resume; `'stalled'` retry claims admitted; continuation re-park stopgap |
 
 Built on [#1428](https://github.com/indexnetwork/index/pull/1428), the authoring
 half of the superseded plan.
@@ -245,30 +245,12 @@ live. Check Railway before assuming any of this runs.
 
 ## What is left
 
-Five items, in order. Everything else in this plan is on `dev`.
+Four items, in order. Everything else in this plan is on `dev`. Answer
+wiring shipped as [#1435](https://github.com/indexnetwork/index/pull/1435) —
+the loop is closed: a reply in the DM routes to its parked negotiations and
+resumes them.
 
-**1. Answer wiring.** [#1432](https://github.com/indexnetwork/index/pull/1432)
-landed the protocol seam — `routeAnswerRef` / `classifyParkedNegotiation` /
-`resumeParkedNegotiation` / `consumeQuestionBlockAnswers` over
-`NegotiationAnswerConsumptionPorts` — but the four port implementations are
-not written, so **the loop is open in production**: a user can receive a
-question-message, answer it, and nothing resumes. The delivery spine is
-ungated (`question-message.queue.ts` reads no env; its worker starts
-unconditionally at `main.ts:504`), so this is reachable today. Carries:
-
-- The four ports: row-less inflight settle, run-existing enqueues,
-  `userAnswers` append deduped by questionId.
-- Reply detection, and the `needsClarification` follow-up for a reply matching
-  no reference. A misroute is worse than asking again.
-- `'stalled'` added to `NEGOTIATION_START_STATUSES`
-  (`conversation.database.adapter.ts:336`). Without it the post-stall retry
-  claim no-ops and the ports resume nothing.
-- A stopgap trigger for the continuation re-park gap: finalize's enqueue skips
-  continuation sessions, so a post-stall re-park after a resume has no trigger.
-- The reader ↔ `classifyParkedNegotiation` contract test. The routing predicate
-  is agreed verbatim across lanes and nothing currently pins it.
-
-**2. Edit rule + content-update seam.** The spine is create-only: a park
+**1. Edit rule + content-update seam.** The spine is create-only: a park
 while a message is already open creates a second message. Build the
 agent-scoped chat-message content update in
 `conversation.database.adapter.ts`, apply the newest-message-only
@@ -276,16 +258,16 @@ regeneration rule, and land the live `questionRegenerationPending` flip
 deferred from #1434 — the mutation and the signal that guards it belong in
 the same PR.
 
-**3. Exhaustion evaluator.** The own-intent trigger does not exist: nothing
+**2. Exhaustion evaluator.** The own-intent trigger does not exist: nothing
 batches the first message at "no ongoing negotiations on this intent."
 Today a message only appears when an individual negotiation parks. Hook the
 state-transition evaluator, subsume answer wiring's continuation re-park
 stopgap.
 
-**4. Notifications.** The policy (create → notify; update with new
+**3. Notifications.** The policy (create → notify; update with new
 questions → notify; otherwise silent) is designed but unimplemented.
 
-**5. Retirements.** The spine silences both old generator enqueues but leaves
+**4. Retirements.** The spine silences both old generator enqueues but leaves
 the machinery standing. Sequence after answer wiring — both touch
 `questioner.queue.ts` and the adapter layer. Retire: `QuestionerAgent`, its
 presets and input union, the queue's mode dispatch, the four dead generators
