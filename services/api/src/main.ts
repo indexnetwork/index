@@ -164,6 +164,7 @@ const notificationDeliveryService = new NotificationDeliveryService({
   getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
   getIntentLabel: loadNotificationIntentLabel,
   publish: publishNotificationStreamEvent,
+  webAppUrl: process.env.WEB_APP_URL || 'https://index.network',
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.

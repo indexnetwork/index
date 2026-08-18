@@ -77,7 +77,6 @@ export {
 export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,
-  NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY,
   isSafeAuthoredNegotiationQuestion,
   isSafeNegotiationQuestionText,
   negotiationQuestionSettlementId,

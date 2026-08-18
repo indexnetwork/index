@@ -314,7 +314,6 @@ export type { ConsultationEligibility, ConsultationEligibilityInput, Negotiation
 export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,
-  NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY,
   negotiationQuestionSettlementId,
 } from "./negotiations/negotiation.module.js";
 

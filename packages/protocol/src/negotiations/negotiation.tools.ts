@@ -3,10 +3,10 @@ import { z } from 'zod';
 import type { DefineTool } from '../shared/agent/tool.helpers.js';
 import type { NegotiationToolDeps } from './negotiation.tools.port.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
-import type { NegotiationOpportunityLifecycle } from '../shared/interfaces/database.interface.js';
+import type { NegotiationOpportunityLifecycle, OpportunityStatus } from '../shared/interfaces/database.interface.js';
 import { IndexNegotiator } from './negotiation.agent.js';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationOutcome } from './negotiation.state.js';
-import { allowedActionsFor, isTerminalAction, readProtocolVersion, rejectActionFor, resolveSeat, seatViolationMessage } from './negotiation.protocol.js';
+import { allowedActionsFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor, resolveSeat, seatViolationMessage } from './negotiation.protocol.js';
 import { NEGOTIATION_ACTIONS } from '../shared/schemas/negotiation-state.schema.js';
 import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -65,6 +65,67 @@ async function readOpportunityLifecycles(
   } catch (err) {
     logger.warn('Failed to load opportunity lifecycle for negotiation narration', { err });
     return {};
+  }
+}
+
+/**
+ * Terminal opportunity status for a negotiation concluded through this tool.
+ * Version-independent mapping, identical to the graph's finalize node:
+ * `accept` → `pending` (the owner gate is still ahead), reject-like →
+ * `rejected`, anything else (the turn cap) → `stalled`.
+ */
+function terminalOpportunityStatus(lastAction: string): OpportunityStatus {
+  if (lastAction === 'accept') return 'pending';
+  return isRejectLikeAction(lastAction) ? 'rejected' : 'stalled';
+}
+
+/**
+ * Conclude a negotiation reached through `respond_to_negotiation`: complete
+ * the task, write the outcome artifact, and advance the opportunity out of
+ * `negotiating`.
+ *
+ * The status write goes through `updateOpportunityStatus` — the same waist the
+ * graph's finalize node uses — because that method is what carries the
+ * post-commit opportunity-transition emit. Writing the column any other way
+ * (or, as this path did before, not at all) leaves the transition hook blind:
+ * neither side's question-message is regenerated or pruned, radar buckets keep
+ * counting a finished negotiation, and the expiry sweep still sees a phantom
+ * active opportunity.
+ *
+ * The status write is best-effort, mirroring finalize: the task is already
+ * completed and the artifact written, so a failed status flip is logged rather
+ * than turned into a tool error the caller would read as "the conclude did not
+ * happen".
+ */
+async function concludeNegotiation(
+  database: NegotiationToolDeps['negotiationDatabase'],
+  input: {
+    taskId: string;
+    opportunityId?: string;
+    lastAction: string;
+    outcome: NegotiationOutcome;
+    turnCount: number;
+  },
+): Promise<void> {
+  await database.updateTaskState(input.taskId, 'completed');
+  await database.createArtifact({
+    taskId: input.taskId,
+    name: 'negotiation-outcome',
+    parts: [{ kind: 'data', data: input.outcome }],
+    metadata: { hasOpportunity: input.outcome.hasOpportunity, turnCount: input.turnCount },
+  });
+
+  if (!input.opportunityId) return;
+  const status = terminalOpportunityStatus(input.lastAction);
+  try {
+    await database.updateOpportunityStatus(input.opportunityId, status);
+  } catch (err) {
+    logger.error('Failed to update opportunity status on MCP conclude', {
+      taskId: input.taskId,
+      opportunityId: input.opportunityId,
+      status,
+      err,
+    });
   }
 }
 
@@ -548,12 +609,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           const nextSpeaker = currentSpeaker === 'source' ? 'candidate' : 'source';
           const outcome = buildNegotiationOutcome(history, newTurnCount, query.action, meta.sourceUserId!, meta.candidateUserId!, nextSpeaker);
 
-          await negotiationDatabase.updateTaskState(task.id, 'completed');
-          await negotiationDatabase.createArtifact({
+          await concludeNegotiation(negotiationDatabase, {
             taskId: task.id,
-            name: 'negotiation-outcome',
-            parts: [{ kind: 'data', data: outcome }],
-            metadata: { hasOpportunity: outcome.hasOpportunity, turnCount: newTurnCount },
+            ...(meta.opportunityId ? { opportunityId: meta.opportunityId } : {}),
+            lastAction: query.action,
+            outcome,
+            turnCount: newTurnCount,
           });
 
           return success({
@@ -580,12 +641,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           const nextSpeakerForCap = currentSpeaker === 'source' ? 'candidate' : 'source';
           const outcome = buildNegotiationOutcome(history, newTurnCount, 'counter', meta.sourceUserId!, meta.candidateUserId!, nextSpeakerForCap);
 
-          await negotiationDatabase.updateTaskState(task.id, 'completed');
-          await negotiationDatabase.createArtifact({
+          await concludeNegotiation(negotiationDatabase, {
             taskId: task.id,
-            name: 'negotiation-outcome',
-            parts: [{ kind: 'data', data: outcome }],
-            metadata: { hasOpportunity: false, turnCount: newTurnCount },
+            ...(meta.opportunityId ? { opportunityId: meta.opportunityId } : {}),
+            lastAction: 'counter',
+            outcome,
+            turnCount: newTurnCount,
           });
 
           return success({
@@ -722,12 +783,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           const fullHistory = [...historyForDispatch, aiTurn];
           const outcome = buildNegotiationOutcome(fullHistory, finalTurnCount, aiTurn.action, meta.sourceUserId!, meta.candidateUserId!, counterpartySpeaker === 'source' ? 'candidate' : 'source');
 
-          await negotiationDatabase.updateTaskState(task.id, 'completed');
-          await negotiationDatabase.createArtifact({
+          await concludeNegotiation(negotiationDatabase, {
             taskId: task.id,
-            name: 'negotiation-outcome',
-            parts: [{ kind: 'data', data: outcome }],
-            metadata: { hasOpportunity: outcome.hasOpportunity, turnCount: finalTurnCount },
+            ...(meta.opportunityId ? { opportunityId: meta.opportunityId } : {}),
+            lastAction: aiTurn.action,
+            outcome,
+            turnCount: finalTurnCount,
           });
 
           return success({
@@ -745,12 +806,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           const fullHistory = [...historyForDispatch, aiTurn];
           const outcome = buildNegotiationOutcome(fullHistory, finalTurnCount, 'counter', meta.sourceUserId!, meta.candidateUserId!, counterpartySpeaker === 'source' ? 'candidate' : 'source');
 
-          await negotiationDatabase.updateTaskState(task.id, 'completed');
-          await negotiationDatabase.createArtifact({
+          await concludeNegotiation(negotiationDatabase, {
             taskId: task.id,
-            name: 'negotiation-outcome',
-            parts: [{ kind: 'data', data: outcome }],
-            metadata: { hasOpportunity: false, turnCount: finalTurnCount },
+            ...(meta.opportunityId ? { opportunityId: meta.opportunityId } : {}),
+            lastAction: 'counter',
+            outcome,
+            turnCount: finalTurnCount,
           });
 
           return success({
@@ -851,12 +912,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
             const userSpeaker = isSource ? 'source' : 'candidate';
             const outcome = buildNegotiationOutcome(fullHistory, userTurnCount, userAgentTurn.action, meta.sourceUserId!, meta.candidateUserId!, userSpeaker === 'source' ? 'candidate' : 'source');
 
-            await negotiationDatabase.updateTaskState(task.id, 'completed');
-            await negotiationDatabase.createArtifact({
+            await concludeNegotiation(negotiationDatabase, {
               taskId: task.id,
-              name: 'negotiation-outcome',
-              parts: [{ kind: 'data', data: outcome }],
-              metadata: { hasOpportunity: outcome.hasOpportunity, turnCount: userTurnCount },
+              ...(meta.opportunityId ? { opportunityId: meta.opportunityId } : {}),
+              lastAction: userAgentTurn.action,
+              outcome,
+              turnCount: userTurnCount,
             });
 
             return success({
@@ -873,12 +934,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
             const fullHistory = [...historyForDispatch, aiTurn, userAgentTurn];
             const outcome = buildNegotiationOutcome(fullHistory, userTurnCount, 'counter', meta.sourceUserId!, meta.candidateUserId!, isSource ? 'candidate' : 'source');
 
-            await negotiationDatabase.updateTaskState(task.id, 'completed');
-            await negotiationDatabase.createArtifact({
+            await concludeNegotiation(negotiationDatabase, {
               taskId: task.id,
-              name: 'negotiation-outcome',
-              parts: [{ kind: 'data', data: outcome }],
-              metadata: { hasOpportunity: false, turnCount: userTurnCount },
+              ...(meta.opportunityId ? { opportunityId: meta.opportunityId } : {}),
+              lastAction: 'counter',
+              outcome,
+              turnCount: userTurnCount,
             });
 
             return success({
