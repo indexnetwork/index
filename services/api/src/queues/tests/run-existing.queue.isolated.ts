@@ -272,77 +272,11 @@ describe('NegotiationRunExistingQueue', () => {
     expect(releaseNegotiationContinuationExecution).toHaveBeenCalledWith(claimedExecution);
   });
 
-  describe('continuation re-park stopgap', () => {
-    function buildStopgapQueue(options: {
-      outcome?: typeof receipt.outcome;
-      classification?: string;
-      exact?: boolean;
-      enqueue?: (data: { userId: string; intentId: string }) => Promise<unknown>;
-    }) {
-      const classified: Array<{ opportunityId: string; userId: string }> = [];
-      const enqueued: Array<{ userId: string; intentId: string }> = [];
-      const queue = new NegotiationRunExistingQueue({
-        invokeOpportunityGraph: async () => ({
-          negotiationContinuationReceipt: { ...receipt, outcome: options.outcome ?? 'stalled' as const },
-        }),
-        continuationAdapter: {
-          claimNegotiationContinuationExecution: async () => ({ status: 'claimed', execution: claimedExecution }),
-          heartbeatNegotiationContinuationExecution: async (execution) => execution,
-          releaseNegotiationContinuationExecution: async () => {},
-          parkNegotiationContinuationExecution: async () => {},
-          completeNegotiationContinuationExecution: async () => {},
-        },
-        classifyPostStallPark: async (input) => {
-          classified.push(input);
-          return { kind: options.classification ?? 'post_stall' };
-        },
-        enqueueQuestionMessageRegeneration: options.enqueue
-          ?? (async (data) => { enqueued.push(data); }),
-      });
-      return { queue, classified, enqueued };
-    }
-
-    it('a continuation that re-parks post-stall enqueues the regeneration for the answered scope', async () => {
-      const { queue, classified, enqueued } = buildStopgapQueue({});
-      await queue.processJob('negotiate_existing', exactData);
-      expect(classified).toEqual([{ opportunityId: exactData.opportunityId, userId: exactData.userId }]);
-      expect(enqueued).toEqual([{ userId: exactData.userId, intentId: exactData.recipientIntentId }]);
-    });
-
-    it('a terminal re-stall (no gap authored) enqueues nothing', async () => {
-      const { queue, classified, enqueued } = buildStopgapQueue({ classification: 'not_parked' });
-      await queue.processJob('negotiate_existing', exactData);
-      expect(classified).toHaveLength(1);
-      expect(enqueued).toHaveLength(0);
-    });
-
-    it('non-stalled continuation outcomes never reach the stopgap', async () => {
-      const { queue, classified } = buildStopgapQueue({ outcome: 'accepted' });
-      await queue.processJob('negotiate_existing', exactData);
-      expect(classified).toHaveLength(0);
-    });
-
-    it('a plain retry without exact continuation fields never reaches the stopgap', async () => {
-      const classified: unknown[] = [];
-      const queue = new NegotiationRunExistingQueue({
-        invokeOpportunityGraph: async () => {},
-        classifyPostStallPark: async (input) => {
-          classified.push(input);
-          return { kind: 'post_stall' };
-        },
-        enqueueQuestionMessageRegeneration: async () => {},
-      });
-      await queue.processJob('negotiate_existing', { opportunityId: 'opp-1', userId: 'u1' });
-      expect(classified).toHaveLength(0);
-    });
-
-    it('a stopgap enqueue failure never fails the completed negotiation job', async () => {
-      const { queue } = buildStopgapQueue({
-        enqueue: async () => { throw new Error('redis unavailable'); },
-      });
-      await expect(queue.processJob('negotiate_existing', exactData)).resolves.toBeUndefined();
-    });
-  });
+  // The continuation re-park stopgap that lived here moved to the exhaustion
+  // evaluator: finalize writes 'stalled' for continuation executions too, the
+  // adapter fires the transition hook post-commit, and the evaluator enqueues
+  // for the re-parked side. Covered by
+  // lib/question/tests/question-exhaustion.evaluator.isolated.ts.
 
   describe('setRuntimeDeps', () => {
     it('is idempotent and merges', () => {

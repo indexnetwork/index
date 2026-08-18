@@ -131,3 +131,4 @@ src/controllers/tests/agent.controller.error-sanitization.isolated.ts
 src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts
 src/adapters/tests/embedder.provider-free.isolated.ts
 src/queues/tests/question-message.queue.isolated.ts
+src/lib/question/tests/question-exhaustion.evaluator.isolated.ts

@@ -1,6 +1,7 @@
 import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
+import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
 
@@ -474,6 +475,7 @@ export class IntentDatabaseAdapter {
         ne(schema.opportunities.status, 'expired'),
       ))
       .returning({ id: schema.opportunities.id });
+    for (const row of result) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return result.length;
   }
 
