@@ -33,7 +33,7 @@ describe("NegotiationActivity", () => {
 
   it("does not fabricate messages while activity is empty", () => {
     render(<NegotiationActivity groups={[]} loading={false} error={false} />);
-    expect(screen.getByText(/Messages will appear here as they are persisted/)).toBeTruthy();
+    expect(screen.getByText(/No agent conversations have started yet/)).toBeTruthy();
     expect(screen.queryByText(/message 1/)).toBeNull();
   });
 
