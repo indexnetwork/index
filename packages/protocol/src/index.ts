@@ -321,3 +321,25 @@ export {
   NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY,
   negotiationQuestionSettlementId,
 } from "./negotiations/negotiation.module.js";
+
+// ─── Negotiation answer consumption (conversational questions) ──────────────
+
+export {
+  classifyParkedNegotiation,
+  consumeQuestionBlockAnswers,
+  negotiationParkAnswerId,
+  resumeParkedNegotiation,
+  routeAnswerRef,
+} from "./negotiations/negotiation.module.js";
+export type {
+  AnswerRoute,
+  InflightAnswerSettlementInput,
+  InflightAnswerSettlementResult,
+  NegotiationAnswerConsumptionPorts,
+  NegotiationAnswerInput,
+  NegotiationAnswerResumeOutcome,
+  ParkClassification,
+  QuestionBlockAnswerConsumptionInput,
+  QuestionBlockAnswerConsumptionResult,
+  RoutedAnswer,
+} from "./negotiations/negotiation.module.js";
