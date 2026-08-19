@@ -22,6 +22,7 @@ bun run db:generate                         # Generate migrations after schema c
 bun run db:migrate                          # Apply pending migrations
 bun run db:studio                           # Open Drizzle Studio (interactive DB GUI)
 bun run db:seed                             # Seed database with sample data
+bun run db:seed:sandbox                     # Seed protocol_sandbox with 50 curated personas
 bun run db:flush                            # Flush all data from database
 
 # Testing
@@ -425,6 +426,9 @@ Two Neon projects exist:
 2. **Protocol** (`shiny-cloud-34341469`, `aws-us-east-1`) — has these branches:
    - **`production`** (`br-fragrant-brook-ahexgsek`) — production data. **Never touch.**
    - **`dev`** (`br-late-tooth-ahlsfgdb`) — used by the Railway `dev` environment. Database name: `protocol_prod`.
+   - **`local-dev`** (`br-delicate-dream-ahoh7xkw`) — local interactive development.
+     Its `protocol_prod` database is a real-data copy; `protocol_sandbox` is the
+     synthetic, curated sandbox and is the safe default for `.env.development`.
    - **`eval-discovery-base`** (`br-wispy-queen-ahmxwx1s`), **`eval-ab-a`**
      (`br-old-meadow-ahw6rnu1`) and **`eval-ab-b`** (`br-snowy-math-ahnnrwew`) —
      orphaned. These were the seeded fixture base and its two A/B children for the
@@ -433,6 +437,25 @@ Two Neon projects exist:
      more. They hold no data worth keeping and are pending manual deprovision.
 
 Railway dev deployments run `db:migrate` against the `dev` branch of the Protocol project.
+
+#### Curated local sandbox
+
+`protocol_sandbox` contains 50 deterministic fictional contemporary personas, 12
+thematic networks, 100 intents, and embedded profile context/premises. The
+personas form 25 explicit ask/offer pairs for predictable positive matching,
+alongside cross-domain near misses. Re-seed
+the fixtures after schema migrations with:
+
+```bash
+bun run db:seed:sandbox
+```
+
+The command derives the sandbox connection from the repo-root
+`.env.development`, refuses unrelated source database names, always replaces
+the URL database component with `protocol_sandbox`, and writes directly to
+Postgres without publishing jobs to shared Redis. It requires
+`OPENROUTER_API_KEY` to generate the fixture embeddings. Automated tests must
+continue to use the disposable local `index_test` database through `.env.test`.
 
 ### Required Environment Variables
 
