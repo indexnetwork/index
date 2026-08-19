@@ -107,6 +107,14 @@ export function routeAfterTurn(state: NegotiationState): string {
   if (state.status === 'waiting_for_agent') return "finalize";
   if (state.status === 'input_required') return "finalize";
   if (state.error) return "finalize";
+  // A failed turn the turn node judged retryable: the same seat tries again on
+  // an unchanged turn count. Checked BEFORE `lastTurn`, which is either null
+  // (the opening turn failed) or a stale turn from an earlier exchange —
+  // neither says anything about the turn that just failed. This edge cannot
+  // loop: a failure the turn node will not retry — the consecutive-failure
+  // bound, or a turn that failed after its message was persisted — sets
+  // `state.error`, which the check above routes to finalize.
+  if (state.consecutiveTurnFailures > 0) return "turn";
   if (!state.lastTurn) return "finalize";
   // Terminal actions: accept (v1+v2), reject (v1), withdraw/decline (v2)
   if (isTerminalAction(state.lastTurn.action)) return "finalize";

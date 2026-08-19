@@ -128,7 +128,8 @@ export const NegotiationOutcomeSchema = z.object({
   })),
   reasoning: z.string(),
   turnCount: z.number(),
-  reason: z.enum(["turn_cap", "timeout", "screened_out"]).optional(),
+  /** `agent_error`: the run stopped on repeated agent failures, not on a decision. */
+  reason: z.enum(["turn_cap", "timeout", "screened_out", "agent_error"]).optional(),
 });
 export type NegotiationOutcome = z.infer<typeof NegotiationOutcomeSchema>;
 

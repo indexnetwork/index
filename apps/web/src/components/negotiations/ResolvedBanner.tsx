@@ -41,17 +41,35 @@ export function ResolvedBanner({ variant, reason, turnCount, maxTurns, onRevive,
     );
   }
 
+  // Four distinct ends used to share one line of copy: only `turn_cap` is
+  // actually a spent turn budget, and claiming one for the others told the
+  // owner a six-turn dialogue had happened when the transcript held a single
+  // message. `agent_error` is the honest name for the run that stopped on
+  // repeated agent failures — nothing was decided, and nothing was spent.
+  const erroredOut = reason === 'agent_error';
   const timedOut = reason === 'timeout';
+  const heading = erroredOut
+    ? 'Stalled — the agents hit an error'
+    : timedOut
+      ? 'Stalled — the dialogue timed out'
+      : reason === 'turn_cap'
+        ? 'Stalled — agents ran out of turns'
+        : 'Stalled — the dialogue didn’t conclude';
+  const body = erroredOut
+    ? 'The agents stopped after repeated errors, so nothing was decided here — this is a fault on our side, not a verdict on the match.'
+    : timedOut
+      ? 'The dialogue ended before the agents reached agreement.'
+      : reason === 'turn_cap'
+        ? `The dialogue hit its ${maxTurns ?? 6}-turn budget without agreement.`
+        : 'The agents stopped before reaching agreement.';
   return (
     <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-4">
       <h3 className="font-ibm-plex-mono text-[13px] font-bold text-[#041729]">
-        {timedOut ? 'Stalled — the dialogue timed out' : 'Stalled — agents ran out of turns'}
+        {heading}
       </h3>
       <p className="mt-1 text-[13px] text-[#3D3D3D]">
-        {timedOut
-          ? 'The dialogue ended before the agents reached agreement.'
-          : `The dialogue hit its ${maxTurns ?? 6}-turn budget without agreement.`}
-        {' '}Sometimes a stalled thread is one answer away from resolving.
+        {body}
+        {erroredOut ? '' : ' Sometimes a stalled thread is one answer away from resolving.'}
       </p>
       <div className="mt-3 flex items-center gap-2.5">
         {onRevive && (
@@ -73,9 +91,11 @@ export function ResolvedBanner({ variant, reason, turnCount, maxTurns, onRevive,
           </button>
         )}
       </div>
-      <p className="mt-2.5 font-ibm-plex-mono text-[11px] text-gray-400">
-        Answering routes through your agent and can revive the negotiation.
-      </p>
+      {!erroredOut && (
+        <p className="mt-2.5 font-ibm-plex-mono text-[11px] text-gray-400">
+          Answering routes through your agent and can revive the negotiation.
+        </p>
+      )}
     </div>
   );
 }

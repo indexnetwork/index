@@ -133,6 +133,21 @@ export interface NegotiationQueries {
   setTaskDeadlockShift?(taskId: string, deadlockShift: Record<string, unknown>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
 
   /**
+   * Replaces `metadata.failedTurns` with this session's capped failure trace,
+   * leaving other metadata keys intact. A failed turn persists no message and
+   * no turn, so without this write the failure leaves nothing behind at all
+   * and the class can only be reconstructed from timestamps.
+   *
+   * Replace rather than append: the graph holds the whole capped list in
+   * state, so a retried write is idempotent and no read-modify-write race
+   * exists. Optional so existing fakes/wireups remain valid; when absent the
+   * turn node logs the failure and proceeds.
+   * @param taskId - Task whose metadata to enrich
+   * @param failedTurns - NegotiationTurnFailure records (at, seat, turnIndex, error)
+   */
+  setTaskFailedTurns?(taskId: string, failedTurns: Array<Record<string, unknown>>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
+
+  /**
    * Returns the most-recently-created task whose metadata carries
    * `type: 'negotiation'` and `opportunityId: <id>`. Returns null if no
    * negotiation has been started for that opportunity yet.

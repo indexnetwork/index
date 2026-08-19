@@ -90,6 +90,8 @@ export {
   buildHermesNegotiationTurn,
 } from "./negotiation.hermes-contract.js";
 export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
+export { MAX_CONSECUTIVE_TURN_FAILURES, appendTurnFailure, isTimeoutFailure, turnFailureBoundReached } from "./negotiation.turn-failure.js";
+export type { NegotiationTurnFailure } from "./negotiation.turn-failure.js";
 export { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 export { negotiationScopeKey, readNegotiationMessages } from "./negotiation.scope.js";
 export {

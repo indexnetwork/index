@@ -43,7 +43,7 @@ export function presentationForStatus(status: NegotiationPresentationStatus): Ne
 }
 
 const REJECT_ACTIONS = new Set(['reject', 'decline', 'withdraw']);
-const STALL_REASONS = new Set(['turn_cap', 'timeout']);
+const STALL_REASONS = new Set(['turn_cap', 'timeout', 'agent_error']);
 
 /**
  * Converts database lifecycle fields into the single state a viewer needs to
@@ -70,6 +70,10 @@ export function deriveNegotiationPresentation(input: {
     return lifecycle.acceptedByViewer ? PRESENTATIONS.accepted_by_viewer : PRESENTATIONS.connection_accepted;
   }
   if (opportunityStatus === 'rejected') return PRESENTATIONS.no_match;
+  // Checked before the `stalled` status it carries: an error-stalled run has
+  // no agreement to have failed to reach — it never got a dialogue at all —
+  // and "Couldn't complete" is the label that already says so.
+  if (outcome?.reason === 'agent_error') return PRESENTATIONS.couldnt_complete;
   if (opportunityStatus === 'stalled') return PRESENTATIONS.no_agreement;
   if (opportunityStatus === 'expired') return PRESENTATIONS.expired;
   if (opportunityStatus === 'latent' || opportunityStatus === 'draft') return PRESENTATIONS.not_started;

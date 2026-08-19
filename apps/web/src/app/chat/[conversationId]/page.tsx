@@ -14,7 +14,10 @@ import { resolveGateDecision } from '@/components/negotiations/gate-decision';
 import { useTickingNow } from '@/components/negotiations/use-ticking-now';
 import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 
-const STALL_REASONS = new Set(['turn_cap', 'timeout']);
+// `agent_error` joins the stall reasons rather than the reject ones: a run
+// that stopped on repeated agent failures decided nothing, so it must never
+// be presented as a filtered-out match.
+const STALL_REASONS = new Set(['turn_cap', 'timeout', 'agent_error']);
 
 /* eslint-disable react-hooks/preserve-manual-memoization --
    The React Compiler cannot preserve this page's manual memoization (it

@@ -268,13 +268,30 @@ export interface IndexNegotiatorConfig {
    * negotiate-phase budget.
    *
    * Defaults to `NEGOTIATOR_TURN_TIMEOUT_MS` env var when set, otherwise
-   * `DEFAULT_TURN_TIMEOUT_MS`. Sized to clip the p99 tail on Gemini-2.5-Flash
-   * (~20 s today on OpenRouter) without trimming p90 (~12 s).
+   * `DEFAULT_TURN_TIMEOUT_MS`.
    */
   turnTimeoutMs?: number;
 }
 
-const DEFAULT_TURN_TIMEOUT_MS = 15_000;
+/**
+ * Was 15 s, sized to clip a p99 tail believed to sit at ~20 s with p90 ~12 s.
+ * The prompt has grown since — checklist scoring, the client-DM excerpt, the
+ * ask-authoring rules — and the distribution moved with it. Replaying the
+ * responder turn of a real negotiation against Gemini-2.5-Flash on OpenRouter
+ * measured 9.9 / 12.3 / 15.2 / 15.8 / 18.1 / 27.4 / 40.5 s: the old ceiling
+ * sat at the MEDIAN, so roughly half of all turns were aborted mid-flight.
+ *
+ * That is what made a failed turn common enough to matter, and the ceiling cut
+ * below the machinery meant to absorb exactly this: the runnable-level retry
+ * and the cross-vendor fallback share this one signal, so a 15 s budget spent
+ * entirely by the first attempt left neither of them anywhere to run.
+ *
+ * The cost of the larger ceiling is bounded on the other side: a turn that
+ * genuinely hangs now fails after 45 s instead of 15, and the consecutive-
+ * failure bound ends the negotiation after two of those rather than letting
+ * the run continue.
+ */
+const DEFAULT_TURN_TIMEOUT_MS = 45_000;
 
 // Resolver-valid range is `(0, Number.MAX_SAFE_INTEGER]`. The upper bound is
 // the runtime ceiling: `AbortSignal.timeout(N)` throws when N is outside

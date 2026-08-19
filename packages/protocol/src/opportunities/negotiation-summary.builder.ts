@@ -44,7 +44,11 @@ export function toDiscoveryNegotiation(r: NegotiationResolution): DiscoveryNegot
     ...(r.outcome.hasOpportunity && r.outcome.agreedRoles.length > 0
       ? { agreedRoles: r.outcome.agreedRoles.map((a) => ({ userId: a.userId, role: a.role as NegotiationRole })) }
       : {}),
-    ...(r.outcome.reason ? { reason: r.outcome.reason } : {}),
+    // `agent_error` deliberately does not cross into the discovery vocabulary:
+    // question generation reasons about why a DIALOGUE did not conclude, and a
+    // run that stopped on repeated agent failures has nothing to say about the
+    // match. It degrades to the unreasoned stall the digest already handles.
+    ...(r.outcome.reason && r.outcome.reason !== 'agent_error' ? { reason: r.outcome.reason } : {}),
   };
   return {
     counterpartyId: r.candidateUserId,
