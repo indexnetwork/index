@@ -19,7 +19,9 @@ import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { buildAttributedDialogue, countNegotiationAskRounds, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
+import { assessAskAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -94,17 +96,17 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       ? 'initiator'
       : 'counterparty';
 
-    // Legacy ask_user availability (P3.2): flag on, full pause loop wired
+    // ask_user availability (P3.2): flag on, full pause loop wired
     // (questioner + answer-window timer + an opportunity to resume
-    // against), v2 non-final non-opening turn, and this side's one client
-    // consultation not yet spent (rationing). Shadow is observational and
-    // must preserve this legacy path byte-for-byte except for telemetry.
+    // against), v2 non-final non-opening turn, and this principal's question
+    // budget not yet spent. Shadow is observational and must preserve this
+    // legacy path byte-for-byte except for telemetry.
     //
-    // The negotiation-wide ask-rounds cap reads the same message substrate
-    // as the per-side ration. It cannot bind on mid-flight consults alone
-    // (one per side < default cap); it exists so post-stall parks — which
-    // also persist `ask_user` messages — count against the same budget,
-    // and a negotiation near its cap cannot spend a further round here.
+    // The negotiation-wide ask-rounds cap reads the same message substrate as
+    // the per-principal budget, and sits above it: it bounds both sides
+    // combined — post-stall parks, which also persist `ask_user` messages,
+    // included — so a negotiation near its cap cannot spend a further round
+    // here even when the acting principal still has budget left.
     const policyMode = negotiationConsultationPolicyMode();
     // The opening turn, before anything is sent. `outreachOpened` is per-run
     // and history is this negotiation's own record, so this is true exactly
@@ -123,6 +125,27 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // by the open-park count below, so one vague intent cannot interrogate
     // its client candidate-by-candidate.
     const preContactConsultShapeAvailable = isFreshOpeningTurn && seat === 'initiator';
+    // ─── The checklist protocol (checklist plan §2–§6) ────────────────────
+    // Stance-scoped, like every other rule it restructures: `advocate` runs
+    // the pre-checklist negotiation unchanged, which is what keeps its prompt
+    // AND its generation schema byte-identical. Resolved here because the
+    // grant below depends on it — the per-principal question budget replaces
+    // the one-consultation ration only where the protocol that spends it is
+    // live.
+    const stance = configuredNegotiatorStance();
+    const checklistActive = stanceUsesChecklist(stance);
+    // The frozen dimensions, re-derived from this negotiation's own turns
+    // rather than carried in the channel: `state.messages` is scoped to this
+    // negotiation and spans its sessions, so a continuation, a retry and a
+    // fresh process all read the same checklist.
+    const frozenChecklist: ChecklistItem[] = checklistActive ? checklistFromTurns(history) : [];
+    const questionsSpent = countPrincipalAskUserTurns(state.messages, ownUser.id);
+    const askedTopics = checklistActive ? askedChecklistTopics(state.messages, ownUser.id) : [];
+    const askedDimensions = askedTopics.map((topic) => topic.dimension);
+    // One question budget per principal per negotiation, the turn-0
+    // pre-contact consult included. Under `advocate` the budget is 1, which is
+    // exactly the legacy `hasPriorAskUser` ration expressed as a count.
+    const questionBudget = configuredQuestionBudgetPerPrincipal();
     const askUserWiringAvailable =
       version === 'v2'
       && !isFinalTurn
@@ -133,8 +156,8 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       && !!ownIntentId
       && !!state.indexContext.networkId
       && (!isFreshOpeningTurn || preContactConsultShapeAvailable)
-      && !hasPriorAskUser(state.messages, ownUser.id)
-      && countNegotiationAskRounds(state.messages) < negotiationAskRoundsCap();
+      && questionsSpent < questionBudget
+      && countNegotiationAskRounds(state.messages) < negotiationAskRoundsCap({ checklist: checklistActive });
     const askUserAvailable = askUserWiringAvailable
       && (!preContactConsultShapeAvailable
         || await preContactConsultsUnderCap(deps, ownUser.id, ownIntentId!, state.taskId));
@@ -182,6 +205,13 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       seat,
       protocolVersion: version,
       allowedActions: [...allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable })],
+      ...(checklistActive
+        ? {
+            checklist: frozenChecklist,
+            questionBudget: { spent: questionsSpent, total: questionBudget },
+            ...(askedDimensions.length > 0 && { askedDimensions }),
+          }
+        : {}),
       ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
       ...(ownMemory.length > 0 && { negotiatorMemory: ownMemory }),
       ...(state.privateConsultation?.recipientUserId === ownUser.id
@@ -286,6 +316,13 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         ...(agentPriorDialogue && { priorDialogue: agentPriorDialogue }),
         ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
         ...(askUserAvailable && { canAskUser: true }),
+        ...(checklistActive
+          ? {
+              checklist: frozenChecklist,
+              questionsSpent,
+              ...(askedTopics.length > 0 && { askedTopics }),
+            }
+          : {}),
         ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
         ...(ownMemory.length > 0 && { memory: ownMemory }),
         ...(clientDm.length > 0 && { clientDm }),
@@ -296,6 +333,62 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     }
 
     traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}` });
+
+    // ─── Checklist: author on turn 1, re-score after, never rewrite ───────
+    // The freeze is enforced HERE rather than trusted to the prompt, and on
+    // every seat: an externally dispatched agent drafts into the same field.
+    // `reconcileChecklist` copies the frozen name/kind through and takes only
+    // `result`/`basis` from the draft, so a dimension cannot be added, dropped
+    // or renamed mid-negotiation whatever the draft says. Both paths enforce
+    // the basis discipline, and both fail toward `unknown`: an `ok` with no
+    // commitment behind it is not a score, and an authoring that cannot make a
+    // valid checklist yields none at all — which leaves the negotiation
+    // running exactly as it does today and lets the next turn draft again.
+    //
+    // The reconciled list is stamped back onto the turn, so the message record
+    // IS the checklist's store — no new table, and a continuation recovers it
+    // from the same messages it recovers the dialogue from.
+    let nextChecklist: ChecklistItem[] = frozenChecklist;
+    if (checklistActive) {
+      const parsedDraft = ChecklistDraftSchema.safeParse(turn.checklist ?? []);
+      const draft = parsedDraft.success ? parsedDraft.data : [];
+      if (!parsedDraft.success) {
+        turnLog.warn('Checklist draft failed schema validation; keeping the frozen scores', {
+          taskId: state.taskId,
+          seat,
+          handledExternally: dispatchResult.handled,
+        });
+      }
+      nextChecklist = isChecklistAuthored(frozenChecklist)
+        ? reconcileChecklist(frozenChecklist, draft)
+        : (authorChecklist(draft) ?? []);
+      if (nextChecklist.length > 0) {
+        turn = { ...turn, checklist: nextChecklist };
+      } else if (turn.checklist) {
+        // An authoring that produced nothing usable must not leave the raw
+        // draft on the turn: `checklistFromTurns` would read it back as the
+        // frozen dimensions on the next turn, which is exactly the freeze this
+        // path declined to grant.
+        const { checklist: _unusable, ...rest } = turn;
+        turn = rest;
+      }
+      if (!isChecklistAuthored(frozenChecklist)) {
+        turnLog.info('negotiation_checklist_authored', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          dimensions: nextChecklist.length,
+          authored: nextChecklist.length > 0,
+        });
+      }
+    }
+
+    // Whether the ask on the table is the AGENT's own move, captured before the
+    // consultation policy can rewrite the turn into one. The distinction is
+    // what scopes the admissibility rule below to the drafted asks the
+    // checklist protocol governs, leaving the policy's inferred consultations
+    // to the policy.
+    const agentDraftedAsk = turn.action === 'ask_user' && !!turn.askUser;
 
     // IND-564 / IND-611: the opening-withdraw guard runs BEFORE the turn-0
     // opening force below. Order matters and used to be inverted: the force
@@ -372,7 +465,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       action: turn.action,
       ownSuggestedRole: turn.assessment?.suggestedRoles?.ownUser,
       priorActions: history.map((prior) => prior.action),
-      previouslyConsulted: hasPriorAskUser(state.messages, ownUser.id),
+      consultationBudgetSpent: questionsSpent >= questionBudget,
       hasExactResumeCoordinate: Boolean(
         configuredAskUserEnabled()
         && deps.questionerEnqueue
@@ -433,6 +526,58 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         seat, isFinalTurn, taskId: state.taskId,
       });
       turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+    }
+
+    // ─── Ask admissibility (checklist plan §3) ────────────────────────────
+    // The five-part rule, in the part a machine can check: the ask must name a
+    // dimension the frozen checklist carries, that dimension must still be
+    // unknown (a scored one is answerable from the record — spending the
+    // client's attention on it is what the rule exists to stop), the topic must
+    // be unasked, and the answerhood map must actually distinguish two
+    // outcomes. The budget is enforced upstream by the grant.
+    //
+    // Scoped to an ask the AGENT drafted. A policy-inferred consultation
+    // (IND-508 replacing a non-ask draft) names no dimension by construction —
+    // the policy sees action enums and nothing else — so running the rule over
+    // one would silently retire that mechanism rather than discipline it.
+    // What the two share is the budget, which binds them both at the grant.
+    //
+    // Fails OPEN on an unauthored checklist: with no frozen dimensions there is
+    // nothing to be pivotal about, and refusing every ask there would take the
+    // turn-0 pre-contact verdict away whenever authoring did not land.
+    if (
+      checklistActive
+      && agentDraftedAsk
+      && turn.action === 'ask_user'
+      && isChecklistAuthored(nextChecklist)
+    ) {
+      const admissibility = assessAskAdmissibility({
+        checklist: nextChecklist,
+        dimension: turn.askUser?.dimension,
+        answerhood: turn.askUser?.answerhood,
+        askedDimensions,
+        questionsSpent,
+      });
+      if (!admissibility.admissible) {
+        turnLog.info('negotiation_ask_inadmissible', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          reason: admissibility.reason,
+          dimension: turn.askUser?.dimension,
+          questionsSpent,
+          questionBudget,
+        });
+        emitWide({
+          type: 'negotiation_ask_inadmissible',
+          opportunityId: state.opportunityId,
+          negotiationConversationId: state.conversationId,
+          turnIndex: state.turnCount,
+          actor: isSource ? 'source' : 'candidate',
+          reason: admissibility.reason,
+        });
+        turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+      }
     }
 
     // ─── Deadlock shift record (IND-428) ───────────────────────────────
@@ -652,6 +797,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         turnCount: state.turnCount + 1,
         lastTurn: turn,
         status: 'input_required' as const,
+        ...(nextChecklist.length > 0 && { checklist: nextChecklist }),
         ...(deadlockShiftRecord && { deadlockShift: deadlockShiftRecord }),
       };
     }
@@ -669,6 +815,18 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         ...(turn.assessment?.reasoning && { reasoning: turn.assessment.reasoning }),
         ...(turn.message && { message: turn.message }),
         ...(turn.assessment?.suggestedRoles && { suggestedRoles: turn.assessment.suggestedRoles }),
+        ...(nextChecklist.length > 0
+          ? (() => {
+              const verdictState = checklistVerdictState(nextChecklist);
+              return {
+                checklist: {
+                  dimensions: nextChecklist.length,
+                  conflicts: verdictState.conflicts.length,
+                  unknowns: verdictState.unknowns.length,
+                },
+              };
+            })()
+          : {}),
         durationMs: Date.now() - agentStart,
       });
     }
@@ -693,6 +851,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       currentSpeaker: (isSource ? "candidate" : "source") as "source" | "candidate",
       lastTurn: turn,
       memoryBySide: { [ownSide]: ownMemory },
+      ...(nextChecklist.length > 0 && { checklist: nextChecklist }),
       // Record the in-task outreach so a later `withdraw` is legal (IND-564).
       ...(turn.action === 'outreach' && { outreachOpened: true }),
       ...(deadlockShiftRecord && { deadlockShift: deadlockShiftRecord }),

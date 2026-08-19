@@ -40,6 +40,19 @@ export const QuestionBlockQuestionSchema = z.object({
   opportunityId: NegotiationRefSchema,
   /** Further negotiations parked on the same gap that this answer also unparks. */
   alsoUnblocks: z.array(NegotiationRefSchema).max(8).optional(),
+  /**
+   * The checklist dimension the primary negotiation parked on
+   * (docs/plans/2026-08-19-checklist-negotiations.md §4), for the step's label:
+   * "Timing", "Location", "Stage fit". Presentation only — routing is the
+   * negotiation ref and nothing else, so a stale or missing label can never
+   * misroute an answer.
+   *
+   * Optional in both directions. Blocks authored before the checklist protocol
+   * carry none and still parse, which is what keeps the fail-closed parser
+   * backward-compatible; and a park whose ask named no dimension (a
+   * policy-inferred consultation, a post-stall gap) simply renders unlabeled.
+   */
+  dimension: z.string().min(1).max(60).optional(),
 }).strict();
 export type QuestionBlockQuestion = z.infer<typeof QuestionBlockQuestionSchema>;
 

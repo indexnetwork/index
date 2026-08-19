@@ -1,4 +1,4 @@
-import { assessConsultationEligibility, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
+import { assessConsultationEligibility, configuredQuestionBudgetPerPrincipal, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
 
 export { consultationExpiryReadiness } from './consultation-expiry';
 export type { ConsultationExpiryReadinessInput } from './consultation-expiry';
@@ -186,8 +186,13 @@ export function assessExternalConsultationEligibility(
     && last.senderId === `agent:${coordinates.counterpartyUserId}`,
   );
   const supportedTrigger = lastAction === 'counter' || lastAction === 'question';
-  const previouslyConsulted = input.messages.some((message) =>
-    message.senderId === `agent:${input.userId}` && message.turn.action === 'ask_user');
+  // The acting principal's question budget for this negotiation (checklist
+  // plan §3 rule 5), counted off the same message record the graph reads.
+  // Under `advocate` the budget is 1, which is exactly the one-consultation
+  // ration this used to test for.
+  const consultationsSpent = input.messages.filter((message) =>
+    message.senderId === `agent:${input.userId}` && message.turn.action === 'ask_user').length;
+  const consultationBudgetSpent = consultationsSpent >= configuredQuestionBudgetPerPrincipal();
   const exactWiring = input.wiring.askUserEnabled && input.wiring.questionerEnabled && input.wiring.expiryEnabled;
   const lifecycleValid = input.task.state === 'claimed'
     && input.task.claimedByAgentId === input.agentId
@@ -198,7 +203,7 @@ export function assessExternalConsultationEligibility(
     && !isFinalTurn
     && counterpartyTurn
     && supportedTrigger
-    && !previouslyConsulted
+    && !consultationBudgetSpent
     && lifecycleValid
     && exactWiring;
 
@@ -220,7 +225,7 @@ export function assessExternalConsultationEligibility(
     // turn's perspective, `otherUser` is the currently claiming owner.
     ownSuggestedRole: roleValue(last?.turn.assessment?.suggestedRoles?.otherUser),
     priorActions,
-    previouslyConsulted,
+    consultationBudgetSpent,
     hasExactResumeCoordinate: Boolean(coordinates && exactWiring),
     lifecycleValid,
   };

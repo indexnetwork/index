@@ -73,6 +73,40 @@ describe("QuestionBlockSchema", () => {
   });
 });
 
+describe("checklist dimension label (checklist plan §4)", () => {
+  it("accepts a question that names the dimension it parked on", () => {
+    const parsed = QuestionBlockSchema.safeParse({
+      version: 1,
+      questions: [{ ...minimalBlock.questions[0], dimension: "Ticket size" }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("still accepts blocks authored before the field existed", () => {
+    // The whole point of the field being optional: a message serialized by an
+    // earlier build must keep parsing, or the fail-closed parser would drop
+    // every in-flight question-message the day this shipped.
+    expect(QuestionBlockSchema.safeParse(minimalBlock).success).toBe(true);
+    expect(parseQuestionMessage(serializeQuestionMessage("Prose.", minimalBlock))).not.toBeNull();
+  });
+
+  it("survives the round trip with the label intact", () => {
+    const labeled = {
+      version: 1 as const,
+      questions: [{ prompt: "Is remote in scope?", opportunityId: REF_A, dimension: "Location", alsoUnblocks: [REF_B] }],
+    };
+    const parsed = parseQuestionMessage(serializeQuestionMessage("Prose.", labeled));
+    expect(parsed!.block.questions[0].dimension).toBe("Location");
+  });
+
+  it("rejects an empty label rather than rendering a blank step", () => {
+    expect(QuestionBlockSchema.safeParse({
+      version: 1,
+      questions: [{ ...minimalBlock.questions[0], dimension: "" }],
+    }).success).toBe(false);
+  });
+});
+
 describe("serialize → parse round trip", () => {
   it("is lossless for prose and block", () => {
     const prose = "Two negotiations are waiting on you.\n\nDetails below.";

@@ -23,6 +23,7 @@ import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { AnswerhoodSchema, type Answerhood } from "../shared/schemas/negotiation-checklist.schema.js";
 import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
@@ -100,6 +101,65 @@ export function hasPriorAskUser(
   userId: string,
 ): boolean {
   return askUserSenderIds(messages).includes(`agent:${userId}`);
+}
+
+/**
+ * How many questions THIS principal has already been asked in this
+ * negotiation — the checklist protocol's per-principal question budget
+ * (`QUESTION_BUDGET_PER_PRINCIPAL`, plan §3 rule 5).
+ *
+ * Same substrate as {@link hasPriorAskUser}, counted rather than tested: every
+ * park that suspends this negotiation on this client's answer is one draw on
+ * their budget, whatever produced it — the turn-0 pre-contact consult, a
+ * mid-flight consult, or a post-stall park. That is the point of a budget
+ * rather than a per-flavour ration: what it bounds is how much of one person's
+ * attention one negotiation may spend, and the flavour of the park is not
+ * something the person experiences.
+ */
+export function countPrincipalAskUserTurns(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+  userId: string,
+): number {
+  return askUserSenderIds(messages).filter((senderId) => senderId === `agent:${userId}`).length;
+}
+
+/**
+ * The topics this principal has already been asked about in this negotiation,
+ * oldest first: the checklist dimension each ask named, and the answerhood it
+ * declared for that dimension.
+ *
+ * Read off the persisted asks themselves, so both things they carry survive a
+ * park, a resume and a fresh process with nothing to keep in step:
+ *
+ *  - "a topic is asked once" needs the dimensions, and
+ *  - scoring an answer against the map the ask DECLARED — rather than
+ *    re-interpreting the answer freely on the resumed turn — needs the map,
+ *    which the rendered turn history does not carry (it renders action,
+ *    reasoning and message only).
+ *
+ * Asks from before the checklist protocol, and policy-inferred consultations,
+ * name no dimension and contribute nothing: they spent budget, but they closed
+ * no topic and declared no answerhood.
+ */
+export function askedChecklistTopics(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+  userId: string,
+): Array<{ dimension: string; answerhood?: Answerhood }> {
+  return messages
+    .filter((message) => message.senderId === `agent:${userId}`)
+    .flatMap((message) => {
+      const dataPart = (message.parts as Array<{ kind?: string; data?: { action?: string; askUser?: { dimension?: unknown; answerhood?: unknown } } }>)
+        .find((part) => part.kind === "data");
+      const data = dataPart?.data;
+      if (data?.action !== "ask_user") return [];
+      const dimension = data.askUser?.dimension;
+      if (typeof dimension !== "string" || dimension.trim().length === 0) return [];
+      const answerhood = AnswerhoodSchema.safeParse(data.askUser?.answerhood);
+      return [{
+        dimension: dimension.trim(),
+        ...(answerhood.success ? { answerhood: answerhood.data } : {}),
+      }];
+    });
 }
 
 /**

@@ -11,6 +11,7 @@
  */
 
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '../schemas/negotiation-state.schema.js';
+import type { ChecklistDraftItem } from '../schemas/negotiation-checklist.schema.js';
 import type { NegotiatorMemoryEntry } from '../../negotiations/negotiation.memory.js';
 import type { AttributedPriorDialogue } from '../../negotiations/negotiation.attribution.js';
 import type { NegotiationPrivateConsultation } from './database.interface.js';
@@ -42,6 +43,23 @@ export interface NegotiationTurnPayload {
    * retrieved.
    */
   negotiatorMemory?: NegotiatorMemoryEntry[];
+  /**
+   * The negotiation's checklist as it currently stands (checklist plan §2):
+   * the frozen dimensions with their latest scores. Present only under the
+   * stances that run the checklist protocol; empty on the turn that authors
+   * it. A dispatched agent scores the same dimensions the in-process
+   * negotiator does — the graph re-freezes whatever comes back, so this is
+   * context, not an authority.
+   */
+  checklist?: ChecklistDraftItem[];
+  /**
+   * This principal's question budget for the negotiation: how many they have
+   * already been asked, and how many they may be asked in total (the turn-0
+   * pre-contact consult included).
+   */
+  questionBudget?: { spent: number; total: number };
+  /** Checklist dimensions this principal has already been asked about. */
+  askedDimensions?: string[];
   /** Recipient-private ask-user consultation, present only for that recipient's turn. */
   privateConsultation?: NegotiationPrivateConsultation;
   /**

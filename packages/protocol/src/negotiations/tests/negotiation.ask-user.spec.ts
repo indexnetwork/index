@@ -114,7 +114,7 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     screenedOut: false,
     ownSuggestedRole: "peer" as const,
     priorActions: [] as const,
-    previouslyConsulted: false,
+    consultationBudgetSpent: false,
     hasExactResumeCoordinate: true,
     lifecycleValid: true,
   };
@@ -141,7 +141,7 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     { action: "decline" as const },
     { action: "reject" as const },
     { action: "withdraw" as const },
-    { previouslyConsulted: true },
+    { consultationBudgetSpent: true },
     { hasExactResumeCoordinate: false },
     { lifecycleValid: false },
   ])("fails closed for excluded state %#", (partial) => {

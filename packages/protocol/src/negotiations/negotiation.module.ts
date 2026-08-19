@@ -34,7 +34,30 @@ export {
   resolveSeat,
   seatViolationMessage,
 } from "./negotiation.protocol.js";
-export { countNegotiationAskRounds } from "./negotiation.graph.shared.js";
+export { countNegotiationAskRounds, countPrincipalAskUserTurns } from "./negotiation.graph.shared.js";
+export {
+  QUESTION_BUDGET_PER_PRINCIPAL,
+  configuredQuestionBudgetPerPrincipal,
+  MAX_CHECKLIST_DIMENSIONS,
+  MIN_CHECKLIST_DIMENSIONS,
+  NegotiationChecklistSchema,
+  assessAskAdmissibility,
+  authorChecklist,
+  checklistFromTurns,
+  checklistVerdictState,
+  isChecklistAuthored,
+  reconcileChecklist,
+  renderChecklistSection,
+} from "./negotiation.checklist.contracts.js";
+export type {
+  Answerhood,
+  AskAdmissibility,
+  AskInadmissibility,
+  ChecklistItem,
+  ChecklistKind,
+  ChecklistResult,
+  NegotiationChecklist,
+} from "./negotiation.checklist.contracts.js";
 export { NEGOTIATION_PARK_REASONING, NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 export type { NegotiationStallGap, NegotiationStallReason, StallGapAuthorInput } from "./negotiation.stall-gap.js";
 export {

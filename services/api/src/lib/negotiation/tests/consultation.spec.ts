@@ -71,7 +71,7 @@ describe('external owner consultation eligibility', () => {
       action: 'counter',
       ownSuggestedRole: 'patient',
       priorActions: ['outreach'],
-      previouslyConsulted: false,
+      consultationBudgetSpent: false,
       lifecycleValid: true,
       hasExactResumeCoordinate: true,
     });

@@ -195,6 +195,27 @@ export { LensInferrer } from "./discovery/index.js";
 export { NegotiationInsightsGenerator } from "./negotiations/negotiation.module.js";
 export type { NegotiationDigest } from "./negotiations/negotiation.module.js";
 export { IndexNegotiator } from "./negotiations/negotiation.module.js";
+export {
+  QUESTION_BUDGET_PER_PRINCIPAL,
+  assessAskAdmissibility,
+  authorChecklist,
+  checklistFromTurns,
+  checklistVerdictState,
+  configuredQuestionBudgetPerPrincipal,
+  countPrincipalAskUserTurns,
+  isChecklistAuthored,
+  reconcileChecklist,
+  renderChecklistSection,
+} from "./negotiations/negotiation.module.js";
+export type {
+  Answerhood,
+  AskAdmissibility,
+  AskInadmissibility,
+  ChecklistItem,
+  ChecklistKind,
+  ChecklistResult,
+  NegotiationChecklist,
+} from "./negotiations/negotiation.module.js";
 export { NegotiationScreener } from "./negotiations/negotiation.module.js";
 export { NegotiationReflector } from "./negotiations/negotiation.module.js";
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./negotiations/negotiation.module.js";

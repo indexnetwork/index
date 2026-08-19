@@ -352,7 +352,7 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       screenedOut: false,
       ownSuggestedRole: "peer" as const,
       priorActions: [] as const,
-      previouslyConsulted: false,
+      consultationBudgetSpent: false,
       hasExactResumeCoordinate: true,
       lifecycleValid: true,
     };
@@ -378,7 +378,7 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
         { protocolVersion: "v1" as const },
         { isFinalTurn: true },
         { screenedOut: true },
-        { previouslyConsulted: true },
+        { consultationBudgetSpent: true },
         { hasExactResumeCoordinate: false },
         { lifecycleValid: false },
       ]) {

@@ -9,11 +9,30 @@
  *
  * `NEGOTIATOR_STANCE` makes that stance configurable instead of hard-coded:
  *
- * | stance      | framing                              | value bar        | query rule              | consult propensity      | evidence provenance      | responder check          | deadlock  |
+ * | stance      | framing                              | value bar        | query rule              | consult propensity      | checklist protocol       | responder check          | deadlock  |
  * |-------------|--------------------------------------|------------------|-------------------------|-------------------------|--------------------------|--------------------------|-----------|
  * | `advocate`  | argue the case (today)               | none             | mandate (today)         | none (today)            | none (today)             | none (today)             | bargain   |
- * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | own record ≠ client's evidence | verify the opening | bargain   |
- * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | (same — no sharpening) | + probe before accepting | stalemate |
+ * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | checklist + basis + ask rule | score, do not agree  | bargain   |
+ * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | (same — no sharpening) | + spend a question first | stalemate |
+ *
+ * **The checklist protocol is the core of the assessing stances**
+ * (docs/plans/2026-08-19-checklist-negotiations.md). Under `evaluator` and
+ * `skeptic` a negotiation runs on an explicit, pre-registered checklist: 3–5
+ * dimensions written on turn 1 from the two intents alone, frozen after,
+ * re-scored each turn from the commitment store, with the verdict a function
+ * of the scores rather than of free-form judgment. The shape, the freeze and
+ * the ask-admissibility rule live in `negotiation.checklist.contracts.ts`;
+ * this module owns the prompt law that makes an agent obey them.
+ *
+ * Two shipped fragments were folded INTO that law rather than kept beside it:
+ * the evidence-provenance rule (#1448) is now the `basis` discipline — an
+ * agent's own conclusions are decisions, not commitments, so they cannot score
+ * a dimension — and the responder verification rules (#1446) are now the
+ * responding seat's scoring duty: the opening is the other agent's claim, so
+ * it cannot be the basis for `mutual want`, and agreeing is where the
+ * two-sided handshake spends the client's attention. Neither duty was dropped;
+ * both stopped being prose about verification and became rules about what may
+ * score a dimension.
  *
  * Design constraints (hard):
  * - **`advocate` is byte-identical.** Every fragment below is additive and
@@ -37,18 +56,19 @@
  * specs pin that those tokens appear only where the seat legally holds them.
  *
  * One family of fragments is the exception to that seat-blindness by
- * construction rather than by accident: the responder verification rules
+ * construction rather than by accident: the responder scoring rules
  * (`stanceVerifiesResponderFit`) address a duty only the RESPONDING seat has —
- * reading someone else's opening — so `stanceActionRules` takes the seat and
- * renders them only there. They still name no action and no mechanism, so the
- * seat's own rules and the graph's grants stay the sole authority on what this
- * turn may actually do.
+ * scoring dimensions against an opening someone else authored — so
+ * `stanceActionRules` takes the seat and renders them only there. They still
+ * name no action and no mechanism, so the seat's own rules and the graph's
+ * grants stay the sole authority on what this turn may actually do.
  *
  * The seat parameter is a scoping tool, not a licence to fork: a duty both
  * seats hold stays in the shared prefix even when the failure that motivated it
- * showed up on one seat. `EVIDENCE_PROVENANCE_RULE` is the case in point — it
- * was written for a responder accept, and it renders seat-blind, because an
- * initiator can cite its own prior openings' claims exactly as readily.
+ * showed up on one seat. The basis discipline is the case in point — it was
+ * written for a responder accept that grounded itself in its own past
+ * acceptances, and it renders seat-blind, because an initiator can cite its own
+ * prior openings' claims exactly as readily.
  */
 
 import type { NegotiationSeat } from "../shared/schemas/negotiation-state.schema.js";
@@ -87,10 +107,26 @@ export function stanceQueryMatchIsNecessaryNotSufficient(stance: NegotiatorStanc
 }
 
 /**
- * Whether this stance asks the RESPONDING seat to verify the opening's account
- * of the fit before accepting it, rather than reading that account as evidence.
+ * Whether this stance gives the RESPONDING seat its own scoring duty: the
+ * opening is the other agent's claim about this client, so it cannot be the
+ * basis for a checklist dimension — least of all the mutual-want one it most
+ * wants to settle.
  */
 export function stanceVerifiesResponderFit(stance: NegotiatorStance): boolean {
+  return stance !== "advocate";
+}
+
+/**
+ * Whether this stance runs the checklist protocol: a pre-registered
+ * conjunctive screen, scored from the commitment store, with asking as the
+ * normal way to resolve an unknown.
+ *
+ * `advocate` does not, and that is what keeps its prompt byte-identical — the
+ * caller reads this to decide whether the turn schema even carries a checklist
+ * field, so a negotiator under `advocate` is never handed a field its rules
+ * never mention.
+ */
+export function stanceUsesChecklist(stance: NegotiatorStance): boolean {
   return stance !== "advocate";
 }
 
@@ -182,116 +218,179 @@ const CONSULT_PROPENSITY_RULE = `
 const SKEPTIC_CONSULT_SHARPENING = ` For you this is a gate, not a preference: an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed, and consulting {userName} is how that assumption gets verified.`;
 
 /**
- * Evidence provenance — assessing stances, BOTH seats.
+ * The checklist protocol — assessing stances, BOTH seats.
  *
- * The third sibling of the consult-propensity and responder-verification
- * fragments, and written for the way the second one was formally obeyed and
- * substantively evaded. A responder accepted a first contact grounded — as the
- * responder rule demands — in its OWN side's record rather than in the
- * opening's characterization. But the record it reached for was its own prior
- * conclusions, surfaced through memory and prior dialogue: "{userName}'s
- * previous acceptances ... reinforce this strong alignment", from acceptances
- * this same negotiator had made under a weaker bar. Circular verification —
- * I accepted before, therefore accepting is grounded.
+ * The policy failure this answers: with the assessing stances live, three days
+ * of dev traffic produced 24 owner-involving negotiations, 23 of them concluded
+ * agent-only. Asking was an exception (a stall, a flagged constraint), and
+ * skeptic verification almost always reached accept-or-pass from profile
+ * evidence alone — so it concluded, and concluding means never asking. The
+ * inversion is structural rather than exhortative: name the dimensions before
+ * any evidence arrives, and asking becomes the ordinary move for an unknown
+ * one instead of a special case.
  *
- * So the rule the verification duty was missing: an agent's own output is not
- * its client's evidence. Verification grounds in what a PERSON authored — never
- * in what an agent concluded about them, on either side of the table. The
- * fragment names exactly the client-authored sections this prompt actually
- * renders (intents, profile, and the client's own answers between sessions),
- * so the ground it points at is one the negotiator can see.
+ * Written as ONE law in three bullets — what the checklist is, what may score
+ * it, and when to ask — because they only hold together: freezing the
+ * dimensions is what makes "unknown" meaningful, the basis discipline is what
+ * makes "unknown" honest, and the admissibility rule is what makes an unknown
+ * askable rather than fatal.
  *
- * Two boundaries it deliberately does not cross:
- * - **It does not ban memory.** Memory keeps the job it has (advisory notes on
- *   how to argue, what has been asked, what each side said); what changes is
- *   only what may count as verification. A fragment that told the negotiator to
- *   ignore its memory would fight `renderNegotiatorMemorySection` rather than
- *   complete it.
- * - **It does not forbid resolving a repeat signal quickly.** The continuation
- *   policy in `negotiation.agent.ts` ("materially the same as one you
- *   previously evaluated ... you may resolve quickly") governs how much EFFORT
- *   a re-run deserves; this governs what counts as GROUNDS. The nearest
- *   existing neighbor is the IND-569 attribution policy — "do not treat their
- *   conclusions as decisions about this opportunity" — which scopes conclusions
- *   across opportunities; this scopes them across the decision/evidence line.
- *
- * No `skeptic` sharpening: the prior that most matches are not worth making
- * does not change what an unverified assertion is worth. It is worth nothing
- * under either assessing stance, and a sharpening here would only restate the
- * rule louder.
- *
- * Names no action and no mechanism, like every other fragment in this module.
+ * Names no action and no mechanism, like every fragment here. "Conclude in
+ * their favour" and "end the negotiation" describe the move; which token
+ * carries it is the seat's own rules and the graph's grants.
  */
-const EVIDENCE_PROVENANCE_RULE = `
-- YOUR OWN RECORD IS DECISIONS, NOT EVIDENCE: your earlier turns, the connections you proposed or accepted on {userName}'s behalf, and the conclusions you carry in memory are YOUR record — decisions you made for them, reached under whatever bar you applied at the time. Leaning on one ("they have been open to this before", "the fit was already established") re-asserts a judgment instead of checking it, and reads your own past eagerness back as {userName}'s interest. Ground the fit in what a person stated for themselves: {userName}'s own intents, profile, and the answers they gave you directly on your side; the counterparty's own intents and profile on theirs. Prior dialogue and memory keep their job — what has already been asked, what each side actually said, how to pitch this one — but they are the history of the argument, not grounds for it. A fit that was not verified does not become verified by having been asserted before.`;
+const CHECKLIST_PROTOCOL_RULE = `
+- THE CHECKLIST DECIDES, NOT YOUR IMPRESSION: this negotiation runs on an explicit checklist of 3 to 5 dimensions that settle whether {userName} and the other side should meet. On the FIRST turn you write it, from the two intents alone: one dimension for MUTUAL WANT — does each side want what the other is offering — which is not one dimension among many but what a match IS, plus only what genuinely decides this pairing (location or format, stage or type fit, timing, one hard constraint). A dimension no plausible answer could flip is decoration, not a dimension.
+- The checklist is FIXED once written. Later turns re-score it and do nothing else to it: no dimension is added because the exchange went somewhere you did not expect, and none is quietly dropped because it turned inconvenient. Each turn, score each dimension ok, conflict, or unknown, and record the commitment that score came from as its basis.`;
 
 /**
- * Responder verification — assessing stances, RESPONDING seat only.
+ * The basis discipline — assessing stances, BOTH seats.
  *
- * Two structural gaps this closes, both visible in the failure it was written
- * for: a first-contact outreach accepted in one exchange, on reasoning that
- * restated the opening's own fit claim back as the reason for accepting.
+ * This is where the evidence-provenance rule (#1448) now lives, rewritten
+ * rather than restated. The failure it was written for was circular
+ * verification: a responder grounding an accept in its own side's "record",
+ * where that record was the same negotiator's earlier acceptances recalled
+ * through memory. As a free-standing duty ("ground the fit in what a person
+ * stated") it was a standard the agent graded itself against. As the basis
+ * discipline it is a property of the artifact: a score with nothing behind it
+ * is dropped back to `unknown` by `normalizeChecklistItem`, so an unbacked
+ * `ok` cannot conclude a match even if the agent believes it.
  *
- * 1. The opening enters the prompt as if it were evidence. It is not: it is
- *    advocacy authored by the counterparty's agent, and its most load-bearing
- *    move is characterizing what THIS client wants. Nothing else in the prompt
- *    tells the responding seat to treat that characterization as a claim.
- * 2. `VALUE_BAR_RULE` has no bite in this seat. "Most matches are not worth
- *    making" reads as being about MAKING matches, and a responder frames its
- *    decision as "would my client be open to connecting?" — nearly costless,
- *    nearly certain to be yes. So the same opportunity-cost currency is
- *    restated in the terms this seat actually spends it: accepting puts a
- *    connection in front of the client for approval.
+ * Two boundaries it deliberately keeps from the fragment it replaces:
+ * - **It does not ban memory.** Memory keeps the job it has — advisory notes
+ *   on how to argue, what has been asked, what each side said. What changes is
+ *   only what may SCORE a dimension. A rule that told the negotiator to ignore
+ *   its memory would fight `renderNegotiatorMemorySection` rather than complete
+ *   it.
+ * - **It does not forbid resolving a repeat signal quickly.** The continuation
+ *   policy in `negotiation.agent.ts` governs how much EFFORT a re-run
+ *   deserves; this governs what counts as GROUNDS.
  *
- * Conditional by construction: the steer applies where the fit case RESTS on
- * the initiator's interpretation. A match the client's own criteria and the
- * counterparty's own evidence support independently may still be accepted on
- * first contact — which is why no "always"/"never accept" wording appears here
- * and a spec pins its absence.
- *
- * Names no action and no mechanism, like every other fragment in this module:
- * "one more exchange" and "consulting {userName}" describe the move, and the
- * seat's own rules decide which token carries it (and whether the grant for it
- * is even live this turn).
+ * No `skeptic` sharpening: the prior that most matches are not worth making
+ * does not change what an unbacked score is worth. It is worth nothing under
+ * either assessing stance.
  */
-const RESPONDER_VERIFICATION_RULE = `
-- THE OPENING IS ADVOCACY, NOT EVIDENCE: what reached {userName} was written by the other side's agent to make this match sound worth taking, and its account of the fit — what {userName} is looking for, why the two sides line up — is that agent's CLAIM about {userName}, not a fact you have checked. Test it against {userName}'s OWN intent and against what the counterparty's own profile and intents actually show. Restating the opening's fit claim back as your reason is agreement, not verification.
-- WHAT ACCEPTING SPENDS: accepting is not the free or agreeable option — it puts a connection in front of {userName} for approval and spends the same finite attention the bar above governs. "Would {userName} be open to connecting?" is a bar almost anything clears, and it is not the bar. An accept on the first exchange has to be grounded in what {userName} themselves stated they were looking for, met by evidence about the counterparty that stands up without the opening's reading of it. Where the case for fit still rests on how the other agent characterized {userName}'s needs, the cheap move is one more exchange — put the specific gap to them, or counter with what would have to be true — and where the doubt is about {userName}'s own criteria rather than the counterparty's evidence, consulting {userName} settles it instead.`;
+const CHECKLIST_BASIS_RULE = `
+- SCORE ONLY FROM WHAT SOMEONE STATED: a dimension may be scored ok or conflict from the commitment record alone — what the two principals themselves put on it: their own intents, their profile, the premises they hold, and the answers they have given in this negotiation. Write that commitment into the dimension's basis. A score with nothing behind it is an assertion rather than a finding, and it belongs back at unknown.
+- YOUR OWN RECORD IS DECISIONS, NOT COMMITMENTS: your earlier turns, the connections you proposed or accepted on {userName}'s behalf, and the conclusions you carry in memory are decisions you made for them, reached under whatever bar you applied at the time. They cannot be the basis for anything: leaning on one ("they have been open to this before", "the fit was already established") re-asserts a judgment instead of checking it, and reads your own past eagerness back as {userName}'s interest. Prior dialogue and memory keep their job — what has already been asked, what each side actually said, how to pitch this one — but they are the history of the argument, not commitments in it.
+- UNKNOWN IS A REAL SCORE, NOT A GAP TO PAPER OVER: a dimension nothing on the record settles is unknown, and it stays unknown until something does. Do not round it to ok because nothing contradicts it, because the two profiles look adjacent, or because the other agent characterized their own client as flexible about it.`;
+
+/**
+ * Ask admissibility — assessing stances, BOTH seats.
+ *
+ * The value-of-information rule, encoded as qualitative preconditions rather
+ * than computed: ask when an answer could change the verdict and only the
+ * client can give it. The answerhood map is the pivotality proof made
+ * checkable — an author who cannot say which answers score ok and which score
+ * conflict has no question worth the client's attention, and the graph refuses
+ * an ask whose map is missing or whose two branches say the same thing.
+ *
+ * Sibling of `CONSULT_PROPENSITY_RULE` rather than a replacement for it: that
+ * one sets when the agent should WANT to ask, this one sets when it MAY, and
+ * the two are what turn "prefer consulting over assuming" into a move with a
+ * shape. Deliberately says nothing about how a question is delivered — the
+ * seat's rules own that.
+ */
+const ASK_ADMISSIBILITY_RULE = `
+- ASKING {userName} IS THE ORDINARY WAY TO RESOLVE AN UNKNOWN, not a last resort — and it is admissible only when all five hold: (1) the dimension is unknown; (2) some plausible answer would change the verdict; (3) the missing fact is {userName}'s own to hold — their preference, their constraint, their willingness — rather than something the record already settles; (4) that topic has not been asked in this negotiation; (5) their question budget is not spent. Fail any one of the five and do not ask: where the record settles it, score it and move on.
+- ONE DIMENSION PER QUESTION, WITH ITS ANSWERHOOD DECLARED FIRST: name the checklist dimension the question is about, and before you ask, say what kind of answer would score that dimension ok and what kind would score it conflict. If you cannot write both, no answer would flip anything and the question must not be asked. Do not bundle two topics into one question — an answer to a bundle scores neither dimension.
+- A TOPIC IS ASKED ONCE, HOWEVER IT IS WORDED: a vague but non-negative answer counts as ok — people settle details when they meet — and raising the same topic again in different words is a repeat. Once the budget is spent, stop asking and decide on what you hold.`;
+
+/**
+ * `skeptic` sharpening of the ask rule, appended to the same bullet block (the
+ * same additive pattern as the other sharpenings): under the not-worth-making
+ * prior the cheap answer is to walk, so the pressure this stance needs
+ * relieving is the temptation to treat an unresolved unknown as a reason to
+ * end the negotiation. It is not one — ending on an unknown decides for the
+ * client exactly as much as agreeing on one does.
+ */
+const SKEPTIC_ASK_SHARPENING = ` For you the trap runs the other way from the obvious one: your prior makes ending the negotiation the cheap answer, so an unknown you could have asked about and instead treated as a reason to walk decides for {userName} just as much as a match closed on a guess. Spend the budget on the pivotal dimensions.`;
+
+/**
+ * Verdict law — assessing stances, BOTH seats.
+ *
+ * The stopping rule, stated as a rule. A match verdict is not a certificate
+ * that everything checks out; it is the judgment that the first conversation
+ * has become the cheaper instrument for gathering what is left. That is why a
+ * spent budget with nothing in conflict resolves to a match rather than to a
+ * pass, and why an unknown can never end a negotiation on its own — only a
+ * conflict, with the commitment behind it named, can.
+ */
+const CHECKLIST_VERDICT_RULE = `
+- THE VERDICT IS A FUNCTION OF THE CHECKLIST: conclude in favour of the match when every dimension is ok, or when nothing is in conflict and what remains unknown is the kind of thing two people settle in a first conversation — which is where a spent question budget leaves you. End the negotiation against the match when a dimension is in conflict, naming it and the commitment it conflicts with, or when the two intents are simply unrelated. An unknown is not a reason to end anything: unknowns get asked about, or carried into the meeting.
+- A MATCH MEANS "WORTH A FIRST CONVERSATION", NOTHING MORE: it is the point where the two of them talking becomes the cheaper way to learn the rest, not a finding that everything checks out. Deal terms, valuation, equity and logistics stay outside this dialogue — do not negotiate them here.`;
+
+/**
+ * Responder scoring — assessing stances, RESPONDING seat only.
+ *
+ * The #1446 duties, rewritten as scoring rules. Both survive, and both bite
+ * harder in this form:
+ *
+ * 1. "The opening is advocacy, not evidence" becomes a statement about what
+ *    may be a BASIS. The opening's most load-bearing move is characterizing
+ *    what THIS client wants, which is exactly the mutual-want dimension — and
+ *    a characterization is not a commitment, so it cannot score it. The old
+ *    fragment asked the seat to test the claim; this one denies it standing.
+ * 2. "What accepting spends" becomes this seat's place in the two-sided
+ *    handshake. The opportunity-cost bar has no bite in a seat that frames its
+ *    decision as "would my client be open to connecting?", so it is restated
+ *    in the currency this seat actually spends — and pointed at the checklist,
+ *    which is now what the answer has to come from.
+ *
+ * Conditional by construction, like the fragment it replaces: where the
+ * dimensions score from the client's own intent and the counterparty's own
+ * evidence, closing on first contact stays right. No "always"/"never" wording
+ * appears here and a spec pins its absence.
+ */
+const RESPONDER_CHECKLIST_RULE = `
+- THE OPENING IS ADVOCACY, NOT A COMMITMENT: what reached {userName} was written by the other side's agent to make this match sound worth taking, and its account of what {userName} wants is that agent's CLAIM about them — not something {userName} stated — so it cannot be the basis for any dimension, least of all mutual want. Score that one from {userName}'s OWN intent, and score the rest from what the counterparty's own intents and profile actually show. Restating the opening's fit claim back as your basis is agreement, not scoring.
+- WHAT AGREEING SPENDS: this seat is where the two-sided handshake closes, so agreeing puts a connection in front of {userName} for approval and spends the same finite attention the bar above governs. "Would {userName} be open to connecting?" is a bar almost anything clears, and it is not the bar — the checklist is. Where the other side has proposed the match and your checklist holds no conflict, close it. Where a pivotal dimension is still unknown and the answer is {userName}'s to give, that is what asking is for; where the gap is about the counterparty instead, one more exchange costs them nothing.`;
 
 /**
  * `skeptic` sharpening of the responder rule, appended to the same bullet (the
  * same additive pattern as `SKEPTIC_CONSULT_SHARPENING`): under the
- * not-worth-making prior, closing on the opening alone is the exception rather
- * than the default. The escape hatch is restated explicitly here because this
- * is where the pressure is highest and an over-read would turn a lean into a
- * ban on first-contact accepts.
+ * not-worth-making prior, closing while a pivotal dimension is unscored is the
+ * exception rather than the default. The escape hatch is restated explicitly
+ * because this is where the pressure is highest and an over-read would turn a
+ * lean into a ban on first-contact agreement.
  */
-const SKEPTIC_RESPONDER_SHARPENING = ` For you an accept on the first exchange is the exception, not the default: where the fit case still rests on the opening's own characterization, probe once before accepting — one exchange costs the counterparty nothing and {userName} very little, while an accept you cannot ground spends their attention on a match no one has checked. Where {userName}'s stated criteria and the counterparty's own evidence carry the fit without that characterization, accepting straight away is still the right call.`;
+const SKEPTIC_RESPONDER_SHARPENING = ` For you, closing while a pivotal dimension is still unknown is the exception rather than the default: where the case rests on the opening's own characterization, spend one question or one exchange before you close — it costs the counterparty nothing and {userName} very little, while a match closed on unscored dimensions spends their attention on something no one checked. Where {userName}'s own intent and the counterparty's own evidence already score every dimension, closing straight away is still the right call.`;
 
 /**
  * Extra action-rule lines contributed by the stance, appended after the seat's
  * own rules. Empty under `advocate` → byte-identical.
  *
- * `seat` scopes the responder verification rules to the seat that did NOT
- * open. Everything else here is seat-blind: the value bar, the consult
- * propensity and the evidence-provenance rule are duties of both seats, and
- * the seat parameter must not become a reason to fork them.
+ * `seat` scopes the responder scoring rules to the seat that did NOT open.
+ * Everything else here is seat-blind: the value bar, the consult propensity and
+ * the whole checklist protocol are duties of both seats, and the seat parameter
+ * must not become a reason to fork them.
  *
- * Order matters twice over. The seat-blind rules come first, so the initiator's
- * rendering stays a strict PREFIX of the responder's — the invariant the stance
- * spec checks by subtraction. And provenance lands immediately before the
- * responder rules, so "ground the accept in what {userName} themselves stated"
- * is already qualified by whose statements count when the responder reads it.
+ * Order is load-bearing three times over. The seat-blind rules come first, so
+ * the initiator's rendering stays a strict PREFIX of the responder's — the
+ * invariant the stance spec checks by subtraction. Within them the protocol
+ * reads in the order it is used: what the checklist is, what may score it, when
+ * an unknown may be asked about, what the scores add up to. And the responder
+ * rules land last, after the basis discipline they are a special case of, so
+ * "the opening cannot be a basis" arrives already knowing what a basis is.
  */
 export function stanceActionRules(stance: NegotiatorStance, seat: NegotiationSeat): string {
   if (!stanceAppliesValueBar(stance)) return "";
   const consultRule = stance === "skeptic"
     ? CONSULT_PROPENSITY_RULE + SKEPTIC_CONSULT_SHARPENING
     : CONSULT_PROPENSITY_RULE;
+  const askRule = stance === "skeptic"
+    ? ASK_ADMISSIBILITY_RULE + SKEPTIC_ASK_SHARPENING
+    : ASK_ADMISSIBILITY_RULE;
   const responderRule = seat === "counterparty" && stanceVerifiesResponderFit(stance)
-    ? RESPONDER_VERIFICATION_RULE + (stance === "skeptic" ? SKEPTIC_RESPONDER_SHARPENING : "")
+    ? RESPONDER_CHECKLIST_RULE + (stance === "skeptic" ? SKEPTIC_RESPONDER_SHARPENING : "")
     : "";
-  return VALUE_BAR_RULE + consultRule + EVIDENCE_PROVENANCE_RULE + responderRule;
+  return VALUE_BAR_RULE
+    + consultRule
+    + CHECKLIST_PROTOCOL_RULE
+    + CHECKLIST_BASIS_RULE
+    + askRule
+    + CHECKLIST_VERDICT_RULE
+    + responderRule;
 }
 
 /**

@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { StructuredQuestionSchema } from "./structured-question.schema.js";
+import { AnswerhoodSchema, ChecklistDraftSchema } from "./negotiation-checklist.schema.js";
 
 // ─── Zod schemas (available for runtime validation) ───────────────────────────
 
@@ -67,6 +68,28 @@ export const AskUserPayloadSchema = z.object({
    * `null` and omitted read as absent identically downstream.
    */
   question: StructuredQuestionSchema.nullable().optional().transform((value) => value ?? undefined),
+  /**
+   * The checklist dimension this ask is about (checklist plan §4). One
+   * dimension per ask, always: the answerhood map below is only well-defined
+   * per-dimension, and bundling two topics into one question makes the
+   * principal's answer unscoreable against either.
+   *
+   * Optional for the same reason `question` is: v1 turns, external agents, and
+   * the enum-only path must all keep validating. An ask that names no
+   * dimension is inadmissible under the checklist protocol (the graph refuses
+   * it) but must still PARSE — a schema that rejected it would fail the turn
+   * instead of downgrading the move.
+   */
+  dimension: z.string().min(1).max(60).nullable().optional().transform((value) => value ?? undefined),
+  /**
+   * What answers would score the dimension `ok` and what would score it
+   * `conflict`, declared BEFORE the question is asked. This is the pivotality
+   * proof: an author who cannot say what answer would flip the verdict is
+   * asking a question with no value of information. It also makes answer
+   * consumption deterministic — the answer is scored against the map the ask
+   * declared, not re-interpreted freely on the resumed turn.
+   */
+  answerhood: AnswerhoodSchema.nullable().optional().transform((value) => value ?? undefined),
 }).strict();
 export type AskUserPayload = z.infer<typeof AskUserPayloadSchema>;
 
@@ -82,6 +105,18 @@ export const NegotiationTurnSchema = z.object({
   message: z.string().nullable().optional(),
   /** Present when action is `ask_user` (v2, P3.2). */
   askUser: AskUserPayloadSchema.nullable().optional(),
+  /**
+   * The negotiation's checklist as this turn scored it (checklist plan §2).
+   *
+   * Persisted on every turn under the checklist protocol, which makes the turn
+   * record the checklist's only store: a continuation recovers the frozen
+   * dimensions from the same messages it recovers the dialogue from, with no
+   * second table to keep in step. Optional and permissive here for the same
+   * reason `askUser` is — v1 turns, external agents and pre-checklist history
+   * must keep validating, and the domain module (`negotiation.checklist.
+   * contracts.ts`) is what enforces the invariants on the way in.
+   */
+  checklist: ChecklistDraftSchema.nullable().optional(),
 });
 export type NegotiationTurn = z.infer<typeof NegotiationTurnSchema>;
 

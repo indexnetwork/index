@@ -78,6 +78,14 @@ export interface ParkedNegotiation {
   /** Closed consultation category from the park turn's `askUser.reason`. */
   reason?: string;
   /**
+   * The checklist dimension this park is about, from the ask's
+   * `askUser.dimension` (checklist plan §4). Carried through to the question
+   * block as the step's label. Absent for parks whose ask named none — a
+   * policy-inferred consultation, a post-stall gap, or anything authored
+   * before the checklist protocol.
+   */
+  dimension?: string;
+  /**
    * The negotiator-authored question persisted at park time. Absent only when
    * the mid-flight safety gate stripped it from the turn.
    */
@@ -92,7 +100,7 @@ interface RawTurn {
   action?: unknown;
   assessment?: { reasoning?: unknown };
   message?: unknown;
-  askUser?: { reason?: unknown; question?: unknown };
+  askUser?: { reason?: unknown; question?: unknown; dimension?: unknown };
 }
 
 /** The `data` payload of an A2A turn message, or null for non-turn parts. */
@@ -278,6 +286,9 @@ export class ParkedNegotiationReaderAdapter {
       opportunityId,
       kind,
       ...(typeof askUser?.reason === 'string' ? { reason: askUser.reason } : {}),
+      ...(typeof askUser?.dimension === 'string' && askUser.dimension.trim().length > 0
+        ? { dimension: askUser.dimension.trim() }
+        : {}),
       ...(question ? { question } : {}),
       transcript: record.turns,
       parkedAt: record.lastCreatedAt ?? new Date(0),

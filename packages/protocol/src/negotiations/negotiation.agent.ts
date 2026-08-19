@@ -7,7 +7,8 @@ import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../s
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage } from "./negotiation.client-dm.js";
 import { renderBargainingShiftSection } from "./negotiation.deadlock.js";
-import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stancePreContactConsultRule, stanceQuerySatisfiedRule } from "./negotiation.stance.contracts.js";
+import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stancePreContactConsultRule, stanceQuerySatisfiedRule, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
+import { QUESTION_BUDGET_PER_PRINCIPAL, renderChecklistSection, type Answerhood, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import { isPreContactConsultResume } from "./negotiation.consultation-policy.js";
 import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "./negotiation.attribution.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -87,6 +88,23 @@ const ASK_USER_RULE = `
   - options: 2–4 of {userName}'s real decision options. Each label at most 120 characters; each description at most 280 characters, stating the CONSEQUENCE of choosing that option — what you would do next in this negotiation — not what it means. Never add an "Other" option; clients provide a free-text fallback automatically.
   - multiSelect: true ONLY when the options are not mutually exclusive (e.g. several priorities at once); false for a single either/or decision.
   - Do not name, quote, or describe the counterparty. {userName} can read the transcript, but the question itself must stand on its own without their identity or profile in it.`;
+
+/**
+ * Appended to `ASK_USER_RULE` when the checklist protocol is live (the
+ * assessing stances). The ask payload's two checklist fields are the schema
+ * form of the admissibility rule the stance fragments state: `dimension` binds
+ * the question to exactly one open unknown, and `answerhood` is the pivotality
+ * proof, written before the question rather than reconstructed after the
+ * answer arrives.
+ *
+ * Seat-level rather than a stance fragment for the same reason
+ * `PRE_CONTACT_ASK_USER_RULE` is: it names the action and the payload fields,
+ * which stance fragments may not, and it renders only where the grant already
+ * put that vocabulary in the prompt.
+ */
+const ASK_USER_CHECKLIST_RULE = `
+- The one-consultation ration in the rule above does not apply to you: under the checklist protocol {userName} may be asked up to ${QUESTION_BUDGET_PER_PRINCIPAL} questions across this whole negotiation, the pre-contact one included. How much of that budget is already spent is in the checklist section of your context.
+- On an "ask_user" turn, set askUser.dimension to the exact name of the checklist dimension this question resolves, and set askUser.answerhood.ok_when and askUser.answerhood.conflict_when to the kinds of answer that would score that dimension ok and conflict. Write them before you write the question: if you cannot say what answer would flip the dimension, the question changes nothing and should not be asked. An ask that names no dimension, names one the checklist does not carry, repeats a topic already asked, or whose two answerhood branches describe the same answer is refused, and the turn falls back to continuing the dialogue.`;
 
 /**
  * Appended to `ASK_USER_RULE` only when this turn actually carries a client-DM
@@ -200,6 +218,28 @@ export interface NegotiationAgentInput {
    */
   clientDm?: NegotiatorClientDmMessage[];
   /**
+   * The negotiation's checklist as it currently stands (checklist plan §2):
+   * frozen dimensions with their latest scores, re-derived by the graph from
+   * this negotiation's own turns. Empty/absent on the turn that authors it —
+   * the section then renders the authoring instruction instead. Ignored
+   * entirely under `advocate`, whose prompt carries no checklist protocol.
+   */
+  checklist?: ChecklistItem[];
+  /**
+   * Questions this turn's client has already been asked in this negotiation,
+   * including the turn-0 pre-contact consult. Rendered as the budget line so
+   * the agent can see what it has left before it decides to spend more.
+   */
+  questionsSpent?: number;
+  /**
+   * Topics this client has already been asked about, with the answerhood each
+   * ask declared. Rendered so "a topic is asked once" is checkable from the
+   * prompt rather than remembered — the graph enforces that either way — and
+   * so an answer that has since arrived is scored against the map its own ask
+   * declared rather than re-interpreted.
+   */
+  askedTopics?: Array<{ dimension: string; answerhood?: Answerhood }>;
+  /**
    * Prior dialogue with this counterparty grouped and labeled per opportunity
    * (IND-569). When present on a continuation it replaces the flat prior-turn
    * dump: earlier concluded opportunities and legacy unattributed turns render
@@ -312,10 +352,16 @@ export class IndexNegotiator {
     // `isDiscoverer` fallback decides it there too — under v1 the discoverer
     // is likewise the side that opens.
     const stance = configuredNegotiatorStance();
+    // The checklist protocol (checklist plan §2–§6) belongs to the assessing
+    // stances. Resolved once and used for BOTH the rules and the schema, so a
+    // turn is never offered a checklist field its prompt does not explain —
+    // and `advocate` keeps the byte-identical prompt AND the byte-identical
+    // generation schema it had before.
+    const checklistActive = stanceUsesChecklist(stance);
     const schema = turnSchemaFor(version, seat, isFinalTurn, {
       system: SystemNegotiationTurnSchema,
       final: FinalNegotiationTurnSchema,
-    }, { askUser: canAskUser });
+    }, { askUser: canAskUser, checklist: checklistActive });
     const model = createStructuredModel("negotiator", schema, { name: "index_negotiator" });
 
     const userName = input.ownUser.profile.name ?? "your user";
@@ -326,6 +372,7 @@ export class IndexNegotiator {
       : V1_ACTION_RULES) + stanceActionRules(stance, seat)
       + (canAskUser
         ? ASK_USER_RULE
+          + (checklistActive ? ASK_USER_CHECKLIST_RULE : "")
           + (preContactConsult ? PRE_CONTACT_ASK_USER_RULE + stancePreContactConsultRule(stance) : "")
           + (clientDm.length > 0 ? ASK_USER_DM_GROUNDING_RULE : "")
         : "");
@@ -447,6 +494,19 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
     // within, so it reads in the order it happened.
     const clientDmContext = renderNegotiatorClientDmSection(clientDm, userName);
 
+    // The checklist itself — state, so it sits with the context blocks rather
+    // than with the rules. Rendered on every checklist-protocol turn, including
+    // the one that has none yet: "no checklist exists, author it now" is the
+    // instruction that turn needs, and a turn that silently omitted the section
+    // would leave the rules describing an artifact the prompt never showed.
+    const checklistContext = checklistActive
+      ? renderChecklistSection({
+          checklist: input.checklist ?? [],
+          questionsSpent: input.questionsSpent ?? 0,
+          ...(input.askedTopics ? { askedTopics: input.askedTopics } : {}),
+        })
+      : '';
+
     const privateConsultationContext = input.privateConsultation
       ? `\n\n--- ${userName}'s private consultation (not shared with the counterparty) ---\n${input.privateConsultation.selectedOptions.join(', ')}${input.privateConsultation.freeText ? ` — ${input.privateConsultation.freeText}` : ''}\nUse this only to represent ${userName}'s preferences; do not disclose it unless they explicitly authorized that in their answer.\n`
       : '';
@@ -469,7 +529,7 @@ Skills: ${input.otherUser.profile.skills?.join(", ") ?? "N/A"}
 Intents:
 ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n")}
 
-Why this match was suggested: ${input.seedAssessment.reasoning}${hasPriorDialogue ? priorDialogueContext : historyText}${clientDmContext}${userAnswersContext}${privateConsultationContext}
+Why this match was suggested: ${input.seedAssessment.reasoning}${hasPriorDialogue ? priorDialogueContext : historyText}${clientDmContext}${userAnswersContext}${privateConsultationContext}${checklistContext}
 ${discoveryQueryReminder}
 ${preContactResume
   ? `You paused this opening turn to ask ${userName} the one thing you could not decide without. Their answer is above. Take the opening decision now: "outreach" to make the case, or "withdraw" to let the match pass without ever contacting ${otherName}.`

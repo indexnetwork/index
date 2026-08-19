@@ -20,6 +20,8 @@
 import { z } from "zod";
 
 import { AskUserPayloadSchema } from "../shared/schemas/negotiation-state.schema.js";
+import { ChecklistDraftSchema } from "../shared/schemas/negotiation-checklist.schema.js";
+import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
 // ─── Shared assessment fragment ──────────────────────────────────────────────
@@ -88,7 +90,7 @@ export function allowedActionsFor(
   version: NegotiationProtocolVersion,
   seat: NegotiationSeat,
   isFinalTurn = false,
-  opts?: AskUserOpts,
+  opts?: TurnVocabularyOpts,
 ): readonly NegotiationAction[] {
   if (version !== "v2") return isFinalTurn ? V1_FINAL_ACTIONS : V1_ACTIONS;
   const askUser = opts?.askUser === true && !isFinalTurn;
@@ -112,28 +114,63 @@ export function turnSchemaFor(
   seat: NegotiationSeat,
   isFinalTurn: boolean,
   v1Schemas: { system: z.ZodTypeAny; final: z.ZodTypeAny },
-  opts?: AskUserOpts,
+  opts?: TurnVocabularyOpts,
 ): z.ZodTypeAny {
-  if (version !== "v2") return isFinalTurn ? v1Schemas.final : v1Schemas.system;
-  const askUser = opts?.askUser === true && !isFinalTurn;
-  if (seat === "initiator") {
-    return isFinalTurn ? FinalInitiatorTurnSchema : (askUser ? InitiatorAskUserTurnSchema : InitiatorTurnSchema);
-  }
-  return isFinalTurn ? FinalCounterpartyTurnSchema : (askUser ? CounterpartyAskUserTurnSchema : CounterpartyTurnSchema);
+  const base = ((): z.ZodTypeAny => {
+    if (version !== "v2") return isFinalTurn ? v1Schemas.final : v1Schemas.system;
+    const askUser = opts?.askUser === true && !isFinalTurn;
+    if (seat === "initiator") {
+      return isFinalTurn ? FinalInitiatorTurnSchema : (askUser ? InitiatorAskUserTurnSchema : InitiatorTurnSchema);
+    }
+    return isFinalTurn ? FinalCounterpartyTurnSchema : (askUser ? CounterpartyAskUserTurnSchema : CounterpartyTurnSchema);
+  })();
+  return opts?.checklist === true ? withChecklistField(base) : base;
 }
 
 /**
- * Opt-in extension of the seat vocabulary with the `ask_user` client-consult
- * pause (P3.2). Never granted on final-cap turns (the final turn must decide)
- * and never under v1. Callers pass `{ askUser: true }` only when the full
- * pause loop is available on their surface: the ask-user feature flag is on,
- * a questioner enqueue and an answer-window timer are wired, the negotiation
- * has an opportunity to resume against, and the acting side has not already
- * consumed its one client question for this negotiation (rationing).
+ * Add the checklist field to a turn schema.
+ *
+ * Gated at the callsite rather than baked into every schema, for the same
+ * reason `ask_user` is: the generation schema must offer exactly what this
+ * turn's prompt explains. A negotiator drafting under a stance with no
+ * checklist protocol would otherwise be handed a field nothing told it how to
+ * fill — and the `advocate` stance's byte-identical prompt is the invariant
+ * that would break first. The permissive persistence schemas
+ * (`negotiation.state.ts`, the shared DTO) carry the field unconditionally,
+ * because they must read back turns that any seat may have written.
+ *
+ * Non-object schemas pass through untouched: the v1 schemas arrive as
+ * `z.ZodTypeAny` from the caller, so this must degrade rather than throw if
+ * one is ever wrapped.
  */
-export interface AskUserOpts {
-  askUser?: boolean;
+export function withChecklistField(schema: z.ZodTypeAny): z.ZodTypeAny {
+  return schema instanceof z.ZodObject
+    ? schema.extend({ checklist: ChecklistDraftSchema.nullable().optional() })
+    : schema;
 }
+
+/**
+ * Opt-in extensions of a turn's vocabulary, beyond the seat's own actions.
+ *
+ * `askUser` adds the client-consult pause (P3.2). Never granted on final-cap
+ * turns (the final turn must decide) and never under v1. Callers pass
+ * `{ askUser: true }` only when the full pause loop is available on their
+ * surface: the ask-user feature flag is on, a questioner enqueue and an
+ * answer-window timer are wired, the negotiation has an opportunity to resume
+ * against, and the acting principal's question budget for this negotiation is
+ * not yet spent.
+ *
+ * `checklist` adds the checklist field the turn scores. Passed only where the
+ * prompt carries the checklist protocol, so the schema and the rules a turn
+ * sees always describe the same move.
+ */
+export interface TurnVocabularyOpts {
+  askUser?: boolean;
+  checklist?: boolean;
+}
+
+/** @deprecated Use {@link TurnVocabularyOpts}. */
+export type AskUserOpts = TurnVocabularyOpts;
 
 // ─── Action semantics (version-independent) ──────────────────────────────────
 
@@ -219,18 +256,39 @@ export function configuredAskUserEnabled(): boolean {
 export const DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP = 3;
 
 /**
- * Per-negotiation ask cap, overridable via `NEGOTIATION_ASK_ROUNDS_CAP`.
- * Invalid or non-positive values fall back to the default — zero is not an
- * off switch here; the cap exists so two agents cannot ping-pong their humans
- * indefinitely. It tunes the bound, it does not gate the behaviour.
+ * The same cap under the checklist protocol, where the BINDING bound is
+ * per principal (`QUESTION_BUDGET_PER_PRINCIPAL` — the turn-0 pre-contact
+ * consult included) and this is only the negotiation-wide backstop above it:
+ * both principals' full budgets, plus one post-stall park.
+ *
+ * Derived rather than chosen, and separate from the default rather than
+ * replacing it: at 3 the combined cap would bind before either principal's own
+ * budget — starving the very thing the plan's budget exists to grant — while
+ * raising it for the pre-checklist stance would loosen a bound nothing else in
+ * that stance changed.
  */
-export function negotiationAskRoundsCap(): number {
+export const CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP = 2 * QUESTION_BUDGET_PER_PRINCIPAL + 1;
+
+/**
+ * Per-negotiation ask cap, overridable via `NEGOTIATION_ASK_ROUNDS_CAP`.
+ * Invalid or non-positive values fall back to the protocol-appropriate default
+ * — zero is not an off switch here; the cap exists so two agents cannot
+ * ping-pong their humans indefinitely. It tunes the bound, it does not gate the
+ * behaviour.
+ *
+ * An explicit override wins under either protocol: it is an operator statement
+ * about this deployment, and silently raising it for one stance would make the
+ * knob mean two things.
+ */
+export function negotiationAskRoundsCap(opts?: { checklist?: boolean }): number {
   const raw = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
   if (raw) {
     const parsed = Number(raw);
     if (Number.isInteger(parsed) && parsed > 0) return parsed;
   }
-  return DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP;
+  return opts?.checklist === true
+    ? CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP
+    : DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP;
 }
 
 /** Default answer window for a paused `ask_user` negotiation: 24 hours. */

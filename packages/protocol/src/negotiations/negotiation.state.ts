@@ -5,6 +5,8 @@ import type { ScreenDecisionRecord } from "./negotiation.screen.contracts.js";
 import type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
+import { ChecklistDraftSchema } from "../shared/schemas/negotiation-checklist.schema.js";
+import type { ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 
 /**
@@ -24,6 +26,13 @@ export const NegotiationTurnSchema = z.object({
   message: z.string().nullable().optional(),
   /** Present when action is `ask_user` (v2, P3.2). */
   askUser: AskUserPayloadSchema.nullable().optional(),
+  /**
+   * The checklist as this turn scored it (checklist plan §2). Permissive here,
+   * like `askUser`: the turn record carries turns from before the checklist
+   * protocol and from external agents that never draft one, and the domain
+   * module enforces the invariants when the graph reconciles a draft.
+   */
+  checklist: ChecklistDraftSchema.nullable().optional(),
 });
 
 /** Restricted v1 turn schema for the system agent (no question action). */
@@ -371,6 +380,22 @@ export const NegotiationGraphState = Annotation.Root({
   priorTurnCount: Annotation<number>({
     reducer: (curr, next) => next ?? curr,
     default: () => 0,
+  }),
+
+  /**
+   * The negotiation's checklist (checklist plan §2): 3–5 dimensions authored
+   * on turn 1 from the two intents alone, FROZEN after, re-scored every turn.
+   *
+   * A channel rather than the store: the durable record is the turn history
+   * itself — every turn persists the checklist it acted on — and the turn node
+   * re-derives the frozen dimensions from `messages` on each turn, so a
+   * continuation, a retried turn and a fresh process all read the same
+   * checklist without this channel having to survive anything. What the
+   * channel adds is an in-session read for finalize and telemetry.
+   */
+  checklist: Annotation<ChecklistItem[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
   }),
 
   /** User answers collected by the questioner between negotiation sessions. */
