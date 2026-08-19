@@ -26,6 +26,39 @@ export function negotiationMessagesFor(
 
 type NegotiationSeat = 'initiator' | 'counterparty';
 
+/**
+ * The acting seat's minimal context for a timeout fallback turn.
+ *
+ * These invocations bypass the negotiation graph, so nothing has stamped
+ * reachability for them — the fallback has to ask the host itself, or a seed
+ * persona's agent would consult a principal here that the graph refuses to
+ * consult everywhere else. Only the ACTING side is resolved: it is the only
+ * one whose consultation the prompt can grant, and the counterparty's context
+ * on this path carries no more than an id either way.
+ *
+ * Fails OPEN, like every other reader of this port: a host without the method,
+ * or a read that rejects, means reachable.
+ */
+async function actingUserContext(
+  database: Pick<NegotiationGraphDatabase, 'isPrincipalUnreachable'>,
+  userId: string,
+  logger: TimeoutLogger,
+): Promise<UserNegotiationContext> {
+  const base: UserNegotiationContext = { id: userId, intents: [], profile: {} };
+  if (!database.isPrincipalUnreachable) return base;
+  try {
+    return await database.isPrincipalUnreachable(userId)
+      ? { ...base, principalUnreachable: true }
+      : base;
+  } catch (err) {
+    logger.warn('Principal reachability lookup failed; treating principal as reachable', {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return base;
+  }
+}
+
 export type TimeoutNegotiatorInvoke = (input: {
   ownUser: UserNegotiationContext;
   otherUser: UserNegotiationContext;
@@ -214,7 +247,7 @@ export async function runResumableTimeoutFallback(params: {
       executionId: execution.executionId,
     });
     const turn = await invokeNegotiator({
-      ownUser: { id: activeUserId, intents: [], profile: {} },
+      ownUser: await actingUserContext(database, activeUserId, logger),
       otherUser: { id: otherUserId, intents: [], profile: {} },
       indexContext: { networkId: '', prompt: '' },
       seedAssessment: { reasoning: seedReasoning, valencyRole: 'peer' },
@@ -392,7 +425,7 @@ export async function runTimeoutFallback(params: {
   }).filter(Boolean);
 
   // Run AI agent for the timed-out turn
-  const ownUserCtx: UserNegotiationContext = { id: activeUserId, intents: [], profile: {} };
+  const ownUserCtx: UserNegotiationContext = await actingUserContext(database, activeUserId, logger);
   const otherUserCtx: UserNegotiationContext = { id: otherUserId, intents: [], profile: {} };
   const seedAssessment: SeedAssessment = { reasoning: seedReasoning, valencyRole: 'peer' };
 

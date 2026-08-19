@@ -56,6 +56,13 @@ export type ExternalConsultationEligibilityInput = {
     questionerEnabled: boolean;
     expiryEnabled: boolean;
   };
+  /**
+   * Whether the RECIPIENT principal — `userId`'s own user, the one this
+   * consultation would put a question to — can be consulted at all. Callers
+   * compute it (they hold the database); this boundary stays pure and never
+   * sees the address it was derived from. Absent/undefined means reachable.
+   */
+  recipientPrincipalUnreachable?: boolean;
 };
 
 export type ExternalConsultationEligibility = {
@@ -210,7 +217,11 @@ export function assessExternalConsultationEligibility(
     && input.task.claimedByAgentId === input.agentId
     && metadata.type === 'negotiation'
     && Boolean(coordinates && seat);
+  // Structural, not policy: a principal nobody can reach has no consultation
+  // to advertise or admit, whatever the policy mode says. Every mode composes
+  // `eligible` from `structuralEligible`, so refusing here refuses everywhere.
   const structuralEligible = protocolVersion === 'v2'
+    && input.recipientPrincipalUnreachable !== true
     && !isOpeningTurn
     && !isFinalTurn
     && counterpartyTurn

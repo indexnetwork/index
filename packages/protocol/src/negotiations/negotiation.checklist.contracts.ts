@@ -282,7 +282,13 @@ export type AskInadmissibility =
   /** This topic has already been asked in this negotiation. */
   | "repeat_topic"
   /** The principal's question budget for this negotiation is spent. */
-  | "budget_spent";
+  | "budget_spent"
+  /**
+   * This principal cannot be consulted at all — no answer can ever arrive, so
+   * no question may be put. Distinct from `budget_spent` on purpose: nothing
+   * was spent, and a trace that said otherwise would be a lie.
+   */
+  | "principal_unreachable";
 
 export type AskAdmissibility =
   | { admissible: true; dimension: ChecklistItem }
@@ -301,6 +307,11 @@ export interface AskAdmissibilityInput {
   questionsSpent: number;
   /** Budget override; defaults to {@link QUESTION_BUDGET_PER_PRINCIPAL}. */
   budget?: number;
+  /**
+   * Whether THIS principal — the acting seat's, never the counterparty's — can
+   * be consulted at all. Absent/undefined means reachable.
+   */
+  principalUnreachable?: boolean;
 }
 
 /**
@@ -321,11 +332,18 @@ export interface AskAdmissibilityInput {
  * 4. **Unasked** — topic identity is the dimension, not the phrasing, so a
  *    re-ask reads as a repeat however it is worded.
  * 5. **Budget** — at most {@link QUESTION_BUDGET_PER_PRINCIPAL} per principal
- *    per negotiation, the turn-0 pre-contact consult included.
+ *    per negotiation, the turn-0 pre-contact consult included. A principal who
+ *    cannot be consulted at all is mechanically a budget of zero, and is
+ *    checked first so the refusal names that rather than a spent ration. It is
+ *    per-seat, like the budget it stands in for: the other principal's is
+ *    untouched.
  *
  * Order matters for the telemetry only; the conditions are conjunctive.
  */
 export function assessAskAdmissibility(input: AskAdmissibilityInput): AskAdmissibility {
+  if (input.principalUnreachable === true) {
+    return { admissible: false, reason: "principal_unreachable" };
+  }
   const budget = input.budget ?? QUESTION_BUDGET_PER_PRINCIPAL;
   if (input.questionsSpent >= budget) return { admissible: false, reason: "budget_spent" };
 
@@ -371,6 +389,12 @@ export interface ChecklistSectionInput {
    */
   askedTopics?: ReadonlyArray<{ dimension: string; answerhood?: Answerhood }>;
   budget?: number;
+  /**
+   * Whether this turn's client can be consulted at all. When true the budget
+   * line would be a fiction — there is no ration to spend — so an honest line
+   * about the missing channel replaces it.
+   */
+  principalUnreachable?: boolean;
 }
 
 /**
@@ -388,7 +412,11 @@ export function renderChecklistSection(input: ChecklistSectionInput): string {
   const askedTopics = (input.askedTopics ?? []).filter((topic) => topic.dimension.trim().length > 0);
   const asked = askedTopics.map((topic) => topic.dimension.trim());
   const declared = askedTopics.filter((topic) => topic.answerhood);
-  const budgetLine = `Questions your client has already been asked in THIS negotiation: ${spent} of ${budget}.`
+  const unreachable = input.principalUnreachable === true;
+  const budgetLine = unreachable
+    ? `Your client cannot be consulted in this negotiation: there is no channel to put a question to them and no answer can arrive. `
+      + `Score every dimension from the record you already hold, and carry as unknown whatever it does not settle.`
+    : `Questions your client has already been asked in THIS negotiation: ${spent} of ${budget}.`
     + (asked.length > 0 ? ` Topics already asked: ${asked.join("; ")} — never ask any of them again.` : "")
     + (declared.length > 0
       ? `\nAnswerhood you declared when you asked, and must score against now rather than re-reading the answer freely:\n`
@@ -402,8 +430,10 @@ export function renderChecklistSection(input: ChecklistSectionInput): string {
       + `No checklist exists for this negotiation. Write it now from the two intents alone: `
       + `${MIN_CHECKLIST_DIMENSIONS} to ${MAX_CHECKLIST_DIMENSIONS} dimensions, one of them the mutual want, `
       + `then score each. Fewer than ${MIN_CHECKLIST_DIMENSIONS} is not a checklist and will be discarded. `
-      + `At least one dimension must be something the record does not settle — score it unknown — and the best one `
-      + `is a thing only your client can answer.\n`
+      + `At least one dimension must be something the record does not settle — score it unknown`
+      + (unreachable
+        ? `.\n`
+        : ` — and the best one is a thing only your client can answer.\n`)
       + budgetLine;
   }
 

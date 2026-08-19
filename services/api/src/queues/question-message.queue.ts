@@ -53,6 +53,7 @@ import { QuestionAnswerRouter } from '../lib/question/question-answer.router';
 import type { ParkedNegotiationReaderAdapter } from '../adapters/parked-negotiation.reader.adapter';
 import type { NegotiatorClientDmRetrieveFn } from '../adapters/negotiator-client-dm.retrieval.adapter';
 import type { QuestionMessageNotificationJobData } from './notification.queue';
+import { resolvePrincipalUnreachable } from '../lib/users/synthetic';
 
 export const QUEUE_NAME = 'question-message-queue';
 
@@ -652,12 +653,43 @@ export function parkedQuestionMessageTarget(input: QuestionerEnqueuePayload): Qu
  * hand the QuestionerAgent, enqueue the regeneration job for the parked
  * side's scope instead and report the payload as handled. Everything else
  * returns false and flows to the questioner unchanged.
+ *
+ * The last fence for an unreachable principal, and deliberately the widest:
+ * every park-path question — inflight consultation and stalled follow-up
+ * alike, from the graph or from the external-agent path — funnels through
+ * here on its way to being authored. The admission rules upstream should have
+ * refused already; this catches whatever they miss and whatever calls in
+ * later. A question addressed to a principal nobody is behind can only rot
+ * unread in a DM no one opens, so it is dropped rather than written. The
+ * payload still reports as handled: it was a park payload, correctly routed
+ * and correctly declined — not something a retired generator should hear about.
  */
-export async function routeParkedQuestionEnqueue(input: QuestionerEnqueuePayload): Promise<boolean> {
+export async function routeParkedQuestionEnqueue(
+  input: QuestionerEnqueuePayload,
+  deps?: ParkedQuestionRoutingDeps,
+): Promise<boolean> {
   const target = parkedQuestionMessageTarget(input);
   if (!target) return false;
-  await questionMessageQueue.addRegenerateJob(target);
+  const principalUnreachable = deps?.principalUnreachable ?? resolvePrincipalUnreachable;
+  if (await principalUnreachable(target.userId)) {
+    log.queue.from('QuestionMessageQueue').info('question_message_principal_unreachable', {
+      userId: target.userId,
+      intentId: target.intentId,
+      mode: input.mode,
+      purpose: input.purpose,
+    });
+    return true;
+  }
+  const addRegenerateJob = deps?.addRegenerateJob
+    ?? ((data: QuestionMessageJobData) => questionMessageQueue.addRegenerateJob(data));
+  await addRegenerateJob(target);
   return true;
+}
+
+/** Injectable seams for {@link routeParkedQuestionEnqueue}; production uses the real collaborators. */
+export interface ParkedQuestionRoutingDeps {
+  principalUnreachable?: (userId: string) => Promise<boolean>;
+  addRegenerateJob?: (data: QuestionMessageJobData) => Promise<unknown>;
 }
 
 /** Injectable seams for {@link enqueueQuestionAnswerReply}; production uses the real collaborators. */
