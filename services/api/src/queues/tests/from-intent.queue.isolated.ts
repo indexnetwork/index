@@ -4,7 +4,8 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, mock, afterAll } from 'bun:test';
+import { beforeEach, describe, expect, it, mock, afterAll } from 'bun:test';
+import type { OpportunityDiscoverySummary } from '../opportunity/discovery.shared';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'discover_opportunities', data: {} }));
 const mockCreateWorker = mock(() => ({}));
@@ -36,6 +37,27 @@ mock.module('../questioner/recovery.shared', () => ({
   maybeEnqueueIntentRecovery: async () => {},
 }));
 
+// Stand in for the discovery graph runner so a test can hand the queue a real
+// `OpportunityDiscoverySummary` without building the protocol graph. The
+// injected-graph short-circuit is reproduced faithfully (it returns null), so
+// every existing `invokeOpportunityGraph` test keeps its original semantics.
+const actualDiscoveryShared = await import('../opportunity/discovery.shared');
+let nextDiscoverySummary: OpportunityDiscoverySummary | null = null;
+const runOpportunityDiscoveryMock = mock(async (params: {
+  deps?: { invokeOpportunityGraph?: (opts: unknown) => Promise<void> };
+  invokeOpts: unknown;
+}): Promise<OpportunityDiscoverySummary | null> => {
+  if (params.deps?.invokeOpportunityGraph) {
+    await params.deps.invokeOpportunityGraph(params.invokeOpts);
+    return null;
+  }
+  return nextDiscoverySummary;
+});
+mock.module('../opportunity/discovery.shared', () => ({
+  ...actualDiscoveryShared,
+  runOpportunityDiscovery: runOpportunityDiscoveryMock,
+}));
+
 afterAll(() => {
   mock.restore();
 });
@@ -58,7 +80,35 @@ const asDb = (db: FromIntentDatabaseOverrides): FromIntentDatabase => ({
   recordIntentDiscoveryProgress: db.recordIntentDiscoveryProgress ?? (async () => {}),
 });
 
+type ProgressWrite = Parameters<NonNullable<FromIntentDatabase['recordIntentDiscoveryProgress']>>[0];
+
+/** A complete summary; overrides name only the tallies a test is about. */
+const discoverySummary = (overrides: Partial<OpportunityDiscoverySummary> = {}): OpportunityDiscoverySummary => ({
+  candidatesFound: 0,
+  evaluatedCount: 0,
+  opportunitiesCreated: 0,
+  completionReason: 'created_or_reactivated',
+  sameTriggerDuplicateSuppressions: 0,
+  pairActiveNegotiationSuppressions: 0,
+  crossTriggerAllowedCount: 0,
+  finalAtomicConflictCount: 0,
+  ...overrides,
+});
+
+const progressWrite = (
+  record: { mock: { calls: unknown[][] } },
+  status: ProgressWrite['status'],
+): ProgressWrite => {
+  const call = record.mock.calls.find((args) => (args[0] as ProgressWrite).status === status);
+  if (!call) throw new Error(`no ${status} progress write recorded`);
+  return call[0] as ProgressWrite;
+};
+
 describe('FromIntentQueue', () => {
+  beforeEach(() => {
+    nextDiscoverySummary = null;
+  });
+
   describe('constructor and static', () => {
     it('exposes QUEUE_NAME on class', () => {
       expect(FromIntentQueue.QUEUE_NAME).toBe(QUEUE_NAME);
@@ -131,6 +181,90 @@ describe('FromIntentQueue', () => {
       await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 2);
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', attempt: 2, assignedCommunityCount: 1 }));
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded', attempt: 2 }));
+    });
+
+    it('carries the graph summary tallies into the succeeded write', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      nextDiscoverySummary = discoverySummary({ candidatesFound: 7, evaluatedCount: 4, opportunitiesCreated: 2 });
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['idx1', 'idx2'],
+          getAssignmentNetworkMembershipsForUser: async () => [
+            { networkId: 'idx1', isPersonal: false },
+            { networkId: 'idx2', isPersonal: false },
+          ],
+          recordIntentDiscoveryProgress,
+        }),
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'succeeded',
+        assignedCommunityCount: 2,
+        // The graph runs once across every valid network, so the whole
+        // still-valid set is what was processed.
+        processedCommunityCount: 2,
+        possibleOverlapCount: 7,
+        conversationsStartedCount: 2,
+      }));
+    });
+
+    it('writes a zero-result run honestly rather than skipping the tallies', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      nextDiscoverySummary = discoverySummary({ completionReason: 'no_search_candidates' });
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          recordIntentDiscoveryProgress,
+        }),
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'succeeded', processedCommunityCount: 1, possibleOverlapCount: 0, conversationsStartedCount: 0,
+      }));
+    });
+
+    it('omits the tallies entirely when the graph was injected and returned no summary', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          recordIntentDiscoveryProgress,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      const succeeded = progressWrite(recordIntentDiscoveryProgress, 'succeeded');
+      // Omitted, not zeroed: the adapter leaves stored counts untouched, so an
+      // injected graph can never claim a run found nothing.
+      expect(succeeded).not.toHaveProperty('processedCommunityCount');
+      expect(succeeded).not.toHaveProperty('possibleOverlapCount');
+      expect(succeeded).not.toHaveProperty('conversationsStartedCount');
+    });
+
+    it('leaves the blocked write free of tallies', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkMembershipsForUser: async () => [],
+          recordIntentDiscoveryProgress,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      const blocked = progressWrite(recordIntentDiscoveryProgress, 'blocked');
+      expect(blocked).toMatchObject({ status: 'blocked', attempt: 0, assignedCommunityCount: 0 });
+      expect(blocked).not.toHaveProperty('possibleOverlapCount');
+      expect(blocked).not.toHaveProperty('conversationsStartedCount');
     });
 
     it('unknown job name logs warning and does not throw', async () => {

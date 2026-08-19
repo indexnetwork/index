@@ -7,12 +7,13 @@
  * refine input. The old static questions block is retired with the card
  * questions (conversational-questions plan, "Retirements").
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
+import { RADAR_REFRESH_INTERVAL_MS } from '@/hooks/useRadarLiveRefresh';
 
 const mocks = vi.hoisted(() => ({
   authState: {
@@ -164,14 +165,16 @@ describe('Intent page — negotiator chat gating', () => {
       discoveryProgress: {
         status: 'retrying', attempt: 2, maxAttempts: 3, assignedCommunityCount: 1,
         processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
-        queuedAt: null, startedAt: null, completedAt: null, updatedAt: null,
+        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: '2026-08-19T09:15:00.000Z',
+        completedAt: null, updatedAt: '2026-08-19T09:15:00.000Z',
       },
     });
     renderIntentPage();
     await screen.findByText('Looking for a technical co-founder');
     fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
-    expect(await screen.findByText('Preparing your first conversations')).toBeInTheDocument();
-    expect(screen.getByText('Retrying')).toBeInTheDocument();
+    expect(await screen.findByText('Finding your first conversations')).toBeInTheDocument();
+    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('retrying');
+    expect(screen.getByText(/attempt 2 of 3 . retrying/i)).toBeInTheDocument();
     expect(screen.queryByText(/still talking with theirs/i)).toBeNull();
   });
 
@@ -189,6 +192,95 @@ describe('Intent page — negotiator chat gating', () => {
     renderIntentPage();
     await screen.findByText('Looking for a technical co-founder');
     fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
-    expect(await screen.findByText(/completed this search with no promising conversations/i)).toBeInTheDocument();
+    // A zero-result run still reports its tally; an empty card would read as
+    // though the agent never ran.
+    expect(await screen.findByText('Scanned 1 community — no overlaps yet')).toBeInTheDocument();
+    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('completed');
+  });
+  test('refreshes the signal snapshot so a finished run lands on the card', async () => {
+    // The SSE-driven radar refresh never carried the intent snapshot, so a
+    // completed run's tallies used to sit unread until the slower progress poll.
+    const warmingIntent = {
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: true,
+      networks: [{ id: 'community-1', title: 'Builders' }, { id: 'community-2', title: 'Climate' }],
+      discoveryProgress: {
+        status: 'running', attempt: 1, maxAttempts: 3, assignedCommunityCount: 2,
+        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: '2026-08-19T09:15:00.000Z',
+        completedAt: null, updatedAt: '2026-08-19T09:15:00.000Z',
+      },
+    };
+    mocks.intentsService.getIntent
+      .mockResolvedValueOnce(warmingIntent)
+      .mockResolvedValue({
+        ...warmingIntent,
+        discoveryProgress: {
+          ...warmingIntent.discoveryProgress,
+          status: 'completed', processedCommunityCount: 2, possibleOverlapCount: 3,
+          conversationsStartedCount: 1, completedAt: '2026-08-19T09:21:00.000Z',
+        },
+      });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderIntentPage();
+      await screen.findByText('Looking for a technical co-founder');
+      fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+      await screen.findByText('Finding your first conversations');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(RADAR_REFRESH_INTERVAL_MS);
+      });
+
+      expect(
+        await screen.findByText('Scanned 2 communities — 3 possible overlaps, 1 conversation started'),
+      ).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a blocked card is not frozen: it observes the signal joining a community', async () => {
+    // `blocked` used to sit outside the poll allowlist, so the card could never
+    // see its own recovery and stayed on "Needs attention" indefinitely.
+    const blockedIntent = {
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: true, networks: [],
+      discoveryProgress: {
+        status: 'blocked', attempt: 0, maxAttempts: 3, assignedCommunityCount: 0,
+        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: null,
+        completedAt: '2026-08-19T09:14:00.000Z', updatedAt: '2026-08-19T09:14:00.000Z',
+      },
+    };
+    mocks.intentsService.getIntent
+      .mockResolvedValueOnce(blockedIntent)
+      .mockResolvedValue({
+        ...blockedIntent,
+        networks: [{ id: 'community-1', title: 'Builders' }],
+        discoveryProgress: {
+          ...blockedIntent.discoveryProgress,
+          status: 'running', attempt: 1, assignedCommunityCount: 1,
+          startedAt: '2026-08-19T09:16:00.000Z', completedAt: null,
+        },
+      });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderIntentPage();
+      await screen.findByText('Looking for a technical co-founder');
+      fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+      await screen.findByText('Scanning is paused');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+      expect(await screen.findByText('Finding your first conversations')).toBeInTheDocument();
+      expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('scanning');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

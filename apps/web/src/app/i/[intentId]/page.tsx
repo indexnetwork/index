@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
+import DiscoveryWarmupLog from "@/components/DiscoveryWarmupLog";
 import NegotiationActivity from "@/components/NegotiationActivity";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversations, useIntents, useOpportunities } from "@/contexts/APIContext";
@@ -23,11 +24,12 @@ import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { NegotiationActivityGroup } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
-import type { DiscoveryProgress, IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
+import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
 import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
 import { deriveLiveNegotiations, formatLatestMove, liveNegotiationsByOpportunity } from "@/lib/negotiation-presence";
+import type { WarmupConversation } from "@/lib/discovery-warmup-log";
 import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -63,36 +65,6 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
     return status;
   }
   return "ACTIVE";
-}
-
-function DiscoveryWarmup({ progress, communities }: { progress?: DiscoveryProgress; communities: Array<{ id: string; title: string }> }) {
-  const status = progress?.status ?? "unknown";
-  const active = status === "queued" || status === "running" || status === "retrying";
-  const assignmentLabel = status === "blocked" || communities.length === 0
-    ? "Needs attention"
-    : `${progress?.assignedCommunityCount ?? communities.length} ${communities.length === 1 ? "community" : "communities"}`;
-  const findingLabel: Record<string, string> = {
-    queued: "Queued", running: "Finding", retrying: "Retrying", completed: "Completed", failed: "Needs attention", blocked: "Needs attention", unknown: "Status unavailable",
-  };
-  return (
-    <section className="rounded-lg border border-dashed border-gray-300 bg-gray-50/60 p-4" aria-label="Conversation preparation status" data-testid="discovery-warmup">
-      <h4 className="text-sm font-semibold text-gray-900">Preparing your first conversations</h4>
-      <dl className="mt-3 space-y-2 text-xs text-gray-600">
-        <div className="flex justify-between gap-3"><dt>Signal created</dt><dd className="font-medium text-gray-800">✓</dd></div>
-        <div className="flex justify-between gap-3"><dt>Shared with communities</dt><dd className="text-right font-medium text-gray-800">{assignmentLabel}</dd></div>
-        <div className="flex justify-between gap-3"><dt>Finding relevant signals</dt><dd className="font-medium text-gray-800">{findingLabel[status]}</dd></div>
-        <div className="flex justify-between gap-3"><dt>Agent conversations</dt><dd className="font-medium text-gray-800">{progress?.conversationsStartedCount ? `${progress.conversationsStartedCount} started` : "Next"}</dd></div>
-      </dl>
-      {status === "blocked" || communities.length === 0 ? (
-        <p className="mt-3 text-xs text-gray-600">Matching cannot begin until this signal is shared with an active community.</p>
-      ) : status === "completed" ? (
-        <p className="mt-3 text-xs text-gray-600">We completed this search with no promising conversations yet.</p>
-      ) : (
-        <p className="mt-3 text-xs text-gray-600">We’ll show conversations here once a promising overlap is found.</p>
-      )}
-      {active && <p className="mt-1 text-xs text-gray-500">You can leave this page—matching continues in the background.</p>}
-    </section>
-  );
 }
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
@@ -513,20 +485,41 @@ export default function IntentDetailPage() {
     () => liveNegotiations.filter((item) => intentId !== undefined && item.intentIds.includes(intentId)),
     [liveNegotiations, intentId],
   );
+  /** The warmup card's live lane: one entry per in-flight negotiation on this signal. */
+  const warmupConversations = useMemo<WarmupConversation[]>(() => {
+    const byId = new Map(negotiations.map((conversation) => [conversation.id, conversation]));
+    return intentLiveNegotiations.map((item) => ({
+      id: item.conversationId,
+      counterpartLabel: item.counterpart.name,
+      // The conversation's own creation time — the moment the agents started
+      // talking. `sortTimestamp` is last-activity and would misdate the line.
+      startedAt: byId.get(item.conversationId)?.createdAt ?? null,
+    }));
+  }, [intentLiveNegotiations, negotiations]);
+
   const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
     void loadNegotiationActivity();
-  }, [loadNegotiationActivity, loadOpportunities]);
+    // The SSE feed never carries the intent snapshot, so a finished run's final
+    // tallies would otherwise sit unread until the next 15s progress poll.
+    if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
+  }, [intentId, intentsService, loadNegotiationActivity, loadOpportunities]);
 
   // Refresh only the owner-scoped progress snapshot while work is non-terminal;
   // this intentionally leaves the negotiator chat mounted and untouched.
+  // `blocked` belongs here: a blocked card can only observe its own recovery
+  // (the signal joining an active community) by polling for it.
+  const discoveryStatus = intent?.discoveryProgress?.status;
   useEffect(() => {
-    if (!intentId || !intent || !["queued", "running", "retrying"].includes(intent.discoveryProgress?.status ?? "")) return;
+    // Depend on the status alone, not the whole intent: refetching the intent
+    // replaces the object on every live refresh, which would reset this
+    // interval before it ever fired.
+    if (!intentId || !["queued", "running", "retrying", "blocked"].includes(discoveryStatus ?? "")) return;
     const timer = window.setInterval(() => {
       void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
     }, 15_000);
     return () => window.clearInterval(timer);
-  }, [intentId, intent, intentsService]);
+  }, [intentId, discoveryStatus, intentsService]);
 
   useRadarLiveRefresh({
     intentId,
@@ -1066,7 +1059,11 @@ export default function IntentDetailPage() {
                     <div className="mb-3">
                       {negotiationActivity.length === 0 && !hasActualNegotiationActivity && !negotiationActivityLoading && !negotiationActivityError
                         && (intent?.warming || intent?.discoveryProgress) ? (
-                          <DiscoveryWarmup progress={intent?.discoveryProgress} communities={intent?.networks ?? []} />
+                          <DiscoveryWarmupLog
+                            progress={intent?.discoveryProgress}
+                            communities={intent?.networks ?? []}
+                            conversations={warmupConversations}
+                          />
                         ) : <NegotiationActivity groups={negotiationActivity} loading={negotiationActivityLoading} error={negotiationActivityError} />}
                     </div>
                   )}
