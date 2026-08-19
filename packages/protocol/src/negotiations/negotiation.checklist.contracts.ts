@@ -401,7 +401,9 @@ export function renderChecklistSection(input: ChecklistSectionInput): string {
     return `\n\n--- CHECKLIST (none yet — you write it on this turn) ---\n`
       + `No checklist exists for this negotiation. Write it now from the two intents alone: `
       + `${MIN_CHECKLIST_DIMENSIONS} to ${MAX_CHECKLIST_DIMENSIONS} dimensions, one of them the mutual want, `
-      + `then score each. Fewer than ${MIN_CHECKLIST_DIMENSIONS} is not a checklist and will be discarded.\n`
+      + `then score each. Fewer than ${MIN_CHECKLIST_DIMENSIONS} is not a checklist and will be discarded. `
+      + `At least one dimension must be something the record does not settle — score it unknown — and the best one `
+      + `is a thing only your client can answer.\n`
       + budgetLine;
   }
 

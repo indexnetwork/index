@@ -337,7 +337,16 @@ describe("checklist protocol — the pre-registered screen", () => {
   it("binds scoring to the commitment record and carries the provenance rule into the basis", async () => {
     const prompt = (await renderMatrix("skeptic"))["v2-counterparty"];
     expect(prompt).toContain("scored ok or conflict from the commitment record alone");
-    expect(prompt).toContain("their own intents, their profile, the premises they hold, and the answers they have given");
+    expect(prompt).toContain("their own intents, the premises they hold, and the answers they have given");
+    // A profile is background, never a basis. The plan's commitment store is
+    // what the principals STATED they want (§2) — and the live failure this
+    // pins is a hard constraint about where two people could climb together
+    // being scored `ok` from a bio line ("Product designer in Istanbul"). With
+    // profiles admissible, a well-populated dataset ticks every dimension
+    // without anyone being asked anything, and the protocol never asks.
+    expect(prompt).toContain("A PROFILE IS BACKGROUND, NOT A COMMITMENT");
+    expect(prompt).toContain("describe who someone IS; a commitment is what they have said they WANT");
+    expect(prompt).toContain("Where only a profile speaks to a dimension, that dimension is unknown");
     expect(prompt).toContain("Write that commitment into the dimension's basis");
     expect(prompt).toContain("A score with nothing behind it is an assertion rather than a finding");
     // #1448, rewritten rather than restated: the three sources that get
