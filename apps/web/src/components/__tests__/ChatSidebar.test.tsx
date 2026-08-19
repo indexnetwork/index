@@ -264,10 +264,10 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     fireEvent.click(mira);
     expect(mira).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText("Mira Chen's opportunity")).toBeInTheDocument();
-    expect(screen.getByText('Negotiating')).toBeInTheDocument();
+    expect(screen.getByText('Needs your input')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Jonas Berg/ }));
-    expect(screen.getByText('Rejected')).toBeInTheDocument();
+    expect(screen.getByText('No match')).toBeInTheDocument();
   });
 
   it('shows mode-aware empty copy and the persistent inbox footer link', async () => {
@@ -331,7 +331,7 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Dana Okafor/ }));
     // No opportunity title survives the projection, so the row is generic —
     // but its lifecycle status is still truthful.
-    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting your review')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Negotiation'));
     await waitFor(() => expect(currentPath.value).toBe('/chat/ungrouped?taskId=ungrouped-task'));
   });
@@ -343,7 +343,7 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     await openNegotiationsTab();
 
     fireEvent.click(screen.getByRole('button', { name: /Dana Okafor/ }));
-    expect(screen.getByText('No lifecycle status')).toBeInTheDocument();
+    expect(screen.getByText('Not started')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Negotiation'));
     await waitFor(() => expect(currentPath.value).toBe('/chat/ungrouped'));
   });
