@@ -12,6 +12,7 @@
 src/adapters/tests/rejection-cooldown.adapter.isolated.ts
 src/adapters/tests/scraper.adapter.isolated.ts
 src/adapters/tests/storage.adapter.isolated.ts
+src/adapters/tests/intent-discovery-progress.write.isolated.ts
 src/controllers/tests/network.controller.isolated.ts
 src/controllers/tests/notification.controller.isolated.ts
 src/controllers/tests/opportunity.controller.isolated.ts

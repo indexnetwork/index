@@ -373,3 +373,60 @@ button {
   }
   .signal-think-dot { animation: none; opacity: 0.5; }
 }
+
+/* Radar warmup card: a slow conic sweep standing in for the discovery run, plus
+   the pulsing dot on the log line the run is currently sitting on. Decorative
+   only — the card states are all readable with the animation off. */
+@keyframes radar-sweep {
+  to { transform: rotate(360deg); }
+}
+.radar-sweep {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  background: radial-gradient(circle, rgba(4, 23, 41, 0.06) 0%, rgba(4, 23, 41, 0) 70%);
+  overflow: hidden;
+}
+.radar-sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    rgba(4, 23, 41, 0.38) 0deg,
+    rgba(4, 23, 41, 0.10) 40deg,
+    rgba(4, 23, 41, 0) 80deg,
+    rgba(4, 23, 41, 0) 360deg
+  );
+  animation: radar-sweep 3.4s linear infinite;
+}
+.radar-sweep::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 9999px;
+  background: #041729;
+  opacity: 0.55;
+}
+/* Settled run: the dish stops, the wedge stays as a faint bearing mark. */
+.radar-sweep-idle::before {
+  animation: none;
+  opacity: 0.3;
+}
+.warmup-pulse {
+  animation: dot-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep::before { animation: none; }
+  .warmup-pulse { animation: none; }
+}

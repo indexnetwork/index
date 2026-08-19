@@ -81,13 +81,20 @@ export class FromIntentQueue {
     });
   }
 
-  private async recordProgress(data: FromIntentJobData, status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked', attempt: number, assignedCommunityCount?: number): Promise<void> {
+  private async recordProgress(
+    data: FromIntentJobData,
+    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked',
+    attempt: number,
+    assignedCommunityCount?: number,
+    /** Run tallies, known only at a successful boundary; omitted leaves the stored counts alone. */
+    counts?: { processedCommunityCount: number; possibleOverlapCount: number; conversationsStartedCount: number },
+  ): Promise<void> {
     const record = (this.database as Partial<FromIntentDatabase>).recordIntentDiscoveryProgress;
     // Isolated queue tests and a rolling deploy may run a worker before its
     // adapter has been updated. Production adapters always provide this.
     if (!record) return;
     await record.call(this.database, {
-      intentId: data.intentId, userId: data.userId, status, attempt, assignedCommunityCount,
+      intentId: data.intentId, userId: data.userId, status, attempt, assignedCommunityCount, ...counts,
     });
   }
 
@@ -157,7 +164,10 @@ export class FromIntentQueue {
       triggerIntentId: intentId,
     });
 
-    await runOpportunityDiscovery({
+    // The graph's own summary is the only honest source for the owner-visible
+    // tallies; it is null when the caller injected a graph (test path), in
+    // which case the success write carries no counts at all.
+    const summary = await runOpportunityDiscovery({
       graphDb: this.graphDb,
       deps: this.deps,
       invokeOpts,
@@ -197,7 +207,16 @@ export class FromIntentQueue {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    await this.recordProgress(data, 'succeeded', attempt, stampNetworkIds.length);
+    await this.recordProgress(data, 'succeeded', attempt, stampNetworkIds.length, summary ? {
+      // The graph runs once across every valid network, so "processed" is the
+      // set that was still valid at the success stamp — there is no per-community
+      // boundary observable from here.
+      processedCommunityCount: stampNetworkIds.length,
+      possibleOverlapCount: summary.candidatesFound,
+      // Each created opportunity enqueues a negotiation run, so this is a count
+      // of conversations the run actually started.
+      conversationsStartedCount: summary.opportunitiesCreated,
+    } : undefined);
 
     // Lens C negotiation-evidence shadow (IND-433): fire-and-forget on its
     // own flag. Formerly triggered through the pool-discriminator mining hook;
