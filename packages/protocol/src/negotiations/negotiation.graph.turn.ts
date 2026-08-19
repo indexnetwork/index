@@ -292,14 +292,24 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       //    registered agent can hold the personal-agent seat.
       // 2. A dispatched turn never reads it, so it never pays for the query.
       //
-      // Gated on `askUserAvailable`: the grant is settled before the model
-      // runs, so the DM is present on exactly the turns where the agent may
-      // consult its client — the turns where knowing what they already said
-      // changes what it asks. Fetching it on every turn would move the
-      // prompt for every negotiation, not just the consulting ones.
-      // `askUserAvailable` already requires a non-empty `ownIntentId`.
-      const clientDm = askUserAvailable
-        ? await retrieveClientDm(deps, ownUser.id, ownIntentId!)
+      // Read on EVERY turn under the checklist protocol, not only the turns
+      // where the agent may ask. This was gated on `askUserAvailable` — the DM
+      // was present exactly when the agent might ask something, on the theory
+      // that knowing what the client already said changes what it asks. But
+      // the answers matter most AFTER they are given: on a turn with the grant
+      // spent, the negotiator argued the client's case having never read a word
+      // the client wrote about this signal.
+      //
+      // That is also what plan §2 requires. The commitment store is the
+      // client's own intents, premises, and ANSWERS; a dimension may be scored
+      // from them. An answer the negotiator cannot see cannot score anything,
+      // so the same question stays open and gets asked again.
+      //
+      // Still in-process only, for the reason above: the excerpt is never
+      // forwarded to `NegotiationTurnPayload`, so an external agent holding the
+      // personal-agent seat cannot receive the client's private thread.
+      const clientDm = ownIntentId
+        ? await retrieveClientDm(deps, ownUser.id, ownIntentId)
         : [];
       turn = await deps.systemAgent.invoke({
         ownUser,

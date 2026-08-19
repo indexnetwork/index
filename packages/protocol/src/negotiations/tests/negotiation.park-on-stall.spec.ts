@@ -195,7 +195,14 @@ describe("negotiation graph — post-stall park", () => {
     expect(authorInputs[0].signal).toEqual({ title: "Build AI", description: "Find an AI collaborator" });
     expect(authorInputs[0].history).toHaveLength(2);
     expect(authorInputs[0].clientDm).toEqual([{ role: "client", content: "I only want equity partnerships" }]);
-    expect(stubs.clientDmQueries).toEqual([{ userId: "u-src", intentId: "intent-src" }]);
+    // The DM is read on every turn now, not only here: the client's answers are
+    // commitments the negotiator scores from, and gating the read on "a turn
+    // where I may ask" meant it argued their case having never read what they
+    // said. What stays pinned is the SCOPE — every read is for this client and
+    // this signal, never another user's private thread.
+    expect(stubs.clientDmQueries.length).toBeGreaterThan(0);
+    expect(stubs.clientDmQueries.every((query) =>
+      query.userId === "u-src" && query.intentId === "intent-src")).toBe(true);
 
     // The legacy blind enqueue is untouched — retirement is the delivery lane's.
     expect(stubs.questionerEnqueues).toHaveLength(1);

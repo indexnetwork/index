@@ -331,7 +331,12 @@ export class IndexNegotiator {
     // section from inside `ASK_USER_RULE`, so a v1 or final turn would
     // otherwise render the client's private thread with no rule explaining
     // what it is for.
-    const clientDm = canAskUser ? input.clientDm ?? [] : [];
+    // Not gated on the ask grant: what the client said about this signal is
+    // evidence for every turn, not context for the asking ones. The rule that
+    // points AT it from inside the ask instructions still renders only with
+    // the grant (`ASK_USER_DM_GROUNDING_RULE`), so a turn without the grant
+    // gets the client's words without an instruction that dangles.
+    const clientDm = input.clientDm ?? [];
     // The opening initiator turn: nothing has been sent, so a granted
     // consultation is the pre-contact verdict rather than a mid-exchange
     // pause. Derived, not passed: the graph grants `canAskUser` on a turn-0
