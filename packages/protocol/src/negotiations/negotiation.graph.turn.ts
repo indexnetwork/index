@@ -501,8 +501,32 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         // park has no transcript for the client to read instead. The authored
         // payload still faces the identifier-aware safety gate below.
         const draftedOwnConsultation = turn.action === 'ask_user' && !!turn.askUser;
+        // Under the checklist protocol the policy may ADMIT an ask, never
+        // manufacture one. An inferred consultation carries no dimension, no
+        // answerhood and no authored question by construction — the policy
+        // reads action enums only — so the question-message author falls back
+        // to deriving a gap from the transcript, and what reaches the client is
+        // "would you be open to connecting with…?" with no options and the
+        // counterparty described in it. That is the bar the plan exists to
+        // abolish, and it fires precisely when the agent had open dimensions it
+        // could have asked about instead.
+        //
+        // Seen in dev: a park whose checklist held "Pre-seed Stage Investment"
+        // and "Nature of Venture" as unknown — both the client's own to settle
+        // — while the delivered question asked only whether they were
+        // interested in connecting.
+        const policyMayInfer = !checklistActive;
+        if (!draftedOwnConsultation && !policyMayInfer) {
+          turnLog.info('negotiation_consultation_inference_declined', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId || undefined,
+            seat,
+            reason: policyEligibility.reason,
+            action: turn.action,
+          });
+        }
         consultationPolicyReason = draftedOwnConsultation ? turn.askUser!.reason : policyEligibility.reason;
-        if (!draftedOwnConsultation) {
+        if (!draftedOwnConsultation && policyMayInfer) {
           turn = {
             ...turn,
             action: 'ask_user',
