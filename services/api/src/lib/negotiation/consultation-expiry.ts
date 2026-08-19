@@ -1,3 +1,4 @@
+import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
 export type ConsultationExpiryReadinessInput = {
   taskState: string;
   taskClaimedByAgentId: string | null;
@@ -10,7 +11,7 @@ export type ConsultationExpiryReadinessInput = {
     opportunityId: string;
     networkId: string;
     counterpartyUserId: string;
-    counterpartyIntentId: string;
+    counterpartyBinding: NegotiationCounterpartyBinding;
   };
 };
 
@@ -60,11 +61,18 @@ export function consultationExpiryReadiness(
     binding.userId === coordinates.userId
     && binding.intentId === coordinates.recipientIntentId
     && binding.networkId === coordinates.networkId);
-  const counterparty = exactBindings.filter((binding) =>
-    binding.userId === coordinates.counterpartyUserId
-    && binding.intentId === coordinates.counterpartyIntentId
-    && binding.networkId === coordinates.networkId);
-  return recipient.length === 1 && counterparty.length === 1
+  // `participantBindings` records intent-bound participants only — it is built
+  // from the two sides' intent ids at init — so a premise-bound counterparty
+  // has no entry here by construction. Requiring one would mark every
+  // premise-bound park terminally stale at expiry, closing a pause whose
+  // answer was still coming. The pair is verified at resume against the
+  // opportunity's own actors and network membership either way.
+  const counterpartyBound = coordinates.counterpartyBinding.kind === 'premise'
+    || exactBindings.filter((binding) =>
+      binding.userId === coordinates.counterpartyUserId
+      && binding.intentId === coordinates.counterpartyBinding.id
+      && binding.networkId === coordinates.networkId).length === 1;
+  return recipient.length === 1 && counterpartyBound
     ? 'pending_pause'
     : 'terminal_stale';
 }

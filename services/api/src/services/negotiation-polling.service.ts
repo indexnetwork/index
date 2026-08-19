@@ -504,12 +504,13 @@ export class NegotiationPollingService {
       opportunityId: eligibility.coordinates.opportunityId,
       networkId: eligibility.coordinates.networkId,
       counterpartyUserId: eligibility.coordinates.counterpartyUserId,
-      counterpartyIntentId: eligibility.coordinates.counterpartyIntentId,
+      counterpartyBinding: eligibility.coordinates.counterpartyBinding,
     });
     if (
       !material
       || material.counterpartyUserId !== eligibility.coordinates.counterpartyUserId
-      || material.counterpartyIntentId !== eligibility.coordinates.counterpartyIntentId
+      || material.counterpartyBinding.kind !== eligibility.coordinates.counterpartyBinding.kind
+      || material.counterpartyBinding.id !== eligibility.coordinates.counterpartyBinding.id
     ) {
       throw new ConflictError(`Negotiation ${negotiationId} consultation binding is no longer current`);
     }

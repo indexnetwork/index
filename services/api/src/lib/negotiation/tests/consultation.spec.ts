@@ -52,6 +52,62 @@ function fixture(overrides: Partial<ExternalConsultationEligibilityInput> = {}):
   };
 }
 
+describe('counterparty actor binding', () => {
+  const base = {
+    recipientUserId: 'u-owner',
+    recipientIntentId: 'intent-owner',
+    networkId: 'net-1',
+    counterpartyUserId: 'u-other',
+  };
+  const actors = (counterparty: Record<string, unknown>) => [
+    { userId: 'u-owner', intent: 'intent-owner', networkId: 'net-1' },
+    { userId: 'u-other', networkId: 'net-1', ...counterparty },
+  ];
+
+  it('fences a premise-bound counterparty against its premise', () => {
+    // Premise discovery produces counterparties with no stated intent. The
+    // capture used to require one and threw "actor binding is ambiguous", which
+    // failed the turn and ended the negotiation as a withdrawal — so the ask
+    // was impossible against most of the pool.
+    expect(consultationActorSetMatchesBinding({
+      ...base,
+      actors: actors({ premise: 'premise-1' }),
+      counterpartyBinding: { kind: 'premise', id: 'premise-1' },
+    })).toBe(true);
+  });
+
+  it('fences an intent-bound counterparty against its intent', () => {
+    expect(consultationActorSetMatchesBinding({
+      ...base,
+      actors: actors({ intent: 'intent-other' }),
+      counterpartyBinding: { kind: 'intent', id: 'intent-other' },
+    })).toBe(true);
+  });
+
+  it('never matches across kinds, even when the ids collide', () => {
+    // Separate tables, separate id spaces: a premise must not satisfy an
+    // intent-bound park just because the strings are equal.
+    expect(consultationActorSetMatchesBinding({
+      ...base,
+      actors: actors({ premise: 'shared-id' }),
+      counterpartyBinding: { kind: 'intent', id: 'shared-id' },
+    })).toBe(false);
+    expect(consultationActorSetMatchesBinding({
+      ...base,
+      actors: actors({ intent: 'shared-id' }),
+      counterpartyBinding: { kind: 'premise', id: 'shared-id' },
+    })).toBe(false);
+  });
+
+  it('still refuses a counterparty bound to a different id of the same kind', () => {
+    expect(consultationActorSetMatchesBinding({
+      ...base,
+      actors: actors({ premise: 'premise-1' }),
+      counterpartyBinding: { kind: 'premise', id: 'premise-2' },
+    })).toBe(false);
+  });
+});
+
 describe('external owner consultation eligibility', () => {
   it('uses one structural predicate and server-derived persisted policy inputs', () => {
     const result = assessExternalConsultationEligibility(fixture({ policyMode: 'on' }));
@@ -64,7 +120,7 @@ describe('external owner consultation eligibility', () => {
         opportunityId: 'opportunity-1',
         networkId: 'network-1',
         counterpartyUserId: 'user-counterparty',
-        counterpartyIntentId: 'intent-counterparty',
+        counterpartyBinding: { kind: 'intent' as const, id: 'intent-counterparty' },
       },
     });
     expect(result.policyInput).toMatchObject({
@@ -161,7 +217,7 @@ describe('external owner consultation eligibility', () => {
       opportunityStatus: 'negotiating',
       opportunityUpdatedAt: '2026-08-07T00:00:00.000Z',
       counterpartyUserId: 'user-counterparty',
-      counterpartyIntentId: 'intent-counterparty',
+      counterpartyBinding: { kind: 'intent' as const, id: 'intent-counterparty' },
     };
 
     expect(consultationExpiryReadiness({
@@ -180,7 +236,7 @@ describe('external owner consultation eligibility', () => {
       taskState: 'claimed',
       taskClaimedByAgentId: agentId,
       taskMetadata: eligible.task.metadata,
-      coordinates: { ...coordinates, counterpartyIntentId: 'intent-stale' },
+      coordinates: { ...coordinates, counterpartyBinding: { kind: 'intent' as const, id: 'intent-stale' } },
     })).toBe('terminal_stale');
     expect(consultationExpiryReadiness({
       taskState: 'claimed',
@@ -206,7 +262,7 @@ describe('external owner consultation eligibility', () => {
       recipientIntentId: 'intent-owner',
       networkId: 'network-1',
       counterpartyUserId: 'user-counterparty',
-      counterpartyIntentId: 'intent-counterparty',
+      counterpartyBinding: { kind: 'intent' as const, id: 'intent-counterparty' },
     };
     expect(consultationActorSetMatchesBinding(canonical)).toBe(true);
     expect(consultationActorSetMatchesBinding({

@@ -1,3 +1,4 @@
+import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
 /**
  * QuestionerAdapter — the negotiation-settlement core that survived the card
  * question retirement (docs/plans/2026-08-18-conversational-questions.md,
@@ -100,7 +101,8 @@ export interface AdapterNegotiationContinuationCoordinates extends AdapterNegoti
   opportunityStatus: string;
   opportunityUpdatedAt: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  /** Intent- or premise-bound counterparty identity, verified at resume. */
+  counterpartyBinding: NegotiationCounterpartyBinding;
 }
 
 interface AdapterNegotiationQuestionSettlement {
@@ -116,7 +118,12 @@ interface AdapterNegotiationQuestionSettlement {
   opportunityStatus: string;
   opportunityUpdatedAt: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  /**
+   * Intent- or premise-bound counterparty identity. Settlements written before
+   * the binding existed carry a flat `counterpartyIntentId`; the parser below
+   * normalizes those so a park already in flight resumes across the deploy.
+   */
+  counterpartyBinding: NegotiationCounterpartyBinding;
   kind: 'answer' | 'dismiss' | 'timeout';
   questionId?: string;
   /**
@@ -287,7 +294,7 @@ function parseAskUserBinding(value: unknown): {
   opportunityStatus: string;
   opportunityUpdatedAt: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  counterpartyBinding: NegotiationCounterpartyBinding;
 } | null {
   if (!value || typeof value !== 'object') return null;
   const binding = value as Record<string, unknown>;
@@ -304,9 +311,15 @@ function parseAskUserBinding(value: unknown): {
     || !isNonEmptyString(binding.opportunityUpdatedAt)
     || Number.isNaN(Date.parse(binding.opportunityUpdatedAt))
     || !isNonEmptyString(binding.counterpartyUserId)
-    || !isNonEmptyString(binding.counterpartyIntentId)
+    || parseSettlementCounterpartyBinding(binding) === null
   ) return null;
-  return binding as ReturnType<typeof parseAskUserBinding>;
+  // Bindings captured before the polymorphic shape carry a flat
+  // `counterpartyIntentId`; normalizing here means a park written by the
+  // previous build still settles and resumes after the deploy.
+  return {
+    ...binding,
+    counterpartyBinding: parseSettlementCounterpartyBinding(binding),
+  } as ReturnType<typeof parseAskUserBinding>;
 }
 
 function parseInlineSettlementAnswer(value: unknown): { selectedOptions: string[]; freeText?: string; answeredAt: string } | null {
@@ -340,7 +353,7 @@ function parseNegotiationQuestionSettlement(value: unknown): AdapterNegotiationQ
     || !isNonEmptyString(settlement.opportunityUpdatedAt)
     || Number.isNaN(Date.parse(settlement.opportunityUpdatedAt))
     || !isNonEmptyString(settlement.counterpartyUserId)
-    || !isNonEmptyString(settlement.counterpartyIntentId)
+    || parseSettlementCounterpartyBinding(settlement) === null
     || (settlement.kind !== 'answer' && settlement.kind !== 'dismiss' && settlement.kind !== 'timeout')
     || (settlement.continuationStatus !== 'requested' && settlement.continuationStatus !== 'completed')
     || !isNonEmptyString(settlement.settledAt)
@@ -351,7 +364,33 @@ function parseNegotiationQuestionSettlement(value: unknown): AdapterNegotiationQ
     // (card path, questionId) or inline (row-less DM path) — never neither.
     || (settlement.kind === 'answer' && !isNonEmptyString(settlement.questionId) && settlement.answer === undefined)
   ) return null;
-  return settlement as unknown as AdapterNegotiationQuestionSettlement;
+  return {
+    ...settlement,
+    counterpartyBinding: parseSettlementCounterpartyBinding(settlement),
+  } as unknown as AdapterNegotiationQuestionSettlement;
+}
+
+/**
+ * The counterparty binding a stored settlement carries: the discriminated
+ * `counterpartyBinding` written today, or the legacy flat `counterpartyIntentId`
+ * (always intent-bound by definition). Null when it carries neither, which the
+ * caller treats as an unparseable settlement rather than guessing at the pair.
+ */
+function parseSettlementCounterpartyBinding(
+  settlement: Record<string, unknown>,
+): NegotiationCounterpartyBinding | null {
+  const binding = settlement.counterpartyBinding;
+  if (
+    binding && typeof binding === 'object' && !Array.isArray(binding)
+    && ((binding as Record<string, unknown>).kind === 'intent' || (binding as Record<string, unknown>).kind === 'premise')
+    && isNonEmptyString((binding as Record<string, unknown>).id)
+  ) {
+    const value = binding as { kind: 'intent' | 'premise'; id: string };
+    return { kind: value.kind, id: value.id };
+  }
+  return isNonEmptyString(settlement.counterpartyIntentId)
+    ? { kind: 'intent', id: settlement.counterpartyIntentId as string }
+    : null;
 }
 
 export class QuestionerAdapter {
@@ -754,7 +793,8 @@ export class QuestionerAdapter {
         || binding.opportunityStatus !== input.opportunityStatus
         || binding.opportunityUpdatedAt !== input.opportunityUpdatedAt
         || binding.counterpartyUserId !== input.counterpartyUserId
-        || binding.counterpartyIntentId !== input.counterpartyIntentId
+        || binding.counterpartyBinding.kind !== input.counterpartyBinding.kind
+        || binding.counterpartyBinding.id !== input.counterpartyBinding.id
         || current?.intentFingerprint !== input.intentFingerprint
         || current.opportunityStatus !== input.opportunityStatus
         || current.opportunityUpdatedAt !== input.opportunityUpdatedAt
@@ -788,7 +828,7 @@ export class QuestionerAdapter {
         opportunityStatus: input.opportunityStatus,
         opportunityUpdatedAt: input.opportunityUpdatedAt,
         counterpartyUserId: input.counterpartyUserId,
-        counterpartyIntentId: input.counterpartyIntentId,
+        counterpartyBinding: input.counterpartyBinding,
         kind: 'timeout',
         continuationStatus: 'requested',
         settledAt,
@@ -901,7 +941,7 @@ export class QuestionerAdapter {
         opportunityStatus: binding.opportunityStatus,
         opportunityUpdatedAt: binding.opportunityUpdatedAt,
         counterpartyUserId: binding.counterpartyUserId,
-        counterpartyIntentId: binding.counterpartyIntentId,
+        counterpartyBinding: binding.counterpartyBinding,
         kind: 'answer',
         answer: {
           selectedOptions: input.answer.selectedOptions,
@@ -985,7 +1025,7 @@ export class QuestionerAdapter {
       opportunityStatus: settlement.opportunityStatus,
       opportunityUpdatedAt: settlement.opportunityUpdatedAt,
       counterpartyUserId: settlement.counterpartyUserId,
-      counterpartyIntentId: settlement.counterpartyIntentId,
+      counterpartyBinding: settlement.counterpartyBinding,
     });
   }
 
@@ -1029,7 +1069,8 @@ export class QuestionerAdapter {
       && settlement.opportunityStatus === input.opportunityStatus
       && settlement.opportunityUpdatedAt === input.opportunityUpdatedAt
       && settlement.counterpartyUserId === input.counterpartyUserId
-      && settlement.counterpartyIntentId === input.counterpartyIntentId;
+      && settlement.counterpartyBinding.kind === input.counterpartyBinding.kind
+      && settlement.counterpartyBinding.id === input.counterpartyBinding.id;
   }
 }
 

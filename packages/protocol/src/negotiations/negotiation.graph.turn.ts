@@ -723,7 +723,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         opportunityStatus: askUserBinding.opportunityStatus,
         opportunityUpdatedAt: askUserBinding.opportunityUpdatedAt,
         counterpartyUserId: askUserBinding.counterpartyUserId,
-        counterpartyIntentId: askUserBinding.counterpartyIntentId,
+        counterpartyBinding: askUserBinding.counterpartyBinding,
       }, windowMs);
 
       // Persistence admission requires the exact task to be input_required.

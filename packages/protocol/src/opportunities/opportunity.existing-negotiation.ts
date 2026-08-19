@@ -1,5 +1,5 @@
 import type { ActiveIntent, NegotiationContinuationExecution, NegotiationContinuationReceipt, Opportunity, OpportunityGraphDatabase } from '../shared/interfaces/database.interface.js';
-import { resolveOpportunityActorIntent } from './opportunity.actor.js';
+import { opportunityActorMatchesBinding, resolveOpportunityActorIntent } from './opportunity.actor.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 
 const NEGOTIATION_INTENT_LIMIT = 5;
@@ -112,7 +112,7 @@ export async function negotiateExistingOpportunity(
       || resolveOpportunityActorIntent(recipientActor) !== continuation.recipientIntentId
       || recipientActor.networkId !== continuation.networkId
       || !counterpartyActor
-      || resolveOpportunityActorIntent(counterpartyActor) !== continuation.counterpartyIntentId
+      || !opportunityActorMatchesBinding(counterpartyActor, continuation.counterpartyBinding)
       || counterpartyActor.networkId !== continuation.networkId
     ) return { kind: 'skipped', reason: 'stale_continuation' };
   }

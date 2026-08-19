@@ -49,7 +49,7 @@ const continuationFence = {
   opportunityId: 'opp-1', userId: 'src', recipientIntentId: 'intent-src', networkId: 'network',
   intentFingerprint: 'fingerprint', opportunityStatus: 'negotiating',
   opportunityUpdatedAt: '2026-08-07T00:00:00.000Z', counterpartyUserId: 'cand',
-  counterpartyIntentId: 'intent-cand', leaseExpiresAt: '2026-08-07T00:10:00.000Z',
+  counterpartyBinding: { kind: 'intent' as const, id: 'intent-cand' }, leaseExpiresAt: '2026-08-07T00:10:00.000Z',
   consultation: { recipientUserId: 'src', recipientIntentId: 'intent-src', kind: 'answer' as const, selectedOptions: [] },
 };
 
@@ -526,7 +526,7 @@ const expiryData = {
   opportunityStatus: 'negotiating',
   opportunityUpdatedAt: '2026-08-07T00:00:00.000Z',
   counterpartyUserId: 'u-counterparty',
-  counterpartyIntentId: 'intent-counterparty',
+  counterpartyBinding: { kind: 'intent' as const, id: 'intent-counterparty' },
 };
 
 describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
@@ -618,7 +618,7 @@ describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
       opportunityStatus: 'negotiating',
       opportunityUpdatedAt: '2026-08-07T00:00:00.000Z',
       counterpartyUserId: 'u-counterparty',
-      counterpartyIntentId: 'intent-counterparty',
+      counterpartyBinding: { kind: 'intent' as const, id: 'intent-counterparty' },
     }, 86_400_000);
     expect(mockAdd).toHaveBeenCalledWith(
       'ask_user_expiry',

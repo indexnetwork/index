@@ -1,3 +1,4 @@
+import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
 import { assessConsultationEligibility, configuredQuestionBudgetPerPrincipal, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
 
 export { consultationExpiryReadiness } from './consultation-expiry';
@@ -9,12 +10,19 @@ export type ExternalConsultationCoordinates = {
   networkId: string;
   /** Internal identity fences; never copied into Questioner disclosure context. */
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  /**
+   * Always intent-bound on this path: the external-agent coordinates are
+   * derived from `metadata.participantBindings`, which carries only
+   * intent-bound participants. Typed as the shared binding so the durable
+   * coordinates and these compare without a shape conversion.
+   */
+  counterpartyBinding: NegotiationCounterpartyBinding;
 };
 
 type ConsultationOpportunityActor = {
   userId?: string;
   intent?: string;
+  premise?: string;
   networkId?: string;
   role?: string;
 };
@@ -112,7 +120,7 @@ export function externalConsultationCoordinatesFor(
     recipientIntentId: recipient[0].intentId,
     networkId,
     counterpartyUserId: counterparties[0].userId,
-    counterpartyIntentId: counterparties[0].intentId,
+    counterpartyBinding: { kind: 'intent', id: counterparties[0].intentId },
   };
 }
 
@@ -128,7 +136,7 @@ export function consultationActorSetMatchesBinding(input: {
   recipientIntentId: string;
   networkId: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  counterpartyBinding: NegotiationCounterpartyBinding;
 }): boolean {
   if (!Array.isArray(input.actors)) return false;
   const participants = (input.actors as ConsultationOpportunityActor[])
@@ -149,9 +157,13 @@ export function consultationActorSetMatchesBinding(input: {
     || !participantUserIds.has(input.counterpartyUserId)
   ) return false;
 
+  // Matched on the key the actor carries, so a premise-bound counterparty is
+  // checked against its premise rather than against an intent it never had.
   return participants.some((actor) =>
     actor.userId === input.counterpartyUserId
-    && actor.intent === input.counterpartyIntentId
+    && (input.counterpartyBinding.kind === 'intent'
+      ? actor.intent === input.counterpartyBinding.id
+      : actor.premise === input.counterpartyBinding.id)
     && actor.networkId === input.networkId);
 }
 

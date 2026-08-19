@@ -313,6 +313,7 @@ export type {
 
 export { NegotiationConsultationReasonSchema } from "./shared/schemas/negotiation-state.schema.js";
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./shared/schemas/negotiation-state.schema.js";
+export type { NegotiationCounterpartyBinding } from "./shared/interfaces/database.negotiation.js";
 export type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat, NegotiationProtocolVersion } from "./shared/schemas/negotiation-state.schema.js";
 export type { NegotiationGraphLike } from "./negotiations/negotiation.module.js";
 export {
