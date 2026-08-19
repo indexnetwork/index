@@ -15,7 +15,16 @@ export interface ConsultationEligibilityInput {
   action: NegotiationAction;
   ownSuggestedRole: "agent" | "patient" | "peer" | undefined;
   priorActions: readonly NegotiationAction[];
-  previouslyConsulted: boolean;
+  /**
+   * Whether the acting principal's question budget for this negotiation is
+   * spent (checklist plan §3 rule 5). Under the checklist protocol that is
+   * `QUESTION_BUDGET_PER_PRINCIPAL` questions per principal, the turn-0
+   * pre-contact consult included; under `advocate` it is the legacy
+   * one-consultation ration, which is the same test with a budget of one — so
+   * this stayed one boolean rather than becoming a count the policy would have
+   * to interpret. The policy still sees no text, no ids and no counts.
+   */
+  consultationBudgetSpent: boolean;
   hasExactResumeCoordinate: boolean;
   lifecycleValid: boolean;
 }
@@ -44,7 +53,7 @@ export function assessConsultationEligibility(input: ConsultationEligibilityInpu
     input.protocolVersion !== "v2"
     || input.isFinalTurn
     || input.screenedOut
-    || input.previouslyConsulted
+    || input.consultationBudgetSpent
     || !input.hasExactResumeCoordinate
     || !input.lifecycleValid
     || isObviousTerminal(input.action)

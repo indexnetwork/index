@@ -140,3 +140,38 @@ describe("QuestionRegenerationIndicator", () => {
     expect(indicator.getAttribute("aria-label")).toBe("Your agent is updating its questions");
   });
 });
+
+describe("QuestionSteps options", () => {
+  const blockWith = (options?: Array<{ label: string; description: string }>) => ({
+    version: 1 as const,
+    questions: [{
+      prompt: "Are you a founder of a pre-seed game studio, or representing one?",
+      opportunityId: "0b0e8a9c-6d3f-4d6a-9f2e-1c5b7a4d8e01",
+      ...(options ? { options } : {}),
+    }],
+  });
+
+  it("renders the agent's decision options as choices", () => {
+    // The negotiator authors 2–4 options with the consequence of each, and the
+    // parked reader carries them — but the block had no field for them, so
+    // every question arrived as prose with a reply arrow and nothing to pick.
+    const quoted: string[] = [];
+    render(<QuestionSteps block={blockWith([
+      { label: "I am the founder", description: "I will tell them you are raising for your own studio." },
+      { label: "I represent a studio", description: "I will position you as representing the team." },
+    ])} onQuote={(text) => quoted.push(text)} />);
+
+    const options = screen.getByTestId("question-step-options");
+    expect(options).toBeTruthy();
+    fireEvent.click(screen.getByText("I am the founder"));
+    // Choosing quotes into the input rather than submitting: answering stays a
+    // plain chat reply, so options and free text remain one lane.
+    expect(quoted).toEqual(["I am the founder"]);
+  });
+
+  it("renders prose only when the park had no authored options", () => {
+    render(<QuestionSteps block={blockWith()} onQuote={() => {}} />);
+    expect(screen.queryByTestId("question-step-options")).toBeNull();
+    expect(screen.getByText(/Are you a founder/)).toBeTruthy();
+  });
+});

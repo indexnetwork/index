@@ -4,6 +4,8 @@
  * for external agents that haven't responded yet.
  */
 
+import type { NegotiationCounterpartyBinding } from './database.negotiation.js';
+
 /** Exact parked continuation generation carried by a delayed timeout job. */
 export interface NegotiationContinuationTimeoutIdentity {
   priorTaskId: string;
@@ -89,5 +91,6 @@ export interface AskUserExpiryPayload {
   opportunityUpdatedAt: string;
   /** Exact counterparty provenance for settlement-time eligibility checks. */
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  /** Intent- or premise-bound counterparty identity, verified at resume. */
+  counterpartyBinding: NegotiationCounterpartyBinding;
 }

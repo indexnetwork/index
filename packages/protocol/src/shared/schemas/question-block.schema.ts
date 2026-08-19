@@ -40,6 +40,37 @@ export const QuestionBlockQuestionSchema = z.object({
   opportunityId: NegotiationRefSchema,
   /** Further negotiations parked on the same gap that this answer also unparks. */
   alsoUnblocks: z.array(NegotiationRefSchema).max(8).optional(),
+  /**
+   * The checklist dimension the primary negotiation parked on
+   * (docs/plans/2026-08-19-checklist-negotiations.md §4), for the step's label:
+   * "Timing", "Location", "Stage fit". Presentation only — routing is the
+   * negotiation ref and nothing else, so a stale or missing label can never
+   * misroute an answer.
+   *
+   * Optional in both directions. Blocks authored before the checklist protocol
+   * carry none and still parse, which is what keeps the fail-closed parser
+   * backward-compatible; and a park whose ask named no dimension (a
+   * policy-inferred consultation, a post-stall gap) simply renders unlabeled.
+   */
+  dimension: z.string().min(1).max(60).optional(),
+  /**
+   * The decision options the agent authored at park time, carried through so
+   * the client can pick one instead of composing prose.
+   *
+   * The negotiator already writes 2–4 real options with the CONSEQUENCE of
+   * choosing each ("what I would do next in this negotiation"), and the parked
+   * reader already carries them — but the block had no field for them, so
+   * every question arrived as prose with a reply arrow and nothing to select.
+   *
+   * Optional, like every other addition here: a park whose question was
+   * stripped by the safety gate, a policy-inferred consultation, and blocks
+   * authored before this field all render as prose, which is what the steps UI
+   * did for all of them before.
+   */
+  options: z.array(z.object({
+    label: z.string().min(1).max(120),
+    description: z.string().min(1).max(280),
+  })).min(2).max(4).optional(),
 }).strict();
 export type QuestionBlockQuestion = z.infer<typeof QuestionBlockQuestionSchema>;
 

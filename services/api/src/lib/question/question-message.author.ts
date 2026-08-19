@@ -81,6 +81,7 @@ function truncate(text: string, max: number): string {
 function renderParkedNegotiation(parked: ParkedNegotiation, index: number): string {
   const lines = [`Parked negotiation ${index}:`];
   if (parked.reason) lines.push(`- Pause category: ${parked.reason}`);
+  if (parked.dimension) lines.push(`- Checklist dimension it is stuck on: ${parked.dimension}`);
   if (parked.question) {
     const options = parked.question.options
       .map((option) => `${option.label} (${option.description})`)
@@ -186,12 +187,25 @@ export class QuestionMessageAuthor {
     if (!isSafeQuestionMessageProse(parsed.data.prose)) return null;
     if (!parsed.data.questions.every((question) => isSafeQuestionMessagePrompt(question.prompt))) return null;
 
+    // The dimension label is MAPPED from the primary park, never authored: the
+    // model merges parks and writes prose, and a label it invented could name a
+    // dimension no checklist carries. Merged parks inherit the primary's label
+    // for the same reason the block's identity is the primary's ref.
     const questions = parsed.data.questions.map((question) => {
       const [primary, ...rest] = question.unblocks;
       return {
         prompt: question.prompt.trim(),
         opportunityId: parked[primary].opportunityId,
         ...(rest.length > 0 ? { alsoUnblocks: rest.map((index) => parked[index].opportunityId) } : {}),
+        ...(parked[primary].dimension ? { dimension: parked[primary].dimension } : {}),
+        // Options come from the park-time authored question verbatim, never
+        // from this model call: the negotiator wrote them against the
+        // negotiation it is actually having, and they already passed the
+        // identifier-aware safety gate. Merged parks inherit the primary's, for
+        // the same reason the block's identity is the primary's ref.
+        ...(parked[primary].question?.options?.length
+          ? { options: parked[primary].question.options.slice(0, 4) }
+          : {}),
       };
     });
     return this.toAuthoredMessage(parsed.data.prose.trim(), questions);
@@ -205,7 +219,14 @@ export class QuestionMessageAuthor {
   private compose(parked: ParkedNegotiation[]): AuthoredQuestionMessage | null {
     const questions = parked.flatMap((negotiation) =>
       negotiation.question
-        ? [{ prompt: negotiation.question.prompt, opportunityId: negotiation.opportunityId }]
+        ? [{
+            prompt: negotiation.question.prompt,
+            opportunityId: negotiation.opportunityId,
+            ...(negotiation.dimension ? { dimension: negotiation.dimension } : {}),
+            ...(negotiation.question.options.length
+              ? { options: negotiation.question.options.slice(0, 4) }
+              : {}),
+          }]
         : []);
     if (questions.length === 0) {
       logger.warn('Parked set has no renderable question; skipping message', { parked: parked.length });

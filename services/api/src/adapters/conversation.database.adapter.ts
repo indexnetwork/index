@@ -1,3 +1,4 @@
+import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
 import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
@@ -3403,13 +3404,13 @@ export class ConversationDatabaseAdapter {
     opportunityId: string;
     networkId: string;
     counterpartyUserId: string;
-    counterpartyIntentId: string;
+    counterpartyBinding: NegotiationCounterpartyBinding;
   }): Promise<{
     intentFingerprint: string;
     opportunityStatus: string;
     opportunityUpdatedAt: string;
     counterpartyUserId: string;
-    counterpartyIntentId: string;
+    counterpartyBinding: NegotiationCounterpartyBinding;
   } | null> {
     const [row] = await db.select({
       taskState: schema.tasks.state,
@@ -3451,14 +3452,15 @@ export class ConversationDatabaseAdapter {
       !boundCoordinates
       || boundCoordinates.recipientIntentId !== input.recipientIntentId
       || boundCoordinates.counterpartyUserId !== input.counterpartyUserId
-      || boundCoordinates.counterpartyIntentId !== input.counterpartyIntentId
+      || boundCoordinates.counterpartyBinding.kind !== input.counterpartyBinding.kind
+      || boundCoordinates.counterpartyBinding.id !== input.counterpartyBinding.id
       || !consultationActorSetMatchesBinding({
         actors: row.actors,
         recipientUserId: input.recipientUserId,
         recipientIntentId: input.recipientIntentId,
         networkId: input.networkId,
         counterpartyUserId: boundCoordinates.counterpartyUserId,
-        counterpartyIntentId: boundCoordinates.counterpartyIntentId,
+        counterpartyBinding: boundCoordinates.counterpartyBinding,
       })
     ) return null;
     const members = await db.select({ userId: schema.networkMembers.userId })
@@ -3479,7 +3481,7 @@ export class ConversationDatabaseAdapter {
       opportunityStatus: row.opportunityStatus,
       opportunityUpdatedAt: row.opportunityUpdatedAt.toISOString(),
       counterpartyUserId: boundCoordinates.counterpartyUserId,
-      counterpartyIntentId: boundCoordinates.counterpartyIntentId,
+      counterpartyBinding: boundCoordinates.counterpartyBinding,
     };
   }
 
@@ -3505,7 +3507,7 @@ export class ConversationDatabaseAdapter {
       opportunityStatus: string;
       opportunityUpdatedAt: string;
       counterpartyUserId: string;
-      counterpartyIntentId: string;
+      counterpartyBinding: NegotiationCounterpartyBinding;
     };
     safeAskUser: { disclosureSubject: string; draftQuestion?: string };
     consultationPolicyReason?: string;
@@ -3526,7 +3528,7 @@ export class ConversationDatabaseAdapter {
       opportunityStatus: string;
       opportunityUpdatedAt: string;
       counterpartyUserId: string;
-      counterpartyIntentId: string;
+      counterpartyBinding: NegotiationCounterpartyBinding;
     };
   } | null> {
     return db.transaction(async (tx) => {
@@ -3572,7 +3574,8 @@ export class ConversationDatabaseAdapter {
         !boundCoordinates
         || boundCoordinates.recipientIntentId !== input.recipientIntentId
         || boundCoordinates.counterpartyUserId !== input.expectedMaterial.counterpartyUserId
-        || boundCoordinates.counterpartyIntentId !== input.expectedMaterial.counterpartyIntentId
+        || boundCoordinates.counterpartyBinding.kind !== input.expectedMaterial.counterpartyBinding.kind
+        || boundCoordinates.counterpartyBinding.id !== input.expectedMaterial.counterpartyBinding.id
       ) return null;
 
       // Match-scoped: the caller derives `expectedTurnCount` from this
@@ -3619,9 +3622,9 @@ export class ConversationDatabaseAdapter {
         recipientIntentId: input.recipientIntentId,
         networkId: input.networkId,
         counterpartyUserId: boundCoordinates.counterpartyUserId,
-        counterpartyIntentId: boundCoordinates.counterpartyIntentId,
+        counterpartyBinding: boundCoordinates.counterpartyBinding,
       })) return null;
-      const { counterpartyUserId, counterpartyIntentId } = boundCoordinates;
+      const { counterpartyUserId, counterpartyBinding } = boundCoordinates;
       const members = await tx.select({ userId: schema.networkMembers.userId })
         .from(schema.networkMembers)
         .innerJoin(schema.networks, and(
@@ -3670,14 +3673,15 @@ export class ConversationDatabaseAdapter {
         opportunityStatus: opportunity.status,
         opportunityUpdatedAt: opportunity.updatedAt.toISOString(),
         counterpartyUserId,
-        counterpartyIntentId,
+        counterpartyBinding,
       };
       if (
         material.intentFingerprint !== input.expectedMaterial.intentFingerprint
         || material.opportunityStatus !== input.expectedMaterial.opportunityStatus
         || material.opportunityUpdatedAt !== input.expectedMaterial.opportunityUpdatedAt
         || material.counterpartyUserId !== input.expectedMaterial.counterpartyUserId
-        || material.counterpartyIntentId !== input.expectedMaterial.counterpartyIntentId
+        || material.counterpartyBinding.kind !== input.expectedMaterial.counterpartyBinding.kind
+        || material.counterpartyBinding.id !== input.expectedMaterial.counterpartyBinding.id
       ) return null;
       const binding = {
         version: 2 as const,
@@ -3788,7 +3792,7 @@ export class ConversationDatabaseAdapter {
     opportunityStatus: string;
     opportunityUpdatedAt: string;
     counterpartyUserId: string;
-    counterpartyIntentId: string;
+    counterpartyBinding: NegotiationCounterpartyBinding;
   }> {
     return db.transaction(async (tx) => {
       if (input.continuationExecution) {
@@ -3824,21 +3828,30 @@ export class ConversationDatabaseAdapter {
         || !opportunity
       ) throw new Error('Ask-user material binding is no longer valid');
 
-      const actors = opportunity.actors as Array<{ userId?: string; intent?: string; networkId?: string; role?: string }>;
+      const actors = opportunity.actors as Array<{ userId?: string; intent?: string; premise?: string; networkId?: string; role?: string }>;
       const recipient = actors.filter((actor) => actor.role !== 'introducer'
         && actor.userId === input.recipientUserId
         && actor.intent === input.recipientIntentId
         && actor.networkId === input.networkId);
+      // A counterparty actor is bound EITHER by a stated intent or by a
+      // premise — premise discovery produces the second kind, and in dev it
+      // produces most of them. Requiring `intent` here threw "ambiguous" for
+      // every premise-matched counterparty, which failed the turn and ended the
+      // negotiation as a withdrawal: asking was the one move that could not be
+      // made against most of the pool. The recipient side is unchanged — the
+      // person being asked is always bound to the intent under negotiation.
       const counterparties = actors.filter((actor) => actor.role !== 'introducer'
         && actor.userId !== input.recipientUserId
         && actor.networkId === input.networkId
         && typeof actor.userId === 'string'
-        && typeof actor.intent === 'string');
+        && (typeof actor.intent === 'string' || typeof actor.premise === 'string'));
       if (recipient.length !== 1 || counterparties.length !== 1) {
         throw new Error('Ask-user opportunity actor binding is ambiguous');
       }
       const counterpartyUserId = counterparties[0].userId!;
-      const counterpartyIntentId = counterparties[0].intent!;
+      const counterpartyBinding: NegotiationCounterpartyBinding = typeof counterparties[0].intent === 'string'
+        ? { kind: 'intent', id: counterparties[0].intent }
+        : { kind: 'premise', id: counterparties[0].premise! };
       const members = await tx.select({ userId: schema.networkMembers.userId }).from(schema.networkMembers)
         .innerJoin(schema.networks, and(
           eq(schema.networks.id, schema.networkMembers.networkId),
@@ -3865,7 +3878,7 @@ export class ConversationDatabaseAdapter {
         opportunityStatus: opportunity.status,
         opportunityUpdatedAt: opportunity.updatedAt.toISOString(),
         counterpartyUserId,
-        counterpartyIntentId,
+        counterpartyBinding,
       };
       await tx.update(schema.tasks).set({
         metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('turnContext', ${JSON.stringify({ ...input.turnContext, askUserBinding: binding })}::jsonb)`,

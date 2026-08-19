@@ -1,4 +1,5 @@
-import { assessConsultationEligibility, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
+import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
+import { assessConsultationEligibility, configuredQuestionBudgetPerPrincipal, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
 
 export { consultationExpiryReadiness } from './consultation-expiry';
 export type { ConsultationExpiryReadinessInput } from './consultation-expiry';
@@ -9,12 +10,19 @@ export type ExternalConsultationCoordinates = {
   networkId: string;
   /** Internal identity fences; never copied into Questioner disclosure context. */
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  /**
+   * Always intent-bound on this path: the external-agent coordinates are
+   * derived from `metadata.participantBindings`, which carries only
+   * intent-bound participants. Typed as the shared binding so the durable
+   * coordinates and these compare without a shape conversion.
+   */
+  counterpartyBinding: NegotiationCounterpartyBinding;
 };
 
 type ConsultationOpportunityActor = {
   userId?: string;
   intent?: string;
+  premise?: string;
   networkId?: string;
   role?: string;
 };
@@ -112,7 +120,7 @@ export function externalConsultationCoordinatesFor(
     recipientIntentId: recipient[0].intentId,
     networkId,
     counterpartyUserId: counterparties[0].userId,
-    counterpartyIntentId: counterparties[0].intentId,
+    counterpartyBinding: { kind: 'intent', id: counterparties[0].intentId },
   };
 }
 
@@ -128,7 +136,7 @@ export function consultationActorSetMatchesBinding(input: {
   recipientIntentId: string;
   networkId: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  counterpartyBinding: NegotiationCounterpartyBinding;
 }): boolean {
   if (!Array.isArray(input.actors)) return false;
   const participants = (input.actors as ConsultationOpportunityActor[])
@@ -149,9 +157,13 @@ export function consultationActorSetMatchesBinding(input: {
     || !participantUserIds.has(input.counterpartyUserId)
   ) return false;
 
+  // Matched on the key the actor carries, so a premise-bound counterparty is
+  // checked against its premise rather than against an intent it never had.
   return participants.some((actor) =>
     actor.userId === input.counterpartyUserId
-    && actor.intent === input.counterpartyIntentId
+    && (input.counterpartyBinding.kind === 'intent'
+      ? actor.intent === input.counterpartyBinding.id
+      : actor.premise === input.counterpartyBinding.id)
     && actor.networkId === input.networkId);
 }
 
@@ -186,8 +198,13 @@ export function assessExternalConsultationEligibility(
     && last.senderId === `agent:${coordinates.counterpartyUserId}`,
   );
   const supportedTrigger = lastAction === 'counter' || lastAction === 'question';
-  const previouslyConsulted = input.messages.some((message) =>
-    message.senderId === `agent:${input.userId}` && message.turn.action === 'ask_user');
+  // The acting principal's question budget for this negotiation (checklist
+  // plan §3 rule 5), counted off the same message record the graph reads.
+  // Under `advocate` the budget is 1, which is exactly the one-consultation
+  // ration this used to test for.
+  const consultationsSpent = input.messages.filter((message) =>
+    message.senderId === `agent:${input.userId}` && message.turn.action === 'ask_user').length;
+  const consultationBudgetSpent = consultationsSpent >= configuredQuestionBudgetPerPrincipal();
   const exactWiring = input.wiring.askUserEnabled && input.wiring.questionerEnabled && input.wiring.expiryEnabled;
   const lifecycleValid = input.task.state === 'claimed'
     && input.task.claimedByAgentId === input.agentId
@@ -198,7 +215,7 @@ export function assessExternalConsultationEligibility(
     && !isFinalTurn
     && counterpartyTurn
     && supportedTrigger
-    && !previouslyConsulted
+    && !consultationBudgetSpent
     && lifecycleValid
     && exactWiring;
 
@@ -220,7 +237,7 @@ export function assessExternalConsultationEligibility(
     // turn's perspective, `otherUser` is the currently claiming owner.
     ownSuggestedRole: roleValue(last?.turn.assessment?.suggestedRoles?.otherUser),
     priorActions,
-    previouslyConsulted,
+    consultationBudgetSpent,
     hasExactResumeCoordinate: Boolean(coordinates && exactWiring),
     lifecycleValid,
   };

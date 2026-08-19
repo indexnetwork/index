@@ -27,6 +27,27 @@ export interface NegotiationPrivateConsultation {
   freeText?: string;
 }
 
+/**
+ * How a negotiation's counterparty is bound to the opportunity.
+ *
+ * An opportunity actor carries EITHER a stated intent or a premise — premise
+ * discovery produces the second kind, and in dev it produces most of them. The
+ * park's durable coordinates carry the same polymorphism rather than flattening
+ * it to an intent id: requiring an intent made `captureNegotiationAskUserBinding`
+ * throw "actor binding is ambiguous" for every premise-bound counterparty, which
+ * failed the turn and ended the negotiation as a withdrawal — asking was the one
+ * move that could not be made against most of the pool.
+ *
+ * The kind is what the resume path verifies against. An intent must still be
+ * ACTIVE and assigned to the network; a premise must still be ACTIVE, not
+ * retracted, and assigned to the network. Both can go stale while a client
+ * takes 24h to answer, and both are checked — which is why this is a
+ * discriminated binding rather than a nullable id.
+ */
+export type NegotiationCounterpartyBinding =
+  | { kind: 'intent'; id: string }
+  | { kind: 'premise'; id: string };
+
 export interface NegotiationContinuationExecution {
   taskId: string;
   settlementId: string;
@@ -38,7 +59,7 @@ export interface NegotiationContinuationExecution {
   opportunityStatus: string;
   opportunityUpdatedAt: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  counterpartyBinding: NegotiationCounterpartyBinding;
   successorTaskId: string;
   conversationId: string;
   token: string;
@@ -77,7 +98,7 @@ export interface NegotiationQueries {
     opportunityStatus: string;
     opportunityUpdatedAt: string;
     counterpartyUserId: string;
-    counterpartyIntentId: string;
+    counterpartyBinding: NegotiationCounterpartyBinding;
   }>;
 
   /**

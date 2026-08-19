@@ -20,7 +20,9 @@ import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { buildAttributedDialogue, countNegotiationAskRounds, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
+import { configuredQuestionBudgetPerPrincipal } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -176,14 +178,28 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
     && state.sourceIntentId
     && state.indexContext.networkId
   ) {
+    const checklistActive = stanceUsesChecklist(configuredNegotiatorStance());
     const askRounds = countNegotiationAskRounds(state.messages);
-    const askRoundsCap = negotiationAskRoundsCap();
-    if (askRounds >= askRoundsCap) {
+    const askRoundsCap = negotiationAskRoundsCap({ checklist: checklistActive });
+    // The park asks THIS user a question, so it draws on their own budget as
+    // well as on the negotiation-wide cap (checklist plan §3 rule 5). Without
+    // this a negotiation could spend a principal's whole budget mid-flight and
+    // still park one more question on them at the end — the flavour of the
+    // park is not something the person on the other end experiences.
+    const principalAsks = countPrincipalAskUserTurns(state.messages, state.sourceUser.id);
+    // Under `advocate` the post-stall park was never bound by the per-side
+    // ration — it is the mechanism that asks AFTER the consult is spent — so
+    // the budget binds here only where the checklist protocol put every ask on
+    // one counter.
+    const principalBudget = checklistActive ? configuredQuestionBudgetPerPrincipal() : Number.POSITIVE_INFINITY;
+    if (askRounds >= askRoundsCap || principalAsks >= principalBudget) {
       finalizeLog.info('negotiation_ask_cap_terminal', {
         taskId: state.taskId,
         opportunityId: state.opportunityId,
         askRounds,
         askRoundsCap,
+        principalAsks,
+        ...(Number.isFinite(principalBudget) && { principalBudget }),
         stallReason,
       });
       emitWide({

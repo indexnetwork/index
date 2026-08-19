@@ -114,7 +114,7 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     screenedOut: false,
     ownSuggestedRole: "peer" as const,
     priorActions: [] as const,
-    previouslyConsulted: false,
+    consultationBudgetSpent: false,
     hasExactResumeCoordinate: true,
     lifecycleValid: true,
   };
@@ -141,7 +141,7 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     { action: "decline" as const },
     { action: "reject" as const },
     { action: "withdraw" as const },
-    { previouslyConsulted: true },
+    { consultationBudgetSpent: true },
     { hasExactResumeCoordinate: false },
     { lifecycleValid: false },
   ])("fails closed for excluded state %#", (partial) => {
@@ -207,7 +207,7 @@ function bindingFor(recipientUserId: string, input: Record<string, unknown>) {
     opportunityStatus: 'pending',
     opportunityUpdatedAt: '2026-01-01T00:00:00.000Z',
     counterpartyUserId: isSrc ? 'u-cand' : 'u-src',
-    counterpartyIntentId: isSrc ? 'intent-cand' : 'intent-src',
+    counterpartyBinding: { kind: 'intent' as const, id: isSrc ? 'intent-cand' : 'intent-src' },
   };
 }
 
@@ -544,7 +544,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       opportunityStatus: 'pending',
       opportunityUpdatedAt: '2026-01-01T00:00:00.000Z',
       counterpartyUserId: 'u-cand',
-      counterpartyIntentId: 'intent-cand',
+      counterpartyBinding: { kind: 'intent', id: 'intent-cand' },
     });
     expect(stubs.expiryArms[0].delayMs).toBe(DEFAULT_ASK_USER_WINDOW_MS);
 
@@ -709,7 +709,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       opportunityStatus: 'pending',
       opportunityUpdatedAt: '2026-01-01T00:00:00.000Z',
       counterpartyUserId: 'u-cand',
-      counterpartyIntentId: 'intent-cand',
+      counterpartyBinding: { kind: 'intent', id: 'intent-cand' },
       successorTaskId: 'task-successor',
       conversationId: 'conv-1',
       token: 'tok-1',

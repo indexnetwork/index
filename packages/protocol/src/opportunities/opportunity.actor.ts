@@ -1,3 +1,4 @@
+import type { NegotiationCounterpartyBinding } from '../shared/interfaces/database.negotiation.js';
 import type { CreateOpportunityData, OpportunityActor } from '../shared/interfaces/database.interface.js';
 
 /**
@@ -26,6 +27,35 @@ export function resolveOpportunityActorIntent(actor: {
 }): string | undefined {
   return normalizeOpportunityActorIntent(actor.intentId)
     ?? normalizeOpportunityActorIntent(actor.intent);
+}
+
+/**
+ * Resolve the binding an actor actually carries: its intent when it has one,
+ * otherwise its premise. Premise discovery produces actors of the second kind,
+ * and they are ordinary participants — an opportunity is not required to pair
+ * two stated intents.
+ */
+export function resolveOpportunityActorBinding(actor: {
+  intentId?: unknown;
+  intent?: unknown;
+  premise?: unknown;
+}): NegotiationCounterpartyBinding | undefined {
+  const intent = resolveOpportunityActorIntent(actor);
+  if (intent !== undefined) return { kind: 'intent', id: intent };
+  const premise = normalizeOpportunityActorIntent(actor.premise);
+  return premise === undefined ? undefined : { kind: 'premise', id: premise };
+}
+
+/** Whether an actor still carries the exact binding a parked negotiation pinned. */
+export function opportunityActorMatchesBinding(
+  actor: { intentId?: unknown; intent?: unknown; premise?: unknown },
+  binding: NegotiationCounterpartyBinding | undefined,
+): boolean {
+  const resolved = resolveOpportunityActorBinding(actor);
+  return resolved !== undefined
+    && binding !== undefined
+    && resolved.kind === binding.kind
+    && resolved.id === binding.id;
 }
 
 /** Return a non-mutating actor copy with a canonical optional intent. */

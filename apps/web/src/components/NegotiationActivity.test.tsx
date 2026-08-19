@@ -31,6 +31,61 @@ describe("NegotiationActivity", () => {
     expect(screen.getAllByText("Their agent")).toHaveLength(1);
   });
 
+  it("shows the checklist the negotiation is running on, with open dimensions marked", () => {
+    // The checklist IS the process: three pre-registered dimensions, what each
+    // currently scores, and which ones are still open — the open ones being
+    // exactly what the agent may come back and ask about.
+    const groups = normalizeNegotiationActivity([{
+      correspondentUserId: "ada",
+      correspondentLabel: "Ada's agent",
+      correspondentAvatar: null,
+      checklist: [
+        { name: "Mutual want", kind: "mutual_want", result: "ok", basis: "both intents say so" },
+        { name: "Weekday availability", kind: "fit", result: "unknown", basis: "" },
+        { name: "Ticket size", kind: "hard_constraint", result: "conflict", basis: "they stated pre-seed only" },
+      ],
+      messages: [{
+        id: "m-1",
+        opportunityId: "opp-1",
+        sender: "yours" as const,
+        action: "ask_user",
+        text: "What grade do you climb, and can you make weeknights?",
+        parts: [],
+        createdAt: "2026-07-24T00:00:01.000Z",
+      }],
+    }]);
+    render(<NegotiationActivity groups={groups} loading={false} error={false} />);
+
+    expect(screen.getByText(/3 dimensions/)).toBeTruthy();
+    expect(screen.getByText(/1 conflicting/)).toBeTruthy();
+    expect(screen.getByText(/1 open/)).toBeTruthy();
+    expect(screen.getByText("Mutual want")).toBeTruthy();
+    expect(screen.getByText("Weekday availability")).toBeTruthy();
+    // The turn renders through its own message field, and its action is labelled.
+    expect(screen.getByText("ASKED YOU")).toBeTruthy();
+    expect(screen.getByText(/What grade do you climb/)).toBeTruthy();
+  });
+
+  it("renders a negotiation with no checklist yet without inventing one", () => {
+    const groups = normalizeNegotiationActivity([{
+      correspondentUserId: "ada",
+      correspondentLabel: "Ada's agent",
+      correspondentAvatar: null,
+      messages: [{
+        id: "m-1",
+        opportunityId: "opp-1",
+        sender: "theirs" as const,
+        text: "Reaching out.",
+        parts: [],
+        createdAt: "2026-07-24T00:00:01.000Z",
+      }],
+    }]);
+    render(<NegotiationActivity groups={groups} loading={false} error={false} />);
+
+    expect(screen.getByText("Reaching out.")).toBeTruthy();
+    expect(screen.queryByLabelText("Match checklist")).toBeNull();
+  });
+
   it("does not fabricate messages while activity is empty", () => {
     render(<NegotiationActivity groups={[]} loading={false} error={false} />);
     expect(screen.getByText(/No agent conversations have started yet/)).toBeTruthy();

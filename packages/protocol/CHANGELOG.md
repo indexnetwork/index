@@ -20,6 +20,62 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.0.0 - 2026-08-19
+
+### Added
+
+- **The checklist negotiation core** (docs/plans/2026-08-19-checklist-negotiations.md
+  §2–§4, §6). A negotiation under the assessing stances now runs on an explicit,
+  pre-registered checklist: 3–5 dimensions authored on turn 1 from the two
+  intents alone (`mutual_want` always present), frozen after, re-scored each
+  turn from the commitment record, with the verdict a function of the scores.
+  New domain module `negotiations/negotiation.checklist.contracts.ts` (exported
+  from the package root): `NegotiationChecklistSchema`, `authorChecklist`,
+  `reconcileChecklist`, `checklistFromTurns`, `checklistVerdictState`,
+  `assessAskAdmissibility`, `renderChecklistSection`,
+  `QUESTION_BUDGET_PER_PRINCIPAL`, `configuredQuestionBudgetPerPrincipal`,
+  plus the DTOs in `shared/schemas/negotiation-checklist.schema.ts`.
+- **`ask_user` payload**: optional `dimension` and `answerhood`
+  (`{ ok_when, conflict_when }`). An ask names exactly one open dimension and
+  declares in advance what answers score it — the pivotality proof. Both are
+  optional, so v1 turns, external agents and the enum-only path validate
+  unchanged.
+- **Turn payload**: optional `checklist`, carried on every turn under the
+  protocol. The turn record is the checklist's only store — no new tables, and
+  a continuation recovers the frozen dimensions from the messages it already
+  reads.
+- **Question block**: optional `dimension` on a block question, the checklist
+  dimension a park is about, for the step's label. Presentation only; routing
+  is still the negotiation ref alone. Blocks without it parse unchanged, so the
+  fail-closed parser stays backward-compatible.
+- **Per-principal question budget**: at most `QUESTION_BUDGET_PER_PRINCIPAL`
+  (3) questions per principal per negotiation, the turn-0 pre-contact consult
+  included and post-stall parks counted. `countPrincipalAskUserTurns` exposes
+  the count off the message record.
+
+### Changed
+
+- **BREAKING** — `ConsultationEligibilityInput.previouslyConsulted` is now
+  `consultationBudgetSpent`: the one-consultation ration became a budget, and
+  a ration of one is that budget with `total = 1`. Callers pass "this
+  principal's budget for this negotiation is spent" instead of "they have
+  consulted before".
+- **Negotiator stance contracts restructured** around the checklist protocol.
+  The evidence-provenance rule (#1448) is now the `basis` discipline — an
+  agent's own conclusions are decisions, not commitments, so they cannot score
+  a dimension — and the responder verification rules (#1446) are now the
+  responding seat's scoring duty. Neither duty was dropped; both became rules
+  about what may score a dimension, and the repair path enforces them (an `ok`
+  with no basis is repaired to `unknown`). New predicate `stanceUsesChecklist`.
+  `advocate` is untouched, prompt and generation schema alike — the golden
+  prompt matrix still passes byte-for-byte.
+- `negotiationAskRoundsCap()` takes `{ checklist }` and defaults to
+  `CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP` (both principals' budgets plus one
+  post-stall park) under the checklist protocol; the pre-checklist default
+  stays 3. An explicit `NEGOTIATION_ASK_ROUNDS_CAP` still wins.
+- `AskUserOpts` is now `TurnVocabularyOpts` (`{ askUser, checklist }`); the old
+  name remains as a deprecated alias.
+
 ## 22.0.0 - 2026-08-18
 
 ### Removed

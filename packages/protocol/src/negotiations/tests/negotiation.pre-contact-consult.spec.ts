@@ -352,7 +352,7 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       screenedOut: false,
       ownSuggestedRole: "peer" as const,
       priorActions: [] as const,
-      previouslyConsulted: false,
+      consultationBudgetSpent: false,
       hasExactResumeCoordinate: true,
       lifecycleValid: true,
     };
@@ -378,7 +378,7 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
         { protocolVersion: "v1" as const },
         { isFinalTurn: true },
         { screenedOut: true },
-        { previouslyConsulted: true },
+        { consultationBudgetSpent: true },
         { hasExactResumeCoordinate: false },
         { lifecycleValid: false },
       ]) {
@@ -718,12 +718,40 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
         expect(prompt).toContain(marker);
         rules[stance ?? "unset"] = prompt.slice(prompt.indexOf(marker));
       }
-      // advocate and evaluator carry the base rule verbatim; only skeptic leans.
+      // `advocate` carries the base rule verbatim — the byte-identity invariant.
       expect(rules.advocate).toBe(rules.unset);
-      expect(rules.evaluator).toBe(rules.advocate);
-      expect(rules.skeptic).not.toBe(rules.advocate);
+      expect(rules.advocate.startsWith(marker)).toBe(true);
+
+      // The assessing stances APPEND to that same base rule; they never
+      // replace or reword it. Both now do: under the checklist protocol a
+      // dimension that is unknown and the client's own to settle is a
+      // pre-contact question too (plan §3), which the base rule — written for
+      // #1445, before the checklist existed — scopes to the signal's wording.
+      //
+      // The asymmetry this fixes: with the responding seat no longer closing
+      // over an open dimension, it parks and asks its own principal on turn 1,
+      // so the initiating side never reaches a later turn on which it could
+      // ask its client anything. Turn 0 is its only chance.
+      for (const stance of ["evaluator", "skeptic"] as const) {
+        // The base rule survives verbatim — every bullet of it, including the
+        // one that bounds the verdict. The stance text is INSERTED after it
+        // rather than replacing any of it, which is why this checks
+        // containment: the rest of the prompt follows the insert, so the
+        // advocate rendering is not a prefix of the others.
+        expect(rules[stance]).toContain("Nothing has been sent and nothing is sent while you wait");
+        expect(rules[stance]).toContain("Do NOT use it when the evidence in front of you already decides");
+        expect(rules[stance].length).toBeGreaterThan(rules.advocate.length);
+        expect(rules[stance]).toContain("whether the ANSWER would still hold for the next candidate");
+      }
+      // And the base rule's safety test survives in both: a question whose
+      // answer is only about this one candidate stays the agent's to judge.
+      expect(rules.evaluator).toContain("it is yours to judge, not theirs");
+
+      // Only skeptic leans on top of that.
+      expect(rules.skeptic).not.toBe(rules.evaluator);
       expect(rules.skeptic).toContain("lean toward asking rather than passing");
       expect(rules.advocate).not.toContain("lean toward asking rather than passing");
+      expect(rules.evaluator).not.toContain("lean toward asking rather than passing");
     });
   });
 

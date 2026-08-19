@@ -273,145 +273,228 @@ describe("evaluator / skeptic — additive, gated fragments", () => {
 });
 
 /**
- * Evidence provenance — the agent's own record is its decisions, not its
- * client's evidence.
+ * The checklist protocol — the core of the assessing stances
+ * (docs/plans/2026-08-19-checklist-negotiations.md).
  *
- * The failure it exists for is the responder verification duty being formally
- * obeyed and substantively evaded: an accept grounded in the responder's OWN
- * side's record, where that record was the same negotiator's earlier
- * acceptances, recalled through memory and prior dialogue. Circular
- * verification survives every check the previous fragment makes.
+ * What it replaced and why the replacement is not a loss:
  *
- * Seat-blind by choice: an initiator can cite its own prior openings' claims
- * just as readily, so the rule renders in the shared prefix. That makes the
- * strict-prefix invariant below the load-bearing pin — it is what keeps this
- * fragment out of the responder-only tail.
+ * - The evidence-provenance rule (#1448) is now the `basis` discipline. It was
+ *   written for circular verification — an accept grounded in the same
+ *   negotiator's earlier acceptances — and as a free-standing duty it was a
+ *   standard the agent graded itself against. As a basis rule it is a property
+ *   of the artifact: a score with nothing behind it is repaired back to
+ *   `unknown` in `negotiation.checklist.contracts.ts`, so an unbacked `ok`
+ *   cannot conclude a match even when the agent believes it. The prompt half
+ *   is pinned here; the repair half is pinned in the checklist spec.
+ * - The responder verification rules (#1446) are now the responding seat's
+ *   scoring duty, and stay seat-scoped for the same reason they always were.
+ *
+ * Seat-blindness is the load-bearing invariant of the block below: the
+ * checklist, its basis discipline, the ask rule and the verdict law are duties
+ * of BOTH seats, so they render in the shared prefix — which is what the
+ * strict-prefix assertion in `responderPortion` keeps honest.
  */
-const PROVENANCE_MARKER = "YOUR OWN RECORD IS DECISIONS, NOT EVIDENCE";
+const CHECKLIST_MARKER = "THE CHECKLIST DECIDES, NOT YOUR IMPRESSION";
+const BASIS_MARKER = "SCORE ONLY FROM WHAT SOMEONE STATED";
+const PROVENANCE_MARKER = "YOUR OWN RECORD IS DECISIONS, NOT COMMITMENTS";
+const UNKNOWN_MARKER = "UNKNOWN IS A REAL SCORE, NOT A GAP TO PAPER OVER";
+const ASK_MARKER = "IS THE ORDINARY WAY TO RESOLVE AN UNKNOWN";
+const ANSWERHOOD_MARKER = "ONE DIMENSION PER QUESTION, WITH ITS ANSWERHOOD DECLARED FIRST";
+const VERDICT_MARKER = "THE VERDICT IS A FUNCTION OF THE CHECKLIST";
+const SKEPTIC_ASK_MARKER = "your prior makes ending the negotiation the cheap answer";
 
-describe("evidence provenance — prior decisions are not the client's evidence", () => {
-  it("renders on EVERY prompt in the matrix under evaluator and skeptic", async () => {
+describe("checklist protocol — the pre-registered screen", () => {
+  it("renders the whole protocol on EVERY prompt in the matrix under evaluator and skeptic", async () => {
     for (const stance of ["evaluator", "skeptic"]) {
       const rendered = await renderMatrix(stance);
       for (const entry of PROMPT_MATRIX) {
         const prompt = rendered[entry.id];
-        expect(prompt).toContain(PROVENANCE_MARKER);
-        // The three sources that get mistaken for evidence, all named.
-        expect(prompt).toContain("your earlier turns");
-        expect(prompt).toContain("the connections you proposed or accepted on Alice's behalf");
-        expect(prompt).toContain("the conclusions you carry in memory");
+        for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, UNKNOWN_MARKER, ASK_MARKER, ANSWERHOOD_MARKER, VERDICT_MARKER]) {
+          expect(prompt).toContain(marker);
+        }
       }
     }
   });
 
-  it("distinguishes the agent's decisions from the client's evidence", async () => {
-    const rendered = await renderMatrix("skeptic");
-    const prompt = rendered["v2-counterparty"];
-    // Decisions side: authored by the agent, under whatever bar applied then.
-    expect(prompt).toContain("decisions you made for them, reached under whatever bar you applied at the time");
-    // The circular move, named as the thing it is.
+  it("pre-registers 3–5 dimensions with mutual want, and freezes them", async () => {
+    const prompt = (await renderMatrix("skeptic"))["v2-initiator"];
+    expect(prompt).toContain("explicit checklist of 3 to 5 dimensions");
+    expect(prompt).toContain("On the FIRST turn you write it, from the two intents alone");
+    expect(prompt).toContain("one dimension for MUTUAL WANT");
+    expect(prompt).toContain("what a match IS");
+    // The freeze, in both directions: nothing added, nothing quietly dropped.
+    expect(prompt).toContain("The checklist is FIXED once written");
+    expect(prompt).toContain("no dimension is added because the exchange went somewhere you did not expect");
+    expect(prompt).toContain("none is quietly dropped because it turned inconvenient");
+    // A dimension no answer could flip is not a dimension — but the caveat
+    // must not read as licence to under-fill, which is exactly how it read to
+    // a live model: it drafted two dimensions and the checklist was discarded.
+    expect(prompt).toContain("is decoration, not a dimension");
+    expect(prompt).toContain("three is a FLOOR, not a target you may fall short of");
+    expect(prompt).toContain("add the dimension whose answer would most change your mind");
+  });
+
+  it("binds scoring to the commitment record and carries the provenance rule into the basis", async () => {
+    const prompt = (await renderMatrix("skeptic"))["v2-counterparty"];
+    expect(prompt).toContain("scored ok or conflict from the commitment record alone");
+    expect(prompt).toContain("their own intents, the premises they hold, and the answers they have given");
+    // A profile is background, never a basis. The plan's commitment store is
+    // what the principals STATED they want (§2) — and the live failure this
+    // pins is a hard constraint about where two people could climb together
+    // being scored `ok` from a bio line ("Product designer in Istanbul"). With
+    // profiles admissible, a well-populated dataset ticks every dimension
+    // without anyone being asked anything, and the protocol never asks.
+    expect(prompt).toContain("A PROFILE IS BACKGROUND, NOT A COMMITMENT");
+    expect(prompt).toContain("describe who someone IS; a commitment is what they have said they WANT");
+    expect(prompt).toContain("Where only a profile speaks to a dimension, that dimension is unknown");
+    expect(prompt).toContain("Write that commitment into the dimension's basis");
+    expect(prompt).toContain("A score with nothing behind it is an assertion rather than a finding");
+    // #1448, rewritten rather than restated: the three sources that get
+    // mistaken for evidence are all still named, now as non-commitments.
+    expect(prompt).toContain("your earlier turns");
+    expect(prompt).toContain("the connections you proposed or accepted on Alice's behalf");
+    expect(prompt).toContain("the conclusions you carry in memory");
     expect(prompt).toContain("re-asserts a judgment instead of checking it");
     expect(prompt).toContain("reads your own past eagerness back as Alice's interest");
-    // Evidence side: authored by a person, on either side of the table.
-    expect(prompt).toContain("Ground the fit in what a person stated for themselves");
-    // Grounds named are the client-authored sections this prompt actually
-    // renders — intents, profile, and Alice's own answers between sessions.
-    expect(prompt).toContain("Alice's own intents, profile, and the answers they gave you directly");
-    expect(prompt).toContain("the counterparty's own intents and profile on theirs");
-    // The closing principle.
-    expect(prompt).toContain(
-      "A fit that was not verified does not become verified by having been asserted before",
-    );
+    // And unknown stays unknown rather than being rounded up.
+    expect(prompt).toContain("Do not round it to ok because nothing contradicts it");
   });
 
   it("does not ban memory or prior dialogue — it re-scopes what they establish", () => {
     for (const stance of ["evaluator", "skeptic"] as const)
     for (const seat of ["initiator", "counterparty"] as const) {
       const rules = stanceActionRules(stance, seat);
-      // Memory keeps its job: this fragment changes what counts as
-      // verification, not what gets injected (`renderNegotiatorMemorySection`
-      // is untouched), so no wording may tell the negotiator to drop it.
+      // Memory keeps its job: the rule changes what may SCORE a dimension, not
+      // what gets injected (`renderNegotiatorMemorySection` is untouched), so
+      // no wording may tell the negotiator to drop it.
       expect(rules).toContain("Prior dialogue and memory keep their job");
       expect(rules).toContain("what has already been asked");
-      expect(rules).toContain("the history of the argument, not grounds for it");
+      expect(rules).toContain("the history of the argument, not commitments in it");
       expect(rules).not.toMatch(/ignore (your |the )?(prior |negotiator )?(dialogue|memory|memories)/i);
       expect(rules).not.toMatch(/disregard/i);
       expect(rules).not.toMatch(/do not use (your )?memory/i);
     }
   });
 
+  it("states the five-part ask rule and demands the answerhood map before the question", async () => {
+    const prompt = (await renderMatrix("evaluator"))["v2-initiator"];
+    expect(prompt).toContain("ASKING Alice IS THE ORDINARY WAY TO RESOLVE AN UNKNOWN, not a last resort");
+    expect(prompt).toContain("(1) the dimension is unknown");
+    expect(prompt).toContain("(2) some plausible answer would change the verdict");
+    expect(prompt).toContain("(3) the missing fact is Alice's own to hold");
+    expect(prompt).toContain("(4) that topic has not been asked in this negotiation");
+    expect(prompt).toContain("(5) their question budget is not spent");
+    expect(prompt).toContain("Fail any one of the five and do not ask");
+    // Pivotality is proved by writing the map, not asserted after the fact.
+    expect(prompt).toContain("say what kind of answer would score that dimension ok and what kind would score it conflict");
+    expect(prompt).toContain("no answer would flip anything and the question must not be asked");
+    // Charitable closure, and one ask per topic however it is worded.
+    expect(prompt).toContain("a vague but non-negative answer counts as ok");
+    expect(prompt).toContain("raising the same topic again in different words is a repeat");
+  });
+
+  it("makes the verdict a function of the checklist — unknowns never end a negotiation", async () => {
+    for (const stance of ["evaluator", "skeptic"]) {
+      const prompt = (await renderMatrix(stance))["v2-initiator"];
+      expect(prompt).toContain("conclude in favour of the match when every dimension is ok");
+      // The stopping rule: a spent budget with no conflict is a match.
+      expect(prompt).toContain("which is where a spent question budget leaves you");
+      // Elimination by aspects, with the commitment named.
+      expect(prompt).toContain("End the negotiation against the match when a dimension is in conflict");
+      expect(prompt).toContain("An unknown is not a reason to end anything");
+      // Matching means worth a first conversation, and nothing about terms.
+      expect(prompt).toContain('A MATCH MEANS "WORTH A FIRST CONVERSATION", NOTHING MORE');
+      expect(prompt).toContain("Deal terms, valuation, equity and logistics stay outside this dialogue");
+    }
+  });
+
+  it("skeptic sharpens the ask rule against its own prior — evaluator does not carry it", async () => {
+    const evaluator = await renderMatrix("evaluator");
+    const skeptic = await renderMatrix("skeptic");
+    for (const entry of PROMPT_MATRIX) {
+      expect(evaluator[entry.id]).not.toContain(SKEPTIC_ASK_MARKER);
+      expect(skeptic[entry.id]).toContain(SKEPTIC_ASK_MARKER);
+    }
+    // The sharpening exists because the skeptic's cheap answer is to walk: an
+    // unknown treated as grounds to end decides for the client just as much.
+    expect(skeptic["v2-initiator"]).toContain("decides for Alice just as much as a match closed on a guess");
+  });
+
   it("never renders under advocate — on either seat", async () => {
     for (const stance of [undefined, "advocate", "nonsense-stance"]) {
       const rendered = await renderMatrix(stance);
       for (const entry of PROMPT_MATRIX) {
-        expect(rendered[entry.id]).not.toContain(PROVENANCE_MARKER);
+        for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, ASK_MARKER, VERDICT_MARKER, SKEPTIC_ASK_MARKER]) {
+          expect(rendered[entry.id]).not.toContain(marker);
+        }
       }
     }
-    expect(stanceActionRules("advocate", "initiator")).not.toContain(PROVENANCE_MARKER);
-    expect(stanceActionRules("advocate", "counterparty")).not.toContain(PROVENANCE_MARKER);
+    for (const seat of ["initiator", "counterparty"] as const) {
+      expect(stanceActionRules("advocate", seat)).toBe("");
+    }
   });
 
   it("lives in the seat-blind prefix, not in the responder-only tail", () => {
     for (const stance of ["evaluator", "skeptic"] as const) {
-      // Both seats hold the duty...
-      expect(stanceActionRules(stance, "initiator")).toContain(PROVENANCE_MARKER);
-      expect(stanceActionRules(stance, "counterparty")).toContain(PROVENANCE_MARKER);
-      // ...so it is absent from the responder-only portion, and the strict
+      // Both seats hold every part of the protocol...
+      for (const seat of ["initiator", "counterparty"] as const) {
+        const rules = stanceActionRules(stance, seat);
+        for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, ASK_MARKER, VERDICT_MARKER]) {
+          expect(rules).toContain(marker);
+        }
+      }
+      // ...so none of it is in the responder-only portion, and the strict
       // prefix invariant (asserted inside `responderPortion`) still holds.
-      expect(responderPortion(stance)).not.toContain(PROVENANCE_MARKER);
+      const portion = responderPortion(stance);
+      for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, ASK_MARKER, VERDICT_MARKER]) {
+        expect(portion).not.toContain(marker);
+      }
     }
   });
 
-  it("is identical under evaluator and skeptic — no sharpening was forced", () => {
-    const provenanceOf = (stance: NegotiatorStance) => {
-      const rules = stanceActionRules(stance, "initiator");
-      return rules.slice(rules.indexOf(PROVENANCE_MARKER));
-    };
-    expect(provenanceOf("skeptic")).toBe(provenanceOf("evaluator"));
-  });
-
-  it("sits immediately before the responder rules, so it qualifies them", () => {
+  it("reads in the order it is used: checklist, basis, ask, verdict, then the responder rules", () => {
     const rules = stanceActionRules("skeptic", "counterparty");
-    expect(rules.indexOf(PROVENANCE_MARKER)).toBeGreaterThan(rules.indexOf("CONSULT, DON'T ASSUME"));
-    expect(rules.indexOf(PROVENANCE_MARKER)).toBeLessThan(rules.indexOf(OPENING_MARKER));
+    const at = (marker: string) => rules.indexOf(marker);
+    expect(at(CHECKLIST_MARKER)).toBeGreaterThan(at("CONSULT, DON'T ASSUME"));
+    expect(at(BASIS_MARKER)).toBeGreaterThan(at(CHECKLIST_MARKER));
+    expect(at(ASK_MARKER)).toBeGreaterThan(at(BASIS_MARKER));
+    expect(at(VERDICT_MARKER)).toBeGreaterThan(at(ASK_MARKER));
+    // The responder rules land last, after the basis discipline they specialize.
+    expect(at(OPENING_MARKER)).toBeGreaterThan(at(VERDICT_MARKER));
   });
 
   it("names no action and no mechanism", () => {
-    for (const stance of ["evaluator", "skeptic"] as const) {
-      const rules = stanceActionRules(stance, "initiator");
-      const provenance = rules.slice(rules.indexOf(PROVENANCE_MARKER));
-      expect(provenance).not.toContain("ask_user");
-      expect(provenance).not.toContain('"withdraw"');
-      expect(provenance).not.toContain('"accept"');
-      expect(provenance).not.toContain('"counter"');
-      expect(provenance).not.toContain('"decline"');
-      expect(provenance).not.toContain('"question"');
-      expect(provenance).not.toContain('"outreach"');
+    for (const stance of ["evaluator", "skeptic"] as const)
+    for (const seat of ["initiator", "counterparty"] as const) {
+      const protocol = stanceActionRules(stance, seat).slice(stanceActionRules(stance, seat).indexOf(CHECKLIST_MARKER));
+      expect(protocol).not.toContain("ask_user");
+      for (const token of ['"withdraw"', '"accept"', '"counter"', '"decline"', '"question"', '"outreach"']) {
+        expect(protocol).not.toContain(token);
+      }
     }
-    // And no stance leaks those tokens into a seat that has no grant for them.
-    // (The matrix-wide sweep lives in the seat-invariants block below.)
   });
 });
 
 /**
- * Responder verification (the sibling of the consult-propensity fragment).
+ * Responder scoring — the #1446 duties, rewritten as scoring rules.
  *
- * The failure it exists for: a first-contact outreach accepted in one
+ * The failure they exist for: a first-contact outreach accepted in one
  * exchange, where the accept's reasoning restated the OPENING's own fit claim
  * — the initiator's agent characterizing what this client wants — as the
- * reason for accepting. Two fragments answer it, and both are duties of the
- * seat that did not open, so seat-scoping is the invariant this file pins
- * hardest: initiator prompts must stay free of responder-facing copy in both
- * directions.
+ * reason for accepting. Under the checklist protocol that move has a sharper
+ * name: the opening is not a commitment, so it cannot be the BASIS for a
+ * dimension, and the dimension it would score is the one mutuality itself
+ * rests on. Both rules are duties of the seat that did not open, so
+ * seat-scoping stays the invariant this file pins hardest.
  *
  * Seats here are the RESOLVED ones. Under v1 there is no `seat` on the input
  * at all, so the `isDiscoverer` fallback decides it: `v1` (not the discoverer)
  * responds, `v1-discovery-query` (the discoverer) opens. Those two entries are
  * what make the derivation itself a checked claim.
  */
-const OPENING_MARKER = "THE OPENING IS ADVOCACY, NOT EVIDENCE";
-const SPEND_MARKER = "WHAT ACCEPTING SPENDS";
-const SKEPTIC_RESPONDER_MARKER = "an accept on the first exchange is the exception, not the default";
+const OPENING_MARKER = "THE OPENING IS ADVOCACY, NOT A COMMITMENT";
+const SPEND_MARKER = "WHAT AGREEING SPENDS";
+const SKEPTIC_RESPONDER_MARKER = "closing while a pivotal dimension is still unknown is the exception rather than the default";
 
 /**
  * The responder-only tail of a stance's action rules: what the responding seat
@@ -429,7 +512,7 @@ function responderPortion(stance: NegotiatorStance): string {
 const RESPONDER_IDS = ["v2-counterparty", "v2-counterparty-discovery-query", "v1"];
 const INITIATOR_IDS = PROMPT_MATRIX.map((e) => e.id).filter((id) => !RESPONDER_IDS.includes(id));
 
-describe("responder verification — the opening is a claim, not evidence", () => {
+describe("responder scoring — the opening is a claim, not a commitment", () => {
   it("covers both resolved seats in the matrix, v1 fallback included", () => {
     // Guards the two id lists above against drifting out of the matrix.
     expect(RESPONDER_IDS.every((id) => PROMPT_MATRIX.some((e) => e.id === id))).toBe(true);
@@ -443,16 +526,23 @@ describe("responder verification — the opening is a claim, not evidence", () =
       for (const id of RESPONDER_IDS) {
         const prompt = rendered[id];
         expect(prompt).toContain(OPENING_MARKER);
-        expect(prompt).toContain("is that agent's CLAIM about Alice, not a fact you have checked");
-        expect(prompt).toContain("Restating the opening's fit claim back as your reason is agreement, not verification");
+        expect(prompt).toContain("is that agent's CLAIM about them");
+        // The opening cannot be a basis, least of all for mutual want.
+        expect(prompt).toContain("it cannot be the basis for any dimension, least of all mutual want");
+        expect(prompt).toContain("Score that one from Alice's OWN intent");
+        expect(prompt).toContain("Restating the opening's fit claim back as your basis is agreement, not scoring");
         expect(prompt).toContain(SPEND_MARKER);
-        // The opportunity-cost currency restated in the terms this seat spends it.
-        expect(prompt).toContain("it puts a connection in front of Alice for approval");
+        // The opportunity-cost currency restated in the terms this seat spends
+        // it, and pointed at the checklist as what the answer comes from.
+        expect(prompt).toContain("agreeing puts a connection in front of Alice for approval");
         expect(prompt).toContain('"Would Alice be open to connecting?" is a bar almost anything clears');
-        // The grounding bar and the two cheap moves when it is not met.
-        expect(prompt).toContain("what Alice themselves stated they were looking for");
-        expect(prompt).toContain("the cheap move is one more exchange");
-        expect(prompt).toContain("consulting Alice settles it instead");
+        expect(prompt).toContain("it is not the bar — the checklist is");
+        // The two-sided handshake: agree when nothing conflicts AND nothing
+        // pivotal is open. The live failure this pins is a responder that
+        // accepted on its first turn every time — closing the negotiation
+        // before the initiator ever reached a turn on which it could ask.
+        expect(prompt).toContain("your checklist holds no conflict AND nothing pivotal is still unknown, close it");
+        expect(prompt).toContain("is the same guess the initiator would be making, taken from the other chair");
       }
     }
   });
@@ -484,8 +574,8 @@ describe("responder verification — the opening is a claim, not evidence", () =
       const initiator = stanceActionRules(stance, "initiator");
       const counterparty = stanceActionRules(stance, "counterparty");
       // The responder rules are strictly appended: the initiator's rendering is
-      // a prefix of the responder's, so the value bar and consult propensity
-      // cannot fork by seat.
+      // a prefix of the responder's, so the value bar, the consult propensity
+      // and the whole checklist protocol cannot fork by seat.
       expect(counterparty.startsWith(initiator)).toBe(true);
       expect(counterparty.length).toBeGreaterThan(initiator.length);
       expect(initiator).not.toContain(OPENING_MARKER);
@@ -502,29 +592,29 @@ describe("responder verification — the opening is a claim, not evidence", () =
       expect(skeptic[id]).toContain(OPENING_MARKER);
       expect(evaluator[id]).not.toContain(SKEPTIC_RESPONDER_MARKER);
       expect(skeptic[id]).toContain(SKEPTIC_RESPONDER_MARKER);
-      expect(skeptic[id]).toContain("probe once before accepting");
-      expect(skeptic[id]).toContain("one exchange costs the counterparty nothing and Alice very little");
+      expect(skeptic[id]).toContain("spend one question or one exchange before you close");
+      expect(skeptic[id]).toContain("costs the counterparty nothing and Alice very little");
     }
     // Additive at the fragment level too: the whole evaluator responder body
     // survives verbatim inside the skeptic's, which only appends to it.
     expect(stanceActionRules("skeptic", "counterparty")).toContain(responderPortion("evaluator"));
   });
 
-  it("does not urge unconditional probing — the steer is conditional on the opening carrying the fit case", () => {
+  it("does not urge unconditional probing — the steer is conditional on what is unscored", () => {
     for (const stance of ["evaluator", "skeptic"] as const) {
       const portion = responderPortion(stance);
-      // No blanket instruction in either direction: a match the client's own
-      // criteria independently support may still be accepted on first contact.
+      // No blanket instruction in either direction: a match whose dimensions
+      // score from the client's own intent may still be closed on first contact.
       expect(portion).not.toMatch(/never accept/i);
       expect(portion).not.toMatch(/\balways\b/i);
       expect(portion).not.toMatch(/\bnever\b/i);
-      // Both fragments are conditioned on the fit case resting on the opening.
-      expect(portion).toContain("Where the case for fit still rests on how the other agent characterized");
+      // Both fragments are conditioned on a dimension actually being unscored.
+      expect(portion).toContain("Where a pivotal dimension is still unknown");
     }
-    // The skeptic's sharpening keeps the escape hatch explicit: an
-    // independently supported match may still be accepted on first contact.
+    // The skeptic's sharpening keeps the escape hatch explicit: a checklist
+    // that already scores may be closed on first contact.
     expect(stanceActionRules("skeptic", "counterparty")).toContain(
-      "Where {userName}'s stated criteria and the counterparty's own evidence carry the fit without that characterization, accepting straight away is still the right call",
+      "Where {userName}'s own intent and the counterparty's own evidence already score every dimension, closing straight away is still the right call",
     );
   });
 

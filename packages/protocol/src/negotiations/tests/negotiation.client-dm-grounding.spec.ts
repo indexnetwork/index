@@ -17,12 +17,17 @@ import type { QuestionerEnqueuePayload } from "../../questions/question.input.js
  *    own negotiator, so it reaches the in-process system agent ONLY. An
  *    external registered agent can hold the personal-agent seat, and it must
  *    see exactly what it saw before — nothing in `NegotiationTurnPayload`.
- * 2. BYTE-IDENTITY. Retrieval is gated on the ask_user grant and rendering on
- *    a non-empty excerpt, so every negotiation that is not consulting its
- *    client renders the pre-A2H prompt unchanged.
- * 3. AGREEMENT. `ASK_USER_DM_GROUNDING_RULE` points at the rendered section
- *    from inside `ASK_USER_RULE`. The two are gated on the same condition:
- *    neither the rule without the section nor the section without the rule.
+ * 2. BYTE-IDENTITY. Retrieval is gated on the A2H FEATURE — the ask_user kill
+ *    switch and v2 — and rendering on a non-empty excerpt. With the switch off,
+ *    or under v1, no query is issued and the prompt is the pre-A2H one.
+ *    Per-TURN conditions (grant spent, final turn, ask-rounds cap) no longer
+ *    gate the read: they decide whether the agent may ASK, not whether it may
+ *    know what its client already said. An answer is evidence for every turn
+ *    after it is given — plan §2 scores dimensions from it.
+ * 3. NO DANGLING RULE. `ASK_USER_DM_GROUNDING_RULE` points at the rendered
+ *    section from inside `ASK_USER_RULE`, so the rule never renders without the
+ *    section. The converse is allowed: the section carries its own leak guard
+ *    and not-instructions framing, so it stands alone on a turn with no grant.
  */
 
 const DM: NegotiatorClientDmMessage[] = [
@@ -125,19 +130,26 @@ describe("IndexNegotiator — client-DM grounding", () => {
     }
   });
 
-  it("withholds both whenever the ask_user grant is not live", async () => {
-    // No grant; v1 (no ask_user vocabulary); final turn (must decide, not
-    // pause). In each the rule is unrenderable, so the section — which the
-    // rule is what explains — must be withheld too.
+  it("withholds the rule but keeps the excerpt when the grant is not live", async () => {
+    // No grant; final turn (must decide, not pause). The rule is unrenderable
+    // on both — there is no question to ground — but the client's own words are
+    // evidence for the decision the agent is about to make, and a final turn is
+    // the one where getting it wrong is unrecoverable. Nothing dangles: the
+    // section's own framing says what it is and forbids disclosing it.
     for (const input of [
       { clientDm: DM },
-      { canAskUser: true, protocolVersion: "v1" as const, clientDm: DM },
       { canAskUser: true, isFinalTurn: true, clientDm: DM },
     ]) {
       const agent = await promptFor(input);
       expect(agent.system).not.toContain(DM_RULE_MARKER);
-      expect(agent.user).not.toContain(DM_SECTION_MARKER);
+      expect(agent.user).toContain(DM_SECTION_MARKER);
     }
+  });
+
+  it("withholds both under v1, whose prompt A2H never touches", async () => {
+    const agent = await promptFor({ canAskUser: true, protocolVersion: "v1" as const, clientDm: DM });
+    expect(agent.system).not.toContain(DM_RULE_MARKER);
+    expect(agent.user).not.toContain(DM_SECTION_MARKER);
   });
 
   it("grants the counterparty seat the same grounding", async () => {
@@ -313,9 +325,9 @@ describe("negotiation graph — client-DM is system-agent-only", () => {
     }
   });
 
-  it("does not retrieve at all when the ask_user grant is unavailable", async () => {
-    // Flag off is the cheapest way to drop the grant; the negotiation must
-    // run exactly as before, with no DM query issued.
+  it("does not retrieve at all when the A2H kill switch is off", async () => {
+    // The flag is the feature switch, not a per-turn grant: with it off the
+    // negotiation must run exactly as before, with no DM query issued.
     process.env.NEGOTIATION_ASK_USER_ENABLED = "false";
     const stubs = mkStubs();
     await runGraph(stubs);

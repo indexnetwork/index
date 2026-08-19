@@ -99,14 +99,28 @@ export interface NegotiationActivityMessage {
   id: string;
   opportunityId: string;
   sender: 'yours' | 'theirs';
+  /** The turn's action (`outreach`, `counter`, `ask_user`, …) when it is one. */
+  action?: string;
+  /** What the message renders as: a text part, or the turn's own message. */
+  text?: string;
   parts: unknown[];
   createdAt: string;
+}
+
+/** One scored checklist dimension (checklist plan §2), as projected for the UI. */
+export interface NegotiationChecklistItem {
+  name: string;
+  kind: string;
+  result: string;
+  basis: string;
 }
 
 export interface NegotiationActivityGroup {
   correspondentUserId: string;
   correspondentLabel: string;
   correspondentAvatar: string | null;
+  /** The checklist of the negotiation this group's latest exchange belongs to. */
+  checklist?: NegotiationChecklistItem[];
   messages: NegotiationActivityMessage[];
 }
 
