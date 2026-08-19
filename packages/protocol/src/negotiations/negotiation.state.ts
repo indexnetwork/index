@@ -83,11 +83,30 @@ export const NegotiationOutcomeSchema = z.object({
 
 export type NegotiationOutcome = z.infer<typeof NegotiationOutcomeSchema>;
 
-/** Context each agent receives about its user. */
+/**
+ * Context each agent receives about its user.
+ *
+ * Structurally duplicated by `shared/schemas/negotiation-state.schema.ts`,
+ * which is the declaration the package exports to hosts; the two must stay
+ * identical.
+ */
 export interface UserNegotiationContext {
   id: string;
   intents: Array<{ id: string; title: string; description: string; confidence: number }>;
   profile: { name?: string; bio?: string; location?: string; interests?: string[]; skills?: string[] };
+  /**
+   * Whether this principal can be consulted at all during the negotiation —
+   * true when no answer can ever arrive because nobody is behind the account
+   * (a seed persona today; a suspended or deleted account would qualify just
+   * as well, which is why the field names the operational truth rather than
+   * the cause). The API resolves it; the protocol only ever receives the
+   * boolean, never the address it was derived from — no email belongs in
+   * anything an LLM reads.
+   *
+   * Absent/undefined means reachable. Real users are the default, so every
+   * existing caller and every already-serialized state keeps working.
+   */
+  principalUnreachable?: boolean;
 }
 
 /** Seed assessment from the evaluator pre-filter. */

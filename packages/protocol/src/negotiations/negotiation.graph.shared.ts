@@ -179,6 +179,35 @@ export function countNegotiationAskRounds(
 }
 
 /**
+ * Whether one seat's principal can be consulted at all in this negotiation.
+ *
+ * A caller that already knows wins outright; otherwise the host is asked. The
+ * host owns the predicate — the protocol receives a boolean and never the
+ * address behind it, which is what keeps emails out of everything an LLM
+ * reads.
+ *
+ * Fails OPEN in every degenerate case (no host implementation, a rejected
+ * read): reachable. Wrongly silencing a real principal's own agent is the
+ * costlier of the two errors, and a legacy host must keep its behaviour.
+ */
+export async function resolvePrincipalUnreachable(
+  deps: NegotiationGraphDeps,
+  user: UserNegotiationContext,
+): Promise<boolean> {
+  if (user.principalUnreachable === true) return true;
+  if (!deps.database.isPrincipalUnreachable || !user.id) return false;
+  try {
+    return await deps.database.isPrincipalUnreachable(user.id) === true;
+  } catch (err) {
+    initLog.warn('Principal reachability lookup failed; treating principal as reachable', {
+      userId: user.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
  * P5.3 memory retrieval — never throws, never blocks a negotiation. The
  * injected fn already resolves [] when NEGOTIATOR_MEMORY_INJECT is off;
  * this wrapper adds the graph-side failure guard.

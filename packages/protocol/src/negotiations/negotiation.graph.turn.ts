@@ -22,7 +22,7 @@ import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
 import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
-import { assessAskAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type ChecklistItem } from "./negotiation.checklist.contracts.js";
+import { assessAskAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type AskInadmissibility, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -166,9 +166,17 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // pre-contact consult included. Under `advocate` the budget is 1, which is
     // exactly the legacy `hasPriorAskUser` ration expressed as a count.
     const questionBudget = configuredQuestionBudgetPerPrincipal();
+    // A principal nobody can reach cannot be consulted: no question can be put
+    // to them and no answer can ever arrive, so a park here would wait out the
+    // full consultation expiry for nothing and the authored question would rot
+    // unread. Mechanically a question budget of zero — and strictly per seat,
+    // read off the ACTING side's own context, so a match between a reachable
+    // and an unreachable principal leaves the reachable one's budget intact.
+    const principalUnreachable = ownUser.principalUnreachable === true;
     const askUserWiringAvailable =
       version === 'v2'
       && !isFinalTurn
+      && !principalUnreachable
       && configuredAskUserEnabled()
       && !!deps.questionerEnqueue
       && !!deps.timeoutQueue?.enqueueAskUserExpiry
@@ -589,6 +597,32 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       }
     }
 
+    // An unreachable principal is refused BEFORE the generic coercion below so
+    // the trace names the condition that actually bound. The generic path logs
+    // only "unavailable", and the ask-admissibility rule further down is never
+    // reached once the action has been coerced — between them the record would
+    // have said nothing at all about why, or worse, blamed a spent budget.
+    if (turn.action === 'ask_user' && principalUnreachable) {
+      turnLog.info('negotiation_ask_inadmissible', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        reason: 'principal_unreachable' satisfies AskInadmissibility,
+        dimension: turn.askUser?.dimension,
+        questionsSpent,
+        questionBudget,
+      });
+      emitWide({
+        type: 'negotiation_ask_inadmissible',
+        opportunityId: state.opportunityId,
+        negotiationConversationId: state.conversationId,
+        turnIndex: state.turnCount,
+        actor: isSource ? 'source' : 'candidate',
+        reason: 'principal_unreachable',
+      });
+      turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+    }
+
     // Safety net: off/shadow retain legacy behavior. In on, a spontaneous
     // ask_user is admissible only when the deterministic policy just
     // authorized it, so no unbounded pause can enter shared history.
@@ -628,6 +662,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         answerhood: turn.askUser?.answerhood,
         askedDimensions,
         questionsSpent,
+        ...(principalUnreachable ? { principalUnreachable: true } : {}),
       });
       if (!admissibility.admissible) {
         turnLog.info('negotiation_ask_inadmissible', {

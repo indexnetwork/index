@@ -26,6 +26,7 @@ import { consultationActorSetMatchesBinding, externalConsultationCoordinatesFor 
 import { authorizeNegotiationMutationInTransaction } from '../lib/agent/negotiation-runtime-authority';
 import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import { digestHermesRunId, issueHermesRunCapability, parseHermesRunCapabilityBinding, verifyHermesRunCapability, type HermesRunOutcome } from '../lib/agent/hermes-negotiation-run';
+import { isSyntheticUserEmail } from '../lib/users/synthetic';
 
 /**
  * In-transaction read of ONE negotiation's turn history, for the locked floor
@@ -1655,6 +1656,19 @@ export class ConversationDatabaseAdapter {
       .where(eq(schema.users.id, userId))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * Whether this principal can be consulted at all — the host half of the
+   * negotiation graph's `isPrincipalUnreachable` port.
+   *
+   * The predicate lives in `lib/users/synthetic`; this is the DB read behind
+   * it. The graph receives only the boolean, which is what keeps addresses out
+   * of negotiation context and out of every prompt built from it.
+   */
+  async isPrincipalUnreachable(userId: string): Promise<boolean> {
+    const user = await this.getUser(userId);
+    return isSyntheticUserEmail(user?.email);
   }
 
   /**

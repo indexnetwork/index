@@ -13,7 +13,7 @@ import { negotiationParkAnswerId, negotiationQuestionSettlementId, parseQuestion
 import type { NegotiationAnswerConsumptionPorts, QuestionBlockQuestion, QuestionerEnqueuePayload, RoutedAnswer } from '@indexnetwork/protocol';
 import { questionBlockFixture, questionMessageFixture, questionProseFixture } from '@indexnetwork/protocol/question-block/fixture';
 
-import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QUESTION_MESSAGE_CLOSED_BODY, QUEUE_NAME, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId } from '../question-message.queue';
+import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QUESTION_MESSAGE_CLOSED_BODY, QUEUE_NAME, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId, routeParkedQuestionEnqueue } from '../question-message.queue';
 import type { QuestionAnswerJobData } from '../question-message.queue';
 import type { QuestionMessageNotificationJobData } from '../notification.queue';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
@@ -609,6 +609,49 @@ describe('park-path trigger routing', () => {
   it('keys the singleton job per (user, intent) scope without colons', () => {
     expect(questionMessageJobId(USER_ID, INTENT_ID)).toBe(`question-message.${USER_ID}.${INTENT_ID}`);
     expect(questionMessageJobId(USER_ID, INTENT_ID)).not.toContain(':');
+  });
+
+  // The last fence for a principal nobody is behind. The admission rules in
+  // the graph and in the external-consultation path refuse first; this catches
+  // whatever they miss and whatever calls in later, because a question
+  // addressed to such a principal can only rot unread.
+  it('refuses to author a question for an unreachable principal', async () => {
+    const jobs: Array<{ userId: string; intentId: string }> = [];
+    const asked: string[] = [];
+    const routed = await routeParkedQuestionEnqueue(inflightPayload, {
+      principalUnreachable: async (userId) => { asked.push(userId); return true; },
+      addRegenerateJob: async (data) => { jobs.push(data); },
+    });
+
+    // Handled — a park payload, correctly routed and correctly declined.
+    expect(routed).toBe(true);
+    expect(asked).toEqual([USER_ID]);
+    expect(jobs).toEqual([]);
+  });
+
+  it('fences the post-stall family the same way', async () => {
+    const jobs: Array<{ userId: string; intentId: string }> = [];
+    const stalled = {
+      ...inflightPayload,
+      mode: 'negotiation',
+      purpose: 'stalled_followup',
+      negotiation: { ...inflightPayload.negotiation!, purpose: 'stalled_followup' },
+    } as unknown as QuestionerEnqueuePayload;
+
+    expect(await routeParkedQuestionEnqueue(stalled, {
+      principalUnreachable: async () => true,
+      addRegenerateJob: async (data) => { jobs.push(data); },
+    })).toBe(true);
+    expect(jobs).toEqual([]);
+  });
+
+  it('routes a reachable principal to the regeneration job unchanged', async () => {
+    const jobs: Array<{ userId: string; intentId: string }> = [];
+    expect(await routeParkedQuestionEnqueue(inflightPayload, {
+      principalUnreachable: async () => false,
+      addRegenerateJob: async (data) => { jobs.push(data); },
+    })).toBe(true);
+    expect(jobs).toEqual([{ userId: USER_ID, intentId: INTENT_ID }]);
   });
 });
 

@@ -15,6 +15,7 @@ import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, askUserAnswerWindowMs, confi
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
 import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, type ExternalConsultationPersistedTurn } from '../lib/negotiation/consultation';
+import { resolvePrincipalUnreachable } from '../lib/users/synthetic';
 import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import type { AtomicHermesResponseInput, AtomicHermesResponseResult, HermesRunMutationAuthority } from '../adapters/conversation.database.adapter';
 import { remainingDeadlineDelayMs } from '../lib/negotiation/timeout-execution';
@@ -448,6 +449,10 @@ export class NegotiationPollingService {
     const persistedTurns = this.persistedTurns(messages);
     const questionerEnqueue = parkedQuestionEnqueue();
     const policyMode = negotiationConsultationPolicyMode();
+    // The recipient here is the claiming owner themselves. A principal nobody
+    // can reach has no consultation to admit: the park would wait out the full
+    // expiry and the authored question would never be read.
+    const recipientPrincipalUnreachable = await resolvePrincipalUnreachable(userId);
     const eligibility = assessExternalConsultationEligibility({
       task: {
         id: task.id,
@@ -459,6 +464,7 @@ export class NegotiationPollingService {
       userId,
       agentId,
       policyMode,
+      ...(recipientPrincipalUnreachable ? { recipientPrincipalUnreachable: true } : {}),
       wiring: {
         askUserEnabled: configuredAskUserEnabled(),
         questionerEnabled: Boolean(questionerEnqueue),
@@ -1086,14 +1092,25 @@ export class NegotiationPollingService {
     // urgency signal rather than the old claimedAt + 6h which was wildly wrong.
     const deadline = new Date(parkStartTime.getTime() + AMBIENT_PARK_WINDOW_MS);
 
+    // Never advertise a consultation to an agent whose principal cannot be
+    // reached — the same fact the admission path refuses on, applied one step
+    // earlier so the seat is not offered a move it would be denied.
+    const pickupPrincipalUnreachable = await resolvePrincipalUnreachable(userId);
+
     // Project persisted source/candidate context into own/other perspective
     // for the claiming user. Null when the task was parked before turn
     // context persistence was added (pre-migration tasks).
     let context: PickupResult['context'] = null;
     if (meta.turnContext) {
       const isSource = meta.sourceUserId === userId;
-      const ownUser = isSource ? meta.turnContext.sourceUser : meta.turnContext.candidateUser;
+      const persistedOwnUser = isSource ? meta.turnContext.sourceUser : meta.turnContext.candidateUser;
       const otherUser = isSource ? meta.turnContext.candidateUser : meta.turnContext.sourceUser;
+      // Re-stamped from the live read rather than trusted from the record: a
+      // task parked before reachability was persisted carries nothing, and the
+      // external agent holding this seat must not be told it can consult.
+      const ownUser = pickupPrincipalUnreachable
+        ? { ...persistedOwnUser, principalUnreachable: true }
+        : persistedOwnUser;
       context = {
         ownUser,
         otherUser,
@@ -1122,6 +1139,7 @@ export class NegotiationPollingService {
       userId,
       agentId: task.claimedByAgentId ?? '',
       policyMode: negotiationConsultationPolicyMode(),
+      ...(pickupPrincipalUnreachable ? { recipientPrincipalUnreachable: true } : {}),
       wiring: {
         askUserEnabled: configuredAskUserEnabled(),
         questionerEnabled: Boolean(questionerEnqueue),
