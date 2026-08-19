@@ -248,7 +248,30 @@ const entityBundleResponseFormat = z.object({
 });
 
 export type EvaluatorActor = z.infer<typeof ActorSchema>;
-export type EvaluatedOpportunityWithActors = z.infer<typeof _OpportunityWithActorsSchema>;
+
+/**
+ * Why a candidate produced no persistable opportunity.
+ * - `not_accepted` — the model judged the pairing not viable and said so, with a score.
+ * - `incomplete_actors` — accepted, but the actor set was unusable (never persistable).
+ * - `unsupported_claim` — accepted, but the reasoning asserted an affiliation or
+ *   presence the evidence does not support; the claim guard rejects it outright.
+ */
+export type EvaluatorRejectionReason = 'not_accepted' | 'incomplete_actors' | 'unsupported_claim';
+
+/** A verdict the guards dropped, carried for diagnostics under `returnAll`. */
+export interface EvaluatorRejection {
+  candidateId: string;
+  reason: EvaluatorRejectionReason;
+}
+
+export type EvaluatedOpportunityWithActors = z.infer<typeof _OpportunityWithActorsSchema> & {
+  /**
+   * Set only on diagnostic entries returned under `returnAll`. These carry the
+   * evaluator's real score and reasoning so the trace can say what happened, and
+   * they hold no actors — they must never be persisted.
+   */
+  rejection?: EvaluatorRejection;
+};
 type EvaluatorVerdict = z.infer<typeof EvaluatorVerdictSchema>;
 export type EvaluatorOutputBundle = z.infer<typeof entityBundleResponseFormat>;
 
@@ -289,6 +312,21 @@ function reconcileEvaluatorVerdicts(
   }
   if (seen.size !== expected.size) throw new EvaluatorIncompleteError();
   return verdicts;
+}
+
+/**
+ * The single place that decides whether a verdict can become an opportunity.
+ * Returns `undefined` when the verdict is persistable, otherwise why it is not.
+ */
+function verdictRejectionReason(
+  verdict: EvaluatorVerdict,
+  introductionMode: boolean,
+): EvaluatorRejectionReason | undefined {
+  if (!verdict.accepted) return 'not_accepted';
+  if (verdict.actors.length < 2) return 'incomplete_actors';
+  if (introductionMode && verdict.actors.length !== 2) return 'incomplete_actors';
+  if (hasUnsupportedOpportunityClaim(stripUuids(verdict.reasoning))) return 'unsupported_claim';
+  return undefined;
 }
 
 function isEvaluatorOutputError(error: unknown): boolean {
@@ -572,28 +610,43 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
           input.discovererId,
           input.introductionMode ?? false,
         );
-        const accepted = verdicts
-          .filter((verdict) => verdict.accepted)
-          .map((verdict) => ({
-            reasoning: stripUuids(verdict.reasoning),
-            score: verdict.score,
-            actors: verdict.actors,
-          }))
-          .filter((op): op is EvaluatedOpportunityWithActors => op.actors.length >= 2);
         // Persistence safety is deterministic and precedes every score/returnAll
         // path. Network/context placement is not typed support provenance, so an
         // unsupported affiliation or presence claim rejects the whole result.
-        const claimSafe = accepted.filter((op) => !hasUnsupportedOpportunityClaim(op.reasoning));
-        const introGuard = input.introductionMode ? claimSafe.filter((op) => op.actors.length === 2) : claimSafe;
+        const triaged = verdicts.map((verdict) => ({
+          verdict,
+          reasoning: stripUuids(verdict.reasoning),
+          reason: verdictRejectionReason(verdict, input.introductionMode ?? false),
+        }));
+        const introGuard = triaged
+          .filter((entry) => entry.reason === undefined)
+          .map((entry) => ({
+            reasoning: entry.reasoning,
+            score: entry.verdict.score,
+            actors: entry.verdict.actors,
+          }));
         const filtered = introGuard.filter((op) => op.score >= minScore);
+        // `returnAll` callers trace every candidate, so they need the dropped
+        // verdicts too: without them a rejected candidate is indistinguishable
+        // from one the evaluator never answered for.
+        const rejections: EvaluatedOpportunityWithActors[] = triaged
+          .filter((entry) => entry.reason !== undefined)
+          .map((entry) => ({
+            reasoning: entry.reasoning,
+            score: entry.verdict.score,
+            actors: [],
+            rejection: { candidateId: entry.verdict.candidateId, reason: entry.reason! },
+          }));
         invokeEntityBundleLog.verbose('Done', {
           total: verdicts.length,
-          afterClaimGuard: claimSafe.length,
-          afterIntroGuard: introGuard.length,
+          persistable: introGuard.length,
+          rejectedByModel: rejections.filter((op) => op.rejection?.reason === 'not_accepted').length,
+          droppedUnsupportedClaim: rejections.filter((op) => op.rejection?.reason === 'unsupported_claim').length,
+          droppedIncompleteActors: rejections.filter((op) => op.rejection?.reason === 'incomplete_actors').length,
           accepted: filtered.length,
           returnAll,
         });
-        return returnAll ? introGuard : filtered;
+        return returnAll ? [...introGuard, ...rejections] : filtered;
       } catch (error) {
         if (!isEvaluatorOutputError(error)) throw error;
         incompleteReason = error instanceof Error ? error.message : 'invalid output';

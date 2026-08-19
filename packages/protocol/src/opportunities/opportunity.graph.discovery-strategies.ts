@@ -14,6 +14,7 @@ import { getModelName } from '../shared/agent/model.config.js';
 import { selectHydeDocumentsForGeneration, getHydeGenerationMode } from '../discovery/index.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 import { discoveryProfileMatchingEnabled, discoveryProfileSource, discoveryIntentMatchingEnabled } from './discovery.env.js';
+import { withMultiSignalBonus } from './opportunity.similarity.js';
 import { buildDiscovererContext, discoveryLog, getSourcePremiseDiscoveryLimit, PREMISE_MATCH_LIMIT_PER_SOURCE, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Corpus gating passed through to the embedder on every HyDE search. */
@@ -442,11 +443,17 @@ export function runAuxiliaryStrategies(
   ]);
 }
 
+/** Bonus fraction per additional strategy that surfaced the same candidate. */
+const MULTI_STRATEGY_BONUS_PER_STRATEGY = 0.05;
+/** Ceiling on the total multi-strategy bonus fraction. */
+const MULTI_STRATEGY_BONUS_MAX = 0.15;
+
 /**
  * Merge candidates from multiple strategies. Deduplicates by userId + networkId + entityId,
  * keeps the highest similarity, tracks which strategies found each candidate,
- * and applies a multi-strategy boost (+0.05 per additional strategy, boost capped at 0.15,
- * final similarity capped at 1.0).
+ * and applies a multi-strategy boost (+5% of the headroom above the raw score per
+ * additional strategy, capped at 15%). The boost consumes headroom rather than being
+ * added and clamped, so it can never manufacture a tie at 1.0.
  */
 export function mergeStrategyCandidates(...groups: CandidateMatch[][]): CandidateMatch[] {
   const merged = new Map<string, CandidateMatch & { _strategies: Set<string> }>();
@@ -470,10 +477,12 @@ export function mergeStrategyCandidates(...groups: CandidateMatch[][]): Candidat
   }
   return Array.from(merged.values()).map(({ _strategies, ...c }) => {
     const matchedStrategies = Array.from(_strategies);
-    const boost = Math.min((_strategies.size - 1) * 0.05, 0.15);
     return {
       ...c,
-      similarity: Math.min(c.similarity + boost, 1.0),
+      similarity: withMultiSignalBonus(c.similarity, _strategies.size, {
+        perSignal: MULTI_STRATEGY_BONUS_PER_STRATEGY,
+        maxBonus: MULTI_STRATEGY_BONUS_MAX,
+      }),
       matchedStrategies,
       evidence: withMatchedStrategies(mergeOpportunityEvidence(c.evidence), matchedStrategies),
     };

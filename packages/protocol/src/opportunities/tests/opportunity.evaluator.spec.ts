@@ -133,8 +133,15 @@ describe('OpportunityEvaluator', () => {
         minScore: 70,
         returnAll: true,
       });
-      expect(returnAll).toHaveLength(1);
-      expect(returnAll[0].reasoning).toContain('privacy tools');
+      const persistable = returnAll.filter((op) => op.rejection === undefined);
+      expect(persistable).toHaveLength(1);
+      expect(persistable[0].reasoning).toContain('privacy tools');
+      // The claim-guard drop is reported, not swallowed: `returnAll` callers trace
+      // every candidate and must be able to say why this one produced nothing.
+      const dropped = returnAll.filter((op) => op.rejection !== undefined);
+      expect(dropped).toHaveLength(1);
+      expect(dropped[0].rejection).toEqual({ candidateId: 'user-2', reason: 'unsupported_claim' });
+      expect(dropped[0].actors).toEqual([]);
 
       const scoreFiltered = await evaluatorWithMock.invokeEntityBundle(input, {
         minScore: 70,
