@@ -198,6 +198,14 @@ export class QuestionMessageAuthor {
         opportunityId: parked[primary].opportunityId,
         ...(rest.length > 0 ? { alsoUnblocks: rest.map((index) => parked[index].opportunityId) } : {}),
         ...(parked[primary].dimension ? { dimension: parked[primary].dimension } : {}),
+        // Options come from the park-time authored question verbatim, never
+        // from this model call: the negotiator wrote them against the
+        // negotiation it is actually having, and they already passed the
+        // identifier-aware safety gate. Merged parks inherit the primary's, for
+        // the same reason the block's identity is the primary's ref.
+        ...(parked[primary].question?.options?.length
+          ? { options: parked[primary].question.options.slice(0, 4) }
+          : {}),
       };
     });
     return this.toAuthoredMessage(parsed.data.prose.trim(), questions);
@@ -215,6 +223,9 @@ export class QuestionMessageAuthor {
             prompt: negotiation.question.prompt,
             opportunityId: negotiation.opportunityId,
             ...(negotiation.dimension ? { dimension: negotiation.dimension } : {}),
+            ...(negotiation.question.options.length
+              ? { options: negotiation.question.options.slice(0, 4) }
+              : {}),
           }]
         : []);
     if (questions.length === 0) {

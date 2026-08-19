@@ -34,7 +34,29 @@ export function QuestionSteps({ block, onQuote }: QuestionStepsProps) {
           >
             {index + 1}
           </span>
-          <span className="min-w-0 flex-1 text-sm text-gray-900">{question.prompt}</span>
+          <span className="min-w-0 flex-1 text-sm text-gray-900">
+            {question.prompt}
+            {question.options && question.options.length > 0 && (
+              // The agent's own decision options, each stating what it would do
+              // next if chosen. Tapping one quotes it into the input rather
+              // than submitting: answering stays a plain chat reply, which is
+              // what keeps the free-text path and these in one lane.
+              <span className="mt-2 flex flex-wrap gap-1.5" data-testid="question-step-options">
+                {question.options.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    disabled={!onQuote}
+                    onClick={() => onQuote?.(option.label)}
+                    title={option.description}
+                    className="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-800 transition-colors hover:border-gray-400 hover:bg-gray-50 disabled:cursor-default disabled:opacity-70"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
           {onQuote && (
             <button
               type="button"

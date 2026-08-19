@@ -53,6 +53,24 @@ export const QuestionBlockQuestionSchema = z.object({
    * policy-inferred consultation, a post-stall gap) simply renders unlabeled.
    */
   dimension: z.string().min(1).max(60).optional(),
+  /**
+   * The decision options the agent authored at park time, carried through so
+   * the client can pick one instead of composing prose.
+   *
+   * The negotiator already writes 2–4 real options with the CONSEQUENCE of
+   * choosing each ("what I would do next in this negotiation"), and the parked
+   * reader already carries them — but the block had no field for them, so
+   * every question arrived as prose with a reply arrow and nothing to select.
+   *
+   * Optional, like every other addition here: a park whose question was
+   * stripped by the safety gate, a policy-inferred consultation, and blocks
+   * authored before this field all render as prose, which is what the steps UI
+   * did for all of them before.
+   */
+  options: z.array(z.object({
+    label: z.string().min(1).max(120),
+    description: z.string().min(1).max(280),
+  })).min(2).max(4).optional(),
 }).strict();
 export type QuestionBlockQuestion = z.infer<typeof QuestionBlockQuestionSchema>;
 
