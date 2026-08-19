@@ -357,30 +357,64 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome?.reason).not.toBe("screened_out");
   });
 
-  it("enforce (P2.2): a regular continuation `pass` screens out — zero new messages, rejected (IND-563)", async () => {
+  it("enforce (P2.2): a NEW match in an established DM can still be screened out — zero new messages, rejected (IND-563)", async () => {
     process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
       reasoning: "stale premise; not worth reaching out again",
       evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
     };
+    // The pair has talked before, on a DIFFERENT concluded match. This
+    // negotiation has sent nothing of its own, which is what keeps it a
+    // pre-contact run the gate may still decide.
     const stubs = mkStubs({
       priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
+      negotiationMessages: [],
     });
 
-    const result = await runGraph(stubs, { opportunityId: "opp-1" });
+    const result = await runGraph(stubs, { opportunityId: "opp-fresh" });
 
-    // IND-563: the continuation is screened and, on a genuine enforce `pass`,
+    // IND-563: the new match is screened and, on a genuine enforce `pass`,
     // blocked before any turn — no NEW message lands in the shared thread.
     expect(screenerInputs.length).toBe(1);
-    expect(screenerInputs[0].isContinuation).toBe(true);
+    // Not a continuation: the pair's history belongs to another match, and
+    // reaches the gate as labelled context rather than as this negotiation's
+    // own dialogue.
+    expect(screenerInputs[0].isContinuation).toBe(false);
     expect(stubs.createdMessages.length).toBe(0);
     expect(result.outcome?.hasOpportunity).toBe(false);
     expect(result.outcome?.reason).toBe("screened_out");
     expect(stubs.statusUpdates).toEqual([
-      { opportunityId: "opp-1", status: "negotiating" },
-      { opportunityId: "opp-1", status: "rejected" },
+      { opportunityId: "opp-fresh", status: "negotiating" },
+      { opportunityId: "opp-fresh", status: "rejected" },
     ]);
+  });
+
+  it("enforce: a negotiation that has already spoken is NOT re-screened — the gate never runs", async () => {
+    // The incident shape: an error-stalled negotiation whose outreach is
+    // already on the counterparty's thread, recovered through
+    // `negotiation-run-existing`. The gate decides whether to make FIRST
+    // contact; here contact exists, so re-asking it could only end a live
+    // negotiation the counterparty was never given the chance to answer.
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    screenerResult = {
+      decision: "pass",
+      reasoning: "would wrongly kill a negotiation the counterparty can still answer",
+      evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
+    };
+    const stubs = mkStubs({
+      priorMessages: [priorMsg("u-src", "outreach", 0)],
+      negotiationMessages: [priorMsg("u-src", "outreach", 0)],
+    });
+
+    const result = await runGraph(stubs, { opportunityId: "opp-1" });
+
+    expect(screenerInputs.length).toBe(0);
+    expect(stubs.screenWrites.length).toBe(0);
+    // The responder — who had never spoken — takes a real turn instead.
+    expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
+    expect(result.outcome?.reason).not.toBe("screened_out");
+    expect(stubs.statusUpdates.some((u) => u.status === "rejected")).toBe(false);
   });
 
   it("emits a negotiation_screen trace event when an opportunityId is present", async () => {

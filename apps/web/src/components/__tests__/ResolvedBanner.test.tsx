@@ -13,6 +13,42 @@ import { describe, expect, it } from 'vitest';
 
 import ResolvedBanner from '../negotiations/ResolvedBanner';
 
+describe('ResolvedBanner — screened_out and what the thread can prove', () => {
+  // The pre-contact copy was observed rendering directly beneath a two-hour-old
+  // outreach: an error-stalled negotiation was re-screened on recovery, passed,
+  // and flipped to `rejected`. The screen fix stops new rows from reaching that
+  // state; the rows already in that state are still rendered by this component,
+  // so the copy may not assert a history the thread contradicts.
+  it('keeps the pre-contact copy when nothing was ever sent', () => {
+    render(<ResolvedBanner variant="rejected" reason="screened_out" turnCount={null} maxTurns={6} contactMade={false} />);
+    expect(screen.getByText('No opportunity — filtered out for you')).toBeInTheDocument();
+    expect(screen.getByText(/filtered out before either side reached out/)).toBeInTheDocument();
+    expect(screen.getByText(/never learns the details/)).toBeInTheDocument();
+  });
+
+  it('defaults to the pre-contact copy when the caller supplies no thread context', () => {
+    render(<ResolvedBanner variant="rejected" reason="screened_out" turnCount={null} maxTurns={6} />);
+    expect(screen.getByText(/filtered out before either side reached out/)).toBeInTheDocument();
+  });
+
+  it('drops every pre-contact claim when the thread holds messages', () => {
+    render(<ResolvedBanner variant="rejected" reason="screened_out" turnCount={1} maxTurns={6} contactMade />);
+    // Nothing is claimed about who reached out, who was notified, or what the
+    // counterparty knows — only that it ended without agreement.
+    expect(screen.getByText('This negotiation ended without agreement.')).toBeInTheDocument();
+    expect(screen.queryByText(/before either side reached out/)).toBeNull();
+    expect(screen.queryByText(/neither of you was notified/)).toBeNull();
+    expect(screen.queryByText(/never learns the details/)).toBeNull();
+    expect(screen.queryByText(/filtered out for you/)).toBeNull();
+  });
+
+  it('leaves the other rejected reasons untouched by the guard', () => {
+    render(<ResolvedBanner variant="rejected" reason={null} turnCount={2} maxTurns={6} contactMade />);
+    expect(screen.getByText(/Your agent withdrew after reviewing the opportunity/)).toBeInTheDocument();
+    expect(screen.getByText(/never learns the details/)).toBeInTheDocument();
+  });
+});
+
 describe('ResolvedBanner — stalled variants', () => {
   it('claims a spent turn budget only for turn_cap', () => {
     render(<ResolvedBanner variant="stalled" reason="turn_cap" turnCount={6} maxTurns={6} />);

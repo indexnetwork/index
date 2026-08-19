@@ -9,7 +9,7 @@ import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatch
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
 import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, negotiationConsultationPolicyMode, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
-import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
+import { blocksNegotiationBeforeFirstTurn, negotiationHasMadeContact, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
@@ -128,6 +128,12 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // resume re-enters holding nothing but its own `ask_user` turn.
     const isFreshOpeningTurn = state.turnCount === 0 && !state.isContinuation;
     const isPreContactResume = state.turnCount === 0 && isPreContactConsultResume(history);
+    // Has this negotiation ever addressed the counterparty — in this task or an
+    // earlier one? `outreachOpened` alone answers only for THIS task, which is
+    // exactly the blind spot that let a recovered stall be re-labelled as
+    // never-contacted; `history` carries the negotiation's own prior turns
+    // across every session it has run.
+    const contactMade = state.outreachOpened || negotiationHasMadeContact(history);
     // Pre-contact consultation (the turn-0 third verdict). The initiator may
     // consult its client BEFORE deciding whether to reach out, so the seat's
     // opening vocabulary stops being binary. Everything downstream is the
@@ -446,7 +452,15 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // lands on. This is also what makes an UNANSWERED pre-contact consult
     // resolve to today's behavior — the expiry worker resumes through exactly
     // this path.
-    if (turn.action === 'withdraw' && !state.outreachOpened && (!state.continuationExecution || isPreContactResume)) {
+    //
+    // The whole guard is scoped to a negotiation that has never spoken.
+    // `outreachOpened` is per-TASK, so on a continuation of a CONTACTED
+    // negotiation (an error-stalled run recovered through run-existing) it
+    // reads false while an outreach sits on the counterparty's thread. A
+    // withdraw there is a real move against a real message and must persist as
+    // one — routing it here would relabel a live negotiation as never-contacted
+    // and end it quietly under `screened_out`.
+    if (turn.action === 'withdraw' && !contactMade && (!state.continuationExecution || isPreContactResume)) {
       turnLog.info('negotiation_opening_withdraw_screened_out', {
         taskId: state.taskId,
         opportunityId: state.opportunityId || undefined,
