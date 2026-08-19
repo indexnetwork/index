@@ -1,7 +1,7 @@
 # Checklist negotiations: match qualification as a grounded dialogue
 
 **Status: draft — theory and target model agreed, slicing not yet cut.**
-Reference prototype: `negotiator-floor.jsx` (repo root). Companion plans:
+Reference prototype: `docs/plans/2026-08-19-negotiator-floor.reference.jsx`. Companion plans:
 `2026-08-18-conversational-questions.md` (delivery spine this reuses),
 `2026-08-17-personal-agent-authored-questions.md` (superseded authoring model).
 
