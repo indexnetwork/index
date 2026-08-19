@@ -103,7 +103,7 @@ const ASK_USER_RULE = `
  * put that vocabulary in the prompt.
  */
 const ASK_USER_CHECKLIST_RULE = `
-- The one-consultation ration in the rule above does not apply to you: under the checklist protocol {userName} may be asked up to ${QUESTION_BUDGET_PER_PRINCIPAL} questions across this whole negotiation, the pre-contact one included. How much of that budget is already spent is in the checklist section of your context.
+- THE RULE ABOVE IS RESCOPED FOR YOU, IN TWO WAYS. First, the ration: {userName} may be asked up to ${QUESTION_BUDGET_PER_PRINCIPAL} questions across this whole negotiation, the pre-contact one included, and how much is spent is in the checklist section of your context. Second, and more important, the bar: "only when proceeding would risk over-disclosure or a wrong call" is NOT the bar under this protocol. A checklist dimension that is unknown, pivotal, and {userName}'s own to settle is the case for asking — you do not also need to argue that proceeding would be a disaster.
 - CHOOSE THE CHANNEL BY WHO HOLDS THE ANSWER: if the fact is {userName}'s own — their level, their availability, their budget, their willingness — the action is "ask_user" and the question is addressed to {userName} in the second person. If the fact belongs to the other side, the action is "question" and it goes to their agent. A question written for {userName} ("What grade do you climb?") sent as "question" reaches the wrong party entirely, and the dimension stays unknown.
 - ASK THE SPECIFIC THING, NOT THE TOPIC: use everything you have read to narrow the question to the one fact that would score the dimension — the grade, the days of the week, the budget, the start date — so {userName} answers in one sentence rather than writing an essay. A question that could have been asked before you read anything is a question you asked too early.
 - STRIP THE FACT FROM ITS OWNER: what you learned tells you WHAT to ask, never WHO to name. Keep the specificity and drop the identity — "they climb intermediate grades and want weeknight sessions" becomes "What grade do you climb, and can you make weeknights?". A question containing the counterparty's name, or a recognisable description of them, is DROPPED before it reaches {userName}, and they get a generic server template instead — so naming them costs you the very question you are trying to ask.
@@ -537,7 +537,19 @@ ${discoveryQueryReminder}
 ${preContactResume
   ? `You paused this opening turn to ask ${userName} the one thing you could not decide without. Their answer is above. Take the opening decision now: "outreach" to make the case, or "withdraw" to let the match pass without ever contacting ${otherName}.`
   : input.history.length === 0 && !input.isContinuation
-    ? (version === "v2" && seat === "initiator" ? "This is the opening turn. Make the outreach case." : "This is the opening turn. Propose the connection case.")
+    ? (version === "v2" && seat === "initiator"
+        ? (preContactConsult
+            // The closing line is the instruction the model acts on, and it
+            // named exactly one of the three verdicts this turn holds: "make
+            // the outreach case". Every rule about pausing sat upstream of it
+            // and lost — which is the likeliest reason the turn-0 consult
+            // (#1445) produced no owner questions in dev at all. Where the
+            // grant is live the line states the real choice, ordered by what
+            // each move costs: asking is invisible and reversible, reaching
+            // out is neither.
+            ? `This is the opening turn and nothing has been sent yet. You hold THREE verdicts here: ask ${userName} the one open thing only they can settle, make the outreach case, or let the match pass. Score the checklist first — if a dimension is unknown and theirs to settle, asking now costs the counterparty nothing and buys a better opening.`
+            : "This is the opening turn. Make the outreach case.")
+        : "This is the opening turn. Propose the connection case.")
     : "Evaluate the latest arguments and respond."}`;
 
     const chatMessages = [

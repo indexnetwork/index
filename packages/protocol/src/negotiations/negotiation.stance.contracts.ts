@@ -415,13 +415,45 @@ export function stanceActionRules(stance: NegotiatorStance, seat: NegotiationSea
 const SKEPTIC_PRE_CONTACT_LEAN = ` When it is genuinely close, lean toward asking rather than passing. Your prior is that most matches are not worth making — which makes passing the cheap answer, and a pass you reached by GUESSING at {userName}'s own criteria decides for them just as much as a connection you made by guessing. Nothing has been spent yet: the pause costs the counterparty nothing and costs {userName} one question.`;
 
 /**
+ * The checklist's consequence at turn 0 — assessing stances only.
+ *
+ * The base seat rule (#1445) narrows the pre-contact question to the SIGNAL's
+ * scope: what a term meant, whether an adjacent candidate is in scope. Under
+ * the checklist protocol that is too narrow, and the plan says so (§3: the
+ * pre-contact consult is "the same rule at turn 0 — an unknown that is pivotal
+ * before any contact and client-resolvable"). A dimension like the client's own
+ * level, availability or budget is exactly that: unknown, pivotal, and theirs
+ * alone to settle.
+ *
+ * The live failure it answers is an asymmetry, not a shortage. With the
+ * responding seat no longer closing over an open dimension, it parks and asks
+ * ITS principal on turn 1 — so the initiating side, which only ever holds turn
+ * 0 before that, never reaches a turn on which it could ask its own client
+ * anything. Both sides now get one chance at the same moment in the dialogue.
+ *
+ * What it keeps from #1445 is the test that makes a turn-0 question safe, and
+ * restates it as a property of the ANSWER rather than of the wording: the
+ * answer has to hold for the next candidate on this signal too. "What grade do
+ * you climb" survives that test; "is this person good enough" does not, and it
+ * is the second kind the base rule was written to prevent.
+ *
+ * Stance-scoped rather than seat-level because the base rule renders under
+ * every stance, `advocate` included, and its wording is pinned byte-for-byte by
+ * the golden prompt matrix.
+ */
+const CHECKLIST_PRE_CONTACT_RULE = ` Weigh the two moves by what they cost and what they can undo. Reaching out spends the counterparty's attention and {userName}'s name on a match you have not finished scoring, and it cannot be taken back; asking {userName} first is invisible to the counterparty, costs one sentence, and is the only moment in this negotiation where a question buys a better OPENING rather than a correction. So where a dimension is open and theirs to settle, asking now is not the timid option — it is the one that spends less. A checklist dimension that is unknown and {userName}'s own to settle — their level, their availability, their budget, what they are actually willing to commit to — is as good a reason to pause here as a question about the signal's wording. The test is not whether the question mentions this candidate: it is whether the ANSWER would still hold for the next candidate on this signal. Where it would, ask it now; where the answer would only be about this one person, it is yours to judge, not theirs.`;
+
+/**
  * Stance contribution to the pre-contact consultation rule. Empty under
  * `advocate` and `evaluator` — the base seat-level rule already states when
  * the verdict applies, and only the skeptic's not-worth-making prior changes
  * which way a close call should fall.
  */
 export function stancePreContactConsultRule(stance: NegotiatorStance): string {
-  return stance === "skeptic" ? SKEPTIC_PRE_CONTACT_LEAN : "";
+  if (!stanceUsesChecklist(stance)) return "";
+  return stance === "skeptic"
+    ? CHECKLIST_PRE_CONTACT_RULE + SKEPTIC_PRE_CONTACT_LEAN
+    : CHECKLIST_PRE_CONTACT_RULE;
 }
 
 /**
