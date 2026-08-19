@@ -6,6 +6,23 @@ interface ResolvedBannerProps {
   reason: string | null;
   turnCount: number | null;
   maxTurns: number | null;
+  /**
+   * Whether the thread this banner renders into holds any agent message.
+   *
+   * The `screened_out` copy makes three claims about history — nobody reached
+   * out, nobody was notified, the other side never learns the details — that the
+   * banner cannot verify from an outcome label alone. It was observed rendering
+   * all three directly beneath a two-hour-old outreach, because a negotiation
+   * recovered from an error stall was re-screened after contact. The outcome is
+   * the wrong place to fix that (bad rows already exist and keep their terminal
+   * state), so the copy is gated on what the reader can see instead: with
+   * messages above it, the banner drops every pre-contact claim and says only
+   * what is still true — the negotiation ended without agreement.
+   *
+   * Omitted (undefined) means "no thread context", which reads as no contact
+   * and preserves the existing copy for callers that render without a transcript.
+   */
+  contactMade?: boolean;
   /** Stalled only: route to the user's agent to answer the open question. */
   onRevive?: () => void;
   /** Stalled only: leave the transcript. */
@@ -17,11 +34,16 @@ interface ResolvedBannerProps {
  * filtering done for you, with hedged, reason-based phrasing — a screened-out
  * thread never names who screened, so the counterparty learns nothing.
  */
-export function ResolvedBanner({ variant, reason, turnCount, maxTurns, onRevive, onLetGo }: ResolvedBannerProps) {
+export function ResolvedBanner({ variant, reason, turnCount, maxTurns, contactMade = false, onRevive, onLetGo }: ResolvedBannerProps) {
   if (variant === 'rejected') {
+    const screenedOutBeforeContact = reason === 'screened_out' && !contactMade;
     let body: string;
-    if (reason === 'screened_out') {
+    if (screenedOutBeforeContact) {
       body = 'This connection was filtered out before either side reached out, so neither of you was notified.';
+    } else if (reason === 'screened_out') {
+      // Contact exists, so no claim is made about who reached out, who was
+      // notified, or what the other side knows — only that it ended here.
+      body = 'This negotiation ended without agreement.';
     } else if (!reason) {
       // Agent voluntarily withdrew — the candidate didn’t match this opportunity’s query.
       body = `Your agent withdrew after reviewing the opportunity${turnCount != null && turnCount > 0 ? ` (${turnCount} ${turnCount === 1 ? 'turn' : 'turns'})` : ''} — the candidate didn’t align with what you’re looking for. You were never notified while this played out.`;
@@ -31,12 +53,25 @@ export function ResolvedBanner({ variant, reason, turnCount, maxTurns, onRevive,
     return (
       <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-4">
         <h3 className="font-ibm-plex-mono text-[13px] font-bold text-[#041729]">
-          No opportunity — filtered out for you
+          {/*
+            "filtered out for you" says the connection was screened before it
+            reached anyone. Above a thread with messages in it, only the verdict
+            survives — the account of how it was reached does not.
+          */}
+          {reason === 'screened_out' && contactMade ? 'No opportunity' : 'No opportunity — filtered out for you'}
         </h3>
         <p className="mt-1 text-[13px] text-[#3D3D3D]">{body}</p>
-        <p className="mt-2.5 font-ibm-plex-mono text-[11px] text-gray-400">
-          The other side never learns the details — declines are quiet by design.
-        </p>
+        {/*
+          The quiet-decline footnote is a claim about the counterparty's
+          knowledge. It holds for every end reached without contact, and for a
+          decline the agents never sent — but not above a visible outreach the
+          counterparty demonstrably received.
+        */}
+        {!(reason === 'screened_out' && contactMade) && (
+          <p className="mt-2.5 font-ibm-plex-mono text-[11px] text-gray-400">
+            The other side never learns the details — declines are quiet by design.
+          </p>
+        )}
       </div>
     );
   }

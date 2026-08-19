@@ -125,6 +125,13 @@ export default function NegotiationDetailPage() {
 
   const showOutcomeBanner = !resolvedVariant && effectiveOpportunityStatus === 'pending' && !!opportunityId;
 
+  // Whether this thread shows any agent message at all — the one fact that can
+  // falsify the `screened_out` banner's pre-contact copy, read from the same
+  // transcript the banner renders beneath. Conversation-wide on purpose: the
+  // claim is about what the reader can see above the banner, and every turn in
+  // the rail is visible regardless of which session produced it.
+  const contactMade = turns.length > 0;
+
   // IND-610: the owner-only outreach-gate card. A `screened_out` negotiation
   // with no turns is the one case where the transcript has nothing to show —
   // it dead-ended at "No messages in this negotiation" — yet a real decision
@@ -280,6 +287,7 @@ export default function NegotiationDetailPage() {
                         reason={outcomeReason}
                         turnCount={latestTaskTurnCount}
                         maxTurns={lifecycle?.maxTurns ?? null}
+                        contactMade={contactMade}
                         onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                       />
                     )}
@@ -316,6 +324,7 @@ export default function NegotiationDetailPage() {
                     reason={outcomeReason}
                     turnCount={latestTaskTurnCount}
                     maxTurns={lifecycle?.maxTurns ?? null}
+                    contactMade={contactMade}
                     onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                   />
                 )}

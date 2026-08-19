@@ -6,16 +6,25 @@ import { NegotiationScreener, type NegotiationScreenerInput, type ScreenDecision
 import type { NegotiationTurn } from "../negotiation.state.js";
 
 /**
- * IND-563 — the outreach screen runs on continuations, with two guarantees not
- * covered by the fresh-run routing suite (negotiation.screen-routing.spec.ts):
+ * IND-563 — which continuations the outreach screen may decide, with three
+ * guarantees not covered by the fresh-run routing suite
+ * (negotiation.screen-routing.spec.ts):
  *
- * 1. A regular continuation (a new opportunity reusing an existing dm_pair
- *    conversation) forwards its prior dialogue to the screener, so the gate
- *    judges the NEW signal on its own merits.
+ * 1. A new opportunity reusing an existing dm_pair conversation IS screened,
+ *    and the pair's earlier dialogue reaches the screener as context, so the
+ *    gate judges the NEW signal on its own merits.
  * 2. An EXACT ask_user resume (continuationExecution present) is NEVER
  *    re-screened — the successor task is the same logical negotiation resumed
  *    mid-flight after the client answered, and re-screening it in enforce mode
  *    could wrongly kill it.
+ * 3. A continuation of a negotiation that has ALREADY SPOKEN is never screened
+ *    either. The gate's question is whether to make first contact; a run-existing
+ *    recovery of an error-stalled negotiation has an outreach on the
+ *    counterparty's thread, so the question is settled and re-asking it can only
+ *    end a live negotiation as `screened_out`.
+ *
+ * The distinction between 1 and 3 is scope, not chronology: `getNegotiationMessages`
+ * answers for THIS negotiation, `getMessagesForConversation` for the pair.
  */
 
 type FakeMessage = {
@@ -99,7 +108,17 @@ const EXACT_CONTINUATION_EXECUTION = {
   leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
 };
 
-function mkStubs(opts?: { priorMessages?: FakeMessage[]; exact?: boolean }) {
+function mkStubs(opts?: {
+  /** The pair's whole shared DM — context, possibly from other matches. */
+  priorMessages?: FakeMessage[];
+  /**
+   * THIS negotiation's own turns. Defaults to the whole DM (a same-match
+   * re-run); pass `[]` to model a NEW match in a DM that already holds
+   * concluded negotiations for other matches.
+   */
+  negotiationMessages?: FakeMessage[];
+  exact?: boolean;
+}) {
   const createdMessages: Array<{ senderId: string; parts: Array<{ kind: string; data: NegotiationTurn }> }> = [];
   const tasksById = new Map<string, Record<string, unknown>>();
   if (opts?.exact) {
@@ -121,7 +140,7 @@ function mkStubs(opts?: { priorMessages?: FakeMessage[]; exact?: boolean }) {
     getNegotiationTaskForOpportunity: async () => null,
     getOpportunityUserAnswers: async () => [],
     getMessagesForConversation: async () => opts?.priorMessages ?? [],
-    getNegotiationMessages: async () => opts?.priorMessages ?? [],
+    getNegotiationMessages: async () => opts?.negotiationMessages ?? opts?.priorMessages ?? [],
     getLatestNegotiationTaskForConversation: async () => null,
     getUserContext: async () => ({ text: "Bob builds ML systems." }),
     getTask: async (id: string) => tasksById.get(id) ?? null,
@@ -203,25 +222,38 @@ describe("negotiation graph — screen on continuations (IND-563)", () => {
     if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
   });
 
-  it("regular continuation forwards prior dialogue to the screener", async () => {
+  it("a NEW match in an established DM forwards the pair's dialogue to the screener as context", async () => {
     process.env.NEGOTIATION_SCREEN_MODE = "shadow";
-    const stubs = mkStubs({ priorMessages: [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "decline", 1)] });
+    const stubs = mkStubs({
+      priorMessages: [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "decline", 1)],
+      negotiationMessages: [],
+    });
 
     await runGraph(stubs);
 
     expect(screenerInputs.length).toBe(1);
-    expect(screenerInputs[0].isContinuation).toBe(true);
-    expect(screenerInputs[0].priorDialogue?.map((t) => t.action)).toEqual(["outreach", "decline"]);
+    // This negotiation has not spoken, so it is not a continuation of one; the
+    // settled match reaches the gate through the attributed channel.
+    expect(screenerInputs[0].isContinuation).toBe(false);
+    const attributed = screenerInputs[0].priorDialogueAttributed;
+    expect(attributed).toBeDefined();
+    expect([
+      ...attributed!.unattributed,
+      ...attributed!.earlier.flatMap((g) => g.turns),
+    ].map((t) => t.action)).toEqual(["outreach", "decline"]);
   }, 30_000);
 
-  it("enforce: a continuation `pass` is screened out — no NEW message in the shared thread", async () => {
+  it("enforce: a NEW match that rehashes a settled decline is screened out — no NEW message in the shared thread", async () => {
     process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
       reasoning: "the new signal rehashes a settled decline",
       evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
     };
-    const stubs = mkStubs({ priorMessages: [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "decline", 1)] });
+    const stubs = mkStubs({
+      priorMessages: [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "decline", 1)],
+      negotiationMessages: [],
+    });
 
     const result = await runGraph(stubs);
 
@@ -229,6 +261,48 @@ describe("negotiation graph — screen on continuations (IND-563)", () => {
     // Zero NEW turns persisted — the counterparty is never re-engaged.
     expect(stubs.createdMessages.length).toBe(0);
     expect(result.outcome?.hasOpportunity).toBe(false);
+    expect(result.outcome?.reason).toBe("screened_out");
+  }, 30_000);
+
+  it("a contacted negotiation re-run through run-existing is never re-screened — the responder takes the turn", async () => {
+    // The observed incident: the initiator's outreach landed, the run failed
+    // on infrastructure, and the documented recovery (`negotiation-run-existing`)
+    // produced a continuation with one prior turn. Re-screening it ended the
+    // negotiation as `screened_out` — beneath the very outreach that falsifies
+    // the claim, and before the responder had ever spoken.
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    screenerResult = {
+      decision: "pass",
+      reasoning: "a defensible PRE-contact judgment, applied after contact",
+      evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
+    };
+    const stubs = mkStubs({ priorMessages: [priorMsg("u-src", "outreach", 0)] });
+
+    const result = await runGraph(stubs);
+
+    expect(screenerInputs.length).toBe(0);
+    // The seat that owed a turn — the responder, who had never spoken — takes one.
+    expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
+    expect(stubs.createdMessages[0].senderId).toBe("agent:u-cand");
+    expect(result.outcome?.reason).not.toBe("screened_out");
+  }, 30_000);
+
+  it("a continuation whose only prior activity is a consult park is still pre-contact — it may re-screen", async () => {
+    // `ask_user` is persisted, but it is a question to the client's OWN
+    // principal: nothing was ever addressed to the counterparty, so the
+    // opening decision is still open and the gate may still make it.
+    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+    screenerResult = {
+      decision: "pass",
+      reasoning: "the client's answer settled it against reaching out",
+      evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
+    };
+    const stubs = mkStubs({ priorMessages: [priorMsg("u-src", "ask_user", 0)] });
+
+    const result = await runGraph(stubs);
+
+    expect(screenerInputs.length).toBe(1);
+    expect(stubs.createdMessages.length).toBe(0);
     expect(result.outcome?.reason).toBe("screened_out");
   }, 30_000);
 

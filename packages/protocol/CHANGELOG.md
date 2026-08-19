@@ -20,6 +20,32 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.1.1 - 2026-08-19
+
+### Fixed
+
+- **A negotiation that has already spoken is no longer re-screened.** The outreach
+  gate asks whether to make first contact, and `routeAfterInit` ran it on every
+  continuation that was not an exact `ask_user` resume. An error-stalled negotiation
+  recovered through `negotiation-run-existing` — the documented recovery path — was
+  therefore re-screened two hours after its outreach landed; the gate passed, and an
+  infrastructure failure plus its own recovery turned into a terminal `rejected`
+  the counterparty was never given the chance to answer. Eligibility is now
+  pre-contact, scoped to the negotiation (new `negotiationHasMadeContact`): a new
+  opportunity reusing an existing `dm_pair` is still screened (IND-563), a
+  screen-only or all-`ask_user` history is still pre-contact, and a persisted turn
+  addressed to the counterparty ends the question for good.
+- **A first-turn `withdraw` on a contacted continuation persists as a real
+  retraction.** The IND-564 guard read `outreachOpened`, which is per-task, so a
+  continuation of a negotiation whose outreach was sent in an earlier session was
+  treated as never-contacted and routed to the quiet `screened_out` outcome. The
+  guard now applies only where nothing was ever sent; a withdraw against a message
+  the counterparty received is recorded as the move it is.
+- **`screened_out` can no longer be stamped on a negotiation whose messages
+  contradict it.** `finalizeNode` gates both routes to the label — the screen-node
+  block and the opening-turn refusal — on the same pre-contact predicate, so the one
+  outcome that claims nothing was ever sent is unfalsifiable at the point of record.
+
 ## 23.1.0 - 2026-08-19
 
 ### Fixed

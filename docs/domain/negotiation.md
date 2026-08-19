@@ -83,7 +83,15 @@ Each turn produces a structured assessment:
 
 ### Screen gate (shadow / enforce)
 
-Between init and the first turn, **fresh negotiations only** (continuations skip it) pass through an outreach gate: one structured LLM call from the reaching client's perspective deciding `reach_out | pass` — is this match worth the client's name before any turn is exchanged? Inputs: the client's intents + discovery query, the counterparty's `user_contexts` paragraph + active intents, and the seed assessment.
+Between init and the first turn, **pre-contact runs only** pass through an outreach gate: one structured LLM call from the reaching client's perspective deciding `reach_out | pass` — is this match worth the client's name before any turn is exchanged? Inputs: the client's intents + discovery query, the counterparty's `user_contexts` paragraph + active intents, and the seed assessment.
+
+**Pre-contact is the whole eligibility rule**, and it is scoped to the negotiation, not to the conversation:
+
+- A **new opportunity reusing an existing `dm_pair`** is screened (IND-563). It has sent nothing of its own; the pair's earlier matches reach the gate as labelled context so a stale rehash is caught before the counterparty is re-engaged.
+- A negotiation that has **already spoken** is never screened. The gate's question is whether to make first contact, and once a turn of this negotiation is on the counterparty's thread that question is settled. Re-asking it let an infrastructure recovery — `negotiation-run-existing` on an error-stalled run, the documented recovery path — end a live negotiation as `screened_out` hours after its outreach landed, with the counterparty never given the chance to answer.
+- An **exact `ask_user` resume** (`continuationExecution`) is never re-screened: it is the same negotiation resumed mid-flight after the client answered.
+
+Contact means a **persisted turn**, nothing weaker. A screen decision is task metadata, so a continuation whose only prior activity is a screen has still sent nothing. An `ask_user` park is persisted but is not contact either — it asks the client's own principal, so an all-`ask_user` history is still pre-contact (the same reading the pre-contact consult resume applies). The same predicate gates the IND-564 opening-`withdraw` guard and the `screened_out` label in finalize: an outcome claiming nothing was ever sent can never be recorded for a negotiation whose own messages say otherwise.
 
 Controlled by `NEGOTIATION_SCREEN_MODE`:
 

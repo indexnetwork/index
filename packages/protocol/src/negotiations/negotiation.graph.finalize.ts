@@ -9,7 +9,7 @@ import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatch
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
 import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
-import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
+import { blocksNegotiationBeforeFirstTurn, negotiationHasMadeContact, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
@@ -101,8 +101,21 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
   //    withdrawing TURN is the reason.
   // They are collapsed into `screenedOut` for status/lifecycle purposes but
   // must stay separate when attributing `outcome.reasoning` below.
-  const blockedByScreenNode = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
-  const refusedAtOpeningTurn = state.firstTurnScreenedOut === true;
+  //
+  // The invariant behind both routes, asserted where the label is actually
+  // stamped: `screened_out` is a claim that NOTHING was ever sent. It is the
+  // only outcome that tells the owner the counterparty was never involved and
+  // never notified, so it may not be applied to a negotiation whose own
+  // messages contradict it. The routing gate and the opening-withdraw guard
+  // each keep this true upstream; gating both routes here makes it
+  // unfalsifiable at the point of record, whatever path reached this node —
+  // including the reasoning attribution below, which must not surface a
+  // "did not reach out" rationale for a negotiation that did. A negotiation
+  // that has spoken falls through to the honest ends (a stall, an error, a
+  // turn cap).
+  const contactMade = negotiationHasMadeContact(history);
+  const blockedByScreenNode = !contactMade && blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
+  const refusedAtOpeningTurn = !contactMade && state.firstTurnScreenedOut === true;
   const screenedOut = blockedByScreenNode || refusedAtOpeningTurn;
   // The run ended because the acting agent kept failing, not because the two
   // sides ran out of things to say.

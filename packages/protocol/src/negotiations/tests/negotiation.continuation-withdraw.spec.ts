@@ -9,17 +9,24 @@ import type { NegotiationTurn } from "../negotiation.state.js";
 /**
  * IND-564 — never emit `withdraw` as an opening move.
  *
- * `withdraw` retracts an outreach the initiator made. In a continuation whose
- * first (and only) initiator move is `withdraw` — retracting an outreach never
- * made in the current task — persisting it would drop a spurious "connection
- * withdrawn" message into the shared dm_pair thread. The graph maps such a move
- * to the quiet screen-out outcome instead:
+ * `withdraw` retracts an outreach. Emitted before one exists, it would drop a
+ * spurious "connection withdrawn" message into the shared dm_pair thread for a
+ * connection the counterparty was never offered, so the graph maps it to the
+ * quiet screen-out outcome instead:
  *  - no message persisted into the shared conversation,
  *  - turnCount stays 0,
  *  - the opportunity is quietly `rejected` with reason `screened_out`.
  *
- * `withdraw` remains legal AFTER the initiator actually opened `outreach` in
- * the SAME task; prior-task (seeded) turns never count as that outreach.
+ * The guard's subject is an outreach that was never MADE, not one this task did
+ * not make. `outreachOpened` alone answers only for the current task, and a
+ * continuation of a CONTACTED negotiation — an error-stalled run recovered
+ * through `negotiation-run-existing` — has an outreach on the counterparty's
+ * thread from an earlier session. A withdraw there retracts a real message and
+ * persists as the real move it is; routing it to `screened_out` would tell the
+ * owner no contact was ever made, directly above the message that was.
+ *
+ * `withdraw` is therefore legal after an in-task `outreach` OR after any turn
+ * this negotiation persisted in an earlier session.
  */
 
 type FakeMessage = {
@@ -131,10 +138,12 @@ describe("negotiation graph — opening-move withdraw guard (IND-564)", () => {
     IndexNegotiator.prototype.invoke = origInvoke;
   });
 
-  it("continuation + first-turn withdraw ⇒ no message persisted, opportunity quietly rejected", async () => {
+  it("continuation of a CONTACTED negotiation + first-turn withdraw ⇒ a real retraction, not a screen-out", async () => {
     // Prior dialogue from an EARLIER task (seeded): u-src outreached, u-cand
     // countered. Last speaker is u-cand ⇒ u-src (the initiator) speaks first
-    // in this continuation and immediately withdraws.
+    // in this continuation and immediately withdraws. There IS an outreach to
+    // retract — it is on the counterparty's thread — so the withdraw is a move,
+    // not a spurious message, and the negotiation ended in the open.
     const stubs = mkStubs([priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "counter", 1)]);
     agentScript = [{
       action: "withdraw",
@@ -144,15 +153,36 @@ describe("negotiation graph — opening-move withdraw guard (IND-564)", () => {
 
     const result = await runGraph(stubs);
 
-    // The withdraw never lands in the shared dm_pair conversation.
-    expect(stubs.createdMessages.length).toBe(0);
-    // Quiet screen-out outcome: rejected, reason screened_out, zero turns.
+    expect(stubs.createdMessages.length).toBe(1);
+    expect(stubs.createdMessages[0].parts[0].data.action).toBe("withdraw");
+    // A negotiation the counterparty already heard from can never be recorded
+    // as one where neither side reached out.
     expect(result.outcome?.hasOpportunity).toBe(false);
+    expect(result.outcome?.reason).not.toBe("screened_out");
+    // Reject-like, so the opportunity still ends `rejected` — openly.
+    expect(stubs.statusUpdates).toEqual([
+      { opportunityId: "opp-1", status: "negotiating" },
+      { opportunityId: "opp-1", status: "rejected" },
+    ]);
+  }, 30_000);
+
+  it("continuation whose only prior turn is a consult park + withdraw ⇒ still the quiet screen-out", async () => {
+    // An `ask_user` park is persisted, but it was addressed to the client's own
+    // principal: no outreach exists to retract, so the guard still applies and
+    // nothing lands in the shared thread.
+    const stubs = mkStubs([priorMsg("u-src", "ask_user", 0)]);
+    agentScript = [{
+      action: "withdraw",
+      assessment: { reasoning: "the client's answer settled it against reaching out", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
+      message: "not proceeding",
+    }];
+
+    const result = await runGraph(stubs);
+
+    expect(stubs.createdMessages.length).toBe(0);
     expect(result.outcome?.reason).toBe("screened_out");
     expect(result.outcome?.turnCount).toBe(0);
-    // The screen-out reasoning falls back to the blocked turn's reasoning.
-    expect(result.outcome?.reasoning).toContain("poor fit");
-    // Opportunity quietly rejected (init flipped it to negotiating first).
+    expect(result.outcome?.reasoning).toContain("settled it against reaching out");
     expect(stubs.statusUpdates).toEqual([
       { opportunityId: "opp-1", status: "negotiating" },
       { opportunityId: "opp-1", status: "rejected" },

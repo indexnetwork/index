@@ -15,13 +15,14 @@ import { NegotiationGraphState } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 import { blocksNegotiationBeforeFirstTurn, NegotiationScreener } from "./negotiation.screen.js";
-import { configuredScreenMode } from "./negotiation.screen.contracts.js";
+import { configuredScreenMode, negotiationHasMadeContact } from "./negotiation.screen.contracts.js";
 import { isTerminalAction } from "./negotiation.protocol.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import type { QuestionerEnqueueFn } from "../questions/question.module.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
 import type { NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
+import { turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 import { initNode } from "./negotiation.graph.init.js";
 import { screenNode } from "./negotiation.graph.screen.js";
@@ -87,13 +88,28 @@ export class NegotiationGraphFactory {
 /** After init: fail closed, run the outreach gate, or go straight to the first turn. */
 export function routeAfterInit(state: NegotiationState): string {
   if (state.error) return "finalize";
-  // Screen gate: fresh negotiations only (continuations already passed
-  // the gate when the dialogue opened); off disables the node entirely.
-  // IND-563: regular continuations (new opportunity, existing dm_pair)
-  // also run through the screen gate so stale matches are caught before
-  // re-engaging the counterparty. Exact ask_user resumes
-  // (continuationExecution) are mid-flight and must never be re-screened.
-  if (configuredScreenMode() !== "off" && !state.continuationExecution) return "screen";
+  // Screen gate: PRE-CONTACT runs only; off disables the node entirely.
+  //
+  // IND-563: a new opportunity reusing an existing dm_pair still runs the gate
+  // — it has sent nothing of its own, so stale matches are caught before the
+  // counterparty is re-engaged. Its scope is what makes that safe: init seeds
+  // `messages` from THIS negotiation's turns, so the pair's earlier matches do
+  // not read as contact here.
+  //
+  // Exact ask_user resumes (continuationExecution) are mid-flight and must
+  // never be re-screened.
+  //
+  // A negotiation that has already spoken is not screened at all. The gate
+  // decides whether to make first contact; once contact exists the question is
+  // settled, and asking it again lets an infrastructure recovery
+  // (`negotiation-run-existing` on an error-stalled run) end a live negotiation
+  // as `screened_out` — the counterparty never answering an outreach it had
+  // already received.
+  if (
+    configuredScreenMode() !== "off"
+    && !state.continuationExecution
+    && !negotiationHasMadeContact(turnsFromMessages(state.messages))
+  ) return "screen";
   return "turn";
 }
 
