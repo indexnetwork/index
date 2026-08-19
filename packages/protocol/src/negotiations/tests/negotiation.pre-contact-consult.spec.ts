@@ -733,7 +733,13 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       // so the initiating side never reaches a later turn on which it could
       // ask its client anything. Turn 0 is its only chance.
       for (const stance of ["evaluator", "skeptic"] as const) {
-        expect(rules[stance].startsWith(rules.advocate)).toBe(true);
+        // The base rule survives verbatim — every bullet of it, including the
+        // one that bounds the verdict. The stance text is INSERTED after it
+        // rather than replacing any of it, which is why this checks
+        // containment: the rest of the prompt follows the insert, so the
+        // advocate rendering is not a prefix of the others.
+        expect(rules[stance]).toContain("Nothing has been sent and nothing is sent while you wait");
+        expect(rules[stance]).toContain("Do NOT use it when the evidence in front of you already decides");
         expect(rules[stance].length).toBeGreaterThan(rules.advocate.length);
         expect(rules[stance]).toContain("whether the ANSWER would still hold for the next candidate");
       }

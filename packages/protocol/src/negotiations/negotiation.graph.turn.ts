@@ -7,7 +7,7 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, negotiationConsultationPolicyMode, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
@@ -860,14 +860,22 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     const errMsg = err instanceof Error ? err.message : String(err);
     turnLog.error("Agent invocation failed", { error: errMsg, stack: err instanceof Error ? err.stack : undefined, turnCount: state.turnCount });
     traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `error: ${errMsg}` });
-    const errorSeat: NegotiationSeat = (state.currentSpeaker === 'source' ? state.sourceUser.id : state.candidateUser.id) === (state.initiatorUserId ?? state.sourceUser.id)
-      ? 'initiator'
-      : 'counterparty';
+    // A FAILED TURN IS NOT A DECISION. This used to synthesize a seat-
+    // appropriate reject, and finalize maps any reject-like last turn to
+    // opportunity `rejected` — so a provider timeout, a dropped connection or
+    // a throw in the park machinery permanently declined the match on the
+    // client's behalf, with reasoning that says "Agent error".
+    //
+    // Seen repeatedly in dev on turn 2, which is where an ask is drafted and
+    // therefore the slowest turn in the flow: the agent decided to ask its
+    // client, the call exceeded the turn budget, and the negotiation recorded
+    // a withdrawal. The intent to ask became a rejection.
+    //
+    // Leaving `lastTurn` untouched lets finalize see the session for what it
+    // is — unconcluded — so the opportunity stalls instead. A stall is
+    // retryable, and it is also what admits the post-stall park, which is the
+    // outcome an interrupted question actually wanted.
     return {
-      lastTurn: {
-        action: rejectActionFor(state.protocolVersion ?? 'v1', errorSeat),
-        assessment: { reasoning: `Agent error: ${errMsg}`, suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const } },
-      },
       turnCount: state.turnCount + 1,
       error: `Turn failed: ${errMsg}`,
     };
