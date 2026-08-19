@@ -1,7 +1,10 @@
 import type { NegotiationActivityGroup } from "@/services/conversation";
 
-function hasDisplayableText(parts: unknown[]): boolean {
-  return parts.some((part) => {
+function hasDisplayableText(message: { text?: string; parts: unknown[] }): boolean {
+  if (typeof message.text === "string" && message.text.trim().length > 0) return true;
+  // Pre-projection shape: a message whose text lives in its parts. Kept so a
+  // client running ahead of the server still renders the old payload.
+  return message.parts.some((part) => {
     if (typeof part === "string") return part.trim().length > 0;
     if (!part || typeof part !== "object") return false;
     const text = (part as Record<string, unknown>).text;
@@ -16,7 +19,7 @@ export function normalizeNegotiationActivity(
     .map((group) => ({
       ...group,
       messages: group.messages
-        .filter((message) => hasDisplayableText(message.parts))
+        .filter((message) => hasDisplayableText(message))
         .sort((left, right) =>
           Date.parse(left.createdAt) - Date.parse(right.createdAt)
           || left.id.localeCompare(right.id),

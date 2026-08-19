@@ -537,8 +537,12 @@ describe("responder scoring — the opening is a claim, not a commitment", () =>
         expect(prompt).toContain("agreeing puts a connection in front of Alice for approval");
         expect(prompt).toContain('"Would Alice be open to connecting?" is a bar almost anything clears');
         expect(prompt).toContain("it is not the bar — the checklist is");
-        // The two-sided handshake: agree when nothing conflicts.
-        expect(prompt).toContain("Where the other side has proposed the match and your checklist holds no conflict, close it");
+        // The two-sided handshake: agree when nothing conflicts AND nothing
+        // pivotal is open. The live failure this pins is a responder that
+        // accepted on its first turn every time — closing the negotiation
+        // before the initiator ever reached a turn on which it could ask.
+        expect(prompt).toContain("your checklist holds no conflict AND nothing pivotal is still unknown, close it");
+        expect(prompt).toContain("is the same guess the initiator would be making, taken from the other chair");
       }
     }
   });
