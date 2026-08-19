@@ -198,11 +198,15 @@ describe("negotiation graph — post-stall park", () => {
     // The DM is read on every turn now, not only here: the client's answers are
     // commitments the negotiator scores from, and gating the read on "a turn
     // where I may ask" meant it argued their case having never read what they
-    // said. What stays pinned is the SCOPE — every read is for this client and
-    // this signal, never another user's private thread.
+    // said. Both seats therefore read — what stays pinned is the SCOPE: every
+    // read pairs the ACTING user with their OWN signal, never the
+    // counterparty's, and never another user's private thread.
+    const ownSignal: Record<string, string> = { "u-src": "intent-src", "u-cand": "intent-cand" };
     expect(stubs.clientDmQueries.length).toBeGreaterThan(0);
-    expect(stubs.clientDmQueries.every((query) =>
-      query.userId === "u-src" && query.intentId === "intent-src")).toBe(true);
+    for (const query of stubs.clientDmQueries) {
+      expect(Object.keys(query).sort()).toEqual(["intentId", "userId"]);
+      expect(query.intentId).toBe(ownSignal[query.userId]);
+    }
 
     // The legacy blind enqueue is untouched — retirement is the delivery lane's.
     expect(stubs.questionerEnqueues).toHaveLength(1);

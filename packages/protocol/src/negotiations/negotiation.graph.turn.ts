@@ -308,7 +308,16 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // Still in-process only, for the reason above: the excerpt is never
       // forwarded to `NegotiationTurnPayload`, so an external agent holding the
       // personal-agent seat cannot receive the client's private thread.
-      const clientDm = ownIntentId
+      //
+      // What stays gated is the FEATURE, not the turn. `configuredAskUserEnabled()`
+      // is the A2H kill switch: flipped off, no A2H read is issued at all and
+      // the prompt is the pre-A2H one. v2-only for the same reason — a v1
+      // negotiation has no A2H vocabulary, so its prompt stays byte-identical.
+      // Dropped from the gate are the per-turn conditions that used to ride
+      // along inside `askUserAvailable`: final turn, budget spent, ask-rounds
+      // cap, pre-contact bound. Those decide whether the agent may ASK, not
+      // whether it may know what its client already said.
+      const clientDm = version === 'v2' && configuredAskUserEnabled() && ownIntentId
         ? await retrieveClientDm(deps, ownUser.id, ownIntentId)
         : [];
       turn = await deps.systemAgent.invoke({

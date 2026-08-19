@@ -509,8 +509,12 @@ export class NegotiationPollingService {
     if (
       !material
       || material.counterpartyUserId !== eligibility.coordinates.counterpartyUserId
-      || material.counterpartyBinding.kind !== eligibility.coordinates.counterpartyBinding.kind
-      || material.counterpartyBinding.id !== eligibility.coordinates.counterpartyBinding.id
+      // Optional-chained on purpose. A material row that carries no binding at
+      // all is a binding that does not match, which is a recoverable
+      // ConflictError — not a TypeError that escapes as a 500 and strands the
+      // claim. Fail closed, stay recoverable.
+      || material.counterpartyBinding?.kind !== eligibility.coordinates.counterpartyBinding.kind
+      || material.counterpartyBinding?.id !== eligibility.coordinates.counterpartyBinding.id
     ) {
       throw new ConflictError(`Negotiation ${negotiationId} consultation binding is no longer current`);
     }

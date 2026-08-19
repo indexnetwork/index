@@ -324,19 +324,20 @@ export class IndexNegotiator {
     // Deadlock→bargaining stance (IND-428): v2 only — defense in depth on top
     // of the graph-side gating, mirroring the canAskUser guard above.
     const bargainingActive = input.bargaining != null && version === "v2";
-    // A2H client DM. Gated on the RESOLVED `canAskUser` — defense in depth on
-    // top of the graph, which retrieves it only when the ask_user grant is
-    // live. The resolved flag, not `input.canAskUser`, because it also folds
-    // in v2-only and non-final: `ASK_USER_DM_GROUNDING_RULE` points at this
-    // section from inside `ASK_USER_RULE`, so a v1 or final turn would
-    // otherwise render the client's private thread with no rule explaining
-    // what it is for.
-    // Not gated on the ask grant: what the client said about this signal is
-    // evidence for every turn, not context for the asking ones. The rule that
-    // points AT it from inside the ask instructions still renders only with
-    // the grant (`ASK_USER_DM_GROUNDING_RULE`), so a turn without the grant
-    // gets the client's words without an instruction that dangles.
-    const clientDm = input.clientDm ?? [];
+    // A2H client DM. Rendered on every v2 turn that carries an excerpt, NOT
+    // only the turns holding the ask grant: what the client said about this
+    // signal is evidence for the whole turn, not context for the asking ones.
+    // A dimension may be scored from their answers (plan §2), and an answer the
+    // negotiator cannot see cannot score anything.
+    //
+    // Still v2-only — defense in depth on top of the graph, which retrieves it
+    // under v2 alone, so a v1 prompt stays byte-identical.
+    // `ASK_USER_DM_GROUNDING_RULE` points AT this section from inside
+    // `ASK_USER_RULE` and still renders only with the live grant, so the rule
+    // never dangles without the section. The section stands alone safely: its
+    // own framing (`renderNegotiatorClientDmSection`) carries the leak guard
+    // and the not-instructions caveat.
+    const clientDm = version === "v2" ? input.clientDm ?? [] : [];
     // The opening initiator turn: nothing has been sent, so a granted
     // consultation is the pre-contact verdict rather than a mid-exchange
     // pause. Derived, not passed: the graph grants `canAskUser` on a turn-0

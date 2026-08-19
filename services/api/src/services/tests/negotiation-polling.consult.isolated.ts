@@ -43,7 +43,7 @@ const messages = [
 const material = {
   intentFingerprint: 'fingerprint', opportunityStatus: 'negotiating',
   opportunityUpdatedAt: '2026-08-07T00:00:00.000Z', counterpartyUserId: 'counterparty',
-  counterpartyIntentId: 'intent-other',
+  counterpartyBinding: { kind: 'intent' as const, id: 'intent-other' },
 };
 const getMaterial = mock(async () => material);
 const adapter = {
@@ -98,7 +98,7 @@ describe('NegotiationPollingService.consult', () => {
     expect(result).toEqual({ success: true, status: 'input_required', settlementId: `negotiation-question-settlement-v1-${taskId}` });
     expect(getMaterial).toHaveBeenCalledWith(expect.objectContaining({
       counterpartyUserId: 'counterparty',
-      counterpartyIntentId: 'intent-other',
+      counterpartyBinding: { kind: 'intent', id: 'intent-other' },
     }));
     expect(enqueueExpiry).toHaveBeenCalledTimes(1);
     const attemptId = enqueueExpiry.mock.calls[0][1];
@@ -106,7 +106,7 @@ describe('NegotiationPollingService.consult', () => {
     expect(enqueueExpiry.mock.calls[0][2]).toMatchObject({
       claimedByAgentId: agentId,
       counterpartyUserId: 'counterparty',
-      counterpartyIntentId: 'intent-other',
+      counterpartyBinding: { kind: 'intent', id: 'intent-other' },
     });
     expect(pause.mock.calls[0][0]).toMatchObject({
       claimedByAgentId: agentId,
@@ -131,7 +131,7 @@ describe('NegotiationPollingService.consult', () => {
   });
 
   it('rejects stale actor-derived counterparty intent material before arming expiry', async () => {
-    getMaterial.mockResolvedValueOnce({ ...material, counterpartyIntentId: 'intent-stale' });
+    getMaterial.mockResolvedValueOnce({ ...material, counterpartyBinding: { kind: 'intent' as const, id: 'intent-stale' } });
 
     await expect(service.consult(agentId, userId, taskId, reason, principal))
       .rejects.toBeInstanceOf(ConflictError);
