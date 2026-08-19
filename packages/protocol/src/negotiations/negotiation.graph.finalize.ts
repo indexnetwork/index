@@ -18,6 +18,7 @@ import { NEGOTIATION_PARK_REASONING, type NegotiationStallReason } from './negot
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
+import { isTimeoutFailure } from "./negotiation.turn-failure.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
 import { buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
@@ -103,7 +104,20 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
   const blockedByScreenNode = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
   const refusedAtOpeningTurn = state.firstTurnScreenedOut === true;
   const screenedOut = blockedByScreenNode || refusedAtOpeningTurn;
-  const atCap = !screenedOut && isNegotiationTurnCapReached(state.turnCount, state.maxTurns) && !isTerminalAction(lastTurn?.action);
+  // The run ended because the acting agent kept failing, not because the two
+  // sides ran out of things to say.
+  //
+  // `error` set with a failure run still open is exactly that condition: the
+  // turn node sets `error` only at the consecutive-failure bound or when a
+  // turn failed after its message was already persisted, and a landed turn
+  // resets the run to zero. An init-time error (`busy`, an invalid
+  // continuation) carries no failures, so it keeps today's outcome.
+  const errorStalled = !screenedOut && !!state.error && state.consecutiveTurnFailures > 0;
+  // Failed turns no longer advance `turnCount`, so an error-stalled run is
+  // normally nowhere near the cap. The guard is explicit anyway: "ran out of
+  // turns" is a claim about a dialogue, and this is the outcome where the
+  // dialogue is precisely what did not happen.
+  const atCap = !screenedOut && !errorStalled && isNegotiationTurnCapReached(state.turnCount, state.maxTurns) && !isTerminalAction(lastTurn?.action);
 
   let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
   if (hasOpportunity && history.length >= 2) {
@@ -138,18 +152,27 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
     turnCount: state.turnCount,
     ...(screenedOut
       ? { reason: "screened_out" as const }
-      : atCap
-        ? { reason: "turn_cap" as const }
-        : {}),
+      : errorStalled
+        ? { reason: "agent_error" as const }
+        : atCap
+          ? { reason: "turn_cap" as const }
+          : {}),
   };
 
   // Unconcluded end: no opportunity, no explicit reject, and turns actually
   // happened — turn cap, timeout, or a plain stall. Feeds both the post-stall
   // park below and the legacy questioner enqueue further down.
-  const endedUnconcluded = !hasOpportunity && !screenedOut && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0;
+  // An error-stalled run is deliberately NOT "unconcluded": it neither parks
+  // with a question nor enqueues the blind stalled-followup questioner. Both
+  // ask the client to settle something the dialogue exposed, and this run has
+  // no dialogue to have exposed anything — the gap is ours, not theirs, and
+  // asking them about it would dress an outage up as an information need. The
+  // opportunity still ends `stalled`, so re-running remains the recovery.
+  const endedUnconcluded = !hasOpportunity && !screenedOut && !errorStalled
+    && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0;
   const stallReason: NegotiationStallReason = atCap
     ? 'turn_cap'
-    : (state.error && /timeout/i.test(state.error))
+    : isTimeoutFailure(state.error)
       ? 'timeout'
       : 'stalled';
 
@@ -283,8 +306,45 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
     }
   }
 
+  const lastFailure = state.turnFailures[state.turnFailures.length - 1];
+  if (errorStalled) {
+    finalizeLog.error('negotiation_error_stalled', {
+      taskId: state.taskId,
+      opportunityId: state.opportunityId || undefined,
+      turnCount: state.turnCount,
+      consecutiveTurnFailures: state.consecutiveTurnFailures,
+      seat: lastFailure?.seat,
+      lastError: lastFailure?.error,
+    });
+    if (state.opportunityId) {
+      emitWide({
+        type: 'negotiation_error_stalled',
+        opportunityId: state.opportunityId,
+        negotiationConversationId: state.conversationId,
+        turnCount: state.turnCount,
+        consecutiveTurnFailures: state.consecutiveTurnFailures,
+        seat: lastFailure?.seat,
+      });
+    }
+  }
+
   try {
-    await deps.database.updateTaskState(state.taskId, "completed", undefined, state.continuationExecution);
+    // The terminal status message is the second half of the durable trace:
+    // `metadata.failedTurns` says what failed, this says that the failures are
+    // why the task is over — readable without joining the artifact.
+    await deps.database.updateTaskState(
+      state.taskId,
+      "completed",
+      errorStalled
+        ? {
+            reason: 'negotiation_agent_error',
+            consecutiveTurnFailures: state.consecutiveTurnFailures,
+            ...(lastFailure?.seat && { seat: lastFailure.seat }),
+            ...(lastFailure?.error && { lastError: lastFailure.error }),
+          }
+        : undefined,
+      state.continuationExecution,
+    );
     await deps.database.createArtifact({
       taskId: state.taskId,
       name: "negotiation-outcome",
@@ -307,7 +367,7 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
       isContinuation: state.isContinuation,
       turnsAdded: state.turnCount,
       priorTurnCount: state.priorTurnCount,
-      outcome: hasOpportunity ? 'accepted' : screenedOut ? 'screened_out' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
+      outcome: hasOpportunity ? 'accepted' : screenedOut ? 'screened_out' : errorStalled ? 'agent_error' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
       opportunityId: state.opportunityId || undefined,
     });
 
@@ -329,14 +389,16 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
   }
 
   if (state.opportunityId) {
-    const emittedOutcome: "accepted" | "rejected_stalled" | "turn_cap" | "timed_out" | "screened_out" =
+    const emittedOutcome: "accepted" | "rejected_stalled" | "turn_cap" | "timed_out" | "screened_out" | "error_stalled" =
       hasOpportunity
         ? "accepted"
         : screenedOut
         ? "screened_out"
+        : errorStalled
+        ? "error_stalled"
         : atCap
         ? "turn_cap"
-        : state.error && /timeout/i.test(state.error)
+        : isTimeoutFailure(state.error)
         ? "timed_out"
         : "rejected_stalled";
 

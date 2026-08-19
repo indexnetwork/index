@@ -17,6 +17,7 @@ import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
+import { appendTurnFailure, turnFailureBoundReached, type NegotiationTurnFailure } from "./negotiation.turn-failure.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
 import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
@@ -77,6 +78,24 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
   const agentStart = Date.now();
   traceEmitter?.({ type: "agent_start", name: agentName });
 
+  // Resolved before the try because a FAILED turn has to name its seat too:
+  // the whole point of the failure record is that the seat which cannot get a
+  // turn out of its agent is the first thing an investigation needs. Keys on
+  // initiatorUserId (rigid v2 stamp), never on parity or source/candidate
+  // position — under the conversation-scoped tie-break this run's source may
+  // hold the counterparty seat.
+  const actingSeat: NegotiationSeat =
+    (state.currentSpeaker === "source" ? state.sourceUser : state.candidateUser).id
+      === (state.initiatorUserId ?? state.sourceUser.id)
+      ? 'initiator'
+      : 'counterparty';
+  // Whether this attempt already put a turn into the shared conversation.
+  // Everything after that point — the ask_user park, the state flip — can
+  // still throw, and such a failure must NOT be retried: the turn is on the
+  // record, and running the seat again would persist a second one. Only a
+  // failure that produced nothing is a free retry.
+  let turnPersisted = false;
+
   try {
     const history: NegotiationTurn[] = turnsFromMessages(state.messages);
 
@@ -88,13 +107,8 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // Determine if this is the system agent's final allowed turn.
     const isFinalTurn = isNegotiationTurnCapReached(state.turnCount + 1, state.maxTurns);
 
-    // Seat attribution keys on initiatorUserId (rigid v2 stamp), never on
-    // parity or source/candidate position — under the conversation-scoped
-    // tie-break this run's source may hold the counterparty seat.
     const version = state.protocolVersion ?? 'v1';
-    const seat: NegotiationSeat = ownUser.id === (state.initiatorUserId ?? state.sourceUser.id)
-      ? 'initiator'
-      : 'counterparty';
+    const seat: NegotiationSeat = actingSeat;
 
     // ask_user availability (P3.2): flag on, full pause loop wired
     // (questioner + answer-window timer + an opportunity to resume
@@ -715,6 +729,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       taskId: state.taskId,
       ...(state.continuationExecution ? { continuationExecution: state.continuationExecution } : {}),
     });
+    turnPersisted = true;
 
     // ─── ask_user pause (P3.2) ────────────────────────────────────────────
     // The negotiator consults its OWN client: persist the turn (done above),
@@ -838,6 +853,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           taskId: state.taskId,
         }],
         turnCount: state.turnCount + 1,
+        consecutiveTurnFailures: 0,
         lastTurn: turn,
         status: 'input_required' as const,
         ...(nextChecklist.length > 0 && { checklist: nextChecklist }),
@@ -891,6 +907,9 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         taskId: state.taskId,
       }],
       turnCount: state.turnCount + 1,
+      // This turn landed, so the failure run ends here: the bound counts
+      // CONSECUTIVE failures, not failures over the negotiation's life.
+      consecutiveTurnFailures: 0,
       currentSpeaker: (isSource ? "candidate" : "source") as "source" | "candidate",
       lastTurn: turn,
       memoryBySide: { [ownSide]: ownMemory },
@@ -914,13 +933,77 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // client, the call exceeded the turn budget, and the negotiation recorded
     // a withdrawal. The intent to ask became a rejection.
     //
-    // Leaving `lastTurn` untouched lets finalize see the session for what it
-    // is — unconcluded — so the opportunity stalls instead. A stall is
-    // retryable, and it is also what admits the post-stall park, which is the
-    // outcome an interrupted question actually wanted.
+    // A FAILED TURN IS ALSO NOT A TURN. Incrementing `turnCount` here spent a
+    // slice of the dialogue budget on an exchange that never happened, and
+    // finalize then reported an exhausted budget as if six turns of argument
+    // had failed to reach agreement — the observed shape being a negotiation
+    // "stalled after 6 turns" holding exactly one message. The count stays
+    // put; what advances instead is the consecutive-failure run, and the same
+    // seat retries.
+    //
+    // What the failure leaves behind is the record below. Before it, a failed
+    // turn wrote nothing at all — no message, no status, no metadata — so this
+    // class could only be investigated by timing arithmetic over the rows that
+    // did get written.
+    const failure: NegotiationTurnFailure = {
+      at: new Date().toISOString(),
+      seat: actingSeat,
+      turnIndex: state.turnCount,
+      error: errMsg,
+    };
+    const turnFailures = appendTurnFailure(state.turnFailures, failure);
+    const consecutiveTurnFailures = state.consecutiveTurnFailures + 1;
+    const boundReached = turnFailureBoundReached(consecutiveTurnFailures);
+    const retryable = !turnPersisted && !boundReached;
+
+    turnLog.warn('negotiation_turn_failed', {
+      taskId: state.taskId,
+      opportunityId: state.opportunityId || undefined,
+      seat: actingSeat,
+      turnIndex: state.turnCount,
+      consecutiveTurnFailures,
+      boundReached,
+      turnPersisted,
+      error: errMsg,
+    });
+    emitWide({
+      type: 'negotiation_turn_failed',
+      opportunityId: state.opportunityId,
+      negotiationConversationId: state.conversationId,
+      turnIndex: state.turnCount,
+      actor: state.currentSpeaker,
+      consecutiveTurnFailures,
+      boundReached,
+      error: errMsg,
+    });
+    // Durable trace, fail-open: the optional hook keeps existing fakes and
+    // wireups valid, and a metadata write that fails must not turn one failed
+    // turn into two.
+    if (state.taskId) {
+      await deps.database.setTaskFailedTurns?.(
+        state.taskId,
+        turnFailures as unknown as Array<Record<string, unknown>>,
+        state.continuationExecution,
+      ).catch((writeErr) => {
+        turnLog.error('Failed to persist the failed-turn trace', { taskId: state.taskId, error: writeErr });
+      });
+    }
+
+    // Below the bound the graph routes back into `turn` (see `routeAfterTurn`)
+    // and the same seat tries again on an unchanged turn count. At the bound
+    // the run ends: `error` is what routes to finalize, and it is set ONLY
+    // here, so every other consumer of `state.error` keeps its meaning.
+    if (retryable) return { turnFailures, consecutiveTurnFailures };
     return {
-      turnCount: state.turnCount + 1,
-      error: `Turn failed: ${errMsg}`,
+      turnFailures,
+      consecutiveTurnFailures,
+      // A turn that reached the conversation still counts, whatever failed
+      // after it: the message is the record, and an outcome that disowned it
+      // would be as untrue as the fake budget this work removes.
+      ...(turnPersisted ? { turnCount: state.turnCount + 1 } : {}),
+      error: turnPersisted
+        ? `Turn failed after its message was persisted: ${errMsg}`
+        : `Turn failed ${consecutiveTurnFailures}x consecutively: ${errMsg}`,
     };
   }
 }

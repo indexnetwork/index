@@ -1,4 +1,12 @@
-import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
+/**
+ * Locally aligned mirror of the protocol's `NegotiationCounterpartyBinding`.
+ * Adapters must not import from `@indexnetwork/protocol` (see the lint rule);
+ * structural compatibility is verified at the composition root via duck
+ * typing, which is why this is a mirror rather than an import.
+ */
+type NegotiationCounterpartyBinding =
+  | { kind: 'intent'; id: string }
+  | { kind: 'premise'; id: string };
 import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
@@ -3945,6 +3953,25 @@ export class ConversationDatabaseAdapter {
       if (continuationExecution) await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
       await tx.update(schema.tasks).set({
         metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('deadlockShift', ${JSON.stringify(deadlockShift)}::jsonb)`,
+        updatedAt: new Date(),
+      }).where(eq(schema.tasks.id, taskId));
+    });
+  }
+
+  /**
+   * Replaces the task's `metadata.failedTurns` with the graph's capped
+   * failure trace, preserving other metadata keys. Sibling of
+   * {@link setTaskDeadlockShift}. Internal diagnostics only — no API surface
+   * projects this key.
+   *
+   * @param taskId - Task to update
+   * @param failedTurns - NegotiationTurnFailure records (at, seat, turnIndex, error)
+   */
+  async setTaskFailedTurns(taskId: string, failedTurns: Array<Record<string, unknown>>, continuationExecution?: ContinuationExecutionFence): Promise<void> {
+    await db.transaction(async (tx) => {
+      if (continuationExecution) await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      await tx.update(schema.tasks).set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('failedTurns', ${JSON.stringify(failedTurns)}::jsonb)`,
         updatedAt: new Date(),
       }).where(eq(schema.tasks.id, taskId));
     });

@@ -18,6 +18,10 @@ describe('deriveNegotiationPresentation', () => {
     ['counterparty accepted', lifecycle({ state: 'completed', opportunityStatus: 'accepted' }), 'accept', 'agent:peer', 'connection_accepted', 'Connection accepted'],
     ['rejected opportunity', lifecycle({ state: 'completed', opportunityStatus: 'rejected' }), 'decline', 'agent:peer', 'no_match', 'No match'],
     ['stalled outcome', lifecycle({ state: 'completed', opportunityStatus: 'stalled', outcome: { hasOpportunity: false, reason: 'turn_cap' } }), null, null, 'no_agreement', 'No agreement'],
+    // An error-stalled run reached no agreement because it barely ran, not
+    // because the two sides disagreed — the opportunity still carries
+    // `stalled`, and the reason is what tells them apart.
+    ['agent-error outcome', lifecycle({ state: 'completed', opportunityStatus: 'stalled', outcome: { hasOpportunity: false, reason: 'agent_error' } }), null, null, 'couldnt_complete', 'Couldn\'t complete'],
     ['expired opportunity', lifecycle({ state: 'completed', opportunityStatus: 'expired' }), null, null, 'expired', 'Expired'],
     ['terminal task failure', lifecycle({ state: 'failed', opportunityStatus: 'negotiating' }), null, null, 'couldnt_complete', 'Couldn\'t complete'],
     ['cancelled task', lifecycle({ state: 'canceled', opportunityStatus: 'negotiating' }), null, null, 'couldnt_complete', 'Couldn\'t complete'],

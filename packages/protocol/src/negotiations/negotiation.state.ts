@@ -7,6 +7,7 @@ import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { ChecklistDraftSchema } from "../shared/schemas/negotiation-checklist.schema.js";
 import type { ChecklistItem } from "./negotiation.checklist.contracts.js";
+import type { NegotiationTurnFailure } from "./negotiation.turn-failure.js";
 import type { NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 
 /**
@@ -72,7 +73,12 @@ export const NegotiationOutcomeSchema = z.object({
   })),
   reasoning: z.string(),
   turnCount: z.number(),
-  reason: z.enum(["turn_cap", "timeout", "screened_out"]).optional(),
+  /**
+   * Why an unconcluded negotiation ended. `agent_error` is the honest name for
+   * a run that stopped because the acting agent kept failing — distinct from
+   * `turn_cap`, which claims a dialogue happened and exhausted its budget.
+   */
+  reason: z.enum(["turn_cap", "timeout", "screened_out", "agent_error"]).optional(),
 });
 
 export type NegotiationOutcome = z.infer<typeof NegotiationOutcomeSchema>;
@@ -402,6 +408,27 @@ export const NegotiationGraphState = Annotation.Root({
   userAnswers: Annotation<NegotiationUserAnswer[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
+  }),
+
+  /**
+   * Failed turns recorded this session (most recent last, capped). A failed
+   * turn persists no message and no turn, so this channel — mirrored to
+   * `tasks.metadata.failedTurns` — is the only record that it happened.
+   */
+  turnFailures: Annotation<NegotiationTurnFailure[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
+  /**
+   * Failed turns since the last turn that actually landed. Drives the retry
+   * edge out of the turn node and the error-stalled outcome at the bound; a
+   * successful turn resets it to zero, so it counts a RUN of failures rather
+   * than failures in total.
+   */
+  consecutiveTurnFailures: Annotation<number>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 0,
   }),
 
   outcome: Annotation<NegotiationOutcome | null>({
