@@ -9,7 +9,7 @@ import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../agents/agent.module.js";
-import { buildExplicitUpdateActions, enforceIntentActionBoundary, enrichVagueIntentWithContext, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
 
     /**
@@ -41,39 +41,13 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
         { intent: VerifiedIntent } | { failure: IntentValidationFailure }
       > => {
         try {
-          let description = intent.description;
+          const description = intent.description;
           const _traceEmitterVerifier = requestContext.getStore()?.traceEmitter;
-          const verifierStart1 = Date.now();
+          const verifierStart = Date.now();
           _traceEmitterVerifier?.({ type: "agent_start", name: "intent-verifier" });
-          let verdict = await deps.verifier.invoke(description, state.userProfile);
-          agentTimingsAccum.push({ name: 'intent.verifier', durationMs: Date.now() - verifierStart1 });
-          _traceEmitterVerifier?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart1, summary: `Verified: ${verdict.classification}` });
-
-          if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
-            // Role-hint enrichment for vague job intents reads the global
-            // user_context paragraph instead of the structured profile fields.
-            const roleHintContext = (await deps.database.getUserContext(state.userId, null))?.text ?? '';
-            const enrichedDescription = enrichVagueIntentWithContext(description, roleHintContext);
-            if (enrichedDescription !== description) {
-              logger.verbose("Enriched vague intent using profile context", {
-                before: description,
-                after: enrichedDescription,
-              });
-              const _traceEmitterVerifier2 = requestContext.getStore()?.traceEmitter;
-              const verifierStart2 = Date.now();
-              _traceEmitterVerifier2?.({ type: "agent_start", name: "intent-verifier" });
-              const enrichedVerdict = await deps.verifier.invoke(enrichedDescription, state.userProfile);
-              agentTimingsAccum.push({ name: 'intent.verifier', durationMs: Date.now() - verifierStart2 });
-              _traceEmitterVerifier2?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart2, summary: `Verified (enriched): ${enrichedVerdict.classification}` });
-              const becameClear =
-                enrichedVerdict.semantic_entropy < verdict.semantic_entropy ||
-                enrichedVerdict.felicity_scores.clarity > verdict.felicity_scores.clarity;
-              if (becameClear) {
-                description = enrichedDescription;
-                verdict = enrichedVerdict;
-              }
-            }
-          }
+          const verdict = await deps.verifier.invoke(description, state.userProfile);
+          agentTimingsAccum.push({ name: 'intent.verifier', durationMs: Date.now() - verifierStart });
+          _traceEmitterVerifier?.({ type: "agent_end", name: "intent-verifier", durationMs: Date.now() - verifierStart, summary: `Verified: ${verdict.classification}` });
 
           // Filter Logic: Must be a Commissive, Directive, or Declaration
           const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
@@ -89,6 +63,9 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
             };
           }
 
+          // A vague description is rejected, never rewritten from the user's
+          // profile: when the system lacks information it asks. Callers turn
+          // this failure into a clarifying question.
           if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
             logger.warn('Dropping vague intent after verification', {
               description,

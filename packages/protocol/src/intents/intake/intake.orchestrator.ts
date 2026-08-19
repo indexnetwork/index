@@ -27,9 +27,14 @@ export interface IntakeRound {
   answer: IntakeAnswer;
 }
 
-/** Everything synthesis needs to write the signal. */
+/**
+ * Everything synthesis needs to write the signal.
+ *
+ * Deliberately has no brief: an intent derives only from what the person
+ * answered. The brief sources questions and answer options upstream, but
+ * nothing it says may reach the synthesized signal unless the person said it.
+ */
 export interface SynthesisInput {
-  brief: string;
   rounds: IntakeRound[];
   /** Free-text place/community constraint from the where round. */
   whereText?: string;
@@ -165,13 +170,18 @@ pianist should return null.`;
 
 const SYNTHESIS_SYSTEM_PROMPT = `You write one clear signal for a networking product.
 
-Combine the brief and the person's answers into a specific description of who they
-want to meet, what they bring or need, and any stated constraint. Write it in the
-person's own voice, first person, 1-3 sentences, concrete and free of hype. Also
-return short "lookingFor" and "youBring" summaries for the confirmation card.
+You receive ONLY the interview: each question the person was asked and the answer
+they gave. Compose and normalize those answers into a specific description of who
+they want to meet, what they bring or need, and any stated constraint. Write it in
+the person's own voice, first person, 1-3 sentences, concrete and free of hype.
+Also return short "lookingFor" and "youBring" summaries for the confirmation card.
 When revision feedback is present, it is the person correcting a draft they
 already read: apply it to the whole signal rather than treating it as a place or
-community constraint. Never invent facts beyond the brief and the answers.`;
+community constraint.
+
+Tighten the wording; never extend it. Do not weave in background, employer,
+seniority, industry, capability, or commercial goal that the answers do not state.
+Every claim in the output must trace back to something the person answered.`;
 
 /**
  * Render an answer as a human-readable label.
@@ -314,7 +324,7 @@ export class SignalIntakeOrchestrator {
    * Write the signal from every answered round, any where-constraint, and any
    * revision feedback.
    *
-   * @param input - Brief, ordered rounds, optional where constraint, optional feedback
+   * @param input - Ordered rounds, optional where constraint, optional feedback
    * @returns Description plus card summary fields
    * @throws Propagates model failure so the caller can mark the run failed
    */
@@ -331,7 +341,7 @@ export class SignalIntakeOrchestrator {
     const result = await this.synthesisModel.invoke([
       new SystemMessage(SYNTHESIS_SYSTEM_PROMPT),
       new HumanMessage(
-        `Brief:\n${input.brief}\n\n${roundsText}${whereLine}${feedbackLine}\n\nWrite the signal.`,
+        `INTERVIEW:\n${roundsText}${whereLine}${feedbackLine}\n\nWrite the signal.`,
       ),
     ]);
     return {

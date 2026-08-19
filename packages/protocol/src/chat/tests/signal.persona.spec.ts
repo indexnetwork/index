@@ -260,6 +260,21 @@ describe("guided New Signal intake", () => {
     expect(prompt).toContain("proposal-only");
   });
 
+  it("scopes the preloaded profile to the questions, never to the signal text", () => {
+    // The profile legitimately shapes WHICH questions get asked. It may not
+    // put a background into the signal the user never stated: when an answer
+    // leaves the signal vague, the agent asks rather than filling the gap.
+    const prompt = buildSignalSystemContent(context, iteration());
+
+    expect(prompt).toContain("use it to decide WHICH questions to ask");
+    expect(prompt).toContain("the signal itself is written from this conversation's answers");
+    expect(prompt).toContain("compose the answers the user gave in THIS conversation");
+    expect(prompt).toContain("The signal text is composed from their answers alone");
+    expect(prompt).toContain("never carry a background, employer, seniority, industry, or capability from the preloaded context into the description");
+    expect(prompt).toContain("ask about it rather than filling the gap from their profile");
+    expect(prompt).not.toContain("combine the answers with the preloaded identity/profile context");
+  });
+
   it("asks the Signal Agent to return a replacement proposal when preview feedback arrives", () => {
     const complete = buildSignalSystemContent(context, {
       ...iteration(),

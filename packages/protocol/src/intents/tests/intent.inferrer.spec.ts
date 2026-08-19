@@ -240,4 +240,25 @@ Interests: AI agents, decentralized systems, venture capital
     );
     expect(hasPhotograph).toBe(true);
   }, 30000);
+
+  it('omits the profile section entirely when the caller passes no profile', async () => {
+    // The signal-intake propose path runs profile-blind. An empty heading is
+    // still an invitation to invent a background, so it must not be rendered.
+    await inferrer.invoke('Find a design partner', '', {
+      allowProfileFallback: false,
+      operationMode: 'create',
+    });
+
+    const prompt = String(capturedCalls.at(-1)?.at(-1)?.content ?? '');
+    expect(prompt).not.toContain('User Memory Profile');
+    expect(prompt).toContain('## New Content\n\nFind a design partner');
+
+    await inferrer.invoke('Find a design partner', richProfile, {
+      allowProfileFallback: false,
+      operationMode: 'create',
+    });
+
+    // The section still renders for callers that do supply a profile.
+    expect(String(capturedCalls.at(-1)?.at(-1)?.content ?? '')).toContain('User Memory Profile');
+  }, 30000);
 });

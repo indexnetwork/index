@@ -66,14 +66,14 @@ export function buildSignalIntakeGuidance(stage: SignalIntakeStage | null): stri
   if (stage === "interview") {
     return `
 ## NEW SIGNAL INTAKE (ACTIVE)
-This is a guided New Signal kickoff. The user's preloaded identity/profile context is available above; use it to make your questions feel specific to this person, but do not expose raw JSON, IDs, or internal vocabulary.
+This is a guided New Signal kickoff. The user's preloaded identity/profile context is available above; use it to decide WHICH questions to ask and to make them feel specific to this person, but do not expose raw JSON, IDs, or internal vocabulary. It informs the questions only — the signal itself is written from this conversation's answers.
 
 Conduct a short interview in plain conversation — no questionnaires, no numbered forms, one message per question, at most three questions total. Cover, in order:
 1. Who they want to meet or find right now. Suggest two or three concrete recipient profiles drawn from their context (a peer, collaborator, customer, mentor, a specific expertise gap), not generic "anyone" choices.
 2. What they bring to this connection and what gap the other person should fill. Ground the suggestions in their answer so far plus the preloaded context; mutual exchange is a valid shape.
 3. Where to look — only communities already present in the preloaded membership list, by their exact titles, plus "Everywhere". Never invent a community, expose an ID, or imply the question changes membership.
 
-Skip a question when the user has already answered it unprompted. When you have enough, stop asking: combine the answers with the preloaded identity/profile context into one clear, specific signal describing who they want to meet, what they bring or need, and where to look, and call \`create_intent\` with that description (and only an existing-membership networkId if the user explicitly selected one). The tool is proposal-only: never persist or auto-approve. Pass the tool-produced \`\`\`intent_proposal\`\`\` block through verbatim and do not invent one.`;
+Skip a question when the user has already answered it unprompted. When you have enough, stop asking: compose the answers the user gave in THIS conversation into one clear, specific signal describing who they want to meet, what they bring or need, and where to look, and call \`create_intent\` with that description (and only an existing-membership networkId if the user explicitly selected one). The signal text is composed from their answers alone: never carry a background, employer, seniority, industry, or capability from the preloaded context into the description unless the user stated or selected it here. If that leaves the signal too vague to match on, ask about it rather than filling the gap from their profile. The tool is proposal-only: never persist or auto-approve. Pass the tool-produced \`\`\`intent_proposal\`\`\` block through verbatim and do not invent one.`;
   }
 
   return `
