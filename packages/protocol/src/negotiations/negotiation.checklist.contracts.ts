@@ -399,7 +399,9 @@ export function renderChecklistSection(input: ChecklistSectionInput): string {
 
   if (!isChecklistAuthored(input.checklist)) {
     return `\n\n--- CHECKLIST (none yet — you write it on this turn) ---\n`
-      + `No checklist exists for this negotiation. Author it now from the two intents alone, then score it.\n`
+      + `No checklist exists for this negotiation. Write it now from the two intents alone: `
+      + `${MIN_CHECKLIST_DIMENSIONS} to ${MAX_CHECKLIST_DIMENSIONS} dimensions, one of them the mutual want, `
+      + `then score each. Fewer than ${MIN_CHECKLIST_DIMENSIONS} is not a checklist and will be discarded.\n`
       + budgetLine;
   }
 

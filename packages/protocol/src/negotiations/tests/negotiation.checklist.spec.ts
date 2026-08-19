@@ -300,8 +300,21 @@ describe("prompt rendering", () => {
   it("renders the authoring instruction when no checklist exists yet", () => {
     const section = renderChecklistSection({ checklist: [], questionsSpent: 0 });
     expect(section).toContain("none yet — you write it on this turn");
-    expect(section).toContain("Author it now from the two intents alone");
+    expect(section).toContain("Write it now from the two intents alone");
     expect(section).toContain(`0 of ${QUESTION_BUDGET_PER_PRINCIPAL}`);
+  });
+
+  it("states the dimension floor where the model actually authors — it is not enough to say it in the rules", () => {
+    // Against a live provider the negotiator reliably drafted TWO dimensions
+    // and `authorChecklist` discarded them, so the whole protocol silently
+    // no-opped: no checklist, no unknowns, no asks. The rules said "3 to 5"
+    // and the authoring instruction did not, and the instruction is what the
+    // model is reading at the moment it writes. Both now carry the floor, and
+    // the consequence of missing it is stated where it is missed.
+    const section = renderChecklistSection({ checklist: [], questionsSpent: 0 });
+    expect(section).toContain(`${MIN_CHECKLIST_DIMENSIONS} to ${MAX_CHECKLIST_DIMENSIONS} dimensions`);
+    expect(section).toContain("one of them the mutual want");
+    expect(section).toContain(`Fewer than ${MIN_CHECKLIST_DIMENSIONS} is not a checklist and will be discarded`);
   });
 
   it("renders the frozen dimensions with their scores, bases and the spent budget", () => {

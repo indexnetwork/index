@@ -326,8 +326,12 @@ describe("checklist protocol — the pre-registered screen", () => {
     expect(prompt).toContain("The checklist is FIXED once written");
     expect(prompt).toContain("no dimension is added because the exchange went somewhere you did not expect");
     expect(prompt).toContain("none is quietly dropped because it turned inconvenient");
-    // A dimension no answer could flip is not a dimension.
+    // A dimension no answer could flip is not a dimension — but the caveat
+    // must not read as licence to under-fill, which is exactly how it read to
+    // a live model: it drafted two dimensions and the checklist was discarded.
     expect(prompt).toContain("is decoration, not a dimension");
+    expect(prompt).toContain("three is a FLOOR, not a target you may fall short of");
+    expect(prompt).toContain("add the dimension whose answer would most change your mind");
   });
 
   it("binds scoring to the commitment record and carries the provenance rule into the basis", async () => {
