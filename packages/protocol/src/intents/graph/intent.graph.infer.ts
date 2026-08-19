@@ -9,7 +9,7 @@ import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../agents/agent.module.js";
-import { buildExplicitUpdateActions, enforceIntentActionBoundary, enrichVagueIntentWithContext, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
     /**
      * Node 0: Prep

@@ -191,11 +191,16 @@ export class ExplicitIntentInferrer {
         ? '(No content provided. Please infer intents from Profile Narrative and Aspirations)'
         : '(No content to analyze. Return empty intents list.)';
 
+    // No profile means no profile section at all. Callers that deliberately run
+    // profile-blind (the signal-intake propose path) must not see an empty
+    // heading the model could try to fill in.
+    const profileSection = profileContext?.trim()
+      ? `# User Memory Profile\n      ${profileContext}\n`
+      : '';
+
     const prompt = `
       Context:
-      # User Memory Profile
-      ${profileContext}
-
+      ${profileSection}
       ${conversationSection}${contentSection}
 
       # Operation Context

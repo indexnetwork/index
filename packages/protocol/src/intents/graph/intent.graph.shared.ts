@@ -98,49 +98,6 @@ export const MAX_PERMISSIBLE_ENTROPY = 0.75;
 export const MIN_CLEAR_INTENT_SCORE = 40;
 export const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
 
-export const inferRoleFromContextText = (text: string): string | null => {
-  const normalized = text.toLowerCase();
-  if (/\b(engineer|developer)\b/.test(normalized)) return "software engineering";
-  if (/\b(designer|ux|ui)\b/.test(normalized)) return "product design";
-  if (/\b(marketing|marketer|growth)\b/.test(normalized)) return "marketing";
-  if (/\b(product manager|product)\b/.test(normalized)) return "product management";
-  if (/\b(data scientist|machine learning|ml|ai)\b/.test(normalized)) return "AI/ML";
-  if (/\b(sales|account executive|business development)\b/.test(normalized)) return "sales";
-  return null;
-};
-
-/**
- * Derive a job-role qualifier from the user's global user_context paragraph
- * (the identity text that replaced the legacy profile projection). Role is
- * inferred from the free text; the old structured skills/interests extraction
- * is gone with the removed profile fields.
- */
-export const buildJobQualifierFromContext = (contextText: string): string | null => {
-  const roleHint = inferRoleFromContextText(contextText ?? "");
-  return roleHint ? `${roleHint} role` : null;
-};
-
-export const enrichVagueIntentWithContext = (description: string, userContext: string): string => {
-  const trimmed = description?.trim();
-  if (!trimmed) return description;
-
-  const isGenericJobRequest =
-    GENERIC_JOB_PHRASE.test(trimmed) ||
-    /\b(?:find|get|look(?:ing)?\s+for|want)\s+(?:to\s+)?(?:find\s+)?job\b/i.test(trimmed);
-  if (!isGenericJobRequest) return description;
-
-  const qualifier = buildJobQualifierFromContext(userContext);
-  if (!qualifier) return description;
-
-  const enriched = trimmed
-    .replace(/\ba job\b/i, `a ${qualifier}`)
-    .replace(/\bjob\b/i, `${qualifier}`)
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
-  return enriched.length > 0 ? enriched : description;
-};
-
 export const isVague = (description: string, entropy: number, clarity: number): boolean => {
   if (GENERIC_JOB_PHRASE.test(description)) return true;
   if (entropy > MAX_PERMISSIBLE_ENTROPY) return true;

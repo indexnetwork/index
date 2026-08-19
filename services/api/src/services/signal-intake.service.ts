@@ -77,9 +77,12 @@ export interface SignalIntakeServiceDeps {
   getPremises: (userId: string) => Promise<Array<{ text: string }>>;
   getNetworkTitles: (userId: string) => Promise<string[]>;
   getGlobalContext: (userId: string) => Promise<string | null>;
+  /**
+   * Verify-only intent-graph invocation. Deliberately profile-blind: the
+   * propose path verifies exactly what the person answered.
+   */
   invokeIntentGraph: (input: {
     userId: string;
-    userProfile: string;
     inputContent: string;
   }) => Promise<{ verifiedIntents?: Array<Record<string, unknown>> }>;
   now?: () => Date;
@@ -365,14 +368,12 @@ export class SignalIntakeService {
     networkId?: string,
   ): Promise<IntakeProposal> {
     try {
-      const { brief } = await this.getOrCreatePack(userId);
-      const synthesis = await this.deps.intents.synthesizeIntake({ brief, ...answers });
+      // Synthesis and verification both run on the answers alone. The pack
+      // brief sources the questions upstream; it never reaches the signal.
+      const synthesis = await this.deps.intents.synthesizeIntake(answers);
 
-      // The brief stands in for the profile graph here: it is already a
-      // distilled identity paragraph, so `propose` skips that leg entirely.
       const graphResult = await this.deps.invokeIntentGraph({
         userId,
-        userProfile: brief,
         inputContent: synthesis.description,
       });
 
@@ -514,15 +515,15 @@ const productionIntents = new Intents({
 });
 const compiledIntentGraph = productionIntents.createGraph();
 
-/** Verify-only invocation of the intent graph, skipping the profile-graph leg
- * by supplying the precomputed pack brief as `userProfile` directly. */
+/** Verify-only invocation of the intent graph. The profile-graph leg is skipped
+ * and nothing is supplied in its place: an intent derives only from the person's
+ * answers, so inference and verification see the synthesized signal alone. */
 async function invokeIntentGraphProduction(input: {
   userId: string;
-  userProfile: string;
   inputContent: string;
 }): Promise<{ verifiedIntents?: Array<Record<string, unknown>> }> {
   const result = await compiledIntentGraph.invoke(
-    { ...input, operationMode: 'propose' as const },
+    { ...input, userProfile: '', operationMode: 'propose' as const },
     { recursionLimit: 100 },
   );
   return result as { verifiedIntents?: Array<Record<string, unknown>> };

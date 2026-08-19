@@ -273,7 +273,8 @@ export type IntentGraphDatabase = Pick<
   | 'getUser'
   // Profile check (prepNode gate for write operations)
   | 'getProfile'
-  // Global user_context paragraph for questioner intent prompts
+  // Global user_context paragraph, read to verify an owner-edited proposal.
+  // Never used to rewrite a description: intents derive from what the user said.
   | 'getUserContext'
   // Personal network auto-assignment
   | 'getPersonalIndexesForContact'

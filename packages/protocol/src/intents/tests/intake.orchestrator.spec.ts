@@ -285,11 +285,10 @@ describe("SignalIntakeOrchestrator.synthesize", () => {
   };
 
   it("renders every round into the synthesis prompt", async () => {
-    const capture: { prompt?: string } = {};
+    const capture: Capture = {};
     const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
 
     const result = await orchestrator.synthesize({
-      brief: "Ada builds developer tools.",
       rounds: [
         { prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } },
         { prompt: "What do you bring?", answer: { selectedOptions: ["Engineering depth"] } },
@@ -304,11 +303,10 @@ describe("SignalIntakeOrchestrator.synthesize", () => {
   });
 
   it("appends where and feedback lines when present", async () => {
-    const capture: { prompt?: string } = {};
+    const capture: Capture = {};
     const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
 
     await orchestrator.synthesize({
-      brief: "b",
       rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
       whereText: "Berlin",
       feedback: "shorter please",
@@ -324,23 +322,59 @@ describe("SignalIntakeOrchestrator.synthesize", () => {
     });
 
     await expect(orchestrator.synthesize({
-      brief: "b",
       rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
     })).rejects.toThrow("model down");
   });
 
   it("renders revision feedback in its own slot, never as a where constraint", async () => {
-    const capture: { prompt?: string } = {};
+    const capture: Capture = {};
     const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
 
     await orchestrator.synthesize({
-      brief: "b",
       rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
       feedback: "shorter please",
     });
 
     expect(capture.prompt).toContain("Revision feedback on the previous draft: shorter please");
     expect(capture.prompt).not.toContain("Where constraint");
+  });
+
+  it("sends the interview and nothing else, so no profile fact can reach the prompt", async () => {
+    const capture: Capture = {};
+    const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
+
+    // The pack brief that sourced these questions says the person is an
+    // ex-Google staff engineer. They never answered anything of the sort, so
+    // synthesis must never see it — there is no input that could carry it.
+    await orchestrator.synthesize({
+      rounds: [
+        { prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } },
+        { prompt: "What do you bring?", answer: { selectedOptions: [], freeText: "I can build the thing" } },
+      ],
+    });
+
+    const everythingSent = (capture.messages ?? []).join("\n");
+    for (const profileFact of ["ex-Google", "Google", "staff engineer", "Brief:"]) {
+      expect(everythingSent).not.toContain(profileFact);
+    }
+    expect(capture.prompt).toContain("INTERVIEW:");
+    expect(capture.prompt).toContain("A: A design partner");
+    expect(capture.prompt).toContain("A: I can build the thing");
+  });
+
+  it("instructs the model to compose the answers rather than weave in background", async () => {
+    const capture: Capture = {};
+    const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
+
+    await orchestrator.synthesize({
+      rounds: [{ prompt: "Who?", answer: { selectedOptions: ["A design partner"] } }],
+    });
+
+    const systemPrompt = capture.messages?.[0] ?? "";
+    expect(systemPrompt).toContain("ONLY the interview");
+    expect(systemPrompt).toContain("Tighten the wording; never extend it.");
+    expect(systemPrompt).toContain("trace back to something the person answered");
+    expect(systemPrompt).not.toContain("brief");
   });
 });
 

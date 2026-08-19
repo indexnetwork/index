@@ -362,6 +362,29 @@ describe('SignalIntakeService.resolveProposal', () => {
     expect(result.proposalId).not.toBe('prop-1');
   });
 
+  it('synthesizes and verifies from the answers alone, with no profile attached', async () => {
+    const deps = makeDeps({
+      proposalStore: {
+        createProposals: mock(async () => undefined),
+        getProposalForOwner: mock(async () => storedProposal({ status: 'consumed' })),
+        setProposalNetwork: mock(async () => true),
+      },
+    });
+    const service = new SignalIntakeService(deps as never);
+
+    await service.resolveProposal('u1', { runId: 'run-1', rounds });
+
+    // The pack brief sources the questions upstream; it must not travel with
+    // the answers into synthesis, nor stand in for a profile on the graph.
+    const [synthesisInput] = deps.intents.synthesizeIntake.mock.calls[0] as [Record<string, unknown>];
+    expect(synthesisInput).not.toHaveProperty('brief');
+    expect(synthesisInput.rounds).toEqual(rounds);
+
+    const [graphInput] = deps.invokeIntentGraph.mock.calls[0] as [Record<string, unknown>];
+    expect(graphInput).not.toHaveProperty('userProfile');
+    expect(graphInput).toEqual({ userId: 'u1', inputContent: 'Looking for a design partner.' });
+  });
+
   it('surfaces verification rejection with a clarification question', async () => {
     const deps = makeDeps({
       runStore: {
