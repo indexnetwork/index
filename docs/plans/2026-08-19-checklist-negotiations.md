@@ -261,4 +261,13 @@ capability.
 
 | PR | Scope | Status |
 | --- | --- | --- |
-| — | not yet sliced | — |
+| #1455 | Core: checklist state + freeze/basis in graph, answerhood asks + admissibility, verdict law, budget (3, consult first draw), stance restructuring (protocol 23.0.0). Grew during dev testing: every-turn client-DM read (in-process only), decision options through the question block, consult binding fail-closed, failed-turn-is-not-a-decision, policy admits rather than manufactures asks. | merged `eaf898a4fd` |
+| — | §7 item 5: answer → premise persistence | not started |
+| — | §7 item 6: expiry-to-pass retirement | not started |
+| — | UI: checklist bar, fact ledger | not started |
+
+Known follow-ups from #1455: no deterministic resume tool on the negotiation
+MCP surface (reopen boundary should come from the checklist — a new answer
+scoring a previously-unknown dimension); external `respond` seats receive the
+checklist but cannot return scores. Post-deploy operational: review dev
+`negotiator_memories` — pre-basis-rule memories are circular-evidence bait.
