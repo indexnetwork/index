@@ -63,25 +63,27 @@ export function deriveNegotiationPresentation(input: {
   const opportunityStatus = lifecycle.opportunityStatus;
   const outcome = lifecycle.outcome;
 
-  // An opportunity's completed human decision is authoritative over stale task
-  // snapshots. The rest is ordered by the negotiation's latest known outcome.
+  // Opportunity terminal states are authoritative over stale task snapshots,
+  // outcomes, and turns. Draft/latent rows likewise cannot be promoted by a
+  // turn from another session.
   if (opportunityStatus === 'accepted') {
     return lifecycle.acceptedByViewer ? PRESENTATIONS.accepted_by_viewer : PRESENTATIONS.connection_accepted;
   }
   if (opportunityStatus === 'rejected') return PRESENTATIONS.no_match;
+  if (opportunityStatus === 'stalled') return PRESENTATIONS.no_agreement;
   if (opportunityStatus === 'expired') return PRESENTATIONS.expired;
+  if (opportunityStatus === 'latent' || opportunityStatus === 'draft') return PRESENTATIONS.not_started;
+  if (STALL_REASONS.has(outcome?.reason ?? '')) return PRESENTATIONS.no_agreement;
   if (lifecycle.state === 'input_required' && latestAction === 'ask_user' && isViewerAgent) {
     return PRESENTATIONS.needs_input;
   }
   if (opportunityStatus === 'pending' || outcome?.hasOpportunity === true || latestAction === 'accept') {
     return PRESENTATIONS.awaiting_review;
   }
-  if (opportunityStatus === 'stalled' || STALL_REASONS.has(outcome?.reason ?? '')) return PRESENTATIONS.no_agreement;
   if (['failed', 'canceled', 'auth_required'].includes(lifecycle.state)) return PRESENTATIONS.couldnt_complete;
   if (lifecycle.state === 'rejected' || outcome?.hasOpportunity === false || (latestAction && REJECT_ACTIONS.has(latestAction))) {
     return PRESENTATIONS.no_match;
   }
-  if (opportunityStatus === 'latent' || opportunityStatus === 'draft') return PRESENTATIONS.not_started;
   if (lifecycle.state === 'completed') return PRESENTATIONS.no_agreement;
   if (['submitted', 'working', 'waiting_for_agent', 'claimed', 'input_required'].includes(lifecycle.state) || opportunityStatus === 'negotiating') {
     return PRESENTATIONS.negotiating;

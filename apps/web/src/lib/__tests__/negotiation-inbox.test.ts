@@ -31,6 +31,7 @@ function conversation(
       parts: [{ kind: 'data', data: { action } }],
       senderId: input.senderId ?? `agent:${id}-peer`,
       createdAt: '2026-07-24T11:00:00.000Z',
+      taskId: `${id}-task`,
     },
     metadata: null,
     via: [],

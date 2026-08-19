@@ -1,4 +1,4 @@
-import { isVisibleNegotiationConversation, readLastTurn, resolveNegotiationCounterpart } from '@/lib/negotiation-inbox';
+import { isVisibleNegotiationConversation, resolveNegotiationCounterpart, sessionScopedLastTurn } from '@/lib/negotiation-inbox';
 import { deriveNegotiationPresentation, type NegotiationPresentation } from '@/lib/negotiation-presentation';
 import type { ConversationSummary } from '@/services/conversation';
 
@@ -52,7 +52,9 @@ function buildFallbackOpportunity(
   viewerUserId: string | undefined,
 ): NegotiationOutlineOpportunity {
   const lifecycle = conversation.negotiation ?? null;
-  const lastTurn = readLastTurn(conversation.lastMessage?.parts ?? []);
+  // `negotiation` is the latest task projection; the message is eligible only
+  // when its task id confirms it is from that same session.
+  const lastTurn = sessionScopedLastTurn(conversation, lifecycle?.taskId);
   return {
     conversationId: conversation.id,
     counterpartId,
@@ -62,7 +64,7 @@ function buildFallbackOpportunity(
     presentation: deriveNegotiationPresentation({
       lifecycle,
       latestAction: lastTurn.action,
-      latestSenderId: conversation.lastMessage?.senderId,
+      latestSenderId: lastTurn.senderId,
       viewerUserId,
     }),
     updatedAt: lifecycle?.updatedAt ?? conversation.lastMessageAt ?? conversation.createdAt,
@@ -101,7 +103,8 @@ export function groupNegotiationOutline(
       group.opportunities.push(buildFallbackOpportunity(conversation, counterpart.id, viewerUserId));
     } else {
       for (const opportunity of projected) {
-        const lastTurn = readLastTurn(conversation.lastMessage?.parts ?? []);
+        // Do not leak the conversation's latest turn across task sessions.
+        const lastTurn = sessionScopedLastTurn(conversation, opportunity.taskId);
         group.opportunities.push({
           conversationId: conversation.id,
           counterpartId: counterpart.id,
@@ -111,7 +114,7 @@ export function groupNegotiationOutline(
           presentation: deriveNegotiationPresentation({
             lifecycle: opportunity,
             latestAction: lastTurn.action,
-            latestSenderId: conversation.lastMessage?.senderId,
+            latestSenderId: lastTurn.senderId,
             viewerUserId,
           }),
           updatedAt: opportunity.updatedAt,

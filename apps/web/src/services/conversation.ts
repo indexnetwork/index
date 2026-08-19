@@ -69,7 +69,8 @@ export interface ConversationNegotiationOpportunity extends Omit<ConversationNeg
 export interface ConversationSummary {
   id: string;
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
-  lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
+  /** The task session that produced the latest message, when it has one. */
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: string; taskId?: string | null } | null;
   metadata: { title?: string; shareToken?: string } | null;
   /** Viewer-scoped opportunity signal provenance, latest first. */
   via: Array<{ intentId: string; opportunityId: string; title: string }>;

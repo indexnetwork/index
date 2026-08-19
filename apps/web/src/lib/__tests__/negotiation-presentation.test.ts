@@ -35,4 +35,18 @@ describe('deriveNegotiationPresentation', () => {
       lifecycle: lifecycle({ state: 'input_required' }), latestAction: 'ask_user', latestSenderId: 'agent:peer', viewerUserId: 'viewer',
     }).status).toBe('negotiating');
   });
+
+  it.each([
+    ['stale request for guidance', lifecycle({ state: 'input_required', opportunityStatus: 'stalled' }), 'ask_user', 'agent:viewer'],
+    ['stale acceptance', lifecycle({ state: 'completed', opportunityStatus: 'stalled', outcome: { hasOpportunity: true, reason: null } }), 'accept', 'agent:peer'],
+  ])('keeps a stalled opportunity authoritative over %s', (_case, value, action, senderId) => {
+    expect(deriveNegotiationPresentation({ lifecycle: value, latestAction: action, latestSenderId: senderId, viewerUserId: 'viewer' }))
+      .toMatchObject({ status: 'no_agreement', label: 'No agreement' });
+  });
+
+  it.each(['draft', 'latent'] as const)('does not promote a %s opportunity from a stale acceptance', (opportunityStatus) => {
+    expect(deriveNegotiationPresentation({
+      lifecycle: lifecycle({ state: 'submitted', opportunityStatus }), latestAction: 'accept', latestSenderId: 'agent:peer', viewerUserId: 'viewer',
+    }).status).toBe('not_started');
+  });
 });

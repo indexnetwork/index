@@ -44,6 +44,16 @@ export function readLastTurn(parts: unknown[]): LastTurnData {
   return { action: null };
 }
 
+/**
+ * Conversation summaries contain one last message, while a durable A2A
+ * conversation can contain several task sessions. Only use that message to
+ * classify a task when its projected task id proves the session relationship.
+ */
+export function sessionScopedLastTurn(conversation: ConversationSummary, taskId: string | null | undefined): LastTurnData & { senderId: string | null } {
+  if (!taskId || conversation.lastMessage?.taskId !== taskId) return { action: null, senderId: null };
+  return { ...readLastTurn(conversation.lastMessage.parts), senderId: conversation.lastMessage.senderId };
+}
+
 function formatTimeAgo(timestamp: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
   if (seconds < 60) return 'just now';
@@ -87,14 +97,15 @@ function describeResolved(status: NegotiationInboxStatus, reason: string | null)
   return 'agents did not recommend moving forward';
 }
 
-function classifyConversation(conversation: ConversationSummary, action: string | null, viewerUserId: string | undefined): {
+function classifyConversation(conversation: ConversationSummary, viewerUserId: string | undefined): {
   group: NegotiationInboxGroup;
   status: NegotiationInboxStatus;
 } {
+  const latestTurn = sessionScopedLastTurn(conversation, conversation.negotiation?.taskId);
   const presentation = deriveNegotiationPresentation({
     lifecycle: conversation.negotiation,
-    latestAction: action,
-    latestSenderId: conversation.lastMessage?.senderId,
+    latestAction: latestTurn.action,
+    latestSenderId: latestTurn.senderId,
     viewerUserId,
   });
   return { group: presentation.group, status: presentation.status };
@@ -180,7 +191,7 @@ export function deriveNegotiationInbox(
     }
 
     const lastTurn = readLastTurn(conversation.lastMessage.parts);
-    const classification = classifyConversation(conversation, lastTurn.action, viewerUserId);
+    const classification = classifyConversation(conversation, viewerUserId);
     const lifecycle = conversation.negotiation;
     const sortTimestamp = new Date(
       lifecycle?.updatedAt

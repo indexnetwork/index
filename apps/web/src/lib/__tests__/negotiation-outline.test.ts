@@ -100,6 +100,39 @@ const screenedOutConversation: ConversationSummary = {
 };
 
 describe('groupNegotiationOutline', () => {
+  it('does not leak the latest session action into another projected opportunity', () => {
+    const multiSession = {
+      ...conversation,
+      lastMessage: {
+        parts: [{ kind: 'data', data: { action: 'ask_user' } }],
+        senderId: 'agent:viewer',
+        createdAt: '2026-01-03T00:00:00.000Z',
+        taskId: 'task-b',
+      },
+      negotiationOpportunities: [
+        { ...conversation.negotiationOpportunities![0], taskId: 'task-a', state: 'working', opportunityStatus: 'negotiating', updatedAt: '2026-01-02T00:00:00.000Z' },
+        { ...conversation.negotiationOpportunities![1], taskId: 'task-b', state: 'input_required', opportunityStatus: 'negotiating', acceptedByViewer: false, outcome: null, updatedAt: '2026-01-03T00:00:00.000Z' },
+      ],
+    } satisfies ConversationSummary;
+
+    const rows = groupNegotiationOutline([multiSession], 'viewer')[0]?.opportunities ?? [];
+    expect(rows.find((row) => row.taskId === 'task-a')?.presentation.label).toBe('Negotiating');
+    expect(rows.find((row) => row.taskId === 'task-a')?.presentation.label).not.toMatch(/Awaiting your review|Needs your input/);
+    expect(rows.find((row) => row.taskId === 'task-b')?.presentation.label).toBe('Needs your input');
+  });
+
+  it('uses a fallback turn only when it belongs to the latest lifecycle task', () => {
+    const matching = {
+      ...ungroupableConversation,
+      negotiation: { ...ungroupableConversation.negotiation!, state: 'input_required', opportunityStatus: 'negotiating' },
+      lastMessage: { parts: [{ kind: 'data', data: { action: 'ask_user' } }], senderId: 'agent:viewer', createdAt: '2026-01-04T00:00:00.000Z', taskId: '07979837-5e29-4dd9-83dc-26f593972ca6' },
+    } satisfies ConversationSummary;
+    const mismatched = { ...matching, lastMessage: { ...matching.lastMessage, taskId: 'another-task' } };
+
+    expect(groupNegotiationOutline([matching], 'viewer')[0]?.opportunities[0]?.presentation.label).toBe('Needs your input');
+    expect(groupNegotiationOutline([mismatched], 'viewer')[0]?.opportunities[0]?.presentation.label).toBe('Negotiating');
+  });
+
   it('groups multiple opportunity sessions under one counterparty and retains their task ids', () => {
     const groups = groupNegotiationOutline([conversation], 'viewer');
 
