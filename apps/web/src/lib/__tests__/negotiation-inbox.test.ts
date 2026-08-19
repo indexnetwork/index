@@ -31,6 +31,7 @@ function conversation(
       parts: [{ kind: 'data', data: { action } }],
       senderId: input.senderId ?? `agent:${id}-peer`,
       createdAt: '2026-07-24T11:00:00.000Z',
+      taskId: `${id}-task`,
     },
     metadata: null,
     via: [],
@@ -76,8 +77,8 @@ describe('negotiations inbox presentation', () => {
     ], 'viewer', NOW);
 
     expect(groups.yourMove.map((item) => [item.conversationId, item.status])).toEqual([
-      ['question', 'answer'],
-      ['agreement', 'agreed'],
+      ['question', 'needs_input'],
+      ['agreement', 'awaiting_review'],
     ]);
     expect(countNegotiationsRequiringAction([
       conversation('question', { state: 'input_required', action: 'ask_user', senderId: 'agent:viewer' }),
@@ -94,15 +95,15 @@ describe('negotiations inbox presentation', () => {
       conversation('accepted', { state: 'completed', opportunityStatus: 'accepted', action: 'accept', acceptedByViewer: true }),
     ], 'viewer', NOW);
 
-    expect(groups.yourMove[0]?.status).toBe('agreed');
-    expect(groups.resolved[0]?.status).toBe('accepted');
-    expect(groups.resolved[0]?.lastAction).toBe('you started the chat');
+    expect(groups.yourMove[0]?.status).toBe('awaiting_review');
+    expect(groups.resolved[0]?.status).toBe('accepted_by_viewer');
+    expect(groups.resolved[0]?.lastAction).toBe('you accepted the connection');
 
     const counterpartStarted = deriveNegotiationInbox([
       conversation('counterpart-started', { state: 'completed', opportunityStatus: 'accepted', action: 'accept' }),
     ], 'viewer', NOW);
-    expect(counterpartStarted.resolved[0]?.status).toBe('started');
-    expect(counterpartStarted.resolved[0]?.lastAction).toBe('the chat was started');
+    expect(counterpartStarted.resolved[0]?.status).toBe('connection_accepted');
+    expect(counterpartStarted.resolved[0]?.lastAction).toBe('the connection was accepted');
   });
 
   it('maps active and negative outcomes to calm lifecycle labels', () => {
@@ -113,11 +114,11 @@ describe('negotiations inbox presentation', () => {
       conversation('stalled', { state: 'completed', opportunityStatus: 'stalled', outcome: { hasOpportunity: false, reason: 'turn_cap' } }),
     ], 'viewer', NOW);
 
-    expect(groups.inProgress.map((item) => item.status).sort()).toEqual(['live', 'waiting']);
-    expect(groups.resolved.map((item) => item.status).sort()).toEqual(['rejected', 'stalled']);
-    expect(groups.resolved.find((item) => item.status === 'stalled')?.lastAction)
+    expect(groups.inProgress.map((item) => item.status).sort()).toEqual(['negotiating', 'negotiating']);
+    expect(groups.resolved.map((item) => item.status).sort()).toEqual(['no_agreement', 'no_match']);
+    expect(groups.resolved.find((item) => item.status === 'no_agreement')?.lastAction)
       .toBe('agents could not reach agreement within the turn limit');
-    expect(groups.resolved.find((item) => item.status === 'rejected')?.lastAction)
+    expect(groups.resolved.find((item) => item.status === 'no_match')?.lastAction)
       .toBe('agents did not recommend moving forward');
   });
 
@@ -142,7 +143,7 @@ describe('negotiations inbox presentation', () => {
     expect(groups.resolved).toHaveLength(1);
     const [row] = groups.resolved;
     expect(row.conversationId).toBe('gated');
-    expect(row.status).toBe('not_sent');
+    expect(row.status).toBe('not_started');
     expect(row.lastAction).toBe('Your agent did not reach out');
     expect(row.turnCount).toBe(0);
     // The row is a link to the existing card; it must not leak the reasoning

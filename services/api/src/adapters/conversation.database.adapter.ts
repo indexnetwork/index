@@ -682,6 +682,7 @@ export class ConversationDatabaseAdapter {
           parts: schema.messages.parts,
           senderId: schema.messages.senderId,
           createdAt: schema.messages.createdAt,
+          taskId: schema.messages.taskId,
         })
         .from(schema.messages)
         .where(inArray(schema.messages.conversationId, ids))
@@ -852,7 +853,7 @@ export class ConversationDatabaseAdapter {
       participantsByConv.set(p.conversationId, list);
     }
 
-    const lastMessageByConv = new Map<string, { parts: unknown[]; senderId: string; createdAt: Date }>();
+    const lastMessageByConv = new Map<string, { parts: unknown[]; senderId: string; createdAt: Date; taskId: string | null }>();
     for (const r of lastMessages) {
       const hiddenAt = hiddenAtByConv.get(r.conversationId);
       if (hiddenAt && r.createdAt <= hiddenAt) continue;
@@ -860,6 +861,7 @@ export class ConversationDatabaseAdapter {
         parts: r.parts as unknown[],
         senderId: r.senderId,
         createdAt: r.createdAt,
+        taskId: r.taskId,
       });
     }
 

@@ -8,7 +8,7 @@ import { useConversation } from '@/contexts/ConversationContext';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
 import { countNegotiationsRequiringAction } from '@/lib/negotiation-inbox';
-import { groupNegotiationOutline, opportunityStatusPresentation } from '@/lib/negotiation-outline';
+import { groupNegotiationOutline } from '@/lib/negotiation-outline';
 
 interface RecentChat {
   groupId: string;
@@ -208,7 +208,7 @@ export default function ChatSidebar() {
                     {expanded && (
                       <div id={regionId} className="ml-5 border-l border-gray-200 pl-2" role="region" aria-label={`${counterparty.name} opportunities`}>
                         {counterparty.opportunities.map((opportunity) => {
-                          const presentation = opportunity.status ? opportunityStatusPresentation[opportunity.status] : null;
+                          const presentation = opportunity.presentation;
                           const selected = pathname === `/chat/${opportunity.conversationId}`
                             && selectedTaskId === (opportunity.taskId ?? null);
                           const opportunityMenuId = `negotiation:${opportunity.conversationId}:${opportunity.taskId ?? 'latest'}`;
@@ -221,11 +221,11 @@ export default function ChatSidebar() {
                                 className="relative flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#4091bb]"
                               >
                                 {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-[#041729]" aria-hidden="true" />}
-                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation?.dotClass ?? 'bg-gray-300'}`} aria-hidden="true" />
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation.dotClass}`} aria-hidden="true" />
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-xs font-medium text-gray-800">{opportunity.title}</span>
                                   <span className="block truncate font-ibm-plex-mono text-[10px] text-gray-400">
-                                    {presentation?.label ?? 'No lifecycle status'}
+                                    {presentation.label}
                                   </span>
                                 </span>
                               </button>

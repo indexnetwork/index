@@ -1,17 +1,8 @@
 import type { ConversationSummary } from '@/services/conversation';
+import { deriveNegotiationPresentation, type NegotiationPresentationStatus } from '@/lib/negotiation-presentation';
 
 export type NegotiationInboxGroup = 'your_move' | 'in_progress' | 'resolved';
-export type NegotiationInboxStatus =
-  | 'answer'
-  | 'agreed'
-  | 'live'
-  | 'waiting'
-  | 'accepted'
-  | 'started'
-  | 'rejected'
-  | 'stalled'
-  /** IND-610: the owner's own agent declined before any contact. Owner-only. */
-  | 'not_sent';
+export type NegotiationInboxStatus = NegotiationPresentationStatus;
 
 export interface NegotiationCounterpart {
   id: string;
@@ -38,14 +29,11 @@ export interface NegotiationInboxGroups {
   resolved: NegotiationInboxItem[];
 }
 
-interface LastTurnData {
+export interface LastTurnData {
   action: string | null;
 }
 
-const REJECT_ACTIONS = new Set(['reject', 'decline', 'withdraw']);
-const STALL_REASONS = new Set(['turn_cap', 'timeout']);
-
-function readLastTurn(parts: unknown[]): LastTurnData {
+export function readLastTurn(parts: unknown[]): LastTurnData {
   for (const part of parts) {
     if (typeof part !== 'object' || part === null || Array.isArray(part)) continue;
     const record = part as Record<string, unknown>;
@@ -54,6 +42,16 @@ function readLastTurn(parts: unknown[]): LastTurnData {
     return { action: typeof action === 'string' ? action : null };
   }
   return { action: null };
+}
+
+/**
+ * Conversation summaries contain one last message, while a durable A2A
+ * conversation can contain several task sessions. Only use that message to
+ * classify a task when its projected task id proves the session relationship.
+ */
+export function sessionScopedLastTurn(conversation: ConversationSummary, taskId: string | null | undefined): LastTurnData & { senderId: string | null } {
+  if (!taskId || conversation.lastMessage?.taskId !== taskId) return { action: null, senderId: null };
+  return { ...readLastTurn(conversation.lastMessage.parts), senderId: conversation.lastMessage.senderId };
 }
 
 function formatTimeAgo(timestamp: number, now: number): string {
@@ -86,53 +84,31 @@ function describeAction(action: string | null, isOwnAgent: boolean): string {
 }
 
 function describeResolved(status: NegotiationInboxStatus, reason: string | null): string {
-  if (status === 'accepted') return 'you started the chat';
-  if (status === 'started') return 'the chat was started';
-  if (status === 'stalled') {
+  if (status === 'accepted_by_viewer') return 'you accepted the connection';
+  if (status === 'connection_accepted') return 'the connection was accepted';
+  if (status === 'no_agreement') {
     return reason === 'timeout'
       ? 'the dialogue ended before the agents reached agreement'
       : 'agents could not reach agreement within the turn limit';
   }
+  if (status === 'couldnt_complete') return 'the negotiation could not complete';
+  if (status === 'expired') return 'the opportunity expired';
   if (reason === 'screened_out') return 'agents did not find enough mutual value to continue';
   return 'agents did not recommend moving forward';
 }
 
-function classifyConversation(conversation: ConversationSummary, action: string | null, viewerUserId: string | undefined): {
+function classifyConversation(conversation: ConversationSummary, viewerUserId: string | undefined): {
   group: NegotiationInboxGroup;
   status: NegotiationInboxStatus;
 } {
-  const lifecycle = conversation.negotiation;
-  const opportunityStatus = lifecycle?.opportunityStatus;
-
-  if (opportunityStatus === 'accepted') {
-    return { group: 'resolved', status: lifecycle?.acceptedByViewer ? 'accepted' : 'started' };
-  }
-  if (opportunityStatus === 'rejected') return { group: 'resolved', status: 'rejected' };
-  if (opportunityStatus === 'stalled' || opportunityStatus === 'expired') {
-    return { group: 'resolved', status: 'stalled' };
-  }
-  if (lifecycle?.state === 'input_required' && action === 'ask_user' && conversation.lastMessage?.senderId === `agent:${viewerUserId}`) {
-    return { group: 'your_move', status: 'answer' };
-  }
-  if (opportunityStatus === 'pending') return { group: 'your_move', status: 'agreed' };
-
-  if (lifecycle?.outcome?.hasOpportunity === true) return { group: 'your_move', status: 'agreed' };
-  if (lifecycle?.outcome?.hasOpportunity === false) {
-    return STALL_REASONS.has(lifecycle.outcome.reason ?? '')
-      ? { group: 'resolved', status: 'stalled' }
-      : { group: 'resolved', status: 'rejected' };
-  }
-  if (lifecycle && ['failed', 'canceled', 'auth_required'].includes(lifecycle.state)) {
-    return { group: 'resolved', status: 'stalled' };
-  }
-  if (lifecycle?.state === 'rejected' || (action && REJECT_ACTIONS.has(action))) {
-    return { group: 'resolved', status: 'rejected' };
-  }
-  if (action === 'accept') return { group: 'your_move', status: 'agreed' };
-
-  return lifecycle?.turnCount && lifecycle.turnCount > 0
-    ? { group: 'in_progress', status: 'live' }
-    : { group: 'in_progress', status: 'waiting' };
+  const latestTurn = sessionScopedLastTurn(conversation, conversation.negotiation?.taskId);
+  const presentation = deriveNegotiationPresentation({
+    lifecycle: conversation.negotiation,
+    latestAction: latestTurn.action,
+    latestSenderId: latestTurn.senderId,
+    viewerUserId,
+  });
+  return { group: presentation.group, status: presentation.status };
 }
 
 /**
@@ -204,7 +180,7 @@ export function deriveNegotiationInbox(
         conversationId: conversation.id,
         counterpart,
         group: 'resolved',
-        status: 'not_sent',
+        status: 'not_started',
         signalCount: Math.max(conversation.negotiation?.signalCount ?? 0, conversation.via.length),
         lastAction: 'Your agent did not reach out',
         timeAgo: formatTimeAgo(gateSafeTimestamp, now),
@@ -215,7 +191,7 @@ export function deriveNegotiationInbox(
     }
 
     const lastTurn = readLastTurn(conversation.lastMessage.parts);
-    const classification = classifyConversation(conversation, lastTurn.action, viewerUserId);
+    const classification = classifyConversation(conversation, viewerUserId);
     const lifecycle = conversation.negotiation;
     const sortTimestamp = new Date(
       lifecycle?.updatedAt
@@ -245,7 +221,7 @@ export function deriveNegotiationInbox(
   const byNewest = (left: NegotiationInboxItem, right: NegotiationInboxItem) => right.sortTimestamp - left.sortTimestamp;
   const yourMove = items
     .filter((item) => item.group === 'your_move')
-    .sort((left, right) => (left.status === right.status ? byNewest(left, right) : left.status === 'answer' ? -1 : 1));
+    .sort((left, right) => (left.status === right.status ? byNewest(left, right) : left.status === 'needs_input' ? -1 : 1));
 
   return {
     yourMove,

@@ -717,7 +717,8 @@ export interface ConversationSummary {
   createdAt: Date;
   updatedAt: Date;
   participants: ResolvedParticipant[];
-  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date } | null;
+  /** The task session that produced the latest message, when it has one. */
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date; taskId: string | null } | null;
   metadata: Record<string, unknown> | null;
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
   unreadCount: number;

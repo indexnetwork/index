@@ -1,5 +1,6 @@
-import { isVisibleNegotiationConversation, resolveNegotiationCounterpart } from '@/lib/negotiation-inbox';
-import type { ConversationSummary, NegotiationOpportunityStatus } from '@/services/conversation';
+import { isVisibleNegotiationConversation, resolveNegotiationCounterpart, sessionScopedLastTurn } from '@/lib/negotiation-inbox';
+import { deriveNegotiationPresentation, type NegotiationPresentation } from '@/lib/negotiation-presentation';
+import type { ConversationSummary } from '@/services/conversation';
 
 export interface NegotiationOutlineOpportunity {
   conversationId: string;
@@ -9,7 +10,7 @@ export interface NegotiationOutlineOpportunity {
   /** Null when no task session is addressable; the row then opens the latest one. */
   taskId: string | null;
   title: string;
-  status: NegotiationOpportunityStatus | null;
+  presentation: NegotiationPresentation;
   updatedAt: string;
   /**
    * True for a fallback row standing in for a conversation the opportunity
@@ -48,15 +49,24 @@ function timestampOf(value: string | null | undefined): number {
 function buildFallbackOpportunity(
   conversation: ConversationSummary,
   counterpartId: string,
+  viewerUserId: string | undefined,
 ): NegotiationOutlineOpportunity {
   const lifecycle = conversation.negotiation ?? null;
+  // `negotiation` is the latest task projection; the message is eligible only
+  // when its task id confirms it is from that same session.
+  const lastTurn = sessionScopedLastTurn(conversation, lifecycle?.taskId);
   return {
     conversationId: conversation.id,
     counterpartId,
     opportunityId: lifecycle?.opportunityId ?? null,
     taskId: lifecycle?.taskId ?? null,
     title: conversation.via[0]?.title ?? conversation.metadata?.title ?? 'Negotiation',
-    status: lifecycle?.opportunityStatus ?? null,
+    presentation: deriveNegotiationPresentation({
+      lifecycle,
+      latestAction: lastTurn.action,
+      latestSenderId: lastTurn.senderId,
+      viewerUserId,
+    }),
     updatedAt: lifecycle?.updatedAt ?? conversation.lastMessageAt ?? conversation.createdAt,
     ungrouped: true,
   };
@@ -90,16 +100,23 @@ export function groupNegotiationOutline(
     };
     const projected = conversation.negotiationOpportunities ?? [];
     if (projected.length === 0) {
-      group.opportunities.push(buildFallbackOpportunity(conversation, counterpart.id));
+      group.opportunities.push(buildFallbackOpportunity(conversation, counterpart.id, viewerUserId));
     } else {
       for (const opportunity of projected) {
+        // Do not leak the conversation's latest turn across task sessions.
+        const lastTurn = sessionScopedLastTurn(conversation, opportunity.taskId);
         group.opportunities.push({
           conversationId: conversation.id,
           counterpartId: counterpart.id,
           opportunityId: opportunity.opportunityId,
           taskId: opportunity.taskId,
           title: opportunity.title,
-          status: opportunity.opportunityStatus,
+          presentation: deriveNegotiationPresentation({
+            lifecycle: opportunity,
+            latestAction: lastTurn.action,
+            latestSenderId: lastTurn.senderId,
+            viewerUserId,
+          }),
           updatedAt: opportunity.updatedAt,
           ungrouped: false,
         });
@@ -119,14 +136,3 @@ export function groupNegotiationOutline(
       timestampOf(right.opportunities[0]?.updatedAt) - timestampOf(left.opportunities[0]?.updatedAt)
     ));
 }
-
-export const opportunityStatusPresentation: Record<NegotiationOpportunityStatus, { label: string; dotClass: string }> = {
-  latent: { label: 'Latent', dotClass: 'bg-gray-400' },
-  draft: { label: 'Draft', dotClass: 'bg-gray-400' },
-  negotiating: { label: 'Negotiating', dotClass: 'bg-amber-500' },
-  pending: { label: 'Pending', dotClass: 'bg-amber-500' },
-  stalled: { label: 'Stalled', dotClass: 'bg-amber-500' },
-  accepted: { label: 'Accepted', dotClass: 'bg-emerald-600' },
-  rejected: { label: 'Rejected', dotClass: 'bg-red-600' },
-  expired: { label: 'Expired', dotClass: 'bg-gray-400' },
-};
