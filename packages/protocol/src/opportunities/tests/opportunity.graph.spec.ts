@@ -7,7 +7,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { afterAll, afterEach, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
@@ -1259,7 +1259,20 @@ describe('Opportunity Graph', () => {
     });
   });
 
-  describe('Evaluation node: early termination', () => {
+  describe('Evaluation node: batching and continuation', () => {
+    // Batch boundaries are asserted on the bundled path, where one evaluator call
+    // is one batch. The parallel path fans a batch out into one call per candidate;
+    // the last test in this block covers continuation there.
+    let previousParallelEvaluation: string | undefined;
+    beforeEach(() => {
+      previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'false';
+    });
+    afterEach(() => {
+      if (previousParallelEvaluation === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+      else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEvaluation;
+    });
+
     test('when search is query-driven and remaining candidates have no query-sourced entries, remainingCandidates is empty', async () => {
       // 5 query candidates come through HyDE search → tagged 'query'
       // With EVAL_BATCH_SIZE=25, all 5 fit in one batch → remaining = 0
@@ -1290,23 +1303,50 @@ describe('Opportunity Graph', () => {
       expect(result.remainingCandidates.length).toBe(0);
     });
 
-    test('when remaining candidates still have query-sourced entries, remainingCandidates is preserved', async () => {
-      // Create 30 query candidates — after batch of 25, 5 remain with discoverySource='query'
-      const allQueryCandidates = Array.from({ length: 30 }, (_, i) => ({
+    /** Distinct HyDE candidates, ranked by descending score. */
+    const rankedCandidates = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
         type: 'intent' as const,
         id: `intent-q-${i}`,
         userId: `${String(i).padStart(8, '0')}-0000-4000-8000-000000000000`,
-        score: 0.95 - i * 0.01,
+        score: 0.99 - i * 0.005,
         matchedVia: 'Painters' as const,
         networkId: 'idx-1',
       }));
 
+    const passingVerdict = (candidateUserId: string) => ({
+      reasoning: 'The candidate funds the stage and sector the source user is raising for.',
+      score: 80,
+      actors: [
+        { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
+        { userId: candidateUserId, role: 'agent' as const, intentId: null },
+      ],
+    });
+
+    /** Records the candidate ids handed to each evaluator batch. */
+    const batchRecordingEvaluator = (
+      seenBatches: string[][],
+      verdictsFor: (candidateIds: string[]) => EvaluatedOpportunityWithActors[],
+    ): OpportunityEvaluatorLike => ({
+      invokeEntityBundle: async (input) => {
+        const candidateIds = input.entities.slice(1).map((e) => e.userId);
+        seenBatches.push(candidateIds);
+        return verdictsFor(candidateIds);
+      },
+    });
+
+    test('evaluates the next batch when a batch passes nothing, so tail passers are still found', async () => {
+      // 30 candidates: the top 25 (one full batch) fail, a passer sits at rank 28.
+      const candidates = rankedCandidates(30);
+      const passerId = candidates[27].userId;
+      const seenBatches: string[][] = [];
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluatorResult: [],
+        evaluator: batchRecordingEvaluator(seenBatches, (ids) =>
+          ids.includes(passerId) ? [passingVerdict(passerId)] : [],
+        ),
         thresholdOverrides: { evaluatorMinScore: 50 },
       });
-
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(allQueryCandidates);
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
 
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -1314,8 +1354,169 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // 5 query-sourced candidates remain — pagination should be preserved
+      expect(seenBatches.map((batch) => batch.length)).toEqual([25, 5]);
+      expect(seenBatches[1]).toContain(passerId);
+      expect(result.evaluatedOpportunities).toHaveLength(1);
+      expect(result.remainingCandidates).toEqual([]);
+    });
+
+    test('stops as soon as a batch passes, leaving the rest for pagination', async () => {
+      const candidates = rankedCandidates(30);
+      const passerId = candidates[3].userId;
+      const seenBatches: string[][] = [];
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluator: batchRecordingEvaluator(seenBatches, (ids) =>
+          ids.includes(passerId) ? [passingVerdict(passerId)] : [],
+        ),
+        thresholdOverrides: { evaluatorMinScore: 50 },
+      });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'painters',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(seenBatches).toHaveLength(1);
+      expect(result.evaluatedOpportunities).toHaveLength(1);
+      // The 5 query-sourced candidates behind the batch stay available for pagination.
       expect(result.remainingCandidates.length).toBe(5);
+    });
+
+    test('stops at the batch bound and reports the stranded tail honestly', async () => {
+      // 80 candidates, every one rejected: 3 batches of 25 run, 5 are never evaluated.
+      const candidates = rankedCandidates(80);
+      const seenBatches: string[][] = [];
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluator: batchRecordingEvaluator(seenBatches, () => []),
+        thresholdOverrides: { evaluatorMinScore: 50 },
+      });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'painters',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(seenBatches.map((batch) => batch.length)).toEqual([25, 25, 25]);
+      expect(result.evaluatedOpportunities).toEqual([]);
+      expect(result.remainingCandidates.length).toBe(5);
+      expect(result.trace).toContainEqual(expect.objectContaining({
+        node: 'evaluation_bound',
+        data: expect.objectContaining({
+          unevaluatedCandidates: 5,
+          evaluatedCandidates: 75,
+          batchesRun: 3,
+        }),
+      }));
+    });
+
+    test('continues into the tail on the parallel evaluation path too', async () => {
+      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'true';
+      const candidates = rankedCandidates(30);
+      const passerId = candidates[27].userId;
+      const seenBatches: string[][] = [];
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluator: batchRecordingEvaluator(seenBatches, (ids) =>
+          ids.includes(passerId) ? [passingVerdict(passerId)] : [],
+        ),
+        thresholdOverrides: { evaluatorMinScore: 50 },
+      });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'painters',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // One call per candidate here, so assert on coverage rather than batch shape.
+      const evaluated = new Set(seenBatches.flat());
+      expect(evaluated.size).toBe(30);
+      expect(evaluated.has(passerId)).toBe(true);
+      expect(result.evaluatedOpportunities).toHaveLength(1);
+      expect(result.remainingCandidates).toEqual([]);
+    });
+  });
+
+  /**
+   * An evaluator that returns nothing for a candidate is ambiguous on its own:
+   * the model may have judged the pairing unviable, or a deterministic guard may
+   * have dropped an accepted verdict. The trace has to distinguish them.
+   */
+  describe('Evaluation node: verdict diagnostics', () => {
+    const CANDIDATE_ID = 'b0000000-0000-4000-8000-000000000002';
+
+    const diagnosticEvaluator = (
+      entries: EvaluatedOpportunityWithActors[],
+    ): OpportunityEvaluatorLike => ({
+      invokeEntityBundle: async () => entries,
+    });
+
+    const runWith = async (evaluator: OpportunityEvaluatorLike) => {
+      const { compiledGraph } = createMockGraph({ evaluator, thresholdOverrides: { evaluatorMinScore: 50 } });
+      return (await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+    };
+
+    test('reports the model\'s own rejection with its score and reasoning', async () => {
+      const result = await runWith(diagnosticEvaluator([{
+        reasoning: 'Same-side match: both are seeking investment rather than offering it.',
+        score: 12,
+        actors: [],
+        rejection: { candidateId: CANDIDATE_ID, reason: 'not_accepted' },
+      }]));
+
+      expect(result.evaluatedOpportunities).toEqual([]);
+      expect(result.trace).toContainEqual(expect.objectContaining({
+        node: 'candidate',
+        data: expect.objectContaining({
+          userId: CANDIDATE_ID,
+          score: 12,
+          passed: false,
+          rejectionReason: 'not_accepted',
+          reasoning: 'Same-side match: both are seeking investment rather than offering it.',
+        }),
+      }));
+    });
+
+    test('surfaces a guard drop instead of letting it look like silence', async () => {
+      const result = await runWith(diagnosticEvaluator([{
+        reasoning: 'Both will be at the same event.',
+        score: 88,
+        actors: [],
+        rejection: { candidateId: CANDIDATE_ID, reason: 'unsupported_claim' },
+      }]));
+
+      expect(result.evaluatedOpportunities).toEqual([]);
+      expect(result.trace).toContainEqual(expect.objectContaining({
+        node: 'evaluation_dropped',
+        data: expect.objectContaining({
+          droppedCount: 1,
+          drops: [{ candidateUserId: CANDIDATE_ID, reason: 'unsupported_claim', score: 88 }],
+        }),
+      }));
+      // A high-scoring guard drop must never reach persistence.
+      expect(result.opportunities).toEqual([]);
+    });
+
+    test('says "no verdict" only when the evaluator really returned nothing', async () => {
+      const result = await runWith(diagnosticEvaluator([]));
+
+      expect(result.trace).toContainEqual(expect.objectContaining({
+        node: 'candidate',
+        detail: expect.stringContaining('✗ no verdict'),
+        data: expect.objectContaining({
+          userId: CANDIDATE_ID,
+          score: undefined,
+          reasoning: 'Evaluator returned no verdict for this candidate',
+        }),
+      }));
     });
   });
 

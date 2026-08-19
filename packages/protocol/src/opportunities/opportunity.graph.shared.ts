@@ -43,6 +43,8 @@ export type OpportunityEvaluatorLike = {
     reasoning: string;
     score: number;
     actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }>;
+    /** Diagnostic-only entry under `returnAll` — carries no actors, never persisted. */
+    rejection?: { candidateId: string; reason: 'not_accepted' | 'incomplete_actors' | 'unsupported_claim' };
   }>>;
 };
 

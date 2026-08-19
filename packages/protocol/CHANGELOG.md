@@ -20,6 +20,38 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.1.0 - 2026-08-19
+
+### Fixed
+
+- **Retrieval scores no longer clamp at a flat ceiling.** The multi-signal bonus in
+  `mergeStrategyCandidates` was added to the raw similarity and then clamped
+  (`Math.min(raw + boost, 1)`), so candidates found by enough strategies all landed
+  on exactly 1.0. Candidates enter evaluation strictly by rank, so a head cluster of
+  identical maxima crowded genuine matches out of the only evaluated batch. The bonus
+  now consumes the headroom above the raw score (new internal
+  `opportunities/opportunity.similarity.ts`): strictly monotone in the raw score,
+  and 1.0 is reachable only by a vector that actually scored 1.0.
+- **Evaluation continues past a batch that passes nothing.** `remainingCandidates`
+  was written and never read — there was no second batch, so a run whose top-ranked
+  candidates all failed reported `evaluator_rejected_all` while the real matches sat
+  unevaluated behind them. The evaluation node now walks up to
+  `MAX_EVAL_BATCHES_PER_RUN` (3) batches of 25 while no candidate passes, and stops
+  as soon as one does.
+- **A stranded tail is reported as a bound, not as a rejection.** When the batch bound
+  is reached with candidates left, the trace carries an `evaluation_bound` node with
+  the never-evaluated count.
+
+### Changed
+
+- **`invokeEntityBundle` under `returnAll: true` now returns dropped verdicts too**,
+  tagged with `rejection: { candidateId, reason }` (`not_accepted` |
+  `incomplete_actors` | `unsupported_claim`) and carrying no actors. Previously a
+  candidate the model explicitly rejected, and one whose accepted verdict a guard
+  dropped, were both indistinguishable from silence, and the discovery trace labelled
+  every one of them "No evaluation returned for this candidate". Callers that
+  persist must filter on `rejection === undefined`; `returnAll: false` is unchanged.
+
 ## 23.0.0 - 2026-08-19
 
 ### Added

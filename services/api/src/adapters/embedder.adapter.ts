@@ -5,6 +5,7 @@
 
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
+import { withMultiSignalBonus } from '../lib/embedding/similarity.calibration';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
 import { embeddingConfigurationFingerprint } from '../lib/embedding/embedding.identity';
 import { traceAppOperation } from '../lib/sentry-performance';
@@ -94,6 +95,39 @@ export function planHydeCorpusSearches(
     userContexts,
     preferred,
   };
+}
+
+/**
+ * Collapse HyDE matches to one candidate per user, scored honestly.
+ *
+ * The retained score is the user's best raw cosine similarity plus a bounded
+ * bonus for each ADDITIONAL DISTINCT lens that surfaced them. Counting matched
+ * rows instead of lenses (one lens hitting three of a user's premises counted as
+ * three signals) saturated the old additive bonus, so unrelated candidates all
+ * landed on exactly 1.0 and monopolised the by-rank evaluation batch.
+ */
+export function mergeAndRankHydeCandidates(
+  candidates: HydeCandidate[],
+  limit: number,
+): HydeCandidate[] {
+  const byUser = new Map<string, HydeCandidate[]>();
+  for (const c of candidates) {
+    const existing = byUser.get(c.userId) ?? [];
+    existing.push(c);
+    byUser.set(c.userId, existing);
+  }
+
+  const scored = Array.from(byUser.entries()).map(([, matches]) => {
+    const bestMatch = matches.reduce((a, b) => (a.score > b.score ? a : b));
+    const lenses = [...new Set(matches.map((m) => m.matchedVia))];
+    return {
+      ...bestMatch,
+      score: withMultiSignalBonus(bestMatch.score, lenses.length),
+      matchedLenses: lenses.length > 1 ? lenses : undefined,
+    };
+  });
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -464,25 +498,7 @@ export class EmbedderAdapter {
     candidates: HydeCandidate[],
     limit: number
   ): HydeCandidate[] {
-    const byUser = new Map<string, HydeCandidate[]>();
-    for (const c of candidates) {
-      const existing = byUser.get(c.userId) ?? [];
-      existing.push(c);
-      byUser.set(c.userId, existing);
-    }
-
-    const scored = Array.from(byUser.entries()).map(([, matches]) => {
-      const bestMatch = matches.reduce((a, b) => (a.score > b.score ? a : b));
-      const lensBonus = (matches.length - 1) * 0.1;
-      const lenses = [...new Set(matches.map((m) => m.matchedVia))];
-      return {
-        ...bestMatch,
-        score: Math.min(bestMatch.score + lensBonus, 1),
-        matchedLenses: lenses.length > 1 ? lenses : undefined,
-      };
-    });
-
-    return scored.sort((a, b) => b.score - a.score).slice(0, limit);
+    return mergeAndRankHydeCandidates(candidates, limit);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
