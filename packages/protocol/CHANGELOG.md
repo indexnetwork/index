@@ -20,6 +20,79 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.5.0 - 2026-08-20
+
+### Added
+
+- **The owner's verdict has a lane in their own DM.** Observed live: in the
+  negotiator DM for one signal, a client told their agent to reject the
+  counterparty — a pairing parked `input_required`. The agent could not comply.
+  The owner makes exactly three kinds of decision in that room. They ANSWER a
+  question a parked negotiation asked, which `answer_pending_question` gave a
+  lane. They EDIT the signal, which `update_intent` always covered.
+  And they pass a VERDICT on a counterparty, which had no lever at all. So on
+  "reject them" the persona's whole repertoire was to say something back, or to
+  edit the signal instead; the pairing stayed parked and the counterparty
+  stayed live.
+
+  `update_opportunity` is in the negotiator toolset and cannot substitute for
+  either half of this. `admitOpportunityUpdate` blocks a `negotiating` pairing
+  outright, and the IND-593 owner-approval boundary fails closed on the chat
+  surface by design — `createChatTools` binds
+  `{ surface: 'chat', sessionAuthenticated: false }`, and a mediated surface is
+  denied `untrusted_provenance`. The verdict levers that exist are the Radar
+  card's Skip and Start-Chat and the REST endpoints behind them, none of which
+  the client's own agent can reach.
+
+  So `createNegotiatorVerdictTools` adds `reject_opportunity` and
+  `accept_opportunity` to the negotiator persona, on the same pattern
+  `answer_pending_question` set. Appended AFTER the allowlist filter and only in
+  an intent-pinned session with `negotiatorVerdictTools` injected, so they never
+  enter the shared chat-tool registry and the orchestrator and MCP tool listing
+  cannot see them. `NegotiatorVerdictToolsHost` is the whole surface the package
+  knows; the composition root owns everything behind it.
+
+- **Numbered refs, never ids.** The prompt renders this signal's actionable
+  counterparties as `N. {name} — {state}`, and the tool takes the number. The
+  schema offers no place to put an id and no result string carries one. The rule
+  is `answer_pending_question`'s, for a sharper reason: a ref the model can name
+  is a ref it can get wrong, and a wrong ref here declines the wrong person.
+  The host owns the mapping, and a successful result names WHO the write landed
+  on — so the confirmation the client reads comes from the write rather than
+  from the model's belief about which counterparty it picked.
+
+- **An optional `reason`, in the client's own words.** Capped at 500 characters,
+  omitted entirely when they gave none. The tool description and the prompt both
+  say it is never to be inferred or written for them.
+
+### Changed
+
+- **The pinned-signal prompt gains a verdict section, and only where the tools
+  exist.** `NegotiatorPromptOptions.actionableCounterparties` renders
+  `## Verdicts {userName} can pass here` plus two tool-reference rows. It says
+  the tool call IS the decision — not the sentence about it, and not an edit of
+  the signal; that a verdict the client did not pass must never be passed for
+  them; that `update_opportunity` is not this lever; and that an accept is one
+  side of two and never a connection. Rendered only in an intent-pinned session
+  with a non-empty list, since that is the only place the tools are registered.
+  Absent or empty leaves the prompt byte-identical to 23.4.0.
+
+- **Result copy is honest at every status.** `executed` names the counterparty
+  and forbids also editing the signal; `none_actionable` forbids implying a
+  decision was recorded; `unknown_counterparty` states plainly that nothing was
+  decided and re-lists the current set; `already_decided` says whose move it is;
+  `error` forbids describing the pairing as decided. A host that throws is
+  caught and reported as `error` rather than costing the client their turn.
+
+- **Execution is the path the Radar card already takes, and nothing more.** The
+  host behind the seam runs the SAME owner status update the Skip page calls
+  through `PATCH /opportunities/:id/status`, intent-scoped. No new task-state
+  transition is invented, and the retirement of a dismissed pairing's open
+  question is not re-invoked: `OpportunityEvents.onTransition` already fires the
+  exhaustion evaluator on every committed opportunity status write, owner reject
+  included, so a rejected pairing's question dies with it because that arrow was
+  already there.
+
 ## 23.4.0 - 2026-08-20
 
 ### Added
