@@ -22,7 +22,7 @@ import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
 import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
-import { assessAskAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type AskInadmissibility, type ChecklistItem } from "./negotiation.checklist.contracts.js";
+import { assessAskAdmissibility, assessDeclineAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type AskInadmissibility, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -258,6 +258,98 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         : {}),
     };
 
+    // The in-process draft, as a callable rather than a straight-line branch:
+    // the copy-loop guard below re-issues THIS turn once, and a re-issue has to
+    // be the same draft under one added instruction, not a different prompt
+    // assembled twice. The A2H excerpt is memoized across both calls — one read
+    // per turn, whatever the guard does.
+    //
+    // The re-issue always runs here, even when the refused draft came from an
+    // externally dispatched personal agent. Re-dispatching would reopen the
+    // whole dispatch contract mid-turn (a `waiting` result would suspend the
+    // graph holding a discarded draft, a timeout would end the turn with
+    // nothing), and the in-process negotiator is the one seat that is always
+    // available. What the external agent's draft cost it is one turn, not the
+    // negotiation.
+    let clientDmForPrompt: Awaited<ReturnType<typeof retrieveClientDm>> | null = null;
+    const draftFromSystemAgent = async (antiEcho?: { repeatedMessage: string }): Promise<NegotiationTurn> => {
+      const agentPriorDialogue = buildAttributedDialogue(state);
+
+      // ─── A2H: the acting user's own negotiator DM for this signal ──────
+      // Retrieved HERE, in the system-agent draft, rather than beside
+      // `ownMemory` above. Two reasons, and the first is the constraint:
+      //
+      // 1. `payload` is built and dispatched before this point, so the
+      //    excerpt cannot reach an external agent by a later edit — the
+      //    value does not exist in that scope. Memory is safe to forward
+      //    (distilled standing rules); a verbatim excerpt of the client's
+      //    private thread with their own negotiator is not, and an external
+      //    registered agent can hold the personal-agent seat.
+      // 2. A dispatched turn never reads it, so it never pays for the query.
+      //
+      // Read on EVERY turn under the checklist protocol, not only the turns
+      // where the agent may ask. This was gated on `askUserAvailable` — the DM
+      // was present exactly when the agent might ask something, on the theory
+      // that knowing what the client already said changes what it asks. But
+      // the answers matter most AFTER they are given: on a turn with the grant
+      // spent, the negotiator argued the client's case having never read a word
+      // the client wrote about this signal.
+      //
+      // That is also what plan §2 requires. The commitment store is the
+      // client's own intents, premises, and ANSWERS; a dimension may be scored
+      // from them. An answer the negotiator cannot see cannot score anything,
+      // so the same question stays open and gets asked again.
+      //
+      // Still in-process only, for the reason above: the excerpt is never
+      // forwarded to `NegotiationTurnPayload`, so an external agent holding the
+      // personal-agent seat cannot receive the client's private thread.
+      //
+      // What stays gated is the FEATURE, not the turn. `configuredAskUserEnabled()`
+      // is the A2H kill switch: flipped off, no A2H read is issued at all and
+      // the prompt is the pre-A2H one. v2-only for the same reason — a v1
+      // negotiation has no A2H vocabulary, so its prompt stays byte-identical.
+      // Dropped from the gate are the per-turn conditions that used to ride
+      // along inside `askUserAvailable`: final turn, budget spent, ask-rounds
+      // cap, pre-contact bound. Those decide whether the agent may ASK, not
+      // whether it may know what its client already said.
+      if (clientDmForPrompt === null) {
+        clientDmForPrompt = version === 'v2' && configuredAskUserEnabled() && ownIntentId
+          ? await retrieveClientDm(deps, ownUser.id, ownIntentId)
+          : [];
+      }
+      const clientDm = clientDmForPrompt;
+      return deps.systemAgent.invoke({
+        ownUser,
+        otherUser,
+        indexContext: state.indexContext,
+        seedAssessment: state.seedAssessment,
+        history,
+        isFinalTurn,
+        isDiscoverer: isSource,
+        seat,
+        protocolVersion: version,
+        ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
+        isContinuation: state.isContinuation,
+        ...(agentPriorDialogue && { priorDialogue: agentPriorDialogue }),
+        ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
+        ...(askUserAvailable && { canAskUser: true }),
+        ...(checklistActive
+          ? {
+              checklist: frozenChecklist,
+              questionsSpent,
+              ...(askedTopics.length > 0 && { askedTopics }),
+            }
+          : {}),
+        ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
+        ...(ownMemory.length > 0 && { memory: ownMemory }),
+        ...(clientDm.length > 0 && { clientDm }),
+        ...(state.privateConsultation?.recipientUserId === ownUser.id
+          ? { privateConsultation: state.privateConsultation }
+          : {}),
+        ...(antiEcho ? { antiEcho } : {}),
+      });
+    };
+
     const scope = { action: 'manage:negotiations', scopeType: 'network', scopeId: state.indexContext.networkId };
 
     const dispatchResult = await deps.dispatcher.dispatch(ownUser.id, scope, payload, { timeoutMs: state.timeoutMs });
@@ -306,77 +398,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       return { status: 'waiting_for_agent' as const };
     } else {
       // No personal agent or timeout — run system agent
-      const agentPriorDialogue = buildAttributedDialogue(state);
-
-      // ─── A2H: the acting user's own negotiator DM for this signal ──────
-      // Retrieved HERE, inside the system-agent branch, rather than beside
-      // `ownMemory` above. Two reasons, and the first is the constraint:
-      //
-      // 1. `payload` is built and dispatched before this point, so the
-      //    excerpt cannot reach an external agent by a later edit — the
-      //    value does not exist in that scope. Memory is safe to forward
-      //    (distilled standing rules); a verbatim excerpt of the client's
-      //    private thread with their own negotiator is not, and an external
-      //    registered agent can hold the personal-agent seat.
-      // 2. A dispatched turn never reads it, so it never pays for the query.
-      //
-      // Read on EVERY turn under the checklist protocol, not only the turns
-      // where the agent may ask. This was gated on `askUserAvailable` — the DM
-      // was present exactly when the agent might ask something, on the theory
-      // that knowing what the client already said changes what it asks. But
-      // the answers matter most AFTER they are given: on a turn with the grant
-      // spent, the negotiator argued the client's case having never read a word
-      // the client wrote about this signal.
-      //
-      // That is also what plan §2 requires. The commitment store is the
-      // client's own intents, premises, and ANSWERS; a dimension may be scored
-      // from them. An answer the negotiator cannot see cannot score anything,
-      // so the same question stays open and gets asked again.
-      //
-      // Still in-process only, for the reason above: the excerpt is never
-      // forwarded to `NegotiationTurnPayload`, so an external agent holding the
-      // personal-agent seat cannot receive the client's private thread.
-      //
-      // What stays gated is the FEATURE, not the turn. `configuredAskUserEnabled()`
-      // is the A2H kill switch: flipped off, no A2H read is issued at all and
-      // the prompt is the pre-A2H one. v2-only for the same reason — a v1
-      // negotiation has no A2H vocabulary, so its prompt stays byte-identical.
-      // Dropped from the gate are the per-turn conditions that used to ride
-      // along inside `askUserAvailable`: final turn, budget spent, ask-rounds
-      // cap, pre-contact bound. Those decide whether the agent may ASK, not
-      // whether it may know what its client already said.
-      const clientDm = version === 'v2' && configuredAskUserEnabled() && ownIntentId
-        ? await retrieveClientDm(deps, ownUser.id, ownIntentId)
-        : [];
-      turn = await deps.systemAgent.invoke({
-        ownUser,
-        otherUser,
-        indexContext: state.indexContext,
-        seedAssessment: state.seedAssessment,
-        history,
-        isFinalTurn,
-        isDiscoverer: isSource,
-        seat,
-        protocolVersion: version,
-        ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
-        isContinuation: state.isContinuation,
-        ...(agentPriorDialogue && { priorDialogue: agentPriorDialogue }),
-        ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
-        ...(askUserAvailable && { canAskUser: true }),
-        ...(checklistActive
-          ? {
-              checklist: frozenChecklist,
-              questionsSpent,
-              ...(askedTopics.length > 0 && { askedTopics }),
-            }
-          : {}),
-        ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
-        ...(ownMemory.length > 0 && { memory: ownMemory }),
-        ...(clientDm.length > 0 && { clientDm }),
-        ...(state.privateConsultation?.recipientUserId === ownUser.id
-          ? { privateConsultation: state.privateConsultation }
-          : {}),
-      });
+      turn = await draftFromSystemAgent();
     }
 
     traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}` });
@@ -395,39 +417,60 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // The reconciled list is stamped back onto the turn, so the message record
     // IS the checklist's store — no new table, and a continuation recovers it
     // from the same messages it recovers the dialogue from.
-    let nextChecklist: ChecklistItem[] = frozenChecklist;
-    if (checklistActive) {
-      const parsedDraft = ChecklistDraftSchema.safeParse(turn.checklist ?? []);
+    //
+    // A function rather than a straight-line block because the copy-loop guard
+    // below can replace the drafted turn with a re-issued one, and a re-issue
+    // arrives carrying its OWN raw checklist draft. Persisting that unreconciled
+    // would let `checklistFromTurns` read it back as the frozen dimensions on
+    // the next turn — the freeze, defeated by the very guard meant to protect
+    // the exchange. Whatever is persisted has been through here.
+    const applyChecklistDiscipline = (
+      draftTurn: NegotiationTurn,
+      opts?: { reissue?: boolean },
+    ): { turn: NegotiationTurn; checklist: ChecklistItem[] } => {
+      if (!checklistActive) return { turn: draftTurn, checklist: frozenChecklist };
+      let next = draftTurn;
+      const parsedDraft = ChecklistDraftSchema.safeParse(draftTurn.checklist ?? []);
       const draft = parsedDraft.success ? parsedDraft.data : [];
       if (!parsedDraft.success) {
         turnLog.warn('Checklist draft failed schema validation; keeping the frozen scores', {
           taskId: state.taskId,
           seat,
           handledExternally: dispatchResult.handled,
+          ...(opts?.reissue && { reissue: true }),
         });
       }
-      nextChecklist = isChecklistAuthored(frozenChecklist)
+      const reconciled = isChecklistAuthored(frozenChecklist)
         ? reconcileChecklist(frozenChecklist, draft)
         : (authorChecklist(draft) ?? []);
-      if (nextChecklist.length > 0) {
-        turn = { ...turn, checklist: nextChecklist };
-      } else if (turn.checklist) {
+      if (reconciled.length > 0) {
+        next = { ...next, checklist: reconciled };
+      } else if (next.checklist) {
         // An authoring that produced nothing usable must not leave the raw
         // draft on the turn: `checklistFromTurns` would read it back as the
         // frozen dimensions on the next turn, which is exactly the freeze this
         // path declined to grant.
-        const { checklist: _unusable, ...rest } = turn;
-        turn = rest;
+        const { checklist: _unusable, ...rest } = next;
+        next = rest;
       }
       if (!isChecklistAuthored(frozenChecklist)) {
         turnLog.info('negotiation_checklist_authored', {
           taskId: state.taskId,
           opportunityId: state.opportunityId || undefined,
           seat,
-          dimensions: nextChecklist.length,
-          authored: nextChecklist.length > 0,
+          dimensions: reconciled.length,
+          authored: reconciled.length > 0,
+          ...(opts?.reissue && { reissue: true }),
         });
       }
+      return { turn: next, checklist: reconciled };
+    };
+
+    let nextChecklist: ChecklistItem[] = frozenChecklist;
+    {
+      const disciplined = applyChecklistDiscipline(turn);
+      turn = disciplined.turn;
+      nextChecklist = disciplined.checklist;
     }
 
     // Whether the ask on the table is the AGENT's own move, captured before the
@@ -686,6 +729,81 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       }
     }
 
+    // ─── Decline verdict law, mechanically (checklist plan §6) ────────────
+    // "An unknown is not a reason to end anything; pass stays reserved for
+    // conflict." That law was prompt-only, and the prompt lost: observed in dev
+    // as a decline citing "repeated lack of clarity … despite five inquiries"
+    // over a checklist that held unknowns and no conflict at all. Nothing had
+    // been decided against — the counterparty simply could not answer, because
+    // the fact was its own unreachable principal's.
+    //
+    // Scoped like every other checklist rule: the assessing stances only, an
+    // authored checklist only (fails open — same rationale as ask
+    // admissibility), and read from `nextChecklist`, the reconciled scores this
+    // very turn is deciding on rather than the ones it inherited.
+    //
+    // `withdraw` is deliberately NOT covered. The initiator's turn-0 refusal is
+    // screen semantics — it decides whether to make contact at all, on evidence
+    // that predates any checklist — and the opening-withdraw guard above has
+    // already returned by this point. Governing in-flight declines is what this
+    // is for.
+    //
+    // A function for the same reason the checklist discipline is one: the
+    // copy-loop guard below can replace the drafted turn, and a re-issued
+    // decline is as bound by the verdict law as the first one was.
+    const enforceDeclineVerdictLaw = (
+      candidate: NegotiationTurn,
+      checklist: ChecklistItem[],
+      opts?: { reissue?: boolean },
+    ): NegotiationTurn => {
+      if (
+        !checklistActive
+        || (candidate.action !== 'decline' && candidate.action !== 'reject')
+        || !isChecklistAuthored(checklist)
+      ) return candidate;
+      const declineAdmissibility = assessDeclineAdmissibility({ checklist });
+      if (declineAdmissibility.admissible) return candidate;
+      // The final turn is the one place the law cannot simply be enforced: the
+      // seat's vocabulary there is accept-or-decline, so refusing the decline
+      // would either manufacture an accept nobody chose or emit an action the
+      // seat's schema does not carry. The cap wins — but not quietly. The
+      // violation is logged and traced with the unknowns that stood in for a
+      // conflict, so "the turn budget forced a verdict" is a readable fact
+      // about the row rather than something an investigation has to
+      // reconstruct from the checklist.
+      turnLog.info('negotiation_decline_inadmissible', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        reason: declineAdmissibility.reason,
+        unknowns: declineAdmissibility.unknowns,
+        turnIndex: state.turnCount,
+        isFinalTurn,
+        coerced: !isFinalTurn,
+        ...(opts?.reissue && { reissue: true }),
+      });
+      emitWide({
+        type: 'negotiation_decline_inadmissible',
+        opportunityId: state.opportunityId,
+        negotiationConversationId: state.conversationId,
+        turnIndex: state.turnCount,
+        actor: isSource ? 'source' : 'candidate',
+        reason: declineAdmissibility.reason,
+        unknowns: declineAdmissibility.unknowns,
+        isFinalTurn,
+        coerced: !isFinalTurn,
+      });
+      if (isFinalTurn) return candidate;
+      // The message is dropped with the action it belonged to. It was written
+      // to end the negotiation; carried onto a `counter` it would announce a
+      // decline the record does not contain, which is the same class of
+      // dishonesty as the decline itself. The reasoning stays — it is the
+      // trace of what the agent tried to do.
+      return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn), message: null };
+    };
+
+    turn = enforceDeclineVerdictLaw(turn, nextChecklist);
+
     // ─── Deadlock shift record (IND-428) ───────────────────────────────
     // Applied-stance analytics: recorded once per session, on the first
     // turn actually drafted in the bargaining stance (the system agent —
@@ -750,23 +868,165 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // have: it sees the question at the DB boundary with no idea who the
     // counterparty is or what the evaluator wrote, so it cannot tell that a
     // well-formed question is naming them or paraphrasing it.
-    if (turn.askUser?.question) {
+    //
+    // A function, like the two gates above, so the copy-loop guard's re-issued
+    // turn faces it as well: "a rejected question must not survive in the
+    // shared record" is a property of what gets PERSISTED, not of one draft.
+    const enforceAuthoredQuestionSafety = (candidate: NegotiationTurn): NegotiationTurn => {
+      if (!candidate.askUser?.question) return candidate;
       const counterpartyName = otherUser.profile?.name?.trim();
       const seedReasoning = state.seedAssessment?.reasoning?.trim();
-      const safeAuthoredQuestion = isSafeAuthoredNegotiationQuestion(turn.askUser.question, {
+      const safeAuthoredQuestion = isSafeAuthoredNegotiationQuestion(candidate.askUser.question, {
         ...(counterpartyName ? { forbiddenIdentifiers: [counterpartyName] } : {}),
         ...(seedReasoning ? { forbiddenSourceText: [seedReasoning] } : {}),
       });
-      if (!safeAuthoredQuestion) {
-        turnLog.warn('Dropping unsafe authored ask_user question; consultation continues without it', {
+      if (safeAuthoredQuestion) return candidate;
+      turnLog.warn('Dropping unsafe authored ask_user question; consultation continues without it', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        handledExternally: dispatchResult.handled,
+      });
+      const { question: _rejected, ...askUserWithoutQuestion } = candidate.askUser;
+      return { ...candidate, askUser: askUserWithoutQuestion };
+    };
+
+    turn = enforceAuthoredQuestionSafety(turn);
+
+    // ─── The copy-loop guard: no turn may repeat a message on the record ──
+    // Observed live: a counterparty asked what a phrase in the client's signal
+    // meant; the answering agent could not consult its own (unreachable)
+    // principal and its record did not settle the phrase, so with no good move
+    // it copied the question back verbatim. From there both models locked —
+    // reproducing text already in context is close to deterministic — and the
+    // negotiation spent its remaining turns exchanging two byte-identical
+    // messages before one side declined citing "repeated lack of clarity".
+    //
+    // The comparison is exact text, not similarity: it is the failure that was
+    // actually observed (identical `parts` objects, identical md5 over the
+    // message), and an exact match cannot be a false positive — no legitimate
+    // turn advances a negotiation by re-sending a message already in it. Two
+    // agents making the same POINT in different words is a real exchange and
+    // must stay untouched, which a similarity threshold could not promise.
+    //
+    // Messages only, and non-terminal turns only.
+    //
+    // `null`/absent messages cover `ask_user` and every turn that carries
+    // reasoning alone; there is nothing on the record for those to duplicate.
+    //
+    // TERMINAL turns are exempt on principle, not convenience: this guard
+    // exists to stop a LOOP, and a turn that ends the negotiation cannot loop.
+    // The cost of covering them would be paid in the wrong direction — an
+    // `accept` that happens to close by restating the outreach it is accepting
+    // would be refused, and a successful match would end as a stall. Refusing a
+    // terminal turn destroys the outcome; letting a cosmetic repeat through
+    // costs a duplicated line in a transcript that is already over.
+    //
+    // Deadlock detection (IND-428) does not cover this and cannot: it needs
+    // four consecutive non-convergent turns, which on a six-turn cap arrives
+    // one turn before the end — after the loop has already consumed the
+    // negotiation. This runs on the first repeat, before it is persisted.
+    const priorMessages = new Set(
+      history
+        .map((prior) => (typeof prior.message === 'string' ? prior.message.trim() : ''))
+        .filter((message) => message.length > 0),
+    );
+    const repeatsPriorMessage = (candidate: NegotiationTurn): string | null => {
+      if (isTerminalAction(candidate.action)) return null;
+      const message = typeof candidate.message === 'string' ? candidate.message.trim() : '';
+      return message.length > 0 && priorMessages.has(message) ? message : null;
+    };
+
+    const repeatedMessage = repeatsPriorMessage(turn);
+    if (repeatedMessage) {
+      turnLog.warn('negotiation_turn_repetition', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        turnIndex: state.turnCount,
+        action: turn.action,
+        attempt: 'draft',
+        handledExternally: dispatchResult.handled,
+      });
+      emitWide({
+        type: 'negotiation_turn_repetition',
+        opportunityId: state.opportunityId,
+        negotiationConversationId: state.conversationId,
+        turnIndex: state.turnCount,
+        actor: isSource ? 'source' : 'candidate',
+        attempt: 'draft',
+      });
+
+      // The duplicate is discarded — never persisted — and the turn is re-issued
+      // ONCE, told what it repeated. Coercion is deterministic on purpose: the
+      // agent gets one chance to contribute something new, and if it cannot, the
+      // negotiation ends honestly rather than filling its remaining turns with
+      // copies and calling the result a decision.
+      const reissued = applyChecklistDiscipline(
+        await draftFromSystemAgent({ repeatedMessage }),
+        { reissue: true },
+      );
+      let retryTurn = reissued.turn;
+
+      // The re-issue inherits this turn's seat vocabulary, and nothing else it
+      // could have earned earlier in the node. An out-of-seat action is coerced
+      // exactly as a dispatched one is; `ask_user` is refused outright, because
+      // the consultation decision — grant, policy admission, admissibility —
+      // was already taken above for this turn, and re-running it from here
+      // would let a repeated message become a park that skipped every one of
+      // those gates. Its `askUser` payload goes with it: no other action may
+      // carry one into the record.
+      if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn, { askUser: false }).includes(retryTurn.action)) {
+        turnLog.warn('Anti-echo re-issue returned an action this turn cannot take, coercing to conservative fallback', {
+          taskId: state.taskId,
+          seat,
+          action: retryTurn.action,
+          isFinalTurn,
+        });
+        const { askUser: _refused, ...rest } = retryTurn;
+        retryTurn = { ...rest, action: fallbackActionFor(version, seat, isFinalTurn) };
+      }
+      // The gates the first draft passed, applied to what would replace it.
+      retryTurn = enforceDeclineVerdictLaw(retryTurn, reissued.checklist, { reissue: true });
+      retryTurn = enforceAuthoredQuestionSafety(retryTurn);
+
+      const repeatedAgain = repeatsPriorMessage(retryTurn);
+      if (repeatedAgain) {
+        // Twice is not a slip. Nothing is persisted, the turn count does not
+        // move, and the negotiation ends as what it is: stalled on repetition.
+        // NOT a decline — no side decided anything, and finalize must not be
+        // able to read a verdict out of this. That is why it travels as its own
+        // channel rather than as `error`, which means the agent produced no
+        // turn at all.
+        turnLog.error('negotiation_repetition_stalled', {
           taskId: state.taskId,
           opportunityId: state.opportunityId || undefined,
           seat,
-          handledExternally: dispatchResult.handled,
+          turnIndex: state.turnCount,
+          action: retryTurn.action,
         });
-        const { question: _rejected, ...askUserWithoutQuestion } = turn.askUser;
-        turn = { ...turn, askUser: askUserWithoutQuestion };
+        emitWide({
+          type: 'negotiation_turn_repetition',
+          opportunityId: state.opportunityId,
+          negotiationConversationId: state.conversationId,
+          turnIndex: state.turnCount,
+          actor: isSource ? 'source' : 'candidate',
+          attempt: 'reissue',
+          stalled: true,
+        });
+        traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: "repetition_stalled" });
+        return { repetitionStalled: true };
       }
+
+      turnLog.info('negotiation_turn_repetition_recovered', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        turnIndex: state.turnCount,
+        action: retryTurn.action,
+      });
+      turn = retryTurn;
+      nextChecklist = reissued.checklist;
     }
 
     const parts = [{ kind: "data" as const, data: turn }];

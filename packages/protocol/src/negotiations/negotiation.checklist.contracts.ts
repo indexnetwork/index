@@ -368,6 +368,60 @@ export function assessAskAdmissibility(input: AskAdmissibilityInput): AskAdmissi
   return { admissible: true, dimension: item };
 }
 
+// ─── Decline admissibility: the verdict law, mechanically (plan §6) ──────────
+
+/**
+ * Why a drafted decline was refused. One condition today, named rather than
+ * implied so the telemetry says which law bound — the same discipline
+ * {@link AskInadmissibility} follows.
+ */
+export type DeclineInadmissibility =
+  /** The checklist holds no `conflict` dimension: nothing was decided against. */
+  | "no_conflict_dimension";
+
+export type DeclineAdmissibility =
+  | { admissible: true }
+  | { admissible: false; reason: DeclineInadmissibility; unknowns: string[] };
+
+export interface DeclineAdmissibilityInput {
+  /** The reconciled checklist this turn is deciding on. */
+  checklist: readonly ChecklistItem[];
+}
+
+/**
+ * The verdict law, in the half a machine can check: **an unknown is not a
+ * reason to end anything; a decline needs a conflict.**
+ *
+ * Elimination by Aspects (plan §6) makes one conflicting dimension decisive on
+ * its own — and says nothing else is. A checklist carrying only `ok`s and
+ * `unknown`s has therefore found nothing to decide against: the honest moves
+ * there are to answer the unknown from the record, to carry it, or to let the
+ * first conversation settle it. Ending the negotiation on it is the model
+ * mistaking "I could not find out" for "this does not work", which is exactly
+ * what was observed in dev — a decline citing "repeated lack of clarity"
+ * against a counterparty whose agent had never been able to answer.
+ *
+ * The check is deliberately narrow. It reads the checklist and nothing else:
+ * not the reasoning, not the message, not the transcript. Whether a conflict
+ * is REAL stays the agent's judgment and the basis discipline's problem; all
+ * this refuses is a terminal verdict with no conflict behind it at all.
+ *
+ * Fails OPEN on an unauthored checklist — see {@link isChecklistAuthored} —
+ * for the same reason ask admissibility does: with no frozen dimensions there
+ * is no law to have violated, and a failed authoring pass must not stand
+ * between an agent and an honest verdict.
+ */
+export function assessDeclineAdmissibility(input: DeclineAdmissibilityInput): DeclineAdmissibility {
+  if (!isChecklistAuthored(input.checklist)) return { admissible: true };
+  const verdict = checklistVerdictState(input.checklist);
+  if (verdict.conflicts.length > 0) return { admissible: true };
+  return {
+    admissible: false,
+    reason: "no_conflict_dimension",
+    unknowns: verdict.unknowns.map((item) => item.name),
+  };
+}
+
 // ─── Prompt rendering ────────────────────────────────────────────────────────
 
 const KIND_LABEL: Record<ChecklistKind, string> = {

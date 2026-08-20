@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveSectionLabel, extractTurn, formatRelativeTime, formatSectionDate, groupTurnsBySession, outcomeChipVariant, roleChipLabel, roleLabel, verbFor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { deriveSectionLabel, extractTurn, formatRelativeTime, formatSectionDate, groupTurnsBySession, outcomeChipVariant, roleChipLabel, roleLabel, terminalTurnAuthor, verbFor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 import type { ConversationMessage } from '@/services/conversation';
 
 function message(parts: unknown[], overrides: Partial<ConversationMessage> = {}): ConversationMessage {
@@ -107,6 +107,43 @@ describe('viewerRoleLabel', () => {
 
   it('returns null when no turn suggested roles', () => {
     expect(viewerRoleLabel([{ ...turns[0], suggestedRoles: null }], 'agent:own')).toBeNull();
+  });
+});
+
+describe('terminalTurnAuthor', () => {
+  const turn = (senderId: string, action: string): TranscriptTurn =>
+    ({ id: action, sessionId: null, senderId, createdAt: '', action, text: 't', suggestedRoles: null });
+
+  it('names the counterparty when their agent authored the decline', () => {
+    expect(terminalTurnAuthor([
+      turn('agent:own', 'outreach'),
+      turn('agent:other', 'decline'),
+    ], 'agent:own')).toBe('counterparty');
+  });
+
+  it('names this side when our own agent withdrew', () => {
+    expect(terminalTurnAuthor([
+      turn('agent:other', 'outreach'),
+      turn('agent:own', 'withdraw'),
+    ], 'agent:own')).toBe('own');
+  });
+
+  it('reads the LAST terminal turn, not the first', () => {
+    expect(terminalTurnAuthor([
+      turn('agent:own', 'withdraw'),
+      turn('agent:other', 'reject'),
+    ], 'agent:own')).toBe('counterparty');
+  });
+
+  it('settles nothing when no turn ended the negotiation', () => {
+    expect(terminalTurnAuthor([
+      turn('agent:own', 'outreach'),
+      turn('agent:other', 'question'),
+    ], 'agent:own')).toBeNull();
+  });
+
+  it('settles nothing without a viewer agent id — a guess is worse than silence', () => {
+    expect(terminalTurnAuthor([turn('agent:other', 'decline')], null)).toBeNull();
   });
 });
 

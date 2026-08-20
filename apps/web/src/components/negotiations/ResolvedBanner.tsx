@@ -1,3 +1,5 @@
+import type { TerminalTurnAuthor } from './negotiation-turns';
+
 export type ResolvedBannerVariant = 'rejected' | 'stalled';
 
 interface ResolvedBannerProps {
@@ -23,6 +25,20 @@ interface ResolvedBannerProps {
    * and preserves the existing copy for callers that render without a transcript.
    */
   contactMade?: boolean;
+  /**
+   * Who authored the turn that ended this negotiation, derived from the
+   * transcript rendered above (`terminalTurnAuthor`).
+   *
+   * The outcome label cannot supply it — `rejected` says a negotiation ended
+   * against the match, never which agent decided that — and this banner is the
+   * only account the owner gets of what happened. It was observed telling an
+   * owner "your agent withdrew after reviewing the opportunity" above a
+   * transcript whose final turn was the COUNTERPARTY's agent declining them.
+   *
+   * Omitted/null means the transcript settles nothing, and the copy says
+   * nothing: neutral wording, never a guess about who walked away.
+   */
+  terminalAuthor?: TerminalTurnAuthor | null;
   /** Stalled only: route to the user's agent to answer the open question. */
   onRevive?: () => void;
   /** Stalled only: leave the transcript. */
@@ -34,9 +50,12 @@ interface ResolvedBannerProps {
  * filtering done for you, with hedged, reason-based phrasing — a screened-out
  * thread never names who screened, so the counterparty learns nothing.
  */
-export function ResolvedBanner({ variant, reason, turnCount, maxTurns, contactMade = false, onRevive, onLetGo }: ResolvedBannerProps) {
+export function ResolvedBanner({ variant, reason, turnCount, maxTurns, contactMade = false, terminalAuthor = null, onRevive, onLetGo }: ResolvedBannerProps) {
   if (variant === 'rejected') {
     const screenedOutBeforeContact = reason === 'screened_out' && !contactMade;
+    const turnsSuffix = turnCount != null && turnCount > 0
+      ? ` (${turnCount} ${turnCount === 1 ? 'turn' : 'turns'})`
+      : '';
     let body: string;
     if (screenedOutBeforeContact) {
       body = 'This connection was filtered out before either side reached out, so neither of you was notified.';
@@ -44,30 +63,45 @@ export function ResolvedBanner({ variant, reason, turnCount, maxTurns, contactMa
       // Contact exists, so no claim is made about who reached out, who was
       // notified, or what the other side knows — only that it ended here.
       body = 'This negotiation ended without agreement.';
-    } else if (!reason) {
-      // Agent voluntarily withdrew — the candidate didn’t match this opportunity’s query.
-      body = `Your agent withdrew after reviewing the opportunity${turnCount != null && turnCount > 0 ? ` (${turnCount} ${turnCount === 1 ? 'turn' : 'turns'})` : ''} — the candidate didn’t align with what you’re looking for. You were never notified while this played out.`;
+    } else if (terminalAuthor === 'counterparty') {
+      // Their agent ended it. Saying "your agent withdrew" here — which is what
+      // this banner did — reverses who decided and who was decided about, and
+      // it is the owner's only account of the exchange.
+      body = `Their agent declined${turnsSuffix} — the two agents didn’t find enough mutual value.`;
+    } else if (terminalAuthor === 'own') {
+      // Our own agent walked away: the original copy, now stated only where the
+      // transcript actually shows this side authoring the terminal turn.
+      body = `Your agent withdrew after reviewing the opportunity${turnsSuffix} — the candidate didn’t align with what you’re looking for. You were never notified while this played out.`;
     } else {
-      body = `${turnCount != null && turnCount > 0 ? `After ${turnCount} ${turnCount === 1 ? 'turn' : 'turns'}, the` : 'The'} agents couldn’t justify this connection, so it was quietly set aside. You were never notified while this played out.`;
+      // The transcript does not say who ended it, so neither does the copy.
+      body = `${turnCount != null && turnCount > 0 ? `After ${turnCount} ${turnCount === 1 ? 'turn' : 'turns'}, the` : 'The'} agents ended this without a match.`;
     }
+    // "filtered out for you" and the quiet-decline footnote are both claims
+    // about a decision THIS side made. Above a decline the counterparty
+    // authored — or an ending nobody can attribute — neither is ours to make.
+    const ownDecision = reason !== 'screened_out' && terminalAuthor === 'own';
+    const showQuietFootnote = screenedOutBeforeContact || ownDecision;
     return (
       <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-4">
         <h3 className="font-ibm-plex-mono text-[13px] font-bold text-[#041729]">
           {/*
-            "filtered out for you" says the connection was screened before it
-            reached anyone. Above a thread with messages in it, only the verdict
-            survives — the account of how it was reached does not.
+            "filtered out for you" says this side did the filtering. It survives
+            only where that is demonstrably true: a connection screened before it
+            reached anyone, or our own agent's withdrawal. Above a thread whose
+            terminal turn came from the counterparty — or from nobody the
+            transcript can name — only the verdict survives.
           */}
-          {reason === 'screened_out' && contactMade ? 'No opportunity' : 'No opportunity — filtered out for you'}
+          {screenedOutBeforeContact || ownDecision ? 'No opportunity — filtered out for you' : 'No opportunity'}
         </h3>
         <p className="mt-1 text-[13px] text-[#3D3D3D]">{body}</p>
         {/*
           The quiet-decline footnote is a claim about the counterparty's
-          knowledge. It holds for every end reached without contact, and for a
-          decline the agents never sent — but not above a visible outreach the
-          counterparty demonstrably received.
+          knowledge: that OUR side's decision never reached them. It holds for
+          an end reached without contact, and for our own agent's withdrawal —
+          but not above a visible outreach the counterparty demonstrably
+          received, and not when THEY are the side that declined.
         */}
-        {!(reason === 'screened_out' && contactMade) && (
+        {showQuietFootnote && (
           <p className="mt-2.5 font-ibm-plex-mono text-[11px] text-gray-400">
             The other side never learns the details — declines are quiet by design.
           </p>

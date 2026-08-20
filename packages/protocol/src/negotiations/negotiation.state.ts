@@ -77,8 +77,11 @@ export const NegotiationOutcomeSchema = z.object({
    * Why an unconcluded negotiation ended. `agent_error` is the honest name for
    * a run that stopped because the acting agent kept failing — distinct from
    * `turn_cap`, which claims a dialogue happened and exhausted its budget.
+   * `repetition` is the honest name for a run the copy-loop guard ended: an
+   * agent reproduced a message already on the record and did it again when
+   * re-issued, so nothing was decided and no verdict may be implied.
    */
-  reason: z.enum(["turn_cap", "timeout", "screened_out", "agent_error"]).optional(),
+  reason: z.enum(["turn_cap", "timeout", "screened_out", "agent_error", "repetition"]).optional(),
 });
 
 export type NegotiationOutcome = z.infer<typeof NegotiationOutcomeSchema>;
@@ -448,6 +451,20 @@ export const NegotiationGraphState = Annotation.Root({
   consecutiveTurnFailures: Annotation<number>({
     reducer: (curr, next) => next ?? curr,
     default: () => 0,
+  }),
+
+  /**
+   * The copy-loop guard ended this run: a drafted turn repeated a message
+   * already on the record, and the single anti-echo re-issue repeated it too.
+   *
+   * A channel rather than `error` because the two are different facts and the
+   * outcome must not confuse them — `error` means the agent could not produce
+   * a turn at all, this means it produced one that said nothing new. Routes to
+   * finalize, where it becomes `reason: "repetition"`.
+   */
+  repetitionStalled: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
   }),
 
   outcome: Annotation<NegotiationOutcome | null>({
