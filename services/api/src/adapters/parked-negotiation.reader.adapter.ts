@@ -86,8 +86,27 @@ export interface ParkedNegotiation {
    */
   dimension?: string;
   /**
+   * The dimension's checklist kind, recovered from the checklist the park turn
+   * itself persisted (the turn record is the checklist's only store). Absent
+   * when the ask named no dimension, or when the turn carried no checklist —
+   * a pre-checklist turn or an external agent's.
+   */
+  dimensionKind?: 'mutual_want' | 'hard_constraint' | 'fit';
+  /**
+   * What the ask declared would score the dimension `ok` and what would score
+   * it `conflict` (checklist plan §3). Absent for asks that declared none —
+   * every pre-checklist ask, and the conclusion floor's own guaranteed ask,
+   * which names a dimension but has no author behind it.
+   */
+  answerhood?: { ok_when: string; conflict_when: string };
+  /**
    * The negotiator-authored question persisted at park time. Absent only when
-   * the mid-flight safety gate stripped it from the turn.
+   * the mid-flight safety gate stripped it from the turn — or when no author
+   * was involved at all, which is the conclusion floor's guaranteed ask: the
+   * graph fires it from a dimension the agent scored unknown, so the park
+   * carries `dimension` and no `question`. The question-message author derives
+   * a renderable question from the dimension in exactly that case
+   * (`lib/question/dimension-question.ts`).
    */
   question?: ParkedNegotiationQuestion;
   /** The negotiation's turns, oldest first, ending in the park turn. */
@@ -100,7 +119,8 @@ interface RawTurn {
   action?: unknown;
   assessment?: { reasoning?: unknown };
   message?: unknown;
-  askUser?: { reason?: unknown; question?: unknown; dimension?: unknown };
+  askUser?: { reason?: unknown; question?: unknown; dimension?: unknown; answerhood?: unknown };
+  checklist?: unknown;
 }
 
 /** The `data` payload of an A2A turn message, or null for non-turn parts. */
@@ -131,6 +151,42 @@ function questionFrom(value: unknown): ParkedNegotiationQuestion | undefined {
     options,
     ...(typeof question.multiSelect === 'boolean' ? { multiSelect: question.multiSelect } : {}),
   };
+}
+
+/** The ask's answerhood map, or undefined when it declared none. */
+function answerhoodFrom(value: unknown): { ok_when: string; conflict_when: string } | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const map = value as Record<string, unknown>;
+  if (typeof map.ok_when !== 'string' || typeof map.conflict_when !== 'string') return undefined;
+  const ok = map.ok_when.trim();
+  const conflict = map.conflict_when.trim();
+  return ok && conflict ? { ok_when: ok, conflict_when: conflict } : undefined;
+}
+
+const CHECKLIST_KINDS = new Set(['mutual_want', 'hard_constraint', 'fit']);
+
+/** Same normalization the protocol's `dimensionKey` uses; adapters may not import it. */
+function dimensionKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * The kind of the named dimension, read off the checklist the park turn itself
+ * persisted. Matched by normalized name for the same reason the graph does:
+ * the ask spells the dimension in its own words and the checklist holds the
+ * authored one.
+ */
+function dimensionKindFrom(checklist: unknown, dimension: string): ParkedNegotiation['dimensionKind'] {
+  if (!Array.isArray(checklist)) return undefined;
+  const key = dimensionKey(dimension);
+  for (const entry of checklist) {
+    const item = entry as Record<string, unknown> | null;
+    if (!item || typeof item.name !== 'string' || typeof item.kind !== 'string') continue;
+    if (dimensionKey(item.name) === key && CHECKLIST_KINDS.has(item.kind)) {
+      return item.kind as ParkedNegotiation['dimensionKind'];
+    }
+  }
+  return undefined;
 }
 
 interface NegotiationRecord {
@@ -282,13 +338,18 @@ export class ParkedNegotiationReaderAdapter {
   ): ParkedNegotiation {
     const askUser = record.lastTurn?.action === 'ask_user' ? record.lastTurn.askUser : undefined;
     const question = questionFrom(askUser?.question);
+    const dimension = typeof askUser?.dimension === 'string' && askUser.dimension.trim().length > 0
+      ? askUser.dimension.trim()
+      : undefined;
+    const dimensionKind = dimension ? dimensionKindFrom(record.lastTurn?.checklist, dimension) : undefined;
+    const answerhood = answerhoodFrom(askUser?.answerhood);
     return {
       opportunityId,
       kind,
       ...(typeof askUser?.reason === 'string' ? { reason: askUser.reason } : {}),
-      ...(typeof askUser?.dimension === 'string' && askUser.dimension.trim().length > 0
-        ? { dimension: askUser.dimension.trim() }
-        : {}),
+      ...(dimension ? { dimension } : {}),
+      ...(dimensionKind ? { dimensionKind } : {}),
+      ...(answerhood ? { answerhood } : {}),
       ...(question ? { question } : {}),
       transcript: record.turns,
       parkedAt: record.lastCreatedAt ?? new Date(0),

@@ -43,7 +43,7 @@
 import { Job } from 'bullmq';
 
 import { classifyParkedNegotiation, consumeQuestionBlockAnswers, parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
-import type { NegotiationAnswerConsumptionPorts, QuestionBlock, QuestionerEnqueuePayload } from '@indexnetwork/protocol';
+import type { NegotiationAnswerConsumptionPorts, QuestionBlock, QuestionerEnqueuePayload, RoutedAnswer } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { openQuestionBlock, questionBlockRefs } from '../lib/question/open-question-message';
@@ -82,6 +82,18 @@ export interface QuestionAnswerJobData {
   questionMessageBody: string;
   /** ISO timestamp of the reply; fixed at enqueue so retries are stable. */
   repliedAt: string;
+  /**
+   * The reply already routed onto the block's refs by the answer-precedence
+   * gate (`lib/question/answer-precedence.ts`), which had to run the evaluator
+   * before the chat turn to decide whether the orchestrator got this message
+   * at all. Carried so the job consumes that decision instead of re-running
+   * the same model call against the same text and possibly disagreeing with
+   * the routing the client was already acknowledged for.
+   *
+   * Absent for a job enqueued without a precedence decision, which routes here
+   * exactly as it always did.
+   */
+  routedAnswers?: RoutedAnswer[];
 }
 
 /**
@@ -587,9 +599,13 @@ export class QuestionMessageQueue {
 
     // Routing is interpretive (an LLM maps text onto refs) and has no safe
     // fallback; a hard routing failure throws so the queue's retry policy
-    // covers a transient model outage.
-    const router = this.deps?.answerRouter ?? new QuestionAnswerRouter();
-    const routed = await router.route({ block, replyText: data.replyText });
+    // covers a transient model outage. A payload that already carries the
+    // precedence gate's routing skips the call entirely — that decision is
+    // what kept this reply away from the orchestrator, so re-deciding it here
+    // could only contradict what the client was already told.
+    const routed = data.routedAnswers
+      ? { addressesQuestions: data.routedAnswers.length > 0, answers: data.routedAnswers }
+      : await (this.deps?.answerRouter ?? new QuestionAnswerRouter()).route({ block, replyText: data.replyText });
     if (!routed.addressesQuestions) {
       // Ordinary conversation in a DM with an open question-message. The
       // negotiator's chat reply handles it; consumption stays silent.
@@ -703,11 +719,16 @@ export interface QuestionAnswerReplyDetectionDeps {
  * ('negotiator-intent', intentId) session, check whether the conversation has
  * an open question-message — the newest AGENT message, when it carries a
  * parseable question block — and if so enqueue consumption of the reply
- * against it. Runs after the reply is persisted and BEFORE the negotiator's
- * streamed response is, so "newest agent message" is still the message the
- * client was answering. The still-parked half of the open-message predicate
- * is deliberately left to the serialized job: it is authoritative there, and
- * a block whose parks all resolved simply consumes to nothing.
+ * against it. The still-parked half of the open-message predicate is
+ * deliberately left to the serialized job: it is authoritative there, and a
+ * block whose parks all resolved simply consumes to nothing.
+ *
+ * `precedence` is what the answer-precedence gate already resolved BEFORE the
+ * chat turn ran (`lib/question/answer-precedence.ts`): the open message it
+ * anchored on and the routing it accepted. When present, this function is a
+ * plain enqueue of that decision — no second anchor read, no second routing
+ * call. Without it the function re-derives the anchor itself, exactly as it
+ * did when detection ran after the stream.
  *
  * Returns whether a consumption job was enqueued. Never throws — reply
  * detection must not break the chat turn.
@@ -719,11 +740,38 @@ export async function enqueueQuestionAnswerReply(
     sessionId: string;
     replyText: string;
     replyMessageId: string;
+    /** The precedence gate's accepted decision, when one was taken. */
+    precedence?: {
+      questionMessageId: string;
+      questionMessageBody: string;
+      routedAnswers: RoutedAnswer[];
+    };
   },
   deps?: QuestionAnswerReplyDetectionDeps,
 ): Promise<boolean> {
   const detectionLogger = log.lib.from('question-answer.reply-detection');
   try {
+    const addConsumeAnswerJob = deps?.addConsumeAnswerJob
+      ?? ((data: QuestionAnswerJobData) => questionMessageQueue.addConsumeAnswerJob(data));
+    const base = {
+      userId: input.userId,
+      intentId: input.intentId,
+      sessionId: input.sessionId,
+      replyText: input.replyText,
+      replyMessageId: input.replyMessageId,
+      repliedAt: new Date().toISOString(),
+    };
+
+    if (input.precedence) {
+      await addConsumeAnswerJob({
+        ...base,
+        questionMessageId: input.precedence.questionMessageId,
+        questionMessageBody: input.precedence.questionMessageBody,
+        routedAnswers: input.precedence.routedAnswers,
+      });
+      return true;
+    }
+
     const getSessionMessages = deps?.getSessionMessages
       ?? (async (sessionId: string) => (await import('../services/chat.service')).chatSessionService.getSessionMessages(sessionId));
     const messages = await getSessionMessages(input.sessionId);
@@ -732,17 +780,10 @@ export async function enqueueQuestionAnswerReply(
     const parsed = parseQuestionMessage(newestAgentMessage.content);
     if (!parsed) return false;
 
-    const addConsumeAnswerJob = deps?.addConsumeAnswerJob
-      ?? ((data: QuestionAnswerJobData) => questionMessageQueue.addConsumeAnswerJob(data));
     await addConsumeAnswerJob({
-      userId: input.userId,
-      intentId: input.intentId,
-      sessionId: input.sessionId,
-      replyText: input.replyText,
-      replyMessageId: input.replyMessageId,
+      ...base,
       questionMessageId: newestAgentMessage.id,
       questionMessageBody: newestAgentMessage.content,
-      repliedAt: new Date().toISOString(),
     });
     return true;
   } catch (err) {

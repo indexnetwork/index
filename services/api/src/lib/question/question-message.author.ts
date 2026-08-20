@@ -18,6 +18,15 @@
  * park-time questions (each already passed the identifier-aware safety gate
  * before it persisted) under fixed server-owned prose. Only a parked set with
  * no renderable question at all resolves to null — then there is no message.
+ *
+ * A park fired by the conclusion floor (#1464) has NO authored question: the
+ * graph, not an agent, decided to ask, and what it carries is the checklist
+ * dimension it fired on. Such a park gets its question DERIVED from that
+ * dimension (`dimension-question.ts`) before anything here reads one, so it
+ * travels this module as an ordinary parked question does and reaches the
+ * client as a real question block. Without that, the deterministic
+ * composition had nothing to render for it and the whole message degraded to
+ * prose — the delivery shape that made the 2026-08-20 incident possible.
  */
 import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
@@ -28,6 +37,7 @@ import { QuestionBlockSchema } from '@indexnetwork/protocol';
 import type { ParkedNegotiation } from '../../adapters/parked-negotiation.reader.adapter';
 import type { NegotiatorClientDmMessage } from '../../adapters/negotiator-client-dm.retrieval.adapter';
 import { isSafeQuestionMessageProse, isSafeQuestionMessagePrompt } from './negotiation-question.contract';
+import { deriveQuestionFromDimension } from './dimension-question';
 import { log } from '../log';
 
 const logger = log.lib.from('question-message.author');
@@ -73,12 +83,35 @@ const AuthoredOutputSchema = z.object({
   })).min(1).max(20),
 });
 
+/**
+ * A parked negotiation with its RENDERABLE question resolved: the one its
+ * agent authored at park time, or — for a conclusion-floor ask, which has no
+ * author — one derived deterministically from the dimension the graph fired
+ * on (`dimension-question.ts`).
+ *
+ * Resolved once, at the top of `author`, so every path below reads one field:
+ * the model grounding, the block mapping, and the deterministic composition
+ * all treat a derived question exactly as they treat an authored one. That
+ * equality is the point — it is what makes a floor-fired park deliver as a
+ * real question block instead of degrading to prose.
+ */
+interface RenderableParked extends ParkedNegotiation {
+  /** True when `question` was derived from the dimension rather than authored. */
+  questionDerived?: boolean;
+}
+
+function withRenderableQuestion(parked: ParkedNegotiation): RenderableParked {
+  if (parked.question) return parked;
+  const derived = deriveQuestionFromDimension(parked);
+  return derived ? { ...parked, question: derived, questionDerived: true } : parked;
+}
+
 function truncate(text: string, max: number): string {
   const trimmed = text.trim();
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
 }
 
-function renderParkedNegotiation(parked: ParkedNegotiation, index: number): string {
+function renderParkedNegotiation(parked: RenderableParked, index: number): string {
   const lines = [`Parked negotiation ${index}:`];
   if (parked.reason) lines.push(`- Pause category: ${parked.reason}`);
   if (parked.dimension) lines.push(`- Checklist dimension it is stuck on: ${parked.dimension}`);
@@ -86,8 +119,13 @@ function renderParkedNegotiation(parked: ParkedNegotiation, index: number): stri
     const options = parked.question.options
       .map((option) => `${option.label} (${option.description})`)
       .join('; ');
-    lines.push(`- Question authored at park time: [${parked.question.title}] ${parked.question.prompt}`);
-    lines.push(`- Its decision options: ${options}`);
+    // A derived question is labelled as such: it was written from the
+    // dimension, not by the agent that ran this negotiation, so "preserve its
+    // substance" applies to the dimension it names rather than to its wording.
+    lines.push(parked.questionDerived
+      ? `- Question derived from the dimension (no author): [${parked.question.title}] ${parked.question.prompt}`
+      : `- Question authored at park time: [${parked.question.title}] ${parked.question.prompt}`);
+    if (options) lines.push(`- Its decision options: ${options}`);
   } else {
     lines.push('- No question was authored at park time; derive the gap from the transcript.');
   }
@@ -139,9 +177,15 @@ export class QuestionMessageAuthor {
   async author(input: QuestionMessageAuthorInput): Promise<AuthoredQuestionMessage | null> {
     if (input.parked.length === 0) return null;
 
+    // Resolve every park's renderable question BEFORE anything reads one: a
+    // floor-fired park carries a dimension and no author, and deriving here
+    // is what keeps it a question block on both the model path and the
+    // deterministic fallback.
+    const parked = input.parked.map(withRenderableQuestion);
+
     const userMessage = [
       input.signalText ? `The client's signal: ${truncate(input.signalText, 800)}\n` : '',
-      input.parked.map(renderParkedNegotiation).join('\n\n'),
+      parked.map(renderParkedNegotiation).join('\n\n'),
       renderClientDm(input.clientDm),
       '\n\nWrite the message: the prose preamble and the questions with their "unblocks" indices.',
     ].join('\n');
@@ -155,7 +199,7 @@ export class QuestionMessageAuthor {
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
         ]);
-        const authored = this.validate(raw, input.parked);
+        const authored = this.validate(raw, parked);
         if (authored) return authored;
         logger.warn('Question-message model output rejected', { attempt: attempt + 1 });
       }
@@ -164,11 +208,11 @@ export class QuestionMessageAuthor {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    return this.compose(input.parked);
+    return this.compose(parked);
   }
 
   /** Schema + coverage + safety validation of one model round trip. */
-  private validate(raw: unknown, parked: ParkedNegotiation[]): AuthoredQuestionMessage | null {
+  private validate(raw: unknown, parked: RenderableParked[]): AuthoredQuestionMessage | null {
     const parsed = AuthoredOutputSchema.safeParse(raw);
     if (!parsed.success) return null;
 
@@ -212,11 +256,13 @@ export class QuestionMessageAuthor {
   }
 
   /**
-   * Deterministic composition: fixed prose over the park-time questions,
-   * verbatim. Negotiations whose park-time question was stripped as unsafe
-   * have nothing renderable and are left for a later regeneration.
+   * Deterministic composition: fixed prose over each park's renderable
+   * question, verbatim — the one its agent authored, or the one derived from
+   * its dimension. Negotiations with neither (an authored question stripped as
+   * unsafe, or a park naming no dimension at all) have nothing renderable and
+   * are left for a later regeneration.
    */
-  private compose(parked: ParkedNegotiation[]): AuthoredQuestionMessage | null {
+  private compose(parked: RenderableParked[]): AuthoredQuestionMessage | null {
     const questions = parked.flatMap((negotiation) =>
       negotiation.question
         ? [{

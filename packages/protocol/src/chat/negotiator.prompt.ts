@@ -46,6 +46,17 @@ export interface NegotiatorPromptOptions {
    * tool-reference rows; false/absent → prompt unchanged.
    */
   memoryToolsEnabled?: boolean;
+  /**
+   * The questions currently OPEN in this signal's DM, in the order the
+   * question-message lists them — one label per question (its checklist
+   * dimension, or a short form of its prompt). Rendered as the open-question
+   * section, and the numbers the model is shown here are exactly the numbers
+   * `answer_pending_question` takes.
+   *
+   * Only meaningful in an intent-pinned session, where the tool is registered.
+   * Absent/empty → the prompt is byte-identical to before.
+   */
+  openQuestions?: string[];
 }
 
 /**
@@ -58,7 +69,7 @@ function buildPinnedSignalSection(intentId: string, label?: string): string {
   return `
 ## Pinned signal
 This conversation was opened from one of the client's signals (intent id: ${intentId}${labelLine}). Treat it as the working focus of this chat:
-- When one of your negotiations for this signal parks needing the client's input, the open questions appear here as your own question message. Work through them conversationally; the client's replies are routed back to the parked negotiations automatically.
+- When one of your negotiations for this signal parks needing the client's input, the open questions appear here as your own question message. Work through them conversationally; a reply that plainly answers one is routed back to the parked negotiation before you ever see it.
 - Matches for this signal are already visible in the adjacent Radar. Do not repeat them or bulk-list them in chat. When the client explicitly references a match, use its opportunity and negotiation records to explain it or act on it; update_opportunity remains available only for their explicit instruction.
 - When summarizing negotiations, always state the scope: say “for this signal” for the default pinned view, or “across all your signals” when the client explicitly asks for full history. Separate CURRENT items (active or waiting on you) from CONCLUDED AGENT NEGOTIATIONS. If there are zero current items, say that plainly before mentioning concluded history. A concluded agent negotiation is not a completed connection. Never imply an ongoing negotiation that the same-turn list_negotiations result does not show.
 - When the client restates or sharpens what they want here, propose an update to this signal (update_intent) or a new premise — on their confirmation — so background matching reflects it.
@@ -79,6 +90,30 @@ When one of your negotiations parks needing the client's input, a question messa
 - When the client asks what needs their attention, point them at their signals' conversations and summarize what is waiting there in plain language.
 - When the client asks why something is being asked, explain the question's context from the record it came from (the negotiation, opportunity, or signal behind it) — look it up, don't guess.
 - Never pressure the client to answer; a parked negotiation keeps until they do.`;
+}
+
+/**
+ * Renders the open-question section for an intent-pinned session (#1466).
+ *
+ * The client's own agent is waiting on them for a named thing, and until this
+ * existed the persona had no way to know it — so a message that answered the
+ * question looked like nothing but a chance to sharpen the signal, and got
+ * treated as one.
+ *
+ * Only the LONG TAIL reaches this prompt at all: a reply that plainly answers
+ * an open question is routed by the answer evaluator before this persona runs.
+ * What is left is oblique, late, or mixed — which is exactly the material that
+ * needs the routing to be an explicit act.
+ */
+function buildOpenQuestionsSection(userName: string, openQuestions: string[]): string {
+  const list = openQuestions.map((label, index) => `${index + 1}. “${label}”`).join("\n");
+  return `
+## An open question is waiting on ${userName}
+One or more of your negotiations for this signal are parked until ${userName} answers. What is waiting, in the order your question message lists it:
+${list}
+- If their message answers one of these — even obliquely, even late, even folded into something else — call answer_pending_question with that number and what they said. It is the only thing that resumes the negotiation.
+- An answer is not a change of signal. While a question above is open, do NOT update this signal on the strength of a message that answers it: route the answer first. If they are genuinely doing both, say back what you understood as each and get their confirmation before you change the signal.
+- Never pressure them to answer, and never claim a negotiation resumed without a successful tool result for it.`;
 }
 
 /**
@@ -127,6 +162,15 @@ export function buildNegotiatorSystemContent(
   const pinnedSignalSection = pinnedIntentId
     ? buildPinnedSignalSection(pinnedIntentId, opts.pinnedIntentLabel)
     : buildQuestionInboxSection();
+  // Only in a pinned session: the tool that acts on this section is registered
+  // there and nowhere else, so naming open questions anywhere else would
+  // describe a capability the model does not have.
+  const openQuestionsSection = pinnedIntentId && opts.openQuestions?.length
+    ? buildOpenQuestionsSection(ctx.userName, opts.openQuestions)
+    : "";
+  const answerToolRow = pinnedIntentId && opts.openQuestions?.length
+    ? "\n| **answer_pending_question** | question, answer | Route what the client just said to one of the open questions above — the only thing that resumes a parked negotiation |"
+    : "";
   const memorySection = renderNegotiatorChatMemorySection(opts.memory ?? []);
   const memoryToolsSection = opts.memoryToolsEnabled ? buildMemoryToolsSection() : "";
   const memoryToolsRows = opts.memoryToolsEnabled
@@ -164,7 +208,7 @@ ${signalGuidance}
 - **Handle memberships**: list the communities they belong to and join or leave communities when they ask.
 - **Manage their contacts**: look up, add, remove, or import contacts when they ask (when contact features are enabled).
 - **Act on instruction**: every write — a negotiation response, an opportunity decision, a signal, a profile or premise change, a membership change, a contact change — happens only when the client explicitly asks for it in this conversation. Never write anything the client did not just ask for.
-${pinnedSignalSection}${memorySection}${memoryToolsSection}
+${pinnedSignalSection}${openQuestionsSection}${memorySection}${memoryToolsSection}
 ## What you cannot do here
 - **No direct discovery.** You cannot run matching or search for people yourself. Matching happens automatically in the background from the client's signals — shaping the signals is how you steer it. ${matchVisibility}
 - **No community administration.** You can join or leave communities for the client, but you cannot create, rename, or delete communities — point them to the app for that.
@@ -200,7 +244,7 @@ ${profileContext}
 | **read_networks** / **read_network_memberships** | — | The client's communities and memberships |
 | **create_network_membership** / **delete_network_membership** | networkId | Join/leave a community on instruction |
 | **list_contacts** / **search_contacts** / **remove_contact** | ... | The client's contacts |
-| **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |${memoryToolsRows}
+| **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |${answerToolRow}${memoryToolsRows}
 
 ## Grounding rules
 - **Never fabricate.** Every claim about a negotiation, opportunity, signal, or premise must come from a tool result in this conversation. If you have not looked it up this turn, look it up before answering. Only the client's identity and profile above are preloaded.

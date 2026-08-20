@@ -22,6 +22,7 @@ import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.i
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
 import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
+import type { NegotiatorAnswerToolsHost } from "../interfaces/negotiator-answer.interface.js";
 import type { QuestionerEnqueueFn } from "../../questions/question.input.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 import type { McpActivityCaller } from "./activity-projection.js";
@@ -174,6 +175,14 @@ interface ToolContextBindings {
    * orchestrator registry never sees these tools.
    */
   negotiatorMemoryTools?: NegotiatorMemoryToolsHost;
+  /**
+   * Host bridge for the negotiator persona's `answer_pending_question` tool —
+   * the long-tail lane of answer routing, for replies the deterministic
+   * precedence gate declined. Injected by the composition root; consumed
+   * exclusively by the negotiator persona's toolset, and only in an
+   * intent-scoped session (the question lives in one signal's DM).
+   */
+  negotiatorAnswerTools?: NegotiatorAnswerToolsHost;
   /**
    * Resolve a user's global user_context paragraph (profile-replacing identity
    * text), generating it on demand when absent. Mirrors `ToolDeps.getUserContextText`
