@@ -1376,6 +1376,26 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           }
         : undefined;
 
+      // The task is WORKING before the binding is captured. The capture locks
+      // the task row `state = 'working'` and refuses anything else — a fence on
+      // the coordinate the timeout/answer paths later settle against — while
+      // the graph only ever announced `working` at the END of a completed turn,
+      // below. On a task's FIRST turn the row therefore still held its creation
+      // state (`submitted`), and every first-turn park died on
+      // "Ask-user material binding is no longer valid": the turn was already on
+      // the record, so the failure was not even retryable and the negotiation
+      // stalled. Latent since the pre-contact consult shipped; the conclusion
+      // floor made first-turn asks routine, and a run-existing continuation's
+      // turn 0 is the common one.
+      //
+      // Announced HERE rather than at the top of the turn deliberately. A task
+      // that dies before putting anything on the record is reclaimed by the
+      // watchdog's ten-minute `submitted` rule; flipping at turn start would
+      // hide such a task under the twelve-hour `working` rule instead. At this
+      // point the turn IS on the record, so `working` is simply true — and the
+      // end-of-turn flip below stays for every path that does not park.
+      await deps.database.updateTaskState(state.taskId, 'working', undefined, state.continuationExecution);
+
       const askUserBinding = await deps.database.captureNegotiationAskUserBinding({
         taskId: state.taskId,
         settlementId,

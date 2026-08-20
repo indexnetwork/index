@@ -20,6 +20,38 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.3.1 - 2026-08-20
+
+### Fixed
+
+- **A task's FIRST turn can park.** The first `ask_user` this system ever fired —
+  produced by 23.3.0's conclusion floor, on the first turn of a resumed
+  session — died at the park with "Ask-user material binding is no longer
+  valid", and the negotiation stalled. The binding capture locks the task row
+  `state = 'working'` and refuses anything else; the graph announced `working`
+  only at the END of a completed turn, so on a task's first turn the row still
+  held its creation state (`submitted`) and no first-turn park could bind. The
+  turn was already on the record when it threw, which makes the failure
+  unretryable — so the whole opportunity ended as `agent_error`.
+
+  The turn node now announces `working` before the capture rather than only
+  after the turn, carrying the same continuation-execution fence as every other
+  state write. The fence in the adapter is unchanged: `working` is the true
+  precondition for a settlement coordinate, and what was wrong was the
+  sequencing, not the check. The flip sits at the park rather than at the top of
+  the turn deliberately — a task that dies before putting anything on the record
+  stays reclaimable under the watchdog's ten-minute `submitted` rule instead of
+  disappearing under the twelve-hour `working` one — and the end-of-turn flip
+  stays for every path that does not park.
+
+  Latent since the turn-0 pre-contact consult shipped and never once hit,
+  because no first-turn ask was ever drafted; the conclusion floor made them
+  routine, a run-existing continuation's turn 0 being the common case. The
+  twenty-five specs covering this loop all missed it because their database
+  stubs accepted any task state at capture time — the new spec's stub asserts
+  the state exactly as the adapter does, on the agent-drafted ask, the
+  floor-guaranteed one, the pre-contact consult and a later-turn ask alike.
+
 ## 23.3.0 - 2026-08-20
 
 ### Changed
