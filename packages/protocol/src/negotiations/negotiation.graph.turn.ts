@@ -453,11 +453,14 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     ): { turn: NegotiationTurn; checklist: ChecklistItem[] } => {
       // `askUser.guaranteed` is the graph's own mark — the durable record that
       // the conclusion floor already fired an ask for this seat, which is what
-      // bounds the guarantee to one per negotiation per principal. It reaches
-      // the generation schema like every other field on the ask payload, so a
-      // draft could claim it and quietly retire its own seat's guarantee.
-      // Every draft passes through here, so this is where the claim is dropped
-      // and the floor stays the field's only writer.
+      // bounds the guarantee to one per negotiation per principal. The system
+      // agent can no longer claim it: `AskUserGenerationSchema` omits the field
+      // from what a model is offered at all, which is also what stopped a
+      // drafted `guaranteed: false` from killing the whole turn. What still
+      // arrives by another route is an EXTERNAL agent's turn — dispatched
+      // personal agents draft against the permissive persisted shape, not the
+      // generation schema — so the claim is dropped here, and the floor stays
+      // the field's only writer whichever way the draft came in.
       const draftTurnUnmarked = draftTurn.askUser?.guaranteed === true
         ? (() => {
             const { guaranteed: _claimed, ...askUser } = draftTurn.askUser;

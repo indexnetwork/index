@@ -66,18 +66,27 @@ describe('agent-authored consultation question', () => {
     expect(JSON.parse(JSON.stringify(parsed))).toEqual({ reason: 'repeated_non_convergence' });
   });
 
-  it('enforces the renderer constraints on the authored question', () => {
-    expect(AskUserPayloadSchema.safeParse({
+  it('repairs the renderer constraints rather than refusing the question', () => {
+    // These caps are checked inside a structured-output call, where a refusal
+    // throws and takes the whole turn with it. So an over-long title and a
+    // surplus option are repaired toward being deliverable — see
+    // `negotiation.ask-generation-schema.spec.ts` for the seam this protects.
+    expect(AskUserPayloadSchema.parse({
       reason: 'unresolved_owner_constraint',
       question: { ...question, title: 'x'.repeat(13) },
-    }).success).toBe(false);
+    }).question!.title).toBe('x'.repeat(12));
+    expect(AskUserPayloadSchema.parse({
+      reason: 'unresolved_owner_constraint',
+      question: { ...question, options: Array.from({ length: 5 }, () => question.options[0]) },
+    }).question!.options).toHaveLength(4);
+  });
+
+  it('still refuses a question with nothing honest to repair toward', () => {
+    // A second option cannot be invented, and a one-option "choice" is not a
+    // question. The generation schema drops such a question and keeps the ask.
     expect(AskUserPayloadSchema.safeParse({
       reason: 'unresolved_owner_constraint',
       question: { ...question, options: [question.options[0]] },
-    }).success).toBe(false);
-    expect(AskUserPayloadSchema.safeParse({
-      reason: 'unresolved_owner_constraint',
-      question: { ...question, options: Array.from({ length: 5 }, () => question.options[0]) },
     }).success).toBe(false);
   });
 

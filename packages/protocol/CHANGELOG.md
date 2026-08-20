@@ -20,6 +20,48 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.3.2 - 2026-08-20
+
+### Fixed
+
+- **A question the model wrote itself must not die at the schema that asked for
+  it.** For the first time, the negotiator drafted its own `ask_user` — 23.3.1's
+  re-issue prompt worked and no floor coercion was needed — and the draft was
+  refused by the very schema it was drafted into, twice over. `guaranteed`, the
+  conclusion floor's own mark, was an optional field on the payload handed to
+  the model; the model filled it with `false`, and `z.literal(true)` rejects
+  `false`. The authored `question.title` carried a silent 12-character cap; the
+  model wrote a real 40-character title. Both refusals throw INSIDE the
+  structured-output call, so the turn failed with nothing persisted, the retry
+  was refused the same way, the ask was coerced to a counter, the dialogue ran
+  to the cap and declined. The question was never delivered.
+
+  Two seams were sharing one declaration, and they have opposite jobs. There
+  are now two. `AskUserGenerationSchema` is what a model is ALLOWED TO SAY: it
+  OMITS `guaranteed` entirely — a field only the graph may write should never
+  be offered to the model, rather than offered and defended against afterwards
+  — and it discards unrecognised keys instead of failing the turn over them,
+  since this parse is what produces the object that gets persisted. The
+  persisted `AskUserPayloadSchema` is unchanged: it keeps `guaranteed` and
+  stays `.strict()`, because the record is where the floor's mark is read back
+  out of and where a stray key would do damage. The turn node still strips an
+  agent-claimed mark — externally dispatched personal agents draft against the
+  permissive shape, not the generation schema — so the floor remains the only
+  writer whichever way a draft arrives.
+
+  Every renderer cap on a question now REPAIRS instead of refusing, which is the
+  protocol's own philosophy (`normalizeChecklistItem` repairs toward `unknown`;
+  the anti-echo guard repairs toward honesty) applied where it was missing: a
+  title, prompt, option label or description that runs long is truncated on a
+  word boundary, and a fifth option is dropped. The emitted JSON schema is
+  unchanged, so the model is still TOLD each cap — repair is only what happens
+  when it ignores one — and the conclusion-floor re-issue now names the title
+  cap where it tells the agent to write the question itself. Where nothing can
+  be honestly repaired (one option is not a choice), the generation schema
+  degrades the authored question to absent and keeps the ask: an ask with no
+  wording falls back to the server template, a path the floor's own guaranteed
+  ask already walks. Losing the wording is a smaller loss than losing the turn.
+
 ## 23.3.1 - 2026-08-20
 
 ### Fixed
