@@ -11,6 +11,7 @@
  * side's `(recipientUserId, recipientIntentId)`; the parked negotiation is
  * the durable record and the DM message is its rendering.
  */
+import type { ChecklistKind } from "../shared/schemas/negotiation-checklist.schema.js";
 import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { NegotiationQuestionCandidate } from "./question.schema.js";
 import type { NegotiationConsultationReason } from "../negotiations/negotiation.module.js";
@@ -37,6 +38,33 @@ export interface PostStallNegotiationContext extends NegotiationContextBase {
 }
 
 /**
+ * The checklist dimension a consultation is about, carried to whatever authors
+ * the client-facing question.
+ *
+ * Purely additive, and every field is content the client's own side already
+ * holds: a dimension name the client's agent wrote from the client's own
+ * signal, and the answerhood map it declared. No counterparty identity, no
+ * evaluator text — the payload's existing generic hints stay the only account
+ * of the other side.
+ *
+ * It exists because a park can now be fired by the graph rather than drafted by
+ * the agent (the conclusion floor), and such a park carries no authored
+ * question. Without the dimension the author would fall back to deriving a gap
+ * from the transcript, which is exactly the "would you be open to connecting?"
+ * shape the checklist protocol exists to abolish. With it, the question is
+ * written from a named thing the agent itself scored unknown.
+ */
+export interface NegotiationAskedDimension {
+  /** The frozen checklist dimension's name, as the agent authored it. */
+  name: string;
+  kind: ChecklistKind;
+  /** What answers would score it ok/conflict, when the ask declared them. */
+  answerhood?: { ok_when: string; conflict_when: string };
+  /** True when the conclusion floor fired this ask on the agent's behalf. */
+  guaranteed?: boolean;
+}
+
+/**
  * Negotiation-inflight context — a negotiator mid-negotiation wants to ask its
  * OWN client a question before continuing (the `ask_user` action, P3.2).
  * The negotiator supplies only a closed category.
@@ -51,6 +79,15 @@ export interface NegotiationInflightContext {
   consultationPolicyReason: NegotiationConsultationReason;
   /** The user's global user_context paragraph (profile-replacing identity text). */
   userContext?: string;
+  /**
+   * The checklist dimension this consultation is about, when the ask names one.
+   *
+   * Optional so every existing producer and consumer stays valid: asks from
+   * before the checklist protocol and policy-inferred consultations name no
+   * dimension, and an author that does not read this field degrades to exactly
+   * today's behaviour.
+   */
+  dimension?: NegotiationAskedDimension;
 }
 
 /**

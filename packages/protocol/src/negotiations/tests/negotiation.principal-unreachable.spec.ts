@@ -232,7 +232,17 @@ describe("an unreachable principal is never consulted", () => {
   });
 
   it("refuses the acting seat's ask even when the dimension is unknown, pivotal and the principal's own", async () => {
-    const stubs = mkStubs({ unreachableUserIds: ["u-src"] });
+    // BOTH principals unreachable, where this used to name only the acting
+    // one. The claim is unchanged — an unreachable principal is never
+    // consulted — but the record it asserts over is the whole negotiation, and
+    // the conclusion floor now fires a guaranteed ask for any REACHABLE seat
+    // that leaves an askable unknown standing. With a reachable counterparty
+    // the "no ask_user anywhere" assertion would be failed by the other side's
+    // legitimate consultation, which this test says nothing about. Making both
+    // sides unreachable keeps the assertion true of exactly what it means, and
+    // pins the floor's inertness in this corner at the same time: nothing
+    // reachable, nothing fires.
+    const stubs = mkStubs({ unreachableUserIds: ["u-src", "u-cand"] });
     agentScript = [askTurn(), turn("decline", "not for me")];
     await runGraph(stubs);
 

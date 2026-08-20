@@ -58,6 +58,23 @@ const CHECKLIST: ChecklistDraftItem[] = [
   dimension("Stage fit", "fit", "unknown"),
 ];
 
+/**
+ * The same three dimensions, all scored, one of them in conflict.
+ *
+ * Filler for the cases whose claim is about the FIRST turn only. The
+ * conclusion floor refuses a terminal verdict while an askable unknown stands
+ * and, failing that, fires the ask itself — so a filler turn left over the
+ * frozen unknowns would park the negotiation and answer a question the test is
+ * not asking. Scored and conflicted, the filler simply ends the negotiation and
+ * the assertions read what they were written to read. The floor's own behaviour
+ * is pinned in `negotiation.conclude-floor.spec.ts`.
+ */
+const SCORED_CHECKLIST: ChecklistDraftItem[] = [
+  dimension("Mutual want", "mutual_want", "ok", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
+  dimension("Location", "fit", "conflict", "Bob's intent states Berlin only; Alice's states remote"),
+  dimension("Stage fit", "fit", "ok", "Bob's intent names early-stage product work"),
+];
+
 const ANSWERHOOD = { ok_when: "Alice says remote is fine", conflict_when: "Alice says Berlin only" };
 
 const QUESTION = {
@@ -305,7 +322,7 @@ describe("checklist protocol at the turn seam", () => {
     const stubs = mkStubs();
     agentScript = [
       askTurn(askUser as Record<string, unknown>),
-      turn("decline", "not for me"),
+      turn("decline", "not for me", { checklist: SCORED_CHECKLIST } as Partial<NegotiationTurn>),
     ];
     await runGraph(stubs);
 
@@ -317,15 +334,26 @@ describe("checklist protocol at the turn seam", () => {
   });
 
   it("refuses a second ask about a topic already asked in this negotiation", async () => {
+    // "Location" is the only dimension left open, deliberately: the claim here
+    // is that the SAME topic cannot be asked twice, and the conclusion floor
+    // would otherwise (correctly) fire an ask about the other open dimension —
+    // which would park the negotiation and make this fixture read as though the
+    // repeat had been admitted. With one open topic and that topic already
+    // asked, nothing is askable and the repeat stands alone.
+    const oneOpen: ChecklistDraftItem[] = [
+      dimension("Mutual want", "mutual_want", "ok", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
+      dimension("Location", "fit", "unknown"),
+      dimension("Stage fit", "fit", "ok", "Bob's intent names early-stage product work"),
+    ];
     const prior = [
-      turnMsg("u-src", turn("outreach", "opening", { message: "hi", checklist: CHECKLIST } as Partial<NegotiationTurn>), 0),
+      turnMsg("u-src", turn("outreach", "opening", { message: "hi", checklist: oneOpen } as Partial<NegotiationTurn>), 0),
       turnMsg("u-cand", turn("counter", "pushing back"), 1),
       turnMsg("u-src", askTurn({
         reason: "unresolved_owner_constraint",
         question: QUESTION,
         dimension: "Location",
         answerhood: ANSWERHOOD,
-      }), 2),
+      }, oneOpen), 2),
       turnMsg("u-cand", turn("counter", "still pushing"), 3),
     ];
     const stubs = mkStubs({ priorMessages: prior });
@@ -336,8 +364,8 @@ describe("checklist protocol at the turn seam", () => {
         question: QUESTION,
         dimension: "  location  ",
         answerhood: ANSWERHOOD,
-      }),
-      turn("withdraw", "done"),
+      }, oneOpen),
+      turn("withdraw", "done", { checklist: oneOpen } as Partial<NegotiationTurn>),
     ];
     await runGraph(stubs, { maxTurns: 8 });
 

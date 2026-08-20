@@ -58,11 +58,39 @@ const OPEN_CHECKLIST: ChecklistDraftItem[] = [
   dimension("Stage fit", "fit", "unknown"),
 ];
 
-/** The same three, with one dimension genuinely in conflict. */
+/**
+ * The same three, with one dimension genuinely in conflict — and the third
+ * SCORED rather than left open.
+ *
+ * "Stage fit" used to be unknown here, incidentally: this fixture exists to
+ * prove that a conflict admits a decline, and the third dimension's score was
+ * never part of that claim. It is scored now because the conclusion floor
+ * refuses ANY terminal verdict while an askable unknown stands, so an
+ * incidental unknown would send this decline into a floor re-issue and the
+ * fixture would stop testing the decline law at all. What the two rules say
+ * together is exactly what this pair of fixtures now reads as: ask what is
+ * still askable, then decide on the conflict.
+ */
 const CONFLICTED_CHECKLIST: ChecklistDraftItem[] = [
   dimension("Mutual want", "mutual_want", "ok", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
   dimension("Studio operations", "fit", "conflict", "Bob's profile states he has never worked in a studio"),
-  dimension("Stage fit", "fit", "unknown"),
+  dimension("Stage fit", "fit", "ok", "Bob's intent names early-stage product work"),
+];
+
+/**
+ * The same three with nothing left open.
+ *
+ * The copy-loop cases below are about REPEATED TEXT and nothing else, and the
+ * conclusion floor fires on any turn that leaves an askable unknown standing —
+ * which would park every one of these fixtures on a client question before the
+ * guard under test ever ran. A settled checklist is how each case keeps its own
+ * claim: the floor is inert, and the assertions see the copy-loop guard alone.
+ * The floor's own behaviour is pinned in `negotiation.conclude-floor.spec.ts`.
+ */
+const SETTLED_CHECKLIST: ChecklistDraftItem[] = [
+  dimension("Mutual want", "mutual_want", "ok", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
+  dimension("Studio operations", "fit", "ok", "Bob's intent names studio tooling work"),
+  dimension("Stage fit", "fit", "ok", "Bob's intent names early-stage product work"),
 ];
 
 const turn = (
@@ -79,7 +107,7 @@ const turn = (
 const said = (
   action: string,
   message: string,
-  checklist: ChecklistDraftItem[] = OPEN_CHECKLIST,
+  checklist: ChecklistDraftItem[] = SETTLED_CHECKLIST,
 ) => turn(action, `${action} turn`, { message, checklist } as Partial<NegotiationTurn>);
 
 const OPENING = "Alice is hiring an ML engineer with studio operations experience.";
@@ -317,8 +345,8 @@ describe("the copy loop at the turn seam", () => {
       said("outreach", OPENING),
       // Two message-less turns in a row are not a copy loop; they are two
       // agents reasoning without addressing each other's text.
-      turn("counter", "not yet convinced", { checklist: OPEN_CHECKLIST } as Partial<NegotiationTurn>),
-      turn("counter", "not yet convinced", { checklist: OPEN_CHECKLIST } as Partial<NegotiationTurn>),
+      turn("counter", "not yet convinced", { checklist: SETTLED_CHECKLIST } as Partial<NegotiationTurn>),
+      turn("counter", "not yet convinced", { checklist: SETTLED_CHECKLIST } as Partial<NegotiationTurn>),
       turn("accept", "convinced"),
     ];
     await runGraph(stubs);
@@ -398,7 +426,12 @@ describe("the verdict law at the turn seam", () => {
     const stubs = mkStubs();
     agentScript = [
       said("outreach", OPENING),
-      // The observed decline: "repeated lack of clarity", over unknowns.
+      // The observed decline: "repeated lack of clarity", over a checklist
+      // holding no conflict. Scored rather than open for the reason
+      // `CONFLICTED_CHECKLIST` is: the claim here is "no conflict, no decline",
+      // and an open dimension would route the turn through the conclusion floor
+      // before the decline law ever spoke. Both rules refuse this decline; this
+      // fixture isolates the one it was written for.
       said("decline", "I have asked repeatedly and nothing was clarified."),
       said("counter", "one more angle"),
       turn("accept", "settled"),
