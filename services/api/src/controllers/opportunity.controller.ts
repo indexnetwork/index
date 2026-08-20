@@ -278,6 +278,48 @@ export class OpportunityController {
   }
 
   /**
+   * POST /opportunities/:id/reopen — reopen a dead pairing and queue its
+   * negotiation re-run. Accepts a full UUID or short ID prefix.
+   *
+   * Terminal-only: `rejected`, `stalled`, or `expired`. A `pending` match is
+   * waiting on its owner's decision and an `accepted` one already connected —
+   * both answer 409, as does a match that still has a live negotiation task
+   * (the response then carries that task's `taskId`).
+   *
+   * @param req - Incoming request (body is ignored; the agent network scope is read from it).
+   * @param user - Authenticated user; must be an actor on the opportunity.
+   * @param params - Route params; `id` is the opportunity ID.
+   * @returns 202 `{ opportunityId, status: 'stalled', enqueued: true }`, or a
+   *   structured error (403 for non-actors, 404 unknown, 409 not reopenable).
+   */
+  @Post('/:id/reopen')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async reopen(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const { networkScopeId } = await withAgentScope(req, user);
+    const result = await opportunityService.reopenOpportunity(resolved.id, user.id, {
+      ...(networkScopeId ? { networkScopeId } : {}),
+    });
+    if ('error' in result) {
+      return Response.json(
+        result.taskId ? { error: result.error, taskId: result.taskId } : { error: result.error },
+        { status: result.status },
+      );
+    }
+    logger.info('Opportunity reopened', { userId: user.id, opportunityId: resolved.id });
+    return Response.json(result, { status: 202 });
+  }
+
+  /**
    * POST /opportunities/:id/owner-approvals — issue a single-use owner-approval
    * proof for a pending MCP-agent interaction challenge (IND-593).
    *

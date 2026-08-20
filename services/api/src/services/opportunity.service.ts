@@ -4,6 +4,9 @@ import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDataba
 import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
+// Imported from the owning adapter rather than the barrel: the reopen write is
+// api-local, and specs that stub the barrel should not have to know about it.
+import { OpportunityDatabaseAdapter, type ReopenOpportunityResult } from '../adapters/opportunity.database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
@@ -13,6 +16,7 @@ import type { OutcomeOutbox } from '@indexnetwork/protocol';
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
 const updateStatusLogger = log.service.from("OpportunityService.updateOpportunityStatus");
+const reopenLogger = log.service.from("OpportunityService.reopenOpportunity");
 
 /**
  * Lifecycle statuses surfaced in the default opportunity list (when no explicit
@@ -223,6 +227,25 @@ interface OpportunityPresentationDeps {
   gatherContext?: typeof gatherPresenterContext;
 }
 
+/**
+ * Reopen seam. The reopen write is api-local (it lives on
+ * `OpportunityDatabaseAdapter`, not on the protocol database port), so the
+ * service reaches it through this narrow port rather than through `this.db`.
+ */
+export interface OpportunityReopenDatabase {
+  reopenOpportunityForRerun(id: string): Promise<ReopenOpportunityResult | null>;
+}
+
+/** Enqueue seam for the re-run job, so specs can assert the enqueue without Redis. */
+export interface NegotiationRerunQueue {
+  addJob(data: { opportunityId: string; userId: string }): Promise<unknown>;
+}
+
+export interface OpportunityReopenDeps {
+  database?: OpportunityReopenDatabase;
+  queue?: NegotiationRerunQueue;
+}
+
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
@@ -238,6 +261,10 @@ export class OpportunityService {
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
+  /** api-local reopen write; see {@link OpportunityService.reopenOpportunity}. */
+  private readonly reopenDb: OpportunityReopenDatabase;
+  /** Injected only by specs; production resolves the real queue lazily. */
+  private readonly rerunQueue: NegotiationRerunQueue | null;
 
   constructor(
     database?: OpportunityControllerDatabase,
@@ -245,6 +272,7 @@ export class OpportunityService {
     outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
     presentation: OpportunityPresentationDeps = {},
     askingFirstTasks: AskingFirstTaskReader = conversationDatabaseAdapter,
+    reopen: OpportunityReopenDeps = {},
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
@@ -255,6 +283,15 @@ export class OpportunityService {
     this.deliveryCache = new RedisCacheAdapter();
     this.outcomeRecorder = outcomeRecorder;
     this.askingFirstTasks = askingFirstTasks;
+    this.reopenDb = reopen.database ?? new OpportunityDatabaseAdapter();
+    this.rerunQueue = reopen.queue ?? null;
+  }
+
+  /** The re-run queue, imported lazily so loading the service never opens Redis. */
+  private async getRerunQueue(): Promise<NegotiationRerunQueue> {
+    if (this.rerunQueue) return this.rerunQueue;
+    const { negotiationRunExistingQueue } = await import('../queues/negotiations/run-existing.queue');
+    return negotiationRunExistingQueue;
   }
 
   private getPresenter(): OpportunityPresenter {
@@ -951,6 +988,79 @@ export class OpportunityService {
       counterpartUserId: counterpart.userId,
       opportunity: sanitizeOpportunityForResponse(updated),
     };
+  }
+
+
+  /**
+   * Reopen a dead pairing and queue its negotiation re-run.
+   *
+   * The user's lever for a match that died on a bad turn: it resets the
+   * opportunity to `stalled` and enqueues negotiate-existing, which is exactly
+   * the recovery that was being done by hand with SQL. Only an actor on the
+   * opportunity may pull it, and only from a terminal status — a `pending` row
+   * is awaiting its owner's decision and an `accepted` one already connected,
+   * so neither is a dead end to recover from.
+   *
+   * A re-run that the screen then vetoes (dev runs `NEGOTIATION_SCREEN_MODE`
+   * `enforce`) is a correct outcome, not a failure of this call.
+   *
+   * @param opportunityId - Resolved opportunity ID
+   * @param userId - The calling user, who must be an actor
+   * @param options - Network clamp derived from a network-scoped API-key principal
+   * @returns The 202 payload, or a structured error
+   */
+  async reopenOpportunity(
+    opportunityId: string,
+    userId: string,
+    options?: Pick<IntentScopeOptions, 'networkScopeId'>,
+  ): Promise<
+    | { opportunityId: string; status: 'stalled'; enqueued: true }
+    | { error: string; status: number; taskId?: string }
+  > {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) return { error: 'Opportunity not found', status: 404 };
+    if (!opp.actors.some((actor) => actor.userId === userId)) {
+      return { error: 'Not authorized to reopen this opportunity', status: 403 };
+    }
+    // A network-scoped agent principal may not reach out of its network, and
+    // learns nothing about what is outside it — same 404 as the sibling writes.
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+
+    const result = await this.reopenDb.reopenOpportunityForRerun(opportunityId);
+    if (!result) return { error: 'Opportunity not found', status: 404 };
+    if ('conflict' in result) {
+      if (result.conflict === 'active_negotiation') {
+        return {
+          error: 'This match already has a negotiation in flight',
+          status: 409,
+          taskId: result.taskId,
+        };
+      }
+      return {
+        error: `Only a rejected, stalled, or expired match can be reopened (this one is ${result.status})`,
+        status: 409,
+      };
+    }
+
+    try {
+      const queue = await this.getRerunQueue();
+      await queue.addJob({ opportunityId, userId });
+    } catch (err) {
+      // The row is now `stalled`, which is itself reopenable — so a retry of
+      // this same call re-queues cleanly. Say so rather than reporting success
+      // for a re-run that was never queued.
+      reopenLogger.error('Reopen flipped the status but the re-run could not be queued', {
+        opportunityId,
+        userId,
+        error: err,
+      });
+      return { error: 'Match reopened, but the negotiation run could not be queued — retry', status: 500 };
+    }
+
+    reopenLogger.info('Opportunity reopened for re-run', { opportunityId, userId });
+    return { opportunityId, status: 'stalled', enqueued: true };
   }
 
 
