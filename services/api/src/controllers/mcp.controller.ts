@@ -41,6 +41,7 @@ import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.ret
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { negotiatorAnswerToolsHost } from '../lib/question/negotiator-answer.host';
+import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
@@ -120,6 +121,11 @@ const protocolDeps = {
   // gate declined. Registered only in intent-pinned negotiator sessions; the
   // orchestrator registry never sees it.
   negotiatorAnswerTools: negotiatorAnswerToolsHost,
+  // #1471: host bridge for the negotiator persona's `reject_opportunity` /
+  // `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
+  // in chat before. Registered only in intent-pinned negotiator sessions; the
+  // orchestrator registry never sees it.
+  negotiatorVerdictTools: negotiatorVerdictToolsHost,
   ...(isNegotiatorMemoryWriteEnabled() && {
     negotiatorMemoryTools: {
       remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>

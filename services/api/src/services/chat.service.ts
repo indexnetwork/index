@@ -6,6 +6,7 @@ import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { readOpenQuestionsForIntent } from '../lib/question/open-question-message';
+import { readActionableCounterparties } from '../lib/agent/negotiator-verdict.host';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -793,6 +794,15 @@ export class ChatSessionService {
     const openQuestions = pinnedIntent?.intentId
       ? (await readOpenQuestionsForIntent(userId, pinnedIntent.intentId))?.questions ?? []
       : [];
+    // #1471: the counterparties of this signal the client can still pass a
+    // verdict on. Without them the persona has numbers for nothing and the
+    // verdict tools are unreachable — which was the whole gap: told to reject
+    // a match, the agent's only moves were to say so, or to edit the signal.
+    // Never throws (the reader swallows its own failures); empty → the prompt
+    // is byte-identical to before.
+    const actionableCounterparties = pinnedIntent?.intentId
+      ? await readActionableCounterparties(userId, pinnedIntent.intentId)
+      : [];
     return this.factory.withPersona(
       createNegotiatorPersona({
         agentName: agent.name,
@@ -805,6 +815,9 @@ export class ChatSessionService {
         ...(isNegotiatorMemoryWriteEnabled() ? { memoryToolsEnabled: true } : {}),
         ...(openQuestions.length > 0
           ? { openQuestions: openQuestions.map((question) => question.label) }
+          : {}),
+        ...(actionableCounterparties.length > 0
+          ? { actionableCounterparties: actionableCounterparties.map((counterparty) => counterparty.label) }
           : {}),
       }),
     );
