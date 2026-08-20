@@ -1,27 +1,52 @@
 /**
- * The open question-message, per signal (conversational questions,
- * docs/plans/2026-08-18-conversational-questions.md).
+ * Openness, per signal: what this user is currently being asked
+ * (conversational questions, docs/plans/2026-08-18-conversational-questions.md).
  *
- * A question-message is OPEN while its block still references at least one
- * negotiation parked on this user's side: that is what makes it answerable,
- * and it is derived at read time from the parked set — there is no stored
- * read/unread or open/closed state anywhere in this design.
+ * A question is OPEN iff its negotiation is PARKED on this user's side for
+ * this signal — a mid-flight consult whose exact task sits `input_required`
+ * inside its answer window, or a post-stall park. Nothing about the DM's
+ * message order enters that predicate.
  *
- * Two surfaces need that predicate over the same parked set:
+ * That is a correction, and the incident behind it is exact. Openness used to
+ * mean "the NEWEST agent message in the DM parses as a question block". On
+ * 2026-08-20 a question was delivered at 20:21 and an edit-confirmation
+ * landed after it at 20:24; the question was still the durable ask — its task
+ * stayed `input_required` for the whole answer window — but it was no longer
+ * the newest message. At 21:11 the client answered it and EVERY lane resolved
+ * "nothing open": the precedence gate fell through, the orchestrator edited
+ * the signal instead, and the model's own `answer_pending_question` call was
+ * refused by the host with `no_open_question`. One intervening agent message
+ * had buried an ask that was still waiting, and the park outlived its own
+ * answerability.
  *
- * - the regeneration job's edit rule, which anchors on the newest message in
- *   the conversation (a client reply since means the message is no longer the
- *   one to rewrite), and
- * - the notification snapshot, which anchors on the newest AGENT message (a
- *   reply does not un-ask the question; only consumption and the regeneration
- *   that follows it do).
+ * The spine's doctrine already said which of the two is the record: the
+ * parked negotiation is the durable record, the DM message is its rendering.
+ * So openness is read from the parked set, and the question BLOCK is
+ * RECOVERED rather than located:
  *
- * The anchor differs, the openness test does not — so the test lives here
- * once and each caller hands it the message it anchors on.
+ * - the delivered question-message when one exists ANYWHERE in the DM (the
+ *   newest agent message that carries a block referencing a still-parked
+ *   negotiation — not the newest agent message), else
+ * - a block DERIVED from the parked turns themselves, through the same
+ *   dimension derivation the message author uses (`dimension-question.ts`),
+ *   so a park whose message was never delivered is still answerable.
+ *
+ * Every answerability lane resolves through {@link readOpenQuestionsForIntent}
+ * — the precedence gate, the `answer_pending_question` host, and the
+ * orchestrator's context enumeration — so the numbers the model is shown and
+ * the numbers the host resolves cannot disagree. They are the same call, not
+ * the same logic written twice.
+ *
+ * {@link readOpenQuestionMessages} stays anchored on the newest agent message
+ * on purpose: it is the NOTIFICATION snapshot, and a notification deep-links a
+ * message the client can actually open. A buried question is an answerability
+ * problem, not a notification one.
  */
-import { parseQuestionMessage } from '@indexnetwork/protocol';
+import { QuestionBlockSchema, parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
 import type { QuestionBlock, QuestionBlockQuestion } from '@indexnetwork/protocol';
 
+import type { ParkedNegotiation } from '../../adapters/parked-negotiation.reader.adapter';
+import { renderableQuestion } from './dimension-question';
 import { log } from '../log';
 
 const logger = log.lib.from('open-question-message');
@@ -125,7 +150,7 @@ export async function readOpenQuestionMessages(
   return open;
 }
 
-/** One question of a signal's open question-message, as the client sees it. */
+/** One question this signal currently has open, as the client sees it. */
 export interface OpenQuestionForIntent {
   /** 1-based position in the block — the number the orchestrator is shown. */
   position: number;
@@ -135,17 +160,74 @@ export interface OpenQuestionForIntent {
   opportunityId: string;
 }
 
-/** A signal's open question-message, resolved for one intent scope. */
+/** Where the open block came from — see the module header. */
+export type OpenQuestionSource = 'delivered' | 'derived';
+
+/** A signal's open questions, resolved for one intent scope. */
 export interface OpenQuestionsForIntent {
-  sessionId: string;
+  /**
+   * The signal's negotiator DM, when it exists. Null only for a park whose
+   * DM was never created — openness does not depend on the conversation, but
+   * consuming an answer through the queue does, so the caller must check.
+   */
+  sessionId: string | null;
+  /**
+   * The delivered question-message's id, or — for a derived block — a
+   * synthetic id that names no persisted message
+   * ({@link derivedQuestionMessageId}). Carried for logging and job payloads
+   * only; nothing downstream reads a message by it.
+   */
   messageId: string;
-  /** The message body as delivered — the block an answer is consumed against. */
+  /** The block body an answer is consumed against — delivered, or serialized here. */
   body: string;
+  /** The block itself, so a caller never re-parses `body` to route against it. */
+  block: QuestionBlock;
+  source: OpenQuestionSource;
   questions: OpenQuestionForIntent[];
 }
 
 /** Label cap for a question shown in the orchestrator's context. */
 const MAX_QUESTION_LABEL_CHARS = 80;
+
+/** Block-schema caps the derived block must respect (question-block.schema.ts). */
+const MAX_BLOCK_QUESTIONS = 20;
+const MAX_PROMPT_CHARS = 2000;
+const MAX_DIMENSION_CHARS = 60;
+
+/**
+ * Server-owned prose for a DERIVED block. Never rendered to the client — a
+ * derived block is not delivered, it is only the shape an answer is routed
+ * and consumed against — but the body is a real question-message body, so it
+ * carries real prose rather than a placeholder.
+ */
+export const DERIVED_QUESTION_MESSAGE_PROSE =
+  'Some of the conversations I am running on this signal are waiting on details only you can provide.';
+
+/**
+ * The prompt for a park with nothing renderable at all: no authored question
+ * (the safety gate stripped it, or no author was involved) and no dimension to
+ * derive one from — a policy-inferred consultation, or a pre-checklist
+ * post-stall gap.
+ *
+ * Fixed, server-owned copy. The alternative is dropping the park from the open
+ * set, and that is exactly the hole this module exists to close: a park with a
+ * live answer window must be answerable, and answering needs a question to
+ * route onto. A generic prompt bound to the right negotiation resumes the
+ * right negotiation; no prompt resumes nothing.
+ */
+export const UNRENDERABLE_PARK_PROMPT =
+  'One of the conversations I am running on this signal is parked on something only you can settle. '
+  + 'What should I take as your answer?';
+
+/**
+ * Synthetic id for a derived block, so payloads and logs can name it. It is
+ * deliberately not a uuid and deliberately not a message id: nothing may look
+ * it up, and a reader that tries will fail loudly rather than silently read
+ * the wrong message.
+ */
+export function derivedQuestionMessageId(intentId: string): string {
+  return `derived-question-message.${intentId}`;
+}
 
 function labelFor(question: QuestionBlockQuestion): string {
   const label = question.dimension?.trim() || question.prompt.trim();
@@ -154,25 +236,98 @@ function labelFor(question: QuestionBlockQuestion): string {
     : label;
 }
 
+/**
+ * Every question of the block, numbered as delivered — not only the ones whose
+ * negotiations are still parked. The numbers must line up with what the client
+ * is looking at, and a question whose parks resolved simply consumes to
+ * nothing.
+ */
+function enumerateQuestions(block: QuestionBlock): OpenQuestionForIntent[] {
+  return block.questions.map((question, index) => ({
+    position: index + 1,
+    label: labelFor(question),
+    opportunityId: question.opportunityId,
+  }));
+}
+
+/**
+ * The delivered rendering of the open ask: the newest AGENT message carrying a
+ * block that references a still-parked negotiation — searching BACK through
+ * the conversation, not just at its tail.
+ *
+ * Searching back is the fix. The newest agent message is a rendering detail:
+ * an edit-confirmation, a status line, or any other thing the negotiator says
+ * after asking pushes the question up the transcript without settling it.
+ */
+function deliveredQuestionMessage(
+  messages: Array<{ id: string; role: string; content: string }>,
+  parked: ReadonlyArray<{ opportunityId: string }>,
+): { id: string; content: string; block: QuestionBlock } | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== 'assistant') continue;
+    const open = openQuestionBlock({ id: message.id, content: message.content }, parked);
+    if (open) return { id: message.id, content: message.content, block: open.block };
+  }
+  return null;
+}
+
+function clampPrompt(prompt: string): string {
+  const trimmed = prompt.trim();
+  return trimmed.length > MAX_PROMPT_CHARS ? trimmed.slice(0, MAX_PROMPT_CHARS).trimEnd() : trimmed;
+}
+
+/**
+ * The block a parked set makes on its own, when no delivered message renders
+ * it: one question per park, from the same material the message author would
+ * have used — the agent's park-time question, else one derived from the
+ * checklist dimension (`dimension-question.ts`), else the fixed prompt above.
+ *
+ * Null only when the block schema refuses the result, which would mean a park
+ * carrying something no message could have carried either. Openness is still
+ * real in that case; it is the recovery that failed, and the caller logs it.
+ */
+function deriveQuestionBlock(parked: ReadonlyArray<ParkedNegotiation>): QuestionBlock | null {
+  const questions = parked.slice(0, MAX_BLOCK_QUESTIONS).map((negotiation) => {
+    const question = renderableQuestion(negotiation);
+    const dimension = negotiation.dimension?.trim();
+    const options = question?.options ?? [];
+    return {
+      prompt: clampPrompt(question?.prompt || UNRENDERABLE_PARK_PROMPT) || UNRENDERABLE_PARK_PROMPT,
+      opportunityId: negotiation.opportunityId,
+      // Presentation only; routing is the ref. A dimension the block schema
+      // would reject is dropped rather than allowed to fail the whole block.
+      ...(dimension && dimension.length <= MAX_DIMENSION_CHARS ? { dimension } : {}),
+      // The block's options floor is two: a park-time question that carried
+      // one renders as a prompt with a reply arrow, exactly as it does today.
+      ...(options.length >= 2 ? { options: options.slice(0, 4) } : {}),
+    };
+  });
+  const block = QuestionBlockSchema.safeParse({ version: 1, questions });
+  return block.success ? block.data : null;
+}
+
 /** Injectable seams for {@link readOpenQuestionsForIntent}. */
 export interface OpenQuestionsForIntentDeps {
   findSession?: (userId: string, intentId: string) => Promise<{ id: string } | null>;
   getSessionMessages?: (sessionId: string) => Promise<Array<{ id: string; role: string; content: string }>>;
-  readParkedNegotiations?: (userId: string, intentId: string) => Promise<ReadonlyArray<{ opportunityId: string }>>;
+  readParkedNegotiations?: (userId: string, intentId: string) => Promise<ReadonlyArray<ParkedNegotiation>>;
 }
 
 /**
- * One signal's open question-message, resolved for the orchestrator's context
- * and for the `answer_pending_question` tool behind it (#1466).
+ * What this signal currently has open, for every lane that has to answer it:
+ * the precedence gate, the `answer_pending_question` host, and the
+ * orchestrator's context enumeration.
  *
- * Anchored on the newest AGENT message, like the notification snapshot rather
- * than the edit rule: the client having replied since does not un-ask the
- * question, and this is read on a turn where they just did reply.
+ * Parked first, deliberately: the parked read is the authority AND the cheap
+ * short-circuit — an indexed scoped query that rules out every ordinary
+ * conversation before a message is read. Null means nothing is parked on this
+ * user's side for this signal, which is the only thing that closes a question.
  *
- * Resolves null whenever there is nothing open — no DM, no block, or every
- * negotiation the block references has since resolved. Never throws: this
- * feeds a prompt section and a tool registration, and neither is worth failing
- * a chat turn over.
+ * Never throws: this feeds a prompt section, a tool registration and a chat
+ * turn, and none of them is worth failing over. A DM that cannot be read is
+ * degraded to the derived block rather than to "nothing open" — the park is
+ * the record, and losing the client's answer is the worse failure.
  */
 export async function readOpenQuestionsForIntent(
   userId: string,
@@ -181,39 +336,58 @@ export async function readOpenQuestionsForIntent(
 ): Promise<OpenQuestionsForIntent | null> {
   if (!userId || !intentId) return null;
   try {
-    const findSession = deps?.findSession
-      ?? (async (id: string, intent: string) => (await import('../../services/chat.service')).chatSessionService
-        .findNegotiatorIntentSession(id, intent));
-    const session = await findSession(userId, intentId);
-    if (!session) return null;
-
-    const getSessionMessages = deps?.getSessionMessages
-      ?? (async (sessionId: string) => (await import('../../services/chat.service')).chatSessionService
-        .getSessionMessages(sessionId));
-    const messages = await getSessionMessages(session.id);
-    const newestAgentMessage = [...messages].reverse().find((message) => message.role === 'assistant');
-    // Cheap first: no block, no parked-set read.
-    if (!newestAgentMessage || !parseQuestionMessage(newestAgentMessage.content)) return null;
-
     const readParkedNegotiations = deps?.readParkedNegotiations
       ?? (async (id: string, intent: string) => (await import('../../adapters/parked-negotiation.reader.adapter'))
         .parkedNegotiationReaderAdapter.readParkedNegotiations(id, intent));
     const parked = await readParkedNegotiations(userId, intentId);
-    const open = openQuestionBlock({ id: newestAgentMessage.id, content: newestAgentMessage.content }, parked);
-    if (!open) return null;
+    if (parked.length === 0) return null;
 
-    // Every question of the open block is listed, not only the still-parked
-    // ones: the numbers must line up with what the client is looking at, and a
-    // question whose parks resolved simply consumes to nothing.
+    const session = await (async () => {
+      try {
+        const findSession = deps?.findSession
+          ?? (async (id: string, intent: string) => (await import('../../services/chat.service')).chatSessionService
+            .findNegotiatorIntentSession(id, intent));
+        const found = await findSession(userId, intentId);
+        if (!found) return null;
+        const getSessionMessages = deps?.getSessionMessages
+          ?? (async (sessionId: string) => (await import('../../services/chat.service')).chatSessionService
+            .getSessionMessages(sessionId));
+        return { id: found.id, messages: await getSessionMessages(found.id) };
+      } catch (err) {
+        // The park stands whether or not its rendering can be read.
+        logger.warn('open_questions_dm_read_failed; falling back to the parked set', {
+          userId,
+          intentId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    })();
+
+    const delivered = session ? deliveredQuestionMessage(session.messages, parked) : null;
+    if (delivered) {
+      return {
+        sessionId: session!.id,
+        messageId: delivered.id,
+        body: delivered.content,
+        block: delivered.block,
+        source: 'delivered',
+        questions: enumerateQuestions(delivered.block),
+      };
+    }
+
+    const derived = deriveQuestionBlock(parked);
+    if (!derived) {
+      logger.warn('open_questions_parked_but_unrenderable', { userId, intentId, parked: parked.length });
+      return null;
+    }
     return {
-      sessionId: session.id,
-      messageId: open.id,
-      body: newestAgentMessage.content,
-      questions: open.block.questions.map((question, index) => ({
-        position: index + 1,
-        label: labelFor(question),
-        opportunityId: question.opportunityId,
-      })),
+      sessionId: session?.id ?? null,
+      messageId: derivedQuestionMessageId(intentId),
+      body: serializeQuestionMessage(DERIVED_QUESTION_MESSAGE_PROSE, derived),
+      block: derived,
+      source: 'derived',
+      questions: enumerateQuestions(derived),
     };
   } catch (err) {
     logger.warn('open_questions_for_intent_read_failed', {
