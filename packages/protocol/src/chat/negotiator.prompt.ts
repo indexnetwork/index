@@ -57,6 +57,17 @@ export interface NegotiatorPromptOptions {
    * Absent/empty → the prompt is byte-identical to before.
    */
   openQuestions?: string[];
+  /**
+   * This signal's ACTIONABLE counterparties — the pairings the client can still
+   * pass a verdict on — one short line each ("Camille Dubois — your agents are
+   * still negotiating"), in a stable order. Rendered as the verdict section,
+   * and the numbers the model is shown here are exactly the numbers
+   * `reject_opportunity` / `accept_opportunity` take.
+   *
+   * Only meaningful in an intent-pinned session, where those tools are
+   * registered. Absent/empty → the prompt is byte-identical to before.
+   */
+  actionableCounterparties?: string[];
 }
 
 /**
@@ -117,6 +128,33 @@ ${list}
 }
 
 /**
+ * Renders the verdict section for an intent-pinned session (#1471).
+ *
+ * The owner has three kinds of decision here — answer, edit, VERDICT — and
+ * until this existed the third had no lane. On 2026-08-20 a client told their
+ * agent to reject a counterparty and the agent had nothing in its toolset that
+ * could do it; the levers were the Radar card and the endpoints behind it.
+ *
+ * The numbers are the whole interface. The model never sees an opportunity id
+ * and never emits one: it reads a position off this list and the host maps it,
+ * because a ref the model can name is a ref it can get wrong, and a wrong ref
+ * here declines the wrong person.
+ */
+function buildVerdictSection(userName: string, counterparties: string[]): string {
+  const list = counterparties.map((label, index) => `${index + 1}. ${label}`).join("\n");
+  return `
+## Verdicts ${userName} can pass here
+These are this signal's counterparties ${userName} can still decide on, numbered:
+${list}
+- When they decide on one — decline it or accept it, however they phrase it — call reject_opportunity or accept_opportunity with that number. That call is the decision. Saying it back to them is not, and neither is editing their signal.
+- Never pass a verdict they did not pass. Not on your own read of a match, not on a hesitation, not on silence. If which counterparty they mean is unclear, ask before you call.
+- Pass their reason only if they gave one, in their own words. Never write one for them.
+- update_opportunity is not this lever. It refuses a pairing whose agents are mid-negotiation outright, and it does not carry an owner verdict from chat — these two tools do.
+- Accepting is one side of two. It does not connect them — the counterparty has to accept too. Say it that way.
+- Never tell them a match is declined or accepted without a successful tool result for it.`;
+}
+
+/**
  * Renders the remember/forget guidance section (P5.4). Only rendered when the
  * memory tools are actually registered, so the model is never told about
  * capabilities it does not have.
@@ -171,6 +209,14 @@ export function buildNegotiatorSystemContent(
   const answerToolRow = pinnedIntentId && opts.openQuestions?.length
     ? "\n| **answer_pending_question** | question, answer | Route what the client just said to one of the open questions above — the only thing that resumes a parked negotiation |"
     : "";
+  // Same conditionality, same reason: the verdict tools are registered only in
+  // a pinned session, so the numbered counterparties only mean something there.
+  const verdictSection = pinnedIntentId && opts.actionableCounterparties?.length
+    ? buildVerdictSection(ctx.userName, opts.actionableCounterparties)
+    : "";
+  const verdictToolRows = pinnedIntentId && opts.actionableCounterparties?.length
+    ? "\n| **reject_opportunity** | counterparty, reason? | Decline one of the counterparties above, on the client's explicit verdict — the only thing that declines a match |\n| **accept_opportunity** | counterparty, reason? | Accept one of them, on the client's explicit verdict — one side of a two-party decision |"
+    : "";
   const memorySection = renderNegotiatorChatMemorySection(opts.memory ?? []);
   const memoryToolsSection = opts.memoryToolsEnabled ? buildMemoryToolsSection() : "";
   const memoryToolsRows = opts.memoryToolsEnabled
@@ -208,7 +254,7 @@ ${signalGuidance}
 - **Handle memberships**: list the communities they belong to and join or leave communities when they ask.
 - **Manage their contacts**: look up, add, remove, or import contacts when they ask (when contact features are enabled).
 - **Act on instruction**: every write — a negotiation response, an opportunity decision, a signal, a profile or premise change, a membership change, a contact change — happens only when the client explicitly asks for it in this conversation. Never write anything the client did not just ask for.
-${pinnedSignalSection}${openQuestionsSection}${memorySection}${memoryToolsSection}
+${pinnedSignalSection}${openQuestionsSection}${verdictSection}${memorySection}${memoryToolsSection}
 ## What you cannot do here
 - **No direct discovery.** You cannot run matching or search for people yourself. Matching happens automatically in the background from the client's signals — shaping the signals is how you steer it. ${matchVisibility}
 - **No community administration.** You can join or leave communities for the client, but you cannot create, rename, or delete communities — point them to the app for that.
@@ -244,7 +290,7 @@ ${profileContext}
 | **read_networks** / **read_network_memberships** | — | The client's communities and memberships |
 | **create_network_membership** / **delete_network_membership** | networkId | Join/leave a community on instruction |
 | **list_contacts** / **search_contacts** / **remove_contact** | ... | The client's contacts |
-| **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |${answerToolRow}${memoryToolsRows}
+| **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |${answerToolRow}${verdictToolRows}${memoryToolsRows}
 
 ## Grounding rules
 - **Never fabricate.** Every claim about a negotiation, opportunity, signal, or premise must come from a tool result in this conversation. If you have not looked it up this turn, look it up before answering. Only the client's identity and profile above are preloaded.
