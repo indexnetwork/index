@@ -14,6 +14,9 @@ import { readFileSync } from 'node:fs';
 
 const controller = readFileSync(new URL('../../../controllers/chat.controller.ts', import.meta.url), 'utf8');
 const composition = readFileSync(new URL('../../../controllers/mcp.controller.ts', import.meta.url), 'utf8');
+const gate = readFileSync(new URL('../answer-precedence.ts', import.meta.url), 'utf8');
+const host = readFileSync(new URL('../negotiator-answer.host.ts', import.meta.url), 'utf8');
+const chatService = readFileSync(new URL('../../../services/chat.service.ts', import.meta.url), 'utf8');
 
 describe('answer-precedence wiring', () => {
   it('evaluates precedence BEFORE the orchestrator stream, not after it', () => {
@@ -50,5 +53,26 @@ describe('answer-precedence wiring', () => {
 
   it('registers the long-tail routing tool at the composition root', () => {
     expect(composition).toContain('negotiatorAnswerTools: negotiatorAnswerToolsHost');
+  });
+
+  /**
+   * The second half of the 2026-08-20 incident was not an order problem: every
+   * lane agreed the reply was not an answer, because each one asked whether the
+   * newest agent message was a question block. One resolver is what makes them
+   * unable to disagree — so it is pinned as wiring, not left to convention.
+   */
+  it('resolves openness through the one shared resolver in every lane', () => {
+    for (const lane of [gate, host, chatService]) {
+      expect(lane).toContain('readOpenQuestionsForIntent');
+    }
+  });
+
+  it('never re-derives openness from the newest agent message', () => {
+    // The predicate that buried a live question. Neither lane may reintroduce
+    // it: openness is the parked set, and the delivered message is searched
+    // for rather than required at the tail.
+    for (const lane of [gate, host]) {
+      expect(lane).not.toContain("find((message) => message.role === 'assistant')");
+    }
   });
 });

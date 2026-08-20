@@ -1,25 +1,38 @@
 /**
- * Answer precedence: while a question is open in a signal's negotiator DM,
- * the evaluator sees a free-text reply BEFORE the orchestrator does.
+ * Answer precedence: while a question is OPEN in a signal's scope, the
+ * evaluator sees a free-text reply BEFORE the orchestrator does.
  *
- * The incident this encodes (2026-08-20, sandbox): a negotiation parked on the
- * checklist dimension "Timing: This week" asked its client; three minutes
- * later the client replied "This month?"; the chat orchestrator's signal edit
- * rule consumed it and rewrote the intent, and the negotiation that asked was
- * never told. The evaluator was always capable of recognizing that reply — it
- * simply ran after the orchestrator had finished.
+ * Two incidents are encoded here, both from 2026-08-20 in the sandbox, both
+ * the same answer being eaten.
  *
- * The three outcomes under test are the whole contract: an answer never
- * reaches the orchestrator, a decline always does, and with no open question
- * nothing here runs at all.
+ * 20:24 — a negotiation parked on the checklist dimension "Timing: This week"
+ * asked its client; three minutes later the client replied; the chat
+ * orchestrator's signal edit rule consumed it and rewrote the intent, and the
+ * negotiation that asked was never told. That was the ORDER, and #1467 fixed
+ * it by running the evaluator first.
+ *
+ * 21:11 — the same question, the same answer, and the gate itself said
+ * "nothing open". An edit-confirmation had posted after the question, so the
+ * question was no longer the newest agent message, and openness was defined by
+ * message recency. The task had been `input_required` for fifty-one minutes.
+ * That is the PREDICATE, and it is what these specs now pin: open means
+ * parked, and the delivered message is searched for rather than required at
+ * the tail.
+ *
+ * The outcomes under test are the whole contract: an answer never reaches the
+ * orchestrator, a decline always does, an evaluator outage falls through
+ * without closing the question, and with nothing parked nothing here runs at
+ * all.
  */
 import { describe, expect, it } from 'bun:test';
 
-import { negotiationQuestionSettlementId, serializeQuestionMessage } from '@indexnetwork/protocol';
-import type { NegotiationAnswerConsumptionPorts, QuestionBlock } from '@indexnetwork/protocol';
+import { serializeQuestionMessage } from '@indexnetwork/protocol';
+import type { QuestionBlock } from '@indexnetwork/protocol';
 
+import type { ParkedNegotiation } from '../../../adapters/parked-negotiation.reader.adapter';
 import { evaluateQuestionAnswerPrecedence } from '../answer-precedence';
 import type { AnswerPrecedenceDeps } from '../answer-precedence';
+import { derivedQuestionMessageId } from '../open-question-message';
 
 const USER_ID = 'user-1';
 const INTENT_ID = 'intent-1';
@@ -40,6 +53,9 @@ const QUESTION_MESSAGE_BODY = serializeQuestionMessage(
   BLOCK,
 );
 
+/** The message that buried the question at 20:24 — an edit confirmation. */
+const EDIT_CONFIRMATION = 'Updated your signal: timing is now open to this month.';
+
 function sessionMessages(agentContent = QUESTION_MESSAGE_BODY) {
   return [
     { id: 'm1', role: 'user', content: 'Any news?' },
@@ -47,47 +63,30 @@ function sessionMessages(agentContent = QUESTION_MESSAGE_BODY) {
   ];
 }
 
-const TASK_ID = 'task-1';
-
 /**
- * Only `database` is reached from this module — the resume seams stay unused.
- * The mid-flight park shape `classifyParkedNegotiation` demands: an exact task
- * in `input_required` whose ask-user binding names this user, this opportunity
- * and the settlement id derived from the task itself.
+ * The park is the record: a mid-flight consult whose exact task is
+ * `input_required` and bound to this user and signal. The reader adapter is
+ * the set-wise mirror of `classifyParkedNegotiation` (the two are held
+ * together by the convergence contract test), so a park in this list means
+ * exactly what a live `input_required` task with a coherent ask-user binding
+ * means.
  */
-function ports(parked: boolean): NegotiationAnswerConsumptionPorts {
+function park(overrides: Partial<ParkedNegotiation> = {}): ParkedNegotiation {
   return {
-    database: {
-      getNegotiationTaskForOpportunity: async () => (parked
-        ? {
-          id: TASK_ID,
-          state: 'input_required',
-          metadata: {
-            type: 'negotiation',
-            opportunityId: PARKED_OPPORTUNITY,
-            turnContext: {
-              askUserBinding: {
-                settlementId: negotiationQuestionSettlementId(TASK_ID),
-                recipientUserId: USER_ID,
-                recipientIntentId: INTENT_ID,
-                networkId: 'network-1',
-                opportunityId: PARKED_OPPORTUNITY,
-              },
-            },
-          },
-        }
-        // No task at all: "no negotiation", which is not parked — the block is
-        // closed and the reply is ordinary conversation.
-        : null),
-      getNegotiationMessages: async () => [],
-    } as unknown as NegotiationAnswerConsumptionPorts['database'],
-  } as unknown as NegotiationAnswerConsumptionPorts;
+    opportunityId: PARKED_OPPORTUNITY,
+    kind: 'mid_flight',
+    dimension: 'Timing: This week',
+    dimensionKind: 'hard_constraint',
+    transcript: [],
+    parkedAt: new Date('2026-08-20T20:20:00Z'),
+    ...overrides,
+  };
 }
 
 function deps(overrides: Partial<AnswerPrecedenceDeps> = {}): AnswerPrecedenceDeps {
   return {
     getSessionMessages: async () => sessionMessages(),
-    answerPorts: ports(true),
+    readParkedNegotiations: async () => [park()],
     answerRouter: {
       route: async () => ({
         addressesQuestions: true,
@@ -107,9 +106,46 @@ describe('evaluateQuestionAnswerPrecedence', () => {
     expect(precedence.status).toBe('answered');
     if (precedence.status !== 'answered') throw new Error('unreachable');
     // The orchestrator never sees this reply, so the edit rule cannot run on
-    // it and the intent cannot be rewritten from it.
+    // it and the intent cannot be rewritten from it. The controller carries
+    // this routing straight into the consumption job (pinned in
+    // `answer-precedence.wiring.static.spec.ts`), so the queue consumes the
+    // decision the client was acknowledged for rather than re-deciding it.
     expect(precedence.questionMessageId).toBe('m2');
     expect(precedence.questionMessageBody).toBe(QUESTION_MESSAGE_BODY);
+    expect(precedence.routedAnswers).toEqual([{ ref: PARKED_OPPORTUNITY, answerText: 'This month.' }]);
+  });
+
+  it('takes the answer when a later agent message buried the question — 21:11', async () => {
+    // The 21:11 incident, exactly: question at 20:21, edit-confirmation at
+    // 20:24, reply at 21:11 while the task is still `input_required`. Under
+    // message recency this returned `no_open_question` and the reply fell
+    // through to the orchestrator, which edited the signal from it.
+    const precedence = await evaluateQuestionAnswerPrecedence(REPLY, deps({
+      getSessionMessages: async () => [
+        ...sessionMessages(),
+        { id: 'm3', role: 'assistant', content: EDIT_CONFIRMATION },
+      ],
+    }));
+
+    expect(precedence.status).toBe('answered');
+    if (precedence.status !== 'answered') throw new Error('unreachable');
+    // Answered against the block the client is actually looking at, recovered
+    // from where it sits in the DM rather than from the tail.
+    expect(precedence.questionMessageId).toBe('m2');
+    expect(precedence.questionMessageBody).toBe(QUESTION_MESSAGE_BODY);
+  });
+
+  it('takes the answer when the park has no delivered message at all', async () => {
+    // Regeneration had not landed, or its message was never written. The park
+    // is still the record, so the block is derived from it and the answer
+    // routes onto the same negotiation ref.
+    const precedence = await evaluateQuestionAnswerPrecedence(REPLY, deps({
+      getSessionMessages: async () => [{ id: 'm1', role: 'assistant', content: EDIT_CONFIRMATION }],
+    }));
+
+    expect(precedence.status).toBe('answered');
+    if (precedence.status !== 'answered') throw new Error('unreachable');
+    expect(precedence.questionMessageId).toBe(derivedQuestionMessageId(INTENT_ID));
     expect(precedence.routedAnswers).toEqual([{ ref: PARKED_OPPORTUNITY, answerText: 'This month.' }]);
   });
 
@@ -133,26 +169,31 @@ describe('evaluateQuestionAnswerPrecedence', () => {
     expect(precedence.status).toBe('declined');
   });
 
-  it('does not run at all when the DM has no question block', async () => {
+  it("does not run at all when nothing is parked on this user's side", async () => {
+    // The only thing that closes a question. The DM is not even read: the
+    // parked read is both the authority and the cheap short-circuit.
     let routed = false;
+    let sessionRead = false;
     const precedence = await evaluateQuestionAnswerPrecedence(REPLY, deps({
-      getSessionMessages: async () => sessionMessages('Here is what I found on the record.'),
+      readParkedNegotiations: async () => [],
+      getSessionMessages: async () => { sessionRead = true; return sessionMessages(); },
       answerRouter: { route: async () => { routed = true; throw new Error('must not route'); } },
     }));
 
     expect(precedence).toEqual({ status: 'no_open_question' });
     expect(routed).toBe(false);
+    expect(sessionRead).toBe(false);
   });
 
-  it('does not run when the block is there but every negotiation it references has resolved', async () => {
-    let routed = false;
+  it('does not run for a stale question-message whose negotiations have resolved', async () => {
+    // The other direction of the same predicate: the message is still sitting
+    // there, newest and parseable, but nothing is parked behind it. Answering
+    // it would resume nothing, so the reply is ordinary conversation.
     const precedence = await evaluateQuestionAnswerPrecedence(REPLY, deps({
-      answerPorts: ports(false),
-      answerRouter: { route: async () => { routed = true; throw new Error('must not route'); } },
+      readParkedNegotiations: async () => [],
     }));
 
     expect(precedence).toEqual({ status: 'no_open_question' });
-    expect(routed).toBe(false);
   });
 
   it('falls through, not closed, when the evaluator is unavailable', async () => {
@@ -163,19 +204,32 @@ describe('evaluateQuestionAnswerPrecedence', () => {
     expect(precedence).toEqual({ status: 'unavailable', questionMessageId: 'm2' });
   });
 
-  it('falls through when the session read itself fails', async () => {
+  it('still offers the reply to the evaluator when the DM read fails', async () => {
+    // A DM that cannot be read is a rendering failure, not a settled park. The
+    // block is derived from the parked set and the answer is still taken —
+    // losing the client's answer is the worse failure by a distance.
     const precedence = await evaluateQuestionAnswerPrecedence(REPLY, deps({
       getSessionMessages: async () => { throw new Error('db down'); },
+    }));
+
+    expect(precedence.status).toBe('answered');
+  });
+
+  it('falls through when the parked read itself fails', async () => {
+    // Openness is unknowable, so the turn proceeds as an ordinary one: the
+    // orchestrator still runs, and it carries the tool to route explicitly.
+    const precedence = await evaluateQuestionAnswerPrecedence(REPLY, deps({
+      readParkedNegotiations: async () => { throw new Error('db down'); },
     }));
 
     expect(precedence).toEqual({ status: 'no_open_question' });
   });
 
-  it('ignores an empty reply without touching the session', async () => {
+  it('ignores an empty reply without touching the parked set', async () => {
     let read = false;
     const precedence = await evaluateQuestionAnswerPrecedence(
       { ...REPLY, replyText: '   ' },
-      deps({ getSessionMessages: async () => { read = true; return sessionMessages(); } }),
+      deps({ readParkedNegotiations: async () => { read = true; return [park()]; } }),
     );
 
     expect(precedence).toEqual({ status: 'no_open_question' });

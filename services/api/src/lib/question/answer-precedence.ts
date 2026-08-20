@@ -29,10 +29,23 @@
  * answer falls through to the orchestrator — which, since #1466, is told an
  * open question exists in this scope and carries the tool to route an answer
  * explicitly. That is the long tail's lane, not a silent loss.
+ *
+ * What "open" means is NOT this module's judgment and no longer its code. It
+ * used to be: the gate anchored on the newest agent message and asked whether
+ * that message parsed as a question block. On 2026-08-20, 21:11, that
+ * predicate silently closed a question whose task had been `input_required`
+ * for fifty-one minutes — an edit-confirmation posted three minutes after the
+ * question had made it no longer the newest message — and the client's answer
+ * fell through to the orchestrator, which edited the signal from it. The
+ * second time that happened in one evening. Openness is now resolved from the
+ * PARKED SET by `readOpenQuestionsForIntent`, the same call the
+ * `answer_pending_question` host and the orchestrator's context enumeration
+ * make, so no two lanes can disagree about what is open.
  */
-import { classifyParkedNegotiation, parseQuestionMessage } from '@indexnetwork/protocol';
-import type { NegotiationAnswerConsumptionPorts, QuestionBlock, RoutedAnswer } from '@indexnetwork/protocol';
+import type { RoutedAnswer } from '@indexnetwork/protocol';
 
+import type { ParkedNegotiation } from '../../adapters/parked-negotiation.reader.adapter';
+import { readOpenQuestionsForIntent } from './open-question-message';
 import { QuestionAnswerRouter } from './question-answer.router';
 import { log } from '../log';
 
@@ -52,7 +65,8 @@ export const QUESTION_ANSWER_ACKNOWLEDGEMENT =
 /**
  * What the gate decided.
  *
- * - `no_open_question`: nothing is open in this scope (the common case). The
+ * - `no_open_question`: nothing is PARKED on this user's side for this signal
+ *   (the common case), or openness could not be resolved at all. The
  *   orchestrator path is untouched, byte for byte.
  * - `declined`: a question is open and the evaluator says this reply does not
  *   answer it. Falls through to the orchestrator, edit rule included.
@@ -68,8 +82,19 @@ export type AnswerPrecedence =
   | { status: 'unavailable'; questionMessageId: string }
   | {
     status: 'answered';
+    /**
+     * The delivered question-message's id, or the synthetic id of a derived
+     * block (`derivedQuestionMessageId`). Carried through to the
+     * consumption job, which uses it for logging only — routing is the refs
+     * inside the body.
+     */
     questionMessageId: string;
-    /** The block body as delivered — the message the client was answering. */
+    /**
+     * The block body the answer is consumed against: the message as delivered
+     * when one renders the park, else the body serialized from the parked set
+     * itself. Either way it carries the same negotiation refs, so consumption
+     * re-resolves the same parks and settles under the same settlement ids.
+     */
     questionMessageBody: string;
     /** The reply routed onto the block's negotiation refs; never empty. */
     routedAnswers: RoutedAnswer[];
@@ -78,44 +103,9 @@ export type AnswerPrecedence =
 /** Injectable seams; production resolves the real collaborators lazily. */
 export interface AnswerPrecedenceDeps {
   getSessionMessages?: (sessionId: string) => Promise<Array<{ id: string; role: string; content: string }>>;
-  answerPorts?: NegotiationAnswerConsumptionPorts;
+  /** This user's parked negotiations on this signal — the openness authority. */
+  readParkedNegotiations?: (userId: string, intentId: string) => Promise<ReadonlyArray<ParkedNegotiation>>;
   answerRouter?: Pick<QuestionAnswerRouter, 'route'>;
-}
-
-/**
- * The open question-message of a negotiator DM: the newest AGENT message,
- * when it carries a parseable question block. The still-parked half of the
- * predicate is checked separately below — it costs negotiation reads, and the
- * cheap half rules out every ordinary conversation first.
- */
-function openQuestionMessage(
-  messages: Array<{ id: string; role: string; content: string }>,
-): { id: string; content: string; block: QuestionBlock } | null {
-  const newestAgentMessage = [...messages].reverse().find((message) => message.role === 'assistant');
-  if (!newestAgentMessage) return null;
-  const parsed = parseQuestionMessage(newestAgentMessage.content);
-  if (!parsed) return null;
-  return { id: newestAgentMessage.id, content: newestAgentMessage.content, block: parsed.block };
-}
-
-/**
- * True while at least one negotiation the block references is still parked on
- * THIS user's side. A block whose parks all resolved is closed: its questions
- * are no longer answerable, so a reply to it is ordinary conversation and the
- * gate must not stand in the orchestrator's way.
- */
-async function referencesStillParked(
-  ports: NegotiationAnswerConsumptionPorts,
-  block: QuestionBlock,
-  userId: string,
-): Promise<boolean> {
-  for (const question of block.questions) {
-    for (const ref of [question.opportunityId, ...(question.alsoUnblocks ?? [])]) {
-      const classification = await classifyParkedNegotiation(ports.database, { opportunityId: ref, userId });
-      if (classification.kind === 'inflight' || classification.kind === 'post_stall') return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -132,21 +122,18 @@ export async function evaluateQuestionAnswerPrecedence(
   try {
     if (!input.replyText.trim()) return { status: 'no_open_question' };
 
-    const getSessionMessages = deps?.getSessionMessages
-      ?? (async (sessionId: string) => (await import('../../services/chat.service')).chatSessionService.getSessionMessages(sessionId));
-    const open = openQuestionMessage(await getSessionMessages(input.sessionId));
+    // Openness is the parked set, resolved once, by the same call every other
+    // answer lane makes. The parked read is also the cheap short-circuit: an
+    // ordinary conversational turn ends here, on one scoped indexed query,
+    // without reading a message.
+    const open = await readOpenQuestionsForIntent(input.userId, input.intentId, {
+      // The session is already resolved for this turn; the resolver must not
+      // look it up again, and must anchor on THIS conversation.
+      findSession: async () => ({ id: input.sessionId }),
+      ...(deps?.getSessionMessages ? { getSessionMessages: deps.getSessionMessages } : {}),
+      ...(deps?.readParkedNegotiations ? { readParkedNegotiations: deps.readParkedNegotiations } : {}),
+    });
     if (!open) return { status: 'no_open_question' };
-
-    const ports = deps?.answerPorts
-      ?? (await import('./negotiation-answer.ports')).negotiationAnswerConsumptionPorts();
-    if (!await referencesStillParked(ports, open.block, input.userId)) {
-      logger.info('question_answer_precedence_message_closed', {
-        userId: input.userId,
-        intentId: input.intentId,
-        questionMessageId: open.id,
-      });
-      return { status: 'no_open_question' };
-    }
 
     const router = deps?.answerRouter ?? new QuestionAnswerRouter();
     let routed;
@@ -159,10 +146,10 @@ export async function evaluateQuestionAnswerPrecedence(
       logger.warn('question_answer_precedence_evaluator_unavailable', {
         userId: input.userId,
         intentId: input.intentId,
-        questionMessageId: open.id,
+        questionMessageId: open.messageId,
         error: err instanceof Error ? err.message : String(err),
       });
-      return { status: 'unavailable', questionMessageId: open.id };
+      return { status: 'unavailable', questionMessageId: open.messageId };
     }
 
     // `addressesQuestions` with nothing extracted is not an answer this path
@@ -173,22 +160,26 @@ export async function evaluateQuestionAnswerPrecedence(
       logger.info('question_answer_precedence_declined', {
         userId: input.userId,
         intentId: input.intentId,
-        questionMessageId: open.id,
+        questionMessageId: open.messageId,
         addressesQuestions: routed.addressesQuestions,
       });
-      return { status: 'declined', questionMessageId: open.id };
+      return { status: 'declined', questionMessageId: open.messageId };
     }
 
     logger.info('question_answer_precedence_answered', {
       userId: input.userId,
       intentId: input.intentId,
-      questionMessageId: open.id,
+      questionMessageId: open.messageId,
+      // Delivered or derived: which one it was says whether the client was
+      // answering a message they can see or a park whose rendering never
+      // reached them. Both are answers; only one is also a delivery bug.
+      source: open.source,
       answers: routed.answers.length,
     });
     return {
       status: 'answered',
-      questionMessageId: open.id,
-      questionMessageBody: open.content,
+      questionMessageId: open.messageId,
+      questionMessageBody: open.body,
       routedAnswers: routed.answers,
     };
   } catch (err) {
