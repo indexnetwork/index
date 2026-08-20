@@ -7,7 +7,8 @@
 type NegotiationCounterpartyBinding =
   | { kind: 'intent'; id: string }
   | { kind: 'premise'; id: string };
-import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
+import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
+import { selectRepresentedNegotiationSession } from './negotiation-session-rollup.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
@@ -644,7 +645,6 @@ export class ConversationDatabaseAdapter {
       lastMessages,
       allMeta,
       unreadRows,
-      latestNegotiationTasks,
       negotiationTasks,
     ] = await Promise.all([
       db
@@ -726,49 +726,17 @@ export class ConversationDatabaseAdapter {
           ),
         ))
         .groupBy(schema.messages.conversationId),
-      includeNegotiationLifecycle
-        ? db
-          .selectDistinctOn([schema.tasks.conversationId], {
-            conversationId: schema.tasks.conversationId,
-            taskId: schema.tasks.id,
-            state: schema.tasks.state,
-            statusTimestamp: schema.tasks.statusTimestamp,
-            metadata: schema.tasks.metadata,
-            updatedAt: schema.tasks.updatedAt,
-            artifactParts: schema.artifacts.parts,
-            opportunityStatus: opportunities.status,
-            opportunityAcceptedBy: opportunities.acceptedBy,
-            currentTurnCount: sql<number>`(
-              SELECT count(*)::int
-              FROM ${schema.messages}
-              WHERE ${schema.messages.taskId} = ${schema.tasks.id}
-            )`,
-          })
-          .from(schema.tasks)
-          .leftJoin(
-            schema.artifacts,
-            and(
-              eq(schema.artifacts.taskId, schema.tasks.id),
-              eq(schema.artifacts.name, 'negotiation-outcome'),
-            ),
-          )
-          .leftJoin(opportunities, sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunities.id}`)
-          .where(and(
-            inArray(schema.tasks.conversationId, ids),
-            sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-            notArchivedNegotiationTaskWhere(),
-          ))
-          .orderBy(schema.tasks.conversationId, desc(schema.tasks.createdAt), desc(schema.tasks.id))
-        : Promise.resolve([]),
-      // All task rows are fetched in one batch so each viewer-visible
-      // opportunity can link to its own durable session. This intentionally
-      // avoids loading task history per rail row.
+      // All negotiation task rows are fetched in one batch: the represented
+      // session per conversation (`negotiation`) is chosen from them by
+      // liveness, and each viewer-visible opportunity links to its own durable
+      // session. This intentionally avoids loading task history per rail row.
       includeNegotiationLifecycle
         ? db
           .select({
             conversationId: schema.tasks.conversationId,
             taskId: schema.tasks.id,
             state: schema.tasks.state,
+            statusTimestamp: schema.tasks.statusTimestamp,
             metadata: schema.tasks.metadata,
             updatedAt: schema.tasks.updatedAt,
             createdAt: schema.tasks.createdAt,
@@ -931,24 +899,37 @@ export class ConversationDatabaseAdapter {
       viaByConv.set(metadataRow.conversationId, via);
     }
 
-    const negotiationByConv = new Map<string, NonNullable<ConversationSummary['negotiation']>>();
-    for (const row of latestNegotiationTasks) {
+    // One row per conversation. A durable A2A conversation carries a task
+    // session per opportunity the pair negotiated; the session that represents
+    // it to this viewer is the most alive one, not the newest one — see
+    // negotiation-session-rollup.projection.ts. A screened-out outreach gate
+    // is private to the client that initiated it and is never the represented
+    // session for the counterparty (the same module applies that rule before
+    // ranking).
+    const candidatesByConv = new Map<string, Array<typeof negotiationTasks[number] & {
+      metadata: Record<string, unknown>;
+      outcome: ReturnType<typeof readNegotiationOutcome>;
+    }>>();
+    for (const row of negotiationTasks) {
       const metadata = typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
         ? row.metadata as Record<string, unknown>
         : {};
-      const outcome = readNegotiationOutcome(row.artifactParts);
+      const candidates = candidatesByConv.get(row.conversationId) ?? [];
+      candidates.push({ ...row, metadata, outcome: readNegotiationOutcome(row.artifactParts) });
+      candidatesByConv.set(row.conversationId, candidates);
+    }
+    const negotiationByConv = new Map<string, NonNullable<ConversationSummary['negotiation']>>();
+    for (const [conversationId, candidates] of candidatesByConv) {
+      const row = selectRepresentedNegotiationSession(candidates, viewerUserId);
+      if (!row) continue;
+      const { metadata, outcome } = row;
       const priorTurnCount = typeof metadata.priorTurnCount === 'number' && Number.isFinite(metadata.priorTurnCount)
         ? metadata.priorTurnCount
         : 0;
       const maxTurns = typeof metadata.maxTurns === 'number' && Number.isFinite(metadata.maxTurns)
         ? metadata.maxTurns
         : null;
-      // A screened-out outreach gate is private to the client that initiated
-      // it. Never project its lifecycle to the counterparty through the shared
-      // A2A conversation.
-      const initiatorUserId = readInitiatorUserId(metadata);
-      if (outcome?.reason === 'screened_out' && initiatorUserId !== viewerUserId) continue;
-      negotiationByConv.set(row.conversationId, {
+      negotiationByConv.set(conversationId, {
         taskId: row.taskId,
         state: row.state,
         statusTimestamp: row.statusTimestamp,

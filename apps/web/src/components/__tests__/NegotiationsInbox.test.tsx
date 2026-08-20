@@ -28,6 +28,9 @@ function negotiation(
       parts: [{ kind: 'data', data: { action: input.action ?? 'counter' } }],
       senderId: input.senderId ?? `agent:${id}-peer`,
       createdAt: '2026-07-24T11:00:00.000Z',
+      // The message belongs to the represented session; without the task id
+      // the inbox (correctly) refuses to read it as that session's turn.
+      taskId: `${id}-task`,
     },
     metadata: null,
     via: [],

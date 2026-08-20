@@ -78,7 +78,11 @@ export interface ConversationSummary {
   unreadCount: number;
   lastMessageAt: string | null;
   createdAt: string;
-  /** Latest task and opportunity lifecycle for A2A negotiation summaries. */
+  /**
+   * The task session that represents this A2A conversation to the viewer: the
+   * most alive session with that counterparty, newest only within a liveness
+   * tier. A pending approval is never shadowed by a later screened-out pairing.
+   */
   negotiation?: ConversationNegotiationLifecycle | null;
   negotiationOpportunities?: ConversationNegotiationOpportunity[];
 }

@@ -722,11 +722,16 @@ export interface ConversationSummary {
   metadata: Record<string, unknown> | null;
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
   unreadCount: number;
-  /** Present only when negotiation lifecycle projection was requested. */
+  /**
+   * Present only when negotiation lifecycle projection was requested. The one
+   * task session that represents this conversation to the viewer: the most
+   * alive visible session, newest first within a liveness tier — NOT simply
+   * the newest task (negotiation-session-rollup.projection.ts).
+   */
   negotiation?: NegotiationLifecycleSummary | null;
   /**
    * Viewer-scoped opportunities with an addressable negotiation task. Unlike
-   * `negotiation`, this is not limited to the conversation's latest task.
+   * `negotiation`, this is not limited to one session per conversation.
    */
   negotiationOpportunities?: Array<{
     intentId: string;
