@@ -20,7 +20,7 @@
 import { z } from "zod";
 
 import { AskUserGenerationSchema } from "../shared/schemas/negotiation-state.schema.js";
-import { ChecklistDraftSchema } from "../shared/schemas/negotiation-checklist.schema.js";
+import { ChecklistDraftGenerationSchema } from "../shared/schemas/negotiation-checklist.schema.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 
@@ -148,10 +148,17 @@ export function turnSchemaFor(
  * Non-object schemas pass through untouched: the v1 schemas arrive as
  * `z.ZodTypeAny` from the caller, so this must degrade rather than throw if
  * one is ever wrapped.
+ *
+ * The GENERATION variant of the draft schema, following #1466: `settles` is
+ * required so the emitted JSON schema asks for it on every dimension, and
+ * repairs to `either` when the model omits or garbles it rather than throwing
+ * inside the structured-output call and taking the turn with it. The persisted
+ * `ChecklistDraftSchema` keeps the field optional, because it has to read back
+ * every turn written before the field existed.
  */
 export function withChecklistField(schema: z.ZodTypeAny): z.ZodTypeAny {
   return schema instanceof z.ZodObject
-    ? schema.extend({ checklist: ChecklistDraftSchema.nullable().optional() })
+    ? schema.extend({ checklist: ChecklistDraftGenerationSchema.nullable().optional() })
     : schema;
 }
 

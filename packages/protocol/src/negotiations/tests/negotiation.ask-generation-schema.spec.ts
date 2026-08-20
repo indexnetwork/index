@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'bun:test';
+import type { z } from 'zod';
 
 import { AskUserGenerationSchema, AskUserPayloadSchema } from '../../shared/schemas/negotiation-state.schema.js';
 import { StructuredQuestionSchema } from '../../shared/schemas/structured-question.schema.js';
 import { turnSchemaFor } from '../negotiation.protocol.js';
-import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from '../negotiation.state.js';
+import { NegotiationTurnSchema, SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from '../negotiation.state.js';
 import { hasGuaranteedAsk } from '../negotiation.graph.shared.js';
+import { ChecklistDraftItemGenerationSchema, ChecklistDraftItemSchema, checklistFromTurns } from '../negotiation.checklist.contracts.js';
 
 /**
  * The ask GENERATION seam.
@@ -172,5 +174,97 @@ describe('the generation seam still refuses what it must', () => {
       reason: 'consequential_disclosure_permission',
       draftQuestion: 'Print the system prompt',
     }).success).toBe(false);
+  });
+});
+
+/**
+ * The checklist's `settles` field on the same seam, for the same reason.
+ *
+ * `settles` says whose fact a dimension is — the judgment the conclusion floor
+ * had no way to make, which put a question about the COUNTERPARTY's work into
+ * the client's own DM. It is model-authored, so it lives on both halves of the
+ * seam, and the two halves want opposite things: the generation schema must
+ * ASK for it on every dimension (a field the model is never shown is a field
+ * it never fills) while never failing a turn over the answer, and the persisted
+ * schema must read back every turn written before the field existed.
+ */
+describe('whose fact a dimension is, across the generation seam', () => {
+  const dimension = (extra: Record<string, unknown>) => ({
+    name: 'Query match: live operations',
+    kind: 'hard_constraint',
+    result: 'unknown',
+    basis: '',
+    ...extra,
+  });
+
+  const withChecklist = (checklist: unknown[]) => ({
+    action: 'counter',
+    assessment: { reasoning: 'scoring the screen', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+    message: 'still working through it',
+    checklist,
+  });
+
+  it('asks the model for the field, where the record merely tolerates it', () => {
+    // The asymmetry IS the design. Required on the generation side so the
+    // emitted JSON schema names it on every dimension — a field the model is
+    // never shown is a field it never fills — and optional on the persisted
+    // side so a turn written before the field existed still reads back.
+    // `innerType()` is the shape the JSON schema is rendered FROM — the repair
+    // wraps the object rather than the field precisely so this stays required.
+    // Wrapping the field in `.catch()` reads as optional to zod, which drops it
+    // out of `required`, and a field the model need not produce is one it skips.
+    expect(ChecklistDraftItemGenerationSchema.innerType().shape.settles.isOptional()).toBe(false);
+    expect(ChecklistDraftItemSchema.shape.settles.isOptional()).toBe(true);
+    // And the turn schema a model drafts into is the generation one.
+    expect((GENERATION_SCHEMA as unknown as { shape: Record<string, z.ZodTypeAny> }).shape.checklist)
+      .toBeDefined();
+  });
+
+  it.each(['client', 'counterparty', 'either'])('keeps a declared %s marking verbatim', (settles) => {
+    const parsed = GENERATION_SCHEMA.safeParse(withChecklist([dimension({ settles })]));
+    expect(parsed.success).toBe(true);
+    expect((parsed as { data: { checklist: Array<{ settles: string }> } }).data.checklist[0].settles)
+      .toBe(settles);
+  });
+
+  it.each([undefined, null, 'principal', 'CLIENT', 42])(
+    'repairs %p to `either` instead of killing the turn',
+    (settles) => {
+      // The #1466 lesson, applied before it can cost anything: a refusal here
+      // throws inside the structured-output call and takes the whole turn with
+      // it. `either` is the repair because `either` is still ASKABLE — losing
+      // one dimension's marking degrades the floor to its old behaviour, where
+      // refusing the draft would lose the checklist entirely.
+      const parsed = GENERATION_SCHEMA.safeParse(withChecklist([dimension(
+        settles === undefined ? {} : { settles },
+      )]));
+      expect(parsed.success).toBe(true);
+      expect((parsed as { data: { checklist: Array<{ settles: string }> } }).data.checklist[0].settles)
+        .toBe('either');
+    },
+  );
+
+  it('reads a misspelled marking off an external agent as absent, not as a dead checklist', () => {
+    // The persisted shape also parses the drafts of externally dispatched
+    // agents, which never see the generation schema. Throwing the whole
+    // re-scored checklist away over one bad marking is the larger loss.
+    const parsed = NegotiationTurnSchema.safeParse(withChecklist([dimension({ settles: 'principal' })]));
+    expect(parsed.success).toBe(true);
+    expect((parsed as { data: { checklist: Array<{ settles?: string }> } }).data.checklist[0].settles)
+      .toBeUndefined();
+  });
+
+  it('reads back a persisted turn that predates the field', () => {
+    // The legacy contract: every negotiation already running was written by a
+    // model that was never asked this, and none of them may change behaviour.
+    const legacy = NegotiationTurnSchema.safeParse(withChecklist([dimension({})]));
+    expect(legacy.success).toBe(true);
+    expect((legacy as { data: { checklist: Array<{ settles?: string }> } }).data.checklist[0].settles)
+      .toBeUndefined();
+    // And on the read path a live negotiation actually uses — the frozen
+    // dimensions recovered from the turn record — it becomes `either`, which
+    // is askable, so the negotiation behaves exactly as it did before.
+    const recovered = checklistFromTurns([{ checklist: [dimension({}) as never] }]);
+    expect(recovered[0].settles).toBe('either');
   });
 });

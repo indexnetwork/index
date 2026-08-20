@@ -39,18 +39,22 @@
 import { z } from "zod";
 
 import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
-import { AnswerhoodSchema, CHECKLIST_KINDS, CHECKLIST_RESULTS, ChecklistDraftItemSchema, ChecklistDraftSchema, MAX_CHECKLIST_DIMENSIONS, MIN_CHECKLIST_DIMENSIONS, type Answerhood, type ChecklistDraft, type ChecklistDraftItem, type ChecklistKind, type ChecklistResult } from "../shared/schemas/negotiation-checklist.schema.js";
+import { AnswerhoodSchema, CHECKLIST_KINDS, CHECKLIST_RESULTS, CHECKLIST_SETTLERS, ChecklistDraftGenerationSchema, ChecklistDraftItemGenerationSchema, ChecklistDraftItemSchema, ChecklistDraftSchema, DEFAULT_CHECKLIST_SETTLER, MAX_CHECKLIST_DIMENSIONS, MIN_CHECKLIST_DIMENSIONS, type Answerhood, type ChecklistDraft, type ChecklistDraftItem, type ChecklistKind, type ChecklistResult, type ChecklistSettler } from "../shared/schemas/negotiation-checklist.schema.js";
 
 export {
   AnswerhoodSchema,
   CHECKLIST_KINDS,
   CHECKLIST_RESULTS,
+  CHECKLIST_SETTLERS,
+  ChecklistDraftGenerationSchema,
+  ChecklistDraftItemGenerationSchema,
   ChecklistDraftItemSchema,
   ChecklistDraftSchema,
+  DEFAULT_CHECKLIST_SETTLER,
   MAX_CHECKLIST_DIMENSIONS,
   MIN_CHECKLIST_DIMENSIONS,
 };
-export type { Answerhood, ChecklistDraft, ChecklistDraftItem, ChecklistKind, ChecklistResult };
+export type { Answerhood, ChecklistDraft, ChecklistDraftItem, ChecklistKind, ChecklistResult, ChecklistSettler };
 
 /**
  * Questions one principal may be asked in one negotiation (bounded
@@ -65,7 +69,15 @@ export const QUESTION_BUDGET_PER_PRINCIPAL = 3;
  * One scored dimension with the basis discipline enforced — the invariant a
  * persisted, reconciled checklist holds, and what specs assert against.
  */
-export const ChecklistItemSchema = ChecklistDraftItemSchema.superRefine((item, ctx) => {
+export const ChecklistItemSchema = ChecklistDraftItemSchema.extend({
+  /**
+   * Required on a persisted, reconciled dimension — the shape the floor and
+   * the ask rule read. Absent on the way IN (a legacy turn, an authoring pass
+   * that skipped it) it defaults to {@link DEFAULT_CHECKLIST_SETTLER}, which
+   * is askable: the fail-open direction this whole field is defaulted in.
+   */
+  settles: z.enum(CHECKLIST_SETTLERS).default(DEFAULT_CHECKLIST_SETTLER),
+}).superRefine((item, ctx) => {
   const basis = item.basis.trim();
   if (item.result === "unknown" && basis.length > 0) {
     ctx.addIssue({
@@ -134,6 +146,25 @@ export function dimensionKey(name: string): string {
 }
 
 /**
+ * Read a dimension's declared authority, repairing anything else to
+ * {@link DEFAULT_CHECKLIST_SETTLER}.
+ *
+ * The one place the legacy contract is honoured: a checklist persisted before
+ * `settles` existed carries none, and it reads back as `either` — askable,
+ * therefore identical to how it behaved before this field. Same for a value
+ * the generation schema somehow let through. Unlike every other repair in this
+ * module, this one does not degrade toward the conservative answer, because
+ * here the conservative answer is the DANGEROUS one: `counterparty` would take
+ * a dimension out of the floor's reach, and an unfilled field must never be
+ * able to do that.
+ */
+export function normalizeSettles(value: unknown): ChecklistSettler {
+  return CHECKLIST_SETTLERS.includes(value as ChecklistSettler)
+    ? (value as ChecklistSettler)
+    : DEFAULT_CHECKLIST_SETTLER;
+}
+
+/**
  * Enforce the basis discipline on a drafted item, repairing toward `unknown`.
  *
  * An `ok`/`conflict` with no basis is not a score — it is an assertion, which
@@ -144,9 +175,10 @@ export function dimensionKey(name: string): string {
 export function normalizeChecklistItem(item: ChecklistDraftItem): ChecklistItem {
   const basis = item.basis.trim();
   const name = item.name.trim();
-  if (item.result === "unknown") return { ...item, name, basis: "" };
-  if (basis.length === 0) return { ...item, name, result: "unknown", basis: "" };
-  return { ...item, name, basis };
+  const settles = normalizeSettles(item.settles);
+  if (item.result === "unknown") return { ...item, name, settles, basis: "" };
+  if (basis.length === 0) return { ...item, name, settles, result: "unknown", basis: "" };
+  return { ...item, name, settles, basis };
 }
 
 /** Repair a whole draft: per-item basis discipline, then de-duplication. */
@@ -194,12 +226,18 @@ export function authorChecklist(draft: readonly ChecklistDraftItem[]): Negotiati
 /**
  * Re-score a frozen checklist from a later turn's draft.
  *
- * The frozen dimensions are the authority: their `name` and `kind` are copied
- * through untouched, a drafted dimension the checklist does not carry is
- * ignored (no dimension is ever added), and a frozen dimension the draft
- * omitted keeps the score it already had (no dimension is ever dropped).
+ * The frozen dimensions are the authority: their `name`, `kind` and `settles`
+ * are copied through untouched, a drafted dimension the checklist does not
+ * carry is ignored (no dimension is ever added), and a frozen dimension the
+ * draft omitted keeps the score it already had (no dimension is ever dropped).
  * Only `result` and `basis` move — under the same basis discipline, so a
  * re-score to `ok` with nothing behind it lands on `unknown`.
+ *
+ * `settles` freezing with the dimension is what makes it trustworthy. It is a
+ * judgment about the WORLD — whose fact this is — not about the evidence, so
+ * nothing a later turn learns can change it, and letting a re-score move it
+ * would hand an agent the switch that turns the conclusion floor off for a
+ * dimension it would rather not be asked about.
  */
 export function reconcileChecklist(
   frozen: readonly ChecklistItem[],
@@ -277,6 +315,12 @@ export type AskInadmissibility =
   | "no_such_dimension"
   /** The commitment store already scored it — answer from stated facts instead. */
   | "already_scored"
+  /**
+   * The dimension is the COUNTERPARTY's fact to state, so no answer from this
+   * client could settle it. The mechanical half of rule 3 — see
+   * {@link assessAskAdmissibility}.
+   */
+  | "counterparty_authoritative"
   /** No answerhood map, or one whose branches cannot flip anything. */
   | "not_pivotal"
   /** This topic has already been asked in this negotiation. */
@@ -317,15 +361,19 @@ export interface AskAdmissibilityInput {
 /**
  * The five-part admissibility rule, in the part that is machine-checkable.
  *
- * 1. **Unknown** and 3. **principal-authoritative** collapse into one check
- *    here, and that is the point rather than a shortcut: a dimension is
- *    `unknown` exactly when no commitment in the store settles it, because the
- *    basis discipline is what allows any other score. So "the commitment store
- *    can answer it" is observable as "it is not unknown" — reported as
- *    `already_scored`, the reason that says *answer from stated facts instead
- *    of spending the principal's attention*. Whether the missing fact is one
- *    the PRINCIPAL rather than the counterparty holds stays prompt law: no
- *    enum can see it.
+ * 1. **Unknown** — a dimension is `unknown` exactly when no commitment in the
+ *    store settles it, because the basis discipline is what allows any other
+ *    score. So "the commitment store can answer it" is observable as "it is
+ *    not unknown" — reported as `already_scored`, the reason that says *answer
+ *    from stated facts instead of spending the principal's attention*.
+ * 3. **Principal-authoritative** — the missing fact must be one this client
+ *    holds. This was prompt law until the floor asked a client, in her own DM,
+ *    whether the counterparty works on generative story games: no enum could
+ *    see whose fact it was, so nothing mechanical could refuse it. Now the
+ *    authoring agent declares `settles` once and this reads it — a dimension
+ *    marked `counterparty` is refused as `counterparty_authoritative`, in both
+ *    directions at once, since the same marking is what keeps the conclusion
+ *    floor from manufacturing the ask this refuses.
  * 2. **Pivotal** — the answerhood map must exist and its two branches must
  *    differ. A map whose `ok_when` and `conflict_when` say the same thing
  *    proves nothing would flip, which is zero value of information.
@@ -353,6 +401,9 @@ export function assessAskAdmissibility(input: AskAdmissibilityInput): AskAdmissi
     : undefined;
   if (!item) return { admissible: false, reason: "no_such_dimension" };
   if (item.result !== "unknown") return { admissible: false, reason: "already_scored" };
+  if (normalizeSettles(item.settles) === "counterparty") {
+    return { admissible: false, reason: "counterparty_authoritative" };
+  }
 
   if (input.askedDimensions.some((asked) => dimensionKey(asked) === key)) {
     return { admissible: false, reason: "repeat_topic" };
@@ -430,12 +481,27 @@ export function assessDeclineAdmissibility(input: DeclineAdmissibilityInput): De
  *
  * "Askable" is a conjunction of two very different kinds of condition, and
  * they are split on purpose. What lives HERE is the part the checklist can
- * see: a dimension scored `unknown` whose topic has not already been put to
- * this principal. What lives at the callsite is whether the ask CHANNEL is up
- * at all — v2, the wiring, the budget, the ask-rounds cap, a reachable
- * principal, a non-final turn — which the turn node already computes once as
- * `askUserAvailable` and passes in as a single boolean. Recomputing any part
- * of it here would be a second answer to a question that already has one.
+ * see: a dimension scored `unknown`, whose topic has not already been put to
+ * this principal, AND which is not the counterparty's fact to state. What
+ * lives at the callsite is whether the ask CHANNEL is up at all — v2, the
+ * wiring, the budget, the ask-rounds cap, a reachable principal, a non-final
+ * turn — which the turn node already computes once as `askUserAvailable` and
+ * passes in as a single boolean. Recomputing any part of it here would be a
+ * second answer to a question that already has one.
+ *
+ * The `settles` filter is the half that was missing, and its absence was
+ * observed live: a seat whose first two unknowns were both about the
+ * COUNTERPARTY's work drafted `question` to the counterparty's agent — the
+ * protocol's own prescribed move — and the floor, seeing a non-ask turn with
+ * an unknown standing, coerced it into asking the CLIENT whether the other
+ * person works on generative story games. `unknown ∧ unasked` cannot tell a
+ * Beatrice-style "what is your timing?" from that; only the authoring agent
+ * ever knew, which is why it now says so once and this reads it forever.
+ *
+ * The direction is deliberate: `client` and `either` both qualify, and only an
+ * explicit `counterparty` is excluded. A dimension nobody marked stays askable,
+ * so no authoring failure — lazy, legacy, or repaired — can switch the floor
+ * off wholesale. See {@link DEFAULT_CHECKLIST_SETTLER}.
  *
  * Order is the checklist's own. The dimensions were pre-registered on turn 1
  * by the agent that wrote them, so their order is that agent's own statement
@@ -448,7 +514,9 @@ export function askableUnknowns(
 ): ChecklistItem[] {
   if (!isChecklistAuthored(checklist)) return [];
   const asked = new Set(askedDimensions.map((name) => dimensionKey(name)));
-  return checklist.filter((item) => item.result === "unknown" && !asked.has(dimensionKey(item.name)));
+  return checklist.filter((item) => item.result === "unknown"
+    && normalizeSettles(item.settles) !== "counterparty"
+    && !asked.has(dimensionKey(item.name)));
 }
 
 /**
@@ -492,7 +560,11 @@ export interface ConcludeAdmissibilityInput {
  * So the choice stops being the model's. While a dimension it scored `unknown`
  * is one this principal could still be asked about, concluding — in favour of
  * the match or against it — is not an available move, and the turn is
- * re-issued knowing that. What makes this safe rather than a deadlock is that
+ * re-issued knowing that. "Could be asked about" is {@link askableUnknowns},
+ * which now excludes the dimensions the author marked as the COUNTERPARTY's to
+ * state: a verdict blocked only by those is admitted, because the move that
+ * resolves them is dialogue with the other agent, and the verdict law already
+ * says an unknown may be carried into the meeting. What makes this safe rather than a deadlock is that
  * `askUserAvailable` is FALSE the moment the budget is spent, the ask-rounds
  * cap is reached, the principal is unreachable, or the turn is the last one:
  * every one of those reopens the verdict immediately. The floor holds only
@@ -526,6 +598,21 @@ const KIND_LABEL: Record<ChecklistKind, string> = {
   mutual_want: "mutual want",
   hard_constraint: "hard constraint",
   fit: "fit",
+};
+
+/**
+ * How a dimension's declared authority reads back to the agent that wrote it.
+ *
+ * Rendered on every row rather than only where it bites, because the agent
+ * re-scoring a frozen checklist did not necessarily author it — a resumed run,
+ * the other seat's reply, a continuation — and the marking is what tells it
+ * which unknowns are its client's to resolve and which are the counterparty's
+ * to be asked about in the dialogue.
+ */
+const SETTLES_LABEL: Record<ChecklistSettler, string> = {
+  client: "your client's to settle",
+  counterparty: "the counterparty's to state",
+  either: "either side can settle",
 };
 
 export interface ChecklistSectionInput {
@@ -586,13 +673,17 @@ export function renderChecklistSection(input: ChecklistSectionInput): string {
       + (unreachable
         ? `.\n`
         : ` — and the best one is a thing only your client can answer.\n`)
+      + `For EVERY dimension, also say whose fact it is, in "settles": "client" for a thing only your client can answer — their preference, their constraint, their willingness; `
+      + `"counterparty" for something that is the other side's to state about themselves — their work, their stage, their availability; `
+      + `"either" where either side could settle it. This is not a guess about who is easier to reach: a dimension about the COUNTERPARTY is never resolved by asking your client about them.\n`
       + budgetLine;
   }
 
   const rows = input.checklist
     .map((item) => {
       const basis = item.basis.trim();
-      return `- ${item.name} [${KIND_LABEL[item.kind]}]: ${item.result}${basis ? ` — basis: ${basis}` : ""}`;
+      const settles = SETTLES_LABEL[normalizeSettles(item.settles)];
+      return `- ${item.name} [${KIND_LABEL[item.kind]}, ${settles}]: ${item.result}${basis ? ` — basis: ${basis}` : ""}`;
     })
     .join("\n");
 
