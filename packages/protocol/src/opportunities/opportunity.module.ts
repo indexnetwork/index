@@ -71,6 +71,9 @@ export {
   createOpportunityTools,
 } from "./opportunity.tools.js";
 export {
+  createOpportunityVerdictTools,
+} from "./opportunity.verdict.tools.js";
+export {
   DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
   DISCOVERY_MIN_SIMILARITY_DEFAULT,
   discoveryAllowedTypes,

@@ -897,3 +897,62 @@ describe('signals read/write split (IND-588)', () => {
     }
   });
 });
+
+describe('MCP question flow (answer lane + owner verdicts)', () => {
+  const sessionHuman = () => resolveMcpCapabilitySubject({
+    identity: identity({ isSessionAuth: true }),
+  });
+
+  test('answer_pending_question is the recipient principal lane: humans and manage:negotiations agents', () => {
+    expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get('answer_pending_question')).toEqual({
+      access: 'permission',
+      actions: ['manage:negotiations'],
+      reach: 'principal',
+    });
+
+    expect(policy.authorize(sessionHuman(), 'answer_pending_question')).toMatchObject({
+      allowed: true,
+      reason: 'session_human',
+    });
+    expect(policy.authorize(globalAgentSubject(['manage:negotiations']), 'answer_pending_question')).toMatchObject({
+      allowed: true,
+      reason: 'permission_granted',
+    });
+    expect(policy.authorize(globalAgentSubject(['manage:intents']), 'answer_pending_question')).toMatchObject({
+      allowed: false,
+      reason: 'permission_missing',
+    });
+  });
+
+  test('owner verdicts are human_only: exactly the class the IND-593 provenance binding admits', () => {
+    for (const tool of ['reject_opportunity', 'accept_opportunity'] as const) {
+      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(tool)).toEqual({ access: 'human_only', reach: 'network' });
+      expect(policy.authorize(sessionHuman(), tool)).toMatchObject({ allowed: true, reason: 'session_human' });
+      // Every agent principal class is refused — including one holding every
+      // canonical permission: no grant releases an owner verdict.
+      expect(policy.authorize(globalAgentSubject([...MCP_PERMISSION_ACTIONS]), tool)).toMatchObject({
+        allowed: false,
+        reason: 'human_only',
+      });
+    }
+  });
+
+  test('Hermes negotiator credentials fail closed as unclassified on all three question-flow tools', () => {
+    const hermes = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID, isHermesAgent: true }),
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'global',
+          scopeId: null,
+          actions: [...MCP_PERMISSION_ACTIONS],
+        }],
+      }),
+    });
+    for (const tool of ['answer_pending_question', 'reject_opportunity', 'accept_opportunity']) {
+      expect(HERMES_AGENT_MCP_TOOL_PERMISSIONS.get(tool)).toBeUndefined();
+      expect(policy.authorize(hermes, tool)).toEqual({ allowed: false, reason: 'tool_unclassified' });
+    }
+  });
+});

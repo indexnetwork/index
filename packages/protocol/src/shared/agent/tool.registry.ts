@@ -5,12 +5,12 @@ import { error, redactSensitiveFields } from './tool.helpers.js';
 import { createEnrichmentTools } from '../../enrichment/enrichment.tools.js';
 import { Intents } from '../../intents/intent.module.js';
 import { Networks } from '../../networks/network.module.js';
-import { createOpportunityTools } from '../../opportunities/opportunity.module.js';
+import { createOpportunityTools, createOpportunityVerdictTools } from '../../opportunities/opportunity.module.js';
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
 import { createContactTools } from '../../contacts/contact.module.js';
 import { createAgentTools } from '../../agents/agent.module.js';
-import { createNegotiationTools } from '../../negotiations/negotiation.module.js';
+import { createNegotiationAnswerTools, createNegotiationTools } from '../../negotiations/negotiation.module.js';
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premises/premise.tools.js';
 import type { OpportunityOwnerApprovalDeps } from '../../opportunities/opportunity.tools.port.js';
@@ -105,6 +105,16 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   }
   createAgentTools(dt, deps);
   createNegotiationTools(dt, deps);
+  // The MCP question flow: the answer lane for parked negotiations and the
+  // owner's verdict tools. MCP-only, deliberately — the chat lane is the
+  // negotiator persona's appended toolset, and the REST Tool API's API-key
+  // principals must never gain an owner-verdict lever (IND-593: the
+  // capability matrix admits verdicts for session humans only, and the
+  // verdict handler re-checks the host-bound provenance).
+  if (isMcpSurface) {
+    createNegotiationAnswerTools(dt, deps);
+    createOpportunityVerdictTools(dt, deps);
+  }
   createPremiseTools(dt, deps);
   if (deps.chatSession) {
     createChatTools(dt, deps);

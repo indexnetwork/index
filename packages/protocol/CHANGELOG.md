@@ -20,6 +20,78 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.6.0 - 2026-08-20
+
+### Added
+
+- **The MCP surface can now ACT on the question flow, not just see it.** Since
+  23.5.1 `list_negotiations` says the park — "open question 3, 'Timing'" — to
+  an external client that had no tool to answer it: the answer lane was the
+  negotiator persona's chat-only appended tool, and the owner's verdict levers
+  did not exist on MCP at all. Three tools close the read-and-act gap, all
+  registered on the MCP tool registry surface only:
+
+  - `answer_pending_question(negotiationId, question, answer)` routes the
+    principal's answer to the open question a parked negotiation is waiting on,
+    over the EXISTING `NegotiatorAnswerToolsHost` — the same
+    `readOpenQuestionsForIntent` numbering, the same serialized consumption
+    queue, the same #1432 resume spine. MCP has no pinned intent, so the tool
+    resolves scope from the negotiation the client is looking at: the id the
+    park annotation sits on → the caller's own actor intent on that pairing →
+    the host. The `question` number passes through untouched; it and the park
+    annotation come from one enumeration and cannot drift (the #1470 rule).
+  - `reject_opportunity` / `accept_opportunity` (intentId, numbered
+    counterparty, optional reason in the owner's own words) reuse the
+    negotiator verdict host verbatim — the same Radar Skip/Start-Chat service
+    call, outcome hooks and question retirement in its wake, positions never
+    ids. Capability access is `human_only`: exactly the session-authenticated
+    class the IND-593 owner-provenance binding admits, and the handler
+    re-checks the host-bound provenance so an API-key agent is refused even if
+    the tool were ever mis-listed. Hermes negotiator credentials fail closed as
+    unclassified for all three tools.
+
+- **`get_negotiation` says the park** — the #1472 incident, one level down: it
+  is the tool the poller prompt says to call FIRST, and on a parked negotiation
+  it narrated a lifecycle built without the park. The detail reader now runs
+  the same canonical park predicate the listing runs (`classifyInflightPark` /
+  `classifyPostStallPark`) over the task and messages it already holds, names
+  the open question through the same shared host record, projects the park
+  top-level and into `lifecycle` (superseding the status label), and — for an
+  external seat that could not see dimensions or `settles` — projects the
+  persisted `askUser` and `checklist` payloads on turns that carry them.
+  Non-parked negotiations render byte-for-byte as before.
+
+- **`get_negotiation` re-stamps principal reachability from the live read.**
+  The persisted `turnContext` is a park-time snapshot; `ownUser.principalUnreachable`
+  is now corrected in both directions through the host's
+  `isPrincipalUnreachable` port — the same re-stamp REST pickup applies — so an
+  external seat is never told it can consult a principal nobody is behind, or
+  the reverse.
+
+- **`list_negotiations` can filter for the parked state.** The `status` filter
+  gains `input_required`; `active` and `all` behave exactly as before. A
+  post-stall park lives on a `completed` negotiation and is documented as such
+  rather than smuggled into the status filter.
+
+### Fixed
+
+- **`read_activity_summary` stops counting questions from the retired card
+  table.** Pending question counts now come from the parked negotiations —
+  a mid-flight `input_required` consult naming the owner as recipient, or a
+  post-stall park trailing the authored gap — keyed by the same
+  `negotiation_inflight`/`negotiation` modes the projection already maps to the
+  negotiations domain, so permission inheritance is unchanged. Leftover
+  pending rows in the retired `questions` table contribute nothing; answered
+  history still reads the table, where it legitimately lives.
+
+- **Honest words where external clients read them.** The negotiations guidance
+  topic, the workflows topic, and `MCP_INSTRUCTIONS` now carry the park stage —
+  what a park is, what the `park` fields mean, and that answering is the only
+  thing that resumes a parked negotiation. The three negotiation tool
+  descriptions state plainly that turns submitted through external surfaces are
+  NOT run through the conclusion floor, decline law, or copy-loop guard: until
+  external write parity ships, the docs must not imply otherwise.
+
 ## 23.5.1 - 2026-08-20
 
 ### Fixed

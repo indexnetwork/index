@@ -2,6 +2,7 @@ import type { NegotiationGraphDatabase } from "../shared/interfaces/database.int
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import type { NegotiationTimeoutQueue } from "../shared/interfaces/negotiation-events.interface.js";
 import type { NegotiationListingParkHost } from "../shared/interfaces/negotiation-listing-park.interface.js";
+import type { NegotiatorAnswerToolsHost } from "../shared/interfaces/negotiator-answer.interface.js";
 
 /**
  * Host capabilities consumed by the negotiation tool factory.
@@ -23,4 +24,12 @@ export interface NegotiationToolDeps {
    * parked and on whose side, it just cannot name the question's number.
    */
   negotiationListingPark?: NegotiationListingParkHost;
+  /**
+   * Host bridge behind the MCP-surface `answer_pending_question` tool — the
+   * same host, numbering, and consumption path the negotiator persona's chat
+   * tool uses (#1466). Optional: without it the tool reports an honest
+   * unavailability error rather than not registering, so the MCP tool
+   * inventory stays static.
+   */
+  negotiatorAnswerTools?: NegotiatorAnswerToolsHost;
 }

@@ -255,11 +255,20 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       '`pending` still awaits owner review. When the negotiation is parked, `lifecycle.lifecycleLabel` states the park (it supersedes the ' +
       'status label) and `lifecycle.connectionState` is `parked_awaiting_your_answer` or `parked_awaiting_counterparty`. ' +
       '`directConversationEvidence` is `not_provided`, so this tool never establishes that an H2H message thread exists.\n\n' +
+      '**Answering a park:** when `park.waitingOn` is "you", relay the question to the user and route their answer with ' +
+      '`answer_pending_question` (negotiationId + the `park.question` number). Nothing else resumes a parked negotiation.\n\n' +
+      '**External turns:** a turn submitted through this surface (respond_to_negotiation) or the REST respond endpoint is NOT run ' +
+      'through the negotiation graph\'s conclusion floor, decline law, or copy-loop guard — those protections apply only to graph-run turns. ' +
+      'Do not describe external turns as protected by them.\n\n' +
       '**When to use:** To see ongoing and past negotiations, check which negotiations need attention, ' +
       'or find a negotiation ID for get_negotiation or respond_to_negotiation.',
     querySchema: z.object({
-      status: z.enum(['active', 'waiting_for_agent', 'completed', 'all']).optional()
-        .describe('Filter by negotiation status. Omit or use "all" to return all negotiations.'),
+      status: z.enum(['active', 'waiting_for_agent', 'input_required', 'completed', 'all']).optional()
+        .describe(
+          'Filter by negotiation status. Omit or use "all" to return all negotiations. '
+          + '"input_required" returns the negotiations parked mid-flight on a person\'s answer — read `park` for whose. '
+          + 'A post-stall park lives on a "completed" negotiation and carries a `park` object there; it is not returned by this filter.',
+        ),
       scope: z.enum(['signal', 'all']).optional()
         .describe('Scope to the pinned signal (requires an intent-pinned session), or pass "all" for the full negotiation history.'),
       since: z.string().datetime().optional()
@@ -285,6 +294,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         // For 'active', query 'working' state tasks
         const dbState = stateFilter === 'active' ? 'working'
           : stateFilter === 'waiting_for_agent' ? 'waiting_for_agent'
+          : stateFilter === 'input_required' ? 'input_required'
           : stateFilter === 'completed' ? 'completed'
           : undefined;
 
@@ -498,10 +508,19 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       'Negotiations are bilateral exchanges where two AI agents negotiate on behalf of users. Each turn contains an action ' +
       '(propose, accept, reject, counter, question), an assessment with reasoning and suggested roles, and an optional message.\n\n' +
       '**Access control:** You must be a party to the negotiation (source or candidate) to view it.\n\n' +
-      '**Statuses:** `active` — in progress. `waiting_for_agent` — waiting for an agent response or timeout. `completed` — the agents concluded, not that the owner accepted or a connection/message thread exists.\n\n' +
+      '**Statuses:** `active` — in progress. `waiting_for_agent` — waiting for an agent response or timeout. ' +
+      '`input_required` — PARKED on a person\'s answer; read `park` for whose. `completed` — the agents concluded, not that the owner accepted or a connection/message thread exists.\n\n' +
+      '**Parked negotiations:** A negotiation waiting on a person carries a `park` object (`waitingOn: "you" | "counterparty"`, and for the ' +
+      'user\'s own side the open question\'s `question` number and `questionLabel`, from the SAME record `answer_pending_question` routes against). ' +
+      'When the negotiation is parked, `lifecycle.lifecycleLabel` states the park (it supersedes the status label) — `park.waitingOn="you"` means the user has ' +
+      'something to answer RIGHT NOW, whatever the opportunity status reads; route their answer with `answer_pending_question`. A `park` on the ' +
+      'counterparty\'s side names no question content. Turns carrying an `ask_user` consult include the persisted `askUser` payload (question, dimension, answerhood) ' +
+      'and the `checklist` the turn scored, so the consult\'s dimensions and `settles` declarations are visible.\n\n' +
       '**Lifecycle narration:** The additive `lifecycle` object is authoritative for user-facing wording. A turn action of `accept` is agent-side; ' +
       'only `lifecycle.ownerAction=accepted` records this owner as the human acceptor. `conversationType=agent_negotiation` identifies the returned ' +
       'conversationId as the A2A negotiation transcript; this result does not provide H2H conversation evidence.\n\n' +
+      '**External turns:** turns submitted through respond_to_negotiation or the REST respond endpoint are NOT run through the negotiation graph\'s ' +
+      'conclusion floor, decline law, or copy-loop guard; do not imply those protections for them.\n\n' +
       '**When to use:** To review the full negotiation history before responding, to understand why the agents ' +
       'accepted or rejected a potential match, or to see the current state of an active negotiation.\n\n' +
       '**Negotiation-turn-mode usage.** If you are running as a silent background subagent (dispatched by the ' +
@@ -572,6 +591,30 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           readArtifacts: (taskId) => negotiationDatabase.getArtifactsForTask(taskId),
           readLifecycleEvidence: (opportunityIds, ownerUserId) =>
             readOpportunityLifecycles(negotiationDatabase, opportunityIds, ownerUserId),
+          // #1472, one level down: the open question's number and label come
+          // from the same host record the listing and `answer_pending_question`
+          // read — resolved through the caller's own actor intent, so a park on
+          // the counterparty's side can never be quoted here.
+          readOpenQuestion: async (opportunityId) => {
+            const parkHost = deps.negotiationListingPark;
+            if (!parkHost) return undefined;
+            try {
+              const intentIds = await negotiationDatabase.getIntentIdsForOpportunities([opportunityId], context.userId);
+              const intentId = intentIds[opportunityId];
+              if (!intentId) return undefined;
+              const openQuestions = await parkHost.readOpenQuestions(context.userId, intentId);
+              return openQuestions.find((question) => question.opportunityId === opportunityId);
+            } catch (openErr) {
+              logger.warn('Failed to read open question for negotiation detail', { opportunityId, err: openErr });
+              return undefined;
+            }
+          },
+          // The persisted turnContext is a park-time snapshot; reachability is
+          // re-stamped from the live read the way REST pickup does, so the
+          // flag is never served stale in either direction.
+          ...(negotiationDatabase.isPrincipalUnreachable
+            ? { resolvePrincipalUnreachable: (userId: string) => negotiationDatabase.isPrincipalUnreachable!(userId) }
+            : {}),
         });
         return success(detail);
       } catch (err) {
@@ -600,6 +643,10 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       '- `question` — Ask the other side a clarifying question (message is required). The negotiation continues.\n\n' +
       '**What happens after:** Terminal actions (accept/reject/withdraw/decline) finalize the negotiation immediately. ' +
       'Counter/question continues — if the counterparty has an agent, the negotiation yields again; otherwise the AI agent responds inline.\n\n' +
+      '**What this surface does NOT run:** turns submitted here are NOT run through the negotiation graph\'s conclusion floor ' +
+      '(the checklist gate an in-graph accept must clear), the decline law, or the copy-loop guard. Those protections apply only to ' +
+      'graph-run turns; a turn submitted here is persisted as given. Do not tell the user those checks were applied, and do not submit ' +
+      'ask_user/checklist payloads through this tool — it does not carry them.\n\n' +
       '**Silent-subagent response contract.** In negotiation-turn mode, submit exactly ONE call to this tool ' +
       'per dispatch with an action from your seat\'s allowed set and the assessment (reasoning + suggestedRoles). ' +
       'If the decision is ambiguous, pick the most conservative action — usually `counter` with specific objections. ' +

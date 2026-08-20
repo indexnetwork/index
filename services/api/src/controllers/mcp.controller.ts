@@ -671,6 +671,13 @@ function createMcpServerInstance(): McpServer {
     // #1472: same park annotations on the MCP surface — an external agent
     // reading this listing must not be told "still negotiating" either.
     negotiationListingPark: protocolDeps.negotiationListingPark,
+    // MCP question flow: the answer lane for parked negotiations (the same
+    // #1466 host, numbering, and consumption queue the chat lane uses) and the
+    // owner-verdict host behind reject/accept_opportunity (the same #1471
+    // Radar Skip/Start-Chat path). The tools register on the MCP surface only;
+    // the capability matrix confines verdicts to session-authenticated owners.
+    negotiatorAnswerTools: protocolDeps.negotiatorAnswerTools,
+    negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
     chatSession: protocolDeps.chatSession,

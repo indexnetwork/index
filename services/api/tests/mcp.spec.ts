@@ -1286,14 +1286,61 @@ describe('MCP Server Factory', () => {
     expect(resourceCalls.get).toBe(3);
   });
 
-  it('does not list the retired question tools for any principal', async () => {
-    // read_pending_questions / answer_pending_question retired with the card
-    // question surface (conversational-questions plan, "Retirements").
+  it('keeps the retired CARD question tools retired; the conversational answer lane is a different contract', async () => {
+    // read_pending_questions retired with the card question surface
+    // (conversational-questions plan, "Retirements") and stays retired.
+    // answer_pending_question RETURNS as a deliberately different contract
+    // (MCP question flow): the conversational answer lane over the #1466 host
+    // — (negotiationId, question, answer), the same numbering the listing's
+    // park annotations print — not the card-era read/answer pair. This pin
+    // was updated consciously with that registration.
     const names = await listToolNamesFor({
       identity: { userId: 'test-user-id', isSessionAuth: true },
     });
     expect(names).not.toContain('read_pending_questions');
-    expect(names).not.toContain('answer_pending_question');
+    expect(names).toContain('answer_pending_question');
+  });
+
+  it('lists the owner verdict tools for session humans only; agent principals never see or reach them', async () => {
+    // MCP question flow: reject/accept_opportunity are the owner's verdict
+    // lane — human_only, exactly the session-authenticated class the IND-593
+    // owner-provenance binding admits. An API-key agent principal (even one
+    // holding manage:negotiations + manage:opportunities) is hidden in
+    // tools/list and capability-denied on tools/call before any DB work.
+    const humanNames = await listToolNamesFor({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+    });
+    expect(humanNames).toContain('reject_opportunity');
+    expect(humanNames).toContain('accept_opportunity');
+    expect(humanNames).toContain('answer_pending_question');
+
+    const agentDatabase = agentDbWith({
+      agentId: 'agent-verdict',
+      scope: 'global',
+      scopeId: null,
+      actions: ['manage:negotiations', 'manage:opportunities'],
+    });
+    const agentNames = await listToolNamesFor({
+      identity: { userId: 'test-user-id', agentId: 'agent-verdict' },
+      agentDatabase,
+    });
+    expect(agentNames).not.toContain('reject_opportunity');
+    expect(agentNames).not.toContain('accept_opportunity');
+    // The answer lane IS the agent's — it holds manage:negotiations.
+    expect(agentNames).toContain('answer_pending_question');
+
+    for (const toolName of ['reject_opportunity', 'accept_opportunity']) {
+      const denied = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-verdict' },
+        agentDatabase,
+        scopedThrows: true,
+        toolName,
+        arguments: { intentId: 'intent-1', counterparty: 1 },
+      });
+      expect(denied.isError, `${toolName}: agent principal denied`).toBe(true);
+      expect(denied.code, `${toolName}: capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(denied.scopedCreateArgs, `${toolName}: no scoped DB`).toEqual([]);
+    }
   });
 
   it('omits complete_onboarding from tools/list for every principal', async () => {
