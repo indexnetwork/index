@@ -4,6 +4,8 @@
  * Anything outside this capability imports from here and nowhere else.
  */
 export { AMBIENT_PARK_WINDOW_MS, createNegotiationTools } from "./negotiation.tools.js";
+export { buildLifecycleNarration, parkLifecycleLabel } from "./negotiation.lifecycle-narration.js";
+export type { NegotiationLifecycleNarration, NegotiationParkNarration } from "./negotiation.lifecycle-narration.js";
 export { buildFallbackDigest, NegotiationSummarizer } from "./negotiation.summarizer.js";
 export { IndexNegotiator } from "./negotiation.agent.js";
 export { negotiateCandidates, NegotiationGraphFactory } from "./negotiation.graph.js";
@@ -61,7 +63,9 @@ export type {
 export { NEGOTIATION_PARK_REASONING, NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 export type { NegotiationStallGap, NegotiationStallReason, StallGapAuthorInput } from "./negotiation.stall-gap.js";
 export {
+  classifyInflightPark,
   classifyParkedNegotiation,
+  classifyPostStallPark,
   consumeQuestionBlockAnswers,
   negotiationParkAnswerId,
   resumeParkedNegotiation,
@@ -75,6 +79,8 @@ export type {
   NegotiationAnswerInput,
   NegotiationAnswerResumeOutcome,
   ParkClassification,
+  ParkClassificationMessage,
+  ParkClassificationTask,
   QuestionBlockAnswerConsumptionInput,
   QuestionBlockAnswerConsumptionResult,
   RoutedAnswer,

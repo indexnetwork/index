@@ -210,6 +210,8 @@ export async function createChatTools(
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
+    // #1472: the open-question record behind the listing's park annotations.
+    ...(deps.negotiationListingPark && { negotiationListingPark: deps.negotiationListingPark }),
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     agentDispatcher: deps.agentDispatcher,

@@ -348,7 +348,9 @@ export {
 // ─── Negotiation answer consumption (conversational questions) ──────────────
 
 export {
+  classifyInflightPark,
   classifyParkedNegotiation,
+  classifyPostStallPark,
   consumeQuestionBlockAnswers,
   negotiationParkAnswerId,
   resumeParkedNegotiation,
@@ -362,6 +364,8 @@ export type {
   NegotiationAnswerInput,
   NegotiationAnswerResumeOutcome,
   ParkClassification,
+  ParkClassificationMessage,
+  ParkClassificationTask,
   QuestionBlockAnswerConsumptionInput,
   QuestionBlockAnswerConsumptionResult,
   RoutedAnswer,
