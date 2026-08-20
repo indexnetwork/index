@@ -18,6 +18,8 @@ function conversation(
     withMessage?: boolean;
     updatedAt?: string;
     screenDecision?: NonNullable<ConversationSummary['negotiation']>['screenDecision'];
+    /** Which task session produced the conversation's last message; defaults to the represented one. */
+    lastMessageTaskId?: string;
   } = {},
 ): ConversationSummary {
   const action = input.action ?? 'counter';
@@ -31,7 +33,7 @@ function conversation(
       parts: [{ kind: 'data', data: { action } }],
       senderId: input.senderId ?? `agent:${id}-peer`,
       createdAt: '2026-07-24T11:00:00.000Z',
-      taskId: `${id}-task`,
+      taskId: input.lastMessageTaskId ?? `${id}-task`,
     },
     metadata: null,
     via: [],
@@ -171,6 +173,97 @@ describe('negotiations inbox presentation', () => {
     ], 'viewer', NOW);
 
     expect(groups).toEqual({ yourMove: [], inProgress: [], resolved: [] });
+  });
+
+  // The API collapses a person's several task sessions into one represented
+  // `negotiation` by liveness (awaiting approval › parked › in progress ›
+  // resolved), so the row here only ever sees the most alive session. What the
+  // web must guarantee is that nothing from a *different* session with the
+  // same person — the conversation-wide last message — can caption or
+  // reclassify that row.
+  describe('person-row rollup (one row per counterparty)', () => {
+    it('keeps an awaiting-you row awaiting you when a later dead pairing left the last message', () => {
+      // Hye-jin ↔ Deniz: the represented session is the pending approval
+      // (outreach → accept); the conversation's newest message is a decline
+      // from a later session that was screened out.
+      const groups = deriveNegotiationInbox([
+        conversation('deniz', {
+          state: 'completed',
+          opportunityStatus: 'pending',
+          outcome: { hasOpportunity: true, reason: null },
+          action: 'decline',
+          lastMessageTaskId: 'deniz-later-task',
+          updatedAt: '2026-07-24T11:28:00.000Z',
+        }),
+      ], 'viewer', NOW);
+
+      expect(groups.inProgress).toEqual([]);
+      expect(groups.resolved).toEqual([]);
+      expect(groups.yourMove).toHaveLength(1);
+      const [row] = groups.yourMove;
+      expect(row.status).toBe('awaiting_review');
+      expect(row.lastAction).toBe('agents recommended moving forward');
+      expect(row.lastAction).not.toMatch(/did not/);
+      // The timestamp is the represented session's, not the dead one's.
+      expect(row.timeAgo).toBe('32m ago');
+      // …and the header counts it: "1 your move", matching Radar's "Awaiting you · 1".
+      expect(countNegotiationsRequiringAction([conversation('deniz', {
+        state: 'completed', opportunityStatus: 'pending', action: 'decline', lastMessageTaskId: 'deniz-later-task',
+      })], 'viewer')).toBe(1);
+    });
+
+    it('captions a live row from its own session, not from another session of the same person', () => {
+      const groups = deriveNegotiationInbox([
+        conversation('live', { state: 'working', opportunityStatus: 'negotiating', action: 'decline', lastMessageTaskId: 'live-earlier-task' }),
+        conversation('own', { state: 'working', opportunityStatus: 'negotiating', action: 'counter', senderId: 'agent:viewer' }),
+      ], 'viewer', NOW);
+
+      expect(groups.inProgress.map((item) => [item.conversationId, item.status, item.lastAction])).toEqual([
+        ['live', 'negotiating', 'agents exchanged a turn'],
+        ['own', 'negotiating', 'your agent countered'],
+      ]);
+    });
+
+    it('leaves an all-resolved person on their most recent resolved pairing', () => {
+      const groups = deriveNegotiationInbox([
+        conversation('deniz', {
+          state: 'completed',
+          opportunityStatus: 'rejected',
+          outcome: { hasOpportunity: false, reason: 'screened_out' },
+          action: 'accept',
+          lastMessageTaskId: 'deniz-earlier-task',
+        }),
+      ], 'viewer', NOW);
+
+      expect(groups.yourMove).toEqual([]);
+      expect(groups.resolved.map((item) => [item.status, item.lastAction])).toEqual([
+        ['no_match', 'agents did not find enough mutual value to continue'],
+      ]);
+    });
+  });
+
+  describe('header — "your move" counts what the viewer must act on', () => {
+    it('counts an opportunity pending the viewer\'s approval, exactly as the Radar\'s "Awaiting you" does', () => {
+      // No agent question is parked; the only thing awaiting the viewer is the
+      // owner-approval gate. That is a move of theirs.
+      const pendingApproval = conversation('approval', {
+        state: 'completed',
+        opportunityStatus: 'pending',
+        outcome: { hasOpportunity: true, reason: null },
+        action: 'accept',
+      });
+      expect(countNegotiationsRequiringAction([pendingApproval], 'viewer')).toBe(1);
+      expect(deriveNegotiationInbox([pendingApproval], 'viewer', NOW).yourMove[0]?.status).toBe('awaiting_review');
+    });
+
+    it('counts a parked question to the viewer and a pending approval as two moves, and nothing resolved', () => {
+      expect(countNegotiationsRequiringAction([
+        conversation('question', { state: 'input_required', action: 'ask_user', senderId: 'agent:viewer' }),
+        conversation('approval', { state: 'completed', opportunityStatus: 'pending', action: 'accept' }),
+        conversation('declined', { state: 'completed', opportunityStatus: 'rejected', action: 'decline', outcome: { hasOpportunity: false, reason: null } }),
+        conversation('their-question', { state: 'input_required', action: 'ask_user' }),
+      ], 'viewer')).toBe(2);
+    });
   });
 
   it('flattens groups into a last-updated ordering across groups', () => {

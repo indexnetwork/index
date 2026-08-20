@@ -67,6 +67,19 @@ function formatTimeAgo(timestamp: number, now: number): string {
   return `${months}mo ago`;
 }
 
+/**
+ * The summary line of a live row. `action` is the represented session's own
+ * last turn, or null when the conversation's last message belongs to another
+ * session with the same person (a later pairing that died, say). A null turn
+ * is then described from the row's state, so a dead session's "did not
+ * recommend proceeding" can never caption a row whose badge says the viewer
+ * is awaited.
+ */
+function describeLive(status: NegotiationInboxStatus, action: string | null, isOwnAgent: boolean): string {
+  if (action === null && status === 'awaiting_review') return 'agents recommended moving forward';
+  return describeAction(action, isOwnAgent);
+}
+
 function describeAction(action: string | null, isOwnAgent: boolean): string {
   const actor = isOwnAgent ? 'your agent' : 'their agent';
   switch (action) {
@@ -156,7 +169,18 @@ export function isVisibleNegotiationConversation(
   return Boolean(conversation.lastMessage) || Boolean(conversation.negotiation?.screenDecision);
 }
 
-/** Derive user-facing inbox groups without exposing raw task or opportunity states. */
+/**
+ * Derive user-facing inbox groups without exposing raw task or opportunity
+ * states.
+ *
+ * One row per A2A conversation, i.e. per counterparty person. The API already
+ * collapsed that person's several task sessions into `conversation.negotiation`
+ * by liveness (awaiting approval › parked › in progress › resolved, recency
+ * only within a tier — services/api negotiation-session-rollup.projection.ts),
+ * so a person with one live pairing and any number of dead ones is a live row
+ * here, and counts toward "your move". Earlier pairings with the same person
+ * are deliberately not summarised on the row; the transcript holds them.
+ */
 export function deriveNegotiationInbox(
   negotiations: ConversationSummary[],
   viewerUserId: string | undefined,
@@ -190,9 +214,12 @@ export function deriveNegotiationInbox(
       }];
     }
 
-    const lastTurn = readLastTurn(conversation.lastMessage.parts);
     const classification = classifyConversation(conversation, viewerUserId);
     const lifecycle = conversation.negotiation;
+    // The represented session is the most alive one with this person, not
+    // necessarily the one that produced the conversation's last message; its
+    // summary line and timestamp come from that session alone.
+    const lastTurn = sessionScopedLastTurn(conversation, lifecycle?.taskId);
     const sortTimestamp = new Date(
       lifecycle?.updatedAt
         ?? conversation.lastMessage.createdAt
@@ -210,7 +237,7 @@ export function deriveNegotiationInbox(
       signalCount: Math.max(lifecycle?.signalCount ?? 0, conversation.via.length),
       lastAction: classification.group === 'resolved'
         ? describeResolved(classification.status, reason)
-        : describeAction(lastTurn.action, conversation.lastMessage.senderId === ownAgentId),
+        : describeLive(classification.status, lastTurn.action, lastTurn.senderId === ownAgentId),
       timeAgo: formatTimeAgo(safeTimestamp, now),
       sortTimestamp: safeTimestamp,
       turnCount: lifecycle ? lifecycle.turnCount : null,

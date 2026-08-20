@@ -412,6 +412,96 @@ describe('ConversationDatabaseAdapter', () => {
         outcome: { hasOpportunity: true, reason: null },
       });
     }, 20000);
+
+    it('lets an older pending approval represent the pair over a newer screened-out pairing', async () => {
+      // Two opportunities between the same pair: outreach → accept (pending
+      // the owner's approval), then a later pairing the gate screened out.
+      // The represented session is the live one, for the owner who may see
+      // both AND for the counterparty who may not see the gate at all.
+      const suffix = `${Date.now()}-${crypto.randomUUID()}`;
+      const ownerId = `rollup-owner-${suffix}`;
+      const counterpartId = `rollup-counterpart-${suffix}`;
+      const pendingOpportunityId = `rollup-pending-${suffix}`;
+      const screenedOpportunityId = `rollup-screened-${suffix}`;
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${ownerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+
+      await db.insert(schema.opportunities).values([
+        { id: pendingOpportunityId, status: 'pending' as const },
+        { id: screenedOpportunityId, status: 'rejected' as const },
+      ].map(({ id, status }) => ({
+        id,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'rollup-network', userId: ownerId, role: 'peer' },
+          { networkId: 'rollup-network', userId: counterpartId, role: 'peer' },
+        ],
+        interpretation: { category: 'test', reasoning: 'Rollup test.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status,
+      })));
+      createdOpportunityIds.push(pendingOpportunityId, screenedOpportunityId);
+
+      const pendingTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        initiatorUserId: ownerId,
+        opportunityId: pendingOpportunityId,
+        maxTurns: 6,
+      });
+      await adapter.createMessage({
+        conversationId: conversation.id,
+        senderId: `agent:${counterpartId}`,
+        role: 'agent',
+        taskId: pendingTask.id,
+        parts: [{ kind: 'data', data: { action: 'accept' } }],
+      });
+      await adapter.updateTaskState(pendingTask.id, 'completed');
+      await adapter.createArtifact({
+        taskId: pendingTask.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: true, turnCount: 2 } }],
+      });
+
+      const screenedTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        initiatorUserId: ownerId,
+        opportunityId: screenedOpportunityId,
+        maxTurns: 6,
+      });
+      await adapter.updateTaskState(screenedTask.id, 'completed');
+      await adapter.createArtifact({
+        taskId: screenedTask.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: false, reason: 'screened_out', turnCount: 0, reasoning: 'Not enough mutual value.' } }],
+      });
+      // Make the screened-out pairing unambiguously the newer task.
+      await db.update(schema.tasks).set({ createdAt: new Date(Date.now() + 60_000) }).where(eq(schema.tasks.id, screenedTask.id));
+
+      const ownerSummary = (await adapter.getConversationsForUser(`agent:${ownerId}`, ownerId, true))
+        .find((candidate) => candidate.id === conversation.id);
+      expect(ownerSummary?.negotiation).toMatchObject({
+        taskId: pendingTask.id,
+        opportunityId: pendingOpportunityId,
+        opportunityStatus: 'pending',
+        outcome: { hasOpportunity: true, reason: null },
+      });
+      // The conversation's last message is still that session's accept, so
+      // the web can caption the row from it.
+      expect(ownerSummary?.lastMessage?.taskId).toBe(pendingTask.id);
+
+      const counterpartSummary = (await adapter.getConversationsForUser(`agent:${counterpartId}`, counterpartId, true))
+        .find((candidate) => candidate.id === conversation.id);
+      expect(counterpartSummary?.negotiation?.taskId).toBe(pendingTask.id);
+      expect(JSON.stringify(counterpartSummary ?? {})).not.toContain('Not enough mutual value');
+    }, 30000);
   });
 
   describe('getLatestNegotiationTaskForConversation', () => {
