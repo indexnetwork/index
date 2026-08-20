@@ -55,6 +55,18 @@ const CHECKLIST: ChecklistDraftItem[] = [
   dimension("Stage fit", "fit", "unknown"),
 ];
 
+/**
+ * The same dimensions with one genuinely in conflict. A decline needs one —
+ * the verdict law is enforced at the turn node now, so a scripted decline over
+ * an unknowns-only checklist would be refused as inadmissible and the script
+ * would never reach its end.
+ */
+const CONFLICTED_CHECKLIST: ChecklistDraftItem[] = [
+  dimension("Mutual want", "mutual_want", "ok", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
+  dimension("Location", "fit", "conflict", "Bob's profile places him in Lisbon; the signal asks for Berlin"),
+  dimension("Stage fit", "fit", "unknown"),
+];
+
 const ANSWERHOOD = { ok_when: "the client says remote is fine", conflict_when: "the client says Berlin only" };
 
 const QUESTION = {
@@ -263,7 +275,7 @@ describe("an unreachable principal is never consulted", () => {
     agentScript = [
       askTurn(),
       askTurn(),
-      turn("decline", "the record does not support it"),
+      turn("decline", "the record puts Bob in the wrong city", { checklist: CONFLICTED_CHECKLIST } as Partial<NegotiationTurn>),
     ];
     const result = await runGraph(stubs);
 

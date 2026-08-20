@@ -92,6 +92,44 @@ export function extractTurn(message: ConversationMessage): TranscriptTurn | null
 }
 
 /**
+ * Actions that END a negotiation against the match. `accept` is deliberately
+ * absent: an accepted negotiation renders the opportunity banner, never the
+ * resolved one.
+ */
+const TERMINAL_REJECT_ACTIONS = new Set(['decline', 'reject', 'withdraw']);
+
+/** Who authored the turn that ended a negotiation, from the viewer's side. */
+export type TerminalTurnAuthor = 'own' | 'counterparty';
+
+/**
+ * The author of the terminal turn, read from the transcript the banner renders
+ * above — the only place the fact exists on the client.
+ *
+ * The outcome label does not carry it. `opportunityStatus: 'rejected'` says a
+ * negotiation ended against the match and nothing about which agent decided
+ * that, which is how a counterparty's decline came to be shown to the other
+ * owner as "your agent withdrew after reviewing the opportunity": their agent
+ * had done no such thing — it had been declined.
+ *
+ * Returns null when the transcript settles nothing (no terminal turn visible,
+ * or no viewer agent id to compare against). The caller must say something
+ * neutral there rather than guess: a guess is what this exists to remove.
+ */
+export function terminalTurnAuthor(
+  turns: TranscriptTurn[],
+  ownAgentId: string | null,
+): TerminalTurnAuthor | null {
+  if (!ownAgentId) return null;
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const turn = turns[i];
+    if (turn.action && TERMINAL_REJECT_ACTIONS.has(turn.action)) {
+      return turn.senderId === ownAgentId ? 'own' : 'counterparty';
+    }
+  }
+  return null;
+}
+
+/**
  * Role-suggestion chip label, viewer-first: "you → Helper · Dan → Seeker".
  * suggestedRoles is recorded from the sending agent's perspective, so the
  * mapping flips when the counterpart's agent authored the turn.

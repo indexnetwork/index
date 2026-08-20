@@ -126,11 +126,20 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
   // resets the run to zero. An init-time error (`busy`, an invalid
   // continuation) carries no failures, so it keeps today's outcome.
   const errorStalled = !screenedOut && !!state.error && state.consecutiveTurnFailures > 0;
+  // The copy-loop guard ended the run (`negotiation.graph.turn.ts`): a drafted
+  // turn repeated a message already on the record, and so did its one anti-echo
+  // re-issue. Kept distinct from every neighbouring end because it is a
+  // different fact from each of them — the agents did not run out of turns
+  // (nothing was spent), the run did not error (a turn came back, it just said
+  // nothing new), and nobody declined. `lastTurn` here is the last turn that
+  // actually landed, which is why the reject-like mapping below must never see
+  // this run as a decision: the repeated draft was never persisted.
+  const repetitionStalled = !screenedOut && !errorStalled && state.repetitionStalled === true;
   // Failed turns no longer advance `turnCount`, so an error-stalled run is
   // normally nowhere near the cap. The guard is explicit anyway: "ran out of
   // turns" is a claim about a dialogue, and this is the outcome where the
   // dialogue is precisely what did not happen.
-  const atCap = !screenedOut && !errorStalled && isNegotiationTurnCapReached(state.turnCount, state.maxTurns) && !isTerminalAction(lastTurn?.action);
+  const atCap = !screenedOut && !errorStalled && !repetitionStalled && isNegotiationTurnCapReached(state.turnCount, state.maxTurns) && !isTerminalAction(lastTurn?.action);
 
   let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
   if (hasOpportunity && history.length >= 2) {
@@ -167,9 +176,11 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
       ? { reason: "screened_out" as const }
       : errorStalled
         ? { reason: "agent_error" as const }
-        : atCap
-          ? { reason: "turn_cap" as const }
-          : {}),
+        : repetitionStalled
+          ? { reason: "repetition" as const }
+          : atCap
+            ? { reason: "turn_cap" as const }
+            : {}),
   };
 
   // Unconcluded end: no opportunity, no explicit reject, and turns actually
@@ -181,6 +192,10 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
   // no dialogue to have exposed anything — the gap is ours, not theirs, and
   // asking them about it would dress an outage up as an information need. The
   // opportunity still ends `stalled`, so re-running remains the recovery.
+  // A repetition stall stays UNCONCLUDED, unlike an error stall. The exchange
+  // happened and exposed a real gap — in the observed case a question about the
+  // client's own signal that nobody on either side could answer — so the park
+  // that carries that gap back to the client is exactly the right recovery.
   const endedUnconcluded = !hasOpportunity && !screenedOut && !errorStalled
     && !isRejectLikeAction(lastTurn?.action) && state.turnCount > 0;
   const stallReason: NegotiationStallReason = atCap
@@ -380,7 +395,7 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
       isContinuation: state.isContinuation,
       turnsAdded: state.turnCount,
       priorTurnCount: state.priorTurnCount,
-      outcome: hasOpportunity ? 'accepted' : screenedOut ? 'screened_out' : errorStalled ? 'agent_error' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
+      outcome: hasOpportunity ? 'accepted' : screenedOut ? 'screened_out' : errorStalled ? 'agent_error' : repetitionStalled ? 'repetition' : (atCap ? 'turn_cap' : (lastTurn?.action ?? 'unknown')),
       opportunityId: state.opportunityId || undefined,
     });
 
@@ -388,11 +403,16 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
       // screened_out → 'rejected': quiet terminal status (hidden from
       // default lists), never 'stalled' — with zero turns the generic
       // mapping would misfile the client's own gate decision.
+      // `repetitionStalled` outranks the reject-like mapping: the last turn that
+      // LANDED may well be a `question` or a `counter`, but if the guard ended
+      // the run then no decision was reached and the row may not read as one.
       const nextStatus = lastTurn?.action === 'accept'
         ? 'pending'
-        : (screenedOut || isRejectLikeAction(lastTurn?.action))
-          ? 'rejected'
-          : 'stalled';
+        : repetitionStalled
+          ? 'stalled'
+          : (screenedOut || isRejectLikeAction(lastTurn?.action))
+            ? 'rejected'
+            : 'stalled';
       await deps.database.updateOpportunityStatus(state.opportunityId, nextStatus, undefined, state.continuationExecution).catch((err) => {
         finalizeLog.error("Failed to update opportunity status", { opportunityId: state.opportunityId, nextStatus, error: err });
       });

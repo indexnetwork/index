@@ -43,8 +43,51 @@ describe('ResolvedBanner — screened_out and what the thread can prove', () => 
   });
 
   it('leaves the other rejected reasons untouched by the guard', () => {
-    render(<ResolvedBanner variant="rejected" reason={null} turnCount={2} maxTurns={6} contactMade />);
+    // `terminalAuthor` is what the withdraw copy now hangs on; the #1458 guard
+    // is still the thing under test, which is that it touches only screened_out.
+    render(<ResolvedBanner variant="rejected" reason={null} turnCount={2} maxTurns={6} contactMade terminalAuthor="own" />);
     expect(screen.getByText(/Your agent withdrew after reviewing the opportunity/)).toBeInTheDocument();
+    expect(screen.getByText(/never learns the details/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Who ended it. The banner told an owner "Your agent withdrew after reviewing
+ * the opportunity (6 turns)" above a transcript whose final turn was the
+ * COUNTERPARTY's agent declining them — the exact inversion of what happened,
+ * and the only account of the exchange that owner ever gets.
+ */
+describe('ResolvedBanner — who actually ended it', () => {
+  it('says their agent declined when the counterparty authored the terminal turn', () => {
+    render(<ResolvedBanner variant="rejected" reason={null} turnCount={6} maxTurns={6} contactMade terminalAuthor="counterparty" />);
+    expect(screen.getByText(/Their agent declined \(6 turns\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/Your agent withdrew/)).toBeNull();
+    // Nothing claims this side did the filtering, because it did not.
+    expect(screen.queryByText(/filtered out for you/)).toBeNull();
+    expect(screen.getByText('No opportunity')).toBeInTheDocument();
+    // The quiet-decline footnote is a claim about OUR decision reaching them.
+    expect(screen.queryByText(/declines are quiet by design/)).toBeNull();
+  });
+
+  it('keeps the withdrawal copy when this side authored the terminal turn', () => {
+    render(<ResolvedBanner variant="rejected" reason={null} turnCount={3} maxTurns={6} contactMade terminalAuthor="own" />);
+    expect(screen.getByText(/Your agent withdrew after reviewing the opportunity \(3 turns\)/)).toBeInTheDocument();
+    expect(screen.getByText('No opportunity — filtered out for you')).toBeInTheDocument();
+    expect(screen.getByText(/declines are quiet by design/)).toBeInTheDocument();
+  });
+
+  it('says something neutral when the transcript cannot name the author', () => {
+    render(<ResolvedBanner variant="rejected" reason={null} turnCount={4} maxTurns={6} contactMade />);
+    expect(screen.getByText(/After 4 turns, the agents ended this without a match/)).toBeInTheDocument();
+    // Never a guess in either direction.
+    expect(screen.queryByText(/Your agent withdrew/)).toBeNull();
+    expect(screen.queryByText(/Their agent declined/)).toBeNull();
+    expect(screen.getByText('No opportunity')).toBeInTheDocument();
+  });
+
+  it('lets the screened_out copy win over attribution — nothing was ever sent', () => {
+    render(<ResolvedBanner variant="rejected" reason="screened_out" turnCount={null} maxTurns={6} terminalAuthor={null} />);
+    expect(screen.getByText(/filtered out before either side reached out/)).toBeInTheDocument();
     expect(screen.getByText(/never learns the details/)).toBeInTheDocument();
   });
 });

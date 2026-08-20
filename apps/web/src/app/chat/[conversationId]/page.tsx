@@ -12,7 +12,7 @@ import ResolvedBanner, { type ResolvedBannerVariant } from '@/components/negotia
 import GateDecisionCard from '@/components/negotiations/GateDecisionCard';
 import { resolveGateDecision } from '@/components/negotiations/gate-decision';
 import { useTickingNow } from '@/components/negotiations/use-ticking-now';
-import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, terminalTurnAuthor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 
 // `agent_error` joins the stall reasons rather than the reject ones: a run
 // that stopped on repeated agent failures decided nothing, so it must never
@@ -131,6 +131,15 @@ export default function NegotiationDetailPage() {
   // claim is about what the reader can see above the banner, and every turn in
   // the rail is visible regardless of which session produced it.
   const contactMade = turns.length > 0;
+
+  // Who ended it, read from the same turns the banner renders above — and from
+  // the LATEST session's turns, because that is the negotiation the banner is
+  // scoped to (IND-566). An earlier task in this pair may well have ended the
+  // other way round.
+  const terminalAuthor = useMemo(
+    () => terminalTurnAuthor(latestSessionTurns, ownAgentId),
+    [latestSessionTurns, ownAgentId],
+  );
 
   // IND-610: the owner-only outreach-gate card. A `screened_out` negotiation
   // with no turns is the one case where the transcript has nothing to show —
@@ -288,6 +297,7 @@ export default function NegotiationDetailPage() {
                         turnCount={latestTaskTurnCount}
                         maxTurns={lifecycle?.maxTurns ?? null}
                         contactMade={contactMade}
+                        terminalAuthor={terminalAuthor}
                         onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                       />
                     )}
@@ -325,6 +335,7 @@ export default function NegotiationDetailPage() {
                     turnCount={latestTaskTurnCount}
                     maxTurns={lifecycle?.maxTurns ?? null}
                     contactMade={contactMade}
+                    terminalAuthor={terminalAuthor}
                     onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                   />
                 )}

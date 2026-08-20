@@ -123,6 +123,12 @@ export function routeAfterTurn(state: NegotiationState): string {
   if (state.status === 'waiting_for_agent') return "finalize";
   if (state.status === 'input_required') return "finalize";
   if (state.error) return "finalize";
+  // The copy-loop guard ended the run: an agent repeated a message already on
+  // the record and repeated it again when re-issued. Nothing was persisted and
+  // the turn count did not move, so there is nothing to route back to — and
+  // unlike a failed turn this is not retryable, because the same seat facing
+  // the same record produces the same copy.
+  if (state.repetitionStalled) return "finalize";
   // A failed turn the turn node judged retryable: the same seat tries again on
   // an unchanged turn count. Checked BEFORE `lastTurn`, which is either null
   // (the opening turn failed) or a stale turn from an earlier exchange —

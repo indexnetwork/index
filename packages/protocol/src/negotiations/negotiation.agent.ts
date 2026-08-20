@@ -170,7 +170,8 @@ const PRE_CONTACT_ASK_USER_RULE = `
  */
 const PRINCIPAL_UNREACHABLE_RULE = `
 - YOU CANNOT CONSULT {userName} DURING THIS NEGOTIATION. No question can be put to them here and no answer can arrive, so every decision on this turn is yours to make on the record you already hold. That record — their signal and intents, their premises, their profile, and anything of theirs already quoted in your context — IS their knowledge for this negotiation. Read it as their answer instead of waiting for one.
-- Never stall, park, or defer for their input, and never route a question meant for {userName} to the other side's agent — that reaches the wrong party and settles nothing. If the fact you want belongs to the COUNTERPARTY, "question" is still the right action and is unaffected by any of this.`;
+- Never stall, park, or defer for their input, and never route a question meant for {userName} to the other side's agent — that reaches the wrong party and settles nothing. If the fact you want belongs to the COUNTERPARTY, "question" is still the right action and is unaffected by any of this.
+- WHEN THE COUNTERPARTY ASKS YOU SOMETHING ONLY {userName} COULD SETTLE AND YOUR RECORD DOES NOT SETTLE IT, answer with the limit of the record: "{userName}'s signal says X; it does not specify further" is a COMPLETE and honest answer, and the other side is free to treat that dimension as unknown. Say what the record does hold before you say what it does not. Never repeat, mirror, or hand their question back to them, and never invent an answer the record does not hold — an unanswerable question is answered by naming its limit, not by returning it.`;
 
 /**
  * Appended to `PRINCIPAL_UNREACHABLE_RULE` under the checklist protocol, where
@@ -180,7 +181,8 @@ const PRINCIPAL_UNREACHABLE_RULE = `
  * exist.
  */
 const PRINCIPAL_UNREACHABLE_CHECKLIST_RULE = `
-- A checklist dimension that would be {userName}'s own to settle is resolved from that record where the record settles it, and carried as an open unknown where it does not. An unknown is not a conflict: it never ends a negotiation on its own, "pass" stays reserved for a genuine conflict, and where the record leaves a question open the first conversation is the cheaper next experiment.`;
+- A checklist dimension that would be {userName}'s own to settle is resolved from that record where the record settles it, and carried as an open unknown where it does not. An unknown is not a conflict: it never ends a negotiation on its own, "pass" stays reserved for a genuine conflict, and where the record leaves a question open the first conversation is the cheaper next experiment.
+- If the counterparty asks about such a dimension, name it as an open unknown to them in plain words — what {userName}'s record does say, and that it does not go further — and let them score it unknown on their own checklist. That is a real contribution to the exchange; echoing their question back is not.`;
 
 /** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
 const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
@@ -190,6 +192,16 @@ const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side rea
   - "counter" if you have specific objections but see potential
   - "question" if you need a specific clarification from the initiator
 - Never use "outreach" — you are responding, not reaching out.`;
+
+/**
+ * The anti-echo re-issue instruction: the message a refused draft repeated.
+ * Shared by the graph (which detects the repeat) and the prompt (which quotes
+ * it back), so neither side has to describe the other's shape.
+ */
+export interface NegotiationAntiEcho {
+  /** The exact message text the refused draft reproduced. */
+  repeatedMessage: string;
+}
 
 export interface NegotiationAgentInput {
   ownUser: UserNegotiationContext;
@@ -285,6 +297,17 @@ export interface NegotiationAgentInput {
    * falls back to the flat continuation history (byte-identical to before).
    */
   priorDialogue?: AttributedPriorDialogue;
+  /**
+   * A re-issue of THIS turn after the graph refused the previous draft for
+   * repeating a message already on the record, word for word (the copy-loop
+   * guard in `negotiation.graph.turn.ts`). Carries the repeated text so the
+   * instruction can quote it back and demand something else.
+   *
+   * Set by the graph only, and only once per turn: a second repeat ends the
+   * negotiation rather than asking a third time. Absent → the prompt is
+   * byte-identical to before.
+   */
+  antiEcho?: NegotiationAntiEcho;
   /**
    * Durable caller-owned execution identity. Timeout workers reuse this exact
    * value across delivery retries; it is forwarded as model-run metadata for
@@ -585,6 +608,20 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
 
     const intentsLabel = input.discoveryQuery ? 'Background intents (secondary to discovery query)' : 'Intents';
 
+    // ─── Anti-echo re-issue (copy-loop guard) ─────────────────────────────
+    // Placed LAST in the user message, after the closing instruction, because
+    // the closing instruction is what the model acts on and this supersedes it
+    // for this one draft. It quotes the repeated text verbatim: the failure it
+    // corrects is a copy, so the correction has to name the thing not to copy.
+    //
+    // What it does NOT do is tell the agent how the negotiation should end. It
+    // offers the honest moves — contribute, or conclude — and leaves the choice
+    // where it belongs, because a re-issue that pushed toward a verdict would
+    // manufacture exactly the false decline this whole guard exists to prevent.
+    const antiEchoInstruction = input.antiEcho
+      ? `\n\nSTOP — YOUR PREVIOUS DRAFT FOR THIS TURN REPEATED A MESSAGE ALREADY IN THIS NEGOTIATION, WORD FOR WORD:\n"""\n${input.antiEcho.repeatedMessage}\n"""\nThat text is already on the record. Sending it again says nothing, moves nothing, and is not a turn. Do not repeat it, mirror it, or hand it back — and if it was the counterparty's question, do not ask it back at them.\nDraft something the record does not already hold. Answer from what you know; where you cannot answer, say plainly what your side's record does say and that it does not go further, and let them judge it; or make a concrete proposal; or, if this match genuinely does not work, conclude it and say why. Never end a negotiation merely because something stayed unknown.`
+      : '';
+
     const userMessage = `YOUR USER (${userName}):
 Bio: ${input.ownUser.profile.bio ?? "N/A"}
 Skills: ${input.ownUser.profile.skills?.join(", ") ?? "N/A"}
@@ -615,7 +652,7 @@ ${preContactResume
             ? `This is the opening turn and nothing has been sent yet. You hold THREE verdicts here: ask ${userName} the one open thing only they can settle, make the outreach case, or let the match pass. Score the checklist first — if a dimension is unknown and theirs to settle, asking now costs the counterparty nothing and buys a better opening.`
             : "This is the opening turn. Make the outreach case.")
         : "This is the opening turn. Propose the connection case.")
-    : "Evaluate the latest arguments and respond."}`;
+    : "Evaluate the latest arguments and respond."}${antiEchoInstruction}`;
 
     const chatMessages = [
       { role: "system", content: systemPrompt },

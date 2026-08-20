@@ -20,6 +20,56 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.2.0 - 2026-08-20
+
+### Fixed
+
+- **No turn may repeat a message already on the record.** A counterparty asked what
+  a phrase in the client's own signal meant; the answering agent could not consult
+  its (unreachable) principal and its record did not settle the phrase, so with no
+  legal move left it copied the question back word for word. Both models then
+  locked — reproducing text already in context is close to deterministic — and the
+  negotiation spent its remaining turns exchanging two byte-identical messages
+  before one side declined citing "repeated lack of clarity … despite five
+  inquiries". The turn node now compares each drafted message against every
+  message already in the negotiation: an exact repeat is never persisted, the turn
+  is re-issued ONCE with the repeated text quoted back and an instruction to
+  contribute or conclude, and a second repeat ends the run as the new
+  `outcome.reason: "repetition"` — never as a decline, because nobody decided
+  anything. Terminal turns are exempt (a turn that ends the negotiation cannot
+  loop, and refusing one would turn a successful accept into a stall);
+  message-less turns have nothing to duplicate. Deadlock detection (IND-428)
+  could not cover this: its four-turn threshold arrives one turn before a
+  six-turn cap, after the loop has already consumed the negotiation.
+- **The unreachable-principal rule gains the move the corner actually needed.**
+  `PRINCIPAL_UNREACHABLE_RULE` said never stall and never route the client's
+  question to the other side, but named no move for the case that occurred: the
+  COUNTERPARTY asks something client-authoritative that the record does not
+  settle. The rule now says to state the limit of the record — "X's signal says
+  Y; it does not specify further" is a complete answer — and to let the
+  counterparty score that dimension unknown, never repeating or mirroring their
+  question and never inventing an answer the record does not hold.
+- **A decline needs a conflict.** The verdict law ("an unknown is not a reason to
+  end anything; pass stays reserved for conflict") was prompt-only, and the prompt
+  lost. A drafted `decline`/`reject` over an authored checklist that holds no
+  `conflict` dimension is now refused — logged as `negotiation_decline_inadmissible`
+  with the unknowns that stood in for one — and coerced to the conservative
+  non-terminal fallback, its terminal message dropped with the action it belonged
+  to. On the final turn, where the seat's vocabulary is accept-or-decline, the
+  decline stands but the violation is recorded rather than manufactured silently.
+  Assessing stances only; fails open on an unauthored checklist; `advocate` is
+  untouched.
+
+### Added
+
+- `NegotiationOutcome.reason` gains `"repetition"`, and `NegotiationAgentInput`
+  gains `antiEcho` (the repeated text, quoted back on a re-issue).
+- `assessDeclineAdmissibility` in the checklist contracts: the verdict law as a
+  pure function, beside `assessAskAdmissibility`.
+- Machine-fault reasons (`agent_error`, `repetition`) are filtered out of the
+  discovery vocabulary by an allow-list rather than a deny-list, so a new
+  negotiation reason can never silently cross that boundary.
+
 ## 23.1.1 - 2026-08-19
 
 ### Fixed
