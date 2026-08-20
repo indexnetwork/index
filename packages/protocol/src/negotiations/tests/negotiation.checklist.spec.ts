@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
 
-import { MAX_CHECKLIST_DIMENSIONS, MIN_CHECKLIST_DIMENSIONS, NegotiationChecklistSchema, QUESTION_BUDGET_PER_PRINCIPAL, assessAskAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, normalizeChecklistDraft, reconcileChecklist, renderChecklistSection, type ChecklistDraftItem, type ChecklistItem } from "../negotiation.checklist.contracts.js";
+import { MAX_CHECKLIST_DIMENSIONS, MIN_CHECKLIST_DIMENSIONS, NegotiationChecklistSchema, QUESTION_BUDGET_PER_PRINCIPAL, askableUnknowns, assessAskAdmissibility, assessConcludeAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, normalizeChecklistDraft, reconcileChecklist, renderChecklistSection, type ChecklistDraftItem, type ChecklistItem, type ChecklistSettler } from "../negotiation.checklist.contracts.js";
 
 /**
  * The checklist: a pre-registered conjunctive screen
@@ -26,6 +26,15 @@ const item = (
   result: ChecklistItem["result"],
   basis = "",
 ): ChecklistDraftItem => ({ name, kind, result, basis });
+
+/** The same, with the authoring agent's declaration of whose fact it is. */
+const owned = (
+  name: string,
+  kind: ChecklistItem["kind"],
+  result: ChecklistItem["result"],
+  settles: ChecklistSettler,
+  basis = "",
+): ChecklistDraftItem => ({ name, kind, result, basis, settles });
 
 /** A well-formed turn-1 authoring: mutual want plus two decision-relevant dimensions. */
 const draft = (): ChecklistDraftItem[] => [
@@ -240,6 +249,26 @@ describe("ask admissibility — the five-part rule, in the part a machine can ch
     }
   });
 
+  it("refuses an ask about a dimension the counterparty is the one to state", () => {
+    // Rule 3, in the half that is now mechanical. Tonight's incident, taken
+    // from the other side: the agent was RIGHT that "does Camille work on
+    // generative story games" is unknown and pivotal, and wrong only about who
+    // could answer it. The checklist says so, so the machine can too.
+    const checklist = authorChecklist([
+      owned("Mutual want", "mutual_want", "ok", "either", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
+      owned("Query match: live operations", "hard_constraint", "unknown", "counterparty"),
+      owned("Timing", "fit", "unknown", "client"),
+    ])!;
+    expect(assessAskAdmissibility({
+      ...admissible,
+      checklist,
+      dimension: "Query match: live operations",
+    })).toEqual({ admissible: false, reason: "counterparty_authoritative" });
+    // The client-settled dimension on the very same checklist is untouched.
+    const allowed = assessAskAdmissibility({ ...admissible, checklist, dimension: "Timing" });
+    expect(allowed.admissible).toBe(true);
+  });
+
   it("refuses an ask whose answerhood proves no pivotality", () => {
     // Missing map, half a map, and a map whose branches cannot distinguish
     // anything are all the same failure: no answer would flip the verdict.
@@ -328,9 +357,14 @@ describe("prompt rendering", () => {
       }],
     });
     expect(section).toContain("fixed for this negotiation — re-score it, never rewrite it");
-    expect(section).toContain("- Mutual want [mutual want]: ok — basis:");
-    expect(section).toContain("- Location [fit]: conflict — basis: Bob's profile says Lisbon only");
-    expect(section).toContain("- Stage fit [fit]: unknown");
+    // Every row carries whose fact the dimension is beside its kind: the agent
+    // re-scoring a frozen checklist did not necessarily author it, and the
+    // marking is what tells it which open dimensions its client can resolve.
+    // `either` here because `draft()` predates the field, which is exactly
+    // what a legacy checklist reads back as.
+    expect(section).toContain("- Mutual want [mutual want, either side can settle]: ok — basis:");
+    expect(section).toContain("- Location [fit, either side can settle]: conflict — basis: Bob's profile says Lisbon only");
+    expect(section).toContain("- Stage fit [fit, either side can settle]: unknown");
     expect(section).toContain(`2 of ${QUESTION_BUDGET_PER_PRINCIPAL}`);
     expect(section).toContain("Topics already asked: Stage fit — never ask any of them again");
     // The map the ask declared travels with the topic, so the answer that has

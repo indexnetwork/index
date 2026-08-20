@@ -4,7 +4,7 @@ import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
-import { askableUnknowns, assessConcludeAdmissibility, type ChecklistDraftItem, type ChecklistItem } from "../negotiation.checklist.contracts.js";
+import { askableUnknowns, assessAskAdmissibility, assessConcludeAdmissibility, type ChecklistDraftItem, type ChecklistItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
 import { requestContext } from "../../shared/observability/request-context.js";
@@ -53,6 +53,15 @@ const dimension = (
   basis = "",
 ): ChecklistDraftItem => ({ name, kind, result, basis });
 
+/** The same, with the authoring agent's declaration of whose fact it is. */
+const owned = (
+  name: string,
+  kind: ChecklistDraftItem["kind"],
+  result: ChecklistDraftItem["result"],
+  settles: ChecklistItem["settles"],
+  basis = "",
+): ChecklistDraftItem => ({ name, kind, result, basis, settles });
+
 /** One dimension scored, two open — and nothing in conflict. */
 const OPEN_CHECKLIST: ChecklistDraftItem[] = [
   dimension("Mutual want", "mutual_want", "ok", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
@@ -65,6 +74,23 @@ const SETTLED_CHECKLIST: ChecklistDraftItem[] = [
   dimension("Mutual want", "mutual_want", "ok", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
   dimension("Studio operations", "fit", "ok", "Bob's intent names studio tooling work"),
   dimension("Stage fit", "fit", "ok", "Bob's intent names early-stage product work"),
+];
+
+/**
+ * The live incident, as a checklist. Both open dimensions are about what the
+ * COUNTERPARTY works on, and the agent's drafted `question` to their agent was
+ * the protocol's own prescribed move.
+ */
+const COUNTERPARTY_CHECKLIST: ChecklistDraftItem[] = [
+  owned("Query match: story games", "hard_constraint", "unknown", "counterparty"),
+  owned("Query match: live ops", "hard_constraint", "unknown", "counterparty"),
+  owned("Mutual want", "mutual_want", "ok", "either", "Alice's intent seeks an ML engineer; Bob's seeks applied ML work"),
+];
+
+/** The same, with one dimension that IS the client's — deliberately last. */
+const MIXED_CHECKLIST: ChecklistDraftItem[] = [
+  ...COUNTERPARTY_CHECKLIST,
+  owned("Timing", "fit", "unknown", "client"),
 ];
 
 const ANSWERHOOD = { ok_when: "Alice says a studio background is optional", conflict_when: "Alice says it is required" };
@@ -284,6 +310,50 @@ describe("what makes an unknown askable", () => {
       askedDimensions: [],
       askUserAvailable: true,
     })).toEqual({ admissible: true });
+  });
+
+  it("takes a dimension the counterparty is the one to state out of the askable set", () => {
+    // The incident, at the contract. "Askable" was `unknown ∧ unasked` and
+    // nothing in it knew whose fact was missing, so a checklist whose open
+    // dimensions were all about the COUNTERPARTY's work looked exactly like
+    // one about the client's own timing.
+    expect(askableUnknowns(COUNTERPARTY_CHECKLIST as ChecklistItem[], [])).toEqual([]);
+    expect(assessConcludeAdmissibility({
+      checklist: COUNTERPARTY_CHECKLIST as ChecklistItem[],
+      askedDimensions: [],
+      askUserAvailable: true,
+    })).toEqual({ admissible: true });
+  });
+
+  it("picks the client's dimension over the counterparty's, whatever the authored order says", () => {
+    // Order is still the checklist's own — among the dimensions that survive
+    // the filter. The two counterparty-settled ones come FIRST here, which is
+    // precisely how the live floor landed on one of them.
+    expect(askableUnknowns(MIXED_CHECKLIST as ChecklistItem[], []).map((entry) => entry.name))
+      .toEqual(["Timing"]);
+  });
+
+  it("keeps an unmarked or `either` dimension askable — no authoring failure switches the floor off", () => {
+    // The direction the default is chosen in. A legacy checklist carries no
+    // marking at all, and a repaired one carries `either`; both behave exactly
+    // as they did before the field existed.
+    const unmarked = [
+      dimension("Mutual want", "mutual_want", "ok", "both intents state it"),
+      dimension("Studio operations", "fit", "unknown"),
+      owned("Stage fit", "fit", "unknown", "either"),
+    ] as ChecklistItem[];
+    expect(askableUnknowns(unmarked, []).map((entry) => entry.name))
+      .toEqual(["Studio operations", "Stage fit"]);
+  });
+
+  it("refuses an agent's own ask about a dimension the counterparty is the one to state", () => {
+    expect(assessAskAdmissibility({
+      checklist: COUNTERPARTY_CHECKLIST as ChecklistItem[],
+      dimension: "Query match: story games",
+      answerhood: ANSWERHOOD,
+      askedDimensions: [],
+      questionsSpent: 0,
+    })).toEqual({ admissible: false, reason: "counterparty_authoritative" });
   });
 
   it("keeps the checklist's own authored order — the frozen screen is not re-prioritized", () => {
@@ -599,6 +669,98 @@ describe("the conclusion floor at the turn seam", () => {
 
     expect(persistedActions(stubs)).toEqual(["outreach", "accept"]);
     expect(parkedCount(stubs)).toBe(0);
+  });
+
+  // ─── The authority half: whose fact the open dimension is ────────────────
+  // Observed live, sandbox, task 3c151027: turn 2, initiator seat. Both open
+  // dimensions were about what the COUNTERPARTY works on, the agent drafted
+  // `question` to their agent — the protocol's own prescribed move — and the
+  // floor read a non-ask turn with an unknown standing, picked askable[0], and
+  // asked the client in her own DM whether the other person works on
+  // generative story games.
+
+  it("does not fire on a `question` turn whose open dimensions are the counterparty's to state", async () => {
+    const stubs = mkStubs();
+    agentScript = [
+      said("outreach", OPENING, COUNTERPARTY_CHECKLIST),
+      // The incident's turn, exactly: a question routed to the other agent
+      // about a fact only the other side holds.
+      said("question", "does your client work on live-ops titles?", COUNTERPARTY_CHECKLIST),
+    ];
+    await runGraph(stubs);
+
+    // The question turn persists untouched. No ask, no park, no coercion.
+    expect(persistedActions(stubs)).toEqual(["outreach", "question"]);
+    expect(persistedTurns(stubs)[1].message).toBe("does your client work on live-ops titles?");
+    expect(persistedTurns(stubs)[1].askUser).toBeUndefined();
+    expect(parkedCount(stubs)).toBe(0);
+    expect(stubs.questionerEnqueues).toHaveLength(0);
+    expect(tracesOfType("negotiation_ask_guaranteed")).toHaveLength(0);
+  });
+
+  it("fires on the CLIENT's dimension, never on askable[0] by authored order alone", async () => {
+    const stubs = mkStubs();
+    agentScript = [
+      said("outreach", OPENING, MIXED_CHECKLIST),
+      // Same dodge, but this checklist does hold one dimension the client can
+      // settle — and it is the LAST one. Order still decides among the
+      // dimensions that survive the filter; it no longer decides across it.
+      said("counter", "let me push on the tooling side", MIXED_CHECKLIST),
+    ];
+    await runGraph(stubs);
+
+    expect(persistedActions(stubs)).toEqual(["outreach", "ask_user"]);
+    expect(parkedCount(stubs)).toBe(1);
+    const parked = persistedTurns(stubs)[1];
+    expect(parked.askUser).toEqual({
+      reason: "unresolved_owner_constraint",
+      dimension: "Timing",
+      guaranteed: true,
+    });
+    expect(tracesOfType("negotiation_ask_guaranteed")[0]).toMatchObject({ dimension: "Timing" });
+  });
+
+  it("admits a verdict whose only unknowns are the counterparty's to state — that is dialogue's job", async () => {
+    const stubs = mkStubs();
+    agentScript = [
+      said("outreach", OPENING, COUNTERPARTY_CHECKLIST),
+      turn("accept", "their agent could not settle it; it will keep", {
+        checklist: COUNTERPARTY_CHECKLIST,
+      } as Partial<NegotiationTurn>),
+    ];
+    await runGraph(stubs);
+
+    // No re-issue, no guaranteed ask: an unknown nobody here can answer is
+    // carried, which is what the verdict law has always said about unknowns.
+    expect(persistedActions(stubs)).toEqual(["outreach", "accept"]);
+    expect(agentInputs).toHaveLength(2);
+    expect(tracesOfType("negotiation_conclude_premature")).toHaveLength(0);
+    expect(tracesOfType("negotiation_ask_guaranteed")).toHaveLength(0);
+    expect(parkedCount(stubs)).toBe(0);
+  });
+
+  it("refuses an agent's own ask about a counterparty-settled dimension, and names the reason", async () => {
+    const stubs = mkStubs();
+    agentScript = [
+      said("outreach", OPENING, COUNTERPARTY_CHECKLIST),
+      // The mirror image, and the reason the marking binds in both directions:
+      // an agent that drafts the wrong ask is refused by the same field that
+      // keeps the floor from manufacturing it.
+      askTurn({
+        reason: "unresolved_owner_constraint",
+        question: QUESTION,
+        dimension: "Query match: story games",
+        answerhood: ANSWERHOOD,
+      }, COUNTERPARTY_CHECKLIST),
+    ];
+    await runGraph(stubs);
+
+    expect(persistedActions(stubs)[1]).not.toBe("ask_user");
+    expect(parkedCount(stubs)).toBe(0);
+    expect(tracesOfType("negotiation_ask_inadmissible")).toHaveLength(1);
+    expect(tracesOfType("negotiation_ask_inadmissible")[0]).toMatchObject({
+      reason: "counterparty_authoritative",
+    });
   });
 
   it("refuses to let an agent claim the graph's guarantee mark for itself", async () => {

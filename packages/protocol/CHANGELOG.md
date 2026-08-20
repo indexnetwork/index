@@ -20,6 +20,81 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.4.0 - 2026-08-20
+
+### Added
+
+- **A checklist dimension now declares whose fact it is, and the floor reads
+  it.** Observed live: turn 2 of a sandbox negotiation, initiator seat, a
+  checklist whose two open dimensions were "Query Match: Generative Story
+  Games" and "Query Match: Live Operations" — both about the COUNTERPARTY's
+  work. The agent drafted `question` to the counterparty's agent, which is the
+  protocol's own prescribed move. The conclusion floor (23.3.0) saw a non-ask
+  turn with an askable unknown standing, took `askableUnknowns[0]`, and coerced
+  the turn into a guaranteed `ask_user` — so the client was asked, in her own
+  DM, whether the other person works on generative story games.
+
+  Nothing was wrong with the floor's logic; the logic simply could not see the
+  distinction. "Askable" was `unknown ∧ unasked ∧ budget ∧ reachable ∧ wiring`,
+  and no term in that conjunction knows WHOSE fact is missing. That judgment
+  lived only in the agent — which is exactly the judgment the guarantee exists
+  to override. Where the first unknown happens to be the client's own the
+  guarantee is right; where it is the counterparty's it converts the agent's
+  correct move into a wrong one.
+
+  So the judgment becomes a declared, mechanical property, following the same
+  pattern answerhood set: made ONCE, at authoring, by the agent writing the
+  checklist, then read mechanically forever. `ChecklistItem` gains
+  `settles: 'client' | 'counterparty' | 'either'`, frozen with the dimension —
+  `reconcileChecklist` copies it through untouched, because it is a judgment
+  about the world rather than about the evidence, and a re-scorable one would
+  be a switch an agent could use to turn the floor off for a dimension it would
+  rather not be asked about.
+
+### Changed
+
+- **`askableUnknowns` filters on it, so both halves of the floor do.**
+  `assessConcludeAdmissibility` now admits a verdict whose only open dimensions
+  are the counterparty's to state — those are resolved by dialogue with the
+  other agent, or carried, which is what the verdict law has always said about
+  unknowns — and the part-2 guarantee picks only from what survives the filter.
+  Order within the surviving set is still the checklist's own.
+- **The five-part ask rule gains the mechanical half of its rule 3.** An
+  agent-drafted ask naming a `settles: 'counterparty'` dimension is refused as
+  `counterparty_authoritative`, with the same honest-refusal logging as its
+  siblings. Rule 3 was prompt-only until now; the incident proves the
+  mechanical half matters in both directions — the same field that stops the
+  floor manufacturing the wrong ask stops an agent drafting it.
+- **The prompt asks for the field where the model authors, and reads it back on
+  every row.** The authoring instruction and the checklist protocol rule both
+  require `settles` per dimension in the vocabulary they already use ("a thing
+  only your client can answer" / "the counterparty's to state"); the rendered
+  checklist labels each row with it, because the agent re-scoring a frozen
+  checklist did not necessarily author it. The conclude-floor re-issue states
+  that counterparty-settled dimensions are not what it is about.
+
+### Fixed
+
+- **The generation seam states the field and repairs it, rather than refusing.**
+  Following 23.3.2's split: `ChecklistDraftGenerationSchema` requires `settles`
+  on every dimension — so it renders inside the emitted JSON schema's `required`
+  list, and a field the model need not produce is one it skips — while a
+  `preprocess` fills a missing or unrecognised value with `either` before the
+  enum ever sees it. A `.catch()` on the field would have read as optional to
+  zod and dropped out of `required`, which is why the repair wraps the object.
+  A refusal here throws inside the structured-output call and takes the whole
+  turn with it.
+- **Legacy checklists are unchanged.** Persisted turns written before the field
+  existed carry no `settles`, and `normalizeSettles` reads them back as
+  `either` — which stays ASKABLE. The default direction is the whole safety
+  argument: `counterparty` would let one unfilled field silently retire the
+  conclusion floor for a negotiation, so no authoring failure, legacy turn, or
+  repaired value can switch it off wholesale. An unrecognised value on the
+  persisted shape reads back as absent rather than failing the item, because
+  that shape also parses the drafts of externally dispatched agents, which
+  never see the generation schema — a whole re-scored checklist discarded over
+  one misspelled marking is the larger loss.
+
 ## 23.3.2 - 2026-08-20
 
 ### Fixed
