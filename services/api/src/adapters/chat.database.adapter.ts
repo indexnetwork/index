@@ -1,6 +1,8 @@
 import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, gt, gte, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
 
 import { tasks } from '../schemas/conversation.schema';
+import { notArchivedNegotiationTaskWhere } from './negotiation-attempt.atomic';
+import { NEGOTIATION_PARK_REASONING } from './parked-negotiation.reader.adapter';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -105,6 +107,11 @@ export class ChatDatabaseAdapter {
    *   negotiation totals) are narrowed to opportunities where the owner's
    *   actor belongs to that community; own-signal and question aggregates are
    *   meta-network and stay global.
+   *
+   * Pending question counts are read from the PARKED NEGOTIATIONS (the durable
+   * open-question record since the conversational-questions plan), never from
+   * the retired `questions` table's leftover pending rows. Answered counts
+   * still read the table — answered history legitimately lives there.
    * @returns Reproducible owner-scoped activity totals.
    */
   async getAgentActivitySummary(
@@ -144,7 +151,7 @@ export class ChatDatabaseAdapter {
     )`;
     const ownQuestion = sql`${schema.questions.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`;
 
-    const [liveRows, surfacedRows, bySignalRows, pendingRows, answeredRows, negotiationRows] = await Promise.all([
+    const [liveRows, surfacedRows, bySignalRows, inflightParkRows, postStallParkRows, answeredRows, negotiationRows] = await Promise.all([
       db.select({ count: count() })
         .from(schema.intents)
         .where(activeOwnIntentsWhere(userId)),
@@ -170,17 +177,49 @@ export class ChatDatabaseAdapter {
         .where(eq(schema.intents.userId, userId))
         .groupBy(schema.intents.id, schema.intents.summary, schema.intents.payload)
         .orderBy(desc(count(schema.opportunities.id))),
-      db.select({
-        mode: sql<string>`${schema.questions.detection}->>'mode'`,
-        count: count(),
-      })
-        .from(schema.questions)
+      // Pending questions are the PARKED NEGOTIATIONS, not the retired
+      // `questions` table: since the conversational-questions plan, openness
+      // means "a negotiation is parked on this user's side", and the card rows
+      // are leftovers that must never make "does my owner have pending
+      // questions?" answer 0 beside a live park. Two shapes, mirroring the
+      // parked-negotiation reader set-wise:
+      // mid-flight consult — the exact task sits `input_required` with an
+      // ask-user binding naming this user as the recipient.
+      db.select({ count: count() })
+        .from(tasks)
         .where(and(
-          eq(schema.questions.status, 'pending'),
-          ownQuestion,
-          or(isNull(schema.questions.expiresAt), gt(schema.questions.expiresAt, new Date())),
-        ))
-        .groupBy(sql`${schema.questions.detection}->>'mode'`),
+          eq(tasks.state, 'input_required'),
+          sql`${tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
+          sql`${tasks.metadata}->'turnContext'->'askUserBinding'->>'recipientUserId' = ${userId}`,
+        )),
+      // post-stall park — a stalled opportunity of this user whose
+      // negotiation's newest message is the authored ask_user gap from this
+      // user's own agent. Anything else on a stalled opportunity is a
+      // terminal stall, never an open question.
+      db.select({ count: count() })
+        .from(schema.opportunities)
+        .where(and(
+          eq(schema.opportunities.status, 'stalled'),
+          ownActor,
+          sql`COALESCE((
+            SELECT last_message.sender_id = ${`agent:${userId}`}
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(last_message.parts) AS park_part
+                WHERE park_part->>'kind' = 'data'
+                  AND park_part->'data'->>'action' = 'ask_user'
+                  AND park_part->'data'->'assessment'->>'reasoning' = ${NEGOTIATION_PARK_REASONING}
+              )
+            FROM ${schema.messages} AS last_message
+            JOIN ${tasks} AS park_task ON park_task.id = last_message.task_id
+            WHERE park_task.metadata->>'type' = 'negotiation'
+              AND park_task.metadata->>'opportunityId' = ${schema.opportunities.id}
+              AND park_task.metadata->>'archivedAt' IS NULL
+            ORDER BY last_message.created_at DESC, last_message.id DESC
+            LIMIT 1
+          ), FALSE)`,
+        )),
       db.select({
         mode: sql<string>`${schema.questions.detection}->>'mode'`,
         count: count(),
@@ -222,7 +261,18 @@ export class ChatDatabaseAdapter {
         title: row.title,
         count: Number(row.count),
       })),
-      pendingQuestionsByMode: toModeCounts(pendingRows),
+      // Keyed by the modes the projection already maps to the negotiations
+      // domain, so a mid-flight consult and a post-stall park inherit the
+      // exact permission gates the card-era rows carried. Retired-table
+      // pending rows deliberately contribute nothing.
+      pendingQuestionsByMode: {
+        ...(Number(inflightParkRows[0]?.count ?? 0) > 0
+          ? { negotiation_inflight: Number(inflightParkRows[0]!.count) }
+          : {}),
+        ...(Number(postStallParkRows[0]?.count ?? 0) > 0
+          ? { negotiation: Number(postStallParkRows[0]!.count) }
+          : {}),
+      },
       answeredQuestionsByMode: toModeCounts(answeredRows),
       negotiationsStarted: Number(negotiationRows[0]?.started ?? 0),
       negotiationsCompleted: Number(negotiationRows[0]?.completed ?? 0),

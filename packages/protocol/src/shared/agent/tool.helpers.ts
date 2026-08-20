@@ -487,6 +487,19 @@ interface ToolDepsBindings {
    * whose side, it just cannot name the question's number.
    */
   negotiationListingPark?: NegotiationListingParkHost;
+  /**
+   * Host bridge behind the MCP-surface `answer_pending_question` tool — the
+   * same host, numbering, and consumption path the negotiator persona's chat
+   * tool uses (#1466). Consumed only by the MCP tool registry surface.
+   */
+  negotiatorAnswerTools?: NegotiatorAnswerToolsHost;
+  /**
+   * Host bridge behind the MCP-surface `reject_opportunity` /
+   * `accept_opportunity` owner-verdict tools (#1471, one surface over).
+   * Consumed only by the MCP tool registry surface, and only for
+   * session-authenticated owners (capability matrix + provenance re-check).
+   */
+  negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
   /** Chat session reader for exposing the caller's past conversations as MCP tools. */
   chatSession?: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */

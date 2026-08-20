@@ -4,6 +4,7 @@
  * Anything outside this capability imports from here and nowhere else.
  */
 export { AMBIENT_PARK_WINDOW_MS, createNegotiationTools } from "./negotiation.tools.js";
+export { createNegotiationAnswerTools } from "./negotiation.answer.tools.js";
 export { buildLifecycleNarration, parkLifecycleLabel } from "./negotiation.lifecycle-narration.js";
 export type { NegotiationLifecycleNarration, NegotiationParkNarration } from "./negotiation.lifecycle-narration.js";
 export { buildFallbackDigest, NegotiationSummarizer } from "./negotiation.summarizer.js";

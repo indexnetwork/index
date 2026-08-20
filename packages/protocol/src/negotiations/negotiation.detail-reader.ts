@@ -1,6 +1,9 @@
 import type { NegotiationOpportunityLifecycle } from '../shared/interfaces/database.interface.js';
+import type { ListingOpenQuestion } from '../shared/interfaces/negotiation-listing-park.interface.js';
+import { classifyInflightPark, classifyPostStallPark } from './negotiation.answer-consumption.js';
 import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
-import { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
+import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
+import type { NegotiationParkNarration } from './negotiation.lifecycle-narration.js';
 import { allowedActionsFor, readProtocolVersion, resolveSeat } from './negotiation.protocol.js';
 import type { SeedAssessment, UserNegotiationContext } from './negotiation.state.js';
 
@@ -34,6 +37,8 @@ export interface NegotiationDetailMessage {
   senderId: string;
   parts: unknown[];
   createdAt: Date;
+  /** Originating negotiation task; used by post-stall park classification. */
+  taskId?: string | null;
 }
 
 export interface NegotiationDetailArtifact {
@@ -52,6 +57,22 @@ export interface AuthorizedNegotiationDetailReaderInput {
     opportunityIds: string[],
     ownerUserId: string,
   ) => Promise<Record<string, NegotiationOpportunityLifecycle>>;
+  /**
+   * The open question this negotiation's park is asking of the CALLER,
+   * resolved through the shared question record (#1472, one level down: the
+   * detail must say the park out of the same record the listing and
+   * `answer_pending_question` read, so the numbers cannot drift). Optional:
+   * without it the detail still says whether the negotiation is parked and on
+   * whose side, it just cannot name the question's number.
+   */
+  readOpenQuestion?: (opportunityId: string) => Promise<ListingOpenQuestion | undefined>;
+  /**
+   * Live principal reachability for the caller. The persisted `turnContext`
+   * is a park-time snapshot; the reachability flag must never be served stale
+   * (the same re-stamp REST pickup applies). Optional: without it the
+   * persisted context is returned verbatim.
+   */
+  resolvePrincipalUnreachable?: (userId: string) => Promise<boolean>;
 }
 
 /**
@@ -65,9 +86,39 @@ export async function readAuthorizedNegotiationDetail(
   const { task, metadata, callerUserId, callerRole } = input;
   const isSource = callerRole === 'source';
   const counterpartyId = isSource ? metadata.candidateUserId : metadata.sourceUserId;
-  const negotiationContext = metadata.turnContext
+  const lifecycleOpportunityId = metadata.opportunityId?.trim() || undefined;
+
+  // These independent reads must stay concurrent: message/artifact latency must
+  // not delay lifecycle evidence, and missing lifecycle evidence remains fail-open.
+  // The reachability read rides along; a failed read resolves to null and the
+  // persisted context is served verbatim rather than failing the detail.
+  const [messages, artifacts, opportunityLifecycles, livePrincipalUnreachable] = await Promise.all([
+    input.readMessages(task.conversationId),
+    input.readArtifacts(task.id),
+    input.readLifecycleEvidence(lifecycleOpportunityId ? [lifecycleOpportunityId] : [], callerUserId),
+    input.resolvePrincipalUnreachable
+      ? input.resolvePrincipalUnreachable(callerUserId).catch(() => null)
+      : Promise.resolve<boolean | null>(null),
+  ]);
+
+  // Persisted turnContext, projected into the caller's perspective — with the
+  // reachability flag re-stamped from the live read, both directions: a task
+  // parked before reachability was persisted carries nothing, and a task whose
+  // principal became reachable since must not keep advertising the opposite.
+  // Absent a live read, the persisted flag stands verbatim.
+  const persistedOwnUser = metadata.turnContext
+    ? (isSource ? metadata.turnContext.sourceUser : metadata.turnContext.candidateUser)
+    : null;
+  const ownUser = persistedOwnUser === null || livePrincipalUnreachable === null
+    ? persistedOwnUser
+    : livePrincipalUnreachable
+      ? { ...persistedOwnUser, principalUnreachable: true }
+      : persistedOwnUser.principalUnreachable
+        ? { ...persistedOwnUser, principalUnreachable: false }
+        : persistedOwnUser;
+  const negotiationContext = metadata.turnContext && ownUser
     ? {
-        ownUser: isSource ? metadata.turnContext.sourceUser : metadata.turnContext.candidateUser,
+        ownUser,
         otherUser: isSource ? metadata.turnContext.candidateUser : metadata.turnContext.sourceUser,
         indexContext: metadata.turnContext.indexContext,
         seedAssessment: metadata.turnContext.seedAssessment,
@@ -75,15 +126,33 @@ export async function readAuthorizedNegotiationDetail(
         ...(metadata.turnContext.discoveryQuery && { discoveryQuery: metadata.turnContext.discoveryQuery }),
       }
     : null;
-  const lifecycleOpportunityId = metadata.opportunityId?.trim() || undefined;
 
-  // These independent reads must stay concurrent: message/artifact latency must
-  // not delay lifecycle evidence, and missing lifecycle evidence remains fail-open.
-  const [messages, artifacts, opportunityLifecycles] = await Promise.all([
-    input.readMessages(task.conversationId),
-    input.readArtifacts(task.id),
-    input.readLifecycleEvidence(lifecycleOpportunityId ? [lifecycleOpportunityId] : [], callerUserId),
-  ]);
+  // #1472, one level down: this is the tool the poller prompt says to call
+  // FIRST, so on a parked negotiation the detail must say the park — through
+  // the SAME canonical predicate the listing runs over the task and messages
+  // it already holds, with the question's number resolved through the shared
+  // question record. A park on the counterparty's side is narrated but never
+  // quoted; that question is not this caller's to read.
+  let park: NegotiationParkNarration | null = null;
+  if (lifecycleOpportunityId && task.state === 'input_required') {
+    const classification = classifyInflightPark(
+      // Callers pass the full runtime metadata object (the typed shape above is
+      // a projection of it), so the ask-user binding is present for the
+      // classifier even though this reader never names it.
+      { id: task.id, state: task.state, metadata: metadata as unknown as Record<string, unknown> },
+      { opportunityId: lifecycleOpportunityId, userId: callerUserId },
+    );
+    if (classification.kind === 'wrong_recipient') park = { waitingOn: 'counterparty', kind: 'mid_flight' };
+    else if (classification.kind === 'inflight') park = { waitingOn: 'you', kind: 'mid_flight' };
+  } else if (lifecycleOpportunityId && task.state === 'completed') {
+    const classification = classifyPostStallPark(task, messages, { userId: callerUserId });
+    if (classification.kind === 'wrong_recipient') park = { waitingOn: 'counterparty', kind: 'post_stall' };
+    else if (classification.kind === 'post_stall') park = { waitingOn: 'you', kind: 'post_stall' };
+  }
+  if (park?.waitingOn === 'you' && lifecycleOpportunityId && input.readOpenQuestion) {
+    const openQuestion = await input.readOpenQuestion(lifecycleOpportunityId).catch(() => undefined);
+    if (openQuestion) park = { ...park, question: openQuestion.question, questionLabel: openQuestion.label };
+  }
 
   // Sender IDs, rather than parity, determine continuation turns. The parity
   // fallback is retained for legacy rows that do not record a sender ID.
@@ -93,6 +162,8 @@ export async function readAuthorizedNegotiationDetail(
       action?: string;
       assessment?: { reasoning?: string; suggestedRoles?: unknown };
       message?: string;
+      askUser?: unknown;
+      checklist?: unknown;
     } | undefined;
     const turnNumber = index + 1;
     const speaker = message.senderId
@@ -108,6 +179,12 @@ export async function readAuthorizedNegotiationDetail(
       reasoning: turnData?.assessment?.reasoning ?? null,
       suggestedRoles: turnData?.assessment?.suggestedRoles ?? null,
       message: turnData?.message ?? null,
+      // The persisted ask/checklist payloads, verbatim and only when present:
+      // an external seat cannot see the consult's dimensions or a checklist's
+      // `settles` declarations without them, and turns that never carried
+      // either keep their prior shape byte-for-byte.
+      ...(turnData?.askUser != null ? { askUser: turnData.askUser } : {}),
+      ...(turnData?.checklist != null ? { checklist: turnData.checklist } : {}),
       createdAt: message.createdAt,
     };
   });
@@ -147,9 +224,13 @@ export async function readAuthorizedNegotiationDetail(
     turnsAdded: Math.max(0, turnCount - priorTurnCount),
     turns,
     outcome,
+    // Top-level and inside `lifecycle` both, mirroring the listing: a park is
+    // the first thing that must be true about a negotiation that holds one.
+    ...(park ? { park: { ...park, label: parkLifecycleLabel(park) } } : {}),
     lifecycle: buildLifecycleNarration(
       status,
       lifecycleOpportunityId ? opportunityLifecycles[lifecycleOpportunityId] : undefined,
+      park ?? undefined,
     ),
     context: negotiationContext,
     createdAt: task.createdAt,
