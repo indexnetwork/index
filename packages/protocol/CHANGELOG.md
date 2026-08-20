@@ -20,6 +20,72 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.5.1 - 2026-08-20
+
+### Fixed
+
+- **The negotiation listing says the park, from the same record every other
+  answerability surface reads.** Observed live: a client asked her agent "do we
+  have a question?" while a negotiation had sat parked `input_required` on her
+  side for two hours with the open question "Timing: This week". Every 23.5.0
+  surface was correct — the precedence gate found the question, and the
+  prompt's open-questions section named it at position 1. Then the model called
+  `list_negotiations`, which renders lifecycle from OPPORTUNITY STATUS, where
+  the pairing legitimately reads `negotiating`, and which said nothing at all
+  about the park. Holding a static context line saying one thing and a
+  just-executed tool result saying another, it went with the tool: "there are
+  currently no open questions… I am still negotiating with the other agent…
+  nothing for you to decide." Both clauses false at the task level; both
+  faithful to what the tool rendered.
+
+  The listing was the last surface still deriving "what is happening" from a
+  source other than the shared resolver, so the tool and the context could
+  disagree — and the tool wins the model's trust every time. It now carries a
+  `park` on any negotiation that holds one: `waitingOn: "you" | "counterparty"`,
+  and for a park on the client's own side the open question's number and label.
+
+- **One call, every surface — the answer-openness rule extended to its last
+  holdout.** The question's NUMBER and LABEL come from
+  `NegotiationListingParkHost`, whose host implementation resolves them through
+  the same call the open-questions prompt section and `answer_pending_question`
+  make. The listing does not enumerate anything of its own, so the number the
+  client is shown is the number that routes their answer. A question's
+  `alsoUnblocks` refs carry that same number, since one answer resumes them all.
+
+- **Whose side a park is on is the canonical predicate, not a second one.**
+  `classifyParkedNegotiation` is split into `classifyInflightPark` and
+  `classifyPostStallPark`, pure over the task and messages a caller already
+  holds; the async function is now the reading half around them and keeps its
+  lazy messages read. The listing calls them with material it already loaded, so
+  park classification costs no extra query and cannot drift from the predicate
+  answer routing uses. Parked-ness is never re-derived from opportunity status.
+
+- **A park on the counterparty is narrated, never quoted.** It renders as
+  waiting on their side with no question content: that question is not this
+  client's to read.
+
+### Changed
+
+- **`lifecycleLabel` states the park, superseding the status label.** The
+  persona is told to take `lifecycleLabel` as its user-facing wording, and "the
+  agents are still negotiating" is exactly the sentence that became a false
+  "nothing for you to decide". `opportunityStatus` still reports the true
+  status; what it may no longer do is supply the sentence.
+  `connectionState` gains `parked_awaiting_your_answer` and
+  `parked_awaiting_counterparty`, and `buildLifecycleNarration` takes an
+  optional third argument. A negotiation with no park renders byte-for-byte as
+  it did in 23.5.0, and is pinned by a fixture spec.
+
+- **The tool description and the negotiator prompt both say the two agree.**
+  `list_negotiations` documents `input_required` as a status, documents `park`,
+  and states that the numbers come from the same record the open-questions
+  context section does — so the model has no basis to rank one over the other.
+  It also states that `negotiating` alone never means "nothing is waiting on
+  you". The persona gains one grounding rule saying the same thing.
+  `NegotiationListingParkHost` is optional: without it the listing still says
+  whether a pairing is parked and on whose side, it just cannot name the
+  question's number.
+
 ## 23.5.0 - 2026-08-20
 
 ### Added

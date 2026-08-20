@@ -24,6 +24,7 @@ import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js"
 import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
 import type { NegotiatorAnswerToolsHost } from "../interfaces/negotiator-answer.interface.js";
 import type { NegotiatorVerdictToolsHost } from "../interfaces/negotiator-verdict.interface.js";
+import type { NegotiationListingParkHost } from "../interfaces/negotiation-listing-park.interface.js";
 import type { QuestionerEnqueueFn } from "../../questions/question.input.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 import type { McpActivityCaller } from "./activity-projection.js";
@@ -192,6 +193,15 @@ interface ToolContextBindings {
    * intent-scoped session (the counterparties are one signal's).
    */
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
+  /**
+   * Host bridge for the park annotations `list_negotiations` renders (#1472).
+   * Resolves a signal's open questions out of the same record the prompt's
+   * open-questions section is built from, so the listing and the context
+   * cannot disagree about whether a negotiation is waiting on the client.
+   * Absent → the listing still says whether a pairing is parked and on whose
+   * side, but cannot name the question's number.
+   */
+  negotiationListingPark?: NegotiationListingParkHost;
   /**
    * Resolve a user's global user_context paragraph (profile-replacing identity
    * text), generating it on demand when absent. Mirrors `ToolDeps.getUserContextText`
@@ -468,6 +478,15 @@ interface ToolDepsBindings {
   enricher: ProfileEnricher;
   /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;
+  /**
+   * Host bridge for the park annotations `list_negotiations` renders (#1472).
+   * Resolves a signal's open questions out of the same record the persona's
+   * open-questions context section is built from, so the listing and the
+   * context cannot disagree about whether a negotiation is waiting on the
+   * client. Absent → the listing still says whether a pairing is parked and on
+   * whose side, it just cannot name the question's number.
+   */
+  negotiationListingPark?: NegotiationListingParkHost;
   /** Chat session reader for exposing the caller's past conversations as MCP tools. */
   chatSession?: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */

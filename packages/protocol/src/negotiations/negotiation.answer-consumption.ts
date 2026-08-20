@@ -141,12 +141,80 @@ export type ParkClassification =
   /** Parked, but awaiting the OTHER side's client — this user's answer must not resume it. */
   | { kind: "wrong_recipient" };
 
+/** A negotiation task, reduced to what park classification reads off it. */
+export interface ParkClassificationTask {
+  id: string;
+  state: string;
+  metadata: Record<string, unknown> | null;
+}
+
+/** A negotiation's own turn messages, reduced to what post-stall classification reads. */
+export interface ParkClassificationMessage {
+  senderId: string;
+  parts: unknown[];
+  taskId?: string | null;
+}
+
+/**
+ * The park an `input_required` negotiation task holds, classified from the
+ * task itself. Split out of {@link classifyParkedNegotiation} so a caller that
+ * ALREADY holds the task — the negotiation listing does — asks the same
+ * question without re-reading it. One predicate, several callers; never the
+ * same rule written twice.
+ *
+ * Callers must only reach here for `state === "input_required"`.
+ */
+export function classifyInflightPark(
+  task: ParkClassificationTask,
+  input: { opportunityId: string; userId: string },
+): Extract<ParkClassification, { kind: "inflight" }> | { kind: "not_parked" } | { kind: "wrong_recipient" } {
+  const binding = readAskUserResumeBinding(task.metadata);
+  if (
+    !binding
+    || binding.opportunityId !== input.opportunityId
+    || binding.settlementId !== negotiationQuestionSettlementId(task.id)
+  ) {
+    answerLog.warn("input_required negotiation task carries no coherent ask-user binding; answer cannot resume it", {
+      taskId: task.id,
+      opportunityId: input.opportunityId,
+    });
+    return { kind: "not_parked" };
+  }
+  if (binding.recipientUserId !== input.userId) return { kind: "wrong_recipient" };
+  return { kind: "inflight", taskId: task.id, binding };
+}
+
+/**
+ * The park a `completed` negotiation task holds, classified from the
+ * negotiation's own messages. Same split, same reason as
+ * {@link classifyInflightPark}: the listing has already read these messages.
+ *
+ * Callers must only reach here for `state === "completed"`.
+ */
+export function classifyPostStallPark(
+  task: Pick<ParkClassificationTask, "id">,
+  messages: ParkClassificationMessage[],
+  input: { userId: string },
+): Extract<ParkClassification, { kind: "post_stall" }> | { kind: "not_parked" } | { kind: "wrong_recipient" } {
+  const park = trailingParkMessage(messages);
+  if (!park) return { kind: "not_parked" };
+  // The gap was written by the finalizing session's task — the most recent
+  // one. A trailing park from an older task means state has moved on.
+  if (park.taskId != null && park.taskId !== task.id) return { kind: "not_parked" };
+  if (park.senderId !== `agent:${input.userId}`) return { kind: "wrong_recipient" };
+  return { kind: "post_stall", taskId: task.id };
+}
+
 /**
  * Re-resolve a negotiation ref to its current park. This is the exact task
  * re-resolution the graph itself uses (`getNegotiationTaskForOpportunity`),
  * never a snapshot: answer routing branches on what the negotiation is NOW,
  * so a park that was answered, expired, or superseded since the block was
  * authored classifies as `not_parked` and the answer no-ops.
+ *
+ * The two live-park branches are {@link classifyInflightPark} and
+ * {@link classifyPostStallPark}; this function is the reading half around
+ * them, and the messages read stays lazy — only a `completed` task pays it.
  */
 export async function classifyParkedNegotiation(
   database: Pick<NegotiationGraphDatabase, "getNegotiationTaskForOpportunity" | "getNegotiationMessages">,
@@ -155,32 +223,10 @@ export async function classifyParkedNegotiation(
   const task = await database.getNegotiationTaskForOpportunity(input.opportunityId);
   if (!task) return { kind: "no_negotiation" };
 
-  if (task.state === "input_required") {
-    const binding = readAskUserResumeBinding(task.metadata);
-    if (
-      !binding
-      || binding.opportunityId !== input.opportunityId
-      || binding.settlementId !== negotiationQuestionSettlementId(task.id)
-    ) {
-      answerLog.warn("input_required negotiation task carries no coherent ask-user binding; answer cannot resume it", {
-        taskId: task.id,
-        opportunityId: input.opportunityId,
-      });
-      return { kind: "not_parked" };
-    }
-    if (binding.recipientUserId !== input.userId) return { kind: "wrong_recipient" };
-    return { kind: "inflight", taskId: task.id, binding };
-  }
+  if (task.state === "input_required") return classifyInflightPark(task, input);
 
   if (task.state === "completed") {
-    const messages = await database.getNegotiationMessages(input.opportunityId);
-    const park = trailingParkMessage(messages);
-    if (!park) return { kind: "not_parked" };
-    // The gap was written by the finalizing session's task — the most recent
-    // one. A trailing park from an older task means state has moved on.
-    if (park.taskId != null && park.taskId !== task.id) return { kind: "not_parked" };
-    if (park.senderId !== `agent:${input.userId}`) return { kind: "wrong_recipient" };
-    return { kind: "post_stall", taskId: task.id };
+    return classifyPostStallPark(task, await database.getNegotiationMessages(input.opportunityId), input);
   }
 
   // submitted/working/waiting_for_agent: a session is live (possibly the very

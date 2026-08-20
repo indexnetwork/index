@@ -12,12 +12,15 @@ import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatch
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { focusedIntentId, focusedNetworkId } from '../shared/agent/tool.scope.js';
 import { readAuthorizedNegotiationDetail } from './negotiation.detail-reader.js';
-import { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
+import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
+import type { NegotiationParkNarration } from './negotiation.lifecycle-narration.js';
+import { classifyInflightPark, classifyPostStallPark } from './negotiation.answer-consumption.js';
+import type { ListingOpenQuestion, NegotiationListingParkHost } from '../shared/interfaces/negotiation-listing-park.interface.js';
 import { isNegotiationTurnCapReached } from './negotiation.turn-cap.js';
 import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
 import { readNegotiationMessages } from './negotiation.scope.js';
 
-export { buildLifecycleNarration } from './negotiation.lifecycle-narration.js';
+export { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
 
 const logger = protocolLogger('ChatTools:Negotiation');
 
@@ -139,6 +142,90 @@ function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTu
     .filter(Boolean);
 }
 
+// ─── Park annotations for the listing (#1472) ───────────────────────────────
+//
+// The listing renders lifecycle from OPPORTUNITY STATUS, where a pairing whose
+// negotiation is parked on the client legitimately reads `negotiating`. On
+// 2026-08-20 that is exactly what it read, while a task had sat
+// `input_required` on the client's side for two hours with the open question
+// "Timing: This week" — and the model, holding a context line saying one thing
+// and a just-executed tool saying another, went with the tool and told her
+// there were no open questions and nothing for her to decide.
+//
+// So the listing says the park, and out of the same record every other
+// answerability surface reads. Whose side a park is on is the CANONICAL
+// predicate (`classifyInflightPark` / `classifyPostStallPark`), run over the
+// task and messages the listing already holds — no second predicate, no extra
+// read. The question's NUMBER and LABEL come from the host, which resolves
+// them through `readOpenQuestionsForIntent`: the same call the open-questions
+// prompt section and `answer_pending_question` make, so the number the client
+// is shown here is the number that routes their answer.
+
+/**
+ * Every open question of the given signals, keyed by the negotiation it
+ * unparks. Read per signal — in the pinned case that is a single call — and
+ * never allowed to fail the listing: an unreadable signal loses its numbers,
+ * not its parks.
+ */
+async function readListingOpenQuestions(
+  host: NegotiationListingParkHost | undefined,
+  userId: string,
+  intentIds: string[],
+): Promise<Map<string, ListingOpenQuestion>> {
+  const byOpportunity = new Map<string, ListingOpenQuestion>();
+  if (!host || intentIds.length === 0) return byOpportunity;
+  for (const intentId of intentIds) {
+    try {
+      for (const question of await host.readOpenQuestions(userId, intentId)) {
+        if (!byOpportunity.has(question.opportunityId)) byOpportunity.set(question.opportunityId, question);
+      }
+    } catch (err) {
+      logger.warn('Failed to read open questions for negotiation listing', { intentId, err });
+    }
+  }
+  return byOpportunity;
+}
+
+/**
+ * The park this listed negotiation currently holds, or null.
+ *
+ * The host's open-question set is authoritative for a park on THIS user's side
+ * — it is the record the answer lands against. The classifier is what tells
+ * the two remaining cases apart: a park on this user whose question the host
+ * could not name (no host wired, or a park the block does not carry), and a
+ * park on the counterparty's side, which is narrated but never quoted.
+ */
+function listingPark(input: {
+  userId: string;
+  opportunityId: string;
+  task: { id: string; state: string; metadata: Record<string, unknown> | null };
+  messages: Array<{ senderId: string; parts: unknown[]; taskId?: string | null }>;
+  openQuestion: ListingOpenQuestion | undefined;
+}): NegotiationParkNarration | null {
+  const { userId, opportunityId, task, messages, openQuestion } = input;
+  if (task.state === 'input_required') {
+    const classification = classifyInflightPark(task, { opportunityId, userId });
+    if (classification.kind === 'wrong_recipient') return { waitingOn: 'counterparty', kind: 'mid_flight' };
+    if (classification.kind !== 'inflight') return null;
+    return {
+      waitingOn: 'you',
+      kind: 'mid_flight',
+      ...(openQuestion ? { question: openQuestion.question, questionLabel: openQuestion.label } : {}),
+    };
+  }
+  if (task.state === 'completed') {
+    const classification = classifyPostStallPark(task, messages, { userId });
+    if (classification.kind === 'wrong_recipient') return { waitingOn: 'counterparty', kind: 'post_stall' };
+    if (classification.kind !== 'post_stall') return null;
+    return {
+      waitingOn: 'you',
+      kind: 'post_stall',
+      ...(openQuestion ? { question: openQuestion.question, questionLabel: openQuestion.label } : {}),
+    };
+  }
+  return null;
+}
+
 /**
  * Creates negotiation MCP tools for external agent access.
  * Exposes negotiation state for listing, reading, and responding to bilateral negotiations.
@@ -155,10 +242,19 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       '**Statuses:**\n' +
       '- `active` — Negotiation is in progress, agents are exchanging turns.\n' +
       '- `waiting_for_agent` — The graph has yielded and is waiting for an agent response (e.g. from the user via respond_to_negotiation) or a timeout.\n' +
+      '- `input_required` — The negotiation is PARKED on a person’s answer. Read `park` for whose.\n' +
       '- `completed` — The agent negotiation has concluded (agent-side accept/reject, or turn cap). This is not a completed connection or an owner decision.\n\n' +
+      '**Parked negotiations:** A negotiation that is waiting on a person carries a `park` object (`waitingOn: "you" | "counterparty"`, and for the ' +
+      'user’s own side the open question’s `question` number and `questionLabel`). It comes from the SAME open-question record that the ' +
+      'open-questions section of your context is built from and that `answer_pending_question` routes against, so the numbers are the same numbers ' +
+      'and neither surface overrides the other. `park.waitingOn="you"` means the user has something to answer RIGHT NOW — say so, whatever the ' +
+      'opportunity status reads. Opportunity status does not settle this: a parked pairing is still `negotiating`, so `negotiating` alone never means ' +
+      '"nothing is waiting on you". A `park` on the counterparty’s side names no question content; that question is not this user’s to read.\n\n' +
       '**Lifecycle narration:** Every result includes additive `lifecycle` fields that distinguish the agent-negotiation state, ' +
       'current opportunity status, and persisted owner acceptance. Agent-side `accept` means only that agents found a potential match; ' +
-      '`pending` still awaits owner review. `directConversationEvidence` is `not_provided`, so this tool never establishes that an H2H message thread exists.\n\n' +
+      '`pending` still awaits owner review. When the negotiation is parked, `lifecycle.lifecycleLabel` states the park (it supersedes the ' +
+      'status label) and `lifecycle.connectionState` is `parked_awaiting_your_answer` or `parked_awaiting_counterparty`. ' +
+      '`directConversationEvidence` is `not_provided`, so this tool never establishes that an H2H message thread exists.\n\n' +
       '**When to use:** To see ongoing and past negotiations, check which negotiations need attention, ' +
       'or find a negotiation ID for get_negotiation or respond_to_negotiation.',
     querySchema: z.object({
@@ -209,12 +305,26 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           return error('Signal scope requires a pinned intent.');
         }
 
-        const signalIntentIdsByOpportunity = effectiveScope === 'signal'
+        // Resolved for the signal-scope filter, and — whenever the park host is
+        // wired — for park annotation in every scope: a pairing parked on the
+        // client is just as misread in the full-history view.
+        const parkHost = deps.negotiationListingPark;
+        const signalIntentIdsByOpportunity = effectiveScope === 'signal' || parkHost
           ? await negotiationDatabase.getIntentIdsForOpportunities(opportunityIds, context.userId)
           : null;
         const scopeMetadata = effectiveScope === 'signal'
           ? { scope: 'signal' as const, intentId: pinnedIntentId! }
           : { scope: 'all' as const };
+
+        const annotatedIntentIds = effectiveScope === 'signal'
+          ? [pinnedIntentId!]
+          : [...new Set(Object.values(signalIntentIdsByOpportunity ?? {})
+            .filter((intentId): intentId is string => typeof intentId === 'string' && intentId.length > 0))];
+        const openQuestionsByOpportunity = await readListingOpenQuestions(
+          parkHost,
+          context.userId,
+          annotatedIntentIds,
+        );
 
         const negotiations = await Promise.all(tasks.map(async (task) => {
           const meta = task.metadata as {
@@ -273,6 +383,20 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
 
           const isUsersTurn = status !== 'completed' && expectedSpeaker === context.userId;
 
+          // #1472: whether this pairing is parked, and on whose side. Derived
+          // from the task and messages already in hand through the canonical
+          // park predicate; the question's number and label come from the
+          // question record via the host, never from a second enumeration.
+          const park = opportunityId
+            ? listingPark({
+              userId: context.userId,
+              opportunityId,
+              task,
+              messages,
+              openQuestion: openQuestionsByOpportunity.get(opportunityId),
+            })
+            : null;
+
           const base = {
             id: task.id,
             counterpartyId: counterpartyId ?? 'unknown',
@@ -285,7 +409,11 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
             latestAction: lastTurnData?.action ?? null,
             latestActionActor: 'agent' as const,
             latestMessagePreview: lastTurnData?.message ?? null,
-            lifecycle: buildLifecycleNarration(status, opportunityLifecycles[opportunityId]),
+            // Top-level and inside `lifecycle` both, deliberately: a park is
+            // the first thing that must be true about a pairing that has one,
+            // and it must not depend on the reader opening a nested object.
+            ...(park ? { park: { ...park, label: parkLifecycleLabel(park) } } : {}),
+            lifecycle: buildLifecycleNarration(status, opportunityLifecycles[opportunityId], park ?? undefined),
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
           };

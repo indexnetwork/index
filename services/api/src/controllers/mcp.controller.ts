@@ -41,6 +41,7 @@ import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.ret
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { negotiatorAnswerToolsHost } from '../lib/question/negotiator-answer.host';
+import { negotiationListingParkHost } from '../lib/question/negotiation-listing-park.host';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
@@ -126,6 +127,11 @@ const protocolDeps = {
   // in chat before. Registered only in intent-pinned negotiator sessions; the
   // orchestrator registry never sees it.
   negotiatorVerdictTools: negotiatorVerdictToolsHost,
+  // #1472: the open-question record behind `list_negotiations`' park
+  // annotations. The listing was the last surface deriving "what is happening"
+  // from a source other than the shared resolver, so the tool and the context
+  // could disagree — and the tool wins the model's trust every time.
+  negotiationListingPark: negotiationListingParkHost,
   ...(isNegotiatorMemoryWriteEnabled() && {
     negotiatorMemoryTools: {
       remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>
@@ -662,6 +668,9 @@ function createMcpServerInstance(): McpServer {
     negotiationDatabase: protocolDeps.negotiationDatabase,
     agentDispatcher: protocolDeps.agentDispatcher,
     negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
+    // #1472: same park annotations on the MCP surface — an external agent
+    // reading this listing must not be told "still negotiating" either.
+    negotiationListingPark: protocolDeps.negotiationListingPark,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
     chatSession: protocolDeps.chatSession,
