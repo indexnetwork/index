@@ -15,11 +15,37 @@
  * suspended or deleted account, say), and stated without leaking test framing
  * into anything a counterparty's user might read.
  *
+ * A seed persona is only unreachable while nobody is behind it. The moment a
+ * tester signs in as one, there IS someone to answer — the question routes to
+ * whoever is driving the account — so an inhabited seed is reachable, and the
+ * rule is:
+ *
+ *     unreachable(user) = isSyntheticUserEmail(user.email)
+ *                         AND NOT hasActiveSession(user.id)
+ *
+ * "Active session" is {@link ACTIVE_SESSION_RULE}: any row in `sessions` for
+ * the user whose `expires_at` is still in the future. Better Auth issues
+ * seven-day sessions and refreshes `expires_at` on use, and sign-out deletes
+ * the row, so an unexpired session means "someone set this persona up to be
+ * driven this week and has not left" — which is exactly the population whose
+ * questions deserve to land. A tester who signed in yesterday still wants the
+ * question today; no recency window tighter than the session's own lifetime
+ * is applied.
+ *
  * This is the single definition. Every consumer goes through it.
  */
 import { log } from '../log';
 
 const logger = log.lib.from('users/synthetic');
+
+/**
+ * The one liveness rule a seed persona's session must satisfy to count as
+ * inhabited. Stated as a constant so the choice is named, not scattered:
+ * `unexpired` means `sessions.expires_at > now()` and nothing stricter.
+ * Readers implementing {@link SyntheticPrincipalReader.hasActiveSession}
+ * encode this exact predicate.
+ */
+export const ACTIVE_SESSION_RULE = 'unexpired' as const;
 
 /**
  * Whether this address belongs to a seed persona: true iff the domain's final
@@ -38,34 +64,61 @@ export function isSyntheticUserEmail(email: string | null | undefined): boolean 
   return domain.split('.').at(-1) === 'test';
 }
 
-/** The narrow read {@link resolvePrincipalUnreachable} needs. */
+/** The narrow reads {@link resolvePrincipalUnreachable} needs. */
 export interface SyntheticPrincipalReader {
   getUser(userId: string): Promise<{ email: string | null } | null>;
+  /**
+   * Whether the user holds a session satisfying {@link ACTIVE_SESSION_RULE}.
+   * Only ever consulted for seed personas; real users never reach it.
+   */
+  hasActiveSession(userId: string): Promise<boolean>;
 }
 
 /**
  * Whether this principal can be consulted at all during a negotiation.
  *
- * Fails OPEN — an unresolvable user, a missing email, or a failed read all
- * report *reachable*. Real users are the default, and the cost of the two
- * errors is not symmetric: wrongly calling a real principal unreachable would
- * silently stop their own agent from ever asking them anything, while wrongly
- * calling a seed persona reachable only restores today's behaviour.
+ * Two reads, two populations, two opposite failure directions — both correct:
+ *
+ * - The user read fails OPEN. An unresolvable user, a missing email, or a
+ *   failed read all report *reachable*. Real users are the default, and
+ *   wrongly calling a real principal unreachable would silently stop their
+ *   own agent from ever asking them anything, while wrongly calling a seed
+ *   persona reachable only restores pre-#1459 behaviour.
+ * - The session read fails CLOSED, and is only made for `.test` users. A seed
+ *   persona whose session read fails reports *unreachable*: wrongly asking a
+ *   persona nobody inhabits rots a question in a DM no one opens, while
+ *   wrongly silencing an inhabited persona merely restores yesterday's
+ *   behaviour. Real users short-circuit before the sessions table is touched,
+ *   so the common path costs one read and a sessions outage cannot affect a
+ *   real principal.
  */
 export async function resolvePrincipalUnreachable(
   userId: string,
   reader?: SyntheticPrincipalReader,
 ): Promise<boolean> {
+  const resolved = reader
+    ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
+
+  let synthetic: boolean;
   try {
-    const resolved = reader
-      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
     const user = await resolved.getUser(userId);
-    return isSyntheticUserEmail(user?.email);
+    synthetic = isSyntheticUserEmail(user?.email);
   } catch (err) {
     logger.warn('Principal reachability read failed; treating principal as reachable', {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
     return false;
+  }
+  if (!synthetic) return false;
+
+  try {
+    return !(await resolved.hasActiveSession(userId));
+  } catch (err) {
+    logger.warn('Seed-persona session read failed; treating principal as unreachable', {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return true;
   }
 }

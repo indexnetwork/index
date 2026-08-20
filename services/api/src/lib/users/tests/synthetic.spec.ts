@@ -35,20 +35,55 @@ describe('isSyntheticUserEmail', () => {
 });
 
 describe('resolvePrincipalUnreachable', () => {
-  it('resolves the principal through the reader', async () => {
-    const reader = { getUser: async () => ({ email: 'seed-tester-3@index-network.test' }) };
+  const neverConsulted = async (): Promise<boolean> => {
+    throw new Error('sessions table consulted for a real user');
+  };
+
+  it('reports an uninhabited seed persona as unreachable', async () => {
+    const reader = {
+      getUser: async () => ({ email: 'seed-tester-3@index-network.test' }),
+      hasActiveSession: async () => false,
+    };
     expect(await resolvePrincipalUnreachable('user-seed', reader)).toBe(true);
   });
 
-  it('reports a real user as reachable', async () => {
-    const reader = { getUser: async () => ({ email: 'real@index.network' }) };
+  it('reports a seed persona someone is signed in as reachable', async () => {
+    const consulted: string[] = [];
+    const reader = {
+      getUser: async () => ({ email: 'seed-tester-3@index-network.test' }),
+      hasActiveSession: async (userId: string) => { consulted.push(userId); return true; },
+    };
+    expect(await resolvePrincipalUnreachable('user-seed', reader)).toBe(false);
+    expect(consulted).toEqual(['user-seed']);
+  });
+
+  it('reports a real user as reachable without ever touching sessions', async () => {
+    const reader = {
+      getUser: async () => ({ email: 'real@index.network' }),
+      hasActiveSession: neverConsulted,
+    };
     expect(await resolvePrincipalUnreachable('user-real', reader)).toBe(false);
   });
 
-  it('fails open when the user is missing or the read throws', async () => {
-    expect(await resolvePrincipalUnreachable('gone', { getUser: async () => null })).toBe(false);
+  it('fails open when the user is missing or the user read throws', async () => {
+    expect(await resolvePrincipalUnreachable('gone', {
+      getUser: async () => null,
+      hasActiveSession: neverConsulted,
+    })).toBe(false);
     expect(await resolvePrincipalUnreachable('boom', {
       getUser: async () => { throw new Error('db down'); },
+      hasActiveSession: neverConsulted,
     })).toBe(false);
+  });
+
+  it('fails CLOSED when a seed persona\'s session read throws — the opposite direction, deliberately', async () => {
+    // A seed persona is unreachable by default (#1459). If we cannot tell
+    // whether someone is behind it, asking anyway risks a question rotting in
+    // a DM nobody opens; staying silent merely restores yesterday's behaviour.
+    const reader = {
+      getUser: async () => ({ email: 'seed-tester-3@index-network.test' }),
+      hasActiveSession: async () => { throw new Error('sessions down'); },
+    };
+    expect(await resolvePrincipalUnreachable('user-seed', reader)).toBe(true);
   });
 });
