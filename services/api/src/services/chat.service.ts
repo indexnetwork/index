@@ -5,6 +5,7 @@ import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
+import { readOpenQuestionsForIntent } from '../lib/question/open-question-message';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -768,20 +769,30 @@ export class ChatSessionService {
    * factory; only prompt/toolset/loop behaviors differ.
    *
    * @param agent - Identity from the user's `type='personal'` agent row
-   * @param pinnedIntent - Optional pinned-signal label for intent-scoped
-   *                       sessions (P4.2); rendered in the prompt's pinned
-   *                       signal section
+   * @param pinnedIntent - The pinned signal for intent-scoped sessions (P4.2):
+   *                       its id, and its label for the prompt's pinned signal
+   *                       section. The id also resolves the signal's OPEN
+   *                       questions (#1466) — what the client's own agent is
+   *                       currently waiting on them for.
    */
   async getNegotiatorGraphFactory(
     agent: { name: string; description?: string | null },
     userId: string,
-    pinnedIntent?: { label?: string },
+    pinnedIntent?: { intentId?: string; label?: string },
   ): Promise<ChatGraphFactory> {
     // P5.3: the client's accumulated negotiator memories inform the DM
     // persona (gated on NEGOTIATOR_MEMORY_INJECT; [] → byte-identical
     // prompt). The adapter never throws — the catch is belt and braces so a
     // memory failure can never take down the chat surface.
     const memory = await negotiatorMemoryRetrievalAdapter.retrieveForChat(userId).catch(() => []);
+    // #1466: the questions this signal's DM currently has open. Without them
+    // the persona could not tell that a message answering one WAS an answer —
+    // its only move on such a message was to edit the signal, which is what it
+    // did on 2026-08-20. Never throws (the reader swallows its own failures);
+    // absent → the prompt is byte-identical to before.
+    const openQuestions = pinnedIntent?.intentId
+      ? (await readOpenQuestionsForIntent(userId, pinnedIntent.intentId))?.questions ?? []
+      : [];
     return this.factory.withPersona(
       createNegotiatorPersona({
         agentName: agent.name,
@@ -792,6 +803,9 @@ export class ChatSessionService {
         // root under the same flag — the prompt advertises them only when
         // they actually exist for this session.
         ...(isNegotiatorMemoryWriteEnabled() ? { memoryToolsEnabled: true } : {}),
+        ...(openQuestions.length > 0
+          ? { openQuestions: openQuestions.map((question) => question.label) }
+          : {}),
       }),
     );
   }

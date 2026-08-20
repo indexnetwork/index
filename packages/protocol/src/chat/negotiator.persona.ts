@@ -2,7 +2,7 @@ import { createChatTools, type ChatTools, type ToolContext, type ResolvedToolCon
 import { focusedIntentId, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./negotiator.prompt.js";
-import { createNegotiatorMemoryTools } from "./negotiator.tools.js";
+import { createNegotiatorAnswerTools, createNegotiatorMemoryTools } from "./negotiator.tools.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NEGOTIATOR PERSONA (P4.1)
@@ -128,15 +128,28 @@ export async function createNegotiatorTools(
   // AFTER the allowlist filter, and only when the composition root injected
   // the host bridge (i.e. negotiator memory writes are enabled). They never
   // enter the shared registry, so the orchestrator cannot see them.
+  const extra: ChatTools = [];
   if (deps.negotiatorMemoryTools) {
-    const memoryTools = createNegotiatorMemoryTools({
+    extra.push(...createNegotiatorMemoryTools({
       host: deps.negotiatorMemoryTools,
       userId: deps.userId,
       ...(deps.sessionId ? { sessionId: deps.sessionId } : {}),
-    });
-    return [...contextFiltered, ...memoryTools] as ChatTools;
+    }));
   }
-  return contextFiltered;
+  // #1466: `answer_pending_question` is the long-tail lane for a reply the
+  // deterministic precedence gate declined. Registered only in an
+  // intent-pinned session — an open question lives in one signal's DM, so a
+  // question number with no signal behind it would route nowhere — and only
+  // when the composition root injected the host.
+  const pinnedIntentId = focusedIntentId(toolScope);
+  if (deps.negotiatorAnswerTools && pinnedIntentId) {
+    extra.push(...createNegotiatorAnswerTools({
+      host: deps.negotiatorAnswerTools,
+      userId: deps.userId,
+      intentId: pinnedIntentId,
+    }));
+  }
+  return (extra.length > 0 ? [...contextFiltered, ...extra] : contextFiltered) as ChatTools;
 }
 
 /**

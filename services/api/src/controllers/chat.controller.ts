@@ -13,14 +13,25 @@ import { userService } from "../services/user.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { enqueueQuestionAnswerReply, questionMessageQueue } from "../queues/question-message.queue";
+import { QUESTION_ANSWER_ACKNOWLEDGEMENT, evaluateQuestionAnswerPrecedence } from "../lib/question/answer-precedence";
+import type { AnswerPrecedence } from "../lib/question/answer-precedence";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
-import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent } from "../types/chat-streaming.types";
+import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;
 type ChatScope = { scopeType: 'network' | 'intent'; scopeId: string };
 
 const logger = log.controller.from("chat");
+
+/**
+ * The orchestrator's event stream when it does not run: the answer-precedence
+ * gate accepted this reply as an answer to the scope's open question, so the
+ * turn is already decided. An empty stream rather than a branch around the
+ * loop keeps one path through persistence, title, suggestions and `done` —
+ * the turn differs only in where its text came from.
+ */
+async function* emptyEventStream(): AsyncGenerator<never, void, unknown> {}
 
 function normalizeChatScope(input: {
   scopeType?: 'network' | 'intent' | null;
@@ -462,8 +473,11 @@ export class ChatController {
         ? await chatSessionService.getNegotiatorGraphFactory(
             negotiatorAgent,
             user.id,
-            effectiveScope?.scopeType === 'intent' && pinnedIntentLabel
-              ? { label: pinnedIntentLabel }
+            effectiveScope?.scopeType === 'intent'
+              ? {
+                intentId: effectiveScope.scopeId,
+                ...(pinnedIntentLabel ? { label: pinnedIntentLabel } : {}),
+              }
               : undefined,
           )
         : null;
@@ -542,21 +556,60 @@ export class ChatController {
           let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown} | undefined;
           let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
 
-          // Use context-aware streaming to load previous messages
+          // ─── Answer precedence (#1466) ───────────────────────────────────
+          // While this signal's DM has an OPEN question, the reply is offered
+          // to the answer evaluator BEFORE the orchestrator runs — before any
+          // tool, and so before the signal edit rule can rewrite the intent
+          // from it. An accepted answer never reaches the orchestrator; it is
+          // acknowledged in server-owned copy and consumed on the serialized
+          // question-message queue. Anything else (no open question, the
+          // evaluator declines, the evaluator is unavailable) falls through to
+          // the ordinary flow below, unchanged.
+          //
+          // The order is the fix. Both consumers already existed and both were
+          // behaving correctly on 2026-08-20 when "This month?" — an answer to
+          // a parked negotiation's timing question — was consumed by the edit
+          // rule instead, because the orchestrator simply ran first.
+          const answerPrecedence: AnswerPrecedence =
+            sessionPersona === NEGOTIATOR_PERSONA_ID && effectiveScope?.scopeType === 'intent'
+              ? await evaluateQuestionAnswerPrecedence({
+                  userId: user.id,
+                  intentId: effectiveScope.scopeId,
+                  sessionId,
+                  replyText: messageContent,
+                })
+              : { status: 'no_open_question' };
 
-          for await (const event of factory.streamChatEventsWithContext(
-            {
-              userId: user.id,
-              message: messageContent,
-              sessionId,
-              maxContextMessages: 20,
-              ...(effectiveScope ? { scopeType: effectiveScope.scopeType, scopeId: effectiveScope.scopeId } : {}),
-              prefillMessages: body.prefillMessages,
-              runId,
-            },
-            checkpointer,
-            streamAbortController.signal,
-          )) {
+          if (answerPrecedence.status === 'answered') {
+            // The answer IS the turn. The response is server-owned copy, not
+            // model text — the same rule the close-out and clarification
+            // messages follow — and it is emitted as one token event so the
+            // rest of this handler (persistence, title, suggestions, done)
+            // runs byte-identically to an ordinary turn.
+            fullResponse = QUESTION_ANSWER_ACKNOWLEDGEMENT;
+            controller.enqueue(
+              encoder.encode(formatSSEEvent(createTokenEvent(sessionId, fullResponse))),
+            );
+          }
+
+          // Use context-aware streaming to load previous messages
+          const orchestratorEvents = answerPrecedence.status === 'answered'
+            ? emptyEventStream()
+            : factory.streamChatEventsWithContext(
+              {
+                userId: user.id,
+                message: messageContent,
+                sessionId,
+                maxContextMessages: 20,
+                ...(effectiveScope ? { scopeType: effectiveScope.scopeType, scopeId: effectiveScope.scopeId } : {}),
+                prefillMessages: body.prefillMessages,
+                runId,
+              },
+              checkpointer,
+              streamAbortController.signal,
+            );
+
+          for await (const event of orchestratorEvents) {
             if (streamInterruptedBySteer) break;
             if (event) {
               // response_complete is an internal event carrying the agent's
@@ -599,12 +652,28 @@ export class ChatController {
             }
           }
 
-          // A user message in the signal's negotiator DM may be an answer to
-          // the open question-message. Detection runs after the reply is
-          // persisted and BEFORE the assistant response is, so the newest
-          // agent message is still the one the client was answering; the
-          // serialized question-message queue owns everything after that.
+          // Consumption, enqueued once the reply has a persisted id (it keys
+          // the job's redelivery dedup). The serialized question-message queue
+          // owns everything after that — resuming each parked negotiation the
+          // answer unparks, and the clarifying follow-up if any ref no longer
+          // routes.
+          //
+          // Two statuses reach it, for different reasons:
+          // - `answered`: the gate's own routing is carried through, so the
+          //   job consumes the decision the client was just acknowledged for
+          //   rather than re-deciding it.
+          // - `unavailable`: the evaluator could not decide, so the job is
+          //   enqueued the way it always was — no routing attached — and the
+          //   queue's retry policy covers the outage. This turn also went to
+          //   the orchestrator, which can route the same reply through its
+          //   tool; both land in the same settlement-keyed, idempotent
+          //   consumption, so the duplicate is harmless and the recovery is
+          //   worth more than the tidiness.
+          //
+          // A reply the gate DECLINED has nothing to consume: that judgment is
+          // the same one the job would make, and it already ran.
           const detectQuestionAnswerReply = async (replyMessageId: string) => {
+            if (answerPrecedence.status !== 'answered' && answerPrecedence.status !== 'unavailable') return;
             if (sessionPersona !== NEGOTIATOR_PERSONA_ID || effectiveScope?.scopeType !== 'intent') return;
             await enqueueQuestionAnswerReply({
               userId: user.id,
@@ -612,6 +681,15 @@ export class ChatController {
               sessionId,
               replyText: messageContent,
               replyMessageId,
+              ...(answerPrecedence.status === 'answered'
+                ? {
+                  precedence: {
+                    questionMessageId: answerPrecedence.questionMessageId,
+                    questionMessageBody: answerPrecedence.questionMessageBody,
+                    routedAnswers: answerPrecedence.routedAnswers,
+                  },
+                }
+                : {}),
             });
           };
 

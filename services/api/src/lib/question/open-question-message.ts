@@ -124,3 +124,103 @@ export async function readOpenQuestionMessages(
   }
   return open;
 }
+
+/** One question of a signal's open question-message, as the client sees it. */
+export interface OpenQuestionForIntent {
+  /** 1-based position in the block — the number the orchestrator is shown. */
+  position: number;
+  /** The step's label: its checklist dimension, else a short form of the prompt. */
+  label: string;
+  /** The negotiation this question unparks; the answer's routing identity. */
+  opportunityId: string;
+}
+
+/** A signal's open question-message, resolved for one intent scope. */
+export interface OpenQuestionsForIntent {
+  sessionId: string;
+  messageId: string;
+  /** The message body as delivered — the block an answer is consumed against. */
+  body: string;
+  questions: OpenQuestionForIntent[];
+}
+
+/** Label cap for a question shown in the orchestrator's context. */
+const MAX_QUESTION_LABEL_CHARS = 80;
+
+function labelFor(question: QuestionBlockQuestion): string {
+  const label = question.dimension?.trim() || question.prompt.trim();
+  return label.length > MAX_QUESTION_LABEL_CHARS
+    ? `${label.slice(0, MAX_QUESTION_LABEL_CHARS).trimEnd()}…`
+    : label;
+}
+
+/** Injectable seams for {@link readOpenQuestionsForIntent}. */
+export interface OpenQuestionsForIntentDeps {
+  findSession?: (userId: string, intentId: string) => Promise<{ id: string } | null>;
+  getSessionMessages?: (sessionId: string) => Promise<Array<{ id: string; role: string; content: string }>>;
+  readParkedNegotiations?: (userId: string, intentId: string) => Promise<ReadonlyArray<{ opportunityId: string }>>;
+}
+
+/**
+ * One signal's open question-message, resolved for the orchestrator's context
+ * and for the `answer_pending_question` tool behind it (#1466).
+ *
+ * Anchored on the newest AGENT message, like the notification snapshot rather
+ * than the edit rule: the client having replied since does not un-ask the
+ * question, and this is read on a turn where they just did reply.
+ *
+ * Resolves null whenever there is nothing open — no DM, no block, or every
+ * negotiation the block references has since resolved. Never throws: this
+ * feeds a prompt section and a tool registration, and neither is worth failing
+ * a chat turn over.
+ */
+export async function readOpenQuestionsForIntent(
+  userId: string,
+  intentId: string,
+  deps?: OpenQuestionsForIntentDeps,
+): Promise<OpenQuestionsForIntent | null> {
+  if (!userId || !intentId) return null;
+  try {
+    const findSession = deps?.findSession
+      ?? (async (id: string, intent: string) => (await import('../../services/chat.service')).chatSessionService
+        .findNegotiatorIntentSession(id, intent));
+    const session = await findSession(userId, intentId);
+    if (!session) return null;
+
+    const getSessionMessages = deps?.getSessionMessages
+      ?? (async (sessionId: string) => (await import('../../services/chat.service')).chatSessionService
+        .getSessionMessages(sessionId));
+    const messages = await getSessionMessages(session.id);
+    const newestAgentMessage = [...messages].reverse().find((message) => message.role === 'assistant');
+    // Cheap first: no block, no parked-set read.
+    if (!newestAgentMessage || !parseQuestionMessage(newestAgentMessage.content)) return null;
+
+    const readParkedNegotiations = deps?.readParkedNegotiations
+      ?? (async (id: string, intent: string) => (await import('../../adapters/parked-negotiation.reader.adapter'))
+        .parkedNegotiationReaderAdapter.readParkedNegotiations(id, intent));
+    const parked = await readParkedNegotiations(userId, intentId);
+    const open = openQuestionBlock({ id: newestAgentMessage.id, content: newestAgentMessage.content }, parked);
+    if (!open) return null;
+
+    // Every question of the open block is listed, not only the still-parked
+    // ones: the numbers must line up with what the client is looking at, and a
+    // question whose parks resolved simply consumes to nothing.
+    return {
+      sessionId: session.id,
+      messageId: open.id,
+      body: newestAgentMessage.content,
+      questions: open.block.questions.map((question, index) => ({
+        position: index + 1,
+        label: labelFor(question),
+        opportunityId: question.opportunityId,
+      })),
+    };
+  } catch (err) {
+    logger.warn('open_questions_for_intent_read_failed', {
+      userId,
+      intentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}

@@ -186,6 +186,36 @@ function preContactParkTurn() {
   };
 }
 
+/**
+ * A CONCLUSION-FLOOR park (#1464): the graph fired the ask, not the agent, so
+ * the turn carries the checklist dimension it fired on and its answerhood map
+ * — and no authored question at all. The checklist rides on the same turn,
+ * which is the only place the dimension's kind is stored.
+ */
+function floorFiredParkTurn() {
+  return {
+    action: 'ask_user',
+    message: null,
+    assessment: {
+      reasoning: NEGOTIATION_PARK_REASONING,
+      suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+    },
+    askUser: {
+      reason: 'unresolved_owner_constraint',
+      dimension: 'Timing: This week',
+      answerhood: {
+        ok_when: 'a meeting inside the next two weeks works',
+        conflict_when: 'nothing before next quarter is possible',
+      },
+      guaranteed: true,
+    },
+    checklist: [
+      { name: 'Timing: This week', kind: 'hard_constraint', result: 'unknown', basis: '' },
+      { name: 'Mutual interest', kind: 'mutual_want', result: 'ok', basis: 'Both signals say so.' },
+    ],
+  };
+}
+
 function ordinaryTurn() {
   return {
     action: 'counter',
@@ -369,5 +399,35 @@ describe('parked-set reader ⇄ classifyParkedNegotiation convergence', () => {
 
     expect(classification.kind).toBe('not_parked');
     expect(parkedSet.some((parked) => parked.opportunityId === negotiation.opportunityId)).toBe(false);
+  });
+
+  test('floor-fired park: the reader carries the dimension, its kind, and the answerhood the ask declared', async () => {
+    // The park that made the 2026-08-20 incident possible. It has no authored
+    // question, so what the client is asked has to be written from the
+    // dimension — and that needs all three fields off the persisted turn. Two
+    // of them (kind, answerhood) had no reader at all before this.
+    const fixture = await seedParticipants();
+    const negotiation = await seedNegotiation(fixture, 'stalled');
+    await appendTurn(negotiation.conversationId, negotiation.taskId, `agent:${fixture.counterpartyId}`, ordinaryTurn());
+    await appendTurn(negotiation.conversationId, negotiation.taskId, `agent:${fixture.ownerId}`, floorFiredParkTurn());
+    await db.update(tasks).set({ state: 'completed' }).where(eq(tasks.id, negotiation.taskId));
+
+    const classification = await classifyParkedNegotiation(chatDatabaseAdapter, {
+      opportunityId: negotiation.opportunityId,
+      userId: fixture.ownerId,
+    });
+    const parkedSet = await reader.readParkedNegotiations(fixture.ownerId, fixture.ownerIntentId);
+    const entry = parkedSet.find((parked) => parked.opportunityId === negotiation.opportunityId);
+
+    expect(classification.kind).toBe('post_stall');
+    expect(entry?.kind).toBe('post_stall');
+    expect(entry?.question).toBeUndefined();
+    expect(entry?.dimension).toBe('Timing: This week');
+    // Read off the checklist the same turn persisted, matched by name.
+    expect(entry?.dimensionKind).toBe('hard_constraint');
+    expect(entry?.answerhood).toEqual({
+      ok_when: 'a meeting inside the next two weeks works',
+      conflict_when: 'nothing before next quarter is possible',
+    });
   });
 });

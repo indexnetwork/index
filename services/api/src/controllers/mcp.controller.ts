@@ -40,6 +40,7 @@ import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieva
 import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
+import { negotiatorAnswerToolsHost } from '../lib/question/negotiator-answer.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
@@ -114,6 +115,11 @@ const protocolDeps = {
   // memory tools. Injected only while memory writes are enabled — when the
   // flag is off the tools are simply not registered. Consumed exclusively by
   // createNegotiatorTools; the orchestrator registry never sees these tools.
+  // #1466: host bridge for the negotiator persona's `answer_pending_question`
+  // tool — the long-tail lane for a reply the deterministic answer-precedence
+  // gate declined. Registered only in intent-pinned negotiator sessions; the
+  // orchestrator registry never sees it.
+  negotiatorAnswerTools: negotiatorAnswerToolsHost,
   ...(isNegotiatorMemoryWriteEnabled() && {
     negotiatorMemoryTools: {
       remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>

@@ -682,7 +682,8 @@ const PARK_REASONING = "Negotiation parked pending the client's answer.";
 interface AnswerHarnessOptions {
   /** Which refs currently hold a live park, and of which flavour. */
   parks: Record<string, 'inflight' | 'post_stall'>;
-  routed: { addressesQuestions: boolean; answers: RoutedAnswer[] };
+  /** The router's verdict, or an Error for a payload that must never route. */
+  routed: { addressesQuestions: boolean; answers: RoutedAnswer[] } | Error;
 }
 
 function buildAnswerHarness(options: AnswerHarnessOptions) {
@@ -774,6 +775,7 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
     answerRouter: {
       route: async (input) => {
         calls.routerInputs.push({ replyText: input.replyText });
+        if (options.routed instanceof Error) throw options.routed;
         return options.routed;
       },
     },
@@ -810,6 +812,23 @@ function answerJob(replyText: string): QuestionAnswerJobData {
 }
 
 describe('QuestionMessageQueue answer-consumption job', () => {
+  it('consumes the precedence gate\'s routing without calling the router again', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: { [FIXTURE_PRIMARY_1]: 'inflight' },
+      // Any router call here would be a second, contradictable judgment of a
+      // reply the gate already accepted — the harness makes one fail the test.
+      routed: new Error('the router must not run for a pre-routed payload'),
+    });
+
+    await queue.processJob('consume_question_answers', {
+      ...answerJob('This month.'),
+      routedAnswers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'This month.' }],
+    });
+
+    expect(calls.routerInputs).toHaveLength(0);
+    expect(calls.inflightResumes.map((resume) => resume.opportunityId)).toEqual([FIXTURE_PRIMARY_1]);
+  });
+
   it('routes a reply onto an inflight park and resumes the primary and every alsoUnblocks ref', async () => {
     const { queue, calls } = buildAnswerHarness({
       parks: { [FIXTURE_PRIMARY_1]: 'inflight', [FIXTURE_ALSO_1]: 'inflight' },
@@ -921,6 +940,31 @@ describe('enqueueQuestionAnswerReply detection', () => {
     replyText: 'March works.',
     replyMessageId: 'reply-1',
   };
+
+  it('enqueues the precedence gate\'s own decision without re-anchoring or re-routing', async () => {
+    // The gate ran the evaluator BEFORE the chat turn to decide the
+    // orchestrator would not see this reply. Re-deriving either half here
+    // could only contradict what the client was already acknowledged for.
+    const enqueued: QuestionAnswerJobData[] = [];
+    const result = await enqueueQuestionAnswerReply({
+      ...reply,
+      precedence: {
+        questionMessageId: 'm2',
+        questionMessageBody: questionMessageFixture,
+        routedAnswers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'March works.' }],
+      },
+    }, {
+      getSessionMessages: async () => { throw new Error('must not re-read the session'); },
+      addConsumeAnswerJob: async (data) => { enqueued.push(data); },
+    });
+
+    expect(result).toBe(true);
+    expect(enqueued[0]).toMatchObject({
+      questionMessageId: 'm2',
+      questionMessageBody: questionMessageFixture,
+      routedAnswers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'March works.' }],
+    });
+  });
 
   it('enqueues consumption when the newest agent message carries a question block', async () => {
     const enqueued: QuestionAnswerJobData[] = [];

@@ -147,7 +147,7 @@ describe("buildNegotiatorSystemContent — pinned signal (intent scope)", () => 
     }
     // Question guidance is conversational now: parked negotiations surface as
     // the negotiator's own question message; no record/answer tools remain.
-    expect(prompt).toContain("routed back to the parked negotiations automatically");
+    expect(prompt).toContain("routed back to the parked negotiation before you ever see it");
   });
 
   it("includes the human-readable label when provided", () => {
@@ -194,7 +194,7 @@ describe("buildNegotiatorSystemContent — open questions (DM)", () => {
     const prompt = buildNegotiatorSystemContent(scopedCtx, AGENT_OPTS);
     expect(prompt).not.toContain("## Open questions");
     expect(prompt).toContain("## Pinned signal");
-    expect(prompt).toContain("routed back to the parked negotiations automatically");
+    expect(prompt).toContain("routed back to the parked negotiation before you ever see it");
   });
 });
 
