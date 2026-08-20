@@ -20,6 +20,96 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.3.0 - 2026-08-20
+
+### Changed
+
+- **A verdict has a floor under it: an askable unknown outranks a conclusion.**
+  Every stage of the flow — signal, discovery, agents talking, match, meet — was
+  verified working except one arrow: the agent asking its own client something
+  only that client can settle. In a week of live traffic it fired zero times,
+  against 23 policy-recognized consultation moments. The reason is structural
+  rather than a bug: the model always had a cheaper exit than asking — assume the
+  unknown away and accept, put the question to the counterparty who does not hold
+  the answer, or simply conclude — and it took one every time. #1463 closed one
+  of those exits (a decline with no conflict behind it). This closes the rest.
+
+  `assessConcludeAdmissibility` makes a drafted TERMINAL verdict — `accept`,
+  `decline`, `reject`, and the initiator's `withdraw` — inadmissible while the
+  checklist holds a dimension scored `unknown` that this principal could still be
+  asked about, reported as `unknowns_askable` with the dimension names. "Askable"
+  is the conjunction the turn node already computes as `askUserAvailable` (v2,
+  wiring up, budget left, ask-rounds cap unreached, principal reachable,
+  non-final turn) with the checklist's own part (unknown, and the topic unasked
+  in this negotiation). Every one of those conditions failing REOPENS the
+  verdict, which is what keeps the floor from being a deadlock: a spent budget,
+  an unreachable principal, a settled checklist or the last turn all leave the
+  verdict exactly where it was. Fails open on an unauthored checklist;
+  `advocate`/v1 untouched; #1463's decline law still applies independently.
+
+  On a premature verdict the turn node logs/traces `negotiation_conclude_premature`
+  and re-issues the turn ONCE, naming the open dimensions and leaving two moves:
+  score the dimension from something a principal actually STATED, or ask the
+  client whose fact it is. Unlike the anti-echo re-issue — which hard-refuses
+  `ask_user`, since a repeated message says nothing about whether a consultation
+  is warranted — an ask drafted on THIS re-issue is the outcome the floor exists
+  to produce, so it is offered in the seat vocabulary and flows through the
+  ordinary admission and park path. That required the three ask gates
+  (reachability, availability/policy, the five-part rule) to become one function
+  the re-issue faces too; policy admission is re-run for a re-issued ask, because
+  the eligibility computed for the refused draft was a judgment about an action
+  that no longer exists.
+
+- **When the model still refuses, the graph fires the arrow itself.** If the turn
+  that would persist still leaves no ask on the table while an askable unknown
+  stands, the drafted turn is coerced to `ask_user` carrying the top askable
+  DIMENSION, and parks exactly as an agent-drafted ask does — `input_required`,
+  expiry timer, questioner enqueue. Bounded at one per negotiation per principal
+  via a new graph-only `askUser.guaranteed` mark read back off the persisted
+  turn (the turn node strips any agent-claimed mark, so the floor is the field's
+  only writer), and it consumes budget and an ask round like any other ask
+  because the record it writes is the same one every accounting reads.
+
+  Coercion rather than "persist the turn and park beside it": every accounting
+  the protocol has — the per-principal budget, the asked-topics record, the
+  negotiation-wide ask-rounds cap — is read off persisted `ask_user` turns, so a
+  park riding alongside a `counter` would spend a person's attention while the
+  record showed nothing spent and leave the same dimension askable next turn.
+  And after the re-issue the drafted action is frequently terminal, where
+  persisting it would END the negotiation — there is no "in addition" available.
+  What coercion costs is the drafted message, and only where it should be: a
+  terminal turn's message is dropped with the action it belonged to (#1463's
+  rule, for #1463's reason), while a non-terminal message is kept and persisted
+  — a real contribution to the exchange, after which the seat parks instead of
+  handing the turn over. Traced as `negotiation_ask_guaranteed` with the
+  dimension.
+
+  This is NOT the pre-#1455 inferred consultation. That fired from action enums
+  with no content behind them and produced "would you be open to connecting?";
+  this fires from a named dimension the agent itself wrote and itself scored
+  unknown, and the api's question-message author already reads
+  `askUser.dimension` off the parked turn, so what reaches the client is a
+  question about that dimension. `NegotiationInflightContext.dimension`
+  (additive, optional) carries the same thing on the questioner payload.
+
+  The OPENING turn is deliberately outside all of this. The checklist is authored
+  there and the authoring instruction REQUIRES a dimension the record does not
+  settle, so an open dimension on turn 0 is the shape the protocol asked for, not
+  a dodge — and a floor that bound there would park every negotiation before it
+  ever made contact. Turn 0 already has its own designed consult, the pre-contact
+  verdict, bounded per signal.
+
+- **The verdict prompt's escape hatch is now conditional.** "What remains unknown
+  is the kind of thing two people settle in a first conversation" waved verdicts
+  through unconditionally; the reference behaviour opens that hatch only once the
+  question budget is spent. `CHECKLIST_VERDICT_RULE` now says so: while budget
+  remains and the client is reachable, an unknown that is theirs to settle is
+  asked before any verdict. The basis discipline also gains one line — the reason
+  a match was suggested is an inference drawn by something that never spoke to
+  either principal, so it can no more score a dimension than a profile can.
+
+  Protocol 23.2.0 → 23.3.0. No flags; ships on.
+
 ## 23.2.0 - 2026-08-20
 
 ### Fixed

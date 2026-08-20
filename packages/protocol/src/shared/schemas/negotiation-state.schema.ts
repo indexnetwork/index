@@ -90,6 +90,20 @@ export const AskUserPayloadSchema = z.object({
    * declared, not re-interpreted freely on the resumed turn.
    */
   answerhood: AnswerhoodSchema.nullable().optional().transform((value) => value ?? undefined),
+  /**
+   * Set by the graph, never by an agent: this ask was fired by the conclusion
+   * floor on the agent's behalf, because it had an askable unknown and drafted
+   * something else anyway.
+   *
+   * It exists to be read BACK off the persisted turn. The floor's guarantee is
+   * bounded at one per negotiation per principal, and the message record is the
+   * only store a park, a resume and a fresh process all share — so the bound
+   * has to be a durable property of the ask itself rather than a counter in
+   * state. A model that sets it would only be suppressing a later guarantee for
+   * its own seat; the turn node strips the field from every draft before
+   * anything reads it, so the only writer is the floor.
+   */
+  guaranteed: z.literal(true).nullable().optional().transform((value) => value ?? undefined),
 }).strict();
 export type AskUserPayload = z.infer<typeof AskUserPayloadSchema>;
 

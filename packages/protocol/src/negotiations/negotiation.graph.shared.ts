@@ -163,6 +163,34 @@ export function askedChecklistTopics(
 }
 
 /**
+ * Whether the conclusion floor has already fired an ask on THIS principal's
+ * behalf in this negotiation.
+ *
+ * The floor's guarantee is bounded at one per negotiation per principal, so
+ * that a seat whose agent keeps drafting around its own open dimensions parks
+ * its client once rather than at every turn. The bound is read back off the
+ * persisted ask itself — same substrate as the budget and the asked topics —
+ * because a park, its resume and a fresh process must all agree about it with
+ * nothing to keep in step.
+ *
+ * Per-seat, not negotiation-wide: the other principal's guarantee is their own
+ * to spend, exactly as their budget is.
+ */
+export function hasGuaranteedAsk(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+  userId: string,
+): boolean {
+  return messages
+    .filter((message) => message.senderId === `agent:${userId}`)
+    .some((message) => {
+      const dataPart = (message.parts as Array<{ kind?: string; data?: { action?: string; askUser?: { guaranteed?: unknown } } }>)
+        .find((part) => part.kind === "data");
+      const data = dataPart?.data;
+      return data?.action === "ask_user" && data.askUser?.guaranteed === true;
+    });
+}
+
+/**
  * How many ask rounds this negotiation has already spent, BOTH sides combined.
  * A round is one persisted `ask_user` park — a mid-flight client consultation
  * or a post-stall park — each of which suspends the negotiation on a human

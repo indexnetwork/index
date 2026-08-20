@@ -422,6 +422,104 @@ export function assessDeclineAdmissibility(input: DeclineAdmissibilityInput): De
   };
 }
 
+// ─── Conclude admissibility: the floor under a verdict (floor plan §1) ──────
+
+/**
+ * The unknowns this negotiation could still ASK about, in the checklist's own
+ * authored order.
+ *
+ * "Askable" is a conjunction of two very different kinds of condition, and
+ * they are split on purpose. What lives HERE is the part the checklist can
+ * see: a dimension scored `unknown` whose topic has not already been put to
+ * this principal. What lives at the callsite is whether the ask CHANNEL is up
+ * at all — v2, the wiring, the budget, the ask-rounds cap, a reachable
+ * principal, a non-final turn — which the turn node already computes once as
+ * `askUserAvailable` and passes in as a single boolean. Recomputing any part
+ * of it here would be a second answer to a question that already has one.
+ *
+ * Order is the checklist's own. The dimensions were pre-registered on turn 1
+ * by the agent that wrote them, so their order is that agent's own statement
+ * of what decides this pairing; imposing a kind-based ranking here would
+ * quietly re-prioritize a screen the protocol froze.
+ */
+export function askableUnknowns(
+  checklist: readonly ChecklistItem[],
+  askedDimensions: readonly string[],
+): ChecklistItem[] {
+  if (!isChecklistAuthored(checklist)) return [];
+  const asked = new Set(askedDimensions.map((name) => dimensionKey(name)));
+  return checklist.filter((item) => item.result === "unknown" && !asked.has(dimensionKey(item.name)));
+}
+
+/**
+ * Why a drafted terminal verdict was refused. One condition, named rather than
+ * implied — the same discipline {@link DeclineInadmissibility} follows.
+ */
+export type ConcludeInadmissibility =
+  /** An unknown dimension is still askable: the question outranks the verdict. */
+  | "unknowns_askable";
+
+export type ConcludeAdmissibility =
+  | { admissible: true }
+  | { admissible: false; reason: ConcludeInadmissibility; unknowns: string[] };
+
+export interface ConcludeAdmissibilityInput {
+  /** The reconciled checklist this turn is deciding on. */
+  checklist: readonly ChecklistItem[];
+  /** Dimensions this principal has already been asked about in this negotiation. */
+  askedDimensions: readonly string[];
+  /**
+   * Whether an ask could actually be put on this turn — the turn node's own
+   * `askUserAvailable`, passed in rather than reconstructed. False means there
+   * is no question to prefer over the verdict, so the verdict stands.
+   */
+  askUserAvailable: boolean;
+}
+
+/**
+ * The floor under a verdict: **a terminal verdict is inadmissible while an
+ * askable unknown stands.**
+ *
+ * {@link assessDeclineAdmissibility} closed one exit — a decline with no
+ * conflict behind it. This closes the rest of them, and it is the same law
+ * read forwards. The verdict rule says an unknown is not a reason to end
+ * anything; a week of live traffic says the model ends things anyway, because
+ * every alternative to asking is cheaper: assume the unknown away and accept,
+ * interrogate the counterparty about a fact they do not hold, or conclude and
+ * be done. Twenty-three policy-recognized consultation moments produced zero
+ * questions. Not one agent chose the arrow.
+ *
+ * So the choice stops being the model's. While a dimension it scored `unknown`
+ * is one this principal could still be asked about, concluding — in favour of
+ * the match or against it — is not an available move, and the turn is
+ * re-issued knowing that. What makes this safe rather than a deadlock is that
+ * `askUserAvailable` is FALSE the moment the budget is spent, the ask-rounds
+ * cap is reached, the principal is unreachable, or the turn is the last one:
+ * every one of those reopens the verdict immediately. The floor holds only
+ * while there is a real question left to ask.
+ *
+ * The reference behaviour (`docs/plans/2026-08-19-negotiator-floor.reference.jsx`)
+ * states the same shape from the other side: unknowns block a match until the
+ * budget is spent, and only then does "unknowns people settle when they meet"
+ * wave a verdict through. Production had that hatch open unconditionally.
+ *
+ * Fails OPEN on an unauthored checklist, exactly as ask and decline
+ * admissibility do: with no frozen dimensions there is no unknown to be
+ * askable, and a failed authoring pass must not stand between an agent and an
+ * honest verdict.
+ */
+export function assessConcludeAdmissibility(input: ConcludeAdmissibilityInput): ConcludeAdmissibility {
+  if (!isChecklistAuthored(input.checklist)) return { admissible: true };
+  if (!input.askUserAvailable) return { admissible: true };
+  const askable = askableUnknowns(input.checklist, input.askedDimensions);
+  if (askable.length === 0) return { admissible: true };
+  return {
+    admissible: false,
+    reason: "unknowns_askable",
+    unknowns: askable.map((item) => item.name),
+  };
+}
+
 // ─── Prompt rendering ────────────────────────────────────────────────────────
 
 const KIND_LABEL: Record<ChecklistKind, string> = {

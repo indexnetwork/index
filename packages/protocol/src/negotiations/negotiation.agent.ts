@@ -203,6 +203,19 @@ export interface NegotiationAntiEcho {
   repeatedMessage: string;
 }
 
+/**
+ * The conclusion-floor re-issue instruction: the dimensions that were still
+ * askable when the refused draft tried to end the negotiation.
+ *
+ * Shared by the graph (which computes askability) and the prompt (which names
+ * the dimensions back), so neither side has to describe the other's shape —
+ * the same contract {@link NegotiationAntiEcho} follows.
+ */
+export interface NegotiationConcludeFloor {
+  /** Names of the unknown dimensions this principal could still be asked about. */
+  askableDimensions: string[];
+}
+
 export interface NegotiationAgentInput {
   ownUser: UserNegotiationContext;
   otherUser: UserNegotiationContext;
@@ -308,6 +321,17 @@ export interface NegotiationAgentInput {
    * byte-identical to before.
    */
   antiEcho?: NegotiationAntiEcho;
+  /**
+   * A re-issue of THIS turn after the graph refused the previous draft for
+   * trying to CONCLUDE while a dimension it scored `unknown` was still one
+   * {userName} could be asked about (the conclusion floor in
+   * `negotiation.graph.turn.ts`). Carries those dimension names so the
+   * instruction can put them back in front of the agent by name.
+   *
+   * Set by the graph only, and only once per turn. Absent → the prompt is
+   * byte-identical to before.
+   */
+  concludeFloor?: NegotiationConcludeFloor;
   /**
    * Durable caller-owned execution identity. Timeout workers reuse this exact
    * value across delivery retries; it is forwarded as model-run metadata for
@@ -622,6 +646,33 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
       ? `\n\nSTOP — YOUR PREVIOUS DRAFT FOR THIS TURN REPEATED A MESSAGE ALREADY IN THIS NEGOTIATION, WORD FOR WORD:\n"""\n${input.antiEcho.repeatedMessage}\n"""\nThat text is already on the record. Sending it again says nothing, moves nothing, and is not a turn. Do not repeat it, mirror it, or hand it back — and if it was the counterparty's question, do not ask it back at them.\nDraft something the record does not already hold. Answer from what you know; where you cannot answer, say plainly what your side's record does say and that it does not go further, and let them judge it; or make a concrete proposal; or, if this match genuinely does not work, conclude it and say why. Never end a negotiation merely because something stayed unknown.`
       : '';
 
+    // ─── Conclusion-floor re-issue ────────────────────────────────────────
+    // Placed LAST, beside the anti-echo instruction and for the same reason:
+    // the closing instruction is what the model acts on, and this supersedes
+    // it for this one draft.
+    //
+    // The failure it corrects is a CHOICE, not a slip. Across a week of live
+    // traffic every agent that hit an open dimension found a cheaper move than
+    // asking — assume it away and accept, put the question to the counterparty
+    // who does not hold the answer, or conclude and be done — and the arrow to
+    // the client never fired once. So the instruction removes the exits rather
+    // than arguing against them: it names the dimensions by name, states that
+    // concluding is not available while one of them stands, and leaves exactly
+    // two moves. Score it from something the counterparty actually COMMITTED
+    // to, or ask the client whose fact it is.
+    //
+    // It deliberately does not say which of the two to take. Naming a
+    // preferred move here would manufacture the answer instead of getting one,
+    // and a dimension the record genuinely does settle should be scored, not
+    // asked about.
+    const floorDimensions = input.concludeFloor?.askableDimensions ?? [];
+    const floorNoun = floorDimensions.length === 1
+      ? { was: 'A DIMENSION YOU SCORED UNKNOWN WAS', it: 'that topic has' }
+      : { was: 'DIMENSIONS YOU SCORED UNKNOWN WERE', it: 'those topics have' };
+    const concludeFloorInstruction = input.concludeFloor
+      ? `\n\nSTOP — YOUR PREVIOUS DRAFT FOR THIS TURN TRIED TO END THIS NEGOTIATION WHILE ${floorNoun.was} STILL OPEN AND STILL ASKABLE:\n${floorDimensions.map((name) => `- ${name}`).join('\n')}\nConcluding is not available to you while that is true — not in favour of the match and not against it. ${userName}'s question budget is not spent, ${userName} can be reached, and ${floorNoun.it} not been asked about in this negotiation.\nTake one of exactly two moves for each dimension above. Either SCORE it from something a principal actually STATED — their own signal text, what they have said in this exchange, an answer they gave — and write that commitment into its basis; a profile description, a job title, or the reason this match was suggested is not a commitment and cannot score it. Or ASK ${userName} about the one that is theirs to settle: their own preference, constraint, budget, availability, or willingness. Write the question yourself, name the dimension it resolves, and declare what answer would score it ok and what would score it conflict.\nIf the dimension is genuinely the counterparty's to settle rather than ${userName}'s, put it to their agent instead and keep the dialogue open. What you may not do is end this negotiation with it still unknown and still unasked.`
+      : '';
+
     const userMessage = `YOUR USER (${userName}):
 Bio: ${input.ownUser.profile.bio ?? "N/A"}
 Skills: ${input.ownUser.profile.skills?.join(", ") ?? "N/A"}
@@ -652,7 +703,7 @@ ${preContactResume
             ? `This is the opening turn and nothing has been sent yet. You hold THREE verdicts here: ask ${userName} the one open thing only they can settle, make the outreach case, or let the match pass. Score the checklist first — if a dimension is unknown and theirs to settle, asking now costs the counterparty nothing and buys a better opening.`
             : "This is the opening turn. Make the outreach case.")
         : "This is the opening turn. Propose the connection case.")
-    : "Evaluate the latest arguments and respond."}${antiEchoInstruction}`;
+    : "Evaluate the latest arguments and respond."}${antiEchoInstruction}${concludeFloorInstruction}`;
 
     const chatMessages = [
       { role: "system", content: systemPrompt },

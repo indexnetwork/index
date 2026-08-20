@@ -14,15 +14,16 @@ import { configuredScreenMode } from "./negotiation.screen.contracts.js";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
+import type { NegotiationAntiEcho, NegotiationConcludeFloor } from "./negotiation.agent.js";
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { appendTurnFailure, turnFailureBoundReached, type NegotiationTurnFailure } from "./negotiation.turn-failure.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasGuaranteedAsk, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
-import { assessAskAdmissibility, assessDeclineAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type AskInadmissibility, type ChecklistItem } from "./negotiation.checklist.contracts.js";
+import { askableUnknowns, assessAskAdmissibility, assessConcludeAdmissibility, assessDeclineAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, dimensionKey, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type AskInadmissibility, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -190,6 +191,25 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       && (!preContactConsultShapeAvailable
         || await preContactConsultsUnderCap(deps, ownUser.id, ownIntentId!, state.taskId));
 
+    // ─── The conclusion floor (floor plan §2) ────────────────────────────
+    // Scope, decided here because both halves of the floor read it.
+    //
+    // The OPENING turn is excluded, and that is a judgment rather than an
+    // oversight. The checklist is AUTHORED on turn 0, and the authoring
+    // instruction requires at least one dimension the record does not settle —
+    // so on turn 0 an askable unknown is not evidence that the agent dodged
+    // anything, it is the shape the protocol asked for. A floor that bound
+    // there would park every negotiation before it ever made contact, which is
+    // both a swamp and the wrong mechanism: turn 0 already has a designed
+    // consult — the pre-contact verdict — that the agent chooses and the
+    // per-signal cap bounds. The floor exists for the turns AFTER contact,
+    // where the observed dodging happened.
+    const floorApplies = checklistActive && !isFreshOpeningTurn && !isPreContactResume;
+    // Whether this seat's one guaranteed ask is already spent, read off the
+    // negotiation's own record so a park, its resume and a fresh process all
+    // agree. Per principal: the counterparty's guarantee is their own.
+    const guaranteedAskSpent = checklistActive && hasGuaranteedAsk(state.messages, ownUser.id);
+
     // ─── Deadlock detection → persuasion→bargaining stance (IND-428) ──────
     // Deterministic trailing-run inspection of the persisted history — no
     // LLM in the decision. Gated on the strict default-off flag AND v2,
@@ -272,7 +292,9 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // available. What the external agent's draft cost it is one turn, not the
     // negotiation.
     let clientDmForPrompt: Awaited<ReturnType<typeof retrieveClientDm>> | null = null;
-    const draftFromSystemAgent = async (antiEcho?: { repeatedMessage: string }): Promise<NegotiationTurn> => {
+    const draftFromSystemAgent = async (
+      reissue?: { antiEcho?: NegotiationAntiEcho; concludeFloor?: NegotiationConcludeFloor },
+    ): Promise<NegotiationTurn> => {
       const agentPriorDialogue = buildAttributedDialogue(state);
 
       // ─── A2H: the acting user's own negotiator DM for this signal ──────
@@ -346,7 +368,8 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         ...(state.privateConsultation?.recipientUserId === ownUser.id
           ? { privateConsultation: state.privateConsultation }
           : {}),
-        ...(antiEcho ? { antiEcho } : {}),
+        ...(reissue?.antiEcho ? { antiEcho: reissue.antiEcho } : {}),
+        ...(reissue?.concludeFloor ? { concludeFloor: reissue.concludeFloor } : {}),
       });
     };
 
@@ -428,9 +451,25 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       draftTurn: NegotiationTurn,
       opts?: { reissue?: boolean },
     ): { turn: NegotiationTurn; checklist: ChecklistItem[] } => {
-      if (!checklistActive) return { turn: draftTurn, checklist: frozenChecklist };
-      let next = draftTurn;
-      const parsedDraft = ChecklistDraftSchema.safeParse(draftTurn.checklist ?? []);
+      // `askUser.guaranteed` is the graph's own mark — the durable record that
+      // the conclusion floor already fired an ask for this seat, which is what
+      // bounds the guarantee to one per negotiation per principal. It reaches
+      // the generation schema like every other field on the ask payload, so a
+      // draft could claim it and quietly retire its own seat's guarantee.
+      // Every draft passes through here, so this is where the claim is dropped
+      // and the floor stays the field's only writer.
+      const draftTurnUnmarked = draftTurn.askUser?.guaranteed === true
+        ? (() => {
+            const { guaranteed: _claimed, ...askUser } = draftTurn.askUser;
+            turnLog.warn('Dropping an agent-claimed guaranteed mark from an ask payload', {
+              taskId: state.taskId, seat, handledExternally: dispatchResult.handled,
+            });
+            return { ...draftTurn, askUser };
+          })()
+        : draftTurn;
+      if (!checklistActive) return { turn: draftTurnUnmarked, checklist: frozenChecklist };
+      let next = draftTurnUnmarked;
+      const parsedDraft = ChecklistDraftSchema.safeParse(draftTurnUnmarked.checklist ?? []);
       const draft = parsedDraft.success ? parsedDraft.data : [];
       if (!parsedDraft.success) {
         turnLog.warn('Checklist draft failed schema validation; keeping the frozen scores', {
@@ -554,14 +593,20 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // only; free-form reasoning, messages, profiles, and evaluator inputs
     // are intentionally unavailable to the policy.
     let consultationPolicyReason: NegotiationConsultationReason | undefined;
-    const policyEligibility = policyMode === 'off' ? { eligible: false } : assessConsultationEligibility({
+    // A function of the DRAFT rather than a value computed once, because the
+    // conclusion floor below can replace this turn with a re-issued one whose
+    // action is different — and admission is a judgment about the action that
+    // will actually be persisted. Every input other than the draft's own
+    // action/role is fixed for the turn, so the two calls differ in exactly
+    // what the policy is entitled to see.
+    const consultationEligibilityFor = (candidate: NegotiationTurn) => policyMode === 'off' ? { eligible: false } : assessConsultationEligibility({
       protocolVersion: version,
       seat,
       isOpeningTurn: isFreshOpeningTurn,
       isFinalTurn,
       screenedOut: blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount),
-      action: turn.action,
-      ownSuggestedRole: turn.assessment?.suggestedRoles?.ownUser,
+      action: candidate.action,
+      ownSuggestedRole: candidate.assessment?.suggestedRoles?.ownUser,
       priorActions: history.map((prior) => prior.action),
       consultationBudgetSpent: questionsSpent >= questionBudget,
       hasExactResumeCoordinate: Boolean(
@@ -575,6 +620,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       ),
       lifecycleValid: Boolean(state.taskId && state.opportunityId && ownIntentId && state.indexContext.networkId),
     });
+    const policyEligibility = consultationEligibilityFor(turn);
     const emitConsultationTelemetry = (stage: 'eligible' | 'asked', reason: NegotiationConsultationReason) => {
       turnLog.info('negotiation_consultation_policy', { stage, mode: policyMode, reason });
       emitWide({ type: 'negotiation_consultation_policy', stage, mode: policyMode, reason });
@@ -640,82 +686,40 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       }
     }
 
-    // An unreachable principal is refused BEFORE the generic coercion below so
-    // the trace names the condition that actually bound. The generic path logs
-    // only "unavailable", and the ask-admissibility rule further down is never
-    // reached once the action has been coerced — between them the record would
-    // have said nothing at all about why, or worse, blamed a spent budget.
-    if (turn.action === 'ask_user' && principalUnreachable) {
-      turnLog.info('negotiation_ask_inadmissible', {
-        taskId: state.taskId,
-        opportunityId: state.opportunityId || undefined,
-        seat,
-        reason: 'principal_unreachable' satisfies AskInadmissibility,
-        dimension: turn.askUser?.dimension,
-        questionsSpent,
-        questionBudget,
-      });
-      emitWide({
-        type: 'negotiation_ask_inadmissible',
-        opportunityId: state.opportunityId,
-        negotiationConversationId: state.conversationId,
-        turnIndex: state.turnCount,
-        actor: isSource ? 'source' : 'candidate',
-        reason: 'principal_unreachable',
-      });
-      turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
-    }
-
-    // Safety net: off/shadow retain legacy behavior. In on, a spontaneous
-    // ask_user is admissible only when the deterministic policy just
-    // authorized it, so no unbounded pause can enter shared history.
-    if (turn.action === 'ask_user' && (!askUserAvailable || (policyMode === 'on' && !consultationPolicyReason))) {
-      turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
-        seat, isFinalTurn, taskId: state.taskId,
-      });
-      turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
-    }
-
-    // ─── Ask admissibility (checklist plan §3) ────────────────────────────
-    // The five-part rule, in the part a machine can check: the ask must name a
-    // dimension the frozen checklist carries, that dimension must still be
-    // unknown (a scored one is answerable from the record — spending the
-    // client's attention on it is what the rule exists to stop), the topic must
-    // be unasked, and the answerhood map must actually distinguish two
-    // outcomes. The budget is enforced upstream by the grant.
+    // ─── Ask admission: reachability, availability, policy, the five-part rule
     //
-    // Scoped to an ask the AGENT drafted. A policy-inferred consultation
-    // (IND-508 replacing a non-ask draft) names no dimension by construction —
-    // the policy sees action enums and nothing else — so running the rule over
-    // one would silently retire that mechanism rather than discipline it.
-    // What the two share is the budget, which binds them both at the grant.
+    // A function rather than three straight-line blocks, for the reason the
+    // checklist discipline and the decline law are functions: the conclusion
+    // floor below can replace this turn with a re-issued one, and a re-issued
+    // ASK has to face every gate the first draft faced. Before this, all three
+    // gates sat above the re-issue seam — so an ask arriving from a re-issue
+    // would have entered the shared record having passed none of them.
     //
-    // Fails OPEN on an unauthored checklist: with no frozen dimensions there is
-    // nothing to be pivotal about, and refusing every ask there would take the
-    // turn-0 pre-contact verdict away whenever authoring did not land.
-    if (
-      checklistActive
-      && agentDraftedAsk
-      && turn.action === 'ask_user'
-      && isChecklistAuthored(nextChecklist)
-    ) {
-      const admissibility = assessAskAdmissibility({
-        checklist: nextChecklist,
-        dimension: turn.askUser?.dimension,
-        answerhood: turn.askUser?.answerhood,
-        askedDimensions,
-        questionsSpent,
-        ...(principalUnreachable ? { principalUnreachable: true } : {}),
-      });
-      if (!admissibility.admissible) {
+    // Order is for the telemetry, not the outcome: the conditions are
+    // conjunctive, and each refusal names the one that actually bound.
+    const enforceAskAdmission = (
+      candidate: NegotiationTurn,
+      checklist: ChecklistItem[],
+      opts: { agentDrafted: boolean; reissue?: boolean },
+    ): NegotiationTurn => {
+      if (candidate.action !== 'ask_user') return candidate;
+
+      // An unreachable principal is refused BEFORE the generic coercion below
+      // so the trace names the condition that actually bound. The generic path
+      // logs only "unavailable", and the five-part rule further down is never
+      // reached once the action has been coerced — between them the record
+      // would have said nothing at all about why, or worse, blamed a spent
+      // budget.
+      if (principalUnreachable) {
         turnLog.info('negotiation_ask_inadmissible', {
           taskId: state.taskId,
           opportunityId: state.opportunityId || undefined,
           seat,
-          reason: admissibility.reason,
-          dimension: turn.askUser?.dimension,
+          reason: 'principal_unreachable' satisfies AskInadmissibility,
+          dimension: candidate.askUser?.dimension,
           questionsSpent,
           questionBudget,
+          ...(opts.reissue && { reissue: true }),
         });
         emitWide({
           type: 'negotiation_ask_inadmissible',
@@ -723,11 +727,98 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           negotiationConversationId: state.conversationId,
           turnIndex: state.turnCount,
           actor: isSource ? 'source' : 'candidate',
-          reason: admissibility.reason,
+          reason: 'principal_unreachable',
         });
-        turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+        return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn) };
       }
-    }
+
+      // Policy admission for a RE-ISSUED ask. The eligibility above was
+      // computed from the refused draft's action — typically a terminal
+      // verdict, which the policy excludes outright — so without this an ask
+      // the floor asked for would be admitted by the floor and then coerced
+      // away by a verdict about a draft that no longer exists. Re-running it
+      // gives the policy the action it is actually judging. Scoped to the
+      // re-issue so the ordinary path stays byte-identical.
+      if (opts.reissue && policyMode === 'on' && !consultationPolicyReason) {
+        const eligibility = consultationEligibilityFor(candidate);
+        if (eligibility.eligible && eligibility.reason) {
+          emitConsultationTelemetry('eligible', eligibility.reason);
+          consultationPolicyReason = candidate.askUser?.reason ?? eligibility.reason;
+          emitConsultationTelemetry('asked', consultationPolicyReason);
+        }
+      }
+
+      // Safety net: off/shadow retain legacy behavior. In on, a spontaneous
+      // ask_user is admissible only when the deterministic policy just
+      // authorized it, so no unbounded pause can enter shared history.
+      if (!askUserAvailable || (policyMode === 'on' && !consultationPolicyReason)) {
+        turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
+          seat, isFinalTurn, taskId: state.taskId, ...(opts.reissue && { reissue: true }),
+        });
+        return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn) };
+      }
+
+      // ─── The five-part rule (checklist plan §3) ─────────────────────────
+      // The ask must name a dimension the frozen checklist carries, that
+      // dimension must still be unknown (a scored one is answerable from the
+      // record — spending the client's attention on it is what the rule exists
+      // to stop), the topic must be unasked, and the answerhood map must
+      // actually distinguish two outcomes. The budget is enforced upstream by
+      // the grant.
+      //
+      // Scoped to an ask the AGENT drafted. A policy-inferred consultation
+      // (IND-508 replacing a non-ask draft) names no dimension by construction
+      // — the policy sees action enums and nothing else — so running the rule
+      // over one would silently retire that mechanism rather than discipline
+      // it. The floor's own guaranteed ask is excluded for the mirror-image
+      // reason: it names a dimension the graph itself read off the checklist
+      // as unknown and unasked, so the rule could only re-derive its own
+      // inputs, and it declares no answerhood because no author was involved.
+      // What all three share is the budget, which binds them at the grant.
+      //
+      // Fails OPEN on an unauthored checklist: with no frozen dimensions there
+      // is nothing to be pivotal about, and refusing every ask there would take
+      // the turn-0 pre-contact verdict away whenever authoring did not land.
+      if (
+        checklistActive
+        && opts.agentDrafted
+        && isChecklistAuthored(checklist)
+      ) {
+        const admissibility = assessAskAdmissibility({
+          checklist,
+          dimension: candidate.askUser?.dimension,
+          answerhood: candidate.askUser?.answerhood,
+          askedDimensions,
+          questionsSpent,
+          ...(principalUnreachable ? { principalUnreachable: true } : {}),
+        });
+        if (!admissibility.admissible) {
+          turnLog.info('negotiation_ask_inadmissible', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId || undefined,
+            seat,
+            reason: admissibility.reason,
+            dimension: candidate.askUser?.dimension,
+            questionsSpent,
+            questionBudget,
+            ...(opts.reissue && { reissue: true }),
+          });
+          emitWide({
+            type: 'negotiation_ask_inadmissible',
+            opportunityId: state.opportunityId,
+            negotiationConversationId: state.conversationId,
+            turnIndex: state.turnCount,
+            actor: isSource ? 'source' : 'candidate',
+            reason: admissibility.reason,
+          });
+          return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn) };
+        }
+      }
+
+      return candidate;
+    };
+
+    turn = enforceAskAdmission(turn, nextChecklist, { agentDrafted: agentDraftedAsk });
 
     // ─── Decline verdict law, mechanically (checklist plan §6) ────────────
     // "An unknown is not a reason to end anything; pass stays reserved for
@@ -893,6 +984,109 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
 
     turn = enforceAuthoredQuestionSafety(turn);
 
+    // ─── The conclusion floor, part 1: a premature verdict is re-issued ───
+    // The decline law above closed ONE exit: a decline with no conflict behind
+    // it. This closes the rest of them, and it is the same law read forwards.
+    //
+    // A week of live traffic produced zero `ask_user` turns against 23
+    // policy-recognized consultation moments. Every one of those agents had a
+    // cheaper move than asking — assume the unknown away and accept, put the
+    // question to the counterparty who does not hold the answer, or conclude
+    // and be done — and every one of them took it. The prompt has said "an
+    // unknown is not a reason to end anything" since the checklist shipped;
+    // the prompt lost, the same way it lost on the decline.
+    //
+    // So while a dimension this turn scored `unknown` is still one this
+    // principal could be asked about, concluding is not an available move.
+    // The draft is discarded, and the turn is re-issued ONCE with those
+    // dimensions named and exactly two moves left: score it from a stated
+    // commitment, or ask the client whose fact it is.
+    //
+    // What keeps this from being a deadlock is `askUserAvailable`, which is
+    // false the moment the budget is spent, the ask-rounds cap is reached, the
+    // principal is unreachable, or the turn is the last one. Every one of those
+    // reopens the verdict immediately — the floor holds only while there is a
+    // real question left to ask.
+    //
+    // CRITICAL, and the opposite of the anti-echo re-issue below: an `ask_user`
+    // drafted on THIS re-issue is the outcome the floor exists to produce, so
+    // it is offered in the seat vocabulary and flows through the ordinary
+    // admission and park path. The anti-echo re-issue hard-refuses `ask_user`
+    // because its trigger — a repeated message — says nothing about whether a
+    // consultation is warranted; this one's trigger is precisely that one is.
+    if (floorApplies && isTerminalAction(turn.action)) {
+      const concludeAdmissibility = assessConcludeAdmissibility({
+        checklist: nextChecklist,
+        askedDimensions,
+        askUserAvailable,
+      });
+      if (!concludeAdmissibility.admissible) {
+        turnLog.info('negotiation_conclude_premature', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          reason: concludeAdmissibility.reason,
+          action: turn.action,
+          unknowns: concludeAdmissibility.unknowns,
+          turnIndex: state.turnCount,
+          questionsSpent,
+          questionBudget,
+          handledExternally: dispatchResult.handled,
+        });
+        emitWide({
+          type: 'negotiation_conclude_premature',
+          opportunityId: state.opportunityId,
+          negotiationConversationId: state.conversationId,
+          turnIndex: state.turnCount,
+          actor: isSource ? 'source' : 'candidate',
+          reason: concludeAdmissibility.reason,
+          action: turn.action,
+          unknowns: concludeAdmissibility.unknowns,
+        });
+
+        const reissued = applyChecklistDiscipline(
+          await draftFromSystemAgent({ concludeFloor: { askableDimensions: concludeAdmissibility.unknowns } }),
+          { reissue: true },
+        );
+        let retryTurn = reissued.turn;
+
+        // The re-issue inherits this turn's seat vocabulary INCLUDING the ask
+        // — see the note above. An out-of-seat action is still coerced exactly
+        // as a dispatched one is, and its `askUser` payload goes with it.
+        if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable }).includes(retryTurn.action)) {
+          turnLog.warn('Conclusion-floor re-issue returned an action this turn cannot take, coercing to conservative fallback', {
+            taskId: state.taskId,
+            seat,
+            action: retryTurn.action,
+            isFinalTurn,
+          });
+          const { askUser: _refused, ...rest } = retryTurn;
+          retryTurn = { ...rest, action: fallbackActionFor(version, seat, isFinalTurn) };
+        }
+        // Every gate the first draft passed, applied to what replaces it. The
+        // decline law binds a re-issued decline as it bound the first; the ask
+        // gates bind a re-issued ask, which is the whole reason they became a
+        // function.
+        retryTurn = enforceDeclineVerdictLaw(retryTurn, reissued.checklist, { reissue: true });
+        retryTurn = enforceAskAdmission(retryTurn, reissued.checklist, {
+          agentDrafted: !!retryTurn.askUser,
+          reissue: true,
+        });
+        retryTurn = enforceAuthoredQuestionSafety(retryTurn);
+
+        turnLog.info('negotiation_conclude_premature_reissued', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          turnIndex: state.turnCount,
+          action: retryTurn.action,
+          asked: retryTurn.action === 'ask_user',
+        });
+        turn = retryTurn;
+        nextChecklist = reissued.checklist;
+      }
+    }
+
     // ─── The copy-loop guard: no turn may repeat a message on the record ──
     // Observed live: a counterparty asked what a phrase in the client's signal
     // meant; the answering agent could not consult its own (unreachable)
@@ -963,7 +1157,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // negotiation ends honestly rather than filling its remaining turns with
       // copies and calling the result a decision.
       const reissued = applyChecklistDiscipline(
-        await draftFromSystemAgent({ repeatedMessage }),
+        await draftFromSystemAgent({ antiEcho: { repeatedMessage } }),
         { reissue: true },
       );
       let retryTurn = reissued.turn;
@@ -1029,6 +1223,111 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       nextChecklist = reissued.checklist;
     }
 
+    // ─── The conclusion floor, part 2: the system fires the arrow itself ──
+    // Part 1 removes the exits. This is what happens when the model refuses
+    // the door anyway — which, given a week of evidence that it always does,
+    // is the half the mission actually turns on. After this ships, a question
+    // is a consequence of an askable unknown existing, not of a model choosing
+    // to ask one.
+    //
+    // Placed LAST, after every gate and after the copy-loop guard, because it
+    // is a statement about the turn that will actually be PERSISTED: whatever
+    // survived to here is what the negotiation is about to say, and if that
+    // still leaves the arrow unfired while a real question stands, the graph
+    // asks it.
+    //
+    // Shape: the drafted turn is COERCED to `ask_user`, carrying the dimension
+    // rather than an authored question. Coercion rather than "persist the turn
+    // and park beside it" for two reasons that are not stylistic:
+    //
+    //  1. Every accounting the protocol has — the per-principal budget, the
+    //     asked-topics record, the negotiation-wide ask-rounds cap — is read
+    //     back off persisted `ask_user` turns (`negotiation.graph.shared.ts`).
+    //     A park that rode alongside a `counter` would spend a person's
+    //     attention while the record showed nothing spent, and the same
+    //     dimension would be askable again next turn.
+    //  2. After part 1 the drafted action is frequently a terminal verdict, and
+    //     persisting THAT would end the negotiation — there is no "in addition"
+    //     available. One shape has to cover both cases, and only this one does.
+    //
+    // What coercion costs is the drafted message, and that cost is paid only
+    // where it should be: a TERMINAL turn's message was written to end the
+    // negotiation, so it is dropped with the action it belonged to (the same
+    // rule the decline law applies, and for the same reason — carried onto an
+    // ask it would announce a verdict the record does not contain). A
+    // non-terminal message is kept and persisted: it is a real contribution to
+    // the exchange, and the seat simply parks after making it instead of
+    // handing the turn over.
+    //
+    // This is NOT the pre-#1455 inferred consultation. That one fired from
+    // action enums with no content behind them and produced "would you be open
+    // to connecting?"; this fires from a named dimension the agent itself wrote
+    // and itself scored unknown. That dimension already reaches the api's
+    // question-message author, which reads `askUser.dimension` off the parked
+    // turn — so what the client is asked is a question about the dimension, not
+    // a gap guessed from the transcript. The park payload below carries it too.
+    //
+    // Bounded at one per negotiation per principal so a seat whose agent keeps
+    // drafting around its own open dimensions parks its client once, not every
+    // turn. The mark is durable — it rides on the persisted ask.
+    if (
+      floorApplies
+      && askUserAvailable
+      && !guaranteedAskSpent
+      // The arrow is unfired unless this turn is an `ask_user` that can
+      // actually be delivered. An `ask_user` carrying no reason is not one: it
+      // parks the negotiation and enqueues nothing, so the client waits out the
+      // answer window on a question that was never written. And the payload
+      // alone proves nothing — a refused ask keeps its `askUser` while its
+      // action is coerced away, so the action is what has to be read.
+      && !(turn.action === 'ask_user' && !!turn.askUser?.reason)
+    ) {
+      const askable = askableUnknowns(nextChecklist, askedDimensions);
+      const dimension = askable[0];
+      if (dimension) {
+        const droppedTerminalMessage = isTerminalAction(turn.action);
+        turnLog.info('negotiation_ask_guaranteed', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          turnIndex: state.turnCount,
+          draftedAction: turn.action,
+          dimension: dimension.name,
+          dimensionKind: dimension.kind,
+          askable: askable.map((item) => item.name),
+          questionsSpent,
+          questionBudget,
+          droppedTerminalMessage,
+        });
+        emitWide({
+          type: 'negotiation_ask_guaranteed',
+          opportunityId: state.opportunityId,
+          negotiationConversationId: state.conversationId,
+          turnIndex: state.turnCount,
+          actor: isSource ? 'source' : 'candidate',
+          draftedAction: turn.action,
+          dimension: dimension.name,
+        });
+        turn = {
+          ...turn,
+          action: 'ask_user',
+          ...(droppedTerminalMessage ? { message: null } : {}),
+          askUser: {
+            // The floor fires on a dimension whose answer is the principal's
+            // own to give, which is what this category names. It is admission
+            // metadata, never copy — the question is written from the
+            // dimension, downstream.
+            reason: 'unresolved_owner_constraint',
+            dimension: dimension.name,
+            guaranteed: true,
+          },
+        };
+        // The park's own admission gate reads this, and the policy never saw
+        // an ask to admit: the draft it judged was the one the floor replaced.
+        consultationPolicyReason = 'unresolved_owner_constraint';
+      }
+    }
+
     const parts = [{ kind: "data" as const, data: turn }];
     const message = await deps.database.createMessage({
       conversationId: state.conversationId,
@@ -1053,6 +1352,29 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         ? consultationPromptFor(consultationReason)
         : null;
       const settlementId = negotiationQuestionSettlementId(state.taskId);
+      // The checklist dimension this park is about, resolved against the
+      // frozen dimensions so what travels is the AUTHORED name and kind rather
+      // than whatever the ask spelled. Carried on the payload for whatever
+      // authors the client-facing question: a guaranteed ask has no authored
+      // question at all, and without the dimension the author falls back to
+      // deriving a gap from the transcript — the "would you be open to
+      // connecting?" shape this whole protocol exists to abolish.
+      //
+      // Additive and optional: an author that does not read it degrades to
+      // exactly today's behaviour, which is what makes shipping this ahead of
+      // the api-side read safe.
+      const askedDimensionKey = turn.askUser?.dimension ? dimensionKey(turn.askUser.dimension) : '';
+      const askedDimensionItem = askedDimensionKey.length > 0
+        ? nextChecklist.find((item) => dimensionKey(item.name) === askedDimensionKey)
+        : undefined;
+      const askedDimension = askedDimensionItem
+        ? {
+            name: askedDimensionItem.name,
+            kind: askedDimensionItem.kind,
+            ...(turn.askUser?.answerhood ? { answerhood: turn.askUser.answerhood } : {}),
+            ...(turn.askUser?.guaranteed ? { guaranteed: true } : {}),
+          }
+        : undefined;
 
       const askUserBinding = await deps.database.captureNegotiationAskUserBinding({
         taskId: state.taskId,
@@ -1118,6 +1440,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
             counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
             indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
             consultationPolicyReason: consultationReason!,
+            ...(askedDimension && { dimension: askedDimension }),
             ...(userContext && { userContext }),
           },
         }).catch((error) => {
