@@ -4,7 +4,9 @@ import { inArray, sql } from 'drizzle-orm/sql';
 import path from 'node:path';
 import { v5 as uuidv5 } from 'uuid';
 
-import { SANDBOX_PERSONAS } from './sandbox-personas';
+import { CREDENTIAL_PROVIDER_ID, hashCredentialPassword } from '../lib/betterauth/credential-password';
+
+import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, SANDBOX_SEED_PASSWORD, type SandboxPersona } from './sandbox-personas';
 
 const SANDBOX_DATABASE = 'protocol_sandbox';
 const FIXTURE_NAMESPACE = 'd52db0f7-f03d-4f65-a20d-dcc16a890a21';
@@ -44,11 +46,23 @@ const NETWORKS = [
 
 type NetworkKey = (typeof NETWORKS)[number]['key'];
 
+/**
+ * Every address the seed owns. Re-seeds wipe and recreate these users, so the
+ * pattern must cover every persona family this CLI can write — including the
+ * three fixed-id investors on `@sandbox.test` — or a re-run duplicates instead
+ * of refreshing.
+ */
+const FIXTURE_EMAIL_PATTERNS = [
+  'seed-tester-%@index-network.test',
+  'sandbox-%@index-network.test',
+  '%@sandbox.test',
+];
+
 function fixtureId(kind: string, identity: string): string {
   return uuidv5(`${kind}:${identity}`, FIXTURE_NAMESPACE);
 }
 
-function profileText(persona: (typeof SANDBOX_PERSONAS)[number]): string {
+function profileText(persona: SandboxPersona): string {
   const { identity, narrative, attributes } = persona.profile;
   return [
     `${identity.name} is based in ${identity.location}.`,
@@ -78,28 +92,25 @@ async function generateEmbeddings(texts: string[]): Promise<Map<string, number[]
 
 async function main(): Promise<void> {
   if (!process.argv.includes('--confirm')) {
-    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm.`);
+    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm (add --minimal for the two-person population).`);
   }
+  const minimal = process.argv.includes('--minimal');
+  const personas = minimal ? SANDBOX_MINIMAL_PERSONAS : SANDBOX_PERSONAS;
 
   const { default: db, closeDb } = await import('../lib/drizzle/drizzle');
   const schema = await import('../schemas/database.schema');
 
   try {
-    const personaFixtures = SANDBOX_PERSONAS.map((persona, index) => {
+    const personaFixtures = personas.map((persona, index) => {
       const context = profileText(persona);
-      const premiseTexts = [
-        `${persona.profile.identity.bio} Location: ${persona.profile.identity.location}.`,
-        persona.profile.narrative.context,
-        `Skills: ${persona.profile.attributes.skills.join(', ')}. Interests: ${persona.profile.attributes.interests.join(', ')}.`,
-      ];
       const classified = new Set<NetworkKey>(['commons', ...persona.networkKeys]);
       if (index % 7 === 0) classified.add('vault');
       if (classified.size < 3) classified.add(NETWORKS[2 + (index % (NETWORKS.length - 2))]!.key);
       return {
         persona,
-        userId: fixtureId('user', persona.email),
+        userId: persona.fixedIds?.userId ?? fixtureId('user', persona.email),
         context,
-        premiseTexts,
+        premiseTexts: persona.premises,
         networkKeys: [...classified],
       };
     });
@@ -110,6 +121,7 @@ async function main(): Promise<void> {
       ...persona.intents,
     ]);
     const embeddings = await generateEmbeddings(embeddingTexts);
+    const passwordHash = await hashCredentialPassword(SANDBOX_SEED_PASSWORD);
     const networkByKey = new Map(NETWORKS.map((network) => [network.key, network]));
     const ownerByNetwork = new Map<NetworkKey, string>();
     for (const fixture of personaFixtures) {
@@ -121,7 +133,7 @@ async function main(): Promise<void> {
     await db.transaction(async (tx) => {
       const fixtureUsers = await tx.select({ id: schema.users.id })
         .from(schema.users)
-        .where(sql`${schema.users.email} LIKE 'seed-tester-%@index-network.test' OR ${schema.users.email} LIKE 'sandbox-person-%@index-network.test'`);
+        .where(sql.join(FIXTURE_EMAIL_PATTERNS.map((pattern) => sql`${schema.users.email} LIKE ${pattern}`), sql` OR `));
       const fixtureUserIds = fixtureUsers.map((user) => user.id);
       if (fixtureUserIds.length > 0) {
         const fixtureActorPredicate = sql`EXISTS (
@@ -166,8 +178,20 @@ async function main(): Promise<void> {
           await tx.delete(schema.intentNetworks).where(inArray(schema.intentNetworks.intentId, fixtureIntentIds));
           await tx.delete(schema.intents).where(inArray(schema.intents.id, fixtureIntentIds));
         }
+
+        // Signing in as a persona creates a personal network (a NO ACTION
+        // reference to the user), so a re-seed after anyone has logged in must
+        // remove those before the users can go.
+        const personalNetworks = await tx.select({ networkId: schema.personalNetworks.networkId })
+          .from(schema.personalNetworks)
+          .where(inArray(schema.personalNetworks.userId, fixtureUserIds));
+        const personalNetworkIds = personalNetworks.map((row) => row.networkId);
+        await tx.delete(schema.personalNetworks).where(inArray(schema.personalNetworks.userId, fixtureUserIds));
         await tx.delete(schema.networkMembers).where(inArray(schema.networkMembers.userId, fixtureUserIds));
         await tx.delete(schema.users).where(inArray(schema.users.id, fixtureUserIds));
+        if (personalNetworkIds.length > 0) {
+          await tx.delete(schema.networks).where(inArray(schema.networks.id, personalNetworkIds));
+        }
       }
 
       for (const network of NETWORKS) {
@@ -195,6 +219,7 @@ async function main(): Promise<void> {
         await tx.insert(schema.users).values({
           id: userId,
           email: persona.email,
+          emailVerified: true,
           name: persona.name,
           intro: persona.profile.identity.bio,
           location: persona.profile.identity.location,
@@ -202,10 +227,25 @@ async function main(): Promise<void> {
         }).onConflictDoUpdate({
           target: schema.users.id,
           set: {
+            email: persona.email,
+            emailVerified: true,
             name: persona.name,
             intro: persona.profile.identity.bio,
             location: persona.profile.identity.location,
           },
+        });
+
+        // Email/password credential, shaped exactly like Better Auth's own
+        // sign-up writes it, so the normal login form works for every persona.
+        await tx.insert(schema.accounts).values({
+          id: fixtureId('credential', persona.email),
+          accountId: userId,
+          providerId: CREDENTIAL_PROVIDER_ID,
+          userId,
+          password: passwordHash,
+        }).onConflictDoUpdate({
+          target: schema.accounts.id,
+          set: { accountId: userId, providerId: CREDENTIAL_PROVIDER_ID, userId, password: passwordHash, updatedAt: new Date() },
         });
 
         await tx.insert(schema.userContexts).values({
@@ -241,14 +281,14 @@ async function main(): Promise<void> {
           await tx.insert(schema.premises).values({
             id: premiseId,
             userId,
-            assertion: { text, tier: premiseIndex === 1 ? 'contextual' : 'assertive' },
+            assertion: { text, tier: 'assertive' },
             provenance: { source: 'onboarding', confidence: 1, timestamp: '2026-01-01T00:00:00.000Z' },
             analysis: { speechActType: 'ASSERTIVE', felicityAuthority: 1, felicitySincerity: 1, felicityClarity: 1, semanticEntropy: 0.1 },
             validity: { volatile: false },
             embedding: embeddings.get(text)!,
           }).onConflictDoUpdate({
             target: schema.premises.id,
-            set: { assertion: { text, tier: premiseIndex === 1 ? 'contextual' : 'assertive' }, embedding: embeddings.get(text)! },
+            set: { assertion: { text, tier: 'assertive' }, embedding: embeddings.get(text)! },
           });
 
           const premiseNetworkKeys: NetworkKey[] = networkKeys.filter((key) => key !== 'commons' && key !== 'vault');
@@ -263,7 +303,7 @@ async function main(): Promise<void> {
         }
 
         for (const [intentIndex, payload] of persona.intents.entries()) {
-          const intentId = fixtureId('intent', `${persona.email}:${intentIndex}`);
+          const intentId = persona.fixedIds?.intentIds[intentIndex] ?? fixtureId('intent', `${persona.email}:${intentIndex}`);
           await tx.insert(schema.intents).values({
             id: intentId,
             userId,
@@ -295,7 +335,16 @@ async function main(): Promise<void> {
       }
     });
 
-    console.log(`Seeded ${personaFixtures.length} people, ${NETWORKS.length} networks, and ${personaFixtures.reduce((sum, item) => sum + item.persona.intents.length, 0)} intents into ${SANDBOX_DATABASE}.`);
+    const premiseCount = personaFixtures.reduce((sum, item) => sum + item.premiseTexts.length, 0);
+    const intentCount = personaFixtures.reduce((sum, item) => sum + item.persona.intents.length, 0);
+    console.log(
+      `Seeded ${personaFixtures.length} people${minimal ? ' (minimal mode)' : ''}, ${NETWORKS.length} networks, `
+      + `${premiseCount} premises, and ${intentCount} intents into ${SANDBOX_DATABASE}.`,
+    );
+    console.log(`Every seed persona signs in with email/password; the shared password is "${SANDBOX_SEED_PASSWORD}".`);
+    if (minimal) {
+      for (const { persona } of personaFixtures) console.log(`  ${persona.name} <${persona.email}>`);
+    }
   } finally {
     await closeDb();
   }
