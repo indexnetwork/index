@@ -22,7 +22,7 @@ bun run db:generate                         # Generate migrations after schema c
 bun run db:migrate                          # Apply pending migrations
 bun run db:studio                           # Open Drizzle Studio (interactive DB GUI)
 bun run db:seed                             # Seed database with sample data
-bun run db:seed:sandbox                     # Seed protocol_sandbox with 50 curated personas
+bun run db:seed:sandbox                     # Seed protocol_sandbox with the curated population (--minimal: two people)
 bun run db:flush                            # Flush all data from database
 
 # Testing
@@ -440,15 +440,24 @@ Railway dev deployments run `db:migrate` against the `dev` branch of the Protoco
 
 #### Curated local sandbox
 
-`protocol_sandbox` contains 50 deterministic fictional contemporary personas, 12
-thematic networks, 100 intents, and embedded profile context/premises. The
-personas form 25 explicit ask/offer pairs for predictable positive matching,
-alongside cross-domain near misses. Re-seed
-the fixtures after schema migrations with:
+`protocol_sandbox` contains 96 deterministic fictional contemporary personas, 12
+thematic networks, 322 intents, 475 authored first-person premises, and embedded
+profile context. The personas are authored in scenarios: two people designed to
+match each other, often joined by a third, adjacent-but-not-designed match so
+evaluation has a real decision to make. Three investor personas
+(`mira.kovac@`, `deniz.arslan@`, `ruth.langley@sandbox.test`) carry fixed ids
+that docs and prior threads reference. Every persona has a Better Auth
+email/password credential with the shared test password `sandbox-sandbox`, so
+the normal login form works for any of them (`.test` addresses are marked
+verified by the seed). Re-seed the fixtures after schema migrations with:
 
 ```bash
-bun run db:seed:sandbox
+bun run db:seed:sandbox -- --confirm             # full population
+bun run db:seed:sandbox -- --confirm --minimal   # exactly two people with very specific, matching intents
 ```
+
+Both modes wipe and recreate every seed-owned user (including personal networks
+created by signing in as one), so switching modes is just re-running the command.
 
 The command derives the sandbox connection from the repo-root
 `.env.development`, refuses unrelated source database names, always replaces
