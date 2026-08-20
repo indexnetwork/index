@@ -100,12 +100,52 @@ export const AskUserPayloadSchema = z.object({
    * only store a park, a resume and a fresh process all share — so the bound
    * has to be a durable property of the ask itself rather than a counter in
    * state. A model that sets it would only be suppressing a later guarantee for
-   * its own seat; the turn node strips the field from every draft before
-   * anything reads it, so the only writer is the floor.
+   * its own seat, which is why {@link AskUserGenerationSchema} does not offer
+   * the field at all and the turn node strips it from every draft that arrives
+   * by any other route — so the only writer is the floor.
    */
   guaranteed: z.literal(true).nullable().optional().transform((value) => value ?? undefined),
 }).strict();
 export type AskUserPayload = z.infer<typeof AskUserPayloadSchema>;
+
+/**
+ * The ask payload as an LLM may DRAFT it — the schema bound for structured
+ * output by the seat-scoped turn schemas in `negotiations/negotiation.protocol.ts`.
+ *
+ * Split from the payload above rather than shared with it, because the two
+ * seams have opposite jobs. The one above is what a persisted ask looks like:
+ * it carries `guaranteed`, because that mark is read back off the record, and
+ * it is `.strict()`, because the record is where a free-form key would do
+ * damage. This one is what a model is ALLOWED TO SAY, and every difference
+ * follows from that:
+ *
+ * - `guaranteed` is OMITTED, not merely stripped afterwards. A field only the
+ *   graph may write should never be offered to the model in the first place.
+ *   Offering it and defending against a claimed `true` was the #1464 shape,
+ *   and it cost a turn the first time a model filled the visible optional with
+ *   `false`: `z.literal(true)` rejects `false` at parse, inside the structured
+ *   output call, before any strip could run. The whole turn died, was retried,
+ *   was refused again, and the question was never delivered.
+ * - Unknown keys are DROPPED rather than refused. On this seam a refusal is
+ *   not a result anyone gets to act on — it throws and fails the turn — so the
+ *   safe reading of a key nobody asked for is to discard it. Nothing
+ *   unrecognised reaches the record either way, since this parse is what
+ *   produces the object that gets persisted.
+ * - The authored `question` degrades to absent when it cannot be repaired into
+ *   the renderer's shape (see `structured-question.schema.ts`, where every cap
+ *   repairs). One option instead of two is not repairable, and an ask with no
+ *   authored question is a path the protocol already walks — the floor's own
+ *   guaranteed ask has none, and the server template covers it. Losing the
+ *   wording is a smaller loss than losing the turn.
+ */
+export const AskUserGenerationSchema = AskUserPayloadSchema
+  .omit({ guaranteed: true })
+  .strip()
+  .extend({
+    question: StructuredQuestionSchema.nullable().optional().catch(undefined)
+      .transform((value) => value ?? undefined),
+  });
+export type AskUserGeneration = z.infer<typeof AskUserGenerationSchema>;
 
 export const NegotiationTurnSchema = z.object({
   action: z.enum(NEGOTIATION_ACTIONS),

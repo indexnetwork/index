@@ -19,7 +19,7 @@
  */
 import { z } from "zod";
 
-import { AskUserPayloadSchema } from "../shared/schemas/negotiation-state.schema.js";
+import { AskUserGenerationSchema } from "../shared/schemas/negotiation-state.schema.js";
 import { ChecklistDraftSchema } from "../shared/schemas/negotiation-checklist.schema.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
@@ -39,8 +39,14 @@ function turnSchema<T extends [NegotiationAction, ...NegotiationAction[]]>(actio
     action: z.enum(actions),
     assessment: AssessmentSchema,
     message: z.string().nullable().optional(),
-    /** Present when action is `ask_user` (v2, P3.2). */
-    askUser: AskUserPayloadSchema.nullable().optional(),
+    /**
+     * Present when action is `ask_user` (v2, P3.2).
+     *
+     * The GENERATION payload, not the persisted one: these schemas are what a
+     * model drafts into, and `guaranteed` — the conclusion floor's own mark —
+     * must not be a field it can see. See `AskUserGenerationSchema`.
+     */
+    askUser: AskUserGenerationSchema.nullable().optional(),
   });
 }
 

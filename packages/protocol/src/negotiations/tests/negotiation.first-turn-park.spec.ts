@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState } from "../negotiation.state.js";
+import { NegotiationGraphState, SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
+import { turnSchemaFor } from "../negotiation.protocol.js";
+import { hasGuaranteedAsk } from "../negotiation.graph.shared.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import type { ChecklistDraftItem } from "../negotiation.checklist.contracts.js";
@@ -96,6 +98,22 @@ const askTurn = (checklist: ChecklistDraftItem[] = OPEN_CHECKLIST): NegotiationT
     },
     checklist,
   } as Partial<NegotiationTurn>);
+
+/**
+ * A draft as it leaves the MODEL, before the generation schema has seen it.
+ *
+ * Every other turn in this file is scripted post-parse, which is exactly how
+ * the observed failure escaped twenty-five specs: the schema seam was the thing
+ * that broke, and no harness ran a draft through it. `parseDraft` below closes
+ * that gap — it parses with the same schema `IndexNegotiator` binds for
+ * structured output, so a draft this model would really have produced either
+ * survives into the graph or fails the spec.
+ */
+const parseDraft = (raw: Record<string, unknown>): NegotiationTurn =>
+  turnSchemaFor("v2", "initiator", false, {
+    system: SystemNegotiationTurnSchema,
+    final: FinalNegotiationTurnSchema,
+  }, { askUser: true, checklist: true }).parse(raw) as NegotiationTurn;
 
 const OPENING = "Alice is hiring an ML engineer with studio operations experience.";
 
@@ -349,6 +367,57 @@ describe("a first-turn ask parks", () => {
     // twice is a no-op update, and the second one is what the fence reads.
     expect(states(stubs)).toEqual(["working", "working", "input_required"]);
     expect(stubs.questionerEnqueues).toHaveLength(1);
+  });
+
+  // THE SCHEMA SEAM — the live shape as the MODEL produced it, not as a
+  // scripted fixture. Gemini drafted the ask itself for the first time, filled
+  // the visible optional `guaranteed` with `false`, and wrote a real
+  // 40-character title. Both were refusals: the parse threw inside the
+  // structured-output call, the turn failed with nothing persisted, the retry
+  // was refused again, and the question was never delivered.
+  it("parks on a draft the model really produced — long title, guaranteed: false", async () => {
+    const stubs = mkStubs({ priorMessages: priorSession() });
+    // `parseDraft` throws if the seam refuses this; that IS the regression net.
+    agentScript = [parseDraft({
+      action: "ask_user",
+      assessment: { reasoning: "one unknown stands between me and a verdict", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
+      message: null,
+      checklist: OPEN_CHECKLIST,
+      askUser: {
+        reason: "unresolved_owner_constraint",
+        dimension: "Studio operations experience",
+        // The graph's own mark, claimed by the model. It is not a field the
+        // generation schema offers, so the claim is simply not there after.
+        guaranteed: false,
+        answerhood: {
+          ok_when: "Alice says adjacent tooling work counts",
+          conflict_when: "Alice says the studio side has to be hands-on",
+        },
+        question: { ...QUESTION, title: "Studio operations experience requirement" },
+      },
+    })];
+
+    await runGraph(stubs);
+
+    // The turn lived: it reached the record, bound, and parked.
+    expect(stubs.captureStates).toEqual(["working"]);
+    expect(states(stubs)).toEqual(["working", "input_required"]);
+    expect(persistedActions(stubs)).toEqual(["ask_user"]);
+    expect(stubs.failedTurns).toHaveLength(0);
+    expect(stubs.questionerEnqueues).toHaveLength(1);
+
+    const parked = persistedTurns(stubs)[0];
+    // The title was repaired toward deliverable, not rejected...
+    expect(parked.askUser!.question!.title).toBe("Studio");
+    expect(parked.askUser!.question!.prompt).toBe(QUESTION.prompt);
+    // ...and the model's claim on the floor's mark never reached the record,
+    // so this seat's guarantee is still its own to spend.
+    expect(parked.askUser!.guaranteed).toBeUndefined();
+    expect(hasGuaranteedAsk(
+      stubs.createdMessages.map((m) => ({ senderId: m.senderId, parts: m.parts })),
+      "u-src",
+    )).toBe(false);
+    expect(stubs.opportunityStatuses).not.toContain("rejected");
   });
 
   it("still fails the turn when the binding is genuinely invalid", async () => {

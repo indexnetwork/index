@@ -16,13 +16,16 @@ describe("QuestionOptionSchema", () => {
   it("accepts well-formed options", () => {
     expect(() => QuestionOptionSchema.parse(okOption)).not.toThrow();
   });
-  it("rejects option label longer than 120 chars", () => {
-    const long = { label: "x".repeat(121), description: "ok" };
-    expect(() => QuestionOptionSchema.parse(long)).toThrow();
+  // The caps REPAIR rather than refuse: this is the schema an LLM drafts a
+  // question into, where a refusal throws inside the structured-output call and
+  // fails the whole generation. See structured-question.schema.ts.
+  it("truncates an option label longer than 120 chars", () => {
+    const parsed = QuestionOptionSchema.parse({ label: "x".repeat(121), description: "ok" });
+    expect(parsed.label).toBe(`${"x".repeat(119)}…`);
   });
-  it("rejects option description longer than 280 chars", () => {
-    const long = { label: "ok", description: "x".repeat(281) };
-    expect(() => QuestionOptionSchema.parse(long)).toThrow();
+  it("truncates an option description longer than 280 chars", () => {
+    const parsed = QuestionOptionSchema.parse({ label: "ok", description: "x".repeat(281) });
+    expect(parsed.description).toBe(`${"x".repeat(279)}…`);
   });
   it("rejects empty label", () => {
     expect(() => QuestionOptionSchema.parse({ label: "", description: "ok" })).toThrow();
@@ -48,21 +51,21 @@ describe("QuestionSchema", () => {
     expect(() => QuestionSchema.parse(four)).not.toThrow();
   });
 
-  it("rejects title longer than 12 chars", () => {
-    expect(() => QuestionSchema.parse({ ...okQuestion, title: "x".repeat(13) })).toThrow();
+  it("truncates a title longer than 12 chars", () => {
+    expect(QuestionSchema.parse({ ...okQuestion, title: "x".repeat(13) }).title).toBe("x".repeat(12));
   });
 
   it("rejects fewer than 2 options", () => {
     expect(() => QuestionSchema.parse({ ...okQuestion, options: [okOption] })).toThrow();
   });
 
-  it("rejects more than 4 options", () => {
+  it("drops options beyond the fourth", () => {
     const five = Array.from({ length: 5 }, (_, i) => ({ label: `o${i}`, description: `d${i}` }));
-    expect(() => QuestionSchema.parse({ ...okQuestion, options: five })).toThrow();
+    expect(QuestionSchema.parse({ ...okQuestion, options: five }).options).toEqual(five.slice(0, 4));
   });
 
-  it("rejects prompt longer than 400 chars", () => {
-    expect(() => QuestionSchema.parse({ ...okQuestion, prompt: "x".repeat(401) })).toThrow();
+  it("truncates a prompt longer than 400 chars", () => {
+    expect(QuestionSchema.parse({ ...okQuestion, prompt: "x".repeat(401) }).prompt).toBe(`${"x".repeat(399)}…`);
   });
 
   it("rejects empty prompt", () => {

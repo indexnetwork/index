@@ -709,6 +709,10 @@ describe("the prompt closes the hatch the floor exists to close", () => {
     expect(user).toContain("Either SCORE it from something a principal actually STATED");
     expect(user).toContain("Or ASK Alice about the one that is theirs to settle");
     expect(user).toContain("is not a commitment and cannot score it");
+    // Belt to the server's braces: the title cap is repaired if the model
+    // ignores it, and stated here so it has less reason to. The re-issue is
+    // where an agent that has never asked before writes its first question.
+    expect(user).toContain("give it a title of at most 12 characters");
   });
 
   it("says nothing about concluding on an ordinary turn", async () => {
