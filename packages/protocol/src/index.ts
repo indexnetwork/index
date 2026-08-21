@@ -231,10 +231,6 @@ export { PoolDiscriminatorAssigner } from "./opportunities/opportunity.module.js
 export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./opportunities/opportunity.module.js";
 export { runPoolDiscriminatorShadow } from "./opportunities/opportunity.module.js";
 export {
-  poolQuestionsMiningMode,
-  poolQuestionsMode,
-  poolQuestionsPushMode,
-  poolQuestionsStampNewborn,
   POOL_DISCRIMINATOR_MIN_POOL_SIZE,
   POOL_DISCRIMINATOR_MAX_CANDIDATES,
   POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS,
@@ -245,7 +241,6 @@ export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./opportunities/op
 
 // Discovery env accessors (IND-XXX)
 export { discoveryEvaluatorMinScore } from "./opportunities/opportunity.module.js";
-export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./opportunities/opportunity.module.js";
 export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./opportunities/opportunity.module.js";
 export type { PoolAdjustment, PoolAdjustmentSignal } from "./opportunities/opportunity.module.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunities/opportunity.module.js";

@@ -113,13 +113,7 @@ export {
   POOL_QUESTION_MAX_PENDING_PER_INTENT,
   POOL_QUESTION_MIN_VOI,
   POOL_RERUN_DEBOUNCE_MS,
-  POOL_VISIT_MINING_DEBOUNCE_MS,
-  poolQuestionsMiningMode,
-  poolQuestionsMode,
-  poolQuestionsPushMode,
   poolQuestionsRanking,
-  poolQuestionsStampNewborn,
-  poolQuestionsVisitTrigger,
 } from "./discriminator/discriminator.env.js";
 export {
   PoolDiscriminatorMiner,

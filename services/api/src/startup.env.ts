@@ -38,7 +38,6 @@ if (isDeployment && process.env.EVAL_MODEL_OVERRIDES) {
 }
 
 const requiredUnlessTest = isTest ? z.string().optional() : z.string().trim().min(1);
-const requiredInProduction = isTest || runtimeEnvironment !== 'production' ? z.string().optional() : z.string().trim().min(1);
 const optionalUrl = z.union([z.literal(''), z.string().url()]).optional();
 const optionalInt = z.union([z.literal(''), z.string().regex(/^\d+$/)]).optional();
 const optionalPositiveInt = z.union([z.literal(''), z.string().regex(/^[1-9]\d*$/)]).optional();
@@ -64,10 +63,10 @@ const envSchema = z.object({
   // 2. Authentication
   BETTER_AUTH_SECRET: requiredUnlessTest,
   OPPORTUNITY_OWNER_APPROVAL_SECRET: z.string().optional(),
-  CONNECT_JWT_SECRET: requiredInProduction,
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   TRUSTED_ORIGINS: z.string().optional(),
+  STAFF_EMAILS: z.string().optional(),
 
   // 3. LLM / AI (OpenRouter)
   OPENROUTER_API_KEY: requiredUnlessTest,
@@ -100,7 +99,6 @@ const envSchema = z.object({
   S3_BUCKET: requiredUnlessTest,
   S3_ACCESS_KEY_ID: requiredUnlessTest,
   S3_SECRET_ACCESS_KEY: requiredUnlessTest,
-  PRESIGNED_URL_EXPIRATION_SECONDS: optionalInt,
 
   // 6. Email (Resend)
   RESEND_API_KEY: z.string().optional(),
@@ -115,7 +113,6 @@ const envSchema = z.object({
   UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
-  AUTO_JOIN_INDEX_IDS: z.string().optional(),
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
   HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
@@ -192,7 +189,6 @@ const envSchema = z.object({
   LOG_LEVEL: z.union([z.literal(''), z.enum(['verbose', 'debug', 'info', 'warn', 'error'])]).optional(),
   LOG_FILTER: z.string().optional(),
   ENABLE_DEBUG_API: optionalBoolean,
-  ADMIN_QUEUES_PORT: optionalInt,
 
   // 12b. LangGraph checkpoint retention
   CHECKPOINT_RETENTION_DAYS: z.string().optional(), // whole days, or 0/off/none to disable pruning
@@ -252,7 +248,6 @@ function collectEnvWarnings(): string[] {
   };
 
   warnMissing('API_URL', 'set the deployed API origin so MCP configs, connect links, and webhooks do not fall back to defaults.');
-  warnMissing('CONNECT_JWT_SECRET', 'connect redirect tokens will use the local development fallback unless NODE_ENV=production, where startup fails.');
   warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth, notifications, and integration callbacks.');
   warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise queues/cache/limiter may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');
@@ -268,51 +263,6 @@ function collectEnvWarnings(): string[] {
   if (hasValue('TELEGRAM_BOT_TOKEN') && !hasValue('TELEGRAM_BOT_USERNAME')) {
     warnings.push('TELEGRAM_BOT_USERNAME: set the bot username so Telegram integration links can be generated.');
   }
-  // Retired with the QuestionerAgent card generators (conversational
-  // questions): questions are parked negotiations rendered into the signal's
-  // DM, and the park routing ships on with no flag. These names are read by
-  // nothing now — warn so they get cleared from the environment.
-  for (const retired of [
-    'QUESTIONER_ENABLED',
-    'QUESTIONER_UPTAKE_ENABLED',
-    'QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD',
-    'QUESTIONER_INTENT_DAILY_CAP',
-    'QUESTIONER_CHAT_WAIT_TIMEOUT_MS',
-    'CHAT_QUESTION_WAIT_TIMEOUT_MS',
-    'MCP_TOOL_TIMEOUT_INTERACTIVE_MS',
-    'POOL_QUESTIONS_MINING',
-    'POOL_QUESTIONS_MODE',
-    'POOL_QUESTIONS_PUSH',
-    'POOL_QUESTIONS_STAMP_NEWBORN',
-    'POOL_QUESTIONS_VISIT_TRIGGER',
-  ]) {
-    if (hasValue(retired)) {
-      warnings.push(`${retired}: retired with the card question generators — the value is ignored; remove it from the environment.`);
-    }
-  }
-
-  // Retired with the orchestrator persona: Signal is the permanent web chat
-  // persona, so this flag has nothing to gate. It is read by nothing now —
-  // warn so it gets cleared from the environment.
-  if (hasValue('WEB_SIGNAL_AGENT_ENABLED')) {
-    warnings.push('WEB_SIGNAL_AGENT_ENABLED: retired — the Signal Agent is always on and there is no orchestrator to fall back to. The value is ignored; remove it from the environment.');
-  }
-
-  // URL env vars were renamed for clarity (clean cutover — old names are
-  // ignored): API_URL is the deployed API origin, WEB_APP_URL the deployed
-  // web app origin. The old ambiguous names warn loudly when still set.
-  const renamedUrlVars: Array<[oldName: string, newName: string]> = [
-    ['BASE_URL', 'API_URL'],
-    ['API_BASE_URL', 'API_URL'],
-    ['FRONTEND_URL', 'WEB_APP_URL'],
-    ['APP_URL', 'WEB_APP_URL'],
-  ];
-  for (const [oldName, newName] of renamedUrlVars) {
-    if (hasValue(oldName)) {
-      warnings.push(`${oldName}: renamed to ${newName} — the old name is ignored; update the environment.`);
-    }
-  }
-
   return warnings;
 }
 
