@@ -14,7 +14,6 @@ export {
 } from "./hyde.documents.js";
 export {
   HYDE_FRAME_GENERATION_VERSION,
-  getHydeGenerationMode,
 } from "./hyde.env.js";
 export type {
   HydeGenerationMode,

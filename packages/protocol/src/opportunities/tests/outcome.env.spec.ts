@@ -1,42 +1,13 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
-import { OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MIN_COMPARED_SIDES, OUTCOME_MIN_INDEPENDENT_SUPPORT, isOutcomeQuestionsActivated, outcomeQuestionsMode } from "../outcome/outcome.env.js";
+import { OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MIN_COMPARED_SIDES, OUTCOME_MIN_INDEPENDENT_SUPPORT, OUTCOME_QUESTIONS_MODE, isOutcomeQuestionsActivated } from "../outcome/outcome.env.js";
 
-const saved = process.env.OUTCOME_QUESTIONS_MODE;
-
-afterEach(() => {
-  if (saved === undefined) delete process.env.OUTCOME_QUESTIONS_MODE;
-  else process.env.OUTCOME_QUESTIONS_MODE = saved;
-});
-
-describe("outcomeQuestionsMode", () => {
-  it("defaults off when unset or empty", () => {
-    delete process.env.OUTCOME_QUESTIONS_MODE;
-    expect(outcomeQuestionsMode()).toBe("off");
-    process.env.OUTCOME_QUESTIONS_MODE = "";
-    expect(outcomeQuestionsMode()).toBe("off");
+describe("outcome lens configuration", () => {
+  it("runs in shadow", () => {
+    expect(OUTCOME_QUESTIONS_MODE).toBe("shadow");
   });
 
-  it("accepts only the trimmed literals 'shadow' and 'on'", () => {
-    process.env.OUTCOME_QUESTIONS_MODE = " shadow ";
-    expect(outcomeQuestionsMode()).toBe("shadow");
-    process.env.OUTCOME_QUESTIONS_MODE = "on";
-    expect(outcomeQuestionsMode()).toBe("on");
-  });
-
-  it("treats any other value as off", () => {
-    for (const value of ["true", "enable", "SHADOW", "1", "yes"]) {
-      process.env.OUTCOME_QUESTIONS_MODE = value;
-      expect(outcomeQuestionsMode()).toBe("off");
-    }
-  });
-
-  it("activates capture+mining for shadow and on only", () => {
-    delete process.env.OUTCOME_QUESTIONS_MODE;
-    expect(isOutcomeQuestionsActivated()).toBe(false);
-    process.env.OUTCOME_QUESTIONS_MODE = "shadow";
-    expect(isOutcomeQuestionsActivated()).toBe(true);
-    process.env.OUTCOME_QUESTIONS_MODE = "on";
+  it("always activates capture + mining", () => {
     expect(isOutcomeQuestionsActivated()).toBe(true);
   });
 });

@@ -47,7 +47,6 @@ type LegacyPrincipal = { credentialId: string; agentId: string; audience: null; 
 let principalA: LegacyPrincipal;
 let principalB: LegacyPrincipal;
 const cleanupConversations: string[] = [];
-const origFlag = process.env.NEGOTIATOR_MEMORY_INJECT;
 
 async function seedUser(name: string): Promise<string> {
   const [u] = await db.insert(dbSchema.users)
@@ -130,7 +129,6 @@ async function claimFor(taskId: string, who: 'A' | 'B') {
 }
 
 beforeAll(async () => {
-  process.env.NEGOTIATOR_MEMORY_INJECT = 'true';
   // Deterministic: kill the advisory similarity leg (no embedding provider in
   // specs); disclosure rules and dossiers are list-based and unaffected.
   (negotiatorMemoryRetrievalAdapter as unknown as { embed: () => Promise<number[]> }).embed =
@@ -160,8 +158,6 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  if (origFlag === undefined) delete process.env.NEGOTIATOR_MEMORY_INJECT;
-  else process.env.NEGOTIATOR_MEMORY_INJECT = origFlag;
   for (const id of cleanupConversations) {
     try { await conversationDatabaseAdapter.deleteConversation(id); } catch { /* ignore */ }
   }
@@ -203,19 +199,4 @@ describe('pickup — negotiatorMemory (IND-407)', () => {
     await releaseClaim(taskId);
   }, 30_000);
 
-  it('omits the field entirely when NEGOTIATOR_MEMORY_INJECT is off', async () => {
-    const { taskId } = await seedNegotiation();
-    await claimFor(taskId, 'A');
-    process.env.NEGOTIATOR_MEMORY_INJECT = 'false';
-    try {
-      const result = await negotiationPollingService.pickup(agentA, userA, principalA);
-      expect(result).not.toBeNull();
-      expect(result!.taskId).toBe(taskId);
-      if (!result || 'ownerDirective' in result) throw new Error('Expected legacy pickup projection');
-      expect(result.negotiatorMemory).toBeUndefined();
-    } finally {
-      process.env.NEGOTIATOR_MEMORY_INJECT = 'true';
-      await releaseClaim(taskId);
-    }
-  }, 30_000);
 });

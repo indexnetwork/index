@@ -40,18 +40,6 @@ function frameContext(
 }
 
 describe('persisted HyDE generation selection', () => {
-  it('selects only legacy rows when frame generation is disabled', () => {
-    const sourceText = 'Founder seeking funding';
-    const documents = [
-      document('legacy', 'legacy-hash'),
-      document('frame-prefix', 'frame-v1:stable', frameContext(sourceText, '2026-01-01T00:00:00.000Z')),
-      document('frame-metadata', 'legacy-looking', frameContext(sourceText, '2026-01-02T00:00:00.000Z')),
-    ];
-
-    expect(selectHydeDocumentsForGeneration(documents, 'legacy', sourceText).map((doc) => doc.id))
-      .toEqual(['legacy']);
-  });
-
   it('requires current valid frame metadata and selects only the newest generation group', () => {
     const sourceText = 'Founder seeking funding';
     const oldGeneration = '2026-01-01T00:00:00.000Z';

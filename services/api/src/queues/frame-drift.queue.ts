@@ -2,7 +2,7 @@ import type { Job, JobSchedulerJson, Queue, Worker } from 'bullmq';
 
 import { frameDriftExecutionAttemptDatabaseAdapter, type FrameDriftExecutionAttemptStore, type FrameDriftExecutionAttemptTerminal } from '../adapters/frame-drift-execution-attempt.database.adapter';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { resolveFrameDriftMonitoringConfig } from '../lib/frame-drift.config';
+import { FRAME_DRIFT_MONITORING } from '../lib/frame-drift.config';
 import { log } from '../lib/log';
 import { frameDriftMonitoringService, type FrameDriftMonitoringService } from '../services/frame-drift-monitoring.service';
 
@@ -190,19 +190,7 @@ export class FrameDriftQueue {
 
   private async startInternal(): Promise<void> {
     if (this.closed) throw new Error('Frame-drift queue is closed');
-    const config = resolveFrameDriftMonitoringConfig();
-    if (!config.enabled) {
-      await this.retrySchedulerOperation(() => (
-        this.queue.removeJobScheduler(FRAME_DRIFT_SCHEDULER_ID)
-      ));
-      this.logger.info('Frame-drift monitoring disabled', {
-        event: 'frame_drift_monitoring_disabled',
-        schedulerId: FRAME_DRIFT_SCHEDULER_ID,
-      });
-      return;
-    }
-
-    const desiredScheduler = desiredFrameDriftScheduler(config.schedule);
+    const desiredScheduler = desiredFrameDriftScheduler(FRAME_DRIFT_MONITORING.schedule);
     const existingScheduler = await this.retrySchedulerOperation(() => (
       this.queue.getJobScheduler(FRAME_DRIFT_SCHEDULER_ID)
     ));
@@ -313,38 +301,6 @@ export class FrameDriftQueue {
           return;
         }
 
-        if (!resolveFrameDriftMonitoringConfig().enabled) {
-          try {
-            await this.recordTerminalWithRetry({
-              jobId,
-              attempt,
-              completedAt: this.clock(),
-              terminalStatus: 'skipped',
-              willRetry: false,
-              failureCategory: null,
-            });
-          } catch (error) {
-            this.logger.error(
-              willRetry
-                ? 'Frame-drift terminal tracking failed; BullMQ will retry'
-                : 'Frame-drift terminal tracking failed on final attempt',
-              {
-                event: 'frame_drift_monitoring_attempt_tracking_failed',
-                trackingPhase: 'terminal',
-                observationStatus: 'skipped',
-                ...jobMetadata,
-                willRetry,
-              },
-            );
-            throw error;
-          }
-          this.logger.info('Frame-drift observation skipped because monitoring is disabled', {
-            event: 'frame_drift_monitoring_job_skipped',
-            reason: 'disabled',
-            ...jobMetadata,
-          });
-          return;
-        }
         let observationStatus: 'inserted' | 'duplicate';
         try {
           const result = await this.service.captureDailyBucket(bucketStart, bucketEnd);
@@ -415,7 +371,7 @@ export class FrameDriftQueue {
       queueName: FRAME_DRIFT_QUEUE_NAME,
       jobName: FRAME_DRIFT_JOB_NAME,
       schedulerId: FRAME_DRIFT_SCHEDULER_ID,
-      schedule: config.schedule,
+      schedule: FRAME_DRIFT_MONITORING.schedule,
       timezone: 'UTC',
       schedulerAction,
       nextScheduledAt: new Date(nextScheduledAtMs).toISOString(),

@@ -230,7 +230,7 @@ export function rejectActionFor(
 /**
  * Read the protocol version off task metadata. Returns null when the task
  * predates version stamping (treat as v1 at the call site when the task is a
- * genuine prior; fresh tasks stamp from {@link configuredProtocolVersion}).
+ * genuine prior; fresh tasks stamp {@link NEW_NEGOTIATION_PROTOCOL_VERSION}).
  */
 export function readProtocolVersion(
   metadata: { protocolVersion?: unknown } | null | undefined,
@@ -240,25 +240,11 @@ export function readProtocolVersion(
 }
 
 /**
- * Protocol version for negotiations without a prior task for the same
- * opportunity, from the `NEGOTIATION_PROTOCOL_VERSION` env switch. Defaults
- * to `v1` when unset — v2 is opt-in per environment, and rolling back is the
- * same single switch (only in-flight negotiations stay pinned to their
- * stamped version).
+ * Protocol version stamped on negotiations without a prior task for the same
+ * opportunity. Every new negotiation is v2; {@link readProtocolVersion} still
+ * resolves rows stamped v1 before the cutover.
  */
-export function configuredProtocolVersion(): NegotiationProtocolVersion {
-  return process.env.NEGOTIATION_PROTOCOL_VERSION === "v2" ? "v2" : "v1";
-}
-
-/**
- * Whether the `ask_user` client-consult pause (P3.2) is enabled, from the
- * `NEGOTIATION_ASK_USER_ENABLED` env switch. Defaults to off — the deployment
- * is byte-for-byte unchanged until the flag is flipped, and rolling back is
- * the same single switch.
- */
-export function configuredAskUserEnabled(): boolean {
-  return process.env.NEGOTIATION_ASK_USER_ENABLED === "true";
-}
+export const NEW_NEGOTIATION_PROTOCOL_VERSION: NegotiationProtocolVersion = "v2";
 
 /**
  * Default per-negotiation ask cap: total client-consultation rounds (mid-flight

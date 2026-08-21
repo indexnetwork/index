@@ -2,35 +2,29 @@
  * Centralized accessor + constants for the Lens C negotiation-evidence
  * question producer (IND-433).
  *
- *   NEGOTIATION_EVIDENCE_QUESTIONS_MODE   off | shadow | on — default off.
- *     - off (default): the lens never runs; zero reads, zero telemetry.
- *     - shadow (this issue): mine + verify neutral hypotheses over allowlisted
+ *   Mode: shadow | on — shadow today.
+ *     - shadow: mine + verify neutral hypotheses over allowlisted
  *       negotiation evidence, emit AGGREGATE telemetry only. Persists no
  *       questions and changes no ranking, intent, premise, memory, policy,
  *       newborn-stamping, or push behavior.
  *     - on (future, IND-437): additionally synthesize/enqueue questions and
  *       suppress the older IND-296–299 transcript-question producer.
  *
- * All reads go through this module — do not read the variable via
- * `process.env` elsewhere. The value is read on every call (no caching) so
- * tests and long-lived processes observe changes.
+ * All reads go through this module.
  */
 
 /** Documented modes for the Lens C negotiation-evidence question producer. */
-export const NEGOTIATION_EVIDENCE_QUESTIONS_MODES = ["off", "shadow", "on"] as const;
+export const NEGOTIATION_EVIDENCE_QUESTIONS_MODES = ["shadow", "on"] as const;
 
 /** Mode for the Lens C negotiation-evidence question producer. */
 export type NegotiationEvidenceQuestionsMode = (typeof NEGOTIATION_EVIDENCE_QUESTIONS_MODES)[number];
 
 /**
- * Current NEGOTIATION_EVIDENCE_QUESTIONS_MODE (default off). Any value other
- * than an exact documented mode (after trimming) coerces to off — an
- * unrecognized flag must never silently enable the lens.
+ * The lens runs in shadow: mine + verify, emit aggregate telemetry only. `on`
+ * stays in the type as the reserved next step (IND-438), which additionally
+ * synthesizes and enqueues questions.
  */
-export function negotiationEvidenceQuestionsMode(): NegotiationEvidenceQuestionsMode {
-  const raw = process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE?.trim();
-  return raw === "shadow" || raw === "on" ? raw : "off";
-}
+export const NEGOTIATION_EVIDENCE_QUESTIONS_MODE: NegotiationEvidenceQuestionsMode = "shadow";
 
 /**
  * Recurrence floor: a mined hypothesis is only retained when its verified

@@ -2,7 +2,7 @@
  * Integration tests for NegotiatorMemoryRetrievalAdapter (IND-407, P5.3 read
  * path). Requires a live database connection (.env.test).
  *
- * Covers: the NEGOTIATOR_MEMORY_INJECT flag gate, disclosure rules always
+ * Covers: disclosure rules always
  * included regardless of similarity, dossier lookup by counterparty subject,
  * the similarity leg for playbooks/thresholds (deterministic injected embed
  * fn — no live embedding provider), cross-user isolation, failure → [], and
@@ -41,10 +41,8 @@ describe('NegotiatorMemoryRetrievalAdapter', () => {
   let strangerId: string;
   let agentId: string;
   const userIds: string[] = [];
-  const origFlag = process.env.NEGOTIATOR_MEMORY_INJECT;
 
   beforeAll(async () => {
-    process.env.NEGOTIATOR_MEMORY_INJECT = 'true';
     const users = await db.insert(schema.users).values(
       ['owner', 'counterparty', 'othersubject', 'stranger'].map((label) => ({
         email: `negoret-${label}-${run}@test.local`,
@@ -95,8 +93,6 @@ describe('NegotiatorMemoryRetrievalAdapter', () => {
   }, 30_000);
 
   afterAll(async () => {
-    if (origFlag === undefined) delete process.env.NEGOTIATOR_MEMORY_INJECT;
-    else process.env.NEGOTIATOR_MEMORY_INJECT = origFlag;
     await db.delete(schema.users).where(inArray(schema.users.id, userIds));
   }, 30_000);
 
@@ -105,16 +101,6 @@ describe('NegotiatorMemoryRetrievalAdapter', () => {
     counterpartyUserId: counterpartyId,
     queryText: 'seed reasoning about the match',
     scope: 'turn' as const,
-  });
-
-  it('returns [] when NEGOTIATOR_MEMORY_INJECT is off', async () => {
-    process.env.NEGOTIATOR_MEMORY_INJECT = 'false';
-    try {
-      expect(await retrieval.retrieveForNegotiation(query())).toEqual([]);
-      expect(await retrieval.retrieveForChat(ownerId)).toEqual([]);
-    } finally {
-      process.env.NEGOTIATOR_MEMORY_INJECT = 'true';
-    }
   });
 
   it('always includes disclosure rules, even with an irrelevant embedding', async () => {

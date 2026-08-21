@@ -26,16 +26,6 @@ export type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 /**
- * Whether the deadlock→bargaining mode shift is enabled, from the
- * `NEGOTIATION_DEADLOCK_SHIFT_ENABLED` env switch. Strict literal `"true"`
- * only — the deployment is byte-for-byte unchanged until the flag is flipped,
- * and rolling back is the same single switch.
- */
-export function configuredDeadlockShiftEnabled(): boolean {
-  return process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED === "true";
-}
-
-/**
  * Deadlock threshold: 4 consecutive non-convergent turns. Sized
  * against the ambient turn cap (6): an outreach plus 4 unbroken counters
  * leaves exactly the closing turns to draft in the bargaining stance.

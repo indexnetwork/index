@@ -11,7 +11,7 @@ import type { Id } from '../shared/interfaces/database.interface.js';
 import type { CandidateMatch } from './opportunity.state.js';
 import type { LensEmbedding } from '../shared/interfaces/embedder.interface.js';
 import { getModelName } from '../shared/agent/model.config.js';
-import { selectHydeDocumentsForGeneration, getHydeGenerationMode } from '../discovery/index.js';
+import { selectHydeDocumentsForGeneration, HYDE_FRAME_GENERATION_VERSION } from '../discovery/index.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 import { discoveryProfileMatchingEnabled, discoveryProfileSource, discoveryIntentMatchingEnabled } from './discovery.env.js';
 import { withMultiSignalBonus } from './opportunity.similarity.js';
@@ -302,7 +302,7 @@ export async function runContextToIntentDiscovery(ctx: DiscoveryStrategyContext)
     const persistedHydeDocs = await deps.database.getHydeDocumentsForSource('context', context.contextId);
     const hydeDocs = selectHydeDocumentsForGeneration(
       persistedHydeDocs,
-      getHydeGenerationMode(),
+      HYDE_FRAME_GENERATION_VERSION,
       context.text,
     );
     const lensEmbeddings: LensEmbedding[] = hydeDocs

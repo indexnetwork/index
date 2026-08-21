@@ -19,7 +19,6 @@ import type { NegotiationReflectionInput, ChatReflectionInput, DistilledMemory }
 
 import { NegotiationReflectQueue, type ReflectJobData } from '../negotiations/reflect.queue';
 
-const origFlag = process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
 
 function turnMessage(senderUserId: string, action: string, message?: string): {
   id: string; senderId: string; parts: unknown[]; createdAt: Date;
@@ -103,27 +102,13 @@ describe('NegotiationReflectQueue', () => {
   const queues: NegotiationReflectQueue[] = [];
 
   beforeEach(() => {
-    process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = 'true';
   });
 
   afterEach(async () => {
-    if (origFlag === undefined) delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-    else process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = origFlag;
     await Promise.all(queues.splice(0).map((q) => q.close().catch(() => undefined)));
   });
 
   describe('reflect', () => {
-    it('flag off → distiller never invoked, zero writes', async () => {
-      delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-      const { queue, reflectCalls, writes } = mkQueue();
-      queues.push(queue);
-
-      await queue.processJob('reflect', reflectJob);
-
-      expect(reflectCalls.length).toBe(0);
-      expect(writes.length).toBe(0);
-    });
-
     it('runs one perspective-projected pass per side with correct seat attribution', async () => {
       const { queue, reflectCalls, writes } = mkQueue();
       queues.push(queue);
@@ -175,15 +160,6 @@ describe('NegotiationReflectQueue', () => {
 
   describe('chat_reflect', () => {
     const chatJob = { sessionId: 'sess-1', userId: 'u-alice' };
-
-    it('flag off → skipped entirely', async () => {
-      delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-      const { queue, chatCalls } = mkQueue();
-      queues.push(queue);
-
-      await queue.processJob('chat_reflect', chatJob);
-      expect(chatCalls.length).toBe(0);
-    });
 
     it('non-negotiator persona → skipped (guard)', async () => {
       const { queue, chatCalls, writes } = mkQueue({ session: { persona: 'orchestrator' } });

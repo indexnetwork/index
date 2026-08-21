@@ -98,22 +98,13 @@ function enoughEvents(): OpportunityOutcomeEvent[] {
 }
 
 beforeEach(() => {
-  delete process.env.OUTCOME_QUESTIONS_MODE;
 });
 
 afterEach(() => {
-  delete process.env.OUTCOME_QUESTIONS_MODE;
 });
 
 describe('mineOutcomeHypotheses', () => {
-  it('does nothing when OUTCOME_QUESTIONS_MODE is off', async () => {
-    const d = deps([], recordingMiner());
-    await mineOutcomeHypotheses(scope, d);
-    expect((d.getEvents as ReturnType<typeof mock>).mock.calls.length).toBe(0);
-  });
-
   it('suppresses below-k pools without calling the LLM', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const events = Array.from({ length: 8 }, (_, index) =>
       event(`o${index}`, index % 2 ? 'accepted' : 'rejected', `counter-${index}`));
     const miner = recordingMiner();
@@ -122,7 +113,6 @@ describe('mineOutcomeHypotheses', () => {
   });
 
   it('mines blind to outcome and sends only run-local aliases to the model', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const events = enoughEvents();
     const miner = recordingMiner();
     await mineOutcomeHypotheses(scope, deps(events, miner));
@@ -139,28 +129,24 @@ describe('mineOutcomeHypotheses', () => {
   });
 
   it('fails closed when the intent is missing', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const miner = recordingMiner();
     await mineOutcomeHypotheses(scope, deps(enoughEvents(), miner, null));
     expect(miner.seen.length).toBe(0);
   });
 
   it('fails closed on recipient ownership mismatch', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const miner = recordingMiner();
     await mineOutcomeHypotheses(scope, deps(enoughEvents(), miner, activeIntent({ userId: 'other-user' })));
     expect(miner.seen.length).toBe(0);
   });
 
   it('treats legacy null intent status as active', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const miner = recordingMiner();
     await mineOutcomeHypotheses(scope, deps(enoughEvents(), miner, activeIntent({ status: null })));
     expect(miner.seen.length).toBe(1);
   });
 
   it('fails closed on archived or non-active lifecycle', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const archivedMiner = recordingMiner();
     await mineOutcomeHypotheses(
       scope,
@@ -174,7 +160,6 @@ describe('mineOutcomeHypotheses', () => {
   });
 
   it('keeps captured old-revision events inert when the intent drifts before mining', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const miner = recordingMiner();
     await mineOutcomeHypotheses(
       scope,
@@ -184,7 +169,6 @@ describe('mineOutcomeHypotheses', () => {
   });
 
   it('never sends malformed or evaluator-only snapshots to the Lens B miner', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const malformed = enoughEvents().map((item) => ({
       ...item,
       candidateSnapshot: 'PRIVATE EVALUATOR RATIONALE',
@@ -197,7 +181,6 @@ describe('mineOutcomeHypotheses', () => {
   });
 
   it('never throws even if mining fails (fire-and-forget discipline)', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const failing = { mine: mock(async () => { throw new Error('secret dynamic provider failure'); }) };
     await expect(mineOutcomeHypotheses(scope, deps(enoughEvents(), failing))).resolves.toBeUndefined();
   });

@@ -2,12 +2,9 @@
  * Centralized accessors for Lens B outcome-question environment variables
  * (IND-434).
  *
- *   OUTCOME_QUESTIONS_MODE   off | shadow | on — Lens B "explicit opportunity
- *                            outcomes → grounded questions" pipeline.
+ *   Mode: shadow | on — Lens B "explicit opportunity outcomes → grounded
+ *                            questions" pipeline.
  *
- *                            off (default): no outcome feedback events are
- *                              captured and no hypothesis mining runs. Zero
- *                              behavior change.
  *                            shadow: capture one idempotent append-only
  *                              feedback event per explicit owner action, mine
  *                              neutral trade-off hypotheses for the exact
@@ -21,22 +18,17 @@
  *                              "shadow" for capture + mining; it never emits
  *                              questions.
  *
- * All reads go through this module — do not read this variable via
- * `process.env` elsewhere. Values are read on every call (no caching) so tests
- * and long-lived processes observe changes.
+ * All reads go through this module.
  */
 
 /** Lens B outcome-question mode. */
-export type OutcomeQuestionsMode = "off" | "shadow" | "on";
+export type OutcomeQuestionsMode = "shadow" | "on";
 
 /**
- * Current OUTCOME_QUESTIONS_MODE (default off). Only the exact trimmed literals
- * "shadow" and "on" activate; every other value (including unset/empty) is off.
+ * Lens B runs in shadow: capture + mining, aggregate telemetry only. `on`
+ * stays in the type as the reserved next step (IND-438).
  */
-export function outcomeQuestionsMode(): OutcomeQuestionsMode {
-  const value = process.env.OUTCOME_QUESTIONS_MODE?.trim();
-  return value === "shadow" || value === "on" ? value : "off";
-}
+export const OUTCOME_QUESTIONS_MODE: OutcomeQuestionsMode = "shadow";
 
 /**
  * True when Lens B capture + mining should run at all. Both "shadow" and "on"
@@ -44,7 +36,7 @@ export function outcomeQuestionsMode(): OutcomeQuestionsMode {
  * gated on "on" (not part of this slice).
  */
 export function isOutcomeQuestionsActivated(): boolean {
-  return outcomeQuestionsMode() !== "off";
+  return true;
 }
 
 /**

@@ -15,7 +15,7 @@ import { requestContext } from '../shared/observability/request-context.js';
 import { AMBIENT_PARK_WINDOW_MS, negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from '../negotiations/negotiation.module.js';
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from './negotiation-summary.builder.js';
 import { resolveOpportunityActorIntent } from './opportunity.actor.js';
-import { buildPrioritizedNegotiationIntents, negotiationIncludesOtherIntents } from "./opportunity.existing-negotiation.js";
+import { buildPrioritizedNegotiationIntents } from "./opportunity.existing-negotiation.js";
 import { logger, negotiateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Distinguishes "the budget timer won the race" from a real negotiation result. */
@@ -59,7 +59,6 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
   try {
     // Use the same discoveryUserId pattern as evaluationNode
     const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
-    const includeOtherIntents = negotiationIncludesOtherIntents();
 
     const sourceAccount = await deps.database.getUser(discoveryUserId).catch(() => null);
     const sourceIntentInputs = (state.indexedIntents ?? []).map((intent) => ({
@@ -81,7 +80,6 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
         sourceIntentInputs,
         state.triggerIntentId,
         ownedSourceFallback,
-        includeOtherIntents,
       ),
       profile: {
         name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
@@ -153,9 +151,7 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
         const [profile, user, activeIntents, intent, sourceIntent] = await Promise.all([
           deps.database.getProfile(userId).catch(() => null),
           deps.database.getUser(userId).catch(() => null),
-          includeOtherIntents
-            ? deps.database.getActiveIntents(userId).catch(() => [])
-            : Promise.resolve([] as ActiveIntent[]),
+          Promise.resolve([] as ActiveIntent[]),
           candidateIntentId
             ? deps.database.getIntent(candidateIntentId).catch(() => null)
             : null,
@@ -170,7 +166,6 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
           activeIntents,
           candidateIntentId,
           ownedFallbackIntent,
-          includeOtherIntents,
         );
 
         return {
@@ -183,7 +178,6 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
               sourceIntentInputs,
               sourceIntentId,
               ownedSourceIntent,
-              includeOtherIntents,
             ),
           },
           opportunityId: opp.id as string,

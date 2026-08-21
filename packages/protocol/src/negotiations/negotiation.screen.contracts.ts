@@ -17,18 +17,12 @@ export const NEGOTIATION_SCREEN_MODES = ["off", "shadow", "enforce"] as const;
 export type NegotiationScreenMode = (typeof NEGOTIATION_SCREEN_MODES)[number];
 
 /**
- * Resolve the screen mode from `NEGOTIATION_SCREEN_MODE`.
- *
- * Defaults to `off` when unset or unrecognized — the screen gate is an
- * explicit opt-in flip (same operational pattern as
- * `NEGOTIATION_PROTOCOL_VERSION` / `NEGOTIATOR_CHAT_ENABLED`): code ships
- * inert, the environment turns it on.
+ * The mode every new screen decision is stamped with. Kept as a field on the
+ * record rather than assumed, because decisions stamped `off` or `shadow`
+ * before the cutover are still read by
+ * {@link blocksNegotiationBeforeFirstTurn}.
  */
-export function configuredScreenMode(): NegotiationScreenMode {
-  const raw = process.env.NEGOTIATION_SCREEN_MODE;
-  if (raw === "shadow" || raw === "enforce" || raw === "off") return raw;
-  return "off";
-}
+export const SCREEN_MODE: NegotiationScreenMode = "enforce";
 
 /**
  * Structured screen decision — the outreach gate's verdict on whether this

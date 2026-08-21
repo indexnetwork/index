@@ -272,7 +272,7 @@ describe('HyDE frame-v1 graph validation', () => {
 });
 
 describe('HyDE cache and DB isolation', () => {
-  it('keeps legacy data untouched, namespaces frame-v1, and bypasses validation for validated cache hits', async () => {
+  it('namespaces frame-v1 in cache and DB, and bypasses validation for validated cache hits', async () => {
     const cache = new MemoryCache();
     const stored = new Map<string, HydeDocument>();
     const databaseSaved: CreateHydeDocumentData[] = [];
@@ -316,25 +316,6 @@ describe('HyDE cache and DB isolation', () => {
     };
     const graphInput = { sourceType: 'intent' as const, sourceId: 'intent-1', sourceText: 'climate founder seeking funding' };
 
-    const legacyGraph = new HydeGraphFactory(database, embedder, cache, inferrer, generator, { mode: 'legacy' }).createGraph();
-    const legacyTrace: string[] = [];
-    const legacy = await requestContext.run({
-      traceEmitter: (event) => {
-        if ('name' in event) legacyTrace.push(`${event.type}:${event.name}`);
-      },
-    }, () => legacyGraph.invoke(graphInput));
-    const legacyKey = cache.sets[0]!;
-    const legacyStrategy = databaseSaved[0]!.strategy;
-    expect(legacyKey).toBe('hyde:intent:intent-1:db44edbe924a1926');
-    expect(legacyStrategy).toBe('db44edbe924a1926');
-    expect(legacyTrace).toEqual([
-      'agent_start:lens-inferrer',
-      'agent_end:lens-inferrer',
-      'agent_start:hyde-generator',
-      'agent_end:hyde-generator',
-    ]);
-    expect(legacy.agentTimings.some((timing) => timing.name === 'hyde.validator')).toBe(false);
-
     const frameGraph = new HydeGraphFactory(database, embedder, cache, inferrer, generator, { mode: 'frame-v1', validator }).createGraph();
     const frame = await frameGraph.invoke(graphInput);
     const frameKey = cache.sets.find((key) => key.startsWith('hyde:frame-v1:'))!;
@@ -347,8 +328,8 @@ describe('HyDE cache and DB isolation', () => {
     expect(frameCached.hydeDocuments['climate investor']?.generatedAt)
       .toBe(frame.hydeDocuments['climate investor']?.generatedAt);
     expect(validationCalls).toBe(1);
-    expect(generationCalls).toBe(2);
-    expect(embedCalls).toBe(2);
+    expect(generationCalls).toBe(1);
+    expect(embedCalls).toBe(1);
 
     cache.values.delete(frameKey);
     const frameFromDb = await frameGraph.invoke(graphInput);
@@ -356,14 +337,10 @@ describe('HyDE cache and DB isolation', () => {
     expect(frameFromDb.hydeDocuments['climate investor']?.generatedAt)
       .toBe(frame.hydeDocuments['climate investor']?.generatedAt);
     expect(validationCalls).toBe(1);
-    expect(generationCalls).toBe(2);
+    expect(generationCalls).toBe(1);
 
-    const rolledBack = await legacyGraph.invoke(graphInput);
-    expect(rolledBack.hydeDocuments['climate investor']?.hydeText).toBe(legacy.hydeDocuments['climate investor']?.hydeText);
-    expect(generationCalls).toBe(2);
-    expect(cache.values.has(legacyKey)).toBe(true);
-    expect(cache.values.has(frameKey)).toBe(true);
-    expect(databaseSaved.some((data) => data.strategy.startsWith('frame-v1:') && data.context?.validationStatus === 'valid')).toBe(true);
+    expect(databaseSaved.every((data) => data.strategy.startsWith('frame-v1:'))).toBe(true);
+    expect(databaseSaved.some((data) => data.context?.validationStatus === 'valid')).toBe(true);
   });
 
   it('assigns one generation marker to retained cache hits and newly generated docs', async () => {

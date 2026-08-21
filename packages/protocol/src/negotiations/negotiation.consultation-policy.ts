@@ -34,14 +34,8 @@ export interface ConsultationEligibility {
   reason?: NegotiationConsultationReason;
 }
 
-/**
- * Read the centralized consultation-policy switch. Invalid, absent, and empty
- * values deliberately roll back to off.
- */
-export function negotiationConsultationPolicyMode(): NegotiationConsultationPolicyMode {
-  const raw = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-  return raw === "shadow" || raw === "on" ? raw : "off";
-}
+/** The deterministic consultation policy is on. */
+export const NEGOTIATION_CONSULTATION_POLICY_MODE: NegotiationConsultationPolicyMode = "on";
 
 /**
  * Pure IND-508 eligibility policy. It intentionally never sees user text,

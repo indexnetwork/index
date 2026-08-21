@@ -2,7 +2,6 @@
  * P4.1 negotiator chat persona — controller/service/adapter integration tests.
  *
  * Covers the IND-402 acceptance criteria that live in the API layer:
- * - NEGOTIATOR_CHAT_ENABLED=false → negotiator endpoints 404 (as if absent)
  * - the intent pin is mandatory: get-or-create without an intentId is a 400,
  *   and with one it is idempotent (two calls → same sessionId, one row,
  *   persona='negotiator', title = the signal)
@@ -42,7 +41,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   let controller: ChatController;
   const userAdapter = new UserDatabaseAdapter();
   let testUserId: string;
-  let prevFlag: string | undefined;
   const createdSessionIds: string[] = [];
 
   /** Personas captured whenever the controller derives a persona factory. */
@@ -100,7 +98,6 @@ describe("Negotiator chat persona (IND-402)", () => {
     });
 
   beforeAll(async () => {
-    prevFlag = process.env.NEGOTIATOR_CHAT_ENABLED;
 
     const existingUser = await userAdapter.findByEmail(EMAIL);
     if (existingUser) {
@@ -132,8 +129,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   }, 30_000);
 
   afterAll(async () => {
-    if (prevFlag === undefined) delete process.env.NEGOTIATOR_CHAT_ENABLED;
-    else process.env.NEGOTIATOR_CHAT_ENABLED = prevFlag;
 
     for (const sessionId of createdSessionIds) {
       await conversationDatabaseAdapter.deleteChatSession(sessionId).catch(() => {});
@@ -145,49 +140,21 @@ describe("Negotiator chat persona (IND-402)", () => {
     }
   }, 60_000);
 
-  // ── Flag surface on the session bootstrap ──────────────────────────────
+  // ── Feature surface on the session bootstrap ───────────────────────────
 
-  test("/auth/me exposes the negotiator flag", async () => {
+  test("/auth/me still reports the negotiator surface as on", async () => {
     const authController = new AuthController();
-    const meReq = () => new Request("http://localhost/auth/me");
-
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'false';
-    const offRes = await authController.me(meReq(), mockUser());
-    expect(offRes.status).toBe(200);
-    const offData = (await offRes.json()) as {
+    const res = await authController.me(new Request("http://localhost/auth/me"), mockUser());
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
       features: { negotiatorChat: boolean; fastSignalIntake: boolean };
     };
-    expect(offData.features).toEqual({ negotiatorChat: false, fastSignalIntake: false });
-
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
-    const onRes = await authController.me(meReq(), mockUser());
-    const onData = (await onRes.json()) as {
-      features: { negotiatorChat: boolean; fastSignalIntake: boolean };
-    };
-    expect(onData.features).toEqual({ negotiatorChat: true, fastSignalIntake: false });
-  }, 60000);
-
-  // ── Flag off: endpoints behave as if they do not exist ────────────────────
-
-  test("flag off → get-or-create endpoint returns 404", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'false';
-    const res = await controller.negotiatorSession(negotiatorSessionReq(), mockUser());
-    expect(res.status).toBe(404);
-  }, 60000);
-
-  test("flag off → streaming with persona=negotiator returns 404", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'false';
-    const res = await controller.messageStream(
-      streamReq({ message: "hello", persona: "negotiator" }),
-      mockUser(),
-    );
-    expect(res.status).toBe(404);
+    expect(data.features.negotiatorChat).toBe(true);
   }, 60000);
 
   // ── Flag on: the intent pin is mandatory ──────────────────────────────────
 
   test("get-or-create without an intentId is a 400", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
 
     // No body at all — the shape the retired sidebar used to post.
     const noBody = await controller.negotiatorSession(negotiatorSessionReq(), mockUser());
@@ -202,7 +169,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   }, 60000);
 
   test("get-or-create for an intent the caller does not own is a 404", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     const missing = await controller.negotiatorSession(
       negotiatorSessionReq({ intentId: crypto.randomUUID() }),
       mockUser(),
@@ -213,7 +179,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   // ── Streaming ──────────────────────────────────────────────────────────────
 
   test("streaming with persona=negotiator and no scope is a 400", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     capturedPersonas.length = 0;
 
     // The unscoped DM this used to open no longer exists, so a new negotiator
@@ -230,7 +195,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   // ── Guardrails ─────────────────────────────────────────────────────────────
 
   test("negotiator chat cannot be network-scoped", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     const res = await controller.messageStream(
       streamReq({
         message: "hello",
@@ -248,7 +212,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   // ── Intent-pinned sessions (P4.2 / IND-403) ───────────────────────────
 
   test("intent-pinned get-or-create is idempotent and distinct from another persona's intent session", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
 
     const first = await controller.negotiatorSession(negotiatorSessionReq({ intentId: testIntentId }), mockUser());
     expect(first.status).toBe(200);
@@ -285,23 +248,10 @@ describe("Negotiator chat persona (IND-402)", () => {
     expect(signal.session.scopeType).toBe("intent");
   }, 120_000);
 
-  test("flag off → streaming an existing pinned session returns 404", async () => {
-    const pinned = (await conversationDatabaseAdapter.getNegotiatorIntentChatSession(testUserId, testIntentId))!;
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'false';
-
-    const res = await controller.messageStream(
-      streamReq({ message: "hello", sessionId: pinned.id }),
-      mockUser(),
-    );
-    expect(res.status).toBe(404);
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
-  }, 60000);
-
   // Phase 2 (full chat ownership): every intent-scoped negotiator turn runs
   // the IntentAgent on its serialized inbox; the persona graph — and with it
   // the persona's chat tool registrations — is never derived for this scope.
   test("streaming persona=negotiator with intent scope runs the IntentAgent, never the persona factory", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     capturedPersonas.length = 0;
     capturedStreamInputs.length = 0;
     agentTurnEvents.length = 0;
@@ -351,7 +301,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   }, 60000);
 
   test("streaming the pinned session by sessionId alone routes to the same agent turn", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     capturedPersonas.length = 0;
     agentTurnEvents.length = 0;
     scriptedAgentTurn = async (event) => ({
@@ -373,7 +322,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   }, 60000);
 
   test("reply chunks published on the turn's channel relay as ordered token events, with no duplicate remainder", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     agentTurnEvents.length = 0;
     scriptedAgentTurn = async (event) => {
       // The host's shape: chunks published (post-check, post-persist) before
@@ -401,7 +349,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   }, 60000);
 
   test("a failed agent turn answers with the fixed honest copy and persists it", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     scriptedAgentTurn = async () => {
       throw new Error('turn timed out');
     };
@@ -423,7 +370,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   // ── Conversations preserved from the removed unscoped DM ──────────────
 
   test("a preserved unscoped negotiator conversation is readable but cannot be continued", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
 
     // Manufacture a row in the shape the removed DM used to write: a
     // negotiator conversation registered under ('persona', 'negotiator') with
@@ -470,7 +416,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   // ── History listing ────────────────────────────────────────────────────
 
   test("negotiator sessions stay out of /chat/sessions, and ?persona=negotiator no longer selects them", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
 
     const orchestratorSessionId = await chatSessionService.createSession(testUserId, "Regular chat", undefined, undefined, "orchestrator");
     createdSessionIds.push(orchestratorSessionId);
@@ -493,7 +438,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   }, 60000);
 
   test("persona=negotiator with an orchestrator session is a 409 mismatch", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     const orchestratorSessionId = await chatSessionService.createSession(testUserId, "Mismatch test", undefined, undefined, "orchestrator");
     createdSessionIds.push(orchestratorSessionId);
 
@@ -505,7 +449,6 @@ describe("Negotiator chat persona (IND-402)", () => {
   }, 60000);
 
   test("a retired orchestrator session is read-only and derives no persona factory", async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     capturedPersonas.length = 0;
 
     const orchestratorSessionId = await chatSessionService.createSession(

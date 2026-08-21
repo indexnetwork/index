@@ -154,8 +154,6 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
         ? (deps.evaluatorAgent as OpportunityEvaluator)
         : new OpportunityEvaluator();
 
-      const runParallel = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL === 'true';
-
       const traceEntries: TraceEntry[] = [];
       const passedOpportunities: EvaluatedOpportunity[] = [];
       let remaining: CandidateMatch[] = [];
@@ -185,7 +183,6 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
           discoveryUserId,
           minScore,
           evaluator,
-          runParallel,
           evaluatorSignalConfig,
           agentTimingsAccum,
         });
@@ -265,7 +262,6 @@ interface CandidateBatchArgs {
   discoveryUserId: string;
   minScore: number;
   evaluator: OpportunityEvaluator;
-  runParallel: boolean;
   evaluatorSignalConfig: ReturnType<typeof getAbortSignalConfig>;
   agentTimingsAccum: DebugMetaAgent[];
 }
@@ -279,7 +275,7 @@ async function evaluateCandidateBatch(
 ): Promise<{ passed: EvaluatedOpportunity[]; trace: TraceEntry[] }> {
   const {
     batch, batchNumber, sourceEntity, state, deps, discoveryUserId,
-    minScore, evaluator, runParallel, evaluatorSignalConfig, agentTimingsAccum,
+    minScore, evaluator, evaluatorSignalConfig, agentTimingsAccum,
   } = args;
   const batchStart = Date.now();
   const traceEntries: TraceEntry[] = [];
@@ -313,19 +309,11 @@ async function evaluateCandidateBatch(
 
   const networkContexts = await buildNetworkContexts([sourceEntity, ...candidateEntities], deps.database);
 
-  const evaluatorVerdicts: PairwiseOpportunity[] = runParallel
-    ? await evaluateInParallel({
-        evaluator, sourceEntity, candidateEntities, state, discoveryUserId,
-        networkContexts, minScore, evaluatorSignalConfig, agentTimingsAccum, traceEntries,
-      })
-    : splitBundledVerdicts(
-        await evaluateBundled({
-          evaluator, sourceEntity, candidateEntities, state, discoveryUserId,
-          networkContexts, minScore, evaluatorSignalConfig, agentTimingsAccum,
-        }),
-        state,
-        candidateEntities,
-      );
+  // One evaluator call per candidate, fired in parallel.
+  const evaluatorVerdicts: PairwiseOpportunity[] = await evaluateInParallel({
+    evaluator, sourceEntity, candidateEntities, state, discoveryUserId,
+    networkContexts, minScore, evaluatorSignalConfig, agentTimingsAccum, traceEntries,
+  });
 
   // Verdicts the evaluator answered but nothing persistable came of. They carry the
   // real score and reasoning, so the per-candidate trace can say what happened
@@ -721,91 +709,6 @@ async function evaluateInParallel(
 
   // Each call is already pairwise (source + 1 candidate) — flatten directly
   return parallelResults.flat();
-}
-
-/** Default: single bundled LLM call with all candidates. */
-async function evaluateBundled(args: EvaluateArgs): Promise<EvaluatedOpportunityWithActors[]> {
-  const { evaluator, sourceEntity, candidateEntities, minScore, evaluatorSignalConfig, agentTimingsAccum } = args;
-  const input = buildEvaluatorInput(args, [sourceEntity, ...candidateEntities]);
-  // Get ALL scored results for tracing (returnAll: true), filter for persistence later
-  const _evalStart = Date.now();
-  const _traceEmitterSerial = requestContext.getStore()?.traceEmitter;
-  _traceEmitterSerial?.({ type: "agent_start", name: "opportunity-evaluator" });
-  try {
-    const opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true, ...evaluatorSignalConfig });
-    const _evalDuration = Date.now() - _evalStart;
-    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
-    _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `Evaluated ${candidateEntities.length} candidate(s)` });
-    return opportunitiesWithActors;
-  } catch (serialErr) {
-    const _evalDuration = Date.now() - _evalStart;
-    const _errMsg = safeOpportunityGraphError(serialErr);
-    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
-    _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `error — ${_errMsg}` });
-    throw serialErr; // Re-throw for the outer catch to handle
-  }
-}
-
-/**
- * Split multi-actor evaluator results into pairwise (viewer + candidate).
- * Each persisted discovery opportunity should have exactly 2 actors.
- * When splitting, build per-candidate reasoning from entity data because
- * the shared reasoning typically describes only one candidate.
- */
-function splitBundledVerdicts(
-  opportunitiesWithActors: EvaluatedOpportunityWithActors[],
-  state: OpportunityState,
-  candidateEntities: EvaluatorEntity[],
-): PairwiseOpportunity[] {
-  const pairwiseOpportunities: PairwiseOpportunity[] = [];
-  for (const op of opportunitiesWithActors) {
-    const pairwiseSourceId = state.onBehalfOfUserId ?? state.userId;
-    const nonViewerActors = op.actors.filter(a => a.userId !== pairwiseSourceId);
-    if (nonViewerActors.length <= 1) {
-      pairwiseOpportunities.push(op);
-      continue;
-    }
-    evaluationLog.warn('Splitting multi-actor opportunity; LLM returned bundled actors instead of one-per-candidate', {
-      actorCount: nonViewerActors.length,
-      userIds: nonViewerActors.map(a => a.userId),
-    });
-    const viewerActor = op.actors.find(a => a.userId === pairwiseSourceId);
-    for (const candidate of nonViewerActors) {
-      const entity = candidateEntities.find(e => e.userId === candidate.userId);
-      const candidateName = entity?.profile?.name ?? '';
-      const reasoningLower = op.reasoning.toLowerCase();
-      const mentionsCandidate =
-        candidateName !== '' &&
-        reasoningLower.includes(candidateName.toLowerCase());
-      const mentionsOtherCandidate = nonViewerActors
-        .filter((actor) => actor.userId !== candidate.userId)
-        .map((actor) =>
-          candidateEntities.find((e) => e.userId === actor.userId)?.profile?.name?.toLowerCase()
-        )
-        .some((name) => name != null && reasoningLower.includes(name));
-      let reasoning: string;
-      if (mentionsCandidate && !mentionsOtherCandidate) {
-        reasoning = op.reasoning;
-      } else if (entity?.profile) {
-        const p = entity.profile;
-        const parts = [p.name, p.bio].filter(Boolean);
-        if (p.skills?.length) parts.push(`Skills: ${p.skills.join(', ')}`);
-        if (p.interests?.length) parts.push(`Interests: ${p.interests.join(', ')}`);
-        reasoning = parts.join('. ') || op.reasoning;
-      } else {
-        reasoning = op.reasoning;
-      }
-      pairwiseOpportunities.push({
-        reasoning,
-        score: op.score,
-        actors: [
-          viewerActor ?? { userId: pairwiseSourceId, role: 'patient' as const, intentId: null },
-          candidate,
-        ],
-      });
-    }
-  }
-  return pairwiseOpportunities;
 }
 
 /**

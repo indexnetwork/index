@@ -113,7 +113,6 @@ export {
   POOL_QUESTION_MAX_PENDING_PER_INTENT,
   POOL_QUESTION_MIN_VOI,
   POOL_RERUN_DEBOUNCE_MS,
-  poolQuestionsRanking,
 } from "./discriminator/discriminator.env.js";
 export {
   PoolDiscriminatorMiner,
@@ -174,7 +173,7 @@ export {
 } from "./opportunity.utils.js";
 export {
   NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES,
-  negotiationEvidenceQuestionsMode,
+  NEGOTIATION_EVIDENCE_QUESTIONS_MODE,
 } from "./negotiation-evidence/negotiation-evidence.env.js";
 export {
   NegotiationEvidenceMiner,

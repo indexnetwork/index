@@ -31,7 +31,6 @@ export {
   ASK_USER_WINDOW_MS,
   NEGOTIATION_MAX_TURNS_AMBIENT,
   NEGOTIATION_MAX_TURNS_CHAT,
-  configuredAskUserEnabled,
   isRejectLikeAction,
   isTerminalAction,
   negotiationAskRoundsCap,
@@ -104,10 +103,10 @@ export type { NegotiationTurnFailure } from "./negotiation.turn-failure.js";
 export { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 export { negotiationScopeKey, readNegotiationMessages } from "./negotiation.scope.js";
 export {
+  NEGOTIATION_CONSULTATION_POLICY_MODE,
   assessConsultationEligibility,
   consultationPromptFor,
   countOpenPreContactConsults,
-  negotiationConsultationPolicyMode,
 } from "./negotiation.consultation-policy.js";
 export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,

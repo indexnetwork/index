@@ -237,7 +237,7 @@ export {
   POOL_QUESTION_MIN_VOI,
   POOL_QUESTION_MAX_PENDING_PER_INTENT,
 } from "./opportunities/opportunity.module.js";
-export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./opportunities/opportunity.module.js";
+export { POOL_RERUN_DEBOUNCE_MS } from "./opportunities/opportunity.module.js";
 
 // Discovery env accessors (IND-XXX)
 export { discoveryEvaluatorMinScore } from "./opportunities/opportunity.module.js";
@@ -249,7 +249,7 @@ export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./question
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./opportunities/opportunity.module.js";
 
 // Lens C — negotiation-evidence questions (IND-433, shadow).
-export { negotiationEvidenceQuestionsMode, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./opportunities/opportunity.module.js";
+export { NEGOTIATION_EVIDENCE_QUESTIONS_MODE, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./opportunities/opportunity.module.js";
 export { NegotiationEvidenceMiner } from "./opportunities/opportunity.module.js";
 export { runNegotiationEvidenceShadow } from "./opportunities/opportunity.module.js";
 export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment } from "./opportunities/opportunity.module.js";
@@ -327,9 +327,9 @@ export type {
 
 // ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
 
-export { isNegotiationTurnCapReached, expectedNegotiationSpeaker, negotiationScopeKey, readNegotiationMessages, allowedActionsFor, ASK_USER_WINDOW_MS, configuredAskUserEnabled, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./negotiations/negotiation.module.js";
+export { isNegotiationTurnCapReached, expectedNegotiationSpeaker, negotiationScopeKey, readNegotiationMessages, allowedActionsFor, ASK_USER_WINDOW_MS, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./negotiations/negotiation.module.js";
 export type { NegotiationSpeakerParticipants, NegotiationSpeakerMessage, NegotiationScopeMetadata } from "./negotiations/negotiation.module.js";
-export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "./negotiations/negotiation.module.js";
+export { assessConsultationEligibility, consultationPromptFor, NEGOTIATION_CONSULTATION_POLICY_MODE } from "./negotiations/negotiation.module.js";
 export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode } from "./negotiations/negotiation.module.js";
 // The pre-contact park predicate (#1445), re-exported for the radar read path:
 // the "asking you first" state is the same open-consult recognition the

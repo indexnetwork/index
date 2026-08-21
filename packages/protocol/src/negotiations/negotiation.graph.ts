@@ -15,7 +15,7 @@ import { NegotiationGraphState } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 import { blocksNegotiationBeforeFirstTurn, NegotiationScreener } from "./negotiation.screen.js";
-import { configuredScreenMode, negotiationHasMadeContact } from "./negotiation.screen.contracts.js";
+import { negotiationHasMadeContact } from "./negotiation.screen.contracts.js";
 import { isTerminalAction } from "./negotiation.protocol.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import type { QuestionerEnqueueFn } from "../questions/question.module.js";
@@ -106,8 +106,7 @@ export function routeAfterInit(state: NegotiationState): string {
   // as `screened_out` — the counterparty never answering an outreach it had
   // already received.
   if (
-    configuredScreenMode() !== "off"
-    && !state.continuationExecution
+    !state.continuationExecution
     && !negotiationHasMadeContact(turnsFromMessages(state.messages))
   ) return "screen";
   return "turn";

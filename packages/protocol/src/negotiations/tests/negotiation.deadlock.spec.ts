@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { assessDeadlock, configuredDeadlockShiftEnabled, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
+import { assessDeadlock, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 
@@ -90,27 +90,6 @@ describe("assessDeadlock — trailing-run semantics", () => {
     expect(assessDeadlock(history, 0).threshold).toBe(DEFAULT_DEADLOCK_THRESHOLD);
     expect(assessDeadlock(history, 1.5).threshold).toBe(DEFAULT_DEADLOCK_THRESHOLD);
     expect(assessDeadlock(history, Number.NaN).threshold).toBe(DEFAULT_DEADLOCK_THRESHOLD);
-  });
-});
-
-// ─── Env config ──────────────────────────────────────────────────────────────
-
-describe("deadlock env helpers", () => {
-  it("flag is strict-literal 'true', default off", () => {
-    const origFlag = process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED;
-    try {
-      delete process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED;
-      expect(configuredDeadlockShiftEnabled()).toBe(false);
-
-      process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-      expect(configuredDeadlockShiftEnabled()).toBe(true);
-      for (const notTrue of ["TRUE", "1", "yes", "on", ""]) {
-        process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = notTrue;
-        expect(configuredDeadlockShiftEnabled()).toBe(false);
-      }
-    } finally {
-      if (origFlag === undefined) delete process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED; else process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = origFlag;
-    }
   });
 });
 

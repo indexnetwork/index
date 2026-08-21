@@ -104,8 +104,6 @@ const envSchema = z.object({
   UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
-  RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
-  HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
@@ -115,23 +113,9 @@ const envSchema = z.object({
   // Parsed with warn-and-fallback in the protocol accessor (discoveryProfileSource());
   // a typo must never disable discovery, so startup validation stays permissive.
   DISCOVERY_PROFILE_SOURCE: z.string().optional(),
-  NEGOTIATION_INCLUDE_OTHER_INTENTS: z.enum(['true', 'false']).optional(),
-  NEGOTIATION_PROTOCOL_VERSION: z.union([z.literal(''), z.enum(['v1', 'v2'])]).optional(),
-  NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
   FAST_SIGNAL_INTAKE: optionalBoolean,
   SIGNAL_INTAKE_MAX_QUESTIONS: z.string().optional(),
-  NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
-  NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
-  NEGOTIATION_CONSULTATION_POLICY_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
-  NEGOTIATION_DEADLOCK_SHIFT_ENABLED: optionalBoolean,
-  NEGOTIATION_WATCHDOG_ENABLED: optionalBoolean,
-  NEGOTIATOR_MEMORY_WRITE_ENABLED: optionalBoolean,
-  NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
-  NEGOTIATOR_CLIENT_DM_INJECT: optionalBoolean,
-  POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
-  NEGOTIATION_EVIDENCE_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
-  OUTCOME_QUESTIONS_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
 
   // Test harness (repo-root .env.test only)
   TEST_DATABASE_SAFE: optionalOne,
@@ -158,11 +142,6 @@ const envSchema = z.object({
   // 12b. LangGraph checkpoint retention
 
   // 12c. Frame-drift measurement (disabled by default)
-  FRAME_DRIFT_MONITORING_ENABLED: optionalBoolean,
-  FRAME_DRIFT_MONITORING_SCHEDULE: z.string().optional(),
-  FRAME_DRIFT_MONITORING_MAX_NETWORKS: optionalInt,
-  FRAME_DRIFT_MONITORING_MAX_PAIRS: optionalInt,
-  FRAME_DRIFT_MONITORING_MIN_USERS: optionalInt,
 
   // 13. Platform-provided metadata
   RAILWAY_ENVIRONMENT: z.string().optional(),

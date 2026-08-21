@@ -35,12 +35,6 @@ export function selectHydeDocumentsForGeneration(
   mode: HydeGenerationMode,
   sourceText: string,
 ): HydeDocument[] {
-  if (mode === 'legacy') {
-    return documents.filter((document) =>
-      !isFrameStrategy(document.strategy)
-      && document.context?.hydeGenerationVersion !== HYDE_FRAME_GENERATION_VERSION);
-  }
-
   const sourceTextHash = computeHydeSourceTextHash(sourceText);
   const eligible = documents.filter((document) => hasFrameMetadataForSource(document, sourceTextHash));
   let newestGeneratedAt: string | undefined;

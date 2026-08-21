@@ -62,9 +62,9 @@ const MIN_SIMILARITY = 0.2;
 /** Cap per kind for the chat surface (recency-ordered, no similarity leg). */
 const CHAT_PER_KIND_LIMIT = 5;
 
-/** Whether the P5.3 read path is live (default off; flip per environment). */
+/** @returns true — retrieved memories always shape prompts (P5.3). */
 export function isNegotiatorMemoryInjectEnabled(): boolean {
-  return process.env.NEGOTIATOR_MEMORY_INJECT === 'true';
+  return true;
 }
 
 function toEntry(row: NegotiatorMemory): NegotiatorMemoryEntry {

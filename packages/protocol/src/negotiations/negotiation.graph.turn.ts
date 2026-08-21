@@ -7,11 +7,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, ASK_USER_WINDOW_MS, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
-import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, negotiationConsultationPolicyMode, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
+import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, NEGOTIATION_CONSULTATION_POLICY_MODE, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, negotiationHasMadeContact, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
-import { configuredScreenMode } from "./negotiation.screen.contracts.js";
-import { assessDeadlock, configuredDeadlockShiftEnabled, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import type { NegotiationAntiEcho, NegotiationConcludeFloor } from "./negotiation.agent.js";
@@ -122,7 +121,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // combined — post-stall parks, which also persist `ask_user` messages,
     // included — so a negotiation near its cap cannot spend a further round
     // here even when the acting principal still has budget left.
-    const policyMode = negotiationConsultationPolicyMode();
     // The opening turn, before anything is sent. `outreachOpened` is per-run
     // and history is this negotiation's own record, so this is true exactly
     // once per negotiation — and stays true across a pre-contact park, whose
@@ -178,7 +176,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       version === 'v2'
       && !isFinalTurn
       && !principalUnreachable
-      && configuredAskUserEnabled()
       && !!deps.questionerEnqueue
       && !!deps.timeoutQueue?.enqueueAskUserExpiry
       && !!state.opportunityId
@@ -219,7 +216,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // system agent's drafting stance only — allowedActions, the dispatch
     // payload, and all termination rules are untouched.
     let deadlock: DeadlockAssessment | null = null;
-    if (version === 'v2' && configuredDeadlockShiftEnabled()) {
+    if (version === 'v2') {
       try {
         deadlock = assessDeadlock(history);
       } catch (err) {
@@ -326,16 +323,14 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // forwarded to `NegotiationTurnPayload`, so an external agent holding the
       // personal-agent seat cannot receive the client's private thread.
       //
-      // What stays gated is the FEATURE, not the turn. `configuredAskUserEnabled()`
-      // is the A2H kill switch: flipped off, no A2H read is issued at all and
-      // the prompt is the pre-A2H one. v2-only for the same reason — a v1
-      // negotiation has no A2H vocabulary, so its prompt stays byte-identical.
+      // v2-only: a v1 negotiation has no A2H vocabulary, so its prompt stays
+      // byte-identical.
       // Dropped from the gate are the per-turn conditions that used to ride
       // along inside `askUserAvailable`: final turn, budget spent, ask-rounds
       // cap, pre-contact bound. Those decide whether the agent may ASK, not
       // whether it may know what its client already said.
       if (clientDmForPrompt === null) {
-        clientDmForPrompt = version === 'v2' && configuredAskUserEnabled() && ownIntentId
+        clientDmForPrompt = version === 'v2' && ownIntentId
           ? await retrieveClientDm(deps, ownUser.id, ownIntentId)
           : [];
       }
@@ -602,7 +597,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // will actually be persisted. Every input other than the draft's own
     // action/role is fixed for the turn, so the two calls differ in exactly
     // what the policy is entitled to see.
-    const consultationEligibilityFor = (candidate: NegotiationTurn) => policyMode === 'off' ? { eligible: false } : assessConsultationEligibility({
+    const consultationEligibilityFor = (candidate: NegotiationTurn) => assessConsultationEligibility({
       protocolVersion: version,
       seat,
       isOpeningTurn: isFreshOpeningTurn,
@@ -613,8 +608,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       priorActions: history.map((prior) => prior.action),
       consultationBudgetSpent: questionsSpent >= questionBudget,
       hasExactResumeCoordinate: Boolean(
-        configuredAskUserEnabled()
-        && deps.questionerEnqueue
+        deps.questionerEnqueue
         && deps.timeoutQueue?.enqueueAskUserExpiry
         && state.taskId
         && state.opportunityId
@@ -625,12 +619,12 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     });
     const policyEligibility = consultationEligibilityFor(turn);
     const emitConsultationTelemetry = (stage: 'eligible' | 'asked', reason: NegotiationConsultationReason) => {
-      turnLog.info('negotiation_consultation_policy', { stage, mode: policyMode, reason });
-      emitWide({ type: 'negotiation_consultation_policy', stage, mode: policyMode, reason });
+      turnLog.info('negotiation_consultation_policy', { stage, mode: NEGOTIATION_CONSULTATION_POLICY_MODE, reason });
+      emitWide({ type: 'negotiation_consultation_policy', stage, mode: NEGOTIATION_CONSULTATION_POLICY_MODE, reason });
     };
     if (policyEligibility.eligible && policyEligibility.reason) {
       emitConsultationTelemetry('eligible', policyEligibility.reason);
-      if (policyMode === 'on') {
+      {
         // Two shapes reach here and the policy owes them different things.
         //
         // A draft that asked for something ELSE is REPLACED: the policy
@@ -742,7 +736,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // away by a verdict about a draft that no longer exists. Re-running it
       // gives the policy the action it is actually judging. Scoped to the
       // re-issue so the ordinary path stays byte-identical.
-      if (opts.reissue && policyMode === 'on' && !consultationPolicyReason) {
+      if (opts.reissue && !consultationPolicyReason) {
         const eligibility = consultationEligibilityFor(candidate);
         if (eligibility.eligible && eligibility.reason) {
           emitConsultationTelemetry('eligible', eligibility.reason);
@@ -751,10 +745,10 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         }
       }
 
-      // Safety net: off/shadow retain legacy behavior. In on, a spontaneous
-      // ask_user is admissible only when the deterministic policy just
-      // authorized it, so no unbounded pause can enter shared history.
-      if (!askUserAvailable || (policyMode === 'on' && !consultationPolicyReason)) {
+      // Safety net: a spontaneous ask_user is admissible only when the
+      // deterministic policy just authorized it, so no unbounded pause can
+      // enter shared history.
+      if (!askUserAvailable || !consultationPolicyReason) {
         turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
           seat, isFinalTurn, taskId: state.taskId, ...(opts.reissue && { reissue: true }),
         });

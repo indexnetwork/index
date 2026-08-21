@@ -8,10 +8,9 @@
  * question, and changes NO ranking/intent/premise/memory/policy. It logs only
  * aggregate telemetry (counts) and NEVER the mined hypothesis text.
  *
- * Gated by its OWN flag (`NEGOTIATION_EVIDENCE_QUESTIONS_MODE`, default off) and
- * wired independently of the Lens A pool flags, so this lens can run even when
- * pool discriminator mining is disabled. Fully failure-isolated: it never
- * throws into the caller's discovery lifecycle.
+ * Wired independently of the Lens A pool machinery, so this lens runs on its
+ * own. Fully failure-isolated: it never throws into the caller's discovery
+ * lifecycle.
  *
  * IND-465 slice 1: the single-network pass scope is derived from capture-time
  * negotiation TASK metadata (which always records a validated networkId)
@@ -31,7 +30,7 @@
  * shared_message stays impossible-by-construction (no per-message consent
  * primitive exists; deferred to IND-467).
  */
-import { NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES, NegotiationEvidenceMiner, negotiationEvidenceQuestionsMode, runNegotiationEvidenceShadow } from '@indexnetwork/protocol';
+import { NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES, NegotiationEvidenceMiner, runNegotiationEvidenceShadow } from '@indexnetwork/protocol';
 import type { RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment, RawEvidenceTurn } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
@@ -552,14 +551,13 @@ function isFinalIntentValid(
 }
 
 /**
- * Fire-and-forget, failure-isolated, flag-gated Lens C shadow pass over the
- * triggering intent's pool. Never throws; never persists; never enqueues.
+ * Fire-and-forget, failure-isolated Lens C shadow pass over the triggering
+ * intent's pool. Never throws; never persists; never enqueues.
  */
 export async function maybeRunNegotiationEvidenceShadow(
   trigger: EvidenceShadowTrigger,
   deps: NegotiationEvidenceShadowDeps = DEFAULT_DEPS,
 ): Promise<void> {
-  if (negotiationEvidenceQuestionsMode() === 'off') return;
   if (trigger.isIntroducerFlow || !trigger.intentId) return;
 
   const { userId, intentId } = trigger;

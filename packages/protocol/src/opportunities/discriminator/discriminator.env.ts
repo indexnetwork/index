@@ -26,20 +26,6 @@ export const POOL_QUESTION_PUSH_MIN_POOL_SIZE = 8;
 /** Maximum claimed proactive pool pushes per recipient per UTC day. */
 export const POOL_QUESTION_PUSH_DAILY_CAP = 2;
 
-/** Ranking mode for pool adjustments (IND-419). */
-export type PoolQuestionsRankingMode = "off" | "on";
-
-/**
- * Current POOL_QUESTIONS_RANKING (default off). When "on", the radar view
- * orders by adjusted confidence (confidence × Π poolAdjustments.factor,
- * floor {@link POOL_ADJUSTMENT_FLOOR}). Adjustments are WRITTEN regardless of
- * this flag — it only gates whether ordering reads them, so the apply path
- * can ship first.
- */
-export function poolQuestionsRanking(): PoolQuestionsRankingMode {
-  return process.env.POOL_QUESTIONS_RANKING?.trim() === "on" ? "on" : "off";
-}
-
 /** Adjustment factor for candidates on the side the user did NOT choose. */
 export const POOL_ADJUSTMENT_FACTOR_OTHER = 0.6;
 

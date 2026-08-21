@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { z } from "zod";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { createNegotiationTools } from "../negotiation.tools.js";
@@ -105,25 +106,13 @@ function patchAgent(actions: string[]) {
   return { inputs, restore: () => { IndexNegotiator.prototype.invoke = orig; } };
 }
 
-const ENV_KEYS = [
-  "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
-  "NEGOTIATION_PROTOCOL_VERSION",
-  "NEGOTIATION_SCREEN_MODE",
-  "NEGOTIATION_ASK_USER_ENABLED",
-] as const;
-const origEnv: Record<string, string | undefined> = {};
+let restoreScreener: () => void;
 
 beforeAll(() => {
-  for (const k of ENV_KEYS) origEnv[k] = process.env[k];
+  restoreScreener = stubScreenerReachOut();
 });
 afterAll(() => {
-  for (const k of ENV_KEYS) {
-    if (origEnv[k] === undefined) delete process.env[k]; else process.env[k] = origEnv[k];
-  }
-});
-beforeEach(() => {
-  for (const k of ENV_KEYS) delete process.env[k];
-  process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
+  restoreScreener();
 });
 
 /**
@@ -137,8 +126,7 @@ const FIRST_SHIFTED_TURN = T + 1;
 const SCRIPT = ["outreach", ...Array<string>(T + 2).fill("counter")];
 
 describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
-  it("flag ON: bargaining stance from the threshold turn, record persisted once, trace event once", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
+  it("bargaining stance from the threshold turn, record persisted once, trace event once", async () => {
     const stubs = mkStubs();
     const { inputs, restore } = patchAgent(SCRIPT);
     const events: Array<Record<string, unknown>> = [];
@@ -182,7 +170,6 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
   });
 
   it("question turns count toward the run", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
     const stubs = mkStubs();
     const { inputs, restore } = patchAgent(["outreach", "question", ...Array<string>(T + 1).fill("counter")]);
     try {
@@ -193,47 +180,19 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
     expect(inputs[FIRST_SHIFTED_TURN].bargaining).toEqual({ consecutiveNonConvergent: T });
   });
 
-  it("flag OFF (default): identical drafting inputs minus the bargaining field — no record, no event", async () => {
-    const offStubs = mkStubs();
-    const off = patchAgent(SCRIPT);
-    const offEvents: Array<Record<string, unknown>> = [];
-    try {
-      await runGraph(offStubs, {}, offEvents);
-    } finally {
-      off.restore();
-    }
-
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    const onStubs = mkStubs();
-    const on = patchAgent(SCRIPT);
-    try {
-      await runGraph(onStubs);
-    } finally {
-      on.restore();
-    }
-
-    // Flag off: no bargaining field anywhere, no persistence, no trace event.
-    for (const input of off.inputs) expect("bargaining" in input).toBe(false);
-    expect(offStubs.deadlockWrites).toHaveLength(0);
-    expect(offEvents.filter((e) => e.type === "negotiation_deadlock_shift")).toHaveLength(0);
-
-    // Disabled-path equivalence: every flag-off drafting input is deep-equal
-    // to the flag-on input once the bargaining field is removed — the legacy
-    // path is exactly preserved.
-    expect(on.inputs).toHaveLength(off.inputs.length);
-    const scrub = (i: NegotiationAgentInput) => {
-      const { bargaining: _bargaining, ...rest } = i;
-      return JSON.parse(JSON.stringify(rest));
-    };
-    for (let i = 0; i < off.inputs.length; i++) {
-      expect(scrub(off.inputs[i])).toEqual(scrub(on.inputs[i]));
-    }
-  });
-
-  it("v1 + flag ON: never shifts (gated alongside the protocol version)", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v1";
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
+  it("v1: never shifts (gated on the protocol version)", async () => {
+    // New negotiations are v2. A v1 negotiation now only arises by continuing
+    // a task stamped v1 before the cutover, so that is how this seeds one.
     const stubs = mkStubs();
+    (stubs.database as unknown as { getNegotiationTaskForOpportunity: () => Promise<unknown> })
+      .getNegotiationTaskForOpportunity = async () => ({
+        id: "task-v1",
+        conversationId: "conv-1",
+        state: "completed",
+        metadata: { type: "negotiation", sourceUserId: "u-src", initiatorUserId: "u-src", protocolVersion: "v1" },
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      });
     const { inputs, restore } = patchAgent(["propose", ...Array<string>(T + 2).fill("counter")]);
     try {
       await runGraph(stubs);
@@ -245,7 +204,6 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
   });
 
   it("externally dispatched turns never receive the stance and never persist a record", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
     const stubs = mkStubs();
     const payloads: Array<Record<string, unknown>> = [];
     let call = 0;
@@ -281,7 +239,6 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
   });
 
   it("fail-open: a throwing setTaskDeadlockShift never breaks the negotiation", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
     const stubs = mkStubs({ setTaskDeadlockShiftThrows: true });
     const { inputs, restore } = patchAgent(SCRIPT);
     let result: { outcome?: { reason?: string } | null };
@@ -296,7 +253,6 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
   });
 
   it("fail-open: an absent setTaskDeadlockShift hook still shifts and completes", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
     const stubs = mkStubs({ omitSetTaskDeadlockShift: true });
     const { inputs, restore } = patchAgent(SCRIPT);
     try {

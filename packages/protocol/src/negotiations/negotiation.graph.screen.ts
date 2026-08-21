@@ -7,11 +7,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, ASK_USER_WINDOW_MS, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
-import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
-import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
-import { configuredScreenMode } from "./negotiation.screen.contracts.js";
-import { assessDeadlock, configuredDeadlockShiftEnabled, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { assessConsultationEligibility, consultationPromptFor, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
+import { blocksNegotiationBeforeFirstTurn, SCREEN_MODE, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
+import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
@@ -39,7 +38,7 @@ export async function screenNode(state: NegotiationState, deps: NegotiationGraph
   const emitWide = (event: Record<string, unknown>) =>
     (traceEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
 
-  const mode = configuredScreenMode();
+  const mode = SCREEN_MODE;
   const start = Date.now();
   // The client is the initiator seat's user — the side whose negotiator is
   // reaching out. Fresh runs stamp initiatorUserId in init; fall back to
