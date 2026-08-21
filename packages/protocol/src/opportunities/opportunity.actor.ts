@@ -46,10 +46,13 @@ export function resolveOpportunityActorBinding(actor: {
   intent?: unknown;
   premise?: unknown;
 }): NegotiationCounterpartyBinding | undefined {
-  const intent = resolveOpportunityActorIntent(actor);
-  if (intent !== undefined) return { kind: 'intent', id: intent };
+  // A premise-matched actor's `intent` key names the intent it matched
+  // against (the recipient's), never its own material — so a present
+  // `premise` is the binding, and `intent` binds only in its absence.
   const premise = normalizeOpportunityActorIntent(actor.premise);
-  return premise === undefined ? undefined : { kind: 'premise', id: premise };
+  if (premise !== undefined) return { kind: 'premise', id: premise };
+  const intent = resolveOpportunityActorIntent(actor);
+  return intent === undefined ? undefined : { kind: 'intent', id: intent };
 }
 
 /** Whether an actor still carries the exact binding a parked negotiation pinned. */

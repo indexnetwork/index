@@ -3879,9 +3879,12 @@ export class ConversationDatabaseAdapter {
         throw new Error('Ask-user opportunity actor binding is ambiguous');
       }
       const counterpartyUserId = counterparties[0].userId!;
-      const counterpartyBinding: NegotiationCounterpartyBinding = typeof counterparties[0].intent === 'string'
-        ? { kind: 'intent', id: counterparties[0].intent }
-        : { kind: 'premise', id: counterparties[0].premise! };
+      // A premise-matched actor's `intent` key names the intent it matched
+      // against (the recipient's), never its own material — so a present
+      // `premise` is the binding, and `intent` binds only in its absence.
+      const counterpartyBinding: NegotiationCounterpartyBinding = typeof counterparties[0].premise === 'string'
+        ? { kind: 'premise', id: counterparties[0].premise }
+        : { kind: 'intent', id: counterparties[0].intent! };
       const members = await tx.select({ userId: schema.networkMembers.userId }).from(schema.networkMembers)
         .innerJoin(schema.networks, and(
           eq(schema.networks.id, schema.networkMembers.networkId),

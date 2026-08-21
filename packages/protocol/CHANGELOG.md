@@ -20,6 +20,32 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.6.2 - 2026-08-21
+
+### Fixed
+
+- **A premise-matched counterparty is premise-bound — two wrongs stopped
+  agreeing.** A premise-matched opportunity actor carries BOTH keys: `premise`
+  is its own fact, `intent` names the intent it matched AGAINST — the
+  recipient's. Two sites independently preferred `intent` whenever the key
+  existed, and their mistakes agreed with each other: the api's ask-user
+  capture stamped every premise-matched park's `counterpartyBinding` with the
+  recipient's own intent (so the claim's counterparty-liveness check could
+  never pass — observed live as `admission:"invalid"` after #1474/#1475 had
+  already made settle and claim drift-tolerant), and this package's
+  `resolveOpportunityActorBinding` resolved a dual-key actor to that same
+  wrong intent binding — so the re-drive's continuation revalidation
+  (`opportunityActorMatchesBinding` in `negotiateExistingOpportunity`) would
+  have accepted the mis-stamp and refused a corrected premise stamp as
+  `stale_continuation`, one gate after the claim.
+
+  Both flips ship together, mirror-identical: a present `premise` is the
+  binding, `intent` binds only in its absence. Mirror consequence, intended:
+  a dual-key actor no longer matches an intent-kind binding naming its
+  matched-against intent — the gate stops accepting mis-stamped settlements,
+  which already fail the claim's liveness check earlier, so nothing that
+  works today breaks.
+
 ## 23.6.1 - 2026-08-20
 
 ### Fixed
