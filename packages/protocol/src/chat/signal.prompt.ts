@@ -1,5 +1,6 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
 import { focusedIntentId } from "../shared/agent/tool.scope.js";
+import { buildAgentSelfIntroduction, type AgentIdentityOptions } from "./agent-identity.prompt.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
 
 /** Stable user-message marker for opening the guided New Signal intake. */
@@ -44,7 +45,7 @@ export type SignalIntakeStage = "interview" | "complete";
  * plain conversation, so the only tool-call marker left is `create_intent`
  * (the synthesis step), which completes the intake.
  *
- * @param iterCtx - Current Signal Agent iteration context
+ * @param iterCtx - Current signals-persona iteration context
  * @returns The intake stage, or null for ordinary Signal chats
  */
 export function getSignalIntakeStage(iterCtx?: IterationContext): SignalIntakeStage | null {
@@ -81,19 +82,24 @@ Skip a question when the user has already answered it unprompted. When you have 
 The browser is showing the proposed signal before it is saved. If the user gives feedback on that draft, use it to revise the signal and call \`create_intent\` again with the revised description. This produces a replacement proposal only; never persist or auto-approve either draft. Pass the newest tool-produced \`\`\`intent_proposal\`\`\` block through verbatim and tell the user to review it. If the user has no feedback, briefly confirm that they can approve, edit, or skip the visible draft.`;
 }
 
+/** Identity injected into the signals prompt, from the user's personal agent row. */
+export type SignalPromptOptions = AgentIdentityOptions;
+
 /**
- * Builds the restricted Signal Agent system prompt.
+ * Builds the restricted signals-and-profile system prompt.
  *
- * Signal manages the user's signals and profile knowledge. Matching,
+ * This persona manages the user's signals and profile knowledge. Matching,
  * opportunities, negotiations, administration, imports, and membership changes
- * are deliberately outside this persona and are not advertised here.
+ * are deliberately outside it and are not advertised here.
  *
  * @param ctx - Resolved user and scope context
+ * @param opts - Identity from the user's `type='personal'` agent row
  * @param iterCtx - Agent-loop iteration context used for the New Signal kickoff
- * @returns The complete Signal Agent system prompt
+ * @returns The complete signals-persona system prompt
  */
 export function buildSignalSystemContent(
   ctx: ResolvedToolContext,
+  opts: SignalPromptOptions = {},
   iterCtx?: IterationContext,
 ): string {
   const userContext = JSON.stringify(ctx.user, null, 2);
@@ -111,7 +117,11 @@ export function buildSignalSystemContent(
     2,
   );
 
-  return `You are Signal Agent, the private signals and profile assistant for ${ctx.userName}.
+  return `${buildAgentSelfIntroduction({
+    ...(opts.agentName ? { agentName: opts.agentName } : {}),
+    userName: ctx.userName,
+    role: "the private signals and profile assistant",
+  })}
 
 Your role is deliberately narrow: ${scopedIntentId ? "help the user inspect and refine this selected signal (intent)" : "help the user capture, inspect, refine, archive, and place their signals (intents)"}, and keep the profile knowledge and premises behind those signals accurate. You may explain the communities and memberships the user already has, but you do not discover opportunities, inspect or act on opportunities, negotiate, manage contacts or imports, administer agents or communities, or change memberships. Matching happens separately in the background after signals change.
 

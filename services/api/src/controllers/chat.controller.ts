@@ -452,7 +452,7 @@ export class ChatController {
         if (sessionPersona === SIGNAL_PERSONA_ID) {
           return Response.json(
             {
-              error: 'Start a separate Signal Agent chat for that focus.',
+              error: 'Start a separate chat with your agent for that focus.',
               code: 'CHAT_SCOPE_REQUIRES_NEW_SESSION',
               action: { type: 'start_signal_session', href: '/' },
             },
@@ -484,12 +484,22 @@ export class ChatController {
     // untouched.
     const agentOwnsTurn = sessionPersona === NEGOTIATOR_PERSONA_ID
       && effectiveScope?.scopeType === 'intent';
+    // The personas that DO run a graph introduce themselves as the client's
+    // own agent, named from the same `type='personal'` row the IntentAgent
+    // belongs to. A missing row is not fatal: the prompt falls back to a
+    // generic self-description rather than a product noun, so the signal and
+    // onboarding chats keep working.
+    const personaNeedsIdentity = !agentOwnsTurn
+      && (sessionPersona === SIGNAL_PERSONA_ID || sessionPersona === ONBOARDING_PERSONA_ID);
+    const identityAgent = personaNeedsIdentity
+      ? await resolveNegotiatorAgent(user.id).catch(() => null)
+      : null;
     const factory = agentOwnsTurn
       ? null
       : sessionPersona === ONBOARDING_PERSONA_ID
-        ? chatSessionService.getOnboardingGraphFactory()
+        ? chatSessionService.getOnboardingGraphFactory(identityAgent)
         : sessionPersona === SIGNAL_PERSONA_ID
-          ? chatSessionService.getSignalGraphFactory()
+          ? chatSessionService.getSignalGraphFactory(identityAgent)
           : null;
     if (!factory && !agentOwnsTurn) {
       return Response.json(

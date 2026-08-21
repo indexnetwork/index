@@ -15,7 +15,7 @@ import { protocolLogger } from "../observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
-import { deriveAllowedNetworkIds, focusedIntentId, scopeFromNetworkId } from "./tool.scope.js";
+import { deriveAllowedNetworkIds, filterToolsForScope, scopeFromNetworkId } from "./tool.scope.js";
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
 import { createOpportunityTools } from "../../opportunities/opportunity.module.js";
@@ -243,11 +243,10 @@ export async function createChatTools(
   const profileTools = createEnrichmentTools(defineTool, toolDeps);
   const intentTools = Intents.createTools(defineTool, toolDeps);
   // An intent-scoped conversation exists to refine its selected signal. Keep
-  // creation out of the model-visible registry; the update handler separately
+  // creation out of the model-visible registry — the same rule the shared tool
+  // registry applies for MCP/REST callers. The update handler separately
   // clamps writes to the exact scoped intent as a runtime backstop.
-  const intentToolsForChat = focusedIntentId(resolvedContext)
-    ? intentTools.filter((candidate) => (candidate as { name: string }).name !== "create_intent")
-    : intentTools;
+  const intentToolsForChat = filterToolsForScope(intentTools, resolvedContext);
   const networkTools = Networks.createTools(defineTool, toolDeps);
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);

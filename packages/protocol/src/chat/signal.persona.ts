@@ -6,7 +6,7 @@ import { error, resolveChatContext, success } from "../shared/agent/tool.helpers
 import type { SystemDatabase, UserDatabase } from "../shared/interfaces/database.interface.js";
 import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
-import { buildSignalSystemContent } from "./signal.prompt.js";
+import { buildSignalSystemContent, type SignalPromptOptions } from "./signal.prompt.js";
 
 /** Public kickoff marker used by New Signal surfaces to enter guided intake. */
 export { SIGNAL_NEW_SIGNAL_KICKOFF } from "./signal.prompt.js";
@@ -395,14 +395,28 @@ export async function createSignalTools(
   return narrowSignalTools(allowed, { context: resolvedContext, userDb, systemDb });
 }
 
-/** Restricted Signal Agent persona on the persona-neutral chat runtime. */
-export const SIGNAL_PERSONA: ChatPersonaConfig = {
-  id: SIGNAL_PERSONA_ID,
-  buildSystemContent: (ctx, iterCtx) => buildSignalSystemContent(ctx, iterCtx),
-  createTools: (deps, preResolvedContext) => createSignalTools(deps, preResolvedContext),
-  loopBehaviors: {
-    // Direct discovery is absent, so its create-intent retry callback must stay off.
-    // create_intent can legitimately return proposal cards; retain recovery/stripping.
-    hallucinationRecovery: true,
-  },
-};
+/** Identity this persona introduces itself with. */
+export type SignalPersonaOptions = SignalPromptOptions;
+
+/**
+ * Creates the restricted signals persona on the persona-neutral chat runtime.
+ *
+ * A factory rather than a static singleton for the same reason the negotiator
+ * is one: the persona's identity comes from the user's `type='personal'` agent
+ * row, so it can only be bound per session. Capabilities, allowlist and tool
+ * narrowing are identity-independent and unchanged.
+ *
+ * @param opts - Identity from the user's `type='personal'` agent row
+ */
+export function createSignalPersona(opts: SignalPersonaOptions = {}): ChatPersonaConfig {
+  return {
+    id: SIGNAL_PERSONA_ID,
+    buildSystemContent: (ctx, iterCtx) => buildSignalSystemContent(ctx, opts, iterCtx),
+    createTools: (deps, preResolvedContext) => createSignalTools(deps, preResolvedContext),
+    loopBehaviors: {
+      // Direct discovery is absent, so its create-intent retry callback must stay off.
+      // create_intent can legitimately return proposal cards; retain recovery/stripping.
+      hallucinationRecovery: true,
+    },
+  };
+}

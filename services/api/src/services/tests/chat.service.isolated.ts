@@ -32,7 +32,9 @@ mock.module("@indexnetwork/protocol", () => {
     },
     SIGNAL_PERSONA_ID: "signal",
     NEGOTIATOR_PERSONA_ID: "negotiator",
-    SIGNAL_PERSONA: { id: "signal" },
+    ONBOARDING_PERSONA_ID: "onboarding",
+    createSignalPersona: mock((opts?: { agentName?: string }) => ({ id: "signal", ...opts })),
+    createOnboardingPersona: mock((opts?: { agentName?: string }) => ({ id: "onboarding", ...opts })),
     createNegotiatorPersona: mock(() => ({ id: "negotiator" })),
   };
 });

@@ -726,7 +726,7 @@ export default function ChatContent({
         </p>
         <p className="mt-1 text-sm text-gray-600">
           {startsSignal
-            ? "Its messages are preserved. Continue in a separate Signal Agent chat."
+            ? "Its messages are preserved. Continue in a separate chat with your agent."
             : "This chat is unchanged. Start a new chat to continue safely."}
         </p>
         <Button
@@ -740,7 +740,7 @@ export default function ChatContent({
             navigate("/");
           }}
         >
-          {startsSignal ? "Start a Signal Agent chat" : "Start a new chat"}
+          {startsSignal ? "Start a chat with your agent" : "Start a new chat"}
         </Button>
       </div>
     );
@@ -1080,7 +1080,7 @@ export default function ChatContent({
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#041729] text-lg leading-none text-white">+</span>
               <span>
                 <span className="block text-sm font-medium text-[#041729]">Who are you trying to meet?</span>
-                <span className="block text-xs text-gray-500">Let your Signal Agent guide you through a new signal.</span>
+                <span className="block text-xs text-gray-500">A few questions to make what you’re looking for legible.</span>
               </span>
             </button>
           <div className="mt-8">

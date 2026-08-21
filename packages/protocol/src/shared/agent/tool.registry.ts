@@ -14,6 +14,7 @@ import { createNegotiationAnswerTools, createNegotiationTools } from '../../nego
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premises/premise.tools.js';
 import type { OpportunityOwnerApprovalDeps } from '../../opportunities/opportunity.tools.port.js';
+import { isToolAllowedInScope, type ToolScopeEnvelope } from './tool.scope.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
 import { requestContext } from '../observability/request-context.js';
 
@@ -28,6 +29,15 @@ export interface CreateToolRegistryOptions {
    * (IND-373/598).
    */
   surface?: ToolSurface;
+  /**
+   * The caller's focused scope. Tools a scope makes impossible are left out of
+   * the registry entirely, so they are neither listed nor callable — the same
+   * exclusion the chat tool factory applies. Omit for an unscoped caller.
+   *
+   * MCP contexts reach this through scoped API keys and through the chat
+   * scope envelope, so the rule cannot live at one call site.
+   */
+  scope?: ToolScopeEnvelope;
 }
 
 /**
@@ -120,6 +130,18 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
     createChatTools(dt, deps);
   }
 
+
+  // Scope exclusions are applied after composition so every domain is covered
+  // by one rule rather than each createTools() call remembering it. The
+  // handlers still refuse independently at runtime — those refusals document
+  // the invariant and cover callers that build a registry without a scope.
+  if (options.scope) {
+    for (const toolName of [...registry.keys()]) {
+      if (!isToolAllowedInScope(toolName, options.scope)) {
+        registry.delete(toolName);
+      }
+    }
+  }
 
   logger.verbose('Tool registry created', { toolCount: registry.size, surface: options.surface ?? 'rest' });
   return registry;

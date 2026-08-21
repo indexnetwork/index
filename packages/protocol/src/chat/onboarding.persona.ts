@@ -6,7 +6,7 @@ import { resolveChatContext } from "../shared/agent/tool.helpers.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { narrowSignalTools } from "./signal.persona.js";
-import { buildOnboardingSystemContent } from "./onboarding.prompt.js";
+import { buildOnboardingSystemContent, type OnboardingPromptOptions } from "./onboarding.prompt.js";
 
 /** Public kickoff marker used by the restricted web profile phase. */
 export { ONBOARDING_PROFILE_KICKOFF } from "./onboarding.prompt.js";
@@ -98,12 +98,24 @@ export async function createOnboardingTools(
   );
 }
 
-/** Restricted web onboarding persona on the persona-neutral chat runtime. */
-export const ONBOARDING_PERSONA: ChatPersonaConfig = {
-  id: ONBOARDING_PERSONA_ID,
-  buildSystemContent: (ctx, iterCtx) => buildOnboardingSystemContent(ctx, iterCtx),
-  createTools: (deps, preResolvedContext) => createOnboardingTools(deps, preResolvedContext),
-  loopBehaviors: {
-    hallucinationRecovery: true,
-  },
-};
+/** Identity this persona introduces itself with. */
+export type OnboardingPersonaOptions = OnboardingPromptOptions;
+
+/**
+ * Creates the restricted web onboarding persona on the persona-neutral chat
+ * runtime. A factory, not a singleton, because the persona introduces itself
+ * as the user's own agent — named from their `type='personal'` agent row,
+ * which `ensureNegotiatorAgent` writes at auth, before onboarding ever runs.
+ *
+ * @param opts - Identity from the user's `type='personal'` agent row
+ */
+export function createOnboardingPersona(opts: OnboardingPersonaOptions = {}): ChatPersonaConfig {
+  return {
+    id: ONBOARDING_PERSONA_ID,
+    buildSystemContent: (ctx, iterCtx) => buildOnboardingSystemContent(ctx, opts, iterCtx),
+    createTools: (deps, preResolvedContext) => createOnboardingTools(deps, preResolvedContext),
+    loopBehaviors: {
+      hallucinationRecovery: true,
+    },
+  };
+}

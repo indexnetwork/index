@@ -310,13 +310,13 @@ function mergeDebugMetaIntoTraceEvents(
 }
 
 const SAFE_TURN_BLOCK_MESSAGES: Readonly<Record<string, string>> = {
-  WEB_SIGNAL_PERSONA_REQUIRED: "Start a new Signal Agent chat to continue.",
-  WEB_SIGNAL_SESSION_REQUIRED: "This earlier chat is read-only. Start a new Signal Agent chat to continue.",
-  WEB_SIGNAL_AGENT_DISABLED: "Signal Agent is not available right now.",
+  WEB_SIGNAL_PERSONA_REQUIRED: "Start a new chat with your agent to continue.",
+  WEB_SIGNAL_SESSION_REQUIRED: "This earlier chat is read-only. Start a new chat with your agent to continue.",
+  WEB_SIGNAL_AGENT_DISABLED: "Your agent is not available right now.",
   WEB_SIGNAL_PERSONA_FORBIDDEN: "This chat can only be continued in the web app.",
   CHAT_PERSONA_MISMATCH: "This request does not match the chat that was opened.",
   CHAT_PERSONA_UNSUPPORTED: "This chat cannot be continued safely.",
-  CHAT_SCOPE_REQUIRES_NEW_SESSION: "Start a separate Signal Agent chat for that focus.",
+  CHAT_SCOPE_REQUIRES_NEW_SESSION: "Start a separate chat with your agent for that focus.",
 };
 
 /** Parse only known policy denials and never render server-controlled detail text. */

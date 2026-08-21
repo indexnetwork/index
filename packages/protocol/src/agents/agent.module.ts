@@ -13,20 +13,20 @@ export { ChatTitleGenerator } from "../chat/chat.title.generator.js";
 export { createChatTools } from "../chat/chat.tools.js";
 export { createNegotiatorPersona, NEGOTIATOR_PERSONA_ID } from "../chat/negotiator.persona.js";
 export {
+  createOnboardingPersona,
   createOnboardingTools,
   filterOnboardingTools,
   narrowOnboardingTools,
-  ONBOARDING_PERSONA,
   ONBOARDING_PERSONA_ID,
   ONBOARDING_PROFILE_KICKOFF,
   ONBOARDING_TOOL_NAMES,
 } from "../chat/onboarding.persona.js";
 export {
+  createSignalPersona,
   createSignalTools,
   filterSignalTools,
   narrowSignalTools,
   SIGNAL_NEW_SIGNAL_KICKOFF,
-  SIGNAL_PERSONA,
   SIGNAL_PERSONA_ID,
   SIGNAL_TOOL_NAMES,
 } from "../chat/signal.persona.js";

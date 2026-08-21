@@ -218,6 +218,7 @@ mock.module("../../../opportunities/opportunity.presentation.js", () => ({
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { createChatTools, type ToolContext } from "../tool.factory.js";
+import { createToolRegistry, type ToolRegistryDeps } from "../tool.registry.js";
 import type { ChatGraphCompositeDatabase, SystemDatabase } from "../../interfaces/database.interface.js";
 import type { ActiveIntent, IndexMemberDetails, IndexedIntentDetails } from "../../interfaces/database.interface.js";
 import type { Embedder } from "../../interfaces/embedder.interface.js";
@@ -457,6 +458,39 @@ describe("createChatTools", () => {
 
     expect(names).not.toContain("create_intent");
     expect(names).toContain("update_intent");
+  });
+});
+
+// The chat factory is one of two surfaces that build a toolset. The shared
+// registry behind MCP and the REST Tool API is the other, and an intent scope
+// reaches it too — so the exclusion above has to hold there as well, from the
+// same rule rather than from each call site remembering it.
+describe("createToolRegistry intent-scope exclusions", () => {
+  // Registration only DEFINES tools; a permissive deep proxy satisfies the
+  // nested dep reads that happen while wiring.
+  function makeRegistryDeps(): ToolRegistryDeps {
+    const deep: unknown = new Proxy(function () {} as object, {
+      get: () => deep,
+      apply: () => deep,
+    });
+    return deep as ToolRegistryDeps;
+  }
+
+  const intentScope = { scopeType: "intent" as const, scopeId: "11111111-1111-4111-8111-111111111111" };
+  const networkScope = { scopeType: "network" as const, scopeId: "22222222-2222-4222-8222-222222222222" };
+
+  test("an intent-scoped registry does not advertise create_intent", () => {
+    for (const surface of ["rest", "mcp"] as const) {
+      const registry = createToolRegistry(makeRegistryDeps(), { surface, scope: intentScope });
+      expect(registry.get("create_intent"), `${surface} surface must omit create_intent`).toBeUndefined();
+      expect(registry.get("update_intent"), `${surface} surface keeps update_intent`).toBeDefined();
+    }
+  });
+
+  test("unscoped and network-scoped registries keep create_intent", () => {
+    expect(createToolRegistry(makeRegistryDeps()).get("create_intent")).toBeDefined();
+    expect(createToolRegistry(makeRegistryDeps(), { scope: networkScope }).get("create_intent")).toBeDefined();
+    expect(createToolRegistry(makeRegistryDeps(), { scope: {} }).get("create_intent")).toBeDefined();
   });
 });
 
