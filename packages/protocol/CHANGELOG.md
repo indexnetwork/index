@@ -20,6 +20,20 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.6.3 - 2026-08-21
+
+### Added
+
+- **Persona identity + create_intent scope rule (#1479) — the version stamp
+  the change shipped without.** Every chat persona now introduces itself as
+  the user's own agent: `buildAgentSelfIntroduction`, plus
+  `createSignalPersona` / `createOnboardingPersona` factories taking
+  `agentName` the way the negotiator already did. Tool registration gained
+  the scope rule (`isToolAllowedInScope`, `filterToolsForScope`). #1479
+  merged these exports without bumping, so two different export surfaces
+  briefly answered to 23.6.2 on the `rc` tag — this entry gives the new
+  surface its own version.
+
 ## 23.6.2 - 2026-08-21
 
 ### Fixed
