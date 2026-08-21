@@ -13,7 +13,7 @@ import { negotiationParkAnswerId, negotiationQuestionSettlementId, parseQuestion
 import type { NegotiationAnswerConsumptionPorts, QuestionBlockQuestion, QuestionerEnqueuePayload, RoutedAnswer } from '@indexnetwork/protocol';
 import { questionBlockFixture, questionMessageFixture, questionProseFixture } from '@indexnetwork/protocol/question-block/fixture';
 
-import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QUESTION_MESSAGE_CLOSED_BODY, QUEUE_NAME, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId, routeParkedQuestionEnqueue } from '../question-message.queue';
+import { QUESTION_ANSWER_CLARIFICATION_MESSAGE, QUESTION_ANSWER_UNRESUMABLE_MESSAGE, QUESTION_MESSAGE_CLOSED_BODY, QUEUE_NAME, QuestionMessageQueue, enqueueQuestionAnswerReply, parkedQuestionMessageTarget, questionMessageJobId, routeParkedQuestionEnqueue } from '../question-message.queue';
 import type { QuestionAnswerJobData } from '../question-message.queue';
 import type { QuestionMessageNotificationJobData } from '../notification.queue';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
@@ -684,6 +684,8 @@ interface AnswerHarnessOptions {
   parks: Record<string, 'inflight' | 'post_stall'>;
   /** The router's verdict, or an Error for a payload that must never route. */
   routed: { addressesQuestions: boolean; answers: RoutedAnswer[] } | Error;
+  /** The settle's verdict; defaults to 'settled'. */
+  settleResult?: 'settled' | 'already_settled' | 'recorded_unresumable' | 'lost';
 }
 
 function buildAnswerHarness(options: AnswerHarnessOptions) {
@@ -695,6 +697,7 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
     stalledRetries: [] as Array<{ opportunityId: string; parkTaskId: string }>,
     delivered: [] as DeliveredMessage[],
     notified: [] as QuestionMessageNotificationJobData[],
+    regenerations: [] as Array<{ userId: string; intentId: string }>,
   };
   const taskIdFor = (opportunityId: string) => `task-${opportunityId}`;
   const ports: NegotiationAnswerConsumptionPorts = {
@@ -754,7 +757,7 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
         ...(input.answer.freeText !== undefined ? { freeText: input.answer.freeText } : {}),
         answeredAt: input.answer.answeredAt,
       });
-      return 'settled';
+      return options.settleResult ?? 'settled';
     },
     enqueueInflightResume: async (input) => {
       calls.inflightResumes.push({ opportunityId: input.opportunityId, settlementId: input.settlementId });
@@ -793,6 +796,9 @@ function buildAnswerHarness(options: AnswerHarnessOptions) {
     },
     notify: async (data) => {
       calls.notified.push(data);
+    },
+    enqueueRegeneration: async (data) => {
+      calls.regenerations.push(data);
     },
   });
   return { queue, calls };
@@ -914,6 +920,33 @@ describe('QuestionMessageQueue answer-consumption job', () => {
     expect(calls.routerInputs).toHaveLength(0);
     expect(calls.settled).toHaveLength(0);
     expect(calls.delivered).toHaveLength(0);
+  });
+
+  it('tells the truth and proposes — never resumes — when the answered park is unresumable', async () => {
+    const { queue, calls } = buildAnswerHarness({
+      parks: { [FIXTURE_PRIMARY_1]: 'inflight' },
+      routed: {
+        addressesQuestions: true,
+        answers: [{ ref: FIXTURE_PRIMARY_1, answerText: 'Happy to proceed anyway.' }],
+      },
+      settleResult: 'recorded_unresumable',
+    });
+
+    await queue.processJob('consume_question_answers', answerJob('Happy to proceed anyway.'));
+
+    // The answer was heard (settle ran), but nothing resumes automatically.
+    expect(calls.settled.map((settle) => settle.opportunityId)).toEqual([FIXTURE_PRIMARY_1]);
+    expect(calls.inflightResumes).toHaveLength(0);
+    expect(calls.stalledRetries).toHaveLength(0);
+    // The DM copy carries the honest explanation and the proposal, and the
+    // retired park's question is regenerated out of the message (#1441).
+    expect(calls.delivered).toEqual([{
+      sessionId: 'session-1',
+      role: 'assistant',
+      content: QUESTION_ANSWER_UNRESUMABLE_MESSAGE,
+    }]);
+    expect(calls.regenerations).toEqual([{ userId: USER_ID, intentId: INTENT_ID }]);
+    expect(calls.notified).toHaveLength(0);
   });
 
   it('never notifies for an answer-driven resume — the client is already in the conversation', async () => {

@@ -301,6 +301,18 @@ describe("resumeParkedNegotiation", () => {
     expect(calls.inflightResumes).toHaveLength(0);
   });
 
+  it("reports an unresumable park as recorded, and enqueues nothing — the proposal is the caller's, not a resume", async () => {
+    const { ports, calls } = makePorts({
+      tasks: { [OPP_A]: inflightTask("task-1", OPP_A, "user-1") },
+      settleResult: "recorded_unresumable",
+    });
+    const outcome = await resumeParkedNegotiation(ports, { opportunityId: OPP_A, userId: "user-1", answerText: "yes" });
+    expect(outcome).toBe("recorded_unresumable");
+    expect(calls.settles).toHaveLength(1);
+    expect(calls.inflightResumes).toHaveLength(0);
+    expect(calls.retries).toHaveLength(0);
+  });
+
   it("resumes a post-stall park: record the answer under its deterministic id, then enqueue the retry", async () => {
     const { ports, calls } = makePorts({
       tasks: { [OPP_A]: completedTask("task-9", OPP_A) },
@@ -395,6 +407,22 @@ describe("consumeQuestionBlockAnswers", () => {
     expect(calls.settles).toHaveLength(1);
     expect(calls.settles[0]?.answer.freeText).toBe("first phrasing");
     expect(result.skipped).toContainEqual({ opportunityId: OPP_A, outcome: "duplicate_route" });
+  });
+
+  it("counts an unresumable answer in its own recorded array, never inside skipped", async () => {
+    const { ports } = makePorts({
+      tasks: { [OPP_C]: inflightTask("task-3", OPP_C, "user-1") },
+      settleResult: "recorded_unresumable",
+    });
+    const result = await consumeQuestionBlockAnswers(ports, {
+      block,
+      userId: "user-1",
+      answers: [{ ref: OPP_C, answerText: "Budget answer." }],
+    });
+    expect(result.recorded).toEqual([{ opportunityId: OPP_C, outcome: "recorded_unresumable" }]);
+    expect(result.resumed).toHaveLength(0);
+    expect(result.skipped).toHaveLength(0);
+    expect(result.needsClarification).toBe(false);
   });
 
   it("keeps consuming the rest of the reply when one negotiation fails", async () => {

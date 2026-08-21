@@ -250,15 +250,24 @@ export interface InflightAnswerSettlementInput {
 
 /**
  * - `settled`: this call closed the exact `input_required` task and durably
- *   stored the answer for the continuation claim to read.
+ *   stored the answer for the continuation claim to read. Answers are
+ *   authoritative over staleness: the signal or opportunity having moved since
+ *   the park (drift) does not prevent this outcome — the resumed turn rebuilds
+ *   its context from current data.
  * - `already_settled`: an earlier delivery settled it; the stored settlement
  *   stands. Resuming is still correct — the continuation enqueue and claim are
  *   settlement-keyed and idempotent, so re-enqueueing recovers a lost job
  *   without a double resume.
- * - `lost`: the admission gate refused — the task is no longer
- *   `input_required` (answer-window expiry or another path won). No resume.
+ * - `recorded_unresumable`: the answer was durably recorded and the park
+ *   retired, but the negotiation genuinely cannot continue — the opportunity
+ *   is terminal or the recipient signal is archived. No resume; the caller
+ *   owes the client an honest explanation and a PROPOSAL of the next step,
+ *   never an automatic one.
+ * - `lost`: the coherence gate refused — this answer does not belong to this
+ *   park (the task is no longer `input_required`, or a dismiss/timeout
+ *   settlement won the race). No resume.
  */
-export type InflightAnswerSettlementResult = "settled" | "already_settled" | "lost";
+export type InflightAnswerSettlementResult = "settled" | "already_settled" | "recorded_unresumable" | "lost";
 
 export interface NegotiationAnswerConsumptionPorts {
   /** The same reads the negotiation graph resolves parks with. */
@@ -309,6 +318,8 @@ export function negotiationParkAnswerId(parkTaskId: string): string {
 export type NegotiationAnswerResumeOutcome =
   | "resumed_inflight"
   | "resumed_retry"
+  /** The answer was recorded and the park retired, but the negotiation cannot continue. */
+  | "recorded_unresumable"
   | "not_parked"
   | "no_negotiation"
   | "wrong_recipient";
@@ -356,6 +367,16 @@ export async function resumeParkedNegotiation(
         opportunityId: input.opportunityId,
       });
       return "not_parked";
+    }
+    if (settlement === "recorded_unresumable") {
+      // The answer was heard and durably recorded; the park is retired. There
+      // is nothing to enqueue — the negotiation is over, and the next step is
+      // a PROPOSAL the caller surfaces to the client, never an automatic act.
+      answerLog.info("negotiation_answer_recorded_unresumable", {
+        taskId: classification.taskId,
+        opportunityId: input.opportunityId,
+      });
+      return "recorded_unresumable";
     }
     // Settlement is durable; enqueue after it, never before — a crash between
     // the two is recovered by redelivery (`already_settled` → enqueue again).
@@ -423,6 +444,14 @@ export interface QuestionBlockAnswerConsumptionInput {
 
 export interface QuestionBlockAnswerConsumptionResult {
   resumed: Array<{ opportunityId: string; outcome: "resumed_inflight" | "resumed_retry" }>;
+  /**
+   * Answers that were heard and durably recorded on a park whose negotiation
+   * cannot continue (terminal opportunity / archived signal). Counted apart
+   * from `skipped` deliberately: nothing was skipped — the park was retired —
+   * and the caller owes the client the honest explanation plus the proposal
+   * of the next step.
+   */
+  recorded: Array<{ opportunityId: string; outcome: "recorded_unresumable" }>;
   skipped: Array<{
     opportunityId: string;
     outcome: "not_parked" | "no_negotiation" | "wrong_recipient" | "duplicate_route" | "failed";
@@ -450,6 +479,7 @@ export async function consumeQuestionBlockAnswers(
   const answeredAt = input.answeredAt ?? new Date().toISOString();
   const result: QuestionBlockAnswerConsumptionResult = {
     resumed: [],
+    recorded: [],
     skipped: [],
     unmatched: [],
     needsClarification: false,
@@ -481,6 +511,8 @@ export async function consumeQuestionBlockAnswers(
         });
         if (outcome === "resumed_inflight" || outcome === "resumed_retry") {
           result.resumed.push({ opportunityId, outcome });
+        } else if (outcome === "recorded_unresumable") {
+          result.recorded.push({ opportunityId, outcome });
         } else {
           result.skipped.push({ opportunityId, outcome });
         }
