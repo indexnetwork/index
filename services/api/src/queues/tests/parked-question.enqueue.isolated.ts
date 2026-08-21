@@ -1,40 +1,38 @@
 /**
  * Unit tests for the park-path question enqueue — the one choke point every
- * composition site injects after the QuestionerAgent retirement. Park
- * payloads route to the question-message regeneration job; every retired
- * generator family is dropped without reaching any queue.
+ * composition site injects. Since the intent-agent collapse
+ * (docs/plans/2026-08-21-holistic-intent-agent.md) a park payload wakes the
+ * parked side's IntentAgent with a `negotiation_needs_input` event; every
+ * retired generator family is dropped without reaching any queue, and an
+ * unreachable principal's event is dropped at this last fence.
  */
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://unused:unused@localhost:5432/unused';
 
 import { afterAll, describe, expect, it, mock } from 'bun:test';
 
-const regenerateJobs: Array<{ userId: string; intentId: string }> = [];
+import type { IntentAgentNeedsInputEvent } from '../../lib/intent-agent/intent-agent.types';
 
-mock.module('../question-message.queue', () => ({
-  routeParkedQuestionEnqueue: async (input: {
-    mode?: string;
-    purpose?: string;
-    negotiation?: { recipientUserId?: string; recipientIntentId?: string };
-  }) => {
-    const isParkFamily =
-      (input.mode === 'negotiation_inflight' && input.purpose === 'inflight_consultation')
-      || (input.mode === 'negotiation' && input.purpose === 'stalled_followup');
-    if (!isParkFamily || !input.negotiation?.recipientUserId || !input.negotiation.recipientIntentId) {
-      return false;
-    }
-    regenerateJobs.push({
-      userId: input.negotiation.recipientUserId,
-      intentId: input.negotiation.recipientIntentId,
-    });
-    return true;
+const events: IntentAgentNeedsInputEvent[] = [];
+const unreachable = new Set<string>();
+
+mock.module('../intent-agent.queue', () => ({
+  intentAgentQueue: {
+    addNeedsInputEvent: async (event: IntentAgentNeedsInputEvent) => {
+      events.push(event);
+      return { id: 'job-1' };
+    },
   },
+}));
+
+mock.module('../../lib/users/synthetic', () => ({
+  resolvePrincipalUnreachable: async (userId: string) => unreachable.has(userId),
 }));
 
 afterAll(() => {
   mock.restore();
 });
 
-const { enqueueParkedQuestion, parkedQuestionEnqueue } = await import('../parked-question.enqueue');
+const { enqueueParkedQuestion, parkedQuestionEnqueue, parkedNeedsInputEvent } = await import('../parked-question.enqueue');
 
 const negotiation = {
   recipientUserId: 'user-1',
@@ -42,6 +40,37 @@ const negotiation = {
   opportunityId: 'opp-1',
   networkId: 'network-1',
 };
+
+const inflightPayload = {
+  mode: 'negotiation_inflight',
+  purpose: 'inflight_consultation',
+  userId: 'user-1',
+  sourceType: 'opportunity',
+  sourceId: 'opp-1',
+  negotiation: { ...negotiation, purpose: 'inflight_consultation', taskId: 'task-1' },
+  context: {
+    negotiationId: 'task-1',
+    counterpartyHint: 'the other participant',
+    indexContext: 'the selected network',
+    consultationPolicyReason: 'unresolved_owner_constraint',
+  },
+} as const;
+
+const postStallPayload = {
+  mode: 'negotiation',
+  purpose: 'stalled_followup',
+  userId: 'user-1',
+  sourceType: 'opportunity',
+  sourceId: 'opp-1',
+  negotiation: { ...negotiation, purpose: 'stalled_followup', taskId: 'task-1' },
+  context: {
+    negotiationId: 'task-1',
+    counterpartyHint: 'the other participant',
+    indexContext: 'the selected network',
+    outcomeReason: 'stalled',
+    recipientIntent: 'Find a collaborator',
+  },
+} as const;
 
 describe('parkedQuestionEnqueue', () => {
   it('is always defined — the QUESTIONER_ENABLED master switch is retired', () => {
@@ -52,45 +81,29 @@ describe('parkedQuestionEnqueue', () => {
     delete process.env.QUESTIONER_ENABLED;
   });
 
-  it('routes both park families to the regeneration job for the parked side', async () => {
-    regenerateJobs.length = 0;
-    await enqueueParkedQuestion({
-      mode: 'negotiation_inflight',
-      purpose: 'inflight_consultation',
-      userId: 'user-1',
-      sourceType: 'opportunity',
-      sourceId: 'opp-1',
-      negotiation: { ...negotiation, purpose: 'inflight_consultation', taskId: 'task-1' },
-      context: {
-        negotiationId: 'task-1',
-        counterpartyHint: 'the other participant',
-        indexContext: 'the selected network',
-        consultationPolicyReason: 'unresolved_owner_constraint',
-      },
-    });
-    await enqueueParkedQuestion({
-      mode: 'negotiation',
-      purpose: 'stalled_followup',
-      userId: 'user-1',
-      sourceType: 'opportunity',
-      sourceId: 'opp-1',
-      negotiation: { ...negotiation, purpose: 'stalled_followup', taskId: 'task-1' },
-      context: {
-        negotiationId: 'task-1',
-        counterpartyHint: 'the other participant',
-        indexContext: 'the selected network',
-        outcomeReason: 'stalled',
-        recipientIntent: 'Find a collaborator',
-      },
-    });
-    expect(regenerateJobs).toEqual([
-      { userId: 'user-1', intentId: 'intent-1' },
-      { userId: 'user-1', intentId: 'intent-1' },
+  it('wakes the parked side agent for both park families, task id included', async () => {
+    events.length = 0;
+    await enqueueParkedQuestion(inflightPayload as never);
+    await enqueueParkedQuestion(postStallPayload as never);
+    expect(events).toEqual([
+      { kind: 'negotiation_needs_input', userId: 'user-1', intentId: 'intent-1', opportunityId: 'opp-1', taskId: 'task-1' },
+      { kind: 'negotiation_needs_input', userId: 'user-1', intentId: 'intent-1', opportunityId: 'opp-1', taskId: 'task-1' },
     ]);
   });
 
+  it('drops the event for an unreachable principal — the last fence', async () => {
+    events.length = 0;
+    unreachable.add('user-1');
+    try {
+      await enqueueParkedQuestion(inflightPayload as never);
+    } finally {
+      unreachable.clear();
+    }
+    expect(events).toEqual([]);
+  });
+
   it('drops every retired generator family without enqueuing anything', async () => {
-    regenerateJobs.length = 0;
+    events.length = 0;
     // The five retired families, as their triggers used to shape them. The
     // QuestionerInput union no longer admits them, so they arrive only as
     // stale composition payloads — typed loosely on purpose.
@@ -109,6 +122,19 @@ describe('parkedQuestionEnqueue', () => {
         ...payload,
       } as never);
     }
-    expect(regenerateJobs).toEqual([]);
+    expect(events).toEqual([]);
+  });
+});
+
+describe('parkedNeedsInputEvent', () => {
+  it('requires the full recipient binding and the opportunity', () => {
+    expect(parkedNeedsInputEvent({
+      ...inflightPayload,
+      negotiation: { ...inflightPayload.negotiation, opportunityId: '' },
+    } as never)).toBeNull();
+    expect(parkedNeedsInputEvent({
+      ...inflightPayload,
+      negotiation: { ...inflightPayload.negotiation, recipientIntentId: '' },
+    } as never)).toBeNull();
   });
 });

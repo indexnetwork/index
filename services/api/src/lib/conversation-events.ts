@@ -61,24 +61,6 @@ export async function publishConversationMessageEvent(
   )));
 }
 
-/**
- * Publishes a question-message regeneration flip for one signal scope to the
- * owner's existing conversation SSE channel. `pending: true` means the
- * scope's regeneration job was just enqueued; `pending: false` means it
- * finished and the conversation content is current — the web client shows the
- * regeneration indicator on true and reloads the negotiator session on false,
- * so a delivered message never changes under a viewer without a signal.
- *
- * @param userId - Owner of the signal's negotiator DM.
- * @param event - The scope (intentId) and the new pending state.
- */
-export async function publishQuestionRegenerationEvent(
-  userId: string,
-  event: { intentId: string; pending: boolean },
-): Promise<void> {
-  const publisher = getRedisClient();
-  await publisher.publish(
-    `conversations:user:${userId}`,
-    JSON.stringify({ type: 'question_regeneration', ...event }),
-  );
-}
+// The `question_regeneration` publisher retired with question-message
+// authoring (docs/plans/2026-08-21-holistic-intent-agent.md): the agent's
+// asks are ordinary messages with no pending state to flip.
