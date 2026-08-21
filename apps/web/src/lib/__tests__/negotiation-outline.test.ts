@@ -143,6 +143,20 @@ describe('groupNegotiationOutline', () => {
     expect(groups[0]?.opportunities.every((opportunity) => !opportunity.ungrouped)).toBe(true);
   });
 
+  it('keeps only the newest negotiation for the same viewer signal', () => {
+    const duplicateSignal = {
+      ...conversation,
+      negotiationOpportunities: [
+        { ...conversation.negotiationOpportunities![0], taskId: 'older-task', opportunityId: 'older-opportunity', updatedAt: '2026-01-01T00:00:00.000Z' },
+        { ...conversation.negotiationOpportunities![0], taskId: 'newer-task', opportunityId: 'newer-opportunity', updatedAt: '2026-01-04T00:00:00.000Z' },
+      ],
+    } satisfies ConversationSummary;
+
+    const rows = groupNegotiationOutline([duplicateSignal], 'viewer')[0]?.opportunities;
+    expect(rows).toHaveLength(1);
+    expect(rows?.[0]?.taskId).toBe('newer-task');
+  });
+
   it('lists an ungroupable negotiation as a fallback row instead of dropping it', () => {
     const groups = groupNegotiationOutline([ungroupableConversation], 'viewer');
 
@@ -151,6 +165,7 @@ describe('groupNegotiationOutline', () => {
     expect(groups[0]?.opportunities).toEqual([{
       conversationId: '93c58ea7-71f5-4a63-b5e4-23aee8b9d7bf',
       counterpartId: 'peer-2',
+      intentId: null,
       opportunityId: '6426226c-9d63-42a9-8aea-764bbe0c5b8b',
       taskId: '07979837-5e29-4dd9-83dc-26f593972ca6',
       title: 'Signal',

@@ -5,6 +5,8 @@ import type { ConversationSummary } from '@/services/conversation';
 export interface NegotiationOutlineOpportunity {
   conversationId: string;
   counterpartId: string;
+  /** The viewer's signal behind this row, when the API could resolve it. */
+  intentId: string | null;
   /** Null when the API projected no opportunity for this conversation. */
   opportunityId: string | null;
   /** Null when no task session is addressable; the row then opens the latest one. */
@@ -63,6 +65,7 @@ function buildFallbackOpportunity(
   return {
     conversationId: conversation.id,
     counterpartId,
+    intentId: conversation.via[0]?.intentId ?? null,
     opportunityId: lifecycle?.opportunityId ?? null,
     taskId: lifecycle?.taskId ?? null,
     title: fallbackSignalTitle(conversation),
@@ -113,6 +116,7 @@ export function groupNegotiationOutline(
         group.opportunities.push({
           conversationId: conversation.id,
           counterpartId: counterpart.id,
+          intentId: opportunity.intentId,
           opportunityId: opportunity.opportunityId,
           taskId: opportunity.taskId,
           title: opportunity.title,
@@ -131,12 +135,18 @@ export function groupNegotiationOutline(
   }
 
   return [...groups.values()]
-    .map((group) => ({
-      ...group,
-      opportunities: group.opportunities.sort((left, right) => (
-        timestampOf(right.updatedAt) - timestampOf(left.updatedAt)
-      )),
-    }))
+    .map((group) => {
+      const seenSignals = new Set<string>();
+      const opportunities = group.opportunities
+        .sort((left, right) => timestampOf(right.updatedAt) - timestampOf(left.updatedAt))
+        .filter((opportunity) => {
+          const key = opportunity.intentId ? `intent:${opportunity.intentId}` : `title:${opportunity.title}`;
+          if (seenSignals.has(key)) return false;
+          seenSignals.add(key);
+          return true;
+        });
+      return { ...group, opportunities };
+    })
     .sort((left, right) => (
       timestampOf(right.opportunities[0]?.updatedAt) - timestampOf(left.opportunities[0]?.updatedAt)
     ));
