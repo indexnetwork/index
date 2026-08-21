@@ -5,6 +5,7 @@ import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { useOpportunityActions } from '@/hooks/useOpportunityActions';
+import ConversationHeader from '@/components/chat/ConversationHeader';
 import TurnRail from '@/components/negotiations/TurnRail';
 import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
 import OutcomeChip from '@/components/negotiations/OutcomeChip';
@@ -165,8 +166,8 @@ export default function NegotiationDetailPage() {
 
   return (
     <>
-      {/* Header */}
-      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
+      <ConversationHeader>
+        <div className="flex items-center gap-3">
         <button onClick={() => navigate('/chat')} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
         <div>
           <h2 className="font-ibm-plex-mono font-bold text-lg text-black">Negotiation</h2>
@@ -177,7 +178,8 @@ export default function NegotiationDetailPage() {
             }).join(' vs ')}
           </p>
         </div>
-      </div>
+        </div>
+      </ConversationHeader>
 
       {/* Transcript */}
       <div className="px-6 lg:px-8 pb-32 flex-1">

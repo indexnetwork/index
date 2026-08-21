@@ -12,6 +12,7 @@ import { useOpportunities } from '@/contexts/APIContext';
 import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
 import OpportunityDivider, { OpportunityDividerSkeleton } from './OpportunityDivider';
+import ConversationHeader from './ConversationHeader';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('ChatView');
@@ -259,8 +260,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
   return (
     <>
-      {/* Header */}
-      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center justify-between min-h-[68px]">
+      <ConversationHeader>
+        <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-3">
           <button onClick={handleBack} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
           <div className="flex items-center gap-3">
@@ -301,7 +302,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </ConversationHeader>
 
       {/* Messages */}
       <div className="px-6 lg:px-8 pb-32 flex-1">
