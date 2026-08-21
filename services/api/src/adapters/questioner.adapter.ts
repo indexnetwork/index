@@ -1,4 +1,3 @@
-import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
 /**
  * QuestionerAdapter — the negotiation-settlement core that survived the card
  * question retirement (docs/plans/2026-08-18-conversational-questions.md,
@@ -33,6 +32,7 @@ import { eq, and, sql, or, isNull, desc } from 'drizzle-orm/sql';
 
 import { intentNetworks, intents, networkMembers, networks, questions, opportunities } from '../schemas/database.schema';
 import { tasks } from '../schemas/conversation.schema';
+import { log } from '../lib/log';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { isValidNegotiationDetectionContract } from '../lib/question/negotiation-question.contract';
@@ -40,6 +40,8 @@ import { consultationExpiryReadiness } from '../lib/negotiation/consultation-exp
 import { claimContinuationExecution, completeContinuationExecution, heartbeatContinuationExecution, parkContinuationExecution, releaseContinuationExecution } from './negotiation-continuation.atomic';
 import type { ContinuationClaimResult, ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
 
+
+const settleLogger = log.lib.from('questioner-adapter');
 
 class InflightConsultationPausePendingError extends Error {
   constructor() {
@@ -53,6 +55,11 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 // ─── Local adapter types (structurally aligned with protocol contracts) ───────
+
+/** Structural mirror of the protocol's `NegotiationCounterpartyBinding` (adapters may not import the protocol package). */
+type NegotiationCounterpartyBinding =
+  | { kind: 'intent'; id: string }
+  | { kind: 'premise'; id: string };
 
 /** Union of all question modes the adapter stores. */
 export type AdapterQuestionMode = 'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
@@ -132,7 +139,12 @@ interface AdapterNegotiationQuestionSettlement {
    * row. Card-path settlements keep the answer on the question row instead.
    */
   answer?: { selectedOptions: string[]; freeText?: string; answeredAt: string };
-  continuationStatus: 'requested' | 'completed';
+  /**
+   * 'unresumable' is a terminal record: the answer was heard on a park whose
+   * negotiation cannot continue (terminal opportunity / archived signal). No
+   * continuation was requested and none may ever claim it.
+   */
+  continuationStatus: 'requested' | 'completed' | 'unresumable';
   settledAt: string;
   completedAt?: string;
 }
@@ -282,6 +294,9 @@ function settlementIdForTask(taskId: string): string {
   return `negotiation-question-settlement-v1-${taskId}`;
 }
 
+/** Mirrors `NEGOTIATION_START_STATUSES` semantics (conversation.database.adapter): the statuses run-existing accepts an attempt from. */
+const RESUMABLE_OPPORTUNITY_STATUSES = new Set<string>(['latent', 'draft', 'pending', 'negotiating', 'stalled']);
+
 function parseAskUserBinding(value: unknown): {
   version: 2;
   settlementId: string;
@@ -355,7 +370,7 @@ function parseNegotiationQuestionSettlement(value: unknown): AdapterNegotiationQ
     || !isNonEmptyString(settlement.counterpartyUserId)
     || parseSettlementCounterpartyBinding(settlement) === null
     || (settlement.kind !== 'answer' && settlement.kind !== 'dismiss' && settlement.kind !== 'timeout')
-    || (settlement.continuationStatus !== 'requested' && settlement.continuationStatus !== 'completed')
+    || (settlement.continuationStatus !== 'requested' && settlement.continuationStatus !== 'completed' && settlement.continuationStatus !== 'unresumable')
     || !isNonEmptyString(settlement.settledAt)
     || Number.isNaN(Date.parse(settlement.settledAt))
     || (settlement.questionId !== undefined && !isNonEmptyString(settlement.questionId))
@@ -863,8 +878,11 @@ export class QuestionerAdapter {
    * Returns 'settled' when this call closed the task, 'already_settled' when
    * an earlier delivery stored an answer settlement for the same consult (the
    * settlement-keyed continuation enqueue is idempotent, so re-enqueueing is
-   * correct), and 'lost' when the admission gate refuses — the task is no
-   * longer `input_required`, or a dismiss/timeout settlement won the race.
+   * correct), 'recorded_unresumable' when the answer was durably recorded but
+   * the negotiation cannot continue (terminal opportunity / archived signal —
+   * the park retires, no continuation may claim it), and 'lost' when the
+   * coherence gate refuses — the task is no longer `input_required`, or a
+   * dismiss/timeout settlement won the race.
    */
   async settleInflightNegotiationAnswerFromDm(input: {
     taskId: string;
@@ -874,7 +892,7 @@ export class QuestionerAdapter {
     recipientIntentId: string;
     networkId: string;
     answer: { selectedOptions: string[]; freeText?: string; answeredAt: string };
-  }): Promise<'settled' | 'already_settled' | 'lost'> {
+  }): Promise<'settled' | 'already_settled' | 'recorded_unresumable' | 'lost'> {
     if (input.settlementId !== settlementIdForTask(input.taskId)) return 'lost';
     const candidate: AdapterNegotiationQuestionCandidate = {
       purpose: 'inflight_consultation',
@@ -900,7 +918,7 @@ export class QuestionerAdapter {
           && existingSettlement.settlementId === input.settlementId
           && existingSettlement.recipientUserId === input.recipientUserId
           && existingSettlement.opportunityId === input.opportunityId
-          ? 'already_settled'
+          ? (existingSettlement.continuationStatus === 'unresumable' ? 'recorded_unresumable' : 'already_settled')
           : 'lost';
       }
       const binding = parseAskUserBinding(
@@ -918,15 +936,55 @@ export class QuestionerAdapter {
         || binding.opportunityId !== input.opportunityId
         || binding.networkId !== input.networkId
       ) return 'lost';
-      // Same live revalidation as the card path: the stamped binding must
-      // still describe the current intent/opportunity, or the consult is
-      // stale and the answer must not resume it.
-      const current = await this.resolveNegotiationAdmission(candidate, tx as unknown as DrizzleDB);
-      if (
-        current?.intentFingerprint !== binding.intentFingerprint
-        || current.opportunityStatus !== binding.opportunityStatus
-        || current.opportunityUpdatedAt !== binding.opportunityUpdatedAt
-      ) return 'lost';
+      // Answers are authoritative over staleness; drift is logged, not fatal.
+      // The coherence checks above decide whether this answer belongs to this
+      // park; the world having moved since the park (signal edited,
+      // opportunity touched) never blocks it — the resumed turn re-reads
+      // current data. Only current reality gates: an opportunity run-existing
+      // would refuse (terminal status) or an archived/retired recipient signal
+      // makes the park genuinely unresumable.
+      const [opportunityRow] = await tx.select({
+        status: opportunities.status,
+        updatedAt: opportunities.updatedAt,
+      })
+        .from(opportunities)
+        .where(eq(opportunities.id, input.opportunityId))
+        .limit(1);
+      const [intentRow] = await tx.select({
+        archivedAt: intents.archivedAt,
+        status: intents.status,
+        payload: intents.payload,
+        summary: intents.summary,
+      })
+        .from(intents)
+        .where(and(
+          eq(intents.id, input.recipientIntentId),
+          eq(intents.userId, input.recipientUserId),
+        ))
+        .limit(1);
+      const resumable = opportunityRow !== undefined
+        && RESUMABLE_OPPORTUNITY_STATUSES.has(opportunityRow.status)
+        && intentRow !== undefined
+        && intentRow.archivedAt === null
+        && (intentRow.status === null || intentRow.status === 'ACTIVE');
+      if (resumable) {
+        const currentFingerprint = computeIntentFingerprint(intentRow.payload, intentRow.summary);
+        const currentUpdatedAt = opportunityRow.updatedAt.toISOString();
+        if (
+          currentFingerprint !== binding.intentFingerprint
+          || opportunityRow.status !== binding.opportunityStatus
+          || currentUpdatedAt !== binding.opportunityUpdatedAt
+        ) {
+          settleLogger.info('negotiation_answer_settled_despite_drift', {
+            taskId: input.taskId,
+            opportunityId: input.opportunityId,
+            recipientUserId: input.recipientUserId,
+            intentFingerprintMoved: currentFingerprint !== binding.intentFingerprint,
+            opportunityStatus: { bound: binding.opportunityStatus, current: opportunityRow.status },
+            opportunityUpdatedAt: { bound: binding.opportunityUpdatedAt, current: currentUpdatedAt },
+          });
+        }
+      }
 
       const durableSettlement: AdapterNegotiationQuestionSettlement = {
         version: 1,
@@ -948,13 +1006,16 @@ export class QuestionerAdapter {
           ...(input.answer.freeText !== undefined ? { freeText: input.answer.freeText } : {}),
           answeredAt: input.answer.answeredAt,
         },
-        continuationStatus: 'requested',
+        continuationStatus: resumable ? 'requested' : 'unresumable',
         settledAt: input.answer.answeredAt,
       };
       const [claimed] = await tx.update(tasks)
         .set({
           state: 'canceled',
-          statusMessage: { reason: 'ask_user_answered', settlementId: durableSettlement.settlementId },
+          statusMessage: {
+            reason: resumable ? 'ask_user_answered' : 'ask_user_answered_unresumable',
+            settlementId: durableSettlement.settlementId,
+          },
           metadata: sql`jsonb_set(COALESCE(${tasks.metadata}, '{}'::jsonb), '{questionSettlement}', ${JSON.stringify(durableSettlement)}::jsonb, true)`,
           statusTimestamp: new Date(),
           updatedAt: new Date(),
@@ -968,7 +1029,7 @@ export class QuestionerAdapter {
             .where(and(eq(questions.id, row.id), eq(questions.status, 'pending')));
         }
       }
-      return 'settled';
+      return resumable ? 'settled' : 'recorded_unresumable';
     });
   }
 

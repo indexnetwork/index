@@ -213,6 +213,125 @@ describe('settleInflightNegotiationAnswerFromDm', () => {
     });
   });
 
+  test('drift never loses the answer: signal edited and opportunity moved since the park, still settled', async () => {
+    // The 2026-08-20 zombie park, inverted: the signal was edited (twice)
+    // after the park, so intentFingerprint / opportunityStatus /
+    // opportunityUpdatedAt all drifted off the stamped binding — and the
+    // recipient's own answer came back 'lost'. The design law: answers are
+    // authoritative over staleness; drift is logged, not fatal.
+    const fixture = await seedParkedConsult();
+    await db.update(intents)
+      .set({ payload: 'Find a design partner for a hardware pilot — now EU-based, Q4 start' })
+      .where(eq(intents.id, fixture.ownerIntentId));
+    await db.update(opportunities)
+      .set({ status: 'stalled', updatedAt: new Date() })
+      .where(eq(opportunities.id, fixture.opportunityId));
+
+    const result = await questionerAdapter.settleInflightNegotiationAnswerFromDm(
+      settleInput(fixture, 'Q4 works for me.'),
+    );
+    expect(result).toBe('settled');
+
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, fixture.taskId));
+    expect(task.state).toBe('canceled');
+    expect(task.statusMessage).toMatchObject({ reason: 'ask_user_answered', settlementId: fixture.settlementId });
+    const settlement = (task.metadata as Record<string, unknown>).questionSettlement as Record<string, unknown>;
+    const binding = ((task.metadata as Record<string, unknown>).turnContext as Record<string, unknown>).askUserBinding as Record<string, unknown>;
+    // The settlement keeps recording the BINDING's provenance values — they
+    // describe the park that was answered, not the world after the drift.
+    expect(settlement).toMatchObject({
+      kind: 'answer',
+      continuationStatus: 'requested',
+      intentFingerprint: binding.intentFingerprint,
+      opportunityStatus: binding.opportunityStatus,
+      opportunityUpdatedAt: binding.opportunityUpdatedAt,
+      answer: { selectedOptions: [], freeText: 'Q4 works for me.' },
+    });
+  });
+
+  test('a terminal opportunity records the answer as heard and retires the park — no continuation', async () => {
+    const fixture = await seedParkedConsult();
+    await db.update(opportunities)
+      .set({ status: 'rejected', updatedAt: new Date() })
+      .where(eq(opportunities.id, fixture.opportunityId));
+
+    const result = await questionerAdapter.settleInflightNegotiationAnswerFromDm(
+      settleInput(fixture, 'Happy to proceed anyway.'),
+    );
+    expect(result).toBe('recorded_unresumable');
+
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, fixture.taskId));
+    expect(task.state).toBe('canceled');
+    expect(task.statusMessage).toMatchObject({ reason: 'ask_user_answered_unresumable', settlementId: fixture.settlementId });
+    const settlement = (task.metadata as Record<string, unknown>).questionSettlement as Record<string, unknown>;
+    expect(settlement).toMatchObject({
+      kind: 'answer',
+      continuationStatus: 'unresumable',
+      answer: { selectedOptions: [], freeText: 'Happy to proceed anyway.' },
+    });
+
+    // No continuation may ever claim the unresumable record.
+    const claim = await questionerAdapter.claimNegotiationContinuationExecution({
+      taskId: fixture.taskId,
+      settlementId: fixture.settlementId,
+      opportunityId: fixture.opportunityId,
+      userId: fixture.ownerId,
+      recipientIntentId: fixture.ownerIntentId,
+      networkId: fixture.networkId,
+    });
+    expect(claim.status).toBe('invalid');
+
+    // Redelivery is idempotent and stays honest about the outcome.
+    const second = await questionerAdapter.settleInflightNegotiationAnswerFromDm(
+      settleInput(fixture, 'Happy to proceed anyway.'),
+    );
+    expect(second).toBe('recorded_unresumable');
+  });
+
+  test('an archived recipient signal records the answer as heard and retires the park', async () => {
+    const fixture = await seedParkedConsult();
+    await db.update(intents)
+      .set({ archivedAt: new Date() })
+      .where(eq(intents.id, fixture.ownerIntentId));
+
+    const result = await questionerAdapter.settleInflightNegotiationAnswerFromDm(
+      settleInput(fixture, 'Still interested.'),
+    );
+    expect(result).toBe('recorded_unresumable');
+
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, fixture.taskId));
+    expect(task.state).toBe('canceled');
+    const settlement = (task.metadata as Record<string, unknown>).questionSettlement as Record<string, unknown>;
+    expect(settlement).toMatchObject({ kind: 'answer', continuationStatus: 'unresumable' });
+  });
+
+  test('coherence stays hard: a settlement id that is not the task\'s own refuses the answer', async () => {
+    const fixture = await seedParkedConsult();
+    const result = await questionerAdapter.settleInflightNegotiationAnswerFromDm({
+      ...settleInput(fixture, 'Mismatched key.'),
+      settlementId: 'negotiation-question-settlement-v1-some-other-task',
+    });
+    expect(result).toBe('lost');
+    const [task] = await db.select({ state: tasks.state }).from(tasks).where(eq(tasks.id, fixture.taskId));
+    expect(task.state).toBe('input_required');
+  });
+
+  test('coherence stays hard: a recipient the binding does not name refuses the answer', async () => {
+    const fixture = await seedParkedConsult();
+    const [stranger] = await db.insert(users).values({
+      email: `dm-answer-stranger-${randomUUID()}@test.local`, name: 'DM answer stranger',
+    }).returning({ id: users.id });
+    cleanup.users.push(stranger.id);
+
+    const result = await questionerAdapter.settleInflightNegotiationAnswerFromDm({
+      ...settleInput(fixture, 'Not my question.'),
+      recipientUserId: stranger.id,
+    });
+    expect(result).toBe('lost');
+    const [task] = await db.select({ state: tasks.state }).from(tasks).where(eq(tasks.id, fixture.taskId));
+    expect(task.state).toBe('input_required');
+  });
+
   test('a consult already settled by timeout refuses the answer', async () => {
     const fixture = await seedParkedConsult();
     // Simulate the expiry worker winning the race: kind 'timeout', task closed.
