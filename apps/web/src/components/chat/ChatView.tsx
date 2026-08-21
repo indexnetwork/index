@@ -11,7 +11,7 @@ import { useConversation } from '@/contexts/ConversationContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
-import OpportunityDivider from './OpportunityDivider';
+import OpportunityDivider, { OpportunityDividerSkeleton } from './OpportunityDivider';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('ChatView');
@@ -56,6 +56,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [acceptedOpportunities, setAcceptedOpportunities] = useState<ChatContextOpportunity[]>([]);
+  const [acceptedOpportunitiesLoading, setAcceptedOpportunitiesLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -70,6 +71,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       setMessagesLoading(true);
       setContextLoading(true);
       setAcceptedOpportunities([]);
+      setAcceptedOpportunitiesLoading(true);
       hasAutoSentRef.current = false;
       hasFiredFirstMessageRef.current = false;
     }
@@ -105,6 +107,9 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
         logger.error('Failed to load chat context', { error: err });
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAcceptedOpportunitiesLoading(false);
       });
     return () => {
       controller.abort();
@@ -327,7 +332,9 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               </div>
             ) : null}
 
-            {timeline.map((item, index) => {
+            {messages.length === 0 && acceptedOpportunitiesLoading && <OpportunityDividerSkeleton />}
+
+            {!acceptedOpportunitiesLoading && timeline.map((item, index) => {
                 const prev = timeline[index - 1];
                 const showTimestamp =
                   item.type === 'message' &&

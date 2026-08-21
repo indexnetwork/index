@@ -75,6 +75,14 @@ beforeEach(() => {
 });
 
 describe('ChatView match provenance', () => {
+  test('shows an opportunity-summary skeleton while accepted context is loading', () => {
+    mocks.getChatContext.mockImplementation(() => new Promise(() => {}));
+
+    renderWithRouter(<ChatView {...props} initialGroupId="conv-1" />);
+
+    expect(screen.getByTestId('opportunity-divider-skeleton')).toBeInTheDocument();
+  });
+
   test('renders the latest via chip linking to the viewer intent and the seeded opener', async () => {
     const via = [
       { intentId: 'intent-latest', opportunityId: 'opp-latest', title: 'Latest signal' },
