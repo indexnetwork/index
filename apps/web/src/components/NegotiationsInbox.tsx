@@ -158,12 +158,11 @@ export default function NegotiationsInbox() {
   const totalCount = groups.yourMove.length + groups.inProgress.length + groups.resolved.length;
 
   // "Answer your agent" rows go to /questions — the transcript is read-only
-  // and can't take an answer. These rows used to deep-link the negotiator DM;
-  // that surface is gone, and /questions was already this path's fallback
-  // (IND-558).
+  // and can't take an answer. Other rows open their dedicated negotiation
+  // transcript, never the human-to-human Chat surface.
   const openNegotiation = useCallback((item: NegotiationInboxItem) => {
     if (item.status !== 'needs_input') {
-      navigate(`/chat/${item.conversationId}`);
+      navigate(`/negotiations/${item.conversationId}`);
       return;
     }
     navigate('/questions');

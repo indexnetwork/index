@@ -521,7 +521,7 @@ export default function OpportunityCard({
           </p>
           <button
             type="button"
-            onClick={() => navigate(`/chat/${negotiationPresence.conversationId}`)}
+            onClick={() => navigate(`/negotiations/${negotiationPresence.conversationId}`)}
             className="mt-1.5 text-xs font-medium text-[#041729] hover:underline"
           >
             Watch the negotiation

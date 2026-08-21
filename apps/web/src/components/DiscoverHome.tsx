@@ -43,7 +43,7 @@ export default function DiscoverHome() {
   const mountedRef = useRef(true);
 
   // Ambient negotiation presence (Option C): live + your-move counts from the
-  // shared inbox derivation; both link to Chat's negotiations tab.
+  // shared inbox derivation; both link to the negotiations inbox.
   const negotiationCounts = useMemo(() => {
     const groups = deriveNegotiationInbox(negotiations, user?.id);
     return { live: groups.inProgress.length, yourMove: groups.yourMove.length };
@@ -111,7 +111,7 @@ export default function DiscoverHome() {
           {negotiationCounts.live > 0 && (
             <>
               {" · "}
-              <Link to="/chat?tab=negotiations" className="font-semibold text-amber-600 hover:underline">
+              <Link to="/negotiations" className="font-semibold text-amber-600 hover:underline">
                 {negotiationCounts.live} live {negotiationCounts.live === 1 ? "negotiation" : "negotiations"}
               </Link>
             </>
@@ -119,7 +119,7 @@ export default function DiscoverHome() {
           {negotiationCounts.yourMove > 0 && (
             <>
               {" · "}
-              <Link to="/chat?tab=negotiations" className="font-semibold text-[#041729] hover:underline">
+              <Link to="/negotiations" className="font-semibold text-[#041729] hover:underline">
                 {negotiationCounts.yourMove} your move
               </Link>
             </>

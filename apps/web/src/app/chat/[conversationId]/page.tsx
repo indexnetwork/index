@@ -298,7 +298,7 @@ export default function NegotiationDetailPage() {
                         maxTurns={lifecycle?.maxTurns ?? null}
                         contactMade={contactMade}
                         terminalAuthor={terminalAuthor}
-                        onLetGo={resolvedVariant === 'stalled' ? () => navigate('/chat?tab=negotiations') : undefined}
+                        onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                       />
                     )}
                   </section>
@@ -336,7 +336,7 @@ export default function NegotiationDetailPage() {
                     maxTurns={lifecycle?.maxTurns ?? null}
                     contactMade={contactMade}
                     terminalAuthor={terminalAuthor}
-                    onLetGo={resolvedVariant === 'stalled' ? () => navigate('/chat?tab=negotiations') : undefined}
+                    onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
                   />
                 )}
               </>

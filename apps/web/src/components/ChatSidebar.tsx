@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router';
+import { Navigate, useNavigate, useLocation } from 'react-router';
 import { MoreHorizontal, Trash2, ChevronRight } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import ConversationPreviewLine from '@/components/ConversationPreviewLine';
@@ -106,7 +106,7 @@ export default function ChatSidebar() {
   // A fallback row has no addressable task; the detail page then falls back to
   // the conversation's latest session, which is the pre-#1444 behavior.
   const openNegotiation = (conversationId: string, taskId: string | null) => {
-    navigate(taskId ? `/chat/${conversationId}?taskId=${encodeURIComponent(taskId)}` : `/chat/${conversationId}`);
+    navigate(taskId ? `/negotiations/${conversationId}?taskId=${encodeURIComponent(taskId)}` : `/negotiations/${conversationId}`);
   };
 
   const renderSkeleton = () => (
@@ -125,6 +125,10 @@ export default function ChatSidebar() {
   );
 
   const selectedTaskId = new URLSearchParams(search).get('taskId');
+
+  // The former in-chat negotiations tab has a dedicated page now. Preserve
+  // bookmarks from the short-lived tab URL without mixing the two surfaces.
+  if (showingNegotiations) return <Navigate to="/negotiations" replace />;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -178,7 +182,7 @@ export default function ChatSidebar() {
                       <div id={regionId} className="ml-5 border-l border-gray-200 pl-2" role="region" aria-label={`${counterparty.name} opportunities`}>
                         {counterparty.opportunities.map((opportunity) => {
                           const presentation = opportunity.presentation;
-                          const selected = pathname === `/chat/${opportunity.conversationId}`
+                          const selected = pathname === `/negotiations/${opportunity.conversationId}`
                             && selectedTaskId === (opportunity.taskId ?? null);
                           const opportunityMenuId = `negotiation:${opportunity.conversationId}:${opportunity.taskId ?? 'latest'}`;
                           return (

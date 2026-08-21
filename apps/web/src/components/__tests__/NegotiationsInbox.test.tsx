@@ -123,6 +123,6 @@ describe('NegotiationsInbox answer-row deep links (IND-558)', () => {
     renderInbox();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Aisha Khan' }));
-    await waitFor(() => expect(currentPath.value).toBe('/chat/live'));
+    await waitFor(() => expect(currentPath.value).toBe('/negotiations/live'));
   });
 });

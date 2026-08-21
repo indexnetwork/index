@@ -1025,7 +1025,7 @@ export default function IntentDetailPage() {
                         <button
                           key={item.conversationId}
                           type="button"
-                          onClick={() => navigate(`/chat/${item.conversationId}`)}
+                          onClick={() => navigate(`/negotiations/${item.conversationId}`)}
                           aria-label={`Watch the negotiation with ${item.counterpart.name}`}
                           className="w-full rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5 text-left transition-colors hover:bg-amber-50"
                         >

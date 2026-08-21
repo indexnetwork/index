@@ -20,7 +20,7 @@ const logger = log.ui.from('TopBar');
  */
 export default function TopBar() {
   const navigate = useNavigate();
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const { user, signOut } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const { conversations, negotiations } = useConversation();
@@ -37,8 +37,8 @@ export default function TopBar() {
   // Active-route detection ported from the sidebar so deep routes highlight.
   // Signals covers Discover (/) plus the signal detail and creation routes.
   const isSignalsView = pathname === '/' || pathname?.startsWith('/i/');
-  const isNegotiationsView = pathname === '/chat' && new URLSearchParams(search).get('tab') === 'negotiations';
-  const isMessagesView = !isNegotiationsView && (pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/')));
+  const isNegotiationsView = pathname === '/negotiations' || pathname?.startsWith('/negotiations/');
+  const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isNetworksView = pathname?.startsWith('/networks');
   const isSettingsView = pathname?.startsWith('/settings');
 
@@ -118,7 +118,7 @@ export default function TopBar() {
           </span>
         )}
       </button>
-      <button onClick={() => navigate('/chat?tab=negotiations')} className={navItemClass(isNegotiationsView)}>
+      <button onClick={() => navigate('/negotiations')} className={navItemClass(isNegotiationsView)}>
         Negotiations
         {yourMoveCount > 0 && (
           <span
