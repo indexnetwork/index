@@ -348,8 +348,7 @@ export interface IndexNegotiatorConfig {
    * as a failed turn, so one slow upstream call cannot consume the whole
    * negotiate-phase budget.
    *
-   * Defaults to `NEGOTIATOR_TURN_TIMEOUT_MS` env var when set, otherwise
-   * `DEFAULT_TURN_TIMEOUT_MS`.
+   * Defaults to `DEFAULT_TURN_TIMEOUT_MS`.
    */
   turnTimeoutMs?: number;
 }
@@ -388,11 +387,6 @@ function isValidTimeoutMs(n: number): boolean {
 
 export function resolveTurnTimeoutMs(override?: number): number {
   if (typeof override === "number" && isValidTimeoutMs(override)) return override;
-  const envValue = process.env.NEGOTIATOR_TURN_TIMEOUT_MS;
-  if (envValue) {
-    const parsed = Number(envValue);
-    if (isValidTimeoutMs(parsed)) return parsed;
-  }
   return DEFAULT_TURN_TIMEOUT_MS;
 }
 

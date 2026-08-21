@@ -36,7 +36,7 @@ export function configuredDeadlockShiftEnabled(): boolean {
 }
 
 /**
- * Default deadlock threshold: 4 consecutive non-convergent turns. Sized
+ * Deadlock threshold: 4 consecutive non-convergent turns. Sized
  * against the ambient turn cap (6): an outreach plus 4 unbroken counters
  * leaves exactly the closing turns to draft in the bargaining stance.
  */
@@ -47,21 +47,6 @@ export const DEFAULT_DEADLOCK_THRESHOLD = 4;
  * meaningless — a single counter is ordinary dialogue, not a deadlock.
  */
 export const MIN_DEADLOCK_THRESHOLD = 2;
-
-/**
- * Consecutive non-convergent turns that constitute a deadlock, from
- * `NEGOTIATION_DEADLOCK_THRESHOLD`. Must be an integer >= 2; invalid,
- * non-integer, or out-of-range values fall back to the default (fail-open
- * toward the documented behavior, mirroring `askUserAnswerWindowMs`).
- */
-export function configuredDeadlockThreshold(): number {
-  const raw = process.env.NEGOTIATION_DEADLOCK_THRESHOLD;
-  if (raw) {
-    const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed >= MIN_DEADLOCK_THRESHOLD) return parsed;
-  }
-  return DEFAULT_DEADLOCK_THRESHOLD;
-}
 
 // ─── Detection ───────────────────────────────────────────────────────────────
 

@@ -16,7 +16,7 @@ import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence } from './opportunity.evidence.js';
 import { DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT } from './discovery.env.js';
-import { buildEvaluatorEvidenceKey, buildNetworkContexts, evaluationLog, getRejectionCooldownMs, networkMembershipPairKey, rankingLog, REJECTION_COOLDOWN_SIMILARITY_PENALTY, safeOpportunityGraphError, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
+import { buildEvaluatorEvidenceKey, buildNetworkContexts, evaluationLog, networkMembershipPairKey, rankingLog, REJECTION_COOLDOWN_MS, REJECTION_COOLDOWN_SIMILARITY_PENALTY, safeOpportunityGraphError, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Pairwise verdict shape the evaluator returns, before actors are resolved. */
 type PairwiseOpportunity = {
@@ -551,17 +551,16 @@ async function applyRejectionCooldown(
     && typeof deps.database.getRecentlyRejectedOpportunityCounterparties === 'function'
   ) {
     try {
-      const cooldownMs = getRejectionCooldownMs();
       const ids = await (deps.database.getRecentlyRejectedOpportunityCounterparties as NonNullable<typeof deps.database.getRecentlyRejectedOpportunityCounterparties>)(
         discoveryUserId,
         eligibleCandidates.map((c) => c.candidateUserId),
-        cooldownMs,
+        REJECTION_COOLDOWN_MS,
       );
       for (const id of ids) rejectionCooldownIds.add(id);
       if (rejectionCooldownIds.size > 0) {
         evaluationLog.info('IND-567 rejection cool-down: applying similarity penalty', {
           affectedCount: rejectionCooldownIds.size,
-          cooldownDays: Math.round(cooldownMs / (24 * 60 * 60 * 1000)),
+          cooldownDays: Math.round(REJECTION_COOLDOWN_MS / (24 * 60 * 60 * 1000)),
           penalty: REJECTION_COOLDOWN_SIMILARITY_PENALTY,
         });
       }

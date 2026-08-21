@@ -7,39 +7,24 @@ export interface ClassConfig {
   windowSec: number;
 }
 
-export const intEnv = (name: string, fallback: number): number => {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-};
-
-const CLASS_ENV: Record<LimiterClass, { envVar: string; fallback: number }> = {
-  auth_write:       { envVar: 'LIMITER_AUTH_WRITE_PER_MIN',       fallback: 100 },
-  read:             { envVar: 'LIMITER_READ_PER_MIN',             fallback: 1200 },
-  write:            { envVar: 'LIMITER_WRITE_PER_MIN',            fallback: 600 },
+/** Per-minute request budget for each rate-limit class. */
+const CLASS_PER_MINUTE: Record<LimiterClass, number> = {
+  auth_write:       100,
+  read:             1200,
+  write:            600,
   // Routes that launch a background LLM synthesis plus a full intent-graph run
   // and write a durable proposal row per call. The generic write budget lets one
   // user start 600 of those a minute, so these get their own much tighter class.
-  intake_synthesis: { envVar: 'LIMITER_INTAKE_SYNTHESIS_PER_MIN', fallback: 20 },
-  mcp_http:         { envVar: 'MCP_HTTP_LIMIT_PER_MIN',           fallback: 240 },
+  intake_synthesis: 20,
+  mcp_http:         240,
 };
 
-/**
- * Resolve the active config for a given rate-limit class.
- * Reads env vars fresh on every call so runtime overrides take effect
- * without a module reload (in contrast to the static {@link CLASS_CONFIG}
- * snapshot, which is captured at module load).
- */
+/** Resolve the active config for a given rate-limit class. */
 export function resolveClassConfig(cls: LimiterClass): ClassConfig {
-  const { envVar, fallback } = CLASS_ENV[cls];
-  return { perMinute: intEnv(envVar, fallback), windowSec: 60 };
+  return { perMinute: CLASS_PER_MINUTE[cls], windowSec: 60 };
 }
 
-/**
- * Static snapshot of every class config, captured at module load.
- * Use {@link resolveClassConfig} when runtime env overrides must take effect.
- */
+/** Every class config, keyed by class. */
 export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
   auth_write:       resolveClassConfig('auth_write'),
   read:             resolveClassConfig('read'),
@@ -47,7 +32,3 @@ export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
   intake_synthesis: resolveClassConfig('intake_synthesis'),
   mcp_http:         resolveClassConfig('mcp_http'),
 };
-
-export function isLimiterDisabled(): boolean {
-  return process.env.LIMITER_DISABLE === '1';
-}

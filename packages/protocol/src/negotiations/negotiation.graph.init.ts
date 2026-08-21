@@ -7,11 +7,11 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, configuredAskUserEnabled, configuredProtocolVersion, NEGOTIATION_MAX_TURNS_AMBIENT, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
-import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
@@ -112,10 +112,9 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
       deps.dispatcher.hasExternalAgent(state.candidateUser.id, scope),
     ]);
 
-    const ambientMax = Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
     let maxTurns = state.maxTurns;
     if (maxTurns == null) {
-      maxTurns = (sourceHasAgent && candidateHasAgent) ? 0 : ambientMax;
+      maxTurns = (sourceHasAgent && candidateHasAgent) ? 0 : NEGOTIATION_MAX_TURNS_AMBIENT;
     }
 
     // --- Initiator seat resolution (v2: rigid per match, stamped at discovery) ---

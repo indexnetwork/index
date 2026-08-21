@@ -283,43 +283,29 @@ export const DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP = 3;
 export const CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP = 2 * QUESTION_BUDGET_PER_PRINCIPAL + 1;
 
 /**
- * Per-negotiation ask cap, overridable via `NEGOTIATION_ASK_ROUNDS_CAP`.
- * Invalid or non-positive values fall back to the protocol-appropriate default
- * — zero is not an off switch here; the cap exists so two agents cannot
- * ping-pong their humans indefinitely. It tunes the bound, it does not gate the
- * behaviour.
- *
- * An explicit override wins under either protocol: it is an operator statement
- * about this deployment, and silently raising it for one stance would make the
- * knob mean two things.
+ * Per-negotiation ask cap. The cap exists so two agents cannot ping-pong their
+ * humans indefinitely; which bound applies depends only on the protocol.
  */
 export function negotiationAskRoundsCap(opts?: { checklist?: boolean }): number {
-  const raw = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
-  if (raw) {
-    const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  }
   return opts?.checklist === true
     ? CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP
     : DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP;
 }
 
-/** Default answer window for a paused `ask_user` negotiation: 24 hours. */
-export const DEFAULT_ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * Turn caps. One definition each: these were previously re-derived at three
+ * separate call sites with their own `|| 6` fallback, which could silently
+ * drift apart.
+ */
+export const NEGOTIATION_MAX_TURNS_CHAT = 4;
+export const NEGOTIATION_MAX_TURNS_AMBIENT = 6;
 
 /**
- * Answer window for a paused `ask_user` negotiation, in ms. Overridable via
- * `NEGOTIATION_ASK_USER_WINDOW_MS` (dev/e2e use shorter windows to exercise
- * the expiry path); invalid or non-positive values fall back to 24 h.
+ * Answer window for a paused `ask_user` negotiation: 24 hours. The single
+ * definition — the API's attempt adapter used to parse the same variable
+ * independently, with its own copy of this default.
  */
-export function askUserAnswerWindowMs(): number {
-  const raw = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
-  if (raw) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return DEFAULT_ASK_USER_WINDOW_MS;
-}
+export const ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Slack added on top of the answer window when deciding whether a paused

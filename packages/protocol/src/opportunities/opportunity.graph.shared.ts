@@ -15,7 +15,7 @@ import type { CandidateProfile, EvaluatorEntity, EvaluatorInput } from "./opport
 import type { OpportunityGraphDatabase, Opportunity } from '../shared/interfaces/database.interface.js';
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { NegotiationGraphLike } from '../negotiations/negotiation.module.js';
-import { ASK_USER_LOCK_SLACK_MS, askUserAnswerWindowMs } from '../negotiations/negotiation.module.js';
+import { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS } from '../negotiations/negotiation.module.js';
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
@@ -180,7 +180,7 @@ const ACTIVE_NEGOTIATION_TASK_STATES = new Set([
 export function isActiveNegotiationTaskFresh(task: { state: string; updatedAt: Date }): boolean {
   if (!ACTIVE_NEGOTIATION_TASK_STATES.has(task.state)) return false;
   const freshnessMs = task.state === 'input_required'
-    ? askUserAnswerWindowMs() + ASK_USER_LOCK_SLACK_MS
+    ? ASK_USER_WINDOW_MS + ASK_USER_LOCK_SLACK_MS
     : 5 * 60 * 1000;
   return Date.now() - new Date(task.updatedAt).getTime() < freshnessMs;
 }
@@ -203,16 +203,9 @@ export function belongsToOwnedIntent(
 /**
  * IND-567: Cool-down window (ms) for cross-query rejection suppression.
  * Candidates with a recently rejected or stalled opportunity within this window
- * receive a similarity penalty during evaluation ranking. Default 7 days.
- * Override with DISCOVERY_REJECTION_COOLDOWN_DAYS (positive float).
+ * receive a similarity penalty during evaluation ranking. 7 days.
  */
-const DEFAULT_REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
-export function getRejectionCooldownMs(): number {
-  const raw = process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
-  if (!raw) return DEFAULT_REJECTION_COOLDOWN_MS;
-  const n = Number.parseFloat(raw);
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 24 * 60 * 60 * 1000) : DEFAULT_REJECTION_COOLDOWN_MS;
-}
+export const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Similarity multiplier applied to candidates that fall within the rejection

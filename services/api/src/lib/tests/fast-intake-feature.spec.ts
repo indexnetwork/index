@@ -1,18 +1,15 @@
 import { afterEach, describe, expect, it, test } from 'bun:test';
 
-import { getSignalIntakeConfig, getSignalIntakeMaxQuestions, getSignalIntakeQuestionMode, isFastSignalIntakeEnabled } from '../fast-intake-feature';
+import { getSignalIntakeConfig, getSignalIntakeMaxQuestions, isFastSignalIntakeEnabled } from '../fast-intake-feature';
 
 const original = process.env.FAST_SIGNAL_INTAKE;
 const prevMax = process.env.SIGNAL_INTAKE_MAX_QUESTIONS;
-const prevMode = process.env.SIGNAL_INTAKE_QUESTION_MODE;
 
 afterEach(() => {
   if (original === undefined) delete process.env.FAST_SIGNAL_INTAKE;
   else process.env.FAST_SIGNAL_INTAKE = original;
   if (prevMax === undefined) delete process.env.SIGNAL_INTAKE_MAX_QUESTIONS;
   else process.env.SIGNAL_INTAKE_MAX_QUESTIONS = prevMax;
-  if (prevMode === undefined) delete process.env.SIGNAL_INTAKE_QUESTION_MODE;
-  else process.env.SIGNAL_INTAKE_QUESTION_MODE = prevMode;
 });
 
 describe('isFastSignalIntakeEnabled', () => {
@@ -57,19 +54,9 @@ describe('SIGNAL_INTAKE_MAX_QUESTIONS', () => {
   });
 });
 
-describe('SIGNAL_INTAKE_QUESTION_MODE', () => {
-  test('defaults to singular and rejects other values', () => {
-    delete process.env.SIGNAL_INTAKE_QUESTION_MODE;
-    expect(getSignalIntakeQuestionMode()).toBe('singular');
-    process.env.SIGNAL_INTAKE_QUESTION_MODE = 'plural';
-    expect(getSignalIntakeQuestionMode()).toBe('plural');
-    process.env.SIGNAL_INTAKE_QUESTION_MODE = 'batch';
-    expect(getSignalIntakeQuestionMode()).toBe('singular');
-  });
-
-  test('getSignalIntakeConfig combines both', () => {
+describe('getSignalIntakeConfig', () => {
+  test('reports the question budget', () => {
     process.env.SIGNAL_INTAKE_MAX_QUESTIONS = '4';
-    process.env.SIGNAL_INTAKE_QUESTION_MODE = 'plural';
-    expect(getSignalIntakeConfig()).toEqual({ maxQuestions: 4, mode: 'plural' });
+    expect(getSignalIntakeConfig()).toEqual({ maxQuestions: 4 });
   });
 });

@@ -98,7 +98,7 @@ import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { publishNotificationStreamEvent } from './lib/notification-stream-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
-// emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
+// emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
 // Protocol loggers are late-bound, so this upgrades loggers created at import time too.
 setLoggerFactory(
   (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
@@ -468,10 +468,9 @@ const server = Bun.serve({
       async () => {
     try {
     // Sentry smoke-test endpoint. Intentionally throws so the top-level request
-    // boundary captures and reports the error. Disabled in production unless
-    // explicitly enabled for a short operational smoke test.
+    // boundary captures and reports the error. Never reachable in production.
     if (url.pathname === '/throw-error') {
-      if (IS_PRODUCTION && process.env.ENABLE_SENTRY_TEST_ENDPOINT !== 'true') {
+      if (IS_PRODUCTION) {
         return new Response('Not Found', { status: 404, headers: corsHeaders });
       }
       throw new Error('Sentry test error from /throw-error');

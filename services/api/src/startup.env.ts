@@ -70,17 +70,8 @@ const envSchema = z.object({
 
   // 3. LLM / AI (OpenRouter)
   OPENROUTER_API_KEY: requiredUnlessTest,
-  OPENROUTER_BASE_URL: optionalUrl,
-  OPENROUTER_REQUEST_TIMEOUT_MS: optionalInt,
-  OPENROUTER_MAX_RETRIES: optionalInt,
-  OPENROUTER_FALLBACK_MODEL: z.string().optional(),
-  OPENROUTER_RUNNABLE_MAX_ATTEMPTS: optionalInt,
   CHAT_MODEL: z.string().optional(),
   CHAT_REASONING_EFFORT: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
-  EMBEDDING_MODEL: z.string().optional(),
-  EMBEDDING_DIMENSIONS: optionalInt,
-  SMARTEST_VERIFIER_MODEL: z.string().optional(),
-  SMARTEST_GENERATOR_MODEL: z.string().optional(),
   // Eval-only per-agent model overrides (JSON). Ignored by the protocol in
   // production, and rejected outright above when NODE_ENV=production.
   EVAL_MODEL_OVERRIDES: z.string().optional(),
@@ -124,28 +115,18 @@ const envSchema = z.object({
   // Parsed with warn-and-fallback in the protocol accessor (discoveryProfileSource());
   // a typo must never disable discovery, so startup validation stays permissive.
   DISCOVERY_PROFILE_SOURCE: z.string().optional(),
-  PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
-  NEGOTIATION_SUMMARY_TIMEOUT_MS: optionalInt,
-  NEGOTIATION_MAX_TURNS_CHAT: optionalInt,
-  NEGOTIATION_MAX_TURNS_AMBIENT: optionalInt,
   NEGOTIATION_INCLUDE_OTHER_INTENTS: z.enum(['true', 'false']).optional(),
   NEGOTIATION_PROTOCOL_VERSION: z.union([z.literal(''), z.enum(['v1', 'v2'])]).optional(),
   NEGOTIATOR_CHAT_ENABLED: optionalBoolean,
-  CHAT_SESSION_GAP_MS: optionalPositiveInt,
   FAST_SIGNAL_INTAKE: optionalBoolean,
   SIGNAL_INTAKE_MAX_QUESTIONS: z.string().optional(),
-  SIGNAL_INTAKE_QUESTION_MODE: z.string().optional(),
-  NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
   NEGOTIATION_CONSULTATION_POLICY_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
-  NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,
   NEGOTIATION_DEADLOCK_SHIFT_ENABLED: optionalBoolean,
-  NEGOTIATION_DEADLOCK_THRESHOLD: optionalInt,
   NEGOTIATION_WATCHDOG_ENABLED: optionalBoolean,
   NEGOTIATOR_MEMORY_WRITE_ENABLED: optionalBoolean,
-  NEGOTIATOR_CHAT_REFLECT_DELAY_MS: optionalInt,
   NEGOTIATOR_MEMORY_INJECT: optionalBoolean,
   NEGOTIATOR_CLIENT_DM_INJECT: optionalBoolean,
   POOL_QUESTIONS_RANKING: z.union([z.literal(''), z.enum(['off', 'on'])]).optional(),
@@ -159,20 +140,8 @@ const envSchema = z.object({
   RUN_LOCAL_API_E2E: optionalOne,
 
   // 9. MCP / tool runtime
-  MCP_MAX_REQUEST_BYTES: optionalInt,
-  MCP_TOOL_TIMEOUT_FAST_MS: optionalInt,
-  MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS: optionalInt,
-  MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS: optionalInt,
-  MCP_TOOL_MAX_OUTPUT_BYTES: optionalInt,
 
   // 10. Rate limiting
-  LIMITER_AUTH_WRITE_PER_MIN: optionalInt,
-  LIMITER_READ_PER_MIN: optionalInt,
-  LIMITER_WRITE_PER_MIN: optionalInt,
-  LIMITER_INTAKE_SYNTHESIS_PER_MIN: optionalInt,
-  MCP_HTTP_LIMIT_PER_MIN: optionalInt,
-  LIMITER_IP_HEADERS: z.string().optional(),
-  LIMITER_DISABLE: optionalOne,
 
   // 11. Telegram Bot
   TELEGRAM_BOT_TOKEN: z.string().optional(),
@@ -184,15 +153,9 @@ const envSchema = z.object({
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_RELEASE: z.string().optional(),
-  SENTRY_TRACES_SAMPLE_RATE: z.string().optional(),
-  ENABLE_SENTRY_TEST_ENDPOINT: optionalBoolean,
   LOG_LEVEL: z.union([z.literal(''), z.enum(['verbose', 'debug', 'info', 'warn', 'error'])]).optional(),
-  LOG_FILTER: z.string().optional(),
-  ENABLE_DEBUG_API: optionalBoolean,
 
   // 12b. LangGraph checkpoint retention
-  CHECKPOINT_RETENTION_DAYS: z.string().optional(), // whole days, or 0/off/none to disable pruning
-  CHECKPOINT_PRUNE_BATCH_SIZE: optionalInt,
 
   // 12c. Frame-drift measurement (disabled by default)
   FRAME_DRIFT_MONITORING_ENABLED: optionalBoolean,

@@ -10,6 +10,7 @@
  */
 
 import type { ActiveIntent, OpportunityActor } from '../shared/interfaces/database.interface.js';
+import { NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from '../negotiations/negotiation.module.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { AMBIENT_PARK_WINDOW_MS, negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from '../negotiations/negotiation.module.js';
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from './negotiation-summary.builder.js';
@@ -207,8 +208,8 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
 
     const isChatPath = !!state.options?.conversationId;
     const maxTurns = isChatPath
-      ? Number(process.env.NEGOTIATION_MAX_TURNS_CHAT) || 4
-      : Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
+      ? NEGOTIATION_MAX_TURNS_CHAT
+      : NEGOTIATION_MAX_TURNS_AMBIENT;
 
     // Fetch per-candidate index context (group by networkId to avoid duplicate lookups)
     const uniqueIndexIds = [...new Set(candidates.map(c => c.networkId).filter((id): id is string => !!id))];

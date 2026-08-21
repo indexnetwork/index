@@ -797,12 +797,8 @@ async function createPerRequestTransport(): Promise<PerRequestMcpConnection> {
 // HTTP HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const DEFAULT_MCP_MAX_REQUEST_BYTES = 1_000_000;
-
-function getMcpMaxRequestBytes(): number {
-  const parsed = Number.parseInt(process.env.MCP_MAX_REQUEST_BYTES ?? '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MCP_MAX_REQUEST_BYTES;
-}
+/** Ceiling on a single /mcp request body. */
+const MCP_MAX_REQUEST_BYTES = 1_000_000;
 
 function requestTooLargeResponse(maxRequestBytes: number, corsHeaders: Record<string, string>): Response {
   return new Response(
@@ -896,7 +892,7 @@ export async function mcpHandler(
   req: Request,
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
-  const maxRequestBytes = getMcpMaxRequestBytes();
+  const maxRequestBytes = MCP_MAX_REQUEST_BYTES;
 
   // 1. Cheap content-length precheck before any body draining
   const contentLengthResponse = rejectMcpContentLengthTooLarge(req, maxRequestBytes, corsHeaders);

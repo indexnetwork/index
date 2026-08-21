@@ -126,9 +126,9 @@ describe('SignalIntakeService.getOrCreatePack', () => {
 describe('SignalIntakeService.followUpQuestions', () => {
   const followUp = { title: 'Q2', prompt: 'What do you bring?', options: [{ label: 'X', description: 'x' }], multiSelect: false };
 
-  it('singular: returns one question and locks the total from the plan', async () => {
+  it('returns one question and locks the total from the plan', async () => {
     const service = new SignalIntakeService(makeDeps({
-      intakeConfig: () => ({ maxQuestions: 4, mode: 'singular' as const }),
+      intakeConfig: () => ({ maxQuestions: 4 }),
       intents: {
         generateIntakeFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }], plannedFollowUpCount: 2 })),
         synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
@@ -143,27 +143,10 @@ describe('SignalIntakeService.followUpQuestions', () => {
     expect(result.total).toBe(3);
   });
 
-  it('plural: returns the whole batch and totals rounds + batch', async () => {
-    const service = new SignalIntakeService(makeDeps({
-      intakeConfig: () => ({ maxQuestions: 5, mode: 'plural' as const }),
-      intents: {
-        generateIntakeFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }, { ...followUp, prompt: 'q4' }], plannedFollowUpCount: 3 })),
-        synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
-      },
-    }));
-
-    const result = await service.followUpQuestions('u1', {
-      rounds: [{ prompt: 'Who?', answer: { selectedOptions: ['A'] } }],
-    });
-
-    expect(result.questions).toHaveLength(3);
-    expect(result.total).toBe(4);
-  });
-
   it('caps the planning budget at maxQuestions - answered rounds', async () => {
     const generateFollowUps = mock(async () => ({ questions: [followUp], plannedFollowUpCount: 9 }));
     const service = new SignalIntakeService(makeDeps({
-      intakeConfig: () => ({ maxQuestions: 3, mode: 'singular' as const }),
+      intakeConfig: () => ({ maxQuestions: 3 }),
       intents: { generateIntakeFollowUps: generateFollowUps, synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })) },
     }));
 
@@ -175,9 +158,9 @@ describe('SignalIntakeService.followUpQuestions', () => {
     expect(result.total).toBe(3); // plan of 9 follow-ups clamps to the configured budget
   });
 
-  it('singular continuation: echoes a clamped client-carried plannedTotal', async () => {
+  it('continuation: echoes a clamped client-carried plannedTotal', async () => {
     const service = new SignalIntakeService(makeDeps({
-      intakeConfig: () => ({ maxQuestions: 4, mode: 'singular' as const }),
+      intakeConfig: () => ({ maxQuestions: 4 }),
       intents: {
         generateIntakeFollowUps: mock(async () => ({ questions: [followUp], plannedFollowUpCount: 1 })),
         synthesizeIntake: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
@@ -198,7 +181,7 @@ describe('SignalIntakeService.followUpQuestions', () => {
 
   it('returns an empty batch with total = answered rounds when the budget is spent', async () => {
     const service = new SignalIntakeService(makeDeps({
-      intakeConfig: () => ({ maxQuestions: 1, mode: 'plural' as const }),
+      intakeConfig: () => ({ maxQuestions: 1 }),
     }));
 
     const result = await service.followUpQuestions('u1', {

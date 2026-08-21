@@ -67,23 +67,6 @@ const ASYNC_CANDIDATE_TOOLS = new Set([
   "update_premise",
 ]);
 
-function parsePositiveIntEnv(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 && parsed <= Number.MAX_SAFE_INTEGER
-    ? parsed
-    : fallback;
-}
-
-function toolNameEnv(toolName: string): string {
-  return `MCP_TOOL_TIMEOUT_${toolName.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_MS`;
-}
-
-function toolNameOutputEnv(toolName: string): string {
-  return `MCP_TOOL_MAX_OUTPUT_${toolName.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_BYTES`;
-}
-
 export function getToolTimeoutPolicy(toolName: string): ToolTimeoutPolicy {
   const classification: ToolTimeoutClass = FAST_TOOLS.has(toolName)
     ? "fast"
@@ -91,24 +74,16 @@ export function getToolTimeoutPolicy(toolName: string): ToolTimeoutPolicy {
       ? "async_candidate"
       : "bounded_slow";
 
-  let classDefault: number;
-  switch (classification) {
-    case "fast":
-      classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_FAST_MS", FAST_TIMEOUT_MS);
-      break;
-    case "async_candidate":
-      classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS", ASYNC_CANDIDATE_TIMEOUT_MS);
-      break;
-    default:
-      classDefault = parsePositiveIntEnv("MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS", BOUNDED_SLOW_TIMEOUT_MS);
-  }
-
-  const defaultMaxOutputBytes = parsePositiveIntEnv("MCP_TOOL_MAX_OUTPUT_BYTES", DEFAULT_MAX_OUTPUT_BYTES);
+  const timeoutMs = classification === "fast"
+    ? FAST_TIMEOUT_MS
+    : classification === "async_candidate"
+      ? ASYNC_CANDIDATE_TIMEOUT_MS
+      : BOUNDED_SLOW_TIMEOUT_MS;
 
   return {
     class: classification,
-    timeoutMs: parsePositiveIntEnv(toolNameEnv(toolName), classDefault),
-    maxOutputBytes: parsePositiveIntEnv(toolNameOutputEnv(toolName), defaultMaxOutputBytes),
+    timeoutMs,
+    maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   };
 }
 

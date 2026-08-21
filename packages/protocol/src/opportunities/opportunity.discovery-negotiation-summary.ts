@@ -6,15 +6,8 @@ import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { traceAgent } from '../shared/observability/trace.js';
 
 const logger = protocolLogger('OpportunityDiscoveryNegotiationSummary');
-const NEGOTIATION_SUMMARY_TIMEOUT_MS_DEFAULT = 5_000;
-
-function parsePositiveIntEnv(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0 || n > Number.MAX_SAFE_INTEGER) return fallback;
-  return n;
-}
+/** Per-negotiation deadline for the summariser before the deterministic digest. */
+const NEGOTIATION_SUMMARY_TIMEOUT_MS = 5_000;
 
 function combineWithDeadline(
   callerSignal: AbortSignal | undefined,
@@ -39,18 +32,13 @@ export interface DiscoveryNegotiationSummaryInput {
 export async function summarizeDiscoveryNegotiations(
   args: DiscoveryNegotiationSummaryInput,
 ): Promise<DiscoveryNegotiationDigest[]> {
-  const perNegTimeoutMs = parsePositiveIntEnv(
-    'NEGOTIATION_SUMMARY_TIMEOUT_MS',
-    NEGOTIATION_SUMMARY_TIMEOUT_MS_DEFAULT,
-  );
-
   return traceAgent(
     `Negotiation summary (${args.negotiations.length})`,
     () =>
       Promise.all(
         args.negotiations.map(async (negotiation) => {
           if (!args.summarizer) return buildFallbackDigest(negotiation);
-          const signal = combineWithDeadline(args.callerSignal, perNegTimeoutMs);
+          const signal = combineWithDeadline(args.callerSignal, NEGOTIATION_SUMMARY_TIMEOUT_MS);
           try {
             const digest = await args.summarizer.summarize(negotiation, { signal });
             return digest ?? buildFallbackDigest(negotiation);

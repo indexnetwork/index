@@ -281,14 +281,8 @@ function chatMessageText(parts: unknown): string {
     ?? '';
 }
 
-const DEFAULT_CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
-
-function getChatSessionGapMs(): number {
-  const configured = Number.parseInt(process.env.CHAT_SESSION_GAP_MS ?? '', 10);
-  return Number.isFinite(configured) && configured > 0
-    ? configured
-    : DEFAULT_CHAT_SESSION_GAP_MS;
-}
+/** Inactivity gap that opens a new durable H2A/H2H conversation session. */
+const CHAT_SESSION_GAP_MS = 24 * 60 * 60 * 1000;
 
 interface MatchProvenanceEntry {
   opportunityId: string;
@@ -1274,7 +1268,7 @@ export class ConversationDatabaseAdapter {
           .limit(1);
 
         const startsNewSession = !currentSession
-          || now.getTime() - currentSession.lastMessageAt.getTime() > getChatSessionGapMs();
+          || now.getTime() - currentSession.lastMessageAt.getTime() > CHAT_SESSION_GAP_MS;
         if (startsNewSession) {
           sessionId = crypto.randomUUID();
           await tx.insert(schema.conversationSessions).values({

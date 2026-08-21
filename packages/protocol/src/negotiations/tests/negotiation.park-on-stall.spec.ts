@@ -3,7 +3,7 @@ import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor, NEGOTIATION_PARK_REASONING, type NegotiationStallGap, type StallGapAuthorInput } from "../negotiation.stall-gap.js";
-import { negotiationAskRoundsCap, DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP } from "../negotiation.protocol.js";
+import { negotiationAskRoundsCap, CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP, DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP } from "../negotiation.protocol.js";
 import { countNegotiationAskRounds, hasPriorAskUser } from "../negotiation.graph.shared.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
@@ -131,7 +131,6 @@ const counterTurn: NegotiationTurn = {
 describe("negotiation graph — post-stall park", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const origCap = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
   const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
 
   beforeAll(() => {
@@ -161,11 +160,9 @@ describe("negotiation graph — post-stall park", () => {
     authorInputs = [];
     authorResult = safeGap;
     process.env.NEGOTIATION_SCREEN_MODE = "off";
-    delete process.env.NEGOTIATION_ASK_ROUNDS_CAP;
   });
 
   afterEach(() => {
-    if (origCap === undefined) delete process.env.NEGOTIATION_ASK_ROUNDS_CAP; else process.env.NEGOTIATION_ASK_ROUNDS_CAP = origCap;
     if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
   });
 
@@ -312,22 +309,10 @@ describe("negotiation graph — post-stall park", () => {
 });
 
 describe("ask-rounds cap config", () => {
-  it("cap defaults to 3 and rejects invalid overrides", () => {
-    const origCap = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
-    try {
-      delete process.env.NEGOTIATION_ASK_ROUNDS_CAP;
-      expect(negotiationAskRoundsCap()).toBe(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP);
-      process.env.NEGOTIATION_ASK_ROUNDS_CAP = "2";
-      expect(negotiationAskRoundsCap()).toBe(2);
-      process.env.NEGOTIATION_ASK_ROUNDS_CAP = "0";
-      expect(negotiationAskRoundsCap()).toBe(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP);
-      process.env.NEGOTIATION_ASK_ROUNDS_CAP = "2.5";
-      expect(negotiationAskRoundsCap()).toBe(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP);
-      process.env.NEGOTIATION_ASK_ROUNDS_CAP = "nope";
-      expect(negotiationAskRoundsCap()).toBe(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP);
-    } finally {
-      if (origCap === undefined) delete process.env.NEGOTIATION_ASK_ROUNDS_CAP; else process.env.NEGOTIATION_ASK_ROUNDS_CAP = origCap;
-    }
+  it("cap is 3, and the checklist protocol raises it to both principals' budgets plus one", () => {
+    expect(negotiationAskRoundsCap()).toBe(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP);
+    expect(negotiationAskRoundsCap({ checklist: false })).toBe(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP);
+    expect(negotiationAskRoundsCap({ checklist: true })).toBe(CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP);
   });
 });
 

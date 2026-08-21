@@ -14,6 +14,7 @@ import type { Id, NegotiationContinuationReceipt, OpportunityActor } from '../sh
 import type { DebugMetaAgent } from '../agents/agent.module.js';
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
 import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";
+import { NEGOTIATION_MAX_TURNS_AMBIENT } from '../negotiations/negotiation.module.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
@@ -307,7 +308,7 @@ export async function negotiateExisting(
           [candidate],
           { networkId: '', prompt: '' },
           {
-            maxTurns: Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6,
+            maxTurns: NEGOTIATION_MAX_TURNS_AMBIENT,
             indexContextOverrides,
             timeoutMs: AMBIENT_PARK_WINDOW_MS,
             ...(execution ? {

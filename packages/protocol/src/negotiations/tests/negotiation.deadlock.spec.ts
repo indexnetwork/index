@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD, MIN_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 
@@ -96,14 +96,11 @@ describe("assessDeadlock — trailing-run semantics", () => {
 // ─── Env config ──────────────────────────────────────────────────────────────
 
 describe("deadlock env helpers", () => {
-  it("flag is strict-literal 'true', default off; threshold validates integer >= 2", () => {
+  it("flag is strict-literal 'true', default off", () => {
     const origFlag = process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED;
-    const origThreshold = process.env.NEGOTIATION_DEADLOCK_THRESHOLD;
     try {
       delete process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED;
-      delete process.env.NEGOTIATION_DEADLOCK_THRESHOLD;
       expect(configuredDeadlockShiftEnabled()).toBe(false);
-      expect(configuredDeadlockThreshold()).toBe(DEFAULT_DEADLOCK_THRESHOLD);
 
       process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
       expect(configuredDeadlockShiftEnabled()).toBe(true);
@@ -111,18 +108,8 @@ describe("deadlock env helpers", () => {
         process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = notTrue;
         expect(configuredDeadlockShiftEnabled()).toBe(false);
       }
-
-      process.env.NEGOTIATION_DEADLOCK_THRESHOLD = String(MIN_DEADLOCK_THRESHOLD);
-      expect(configuredDeadlockThreshold()).toBe(MIN_DEADLOCK_THRESHOLD);
-      process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "7";
-      expect(configuredDeadlockThreshold()).toBe(7);
-      for (const invalid of ["1", "0", "-3", "3.5", "abc", ""]) {
-        process.env.NEGOTIATION_DEADLOCK_THRESHOLD = invalid;
-        expect(configuredDeadlockThreshold()).toBe(DEFAULT_DEADLOCK_THRESHOLD);
-      }
     } finally {
       if (origFlag === undefined) delete process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED; else process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = origFlag;
-      if (origThreshold === undefined) delete process.env.NEGOTIATION_DEADLOCK_THRESHOLD; else process.env.NEGOTIATION_DEADLOCK_THRESHOLD = origThreshold;
     }
   });
 });

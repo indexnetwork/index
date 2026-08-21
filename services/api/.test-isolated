@@ -92,7 +92,6 @@ src/lib/tests/protocol-url.isolated.ts
 src/lib/bullmq/bullmq.redis-contract.isolated.ts
 src/lib/parallel/parallel.isolated.ts
 src/lib/opportunity/tests/outcome-feedback.recorder.isolated.ts
-src/lib/limiter/tests/config.isolated.ts
 src/lib/email/tests/email-handlers.integration.isolated.ts
 src/lib/telegram/tests/bot-api.isolated.ts
 src/lib/limiter/tests/bypass.isolated.ts

@@ -7,11 +7,11 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, negotiationConsultationPolicyMode, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, negotiationHasMadeContact, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { configuredScreenMode } from "./negotiation.screen.contracts.js";
-import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import { assessDeadlock, configuredDeadlockShiftEnabled, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import type { NegotiationAntiEcho, NegotiationConcludeFloor } from "./negotiation.agent.js";
@@ -221,7 +221,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     let deadlock: DeadlockAssessment | null = null;
     if (version === 'v2' && configuredDeadlockShiftEnabled()) {
       try {
-        deadlock = assessDeadlock(history, configuredDeadlockThreshold());
+        deadlock = assessDeadlock(history);
       } catch (err) {
         turnLog.warn('Deadlock detection failed; proceeding without mode shift', {
           taskId: state.taskId,
@@ -1424,7 +1424,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
 
       // Arm the timer BEFORE flipping state: it is the durable recovery
       // trigger even when generation enqueues no job or persists no row.
-      const windowMs = askUserAnswerWindowMs();
+      const windowMs = ASK_USER_WINDOW_MS;
       await deps.timeoutQueue!.enqueueAskUserExpiry!(state.taskId, {
         settlementId,
         opportunityId: state.opportunityId,

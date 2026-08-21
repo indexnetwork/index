@@ -10,9 +10,6 @@ export function isFastSignalIntakeEnabled(): boolean {
   return process.env.FAST_SIGNAL_INTAKE === 'true';
 }
 
-/** Per-turn delivery of intake follow-up questions. */
-export type SignalIntakeQuestionMode = 'singular' | 'plural';
-
 const DEFAULT_MAX_QUESTIONS = 2;
 const MAX_QUESTIONS_FLOOR = 1;
 const MAX_QUESTIONS_CEILING = 10;
@@ -32,17 +29,7 @@ export function getSignalIntakeMaxQuestions(): number {
   return Math.min(Math.max(parsed, MAX_QUESTIONS_FLOOR), MAX_QUESTIONS_CEILING);
 }
 
-/**
- * Per-turn delivery mode: `singular` serves one follow-up per /question turn;
- * `plural` serves the whole remaining batch in one turn. Default `singular`.
- *
- * @returns The configured mode, `singular` for any unrecognized value
- */
-export function getSignalIntakeQuestionMode(): SignalIntakeQuestionMode {
-  return process.env.SIGNAL_INTAKE_QUESTION_MODE === 'plural' ? 'plural' : 'singular';
-}
-
-/** @returns Both intake knobs, read once per call site. */
-export function getSignalIntakeConfig(): { maxQuestions: number; mode: SignalIntakeQuestionMode } {
-  return { maxQuestions: getSignalIntakeMaxQuestions(), mode: getSignalIntakeQuestionMode() };
+/** @returns The intake knobs, read once per call site. */
+export function getSignalIntakeConfig(): { maxQuestions: number } {
+  return { maxQuestions: getSignalIntakeMaxQuestions() };
 }
