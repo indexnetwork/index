@@ -45,6 +45,9 @@ export default function NegotiationDetailPage() {
   // A selected row owns the transcript's lifecycle; plain conversation links
   // preserve the existing latest-session behavior.
   const lifecycle = selectedOpportunity ?? conversation?.negotiation ?? null;
+  // A durable A2A conversation may contain sessions for several signals. Keep
+  // this transcript and its history navigation inside the represented signal.
+  const scopedTaskId = selectedTaskId ?? lifecycle?.taskId ?? undefined;
 
   const { handleOpportunityAction, opportunityStatusMap, opportunityActionLoading, opportunityModalElement } =
     useOpportunityActions({
@@ -54,11 +57,11 @@ export default function NegotiationDetailPage() {
   useEffect(() => {
     if (!conversationId) return;
     let cancelled = false;
-    loadSessionHistory(conversationId, selectedTaskId ? { taskId: selectedTaskId } : undefined).finally(() => {
+    loadSessionHistory(conversationId, scopedTaskId ? { taskId: scopedTaskId } : undefined).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [conversationId, selectedTaskId, loadSessionHistory]);
+  }, [conversationId, scopedTaskId, loadSessionHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -189,7 +192,7 @@ export default function NegotiationDetailPage() {
               <div className="flex justify-center py-2">
                 <button
                   type="button"
-                  onClick={() => void loadPreviousSessionMessages(conversationId)}
+                  onClick={() => void loadPreviousSessionMessages(conversationId, scopedTaskId)}
                   disabled={history.loadingPrevious}
                   className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
                   aria-label="Load previous messages"
