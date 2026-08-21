@@ -20,6 +20,25 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.6.4 - 2026-08-21
+
+### Added
+
+- **`buildAgentSelfIntroduction` is now actually exported.** 23.6.3's entry
+  named it as part of the new surface, but it was only reachable from inside
+  the package — the three chat personas import it directly. It is now on the
+  barrel (`buildAgentSelfIntroduction`, `AgentIdentityOptions`), which is what
+  makes that claim true for consumers.
+
+### Changed
+
+- **`buildAgentSelfIntroduction`'s `userName` is optional.** Additive: every
+  existing caller passes it and gets the same sentence. Absent, the builder
+  emits `You are <name>, <role>.` or, with no name either, `You are <role>.` —
+  the form a surface needs when its role phrase already says whose agent this
+  is and it never resolves a client display name. The API's IntentAgent loop
+  is the first such caller.
+
 ## 23.6.3 - 2026-08-21
 
 ### Added
