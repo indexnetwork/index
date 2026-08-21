@@ -184,6 +184,13 @@ export interface IntentListRow {
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;
+  /**
+   * The signal's agent asked its owner something and is still waiting: the
+   * newest message in the signal's DM is an agent question offering canned
+   * replies. Derived per read from the conversation itself — answering (by
+   * typing or by tapping a chip) is what clears it.
+   */
+  awaitingReply: boolean;
   discoveryProgress?: {
     status: 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | 'blocked' | 'unknown';
     attempt: number;
@@ -418,6 +425,12 @@ export interface ChatMessage {
   subgraphResults: Record<string, unknown> | null;
   tokenCount: number | null;
   interrupted?: boolean | null;
+  /**
+   * Canned replies the client may tap instead of typing. Present only on an
+   * agent question that offered them; tapping one sends its text as an
+   * ordinary user message, so nothing else reads this.
+   */
+  options?: string[] | null;
   createdAt: Date;
 }
 
@@ -455,6 +468,8 @@ export interface ChatMessageMeta {
    * conversational-questions edit rule). Absent on messages never edited.
    */
   regeneratedAt?: string;
+  /** Canned replies offered under an agent question (2-4 short strings). */
+  options?: string[];
   [key: string]: unknown;
 }
 
@@ -479,6 +494,8 @@ export interface CreateMessageInput {
   subgraphResults?: Record<string, unknown>;
   tokenCount?: number;
   interrupted?: boolean;
+  /** Canned replies for an agent question; stored in messages.metadata. */
+  options?: string[];
 }
 
 /**

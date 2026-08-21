@@ -51,7 +51,17 @@ export type IntentAgentEvent = IntentAgentInboxEvent | IntentAgentAnswerToolEven
 // ─── Decided acts (model output, ids already resolved from indices) ─────────
 
 export type IntentAgentDecidedAct =
-  | { tool: 'message_user'; text: string }
+  | {
+    tool: 'message_user';
+    text: string;
+    /**
+     * Canned replies for a question, 2-4 short strings. Purely a shortcut:
+     * tapping one sends that exact text as an ordinary client message, so
+     * there is no answer machinery behind them. Absent when the message
+     * merely reports. Normalized (and dropped) by the turn's validator.
+     */
+    options?: string[];
+  }
   | { tool: 'answer_negotiation'; opportunityId: string; answer: string }
   | { tool: 'note_dossier'; text: string }
   | { tool: 'retire_dossier'; entryId: string }
@@ -82,6 +92,8 @@ export type IntentAgentExecutedAct =
   | {
     tool: 'message_user';
     text: string;
+    /** The canned replies delivered with this message, when it asked. */
+    options?: string[];
     sessionId: string;
     messageId: string;
     /**

@@ -23,6 +23,8 @@ interface HomeIntent {
   sourceType?: "file" | "link" | "integration" | "discovery_form" | "enrichment";
   waitingOpportunityCount?: number;
   pendingQuestionCount?: number;
+  /** The signal's agent is holding an unanswered question for the user. */
+  awaitingReply?: boolean;
   status?: string;
   warming?: boolean;
 }

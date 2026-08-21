@@ -22,6 +22,7 @@ import type { NegotiatorVerdictResult } from '../agent/negotiator-verdict.host';
 import { assembleIntentAgentContext } from './intent-agent.context';
 import type { IntentAgentContextDeps, IntentAgentTurnContext } from './intent-agent.context';
 import { IntentAgentTurn } from './intent-agent.turn';
+import type { IntentAgentReply } from './intent-agent.turn';
 import type { IntentAgentDecidedAct, IntentAgentEvent, IntentAgentExecutedAct, IntentAgentInboxEvent, IntentAgentReplyFallbackReason, IntentAgentTurnResult, IntentAgentUserMessageEvent } from './intent-agent.types';
 import { log } from '../log';
 
@@ -56,7 +57,7 @@ export interface IntentAgentChatSessions {
     | { session: { id: string } }
     | { error: string; status: 400 | 403 | 404 | 500 }
   >;
-  addMessage(params: { sessionId: string; role: 'user' | 'assistant' | 'system'; content: string }): Promise<string>;
+  addMessage(params: { sessionId: string; role: 'user' | 'assistant' | 'system'; content: string; options?: string[] }): Promise<string>;
 }
 
 /** Injectable seams; production resolves the real collaborators lazily. */
@@ -161,6 +162,7 @@ async function deliverMessage(
   event: IntentAgentInboxEvent,
   text: string,
   deps?: IntentAgentHostDeps,
+  options?: string[],
 ): Promise<{ sessionId: string; messageId: string } | null> {
   const chatSessions = await resolveChatSessions(deps);
   const resolved = await chatSessions.resolveNegotiatorIntentSession(event.userId, event.intentId);
@@ -180,6 +182,7 @@ async function deliverMessage(
     sessionId: resolved.session.id,
     role: 'assistant',
     content: text,
+    ...(options ? { options } : {}),
   });
   return { sessionId: resolved.session.id, messageId };
 }
@@ -201,9 +204,14 @@ export async function executeIntentAgentActs(
   for (const act of decided) {
     switch (act.tool) {
       case 'message_user': {
-        const delivered = await deliverMessage(event, act.text, deps);
+        const delivered = await deliverMessage(event, act.text, deps, act.options);
         if (!delivered) break;
-        const executed: IntentAgentExecutedAct = { tool: 'message_user', text: act.text, ...delivered };
+        const executed: IntentAgentExecutedAct = {
+          tool: 'message_user',
+          text: act.text,
+          ...(act.options ? { options: act.options } : {}),
+          ...delivered,
+        };
         await appendLedger(event, executed, deps);
         result.acts.push(executed);
         result.messages.push(act.text);
@@ -308,15 +316,15 @@ async function runReplyStage(
   result: IntentAgentTurnResult,
   deps?: IntentAgentHostDeps,
 ): Promise<void> {
-  let text: string | null = null;
+  let composed: IntentAgentReply | null = null;
   let fallback: IntentAgentReplyFallbackReason | undefined;
   if (!turn.reply) {
     // An injected judgment seam without a reply seam cannot compose one.
     fallback = 'model_error';
   } else {
     try {
-      text = await turn.reply(context, result.acts);
-      if (text === null) fallback = 'safety_check_failed';
+      composed = await turn.reply(context, result.acts);
+      if (composed === null) fallback = 'safety_check_failed';
     } catch (err) {
       logger.error('intent_agent_reply_stage_failed', {
         userId: event.userId,
@@ -334,12 +342,14 @@ async function runReplyStage(
     });
   }
 
-  const content = text ?? INTENT_AGENT_REPLY_FALLBACK;
-  const delivered = await deliverMessage(event, content, deps);
+  const content = composed?.text ?? INTENT_AGENT_REPLY_FALLBACK;
+  const options = composed?.options;
+  const delivered = await deliverMessage(event, content, deps, options);
   if (!delivered) return;
   const executed: IntentAgentExecutedAct = {
     tool: 'message_user',
     text: content,
+    ...(options ? { options } : {}),
     ...delivered,
     stage: 'reply',
     ...(fallback ? { fallback } : {}),

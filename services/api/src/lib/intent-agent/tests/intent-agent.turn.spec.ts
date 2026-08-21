@@ -79,13 +79,13 @@ class ScriptedModelTurn extends IntentAgentTurn {
 /** A turn whose reply-stage round trips are scripted. */
 class ScriptedReplyTurn extends IntentAgentTurn {
   replyCalls = 0;
-  constructor(private readonly replies: string[]) {
+  constructor(private readonly replies: Array<string | { reply: string; options?: unknown }>) {
     super({ model: 'test-model' });
   }
-  protected override async callReplyModel(): Promise<string> {
+  protected override async callReplyModel(): Promise<unknown> {
     const output = this.replies[this.replyCalls];
     this.replyCalls += 1;
-    return output ?? '';
+    return typeof output === 'string' ? { reply: output } : output ?? { reply: '' };
   }
 }
 
@@ -355,9 +355,9 @@ describe('IntentAgentTurn.reply', () => {
       `Your opportunity_id is ${OPP_A}.`,
       'Sent your timing along; one match is waiting on your decision.',
     ]);
-    expect(await leaky.reply(context({ event: USER_MESSAGE }), [])).toBe(
-      'Sent your timing along; one match is waiting on your decision.',
-    );
+    expect(await leaky.reply(context({ event: USER_MESSAGE }), [])).toEqual({
+      text: 'Sent your timing along; one match is waiting on your decision.',
+    });
     expect(leaky.replyCalls).toBe(2);
 
     const hopeless = new ScriptedReplyTurn([
@@ -371,6 +371,24 @@ describe('IntentAgentTurn.reply', () => {
   it('an empty reply counts as refused prose, not a message', async () => {
     const empty = new ScriptedReplyTurn(['', '   ']);
     expect(await empty.reply(context({ event: USER_MESSAGE }), [])).toBeNull();
+  });
+
+  it('carries the reply\'s canned replies through, normalized', async () => {
+    const asking = new ScriptedReplyTurn([{
+      reply: 'Which of these should I push hardest on?',
+      options: ['  Hiring speed  ', 'hiring speed', 'Comp banding', '', 'Team shape', 'A fourth one too', 'Cut me'],
+    }]);
+    expect(await asking.reply(context({ event: USER_MESSAGE }), [])).toEqual({
+      text: 'Which of these should I push hardest on?',
+      options: ['Hiring speed', 'Comp banding', 'Team shape', 'A fourth one too'],
+    });
+  });
+
+  it('drops a chip set too thin to be a choice — the prose still stands', async () => {
+    const thin = new ScriptedReplyTurn([{ reply: 'How soon do you want to start?', options: ['Q4'] }]);
+    expect(await thin.reply(context({ event: USER_MESSAGE }), [])).toEqual({
+      text: 'How soon do you want to start?',
+    });
   });
 });
 
@@ -402,7 +420,8 @@ describe('runIntentAgentTurn reply stage', () => {
       ...(overrides.withReplySeam === false ? {} : {
         reply: async (turnContext: IntentAgentTurnContext) => {
           replyCalls += 1;
-          return overrides.reply ? overrides.reply(turnContext) : 'All quiet on this signal.';
+          const composed = overrides.reply ? await overrides.reply(turnContext) : 'All quiet on this signal.';
+          return typeof composed === 'string' ? { text: composed } : composed;
         },
       }),
     } as never;

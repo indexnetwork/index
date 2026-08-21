@@ -590,6 +590,8 @@ export class ChatController {
           let agentTurn: IntentAgentTurnResult | null = null;
           let agentUserMessageId: string | null = null;
           let agentAssistantMessageId: string | undefined;
+          /** Canned replies the agent attached to its delivered message. */
+          let agentReplyOptions: string[] | undefined;
 
           if (agentOwnsTurn && effectiveScope) {
             // The conversation is the agent's memory, so the client's message
@@ -635,7 +637,13 @@ export class ChatController {
               });
               fullResponse = agentTurn.messages.join('\n\n');
               for (const act of agentTurn.acts) {
-                if (act.tool === 'message_user') agentAssistantMessageId = act.messageId;
+                if (act.tool !== 'message_user') continue;
+                agentAssistantMessageId = act.messageId;
+                // The chips belong to the last message the turn delivered —
+                // the same one `agentAssistantMessageId` names. They are
+                // already persisted on it; the done event only spares the
+                // client a reload to see them.
+                agentReplyOptions = act.options;
               }
               // Dropped-subscription fallback: whatever the channel did not
               // deliver of the completed turn is emitted as one token event.
@@ -873,6 +881,7 @@ export class ChatController {
                     title: sessionTitle,
                     suggestions,
                     ...(decisionQuestions !== undefined ? { decisionQuestions } : {}),
+                    ...(agentReplyOptions ? { options: agentReplyOptions } : {}),
                   }),
                 ),
               ),

@@ -198,6 +198,12 @@ export interface DoneEvent extends ChatStreamEventBase {
   opportunityCards?: OpportunityCardPayload[];
   /** Decision questions to render, harvested from any tool result carrying `questions`. */
   decisionQuestions?: Question[];
+  /**
+   * Canned replies offered under this reply, when the agent asked something.
+   * The persisted message carries the same list; this only saves the client a
+   * reload to see the chips on the turn that produced them.
+   */
+  options?: string[];
 }
 
 /**
@@ -717,6 +723,7 @@ export interface CreateDoneEventOptions {
   suggestions?: ChatSuggestion[];
   opportunityCards?: OpportunityCardPayload[];
   decisionQuestions?: Question[];
+  options?: string[];
 }
 
 /**

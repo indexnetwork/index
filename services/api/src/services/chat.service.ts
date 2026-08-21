@@ -586,6 +586,8 @@ export class ChatSessionService {
     subgraphResults?: Record<string, unknown>;
     tokenCount?: number;
     interrupted?: boolean;
+    /** Canned replies rendered as chips under an agent question. */
+    options?: string[];
   }): Promise<string> {
     logger.verbose('Adding message', {
       sessionId: params.sessionId,
@@ -604,6 +606,7 @@ export class ChatSessionService {
       subgraphResults: params.subgraphResults,
       tokenCount: params.tokenCount,
       interrupted: params.interrupted,
+      options: params.options,
     });
 
     // Update session timestamp

@@ -31,6 +31,40 @@ const logger = log.lib.from('intent-agent.turn');
 const MAX_TURN_CHARS = 500;
 const MAX_TRANSCRIPT_TURNS = 6;
 const MAX_DM_CHARS = 1000;
+const MAX_OPTION_CHARS = 60;
+const MIN_OPTIONS = 2;
+const MAX_OPTIONS = 4;
+
+/**
+ * Canned replies, normalized. Options are a shortcut for typing and nothing
+ * more, so a malformed set is DROPPED rather than rejected: the question
+ * still reads fine as prose, and refusing the whole round trip over chip
+ * wording would trade a convenience for a lost turn. Blank, over-long,
+ * duplicate and leak-tripping candidates go — a chip is delivered prose and
+ * passes the same identifier gate the message does; fewer than two survivors
+ * means no chips at all (one chip is not a choice), and more than four are
+ * cut to the first four.
+ *
+ * @param raw - Whatever the model emitted for `options`
+ * @returns 2-4 distinct short strings, or undefined for "no chips"
+ */
+export function normalizeMessageOptions(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const options: string[] = [];
+  for (const candidate of raw) {
+    if (typeof candidate !== 'string') continue;
+    const text = candidate.trim();
+    if (!text || text.length > MAX_OPTION_CHARS) continue;
+    if (!isSafeQuestionMessageProse(text)) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(text);
+    if (options.length === MAX_OPTIONS) break;
+  }
+  return options.length >= MIN_OPTIONS ? options : undefined;
+}
 
 // Optional fields are `.nullable().optional()`: the OpenAI structured-output
 // schema translation refuses optional-without-nullable, and the validator
@@ -40,6 +74,8 @@ const DecidedActsSchema = z.object({
     act: z.enum(['message_user', 'answer_negotiation', 'accept_opportunity', 'reject_opportunity', 'note_dossier', 'retire_dossier', 'wait']),
     /** message_user: the message. note_dossier: the fact. */
     text: z.string().max(4000).nullable().optional(),
+    /** message_user: 2-4 short canned replies, when the message asks. */
+    options: z.array(z.string().max(MAX_OPTION_CHARS)).max(8).nullable().optional(),
     /** answer_negotiation: 1-based number from the waiting list. */
     negotiation: z.number().int().min(1).nullable().optional(),
     /** answer_negotiation: the answer, restated so it stands alone. */
@@ -52,6 +88,23 @@ const DecidedActsSchema = z.object({
     reason: z.string().max(500).nullable().optional(),
   })).min(1).max(6),
 });
+
+/**
+ * The reply stage's shape (phase 2 + options): the prose plus, when the reply
+ * asks the client something, the same 2-4 canned replies the acts stage may
+ * attach. Structured rather than plain text ONLY so the chips can travel with
+ * the words that earned them — `reply` is the delivered prose, unchanged.
+ */
+const ReplySchema = z.object({
+  reply: z.string().max(4000),
+  options: z.array(z.string().max(MAX_OPTION_CHARS)).max(8).nullable().optional(),
+});
+
+/** A composed reply: the prose the client reads, plus optional chips. */
+export interface IntentAgentReply {
+  text: string;
+  options?: string[];
+}
 
 function truncate(text: string, max: number): string {
   const trimmed = text.trim();
@@ -244,7 +297,8 @@ export class IntentAgentTurn {
           if (context.event.kind === 'user_message') return null;
           const text = act.text?.trim();
           if (!text || !isSafeQuestionMessageProse(text)) return null;
-          decided.push({ tool: 'message_user', text });
+          const options = normalizeMessageOptions(act.options);
+          decided.push({ tool: 'message_user', text, ...(options ? { options } : {}) });
           break;
         }
         case 'accept_opportunity':
@@ -308,16 +362,22 @@ export class IntentAgentTurn {
    * Model errors propagate — the caller distinguishes a provider outage
    * (fallback, reason 'model_error') from refused prose.
    */
-  async reply(context: IntentAgentTurnContext, executed: IntentAgentExecutedAct[]): Promise<string | null> {
+  async reply(context: IntentAgentTurnContext, executed: IntentAgentExecutedAct[]): Promise<IntentAgentReply | null> {
     const userMessage = renderIntentAgentReplyStage(context, executed);
     const system = `${systemPrompt(context)}\n\n${INTENT_AGENT_REPLY_INSTRUCTION}`;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const raw = (await this.callReplyModel([
+      const parsed = ReplySchema.safeParse(await this.callReplyModel([
         { role: 'system', content: system },
         { role: 'user', content: userMessage },
-      ])).trim();
-      if (raw && isSafeQuestionMessageProse(raw)) return raw;
-      logger.warn('intent_agent_reply_rejected', { attempt: attempt + 1, empty: !raw });
+      ]));
+      if (parsed.success) {
+        const text = parsed.data.reply.trim();
+        if (text && isSafeQuestionMessageProse(text)) {
+          const options = normalizeMessageOptions(parsed.data.options);
+          return { text, ...(options ? { options } : {}) };
+        }
+      }
+      logger.warn('intent_agent_reply_rejected', { attempt: attempt + 1, malformed: !parsed.success });
     }
     return null;
   }
@@ -333,12 +393,11 @@ export class IntentAgentTurn {
       .invoke(messages);
   }
 
-  /** Raw plain-text round trip for the reply stage; same seam discipline. */
-  protected async callReplyModel(messages: Array<{ role: string; content: string }>): Promise<string> {
-    const response = await this.buildModel().invoke(messages);
-    return typeof response.content === 'string'
-      ? response.content
-      : response.content.map((part) => (typeof part === 'string' ? part : 'text' in part ? part.text : '')).join('');
+  /** Raw round trip for the reply stage; same seam discipline. */
+  protected async callReplyModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
+    return this.buildModel()
+      .withStructuredOutput(ReplySchema, { name: 'intent_agent_reply' })
+      .invoke(messages);
   }
 
   private buildModel(): ChatOpenAI {
