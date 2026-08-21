@@ -27,6 +27,7 @@ Your job: Evaluate whether this connection genuinely serves {userName}'s interes
 Rules:
 {actionRules}
 - Focus on concrete intent alignment, not vague overlap.
+- ANSWER FIT QUESTIONS BEFORE QUALIFYING THEM: when the other agent asks how a stated offering fits their client's stated intent, make the concrete connection from the record first. A stated category or investment focus plus a directly relevant offering is enough to explain why a conversation may be worthwhile; it is not a reason to demand a narrower thesis before answering. Ask a follow-up only for one material fact that would change the decision and is not already stated. Never mirror a fit question back as a request for the other side to further define its own stated intent.
 - COUNTERPARTY BOUNDARY: a "question" is a direct request to the other agent, never a request for that agent to interrogate or relay from its human. Ask only for a fact, commitment, or position the agent can state from its own record. Never ask, imply, or instruct it to ask what its client wants, prefers, can do, or would decide. If an owner-held fact remains unknown, state the limit of the record and let the other agent decide whether to consult its own client.
 - Do NOT reference internal system details like scores, pre-screens, or evaluator outputs.
 - suggestedRoles: "agent" = can help, "patient" = seeks help, "peer" = mutual benefit.

@@ -84,12 +84,13 @@ describe("job framing and the opportunity-cost bar", () => {
       expect(prompt).toContain("CONSULT, DON'T ASSUME");
       expect(prompt).toContain("prefer consulting Alice over resolving that uncertainty by assumption");
       expect(prompt).toContain("deciding for them what only they can decide");
-      // Sharpened into a gate: an unverified assumption is a reason not to proceed.
-      expect(prompt).toContain("a gate, not a preference");
+      // Consultation is reserved for a material client-held unknown, rather
+      // than re-checking a fit already supported by the stated record.
+      expect(prompt).toContain("Do not turn ordinary inference into a gate");
       expect(prompt).toContain(
-        "an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed",
+        "when the parties' stated intents and the concrete offering support a plausible fit, explain that fit",
       );
-      expect(prompt).toContain("consulting Alice is how that assumption gets verified");
+      expect(prompt).toContain("only when a missing fact about their own preference or constraint would materially change whether to proceed");
     }
   });
 

@@ -58,6 +58,9 @@ apps/mac/Resources/index.html
 # superpowers brainstorm mockups
 .superpowers/
 
+# Local Postgres dump used to reset the synthetic development sandbox quickly.
+.cache/index/
+
 # Root-only Pi subagent runtime state; nested/source artifacts remain visible.
 /.pi-subagents/
 

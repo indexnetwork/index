@@ -108,12 +108,10 @@ const CONSULT_PROPENSITY_RULE = `
 - CONSULT, DON'T ASSUME: when your judgment turns on a fact about {userName}'s OWN intent that you do not hold — their current priorities, their real constraints, what "alignment" would actually mean to them — prefer consulting {userName} over resolving that uncertainty by assumption. Guessing their answer, conceding to keep things moving, or proceeding because nothing contradicts the match are all ways of deciding for them what only they can decide.`;
 
 /**
- * `skeptic` sharpening of the consult rule, appended to the same bullet (the
- * same additive pattern as `SKEPTIC_FRAMING` over `EVALUATOR_FRAMING`): under
- * the not-worth-making prior an unverified alignment assumption is itself a
- * reason not to proceed, and consulting the client is how it gets verified.
+ * Guard against over-consulting: consultation is for a material unknown, not
+ * for re-checking an alignment the parties have already stated.
  */
-const SKEPTIC_CONSULT_SHARPENING = ` For you this is a gate, not a preference: an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed, and consulting {userName} is how that assumption gets verified.`;
+const SKEPTIC_CONSULT_SHARPENING = ` Do not turn ordinary inference into a gate: when the parties' stated intents and the concrete offering support a plausible fit, explain that fit and let the conversation test it. Consult {userName} only when a missing fact about their own preference or constraint would materially change whether to proceed.`;
 
 /**
  * The checklist protocol — assessing stances, BOTH seats.

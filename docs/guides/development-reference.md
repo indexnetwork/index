@@ -458,6 +458,26 @@ bun run db:seed:sandbox -- --confirm --minimal   # exactly two people with very 
 Both modes wipe and recreate every seed-owned user (including personal networks
 created by signing in as one), so switching modes is just re-running the command.
 
+#### Fast local sandbox reset
+
+After a successful full seed, save a local database snapshot once:
+
+```bash
+bun run db:snapshot:sandbox
+```
+
+Later resets can restore that snapshot without regenerating embeddings or
+recreating every fixture:
+
+```bash
+bun run db:restore:sandbox
+```
+
+The snapshot lives at `.cache/index/protocol_sandbox.dump` and is ignored by
+Git. It replaces the whole `protocol_sandbox` database, so stop the local API
+server before restoring. Recreate the snapshot after schema migrations or
+fixture changes.
+
 The command derives the sandbox connection from the repo-root
 `.env.development`, refuses unrelated source database names, always replaces
 the URL database component with `protocol_sandbox`, and writes directly to

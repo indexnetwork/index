@@ -61,6 +61,16 @@ function validTurn(action: string) {
 }
 
 describe("IndexNegotiator — canAskUser (IND-401)", () => {
+  it("answers a supported fit question before seeking more qualification", async () => {
+    const agent = new CapturingNegotiator([validTurn("counter")]);
+    await agent.invoke(baseInput);
+
+    const prompt = agent.systemPrompts[0];
+    expect(prompt).toContain("ANSWER FIT QUESTIONS BEFORE QUALIFYING THEM");
+    expect(prompt).toContain("make the concrete connection from the record first");
+    expect(prompt).toContain("Never mirror a fit question back");
+  });
+
   it("accepts an ask_user turn with payload when granted, and the prompt carries the rule", async () => {
     const agent = new CapturingNegotiator([askUserOutput]);
     const turn = await agent.invoke({ ...baseInput, canAskUser: true });
