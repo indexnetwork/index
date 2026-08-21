@@ -153,7 +153,7 @@ describe('groupNegotiationOutline', () => {
       counterpartId: 'peer-2',
       opportunityId: '6426226c-9d63-42a9-8aea-764bbe0c5b8b',
       taskId: '07979837-5e29-4dd9-83dc-26f593972ca6',
-      title: 'Negotiation',
+      title: 'Signal',
       presentation: expect.objectContaining({ label: 'Awaiting your review', status: 'awaiting_review' }),
       updatedAt: '2026-01-04T00:00:00.000Z',
       ungrouped: true,

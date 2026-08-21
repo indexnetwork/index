@@ -32,6 +32,11 @@ function timestampOf(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function fallbackSignalTitle(conversation: ConversationSummary): string {
+  const title = conversation.via[0]?.title ?? conversation.metadata?.title?.trim();
+  return title && title.toLowerCase() !== 'negotiation' ? title : 'Signal';
+}
+
 /**
  * The rail row for a conversation with no viewer-visible opportunity projection.
  *
@@ -60,7 +65,7 @@ function buildFallbackOpportunity(
     counterpartId,
     opportunityId: lifecycle?.opportunityId ?? null,
     taskId: lifecycle?.taskId ?? null,
-    title: conversation.via[0]?.title ?? conversation.metadata?.title ?? 'Negotiation',
+    title: fallbackSignalTitle(conversation),
     presentation: deriveNegotiationPresentation({
       lifecycle,
       latestAction: lastTurn.action,
