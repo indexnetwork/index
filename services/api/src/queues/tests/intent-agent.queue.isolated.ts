@@ -50,7 +50,7 @@ function buildQueue(script: (context: IntentAgentTurnContext) => IntentAgentDeci
         return script(context);
       },
       // Phase 2: client-message turns end with the reply stage.
-      reply: async () => 'Right here.',
+      reply: async () => ({ text: 'Right here.' }),
     },
     chatSessions: {
       resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-1' } }),

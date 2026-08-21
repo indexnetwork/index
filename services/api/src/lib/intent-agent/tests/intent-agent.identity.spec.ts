@@ -75,9 +75,9 @@ class CapturingTurn extends IntentAgentTurn {
     this.systems.push(messages.find((message) => message.role === 'system')!.content);
     return { acts: [{ act: 'wait', reason: 'nothing to do' }] };
   }
-  protected override async callReplyModel(messages: Array<{ role: string; content: string }>): Promise<string> {
+  protected override async callReplyModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
     this.systems.push(messages.find((message) => message.role === 'system')!.content);
-    return 'Nothing needs you right now.';
+    return { reply: 'Nothing needs you right now.' };
   }
 }
 
@@ -103,7 +103,7 @@ describe('buildIntentAgentSystemPrompt', () => {
     const firstSentence = (prompt: string) => prompt.slice(0, prompt.indexOf('You conduct negotiations'));
     expect(named.slice(firstSentence(named).length)).toBe(nameless.slice(firstSentence(nameless).length));
     // The version constant exists to make a prompt change loud.
-    expect(INTENT_AGENT_SYSTEM_PROMPT_VERSION).toBe(3);
+    expect(INTENT_AGENT_SYSTEM_PROMPT_VERSION).toBe(4);
   });
 });
 

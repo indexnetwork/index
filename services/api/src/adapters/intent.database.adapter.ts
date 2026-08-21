@@ -6,6 +6,9 @@ import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/i
 import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
 
 
+/** Scope type of the per-signal DM the personal agent speaks into. */
+const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
+
 export class IntentDatabaseAdapter {
   /**
    * Retrieve a single user_context row (global when networkId is null), or null.
@@ -598,18 +601,20 @@ export class IntentDatabaseAdapter {
   /**
    * Enrich a page of intent list rows with their registered networks, the
    * per-intent counts the UI surfaces (pending questions, waiting
-   * opportunities), and the fresh-intent discovery state. Runs three grouped
-   * queries in parallel and joins in memory, so it stays O(1) round-trips
-   * regardless of page size.
+   * opportunities), the fresh-intent discovery state, and whether the signal's
+   * own agent is holding an unanswered question. Runs the grouped queries in
+   * parallel and joins in memory, so it stays O(1) round-trips regardless of
+   * page size.
    *
    * @param rows - The paginated base intent rows to enrich.
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
-   * @returns The rows with `networks`, `pendingQuestionCount`, and
-   *   `waitingOpportunityCount` populated (empty/zero when none), plus a
-   *   deduplicated total of waiting opportunities across the page's signals.
+   * @returns The rows with `networks`, `pendingQuestionCount`,
+   *   `waitingOpportunityCount` and `awaitingReply` populated (empty/zero/false
+   *   when none), plus a deduplicated total of waiting opportunities across
+   *   the page's signals.
    */
   private async attachIntentExtras(
-    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'> & {
+    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming' | 'awaitingReply'> & {
       /** Stamped by the from-intent queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
@@ -619,10 +624,11 @@ export class IntentDatabaseAdapter {
     if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [networks, countResult, progress] = await Promise.all([
+    const [networks, countResult, progress, awaitingReply] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
       includeDiscoveryProgress ? this.discoveryProgressByIntent(intentIds, userId) : Promise.resolve(new Map()),
+      this.awaitingReplyByIntent(intentIds, userId),
     ]);
     return {
       rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
@@ -630,6 +636,7 @@ export class IntentDatabaseAdapter {
         networks: networks.get(r.id) ?? [],
         pendingQuestionCount: countResult.byIntent.get(r.id)?.questions ?? 0,
         waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
+        awaitingReply: awaitingReply.has(r.id),
         warming: r.createdAt > warmingCutoff
           && firstDiscoverySucceededAt == null,
         ...(includeDiscoveryProgress ? { discoveryProgress: progress.get(r.id) ?? {
@@ -643,6 +650,52 @@ export class IntentDatabaseAdapter {
       })),
       totalWaitingOpportunities: countResult.totalWaitingOpportunities,
     };
+  }
+
+  /**
+   * The signals whose agent is waiting on the owner: the newest message in the
+   * signal's ('negotiator-intent', intentId) DM is agent-authored AND offered
+   * canned replies, so it is a question nobody has answered yet. A later
+   * message of any kind — the owner's typed answer or their tapped chip, both
+   * ordinary user messages — makes the newest row theirs and clears the flag.
+   *
+   * Derived, never stored: there is no "answered" bit to drift out of sync,
+   * and one DISTINCT ON read covers the whole page.
+   *
+   * @param intentIds - The page's signals
+   * @param userId - Owner, scoping the DM lookup
+   * @returns The subset of ids whose DM is waiting on an answer
+   */
+  private async awaitingReplyByIntent(intentIds: string[], userId: string): Promise<Set<string>> {
+    const waiting = new Set<string>();
+    if (intentIds.length === 0) return waiting;
+    const rows = await db
+      .selectDistinctOn([schema.chatSessionScopes.scopeId], {
+        intentId: schema.chatSessionScopes.scopeId,
+        role: schema.messages.role,
+        metadata: schema.messages.metadata,
+      })
+      .from(schema.chatSessionScopes)
+      .innerJoin(
+        schema.messages,
+        eq(schema.messages.conversationId, schema.chatSessionScopes.conversationId),
+      )
+      .where(and(
+        eq(schema.chatSessionScopes.userId, userId),
+        eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_INTENT_SCOPE_TYPE),
+        inArray(schema.chatSessionScopes.scopeId, intentIds),
+      ))
+      .orderBy(
+        schema.chatSessionScopes.scopeId,
+        desc(schema.messages.createdAt),
+        desc(schema.messages.id),
+      );
+    for (const row of rows) {
+      if (row.role !== 'agent') continue;
+      const options = (row.metadata as { options?: unknown } | null)?.options;
+      if (Array.isArray(options) && options.length > 0) waiting.add(row.intentId);
+    }
+    return waiting;
   }
 
   private async discoveryProgressByIntent(intentIds: string[], userId: string): Promise<Map<string, NonNullable<IntentListRow['discoveryProgress']>>> {

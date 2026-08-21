@@ -35,7 +35,7 @@ function scriptedTurn(
   return {
     decide: async (context: IntentAgentTurnContext) => script(context),
     // Phase 2: a client-message turn ends with the streaming reply stage.
-    ...(reply !== undefined ? { reply: async () => reply } : {}),
+    ...(reply !== undefined ? { reply: async () => ({ text: reply }) } : {}),
   };
 }
 

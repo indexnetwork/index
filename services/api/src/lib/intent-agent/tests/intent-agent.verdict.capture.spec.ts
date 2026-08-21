@@ -69,7 +69,7 @@ describe('IntentAgent verdict acts over the real #1471 lane', () => {
               reason: 'Client: reject the manufacturing match.',
             }];
           },
-          reply: async () => replyText,
+          reply: async () => ({ text: replyText }),
         },
       },
     );
@@ -121,7 +121,7 @@ describe('IntentAgent verdict acts over the real #1471 lane', () => {
           // The agent decided from stale knowledge (an id no longer listed);
           // the lane refuses the write and the act records why.
           decide: async () => [{ tool: 'accept_opportunity' as const, opportunityId: fixture.opportunityId }],
-          reply: async () => 'That match had already closed before your word reached it — nothing was decided.',
+          reply: async () => ({ text: 'That match had already closed before your word reached it — nothing was decided.' }),
         },
       },
     );

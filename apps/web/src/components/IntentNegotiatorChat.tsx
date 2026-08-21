@@ -199,6 +199,15 @@ export default function IntentNegotiatorChat({
     inputRef.current?.focus();
   }, []);
 
+  // A chip is a canned reply, not a new answer channel: its text is sent
+  // through the ordinary send path, so the agent's next turn cannot tell it
+  // from something the user typed.
+  const handleOptionSelect = useCallback(async (option: string) => {
+    if (isLoading || !ready) return;
+    setInput("");
+    await sendMessage(option);
+  }, [isLoading, ready, sendMessage]);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading || !ready) return;
@@ -301,6 +310,13 @@ export default function IntentNegotiatorChat({
 
             {messages.map((msg, messageIndex) => {
               const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
+              // Chips belong to an unanswered question only. Any later message
+              // — the user's typed answer, their tapped chip, the agent's next
+              // word — is that answer, so message order is the whole rule and
+              // there is no "answered" state to keep.
+              const options = messageIndex === messages.length - 1 && !msg.isStreaming
+                ? msg.options ?? []
+                : [];
               const startsSession = previousMessage !== undefined
                 && previousMessage.conversationSessionId !== msg.conversationSessionId;
               return (
@@ -345,6 +361,21 @@ export default function IntentNegotiatorChat({
                         intentProposalStatusMap={proposalStatusMap}
                         onQuestionQuote={handleQuestionQuote}
                       />
+                      {options.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5" data-testid="negotiator-chat-options">
+                          {options.map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => void handleOptionSelect(option)}
+                              disabled={isLoading || !ready}
+                              className="rounded-full border border-[#E9E9E9] bg-[#FCFCFC] px-3 py-1 text-xs font-ibm-plex-mono text-gray-700 transition-colors hover:border-[#4091BB] hover:text-[#041729] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </Fragment>

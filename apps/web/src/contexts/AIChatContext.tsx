@@ -148,6 +148,12 @@ interface ChatMessage {
   wasInterrupted?: boolean;
   /** Durable timeline session that supplied this persisted message. */
   conversationSessionId?: string | null;
+  /**
+   * Canned replies the agent offered under a question — tap one and its exact
+   * text is sent as an ordinary user message. Nothing else reads them, so a
+   * chip is a shortcut for typing and never a separate answer channel.
+   */
+  options?: string[];
 }
 
 export type ChatScope =
@@ -1055,11 +1061,18 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                           msg.decisionQuestions && msg.decisionQuestions.length > 0
                             ? msg.decisionQuestions
                             : fromDone;
+                        // Chips ride the done event only so this turn shows
+                        // them without a reload; the persisted message carries
+                        // the same list for every later read.
+                        const options = Array.isArray(event.options)
+                          ? (event.options as string[])
+                          : undefined;
                         return {
                           ...msg,
                           content: finalContent,
                           isStreaming: false,
                           ...(decisionQuestions ? { decisionQuestions } : {}),
+                          ...(options && options.length > 0 ? { options } : {}),
                         };
                       }),
                     );
@@ -1359,6 +1372,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
+          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1404,6 +1418,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(m.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(m.interrupted ? { wasInterrupted: true } : {}),
+        ...(Array.isArray(m.options) && m.options.length > 0 ? { options: m.options } : {}),
         conversationSessionId: data.sessionId,
       }));
 
@@ -1448,6 +1463,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
+          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1480,6 +1496,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(message.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(message.interrupted ? { wasInterrupted: true } : {}),
+        ...(Array.isArray(message.options) && message.options.length > 0 ? { options: message.options } : {}),
         conversationSessionId: data.sessionId,
       }));
       setMessages((current) => {

@@ -20,10 +20,16 @@
  * row is never fatal: the nameless form is byte-identical to version 2's
  * opener, because this loop negotiates unattended and must not fail a turn
  * over a display name.
+ *
+ * Version 4 (options): a question — asked from either stage — MAY carry 2-4
+ * candidate answers. They are canned replies and nothing else: tapping one
+ * sends its exact text as an ordinary client message, so the law about them
+ * is only about wording, never about routing. There is deliberately no
+ * "other" option, because typing has always been available.
  */
 import { buildAgentSelfIntroduction, type AgentIdentityOptions } from '@indexnetwork/protocol';
 
-export const INTENT_AGENT_SYSTEM_PROMPT_VERSION = 3;
+export const INTENT_AGENT_SYSTEM_PROMPT_VERSION = 4;
 
 /**
  * The role phrase the self-introduction is built around. It names the client
@@ -46,7 +52,7 @@ export function buildIntentAgentSystemPrompt(identity: AgentIdentityOptions = {}
   return `${introduction} You conduct negotiations on their behalf, and you hold the WHOLE conversation with them about this signal: every message they send here comes to you, whether it is an answer, an instruction, a question, or small talk. You have just been woken by an event; decide what to do, then act through your tools.
 
 Your tools, each of which is recorded in your ledger:
-- message_user: say something to your client in this signal's conversation. Plain prose, their language, no markup blocks. Available only when a negotiation event woke you — when your client themselves wrote to you, your reply is composed in a separate step after your acts, so do not use this tool then.
+- message_user: say something to your client in this signal's conversation. Plain prose, their language, no markup blocks. Available only when a negotiation event woke you — when your client themselves wrote to you, your reply is composed in a separate step after your acts, so do not use this tool then. When the message ASKS them something, you may also give an \`options\` list: 2-4 short, concrete, mutually distinct candidate answers in their language, each a few words. They are a shortcut for typing, nothing more — your client can always answer in their own words, so never offer an "other", "something else" or "let me type" option. A message that merely reports gets no options; a question you cannot reduce to a few clean candidates gets none either.
 - answer_negotiation: resolve what a waiting negotiation asked for, using your client's words or a dossier fact. This is the only way a negotiation moves again.
 - accept_opportunity / reject_opportunity: execute your client's verdict on one of the listed matches. See the verdict law below — this fires ONLY on their explicit word.
 - note_dossier: record a fact your client stated, in a form useful at the negotiation table.
@@ -87,5 +93,6 @@ export const INTENT_AGENT_REPLY_INSTRUCTION = `You have already decided and exec
 - If an act failed or a match had already moved on, say so honestly and propose the next step; propose only.
 - If you executed nothing, just answer them: their status question from the listed state, their hedge with your recommendation and the question that would settle it, their small talk briefly and warmly.
 - No markup blocks, no lists of internal state, no identifiers, no scores, no counterparty details beyond the match list. One coherent reply, a few sentences unless more is genuinely needed.
+- If your reply asks your client something, you may also give an \`options\` list: 2-4 short, concrete, mutually distinct candidate answers in their language, each a few words. They are a shortcut for typing — your client can always answer in their own words — so never offer an "other" or "something else" option. A reply that does not ask, or asks something you cannot reduce to a few clean candidates, gets no options.
 
-Write the reply text only.`;
+Write the reply prose in \`reply\`; leave \`options\` out unless the reply asks.`;
