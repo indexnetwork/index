@@ -114,6 +114,9 @@ export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, bu
 export { ChatGraphFactory } from "./agents/agent.module.js";
 export { type ChatPersonaConfig } from "./agents/agent.module.js";
 export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./agents/agent.module.js";
+// The shared self-identification helper: every surface that speaks AS the
+// user's own agent introduces itself through this one sentence builder.
+export { buildAgentSelfIntroduction, type AgentIdentityOptions } from "./agents/agent.module.js";
 export {
   SIGNAL_PERSONA_ID,
   createSignalPersona,

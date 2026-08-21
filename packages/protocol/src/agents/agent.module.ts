@@ -3,6 +3,8 @@
  *
  * Anything outside this capability imports from here and nowhere else.
  */
+export { buildAgentSelfIntroduction } from "../chat/agent-identity.prompt.js";
+export type { AgentIdentityOptions } from "../chat/agent-identity.prompt.js";
 export type { DebugMetaAgent } from "../chat/chat-streaming.types.js";
 export { ChatGraphFactory } from "../chat/chat.graph.js";
 export { ChatInterruptClassifier } from "../chat/chat.interrupt.classifier.js";

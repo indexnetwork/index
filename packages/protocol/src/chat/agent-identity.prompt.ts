@@ -25,17 +25,26 @@ export interface AgentIdentityOptions {
  * The nameless fallback stays generic on purpose: reintroducing a product noun
  * there would recreate exactly the mismatch this helper exists to remove.
  *
+ * `userName` is optional because not every surface names its client. The chat
+ * personas run inside a resolved tool context and always have it; the
+ * IntentAgent's unattended loop speaks of "your client" from end to end and
+ * never resolves a display name, so it supplies a role phrase that already
+ * says whose agent this is and omits the name rather than reading the user
+ * row for one word.
+ *
  * @param input - The agent's name, the user it works for, and the persona's role
  * @returns One sentence, e.g. `You are Ada's Agent, the private signals and profile assistant for Ada.`
  */
 export function buildAgentSelfIntroduction(input: {
   agentName?: string;
-  userName: string;
+  userName?: string;
   /** Role phrase, without a leading article-free verb — e.g. "the restricted setup assistant". */
   role: string;
 }): string {
   const name = input.agentName?.trim();
-  return name
-    ? `You are ${name}, ${input.role} for ${input.userName}.`
-    : `You are ${input.userName}'s personal agent, ${input.role}.`;
+  const client = input.userName?.trim();
+  if (name) {
+    return client ? `You are ${name}, ${input.role} for ${client}.` : `You are ${name}, ${input.role}.`;
+  }
+  return client ? `You are ${client}'s personal agent, ${input.role}.` : `You are ${input.role}.`;
 }

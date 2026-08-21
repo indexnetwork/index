@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { getModelName } from '@indexnetwork/protocol';
 
 import { isSafeQuestionMessageProse } from '../question/negotiation-question.contract';
-import { INTENT_AGENT_REPLY_INSTRUCTION, INTENT_AGENT_SYSTEM_PROMPT } from './intent-agent.prompt';
+import { INTENT_AGENT_REPLY_INSTRUCTION, buildIntentAgentSystemPrompt } from './intent-agent.prompt';
 import type { IntentAgentTurnContext } from './intent-agent.context';
 import type { IntentAgentDecidedAct, IntentAgentExecutedAct } from './intent-agent.types';
 import { log } from '../log';
@@ -126,6 +126,15 @@ function renderEvent(context: IntentAgentTurnContext): string {
   return `THE EVENT: ${which} just paused because it needs your client's input.\n\nDecide: if the dossier or the conversation already contains what it needs, answer it directly without asking. Otherwise ask your client in your own words. If it is no longer waiting, wait.`;
 }
 
+/**
+ * The law this turn runs under, bound to the agent's own name. Both stages
+ * of a turn build it from the SAME context, so the acts stage and the reply
+ * stage are unmistakably the same agent to the client.
+ */
+function systemPrompt(context: IntentAgentTurnContext): string {
+  return buildIntentAgentSystemPrompt(context.agentName ? { agentName: context.agentName } : {});
+}
+
 /** What judgment sees, rendered; exported for the live eval's transparency. */
 export function renderIntentAgentTurn(context: IntentAgentTurnContext): string {
   return [
@@ -199,7 +208,7 @@ export class IntentAgentTurn {
     const userMessage = renderIntentAgentTurn(context);
     for (let attempt = 0; attempt < 2; attempt++) {
       const raw = await this.callModel([
-        { role: 'system', content: INTENT_AGENT_SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt(context) },
         { role: 'user', content: userMessage },
       ]);
       const decided = this.validate(raw, context);
@@ -301,7 +310,7 @@ export class IntentAgentTurn {
    */
   async reply(context: IntentAgentTurnContext, executed: IntentAgentExecutedAct[]): Promise<string | null> {
     const userMessage = renderIntentAgentReplyStage(context, executed);
-    const system = `${INTENT_AGENT_SYSTEM_PROMPT}\n\n${INTENT_AGENT_REPLY_INSTRUCTION}`;
+    const system = `${systemPrompt(context)}\n\n${INTENT_AGENT_REPLY_INSTRUCTION}`;
     for (let attempt = 0; attempt < 2; attempt++) {
       const raw = (await this.callReplyModel([
         { role: 'system', content: system },

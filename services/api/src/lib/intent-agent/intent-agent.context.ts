@@ -26,6 +26,14 @@ const MAX_OPPORTUNITIES = 12;
 
 export interface IntentAgentTurnContext {
   event: IntentAgentInboxEvent;
+  /**
+   * The agent's own display name, from the client's `type='personal'` agent
+   * row — the SAME row the chat personas introduce themselves from, and the
+   * same name the DM surface addresses it by ("Message {agentName}…").
+   * Absent when the row is missing or nameless; the law falls back to its
+   * generic opener rather than failing an unattended turn over a name.
+   */
+  agentName?: string;
   /** The signal's own text; null when unreadable. */
   signalText: string | null;
   /** The waiting negotiations, oldest park first — the numbered list. */
@@ -48,6 +56,7 @@ export interface IntentAgentTurnContext {
 
 /** Injectable seams; production resolves the real collaborators lazily. */
 export interface IntentAgentContextDeps {
+  readAgentName?: (userId: string) => Promise<string | null>;
   readParkedNegotiations?: (userId: string, intentId: string) => Promise<ParkedNegotiation[]>;
   readDossier?: (userId: string, intentId: string) => Promise<IntentDossierEntryRow[]>;
   readOpportunities?: (userId: string, intentId: string) => Promise<ActionableCounterparty[]>;
@@ -77,18 +86,26 @@ export async function assembleIntentAgentContext(
   const readLedger = deps?.readLedger
     ?? (async (id: string, intent: string, limit: number) => (await import('../../adapters/intent-agent-ledger.adapter'))
       .intentAgentLedgerAdapter.readRecent(id, intent, limit));
+  // Identity, read beside the rest of the turn's state. `ensureNegotiatorAgent`
+  // runs at auth so the row is always there — but this loop negotiates
+  // unattended, so an unreadable name degrades to the generic opener rather
+  // than throwing a turn away.
+  const readAgentName = deps?.readAgentName
+    ?? (async (id: string) => (await import('../../services/agent.service'))
+      .agentService.getNegotiatorAgent(id).then((agent) => agent?.name ?? null));
   const getIntentText = deps?.getIntentText ?? (async (id: string) => {
     const { chatDatabaseAdapter } = await import('../../adapters/database.adapter');
     const intent = await chatDatabaseAdapter.getIntentForIndexing(id);
     return intent?.payload ?? null;
   });
 
-  const [parked, dossier, allOpportunities, recentActs, signalText] = await Promise.all([
+  const [parked, dossier, allOpportunities, recentActs, signalText, agentName] = await Promise.all([
     readParked(userId, intentId),
     readDossier(userId, intentId),
     readOpportunities(userId, intentId),
     readLedger(userId, intentId, MAX_LEDGER_ACTS),
     getIntentText(intentId).catch(() => null),
+    readAgentName(userId).catch(() => null),
   ]);
 
   // Bounded, keeping the newest (the reader lists oldest first). The agent's
@@ -130,5 +147,15 @@ export async function assembleIntentAgentContext(
     }
   })();
 
-  return { event, signalText, parked: [...parked], dossier, opportunities, recentDm, recentActs };
+  const name = agentName?.trim();
+  return {
+    event,
+    ...(name ? { agentName: name } : {}),
+    signalText,
+    parked: [...parked],
+    dossier,
+    opportunities,
+    recentDm,
+    recentActs,
+  };
 }
