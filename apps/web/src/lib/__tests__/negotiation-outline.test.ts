@@ -143,12 +143,12 @@ describe('groupNegotiationOutline', () => {
     expect(groups[0]?.opportunities.every((opportunity) => !opportunity.ungrouped)).toBe(true);
   });
 
-  it('keeps only the newest negotiation for the same viewer signal', () => {
+  it('keeps only the newest negotiation for the same visible signal', () => {
     const duplicateSignal = {
       ...conversation,
       negotiationOpportunities: [
-        { ...conversation.negotiationOpportunities![0], taskId: 'older-task', opportunityId: 'older-opportunity', updatedAt: '2026-01-01T00:00:00.000Z' },
-        { ...conversation.negotiationOpportunities![0], taskId: 'newer-task', opportunityId: 'newer-opportunity', updatedAt: '2026-01-04T00:00:00.000Z' },
+        { ...conversation.negotiationOpportunities![0], intentId: 'old-intent', taskId: 'older-task', opportunityId: 'older-opportunity', updatedAt: '2026-01-01T00:00:00.000Z' },
+        { ...conversation.negotiationOpportunities![0], intentId: 'new-intent', taskId: 'newer-task', opportunityId: 'newer-opportunity', updatedAt: '2026-01-04T00:00:00.000Z' },
       ],
     } satisfies ConversationSummary;
 

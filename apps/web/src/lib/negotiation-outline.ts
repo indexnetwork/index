@@ -136,13 +136,16 @@ export function groupNegotiationOutline(
 
   return [...groups.values()]
     .map((group) => {
-      const seenSignals = new Set<string>();
+      const seenSignalTitles = new Set<string>();
       const opportunities = group.opportunities
         .sort((left, right) => timestampOf(right.updatedAt) - timestampOf(left.updatedAt))
         .filter((opportunity) => {
-          const key = opportunity.intentId ? `intent:${opportunity.intentId}` : `title:${opportunity.title}`;
-          if (seenSignals.has(key)) return false;
-          seenSignals.add(key);
+          // A reopened or legacy opportunity can retain a different internal
+          // intent id while referring to the same visible signal. The rail is
+          // user-facing, so collapse by its normalized signal title.
+          const key = opportunity.title.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+          if (seenSignalTitles.has(key)) return false;
+          seenSignalTitles.add(key);
           return true;
         });
       return { ...group, opportunities };
